@@ -35,3 +35,18 @@ jobs:
 
       - name: Test
         run: npm test
+
+  db:
+    name: Database RLS tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Postgres + pgTAP
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            postgresql-16 postgresql-16-pgtap libtap-parser-sourcehandler-pgtap-perl
+
+      - name: Run migrations + pgTAP suite
+        run: ./scripts/db-test.sh
