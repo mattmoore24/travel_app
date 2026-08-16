@@ -3,7 +3,45 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current status: **Phase 2 complete** (2026-08-16) — pending live keys for end-to-end
+## Current status: **Phase 3 complete** (2026-08-16) — pending live keys for end-to-end
+
+### Phase 3 — The Map (hero feature): done
+
+**Database (pgTAP suite now 98 asserts, all green):**
+
+- [x] `launch_cities` geofence/flag table seeded with Lisbon, Mexico City, Bangkok,
+      Denpasar (per-city radius + heat-k; founder toggles `active`)
+- [x] `pins`: venue-level future intent. **Hard rule 3 structural**: 72h CHECK + no UPDATE
+      grant (immutable) + RLS hiding expired pins from everyone _including the owner_ +
+      hard-delete sweep (pg_cron on hosted, guarded locally)
+- [x] Geofence trigger (haversine, no PostGIS needed), active-city check, 10-pin cap
+- [x] **Hard rule 6 structural**: `heat_cells()` is the only heat path — k distinct pinners
+      per ~550m cell or nothing renders; identifier-free output; seeded pins feed the
+      cold-start heat
+- [x] Seeded pins (admin-inserted, no user attached, `seed_note` for curated events)
+- [x] `send_message_request` extended with the `pin` source (recipient must have a live pin)
+
+**App:**
+
+- [x] Native map (react-native-maps/Apple Maps — decision resolved, see ARCHITECTURE):
+      city switcher chips, emoji category markers, heat-cell underlay, pin detail card
+      (profile + Say hi, or curated note for seeded pins, Remove for own), drop-pin FAB
+- [x] Drop-pin modal: venue text, category, intent day, **user-set duration ≤72h**
+      (brief §1), tap/drag map placement — no venue-search API needed for v1 (flagged)
+- [x] Pin → compose-request flow with `source='pin'`
+- [x] §6 metrics: `map_viewed`, `heatmap_rendered`, `pin_created`, `pin_tapped`
+- [x] Verified: typecheck, lint, 24 Jest tests, 98 pgTAP tests, iOS+web export (25 routes)
+
+### Phase 3 deliverable check
+
+"The map is compelling with 15 pins on it": the rendering path (markers + heat + cards) is
+built and the seeded-pin mechanism exists to guarantee those 15 pins in each launch city on
+day one. Actual visual verification on a device needs the Supabase keys + a seeded project
+— the seed SQL is one INSERT per curated pin (documented in ARCHITECTURE).
+
+---
+
+Previous phase (2) summary below.
 
 Phases 0 and 1 finished earlier the same day (CI green, incl. the DB RLS job). Phase 1's
 adversarial review findings were all fixed and regression-tested before Phase 2 started.
@@ -97,13 +135,13 @@ Create account → build full profile → view own profile: **implemented and co
 end-to-end execution needs a real Supabase project (keys below). The DB layer is fully
 tested locally; the moment `.env` is filled and migrations are pushed, the flow is live.
 
-## Next: Phase 3 — The Map (hero feature)
+## Next: Phase 4 — Chat & realtime
 
-Pin creation (venue search, category, intent date, ≤72h expiry), map browse in launch
-cities, pin → profile → request flow, server-side heatmap aggregation with the k-threshold,
-auto-expiry job, seeded pins. The react-native-maps vs Mapbox evaluation happens here
-(criteria already in ARCHITECTURE.md). Venue search source needed — same decision class as
-the cities table; I'll propose an approach before building.
+Realtime 1:1 messaging on accepted requests (Supabase Realtime), push notifications (new
+request / accepted / new message — needs the Apple developer account + EAS build), block /
+report / unmatch tooling, social-handle reveal polish. The `blocks` table and chat shells
+already exist, so Phase 4 is mostly the messages table + realtime plumbing + notification
+infrastructure.
 
 ## Needs founder input
 
@@ -149,7 +187,7 @@ everything else); selfie-verification liveness vendor still a Phase 5 decision.
 | 0 — Repo & scaffold  | ✅ done | Fresh clone → `npx expo start` works                      |
 | 1 — Auth & profiles  | ✅ done | Account + full profile viewable in app (E2E pending keys) |
 | 2 — Trips & matching | ✅ done | Overlap request → accept → chat shell (E2E pending keys)  |
-| 3 — The Map (hero)   | ⏭ next  | Compelling map with 15 pins                               |
-| 4 — Chat & realtime  | ⬜      | Full loop to live conversation                            |
+| 3 — The Map (hero)   | ✅ done | Compelling map with 15 pins (seeding path ready)          |
+| 4 — Chat & realtime  | ⏭ next  | Full loop to live conversation                            |
 | 5 — Trust & safety   | ⬜      | Flirty first message blocked + logged                     |
 | 6 — Launch hardening | ⬜      | Geofenced launch cities, TestFlight, dashboards           |

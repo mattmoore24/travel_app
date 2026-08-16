@@ -147,15 +147,46 @@ Edge Functions planned: first-message moderation (regex pre-filter → Claude cl
 verdict log), pin expiry sweep, heatmap aggregation (PostGIS → H3 cells). Scheduled jobs via
 Supabase cron (`pg_cron`) or scheduled Edge Functions — chosen in Phase 3.
 
-## Phase 3 map decision — criteria (deferred)
+## Phase 3 map decision — RESOLVED: react-native-maps (Apple Maps)
 
-`react-native-maps` (Apple Maps) is the v1 default for simplicity, but it has no built-in
-heat layer — the heatmap would render as cell polygons/overlays, which may be acceptable
-(cells are the product: k-anonymous aggregates, not a smooth gradient). Switch to Mapbox if
-any of these bite: (a) cell-polygon rendering looks bad at launch-city zoom levels,
-(b) we need custom map styling for brand, (c) overlay performance with hundreds of cells.
-Mapbox costs: free tier ~50k monthly loads, requires token + config plugin. Decision and
-tradeoff will be documented here in Phase 3.
+Decided 2026-08-16 with Phase 3. Rationale: (a) react-native-maps 1.27.2 is SDK-bundled and
+works in Expo Go on iOS with Apple Maps — no token, no dev-build requirement for the demo
+loop; (b) our heatmap is **k-anonymous cells by design** (translucent ~275m circles whose
+opacity scales with count) — a smooth gradient heat layer would actually undercut the
+privacy story, so Mapbox's marquee feature isn't needed; (c) zero cost at any scale.
+Revisit only if launch-city polish demands custom map styling (Mapbox free tier ~50k
+loads/month, needs token + config plugin + dev build).
+
+### The map (Phase 3 implementation)
+
+- **`launch_cities`** — geofence/feature-flag table seeded with the brief's candidate hubs
+  (Lisbon, Mexico City, Bangkok, Denpasar), per-city `radius_km` (default 40) and `heat_k`
+  (default 3). Founder toggles `active`; nothing is hardcoded global (brief §2.6).
+- **`pins`** — venue-level future intent. Hard rule 3 is structural: `expires_at <=
+created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited past its
+  cap), RLS that hides expired pins from _everyone including the owner_, and an
+  `expire_pins()` hard-delete sweep (pg_cron every 15min on hosted; guarded no-op locally).
+  A validation trigger enforces the city geofence (haversine — no PostGIS dependency yet),
+  active-city status, sane intent dates, and a 10-active-pin cap.
+- **Rule 2 posture**: nothing in the schema or client ever touches device location —
+  `showsUserLocation={false}`, no location permission in app.json, pin placement is manual
+  (tap/drag on the map).
+- **Heatmap (rule 6)**: `heat_cells(city, date?)` is the _only_ heat read path — SECURITY
+  DEFINER so it can aggregate pins the caller can't individually see, returning only
+  quantized ~550m cell centers + counts, `HAVING count(DISTINCT pinner) >= heat_k`. Distinct
+  pinners, not pins — one user can't heat a cell alone. Seeded pins count toward heat (the
+  cold-start strategy). Client renders cells as translucent circles under the pin markers.
+- **Seeded pins** — `user_id IS NULL` + `seeded` flag + optional `seed_note`; visible to all,
+  no profile/request path, insertable only server-side (admin SQL for now, Phase 6 tooling).
+- **Pin→request**: `send_message_request` gained the `pin` source — requires the recipient
+  to have a live pin; same moderation chokepoint and invariants as trip requests.
+- **Client**: native map screen (city chips, emoji category markers, heat underlay, pin
+  detail card with Say hi / Remove, drop-a-pin FAB), drop-pin modal (venue text + tap/drag
+  placement + category + intent day + **user-set duration** ≤72h per brief §1), web fallback
+  list. §6 metrics: `map_viewed`, `heatmap_rendered`, `pin_created`, `pin_tapped`.
+- **Venue search**: free-text venue name + manual map placement for v1 — same zero-key
+  posture as the cities decision; a places API or curated venue seeds can layer in later
+  without schema changes (flagged to founder).
 
 ## Privacy & secrets model
 
@@ -230,3 +261,10 @@ tradeoff will be documented here in Phase 3.
   structural, not conventions.
 - **2026-08-16 (Phase 2)** — Trip visibility = overlap-gated RLS + 5-active-trip cap as the
   anti-scraping budget; API-layer rate limiting still flagged for launch hardening.
+- **2026-08-16 (Phase 3)** — react-native-maps over Mapbox (SDK-bundled, Expo Go-compatible,
+  and k-anonymous cell rendering doesn't want a gradient heat layer). Haversine trigger
+  instead of PostGIS for the geofence — PostGIS enters when real geo queries do.
+- **2026-08-16 (Phase 3)** — Pins are immutable (delete + recreate, no UPDATE grant): the
+  72h CHECK cannot be outlived by edits, and pin history can't be rewritten.
+- **2026-08-16 (Phase 3)** — Free-text venue + manual map placement for v1 pin creation
+  (no venue-search API); curated seeds/places API can layer in without schema changes.
