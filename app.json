@@ -10,7 +10,8 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.mattmoore.travelapp",
-      "supportsTablet": false
+      "supportsTablet": false,
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -33,6 +34,14 @@
           "backgroundColor": "#208AEF",
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
+        }
+      ],
+      "expo-secure-store",
+      "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Lets you choose profile photos to share with other travelers."
         }
       ]
     ],
