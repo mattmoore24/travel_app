@@ -5,7 +5,12 @@ import { Alert, Pressable, StyleSheet, View, useWindowDimensions } from 'react-n
 
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { useDeletePhoto, useOwnPhotos, usePhotoUrl, useUploadPhoto } from '@/features/profile/hooks';
+import {
+  useDeletePhoto,
+  useOwnPhotos,
+  usePhotoUrl,
+  useUploadPhoto,
+} from '@/features/profile/hooks';
 import { PHOTOS_MAX } from '@/features/profile/validation';
 import { useTheme } from '@/hooks/use-theme';
 import type { ProfilePhotoRow } from '@/lib/database.types';
@@ -34,7 +39,10 @@ function PhotoCell({ photo, size }: { photo: ProfilePhotoRow; size: number }) {
       accessibilityRole="imagebutton"
       accessibilityLabel={photo.position === 0 ? 'Profile picture' : 'Gallery photo'}
       onLongPress={confirmDelete}
-      style={[styles.cell, { width: size, height: size, backgroundColor: theme.backgroundElement }]}>
+      style={[
+        styles.cell,
+        { width: size, height: size, backgroundColor: theme.backgroundElement },
+      ]}>
       {url ? <Image source={{ uri: url }} style={styles.image} contentFit="cover" /> : null}
       {photo.position === 0 ? (
         <View style={[styles.badge, { backgroundColor: theme.tint }]}>
@@ -84,8 +92,7 @@ export function PhotoGrid() {
   };
 
   const pickAndUpload = async () => {
-    const position = nextPosition();
-    if (position == null) {
+    if (nextPosition() == null) {
       return;
     }
     const picked = await ImagePicker.launchImageLibraryAsync({
@@ -95,6 +102,12 @@ export function PhotoGrid() {
       quality: 1,
     });
     if (picked.canceled || picked.assets.length === 0) {
+      return;
+    }
+    // Recompute after the picker await — the photo list may have changed while
+    // the sheet was open, and a stale slot would create two "Main" photos.
+    const position = nextPosition();
+    if (position == null) {
       return;
     }
     try {

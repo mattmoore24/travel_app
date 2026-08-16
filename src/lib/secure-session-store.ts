@@ -48,9 +48,6 @@ export class SecureSessionStore {
   }
 
   async removeItem(key: string): Promise<void> {
-    await Promise.all([
-      SecureStore.deleteItemAsync(this.keyId(key)),
-      AsyncStorage.removeItem(key),
-    ]);
+    await Promise.all([SecureStore.deleteItemAsync(this.keyId(key)), AsyncStorage.removeItem(key)]);
   }
 }

@@ -23,11 +23,15 @@ function HomeForm({ profile }: { profile: ProfileRow }) {
   const valid = city.trim().length > 0 || country.trim().length > 0;
 
   const submit = async () => {
-    await updateProfile.mutateAsync({
-      home_city: city.trim() || null,
-      home_country: country.trim() || null,
-    });
-    router.push('/onboarding/languages');
+    try {
+      await updateProfile.mutateAsync({
+        home_city: city.trim() || null,
+        home_country: country.trim() || null,
+      });
+      router.push('/onboarding/languages');
+    } catch {
+      // Surfaced by the global mutation error alert; stay on this step.
+    }
   };
 
   return (

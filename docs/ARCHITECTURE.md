@@ -50,7 +50,7 @@ objections were found to the proposed stack; per-phase flags are recorded below 
 ## Backend — implemented (Phase 1) and planned
 
 **Phase 1 shipped the identity/profile slice of the schema as real migrations**
-(`supabase/migrations/`), with RLS proven by a pgTAP suite (33 asserts) that runs against a
+(`supabase/migrations/`), with RLS proven by a pgTAP suite (43 asserts) that runs against a
 throwaway local Postgres via `scripts/db-test.sh` (locally and in CI — no Docker needed).
 `supabase/shim/local_supabase_shim.sql` recreates what hosted Supabase provides (roles,
 `auth.uid()`, storage schema, default grants) so the tests exercise the same privilege model
@@ -62,8 +62,16 @@ accepted-chat gate on social handles is real from day one (Phase 2 adds their wr
 Key mechanics:
 
 - **Social handles (hard rule 4)**: RLS `SELECT` allowed only for the owner or a user sharing
-  an *active* chat (`has_accepted_chat()` SECURITY DEFINER helper). Unmatching (chat closed)
+  an _active_ chat (`has_accepted_chat()` SECURITY DEFINER helper). Unmatching (chat closed)
   re-hides handles. Tested from both directions.
+- **Caller-scoped definer helpers**: policy helpers never take a viewer parameter — they bind
+  `auth.uid()` internally. PostgREST exposes executable public functions as RPC, so a viewer
+  parameter would let any client probe arbitrary user pairs and dump the private
+  who-is-chatting-with-whom graph (caught by the Phase 1 adversarial review; regression-tested,
+  including that the old two-arg signature no longer exists and anon cannot execute helpers).
+- **`verification` evidence is unreadable by clients**: column-level SELECT grants expose only
+  the boolean `verified` badge; the Phase 5 evidence jsonb (document/liveness metadata) has no
+  client grant at all, so clients always select explicit columns (`PROFILE_COLUMNS`).
 - **Server-owned columns**: `profiles.verified`/`verification`, `profile_photos.moderation_status`,
   and all of `users` are stripped from client column grants — a client literally cannot
   self-verify or approve photos, regardless of RLS.
@@ -74,7 +82,8 @@ Key mechanics:
   everyone except themselves.
 - **Photos**: ≤7 per user (trigger-enforced), position 0 = avatar, stored in a private
   `profile-photos` bucket under `<user_id>/<uuid>.jpg`; write policies key off the folder
-  prefix, reads go through signed URLs.
+  prefix. Reads mirror the photo-row gate (own objects, or approved photos of visible owners —
+  shadowbanned/rejected content is not fetchable) and are served via signed URLs.
 - **Signup trigger**: `auth.users` insert → app `users` row + empty `profiles` row.
 
 Planned next (from brief §4), unchanged:

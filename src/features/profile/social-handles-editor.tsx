@@ -51,9 +51,13 @@ export function SocialHandlesEditor() {
     if (validateHandle(handle) != null) {
       return;
     }
-    await upsert.mutateAsync({ platform, handle: normalizeHandle(handle) });
-    setHandle('');
-    setTouched(false);
+    try {
+      await upsert.mutateAsync({ platform, handle: normalizeHandle(handle) });
+      setHandle('');
+      setTouched(false);
+    } catch {
+      // Surfaced by the global mutation error alert; keep the input intact.
+    }
   };
 
   return (

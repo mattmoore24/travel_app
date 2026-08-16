@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
 import { useAuthStore } from '@/features/auth/store';
+import { queryClient } from '@/lib/query-client';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 /**
@@ -33,8 +34,13 @@ export function useAuthListener() {
         }
       });
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      // Drop all cached server state on sign-out so the next account (or a
+      // fresh sign-in) never sees the previous user's data or errored queries.
+      if (event === 'SIGNED_OUT') {
+        queryClient.clear();
+      }
     });
 
     return () => {

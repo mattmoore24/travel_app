@@ -24,8 +24,12 @@ function BioForm({ profile }: { profile: ProfileRow }) {
   const error = validateBio(bio);
 
   const submit = async () => {
-    await updateProfile.mutateAsync({ bio: bio.trim() || null });
-    router.push('/onboarding/socials');
+    try {
+      await updateProfile.mutateAsync({ bio: bio.trim() || null });
+      router.push('/onboarding/socials');
+    } catch {
+      // Surfaced by the global mutation error alert; stay on this step.
+    }
   };
 
   return (

@@ -21,7 +21,7 @@ Phase 0 (repo, scaffold, CI, docs) finished earlier the same day; CI run #1 gree
 - [x] Photo moderation stub trigger (auto-approve + audit log) at the exact chokepoint the
       Phase 5 pipeline will occupy; 7-photo cap; shadowban visibility semantics
 - [x] Private `profile-photos` storage bucket with owner-folder write policies
-- [x] **33 pgTAP assertions** proving all of the above, runnable anywhere via
+- [x] **43 pgTAP assertions** proving all of the above, runnable anywhere via
       `scripts/db-test.sh` (local Postgres + Supabase shim, no Docker) — wired into CI as a
       second job
 
@@ -37,8 +37,14 @@ Phase 0 (repo, scaffold, CI, docs) finished earlier the same day; CI run #1 gree
       private bucket upload) → bio → socials
 - [x] Profile tab: real profile view (avatar, gallery, languages, bio, verified badge slot,
       locked-socials card) + modal edit screen covering every field
-- [x] Verified: typecheck, lint, 15 Jest tests, 33 pgTAP tests, and full iOS+web bundle
+- [x] Verified: typecheck, lint, 15 Jest tests, 43 pgTAP tests, and full iOS+web bundle
       export of all 16 routes
+- [x] Adversarial multi-agent review (RLS security, brief compliance, React/Expo, Supabase
+      client lenses) — 8 confirmed findings all fixed, incl. a critical relationship-graph
+      leak via viewer-parameterized RPC-exposed policy helpers (now caller-scoped +
+      regression-tested), client-readable verification evidence (now column-gated), an
+      offline dead-end in the route guards (now an error screen with retry/sign-out), and
+      silent mutation failures (now surfaced globally)
 
 ### Phase 1 deliverable check
 
@@ -78,18 +84,22 @@ ARCHITECTURE.md before building.
 
 ## Open technical flags
 
+Note per brief §6 ("instrument from day one"): PostHog wiring is scheduled for Phase 2 with
+the first liquidity events (trips/matching) — Phase 1 has no meaningful liquidity events to
+record. Flagging the small deferral for your sign-off.
+
 See "Technical flags" in [`ARCHITECTURE.md`](ARCHITECTURE.md). New this phase: Apple
 Sign-In/photo upload need an EAS dev build for full testing (Expo Go covers email auth +
 everything else); selfie-verification liveness vendor still a Phase 5 decision.
 
 ## Phase ledger
 
-| Phase                | Status  | Deliverable                                     |
-| -------------------- | ------- | ----------------------------------------------- |
-| 0 — Repo & scaffold  | ✅ done | Fresh clone → `npx expo start` works            |
+| Phase                | Status  | Deliverable                                               |
+| -------------------- | ------- | --------------------------------------------------------- |
+| 0 — Repo & scaffold  | ✅ done | Fresh clone → `npx expo start` works                      |
 | 1 — Auth & profiles  | ✅ done | Account + full profile viewable in app (E2E pending keys) |
-| 2 — Trips & matching | ⏭ next  | Overlap request → accept → chat shell           |
-| 3 — The Map (hero)   | ⬜      | Compelling map with 15 pins                     |
-| 4 — Chat & realtime  | ⬜      | Full loop to live conversation                  |
-| 5 — Trust & safety   | ⬜      | Flirty first message blocked + logged           |
-| 6 — Launch hardening | ⬜      | Geofenced launch cities, TestFlight, dashboards |
+| 2 — Trips & matching | ⏭ next  | Overlap request → accept → chat shell                     |
+| 3 — The Map (hero)   | ⬜      | Compelling map with 15 pins                               |
+| 4 — Chat & realtime  | ⬜      | Full loop to live conversation                            |
+| 5 — Trust & safety   | ⬜      | Flirty first message blocked + logged                     |
+| 6 — Launch hardening | ⬜      | Geofenced launch cities, TestFlight, dashboards           |

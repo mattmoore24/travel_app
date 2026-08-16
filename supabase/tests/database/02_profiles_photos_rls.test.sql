@@ -1,7 +1,7 @@
 -- Profiles: owner-only writes, server-owned verification state, shadowban
 -- visibility. Photos: moderation stub + audit trail, 7-photo cap, owner gating.
 begin;
-select plan(15);
+select plan(17);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -57,6 +57,16 @@ select throws_ok(
   'age under 18 rejected by CHECK'
 );
 
+-- The verification evidence blob is never client-readable — not even one's
+-- own (only the boolean verified badge is exposed).
+select throws_ok(
+  $$ select verification from public.profiles
+     where user_id = '00000000-0000-0000-0000-00000000000a' $$,
+  '42501',
+  null,
+  'verification jsonb has no client SELECT grant'
+);
+
 -- Bob can browse Alice's (active) profile but cannot modify it.
 select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 select is(
@@ -64,6 +74,12 @@ select is(
    where user_id = '00000000-0000-0000-0000-00000000000a'),
   'Alice',
   'active profiles are visible to other users'
+);
+select is(
+  (select verified from public.profiles
+   where user_id = '00000000-0000-0000-0000-00000000000a'),
+  false,
+  'the public verified badge is readable'
 );
 create function pg_temp.try_vandalize_profile() returns int language plpgsql as $$
 declare n int;

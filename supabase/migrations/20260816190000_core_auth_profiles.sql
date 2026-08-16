@@ -100,8 +100,15 @@ create table public.moderation_events (
 -- SECURITY DEFINER so policies can consult tables the caller can't read
 -- directly (and to avoid RLS self-recursion). search_path pinned per Supabase
 -- hardening guidance.
+--
+-- CALLER-SCOPED BY DESIGN: these helpers never take the viewer as a
+-- parameter — they bind to auth.uid() internally. PostgREST exposes every
+-- executable public function as an RPC endpoint, so a viewer parameter would
+-- let any client probe arbitrary user pairs and dump the private
+-- who-is-chatting-with-whom graph. With auth.uid() bound inside, a caller can
+-- only ever ask about their own relationships.
 
-create function public.has_accepted_chat(owner_id uuid, viewer_id uuid)
+create function public.has_accepted_chat(owner_id uuid)
 returns boolean
 language sql
 stable
@@ -114,13 +121,13 @@ as $$
     join public.chat_participants po
       on po.chat_id = c.id and po.user_id = owner_id
     join public.chat_participants pv
-      on pv.chat_id = c.id and pv.user_id = viewer_id
+      on pv.chat_id = c.id and pv.user_id = auth.uid()
     where c.status = 'active'
-      and owner_id <> viewer_id
+      and owner_id <> auth.uid()
   )
 $$;
 
-create function public.is_chat_member(p_chat_id uuid, p_user_id uuid)
+create function public.is_chat_member(p_chat_id uuid)
 returns boolean
 language sql
 stable
@@ -129,7 +136,7 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.chat_participants
-    where chat_id = p_chat_id and user_id = p_user_id
+    where chat_id = p_chat_id and user_id = auth.uid()
   )
 $$;
 
@@ -291,7 +298,7 @@ create policy social_handles_select_gated
   on public.social_handles for select to authenticated
   using (
     user_id = auth.uid()
-    or public.has_accepted_chat(user_id, auth.uid())
+    or public.has_accepted_chat(user_id)
   );
 
 create policy social_handles_insert_own
@@ -311,11 +318,11 @@ create policy social_handles_delete_own
 -- request acceptance (Phase 2).
 create policy chats_select_member
   on public.chats for select to authenticated
-  using (public.is_chat_member(id, auth.uid()));
+  using (public.is_chat_member(id));
 
 create policy chat_participants_select_member
   on public.chat_participants for select to authenticated
-  using (public.is_chat_member(chat_id, auth.uid()));
+  using (public.is_chat_member(chat_id));
 
 -- moderation_events: no client policies — server-only audit trail.
 
@@ -333,12 +340,19 @@ revoke insert, update, delete, truncate, references, trigger
   on public.users from authenticated;
 
 -- profiles: no client insert/delete (trigger creates the row); updates cannot
--- touch verification state.
+-- touch verification state, and the `verification` evidence jsonb (identity
+-- documents/liveness metadata in Phase 5) is never client-READABLE either —
+-- only the public `verified` badge is. Clients must select explicit columns.
 revoke insert, delete, truncate, references, trigger
   on public.profiles from authenticated;
 revoke update on public.profiles from authenticated;
 grant update (display_name, age, home_city, home_country, languages, bio,
               gender, onboarding_completed_at)
+  on public.profiles to authenticated;
+revoke select on public.profiles from authenticated;
+grant select (user_id, display_name, age, home_city, home_country, languages,
+              bio, gender, verified, onboarding_completed_at, created_at,
+              updated_at)
   on public.profiles to authenticated;
 
 -- profile_photos: moderation_status is server-owned; clients may only move
@@ -358,8 +372,22 @@ revoke insert, update, delete, truncate, references, trigger
 -- moderation_events: fully server-only.
 revoke all on public.moderation_events from authenticated;
 
--- Lock down helper execution: definer functions are only for policies/clients
--- that need them.
-revoke execute on function public.handle_new_user() from anon, authenticated;
-revoke execute on function public.moderate_photo_stub() from anon, authenticated;
-revoke execute on function public.enforce_photo_limit() from anon, authenticated;
+-- Lock down function execution. Two things matter here:
+--   1. Revokes must include PUBLIC — Postgres grants EXECUTE to PUBLIC by
+--      default, so revoking only named roles is a no-op.
+--   2. The policy helpers stay executable by `authenticated` because RLS
+--      policies run them as the invoking role — but they are caller-scoped
+--      (auth.uid() bound internally), so direct RPC calls can only ask about
+--      the caller's own relationships. anon gets nothing.
+revoke execute on function
+  public.has_accepted_chat(uuid),
+  public.is_chat_member(uuid),
+  public.is_visible_owner(uuid)
+from public, anon;
+
+revoke execute on function
+  public.handle_new_user(),
+  public.moderate_photo_stub(),
+  public.enforce_photo_limit(),
+  public.set_updated_at()
+from public, anon, authenticated;

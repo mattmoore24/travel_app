@@ -16,7 +16,10 @@ export default function EmailAuthScreen() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const canSubmit = email.trim().length > 3 && password.length >= 8;
+  // The 8-char minimum is a signup policy; existing passwords (dashboard
+  // resets, differently-configured projects) must not be blocked at sign-in.
+  const canSubmit =
+    email.trim().length > 3 && (mode === 'sign-in' ? password.length > 0 : password.length >= 8);
 
   const submit = async () => {
     setError(null);
@@ -43,7 +46,11 @@ export default function EmailAuthScreen() {
   return (
     <StepScreen
       title={mode === 'sign-in' ? 'Welcome back' : 'Create your account'}
-      subtitle="Email and a password of at least 8 characters."
+      subtitle={
+        mode === 'sign-in'
+          ? 'Sign in with your email and password.'
+          : 'Email and a password of at least 8 characters.'
+      }
       continueLabel={mode === 'sign-in' ? 'Sign in' : 'Create account'}
       continueDisabled={!canSubmit}
       continueLoading={loading}
@@ -51,9 +58,7 @@ export default function EmailAuthScreen() {
       footer={
         <PrimaryButton
           variant="ghost"
-          label={
-            mode === 'sign-in' ? 'New here? Create an account' : 'Have an account? Sign in'
-          }
+          label={mode === 'sign-in' ? 'New here? Create an account' : 'Have an account? Sign in'}
           onPress={() => {
             setMode(mode === 'sign-in' ? 'sign-up' : 'sign-in');
             setError(null);

@@ -7,16 +7,12 @@ export type UserStatus = 'active' | 'suspended' | 'banned' | 'shadowbanned';
 export type Gender = 'woman' | 'man' | 'nonbinary' | 'unspecified';
 export type ModerationStatus = 'pending' | 'approved' | 'rejected';
 export type SocialPlatform =
-  | 'instagram'
-  | 'tiktok'
-  | 'snapchat'
-  | 'x'
-  | 'facebook'
-  | 'whatsapp'
-  | 'telegram'
-  | 'other';
+  'instagram' | 'tiktok' | 'snapchat' | 'x' | 'facebook' | 'whatsapp' | 'telegram' | 'other';
 export type ChatStatus = 'active' | 'closed';
 
+// Mirrors the client-readable column grant — the `verification` evidence
+// jsonb exists in the table but has no SELECT grant, so it never appears here
+// and clients must always select explicit columns (see PROFILE_COLUMNS).
 export type ProfileRow = {
   user_id: string;
   display_name: string | null;
@@ -27,11 +23,13 @@ export type ProfileRow = {
   bio: string | null;
   gender: Gender;
   verified: boolean;
-  verification: Record<string, unknown> | null;
   onboarding_completed_at: string | null;
   created_at: string;
   updated_at: string;
 };
+
+export const PROFILE_COLUMNS =
+  'user_id, display_name, age, home_city, home_country, languages, bio, gender, verified, onboarding_completed_at, created_at, updated_at';
 
 // Columns the client is actually allowed to update (see the column-level
 // GRANT in the core migration) — verified/verification are server-owned.
@@ -132,8 +130,9 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      // Caller-scoped: answers only about the calling user's relationships.
       has_accepted_chat: {
-        Args: { owner_id: string; viewer_id: string };
+        Args: { owner_id: string };
         Returns: boolean;
       };
     };

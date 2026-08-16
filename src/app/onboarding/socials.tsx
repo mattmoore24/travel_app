@@ -12,10 +12,14 @@ export default function OnboardingSocialsScreen() {
   const missing = profile ? missingOnboardingFields(profile, photos.length) : [];
 
   const finish = async () => {
-    await updateProfile.mutateAsync({
-      onboarding_completed_at: new Date().toISOString(),
-    });
-    // The root guard swaps to the tabs stack once the profile updates.
+    try {
+      await updateProfile.mutateAsync({
+        onboarding_completed_at: new Date().toISOString(),
+      });
+      // The root guard swaps to the tabs stack once the profile updates.
+    } catch {
+      // Surfaced by the global mutation error alert; stay on this step.
+    }
   };
 
   return (

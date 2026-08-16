@@ -62,16 +62,20 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
   };
 
   const save = async () => {
-    await updateProfile.mutateAsync({
-      display_name: name.trim(),
-      age: Number(age.trim()),
-      gender,
-      home_city: city.trim() || null,
-      home_country: country.trim() || null,
-      languages,
-      bio: bio.trim() || null,
-    });
-    router.back();
+    try {
+      await updateProfile.mutateAsync({
+        display_name: name.trim(),
+        age: Number(age.trim()),
+        gender,
+        home_city: city.trim() || null,
+        home_country: country.trim() || null,
+        languages,
+        bio: bio.trim() || null,
+      });
+      router.back();
+    } catch {
+      // Surfaced by the global mutation error alert; stay on the form.
+    }
   };
 
   return (

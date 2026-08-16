@@ -31,8 +31,12 @@ function LanguagesForm({ profile }: { profile: ProfileRow }) {
   };
 
   const submit = async () => {
-    await updateProfile.mutateAsync({ languages: selected });
-    router.push('/onboarding/photos');
+    try {
+      await updateProfile.mutateAsync({ languages: selected });
+      router.push('/onboarding/photos');
+    } catch {
+      // Surfaced by the global mutation error alert; stay on this step.
+    }
   };
 
   return (

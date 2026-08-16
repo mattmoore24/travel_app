@@ -1,16 +1,18 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
-import type { ProfileUpdate, SocialPlatform } from '@/lib/database.types';
+import { PROFILE_COLUMNS, type ProfileUpdate, type SocialPlatform } from '@/lib/database.types';
 import { supabase } from '@/lib/supabase';
 
 export const PHOTO_BUCKET = 'profile-photos';
 const PHOTO_MAX_DIMENSION = 1440;
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
+// profiles has column-level SELECT grants (verification jsonb is server-only),
+// so `select('*')` would be rejected — always name the readable columns.
 export async function fetchOwnProfile(userId: string) {
   const { data, error } = await supabase
     .from('profiles')
-    .select('*')
+    .select(PROFILE_COLUMNS)
     .eq('user_id', userId)
     .single();
   if (error) {
@@ -24,7 +26,7 @@ export async function updateOwnProfile(userId: string, patch: ProfileUpdate) {
     .from('profiles')
     .update(patch)
     .eq('user_id', userId)
-    .select()
+    .select(PROFILE_COLUMNS)
     .single();
   if (error) {
     throw error;
@@ -80,7 +82,10 @@ export async function uploadPhoto(userId: string, localUri: string, position: nu
     .single();
   if (error) {
     // Don't leave an orphaned object behind if the row insert failed.
-    await supabase.storage.from(PHOTO_BUCKET).remove([storagePath]);
+    const { error: cleanupError } = await supabase.storage.from(PHOTO_BUCKET).remove([storagePath]);
+    if (cleanupError) {
+      console.warn(`orphaned storage object ${storagePath}: ${cleanupError.message}`);
+    }
     throw error;
   }
   return data;
@@ -91,7 +96,13 @@ export async function deletePhoto(photoId: string, storagePath: string) {
   if (error) {
     throw error;
   }
-  await supabase.storage.from(PHOTO_BUCKET).remove([storagePath]);
+  // storage-js reports failures via the result, not by throwing; an orphaned
+  // object is invisible to others (reads require a photo row) but log it so
+  // leaks are diagnosable.
+  const { error: removeError } = await supabase.storage.from(PHOTO_BUCKET).remove([storagePath]);
+  if (removeError) {
+    console.warn(`orphaned storage object ${storagePath}: ${removeError.message}`);
+  }
 }
 
 /** The bucket is private; photos are served via short-lived signed URLs. */
@@ -117,17 +128,10 @@ export async function fetchOwnSocialHandles(userId: string) {
   return data;
 }
 
-export async function upsertSocialHandle(
-  userId: string,
-  platform: SocialPlatform,
-  handle: string
-) {
+export async function upsertSocialHandle(userId: string, platform: SocialPlatform, handle: string) {
   const { data, error } = await supabase
     .from('social_handles')
-    .upsert(
-      { user_id: userId, platform, handle },
-      { onConflict: 'user_id,platform' }
-    )
+    .upsert({ user_id: userId, platform, handle }, { onConflict: 'user_id,platform' })
     .select()
     .single();
   if (error) {

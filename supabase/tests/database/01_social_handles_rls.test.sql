@@ -1,6 +1,6 @@
 -- HARD RULE 4: social handles are never visible pre-accept, enforced in the DB.
 begin;
-select plan(12);
+select plan(16);
 
 -- Seed three signed-up users (trigger creates public.users + profiles).
 insert into auth.users (id, email) values
@@ -97,12 +97,35 @@ select is(
   'reader cannot update the owner''s handle'
 );
 
+-- The gate helper is caller-scoped: Bob (in the chat) gets true for Alice…
+select is(
+  public.has_accepted_chat('00000000-0000-0000-0000-00000000000a'),
+  true,
+  'helper answers for the caller''s own relationship'
+);
+
 -- Cara (no chat with Alice) still sees nothing.
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select is(
   (select count(*)::int from public.social_handles),
   0,
   'third parties still see nothing'
+);
+
+-- …and Cara cannot learn about the Alice↔Bob chat: she can only ask about
+-- herself, and the old two-arg probing signature must not exist at all.
+select is(
+  public.has_accepted_chat('00000000-0000-0000-0000-00000000000a'),
+  false,
+  'helper cannot reveal other users'' relationships'
+);
+select throws_ok(
+  $$ select public.has_accepted_chat(
+       '00000000-0000-0000-0000-00000000000a',
+       '00000000-0000-0000-0000-00000000000b') $$,
+  '42883',
+  null,
+  'arbitrary-pair probing signature does not exist'
 );
 
 -- Closing (unmatching) the chat re-hides the handle.
@@ -117,7 +140,7 @@ select is(
   'closed chat -> handle hidden again'
 );
 
--- Signed-out (anon) clients have no access at all.
+-- Signed-out (anon) clients have no access at all — tables or helpers.
 reset role;
 set local role anon;
 select throws_ok(
@@ -125,6 +148,12 @@ select throws_ok(
   '42501',
   null,
   'anon role has no table privilege'
+);
+select throws_ok(
+  $$ select public.has_accepted_chat('00000000-0000-0000-0000-00000000000a') $$,
+  '42501',
+  null,
+  'anon cannot execute the gate helper'
 );
 
 select * from finish();

@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -149,7 +149,13 @@ export default function ProfileScreen() {
 
         <View style={styles.actions}>
           <PrimaryButton label="Edit profile" onPress={() => router.push('/edit-profile')} />
-          <PrimaryButton variant="danger" label="Sign out" onPress={() => signOut()} />
+          <PrimaryButton
+            variant="danger"
+            label="Sign out"
+            onPress={() => {
+              signOut().catch(() => Alert.alert('Sign out failed', 'Please try again.'));
+            }}
+          />
         </View>
       </ScrollView>
     </ThemedView>

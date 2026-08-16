@@ -12,7 +12,8 @@ export default function OnboardingPhotosScreen() {
       title="Photos"
       subtitle="Step 4 of 6 — add at least a profile photo (up to 7 total)."
       continueDisabled={photos.length === 0}
-      onContinue={() => router.push('/onboarding/bio')}>
+      // navigate (not push) so a double-tap can't stack the bio step twice.
+      onContinue={() => router.navigate('/onboarding/bio')}>
       <PhotoGrid />
     </StepScreen>
   );

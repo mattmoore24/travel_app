@@ -1,6 +1,7 @@
--- Chats are member-only; storage writes are confined to the owner's folder.
+-- Chats are member-only; storage writes are confined to the owner's folder
+-- and reads mirror the approved+visible gate on profile_photos.
 begin;
-select plan(6);
+select plan(10);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -62,7 +63,44 @@ select throws_ok(
 select is(
   (select count(*)::int from storage.objects),
   1,
-  'authenticated users can read bucket objects (discovery is gated by profile_photos RLS)'
+  'owner always reads own objects'
+);
+
+-- Reads by others require an approved profile_photos row with a visible owner.
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select is(
+  (select count(*)::int from storage.objects),
+  0,
+  'unregistered (no photo row) objects are invisible to others'
+);
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+insert into public.profile_photos (user_id, storage_path, position)
+  values ('00000000-0000-0000-0000-00000000000a',
+          '00000000-0000-0000-0000-00000000000a/p0.jpg', 0);
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select is(
+  (select count(*)::int from storage.objects),
+  1,
+  'approved photo of an active owner is fetchable by others'
+);
+
+reset role;
+update public.users set status = 'shadowbanned'
+  where id = '00000000-0000-0000-0000-00000000000a';
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select is(
+  (select count(*)::int from storage.objects),
+  0,
+  'shadowbanned owner''s objects are hidden from others'
+);
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  (select count(*)::int from storage.objects),
+  1,
+  'shadowbanned owner still reads own objects'
 );
 
 select * from finish();

@@ -50,8 +50,8 @@ export default function WelcomeScreen() {
             Travel App
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
-            Make real friends on the road. See what travelers are up to in your
-            city — never where they are.
+            Make real friends on the road. See what travelers are up to in your city — never where
+            they are.
           </ThemedText>
         </ThemedView>
 
@@ -59,8 +59,8 @@ export default function WelcomeScreen() {
           {!isSupabaseConfigured ? (
             <ThemedView type="backgroundElement" style={styles.notice}>
               <ThemedText type="small" themeColor="textSecondary">
-                Backend not configured: copy .env.example to .env with your
-                Supabase keys, then restart the dev server.
+                Backend not configured: copy .env.example to .env with your Supabase keys, then
+                restart the dev server.
               </ThemedText>
             </ThemedView>
           ) : null}

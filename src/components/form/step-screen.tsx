@@ -40,9 +40,7 @@ export function StepScreen({
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled">
             <ThemedText type="subtitle">{title}</ThemedText>
-            {subtitle ? (
-              <ThemedText themeColor="textSecondary">{subtitle}</ThemedText>
-            ) : null}
+            {subtitle ? <ThemedText themeColor="textSecondary">{subtitle}</ThemedText> : null}
             {children}
           </ScrollView>
           <ThemedView style={styles.footer}>

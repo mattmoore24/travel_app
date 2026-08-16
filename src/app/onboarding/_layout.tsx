@@ -11,7 +11,6 @@ export default function OnboardingLayout() {
         headerShown: true,
         headerTitle: '',
         headerShadowVisible: false,
-        headerTransparent: true,
       }}
     />
   );

@@ -55,9 +55,9 @@ describe('onboarding completeness', () => {
 
   it('accepts either city or country for home', () => {
     expect(missingOnboardingFields({ ...base, home_city: null }, 1)).toEqual([]);
-    expect(
-      missingOnboardingFields({ ...base, home_city: null, home_country: null }, 1)
-    ).toContain('home');
+    expect(missingOnboardingFields({ ...base, home_city: null, home_country: null }, 1)).toContain(
+      'home'
+    );
   });
 
   it('lists every missing requirement', () => {
