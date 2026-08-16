@@ -91,7 +91,7 @@ Couchsurfing, Snap Map, and Zenly. Key conclusions:
 1. **The whitespace is the map.** No existing app combines (a) date/city-overlap matching,
    (b) mutual-accept messaging, and (c) an intent-based activity map with an anonymized
    heatmap. Date-overlap matching alone is commodity (6+ apps do it). The map + heatmap is the
-   differentiator and the marketing hook: *"see what travelers are doing in this city tonight."*
+   differentiator and the marketing hook: _"see what travelers are doing in this city tonight."_
 2. **The two killers of this category are dead cities and dating-app creep.** Nearly every
    competitor's negative reviews cluster on: no users in my city on my dates; fake profiles;
    "this became a hookup app"; surprise paywalls; buggy chat. Every architectural and product
@@ -185,28 +185,28 @@ dependency), solo-founder maintainability, fast iteration, and real-time feature
 
 - **Phase 0 — Repo & scaffold**: Connect to the repo (Step 0), Expo TypeScript scaffold,
   ESLint/Prettier, GitHub Actions CI, Supabase project wiring (`.env.example`), commit docs/.
-  *Deliverable: fresh clone → `npx expo start` works.*
+  _Deliverable: fresh clone → `npx expo start` works._
 - **Phase 1 — Auth & profiles**: Apple Sign-In + email auth, onboarding flow (profile fields,
   photo upload with moderation stub), profile view/edit. Social handles stored but hidden per
-  RLS. *Deliverable: create account, build full profile, view own profile in the app.*
+  RLS. _Deliverable: create account, build full profile, view own profile in the app._
 - **Phase 2 — Trips & matching**: Trip creation (city autocomplete via a places API, date
   range), overlap query (city + date intersection), card-stack browse UI of overlapping
   travelers, Hinge-style message request compose (attached to a profile element), inbox of
-  incoming requests with accept/decline. *Deliverable: two test accounts with overlapping
-  trips can request → accept → land in a chat shell.*
+  incoming requests with accept/decline. _Deliverable: two test accounts with overlapping
+  trips can request → accept → land in a chat shell._
 - **Phase 3 — The Map (hero feature — invest the most polish here)**: Pin creation flow (venue
   search, category, intent date, expiry ≤72h), map browse of active pins in launch cities,
   pin → profile → message request flow, server-side heatmap aggregation + client heat layer
-  with the k-threshold, pin auto-expiry job, admin seeded-pins path. *Deliverable: the map is
-  compelling with 15 pins on it.*
+  with the k-threshold, pin auto-expiry job, admin seeded-pins path. _Deliverable: the map is
+  compelling with 15 pins on it._
 - **Phase 4 — Chat & realtime**: Realtime 1:1 chat on accepted requests, push notifications
   (new request, accepted, new message), block/report/unmatch, social-handle reveal in accepted
-  chats. *Deliverable: full loop from either surface to a live conversation.*
+  chats. _Deliverable: full loop from either surface to a live conversation._
 - **Phase 5 — Trust & safety pipeline**: Flirt/harassment classification Edge Function on all
   first messages (pre-filter + Claude classification + verdict logging), strike system
   (warn → suspend → ban), selfie verification flow, photo moderation on upload, report review
-  queue (simple admin web view or Supabase dashboard queries fine for v1). *Deliverable: a
-  flirtatious first message from a test account is blocked before delivery and logged.*
+  queue (simple admin web view or Supabase dashboard queries fine for v1). _Deliverable: a
+  flirtatious first message from a test account is blocked before delivery and logged._
 - **Phase 6 — Launch hardening**: Launch-city geofencing/feature flags, liquidity dashboard
   (PostHog + a simple admin query set), empty-state design for low-density cities ("be the
   first pin" + seeded content), App Store assets, TestFlight distribution via EAS, privacy
