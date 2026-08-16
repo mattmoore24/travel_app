@@ -3,83 +3,92 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current status: **Phase 0 complete** (2026-08-16)
+## Current status: **Phase 1 complete** (2026-08-16) — pending live keys for end-to-end
 
-### Done
+Phase 0 (repo, scaffold, CI, docs) finished earlier the same day; CI run #1 green.
 
-- [x] Repo connected (`mattmoore24/travel_app`), push verified from first commit
-- [x] Product brief committed (`docs/PRODUCT_BRIEF.md`) + research PDF
-      (`docs/research/travel_app_research.pdf`) + distilled competitive notes
-      (`docs/RESEARCH_NOTES.md`)
-- [x] Expo SDK 57 + TypeScript scaffold (official default template, Expo Router,
-      React 19 / RN 0.86)
-- [x] Four-tab app skeleton matching the product IA: **Map · Travelers · Inbox · Profile**,
-      each a designed empty state naming its phase; native SF Symbol tab bar + synced web tabs
-- [x] Supabase client wiring (`src/lib/supabase.ts`) with graceful no-env fallback;
-      `.env.example` template; React Query provider; Zustand installed
-- [x] Tooling: ESLint (expo flat config + prettier-compat), Prettier, Jest (`jest-expo`,
-      3 passing tests), strict TypeScript
-- [x] GitHub Actions CI: typecheck + lint (max-warnings 0) + format check + tests on every PR
-      and push to `main`
-- [x] Verified: `tsc` clean, lint clean, tests pass, and `expo export` produces working iOS
-      and web bundles for all four routes
+### Phase 1 — Auth & profiles: done
 
-### Phase 0 deliverable check
+**Database (fully tested):**
 
-Fresh clone → `npm install` → `npx expo start` works with no `.env` required (Profile tab
-shows Supabase wiring status). Verified via full iOS + web bundle export in this session.
+- [x] Migrations for `users`, `profiles`, `profile_photos`, `social_handles`,
+      `moderation_events`, and read-only `chats`/`chat_participants` stubs
+      (`supabase/migrations/`)
+- [x] **Hard rule 4 enforced in Postgres**: social handles readable only by the owner or a
+      user sharing an active accepted chat; unmatch re-hides them
+- [x] Server-owned columns (`verified`, `moderation_status`, `users.status`) stripped from
+      client grants — self-verification is impossible at the DB layer
+- [x] Photo moderation stub trigger (auto-approve + audit log) at the exact chokepoint the
+      Phase 5 pipeline will occupy; 7-photo cap; shadowban visibility semantics
+- [x] Private `profile-photos` storage bucket with owner-folder write policies
+- [x] **33 pgTAP assertions** proving all of the above, runnable anywhere via
+      `scripts/db-test.sh` (local Postgres + Supabase shim, no Docker) — wired into CI as a
+      second job
 
-## Next: Phase 1 — Auth & profiles
+**App:**
 
-Apple Sign-In + email auth, onboarding flow (profile fields, photo upload with moderation
-stub), profile view/edit, social handles stored but RLS-hidden. First Supabase migrations +
-RLS tests land here.
+- [x] Email/password auth + Sign in with Apple flow (Apple needs an EAS dev build + provider
+      config; gated off gracefully in Expo Go)
+- [x] Encrypted session persistence (keychain AES key + AsyncStorage ciphertext),
+      unit-tested
+- [x] Route guards: signed-out → welcome/email; signed-in-incomplete → 6-step onboarding
+      (resumable; each step saves server-side); complete → tabs
+- [x] Onboarding: name/age/gender → home → languages → photos (picker → client resize →
+      private bucket upload) → bio → socials
+- [x] Profile tab: real profile view (avatar, gallery, languages, bio, verified badge slot,
+      locked-socials card) + modal edit screen covering every field
+- [x] Verified: typecheck, lint, 15 Jest tests, 33 pgTAP tests, and full iOS+web bundle
+      export of all 16 routes
 
-**Blocked on founder for:** Supabase project keys (item 1 below). Everything else in Phase 1
-can start without input; Apple Sign-In end-to-end testing waits on item 2.
+### Phase 1 deliverable check
+
+Create account → build full profile → view own profile: **implemented and compiling**, but
+end-to-end execution needs a real Supabase project (keys below). The DB layer is fully
+tested locally; the moment `.env` is filled and migrations are pushed, the flow is live.
+
+## Next: Phase 2 — Trips & matching
+
+Trip creation (city autocomplete via a places API), city+date overlap query, card-stack
+browse, Hinge-style message requests with accept/decline inbox, chat shell on accept.
+Phase 2 also adds the server-side chat-creation path that the Phase 1 handle-gate stubs
+anticipate. **A places/geocoding API choice lands here** — I'll evaluate and propose in
+ARCHITECTURE.md before building.
 
 ## Needs founder input
 
-1. **Supabase project (needed to start Phase 1)** — create a free project at
-   [supabase.com](https://supabase.com) (any region near launch cities, e.g. `eu-west`),
-   then from _Project Settings → API_ put into a local `.env` (copy `.env.example`):
-   - `EXPO_PUBLIC_SUPABASE_URL`
-   - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
-
-   Also add both as GitHub Actions secrets later if CI ever needs a live backend (not yet).
-   I'll handle schema, migrations, and RLS from there — no dashboard configuration needed
-   beyond creating the project (though sharing the DB password / access token would let me
-   drive migrations via CLI).
-
-2. **Apple Developer Program** ($99/yr) — required for Sign in with Apple entitlements,
-   push notifications (Phase 4), and TestFlight (Phase 6). An Expo account (free) is also
-   needed for EAS builds; both can wait a bit into Phase 1 (email auth first), but Apple
-   Sign-In can't ship without them.
-3. **Bundle identifier** — placeholder set to `com.mattmoore.travelapp` in `app.json`.
-   Fine to keep, or tell me the reverse-domain you want (it's painful to change after
-   TestFlight).
-4. **Working name** — code identity is neutral ("Travel App"). Candidate names to react to,
-   all map/overlap-flavored rather than dating-flavored: **Overlap**, **Pinned**, **Samewhere**,
-   **Crossings**, **Meanwhile**, **Waypoint**. No action needed until App Store assets
-   (Phase 6), but the scheme/slug is easiest to rename early.
-5. **Branch policy** — this session pushed to `claude/travel-app-initial-setup-ephphz` (the
-   branch this remote session is locked to). Open a PR / merge it to `main` on GitHub when
-   you're happy, or tell me if you want a different flow for future sessions.
+1. **Supabase project (the one real blocker)** — create a free project at
+   [supabase.com](https://supabase.com), then:
+   - Put `EXPO_PUBLIC_SUPABASE_URL` + `EXPO_PUBLIC_SUPABASE_ANON_KEY` (Project Settings →
+     API) into `.env` locally.
+   - Give me the project ref + a `SUPABASE_ACCESS_TOKEN` (or run
+     `npx supabase link && npx supabase db push` yourself) so the migrations reach the
+     hosted DB.
+   - In Auth settings: decide **email confirmation** on/off for early testing (off = faster
+     TestFlight loops; the app handles both).
+2. **Apple Developer Program** ($99/yr) — needed before Apple Sign-In can be tested
+   end-to-end (entitlement + Services ID, then enable the Apple provider in Supabase Auth).
+   Email auth works without it. Also unlocks EAS dev builds, push (Phase 4), TestFlight
+   (Phase 6).
+3. **Bundle identifier** — still `com.mattmoore.travelapp` (change now if you want a
+   different reverse-domain; painful later).
+4. **Working name** — unchanged ask; candidates: Overlap, Pinned, Samewhere, Crossings,
+   Meanwhile, Waypoint.
+5. **Branch** — everything is on `claude/travel-app-initial-setup-ephphz`; merge to `main`
+   via PR whenever you're ready.
 
 ## Open technical flags
 
-See "Technical flags" in [`ARCHITECTURE.md`](ARCHITECTURE.md): unstable native-tabs
-namespace, secure session storage planned for Phase 1, Expo Go limits (Apple Sign-In/push
-need an EAS dev build), React Compiler experiment on, selfie-liveness vendor evaluation in
-Phase 5.
+See "Technical flags" in [`ARCHITECTURE.md`](ARCHITECTURE.md). New this phase: Apple
+Sign-In/photo upload need an EAS dev build for full testing (Expo Go covers email auth +
+everything else); selfie-verification liveness vendor still a Phase 5 decision.
 
 ## Phase ledger
 
 | Phase                | Status  | Deliverable                                     |
 | -------------------- | ------- | ----------------------------------------------- |
 | 0 — Repo & scaffold  | ✅ done | Fresh clone → `npx expo start` works            |
-| 1 — Auth & profiles  | ⏭ next  | Account + full profile viewable in app          |
-| 2 — Trips & matching | ⬜      | Overlap request → accept → chat shell           |
+| 1 — Auth & profiles  | ✅ done | Account + full profile viewable in app (E2E pending keys) |
+| 2 — Trips & matching | ⏭ next  | Overlap request → accept → chat shell           |
 | 3 — The Map (hero)   | ⬜      | Compelling map with 15 pins                     |
 | 4 — Chat & realtime  | ⬜      | Full loop to live conversation                  |
 | 5 — Trust & safety   | ⬜      | Flirty first message blocked + logged           |

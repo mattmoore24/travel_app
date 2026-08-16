@@ -53,13 +53,26 @@ CI (GitHub Actions) runs typecheck, lint, format check, and tests on every PR an
 ## Repo layout
 
 ```
-src/app/          Expo Router routes (one file per tab screen)
-src/components/   Shared UI (themed primitives, tab bars, placeholder shell)
+src/app/          Expo Router routes: (auth), onboarding/, (tabs), edit-profile
+src/components/   Shared UI (themed primitives, tab bars, form kit, photo grid)
+src/features/     auth (session, sign-in flows) and profile (api, hooks, validation)
 src/hooks/        Color-scheme/theme hooks
-src/constants/    Theme tokens (colors, spacing, fonts)
-src/lib/          Supabase client, React Query client (+ tests)
+src/constants/    Theme tokens, language list
+src/lib/          Supabase client, DB types, secure session store, query client
+supabase/         migrations/ (schema + RLS), tests/ (pgTAP), shim/ (local test rig)
+scripts/          db-test.sh — run the DB test suite on a throwaway local Postgres
 docs/             Product brief, architecture, progress, research notes
-.github/          CI workflow
+.github/          CI workflow (app checks + database RLS tests)
+```
+
+## Database tests
+
+The privacy invariants (social-handle gating, server-owned moderation columns, shadowban
+visibility) are enforced in Postgres RLS and proven by a pgTAP suite:
+
+```bash
+# needs: postgresql server binaries + pgtap + pg_prove (see .github/workflows/ci.yml)
+./scripts/db-test.sh
 ```
 
 ## Secrets

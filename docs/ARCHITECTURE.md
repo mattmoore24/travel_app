@@ -47,9 +47,37 @@ objections were found to the proposed stack; per-phase flags are recorded below 
 - **Theming**: template-derived themed primitives (`themed-text`, `themed-view`, theme tokens
   in `src/constants/theme.ts`), automatic light/dark.
 
-## Backend plan (implemented incrementally, Phases 1–5)
+## Backend — implemented (Phase 1) and planned
 
-Postgres schema — starting point from brief §4, refined as each phase lands:
+**Phase 1 shipped the identity/profile slice of the schema as real migrations**
+(`supabase/migrations/`), with RLS proven by a pgTAP suite (33 asserts) that runs against a
+throwaway local Postgres via `scripts/db-test.sh` (locally and in CI — no Docker needed).
+`supabase/shim/local_supabase_shim.sql` recreates what hosted Supabase provides (roles,
+`auth.uid()`, storage schema, default grants) so the tests exercise the same privilege model
+as production; it is never applied to a real project.
+
+Implemented tables: `users`, `profiles`, `profile_photos`, `social_handles`,
+`moderation_events` (server-only audit), plus minimal `chats`/`chat_participants` so the
+accepted-chat gate on social handles is real from day one (Phase 2 adds their write paths).
+Key mechanics:
+
+- **Social handles (hard rule 4)**: RLS `SELECT` allowed only for the owner or a user sharing
+  an *active* chat (`has_accepted_chat()` SECURITY DEFINER helper). Unmatching (chat closed)
+  re-hides handles. Tested from both directions.
+- **Server-owned columns**: `profiles.verified`/`verification`, `profile_photos.moderation_status`,
+  and all of `users` are stripped from client column grants — a client literally cannot
+  self-verify or approve photos, regardless of RLS.
+- **Moderation stub (Phase 5 seam)**: photo inserts pass through a BEFORE INSERT trigger that
+  auto-approves and writes a `moderation_events` audit row. Phase 5 swaps the stub for the
+  real pending→classify pipeline without moving the chokepoint.
+- **Shadowban semantics**: `is_visible_owner()` hides profiles/photos of non-active users from
+  everyone except themselves.
+- **Photos**: ≤7 per user (trigger-enforced), position 0 = avatar, stored in a private
+  `profile-photos` bucket under `<user_id>/<uuid>.jpg`; write policies key off the folder
+  prefix, reads go through signed URLs.
+- **Signup trigger**: `auth.users` insert → app `users` row + empty `profiles` row.
+
+Planned next (from brief §4), unchanged:
 
 - `users` (auth identity, status: active/banned/shadowbanned) — Supabase `auth.users` +
   app-level `users` row
@@ -113,6 +141,26 @@ tradeoff will be documented here in Phase 3.
    FaceTec, AWS Rekognition Liveness). Claude vision can do face-match plausibility but is not
    a liveness system — vendor evaluation flagged for Phase 5, with cost.
 
+## Client auth & profile architecture (Phase 1)
+
+- **Route guards**: root `Stack.Protected` guards in `src/app/_layout.tsx` switch between
+  `(auth)` (signed out), `onboarding/` (signed in, profile incomplete), and `(tabs)` +
+  `edit-profile` (onboarded). Routing holds until the persisted session restores and the
+  first profile fetch settles, so cold starts don't flash the wrong stack.
+- **Session storage**: `SecureSessionStore` (Supabase's documented pattern) — AES-256-CTR key
+  in the iOS keychain via `expo-secure-store`, ciphertext in AsyncStorage (sessions exceed
+  SecureStore's ~2KB cap). Unit-tested, including the keychain-wiped recovery path.
+- **Auth methods**: email/password now; Sign in with Apple via
+  `expo-apple-authentication` → `signInWithIdToken` (needs an EAS dev build — the entitlement
+  doesn't exist in Expo Go — and the Apple provider enabled in Supabase auth settings).
+- **Onboarding**: six steps (about → home → languages → photos → bio → socials), each
+  persisting directly to `profiles` so a killed app resumes where it left off. Finishing sets
+  `onboarding_completed_at`, which flips the root guard to the tabs.
+- **Age, not birthdate**: we store an integer age (18+ CHECK in DB + client validation),
+  never a date of birth — data minimization; revisit only if App Review demands DOB.
+- **Data layer**: React Query for profiles/photos/handles; signed photo URLs cached just
+  under their 1h TTL; Zustand holds only the session (`features/auth/store`).
+
 ## Decision log
 
 - **2026-08-16** — Adopted founder's stack unmodified (Expo SDK 57 + Supabase). Scaffolded
@@ -125,3 +173,9 @@ tradeoff will be documented here in Phase 3.
 - **2026-08-16** — Repo work happens on the session branch
   `claude/travel-app-initial-setup-ephphz` (merge to `main` via PR), per the remote session's
   branch policy.
+- **2026-08-16 (Phase 1)** — RLS verified with pgTAP on a local Postgres 16 + Supabase shim
+  instead of Docker/`supabase start` (unavailable in the cloud dev environment); the shim
+  replicates hosted default grants so REVOKEs are tested honestly.
+- **2026-08-16 (Phase 1)** — Store integer `age`, never a birthdate (data minimization).
+- **2026-08-16 (Phase 1)** — Chats/chat_participants created in Phase 1 as read-only stubs so
+  the social-handle gate is DB-real immediately; Phase 2 adds their server-side write paths.
