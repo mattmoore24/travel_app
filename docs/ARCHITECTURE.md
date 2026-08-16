@@ -86,6 +86,40 @@ Key mechanics:
   shadowbanned/rejected content is not fetchable) and are served via signed URLs.
 - **Signup trigger**: `auth.users` insert → app `users` row + empty `profiles` row.
 
+**Phase 2 added** (same migration + test discipline, suite now 77 asserts):
+
+- **`cities`** — bundled reference table (9,062 cities, population ≥50k) derived from
+  GeoNames via the `all-the-cities` npm package (CC BY 4.0; regenerate with
+  `scripts/generate-cities-seed.mjs`). This replaces the brief's "places API" for v1: no
+  key, no rate limits, offline-friendly autocomplete via the `search_cities` RPC, and
+  lat/lng per city ready for Phase 3 map centering. A paid places API can slot in later
+  purely client-side if finer-grained autocomplete is ever needed (documented deviation —
+  flag to founder in PROGRESS).
+- **`trips`** — city ref + date range. RLS: _other users' travel plans are only readable
+  through a genuine city+date overlap with one of your own active trips_ (caller-scoped
+  `overlaps_own_trip()` helper), owner must be discoverable (active + onboarded), and
+  blocks sever visibility both ways. Guardrails: no fully-past trips, ≤5 active trips per
+  user (anti-scraping — one account can't hold trips everywhere at once), date checks only
+  on date edits so cancelling an old trip never fails.
+- **`blocks`** — created ahead of the Phase 4 UI so matching and requests respect blocks
+  from day one.
+- **`message_requests`** — the Hinge-style accept-gate, all writes through RPCs:
+  - `send_message_request()` validates the relationship (real overlap, not blocked,
+    recipient discoverable), then screens the message through the moderation pre-filter
+    (regex blocklist table, server-only) **before** it can exist as deliverable — hard
+    rule 5's chokepoint. Blocked attempts are audit-logged, invisible to the recipient,
+    and replaceable (sender may rewrite and retry); delivered requests are one-per-pair
+    forever.
+  - `respond_to_message_request()` — accept creates the chat + both participants (which is
+    exactly what unlocks social handles via the Phase 1 gate); decline records silently.
+  - `sent_requests()` — the ONLY sender read path; collapses pending/declined/expired into
+    `'sent'` so a decline is indistinguishable from silence (§4 invariant 4). Senders have
+    zero direct SELECT on the table.
+  - `incoming_requests()` / `my_chats()` — list RPCs for the inbox (invoker + caller-scoped
+    definer respectively).
+- **Metrics**: PostHog wrapper (`src/lib/analytics.ts`, no-op without key) capturing §6
+  liquidity events: `trip_created`, `request_sent{delivered,blocked}`, `request_responded`.
+
 Planned next (from brief §4), unchanged:
 
 - `users` (auth identity, status: active/banned/shadowbanned) — Supabase `auth.users` +
@@ -188,3 +222,11 @@ tradeoff will be documented here in Phase 3.
 - **2026-08-16 (Phase 1)** — Store integer `age`, never a birthdate (data minimization).
 - **2026-08-16 (Phase 1)** — Chats/chat_participants created in Phase 1 as read-only stubs so
   the social-handle gate is DB-real immediately; Phase 2 adds their server-side write paths.
+- **2026-08-16 (Phase 2)** — Bundled GeoNames city table instead of a paid places API for
+  v1 (no keys, offline autocomplete, map-ready lat/lng); revisit only if autocomplete
+  quality becomes a complaint.
+- **2026-08-16 (Phase 2)** — Message-request state machine lives in SECURITY DEFINER RPCs,
+  not client table writes: moderation-before-delivery and sender-blind declines are
+  structural, not conventions.
+- **2026-08-16 (Phase 2)** — Trip visibility = overlap-gated RLS + 5-active-trip cap as the
+  anti-scraping budget; API-layer rate limiting still flagged for launch hardening.
