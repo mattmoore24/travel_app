@@ -153,6 +153,43 @@ export type SendRequestResult = {
   blocked: boolean;
 };
 
+export type PinCategory =
+  'bar' | 'restaurant' | 'club' | 'museum' | 'monument' | 'beach' | 'hike' | 'other';
+
+export type LaunchCityRow = {
+  city_id: number;
+  active: boolean;
+  radius_km: number;
+  heat_k: number;
+  created_at: string;
+};
+
+/** Row shape returned by city_pins(). Seeded pins have user_id = null. */
+export type CityPinRow = {
+  id: string;
+  user_id: string | null;
+  display_name: string | null;
+  age: number | null;
+  verified: boolean;
+  photo_path: string | null;
+  venue_name: string;
+  category: PinCategory;
+  lat: number;
+  lng: number;
+  intent_date: string;
+  seeded: boolean;
+  seed_note: string | null;
+  expires_at: string;
+};
+
+/** Row shape returned by heat_cells() — deliberately identifier-free. */
+export type HeatCellRow = {
+  cell_lat: number;
+  cell_lng: number;
+  category: PinCategory;
+  pin_count: number;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -246,6 +283,40 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      launch_cities: {
+        Row: LaunchCityRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      pins: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          city_id: number;
+          venue_name: string;
+          category: PinCategory;
+          lat: number;
+          lng: number;
+          intent_date: string;
+          seeded: boolean;
+          seed_note: string | null;
+          created_at: string;
+          expires_at: string;
+        };
+        Insert: {
+          user_id: string;
+          city_id: number;
+          venue_name: string;
+          category: PinCategory;
+          lat: number;
+          lng: number;
+          intent_date: string;
+          expires_at: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
       message_requests: {
         // Recipient-side view (senders read via sent_requests()); the
         // moderation_verdict column has no client grant — select explicit
@@ -306,6 +377,14 @@ export type Database = {
       my_chats: {
         Args: Record<string, never>;
         Returns: ChatListRow[];
+      };
+      city_pins: {
+        Args: { p_city_id: number };
+        Returns: CityPinRow[];
+      };
+      heat_cells: {
+        Args: { p_city_id: number; p_date?: string | null };
+        Returns: HeatCellRow[];
       };
     };
     Enums: {

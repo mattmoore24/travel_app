@@ -11,6 +11,7 @@ import {
 } from '@/features/matching/api';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
+import type { RequestSource } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export function useMatches() {
@@ -37,12 +38,14 @@ export function useSendRequest() {
   return useMutation({
     mutationFn: (input: {
       recipientId: string;
+      source: RequestSource;
       firstMessage: string;
       profileElement: string | null;
-    }) => sendMessageRequest(input.recipientId, input.firstMessage, input.profileElement),
-    onSuccess: (result) => {
+    }) =>
+      sendMessageRequest(input.recipientId, input.source, input.firstMessage, input.profileElement),
+    onSuccess: (result, input) => {
       analytics.capture('request_sent', {
-        source: 'trip_match',
+        source: input.source,
         delivered: result.delivered,
         blocked: result.blocked,
       });

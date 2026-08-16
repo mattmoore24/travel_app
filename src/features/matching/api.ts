@@ -2,6 +2,7 @@ import type {
   ChatListRow,
   IncomingRequestRow,
   MatchRow,
+  RequestSource,
   SendRequestResult,
   SentRequestRow,
 } from '@/lib/database.types';
@@ -17,12 +18,13 @@ export async function fetchMatches() {
 
 export async function sendMessageRequest(
   recipientId: string,
+  source: RequestSource,
   firstMessage: string,
   profileElement: string | null
 ) {
   const { data, error } = await supabase.rpc('send_message_request', {
     p_recipient: recipientId,
-    p_source: 'trip_match',
+    p_source: source,
     p_first_message: firstMessage,
     p_profile_element: profileElement,
   });

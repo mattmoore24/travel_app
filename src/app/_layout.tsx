@@ -82,6 +82,7 @@ function RootNavigator() {
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
         <Stack.Screen name="add-trip" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compose-request" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="drop-pin" options={{ presentation: 'modal' }} />
         <Stack.Screen
           name="chat/[id]"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}

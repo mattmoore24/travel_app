@@ -26,11 +26,18 @@ const ELEMENT_OPTIONS = [
 
 export default function ComposeRequestScreen() {
   const theme = useTheme();
-  const params = useLocalSearchParams<{ userId: string; name: string; photoPath: string }>();
+  const params = useLocalSearchParams<{
+    userId: string;
+    name: string;
+    photoPath: string;
+    source?: string;
+    element?: string;
+  }>();
   const { data: photoUrl } = usePhotoUrl(params.photoPath || null);
   const sendRequest = useSendRequest();
 
-  const [element, setElement] = useState<string>('bio');
+  const source = params.source === 'pin' ? ('pin' as const) : ('trip_match' as const);
+  const [element, setElement] = useState<string>(params.element ?? 'bio');
   const [message, setMessage] = useState('');
   const [blockedNotice, setBlockedNotice] = useState(false);
 
@@ -42,6 +49,7 @@ export default function ComposeRequestScreen() {
     try {
       const result = await sendRequest.mutateAsync({
         recipientId: params.userId,
+        source,
         firstMessage: message.trim(),
         profileElement: element,
       });
@@ -72,12 +80,20 @@ export default function ComposeRequestScreen() {
         <ThemedText type="smallBold">{params.name ?? 'Traveler'}</ThemedText>
       </View>
 
-      <ThemedText type="smallBold">What are you replying to?</ThemedText>
-      <ChipRow
-        options={ELEMENT_OPTIONS}
-        selected={[element]}
-        onToggle={(value) => setElement(value)}
-      />
+      {source === 'pin' ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          About their pin{params.element ? `: ${params.element.replace(/^pin:/, '')}` : ''}
+        </ThemedText>
+      ) : (
+        <>
+          <ThemedText type="smallBold">What are you replying to?</ThemedText>
+          <ChipRow
+            options={ELEMENT_OPTIONS}
+            selected={[element]}
+            onToggle={(value) => setElement(value)}
+          />
+        </>
+      )}
 
       <FormTextField
         label="Your message"
