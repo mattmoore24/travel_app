@@ -1,7 +1,7 @@
 -- Trips: other users' travel plans are readable ONLY through a genuine
 -- city+date overlap with one of the caller's own active trips.
 begin;
-select plan(14);
+select plan(17);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -150,6 +150,40 @@ select throws_ok(
   '42501',
   null,
   'cannot create trips for another user'
+);
+
+-- The cap survives the cancel -> insert -> reactivate cycle (the scrape
+-- exploit from the Phase 2 adversarial review).
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+insert into public.trips (user_id, city_id, start_date, end_date)
+select '00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(),
+       current_date + 100 + i * 5, current_date + 102 + i * 5
+from generate_series(1, 4) i; -- bob now at 5 active
+update public.trips set status = 'cancelled'
+  where user_id = '00000000-0000-0000-0000-00000000000b'; -- 0 active
+insert into public.trips (user_id, city_id, start_date, end_date)
+select '00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(),
+       current_date + 200 + i * 5, current_date + 202 + i * 5
+from generate_series(1, 5) i; -- back to 5 active
+select throws_ok(
+  $$ update public.trips set status = 'active'
+     where user_id = '00000000-0000-0000-0000-00000000000b'
+       and status = 'cancelled' $$,
+  '23514',
+  null,
+  'reactivating cancelled trips cannot exceed the cap'
+);
+
+-- City search: accent-folded, wildcard-safe.
+select is(
+  (select name from public.search_cities('sao paulo') limit 1),
+  'São Paulo',
+  'ASCII input finds accented city names'
+);
+select is(
+  (select count(*)::int from public.search_cities('%%')),
+  0,
+  'LIKE wildcards in input are inert'
 );
 
 -- Signed-out clients get nothing.

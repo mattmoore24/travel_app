@@ -1,7 +1,7 @@
 -- Message requests: moderation before delivery (hard rule 5), sender-blind
 -- decline (invariant 4), and accept -> chat -> social-handle unlock.
 begin;
-select plan(20);
+select plan(27);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -174,6 +174,81 @@ select is(
    where recipient_id = '00000000-0000-0000-0000-00000000000b'),
   'accepted',
   'sender sees acceptance (and only acceptance)'
+);
+
+-- Already connected: the reverse-direction request is refused before it can
+-- mint a second chat.
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select throws_ok(
+  $$ select public.send_message_request(
+       '00000000-0000-0000-0000-00000000000a', 'trip_match', 'hello again', 'bio') $$,
+  'already connected with this traveler',
+  'no second request/chat once a chat exists'
+);
+
+-- Blocks sever in-flight requests: Cara -> Bob pending, then Bob blocks Cara.
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+insert into public.trips (user_id, city_id, start_date, end_date)
+  values ('00000000-0000-0000-0000-00000000000c', pg_temp.lisbon(),
+          current_date + 36, current_date + 44);
+select is(
+  (public.send_message_request(
+     '00000000-0000-0000-0000-00000000000b', 'trip_match',
+     'Also around those dates — coffee?', 'bio')) ->> 'delivered',
+  'true',
+  'cara reaches bob while unblocked'
+);
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+insert into public.blocks (blocker_id, blocked_id)
+  values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000c');
+select is(
+  (select count(*)::int from public.message_requests where status = 'pending'),
+  0,
+  'blocking auto-declines the pending request'
+);
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select is(
+  (select state from public.sent_requests()
+   where recipient_id = '00000000-0000-0000-0000-00000000000b'),
+  'sent',
+  'the block-decline stays invisible to the sender'
+);
+
+-- Accept-time re-validation: even a request that sneaks into pending across
+-- an existing block cannot form a chat.
+reset role;
+delete from public.message_requests
+  where sender_id = '00000000-0000-0000-0000-00000000000c'
+    and recipient_id = '00000000-0000-0000-0000-00000000000b';
+insert into public.message_requests (sender_id, recipient_id, source, first_message)
+  values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-00000000000b',
+          'trip_match', 'race window message');
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select throws_ok(
+  $$ select public.respond_to_message_request(
+       (select id from public.message_requests where status = 'pending' limit 1), true) $$,
+  'request unavailable',
+  'accepting across a block is refused at accept time'
+);
+
+-- Blocking a chat partner closes the chat and re-hides their handles.
+reset role;
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+insert into public.blocks (blocker_id, blocked_id)
+  values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000a');
+reset role;
+select is(
+  (select status::text from public.chats limit 1),
+  'closed',
+  'blocking a chat partner closes the chat'
+);
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select is(
+  (select count(*)::int from public.social_handles
+   where user_id = '00000000-0000-0000-0000-00000000000a'),
+  0,
+  'closed chat re-hides the social handles (hard rule 4 after a block)'
 );
 
 -- Signed-out clients cannot touch the RPCs.

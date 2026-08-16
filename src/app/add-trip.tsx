@@ -8,7 +8,13 @@ import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { addDays, formatDateRange, toISODate, validateTripRange } from '@/features/trips/dates';
+import {
+  addDays,
+  formatDateRange,
+  parseISODate,
+  toISODate,
+  validateTripRange,
+} from '@/features/trips/dates';
 import { useCitySearch, useCreateTrip } from '@/features/trips/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import type { CityRow } from '@/lib/database.types';
@@ -104,11 +110,35 @@ export default function AddTripScreen() {
         </>
       )}
 
-      <View style={styles.datesBlock}>
-        {dateRow('start', startDate)}
-        {dateRow('end', endDate)}
-      </View>
-      {openPicker ? (
+      {Platform.OS === 'web' ? (
+        // DateTimePicker is native-only; web (dev convenience) takes ISO text.
+        <View style={styles.datesBlock}>
+          <FormTextField
+            label="From (YYYY-MM-DD)"
+            value={toISODate(startDate)}
+            onChangeText={(text) => {
+              if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+                setStartDate(parseISODate(text));
+              }
+            }}
+          />
+          <FormTextField
+            label="Until (YYYY-MM-DD)"
+            value={toISODate(endDate)}
+            onChangeText={(text) => {
+              if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+                setEndDate(parseISODate(text));
+              }
+            }}
+          />
+        </View>
+      ) : (
+        <View style={styles.datesBlock}>
+          {dateRow('start', startDate)}
+          {dateRow('end', endDate)}
+        </View>
+      )}
+      {openPicker && Platform.OS !== 'web' ? (
         <DateTimePicker
           value={openPicker === 'start' ? startDate : endDate}
           mode="date"

@@ -7,6 +7,7 @@ import {
   fetchOwnProfile,
   fetchOwnSocialHandles,
   fetchPhotos,
+  fetchPublicProfile,
   signedPhotoUrl,
   updateOwnProfile,
   uploadPhoto,
@@ -24,6 +25,23 @@ export function useOwnProfile() {
   return useQuery({
     queryKey: ['profile', userId],
     queryFn: () => fetchOwnProfile(userId!),
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+/** Someone else's profile + approved photos, as far as RLS lets us see. */
+export function usePublicProfile(userId: string | null) {
+  return useQuery({
+    queryKey: ['public-profile', userId],
+    queryFn: () => fetchPublicProfile(userId!),
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+export function usePublicPhotos(userId: string | null) {
+  return useQuery({
+    queryKey: ['public-photos', userId],
+    queryFn: () => fetchPhotos(userId!),
     enabled: isSupabaseConfigured && userId != null,
   });
 }

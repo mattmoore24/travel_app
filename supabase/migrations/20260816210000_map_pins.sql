@@ -106,11 +106,12 @@ begin
     raise exception 'intent date must fall within the pin''s lifetime'
       using errcode = 'check_violation';
   end if;
-  if not new.seeded and (
-    select count(*) from public.pins
-    where user_id = new.user_id and expires_at > now()
-  ) >= 10 then
-    raise exception 'active pin limit reached (10)' using errcode = 'check_violation';
+  if not new.seeded then
+    perform pg_advisory_xact_lock(hashtext('pin_limit:' || new.user_id::text));
+    if (select count(*) from public.pins
+        where user_id = new.user_id and expires_at > now()) >= 10 then
+      raise exception 'active pin limit reached (10)' using errcode = 'check_violation';
+    end if;
   end if;
   return new;
 end
@@ -323,6 +324,11 @@ begin
      or public.is_blocked_pair(p_recipient) then
     raise exception 'recipient unavailable';
   end if;
+  -- Already connected (e.g. the reverse-direction request was accepted):
+  -- there is a chat for that — no second request, no second chat.
+  if public.has_accepted_chat(p_recipient) then
+    raise exception 'already connected with this traveler';
+  end if;
 
   if p_source = 'trip_match' then
     if not exists (
@@ -332,8 +338,10 @@ begin
         on theirs.city_id = mine.city_id
        and theirs.start_date <= mine.end_date
        and mine.start_date <= theirs.end_date
+       and theirs.end_date >= current_date
       where mine.user_id = v_sender and mine.status = 'active'
         and theirs.user_id = p_recipient and theirs.status = 'active'
+        and mine.end_date >= current_date
     ) then
       raise exception 'no overlapping trip with recipient';
     end if;

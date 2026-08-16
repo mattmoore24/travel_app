@@ -9,7 +9,12 @@ export const queryClient = new QueryClient({
   mutationCache: new MutationCache({
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Something went wrong.';
-      Alert.alert('Could not save', message);
+      if (Platform.OS === 'web') {
+        // react-native-web's Alert is a silent no-op; use the browser dialog.
+        (globalThis as { alert?: (msg: string) => void }).alert?.(`Could not save: ${message}`);
+      } else {
+        Alert.alert('Could not save', message);
+      }
     },
   }),
   defaultOptions: {

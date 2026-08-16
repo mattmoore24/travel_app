@@ -7,8 +7,10 @@
  *   npm install --no-save all-the-cities
  *   node scripts/generate-cities-seed.mjs
  *
- * Committed output is the source of truth; rerun only to change the
- * population threshold or refresh the dataset.
+ * Committed output is the source of truth. IMPORTANT: once this migration
+ * version has been applied to ANY environment, do NOT regenerate in place —
+ * `on conflict do nothing` means applied rows never refresh. Write a NEW
+ * migration (update OUT below with a fresh timestamp) for dataset updates.
  */
 import { writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -35,7 +37,8 @@ const rows = cities
   .sort((a, b) => a.cityId - b.cityId)
   .map((c) => {
     const [lng, lat] = c.loc.coordinates;
-    return `(${c.cityId},'${esc(c.name)}','${esc(c.country)}','${esc(countryName(c.country))}',${lat},${lng},${c.population})`;
+    const admin = c.adminCode ? `'${esc(String(c.adminCode))}'` : 'null';
+    return `(${c.cityId},'${esc(c.name)}','${esc(c.country)}','${esc(countryName(c.country))}',${admin},${lat},${lng},${c.population})`;
   });
 
 const BATCH = 500;
@@ -46,7 +49,7 @@ let sql = `-- GENERATED FILE — do not edit by hand; rerun scripts/generate-cit
 
 `;
 for (let i = 0; i < rows.length; i += BATCH) {
-  sql += `insert into public.cities (id, name, country_code, country_name, lat, lng, population) values\n${rows
+  sql += `insert into public.cities (id, name, country_code, country_name, admin, lat, lng, population) values\n${rows
     .slice(i, i + BATCH)
     .join(',\n')}\non conflict (id) do nothing;\n\n`;
 }

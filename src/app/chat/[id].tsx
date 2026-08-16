@@ -28,18 +28,22 @@ export default function ChatShellScreen() {
   const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const ownUserId = useOwnUserId();
-  const { data: chats = [] } = useMyChats();
-  const chat = chats.find((c) => c.chat_id === id);
+  const chatsQuery = useMyChats();
+  const chat = (chatsQuery.data ?? []).find((c) => c.chat_id === id);
   const { data: photoUrl } = usePhotoUrl(chat?.other_photo_path ?? null);
   const { data: socials = [] } = useUnlockedSocialHandles(chat?.other_user_id ?? null);
 
   if (!chat) {
+    // Every accept lands here before the chat list refetch settles — show
+    // nothing while loading; "not found" only once we know it's really gone.
     return (
       <ThemedView style={styles.root}>
         <SafeAreaView style={styles.container}>
-          <ThemedText themeColor="textSecondary" style={styles.center}>
-            Chat not found.
-          </ThemedText>
+          {chatsQuery.isSuccess ? (
+            <ThemedText themeColor="textSecondary" style={styles.center}>
+              Chat not found.
+            </ThemedText>
+          ) : null}
         </SafeAreaView>
       </ThemedView>
     );

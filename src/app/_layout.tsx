@@ -87,6 +87,10 @@ function RootNavigator() {
           name="chat/[id]"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
+        <Stack.Screen
+          name="profile/[userId]"
+          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        />
       </Stack.Protected>
     </Stack>
   );

@@ -49,6 +49,7 @@ export function useCancelTrip() {
   return useMutation({
     mutationFn: (tripId: string) => cancelTrip(tripId),
     onSuccess: () => {
+      analytics.capture('trip_cancelled');
       queryClient.invalidateQueries({ queryKey: ['trips', userId] });
       queryClient.invalidateQueries({ queryKey: ['matches', userId] });
     },

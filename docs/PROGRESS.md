@@ -145,12 +145,19 @@ infrastructure.
 
 ## Needs founder input
 
-1. **Places-API deviation (cheap to veto now)** — v1 city autocomplete uses a bundled
+1. **PostHog key** — §6 metrics ("instrument from day one") are fully wired but no-op
+   until `EXPO_PUBLIC_POSTHOG_API_KEY` exists. Create a free PostHog project and drop the
+   key in `.env` whenever you want the liquidity dashboard to start filling.
+2. **Card-stack deviation** — the brief says "browsable card stack"; v1 ships a scrollable
+   card _list_ (each card links to the full profile). A swipe-paged stack is a contained UI
+   change on the same data if you want it — say the word. (Hinge itself is a scroll feed;
+   the accept-gate mechanics are what matter and are fully implemented.)
+3. **Places-API deviation (cheap to veto now)** — v1 city autocomplete uses a bundled
    GeoNames table (9k cities) instead of a paid places API. Zero keys/cost, works offline;
    tradeoff: prefix-only search of city names (no neighborhoods/venues). Phase 3 venue
    search will need its own answer regardless. Say the word if you want Google/Mapbox
    autocomplete instead.
-2. **Supabase project (the one real blocker)** — create a free project at
+4. **Supabase project (the one real blocker)** — create a free project at
    [supabase.com](https://supabase.com), then:
    - Put `EXPO_PUBLIC_SUPABASE_URL` + `EXPO_PUBLIC_SUPABASE_ANON_KEY` (Project Settings →
      API) into `.env` locally.
@@ -159,15 +166,15 @@ infrastructure.
      hosted DB.
    - In Auth settings: decide **email confirmation** on/off for early testing (off = faster
      TestFlight loops; the app handles both).
-3. **Apple Developer Program** ($99/yr) — needed before Apple Sign-In can be tested
+5. **Apple Developer Program** ($99/yr) — needed before Apple Sign-In can be tested
    end-to-end (entitlement + Services ID, then enable the Apple provider in Supabase Auth).
    Email auth works without it. Also unlocks EAS dev builds, push (Phase 4), TestFlight
    (Phase 6).
-4. **Bundle identifier** — still `com.mattmoore.travelapp` (change now if you want a
+6. **Bundle identifier** — still `com.mattmoore.travelapp` (change now if you want a
    different reverse-domain; painful later).
-5. **Working name** — unchanged ask; candidates: Overlap, Pinned, Samewhere, Crossings,
+7. **Working name** — unchanged ask; candidates: Overlap, Pinned, Samewhere, Crossings,
    Meanwhile, Waypoint.
-6. **Branch** — everything is on `claude/travel-app-initial-setup-ephphz`; merge to `main`
+8. **Branch** — everything is on `claude/travel-app-initial-setup-ephphz`; merge to `main`
    via PR whenever you're ready.
 
 ## Open technical flags

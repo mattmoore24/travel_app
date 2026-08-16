@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -45,8 +46,10 @@ function Avatar({ path, size = 48 }: { path: string | null; size?: number }) {
 function RequestCard({ request }: { request: IncomingRequestRow }) {
   const theme = useTheme();
   const respond = useRespondToRequest();
+  const [acting, setActing] = useState<'accept' | 'decline' | null>(null);
 
   const act = async (accept: boolean) => {
+    setActing(accept ? 'accept' : 'decline');
     try {
       const result = await respond.mutateAsync({ requestId: request.id, accept });
       if (result.accepted && result.chat_id) {
@@ -54,12 +57,18 @@ function RequestCard({ request }: { request: IncomingRequestRow }) {
       }
     } catch {
       // Surfaced by the global mutation error alert.
+    } finally {
+      setActing(null);
     }
   };
 
   return (
     <ThemedView type="backgroundElement" style={styles.requestCard}>
-      <View style={styles.requestHeader}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`View ${request.display_name ?? 'traveler'}'s full profile`}
+        onPress={() => router.push(`/profile/${request.sender_id}`)}
+        style={({ pressed }) => [styles.requestHeader, pressed && styles.pressed]}>
         <Avatar path={request.photo_path} />
         <View style={styles.requestHeaderText}>
           <View style={styles.nameRow}>
@@ -75,25 +84,35 @@ function RequestCard({ request }: { request: IncomingRequestRow }) {
               />
             ) : null}
           </View>
-          {request.profile_element ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              about {describeElement(request.profile_element)}
-            </ThemedText>
-          ) : null}
+          <ThemedText type="small" themeColor="textSecondary">
+            {request.profile_element ? `about ${describeElement(request.profile_element)} · ` : ''}
+            view full profile
+          </ThemedText>
         </View>
-      </View>
+        <SymbolView
+          name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+          size={14}
+          tintColor={theme.textSecondary}
+        />
+      </Pressable>
       <ThemedText>{request.first_message}</ThemedText>
       <View style={styles.requestActions}>
         <View style={styles.actionButton}>
           <PrimaryButton
             variant="ghost"
             label="Decline"
+            loading={acting === 'decline'}
             disabled={respond.isPending}
             onPress={() => act(false)}
           />
         </View>
         <View style={styles.actionButton}>
-          <PrimaryButton label="Accept" loading={respond.isPending} onPress={() => act(true)} />
+          <PrimaryButton
+            label="Accept"
+            loading={acting === 'accept'}
+            disabled={respond.isPending}
+            onPress={() => act(true)}
+          />
         </View>
       </View>
     </ThemedView>

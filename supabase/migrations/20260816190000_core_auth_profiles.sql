@@ -228,6 +228,7 @@ security definer
 set search_path = public
 as $$
 begin
+  perform pg_advisory_xact_lock(hashtext('photo_limit:' || new.user_id::text));
   if (select count(*) from public.profile_photos where user_id = new.user_id) >= 7 then
     raise exception 'photo limit reached (7 per user)'
       using errcode = 'check_violation';

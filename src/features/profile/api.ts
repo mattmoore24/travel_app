@@ -9,6 +9,20 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 // profiles has column-level SELECT grants (verification jsonb is server-only),
 // so `select('*')` would be rejected — always name the readable columns.
+
+/** Another user's profile; null when RLS hides them (hidden/banned/blocked). */
+export async function fetchPublicProfile(userId: string) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(PROFILE_COLUMNS)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
 export async function fetchOwnProfile(userId: string) {
   const { data, error } = await supabase
     .from('profiles')

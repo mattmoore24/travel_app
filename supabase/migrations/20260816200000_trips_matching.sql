@@ -13,22 +13,39 @@
 -- Cities reference data ---------------------------------------------------------
 -- Seeded from GeoNames (CC BY 4.0) in the companion seed migration; read-only.
 
+create extension if not exists unaccent;
+
+-- unaccent() isn't IMMUTABLE (dictionary-dependent), so wrap it for index use.
+create function public.immutable_unaccent(p_text text)
+returns text
+language sql
+immutable
+strict
+as $$
+  select public.unaccent('public.unaccent'::regdictionary, p_text)
+$$;
+
 create table public.cities (
   id int primary key, -- GeoNames id
   name text not null,
   country_code text not null,
   country_name text not null,
+  -- Admin region code (US state etc.) — disambiguates the five Springfields.
+  admin text,
   lat double precision not null,
   lng double precision not null,
   population int not null default 0
 );
 
-create index cities_name_prefix_idx on public.cities (lower(name) text_pattern_ops);
+create index cities_name_unaccent_idx
+  on public.cities (public.immutable_unaccent(lower(name)) text_pattern_ops);
 create index cities_population_idx on public.cities (population desc);
 
 revoke all on public.cities from anon, authenticated;
 grant select on public.cities to authenticated;
 
+-- Prefix search, accent-folded both ways ("sao paulo" finds São Paulo) with
+-- LIKE wildcards in user input escaped so "%%" can't match everything.
 create function public.search_cities(p_query text)
 returns setof public.cities
 language sql
@@ -36,13 +53,19 @@ stable
 as $$
   select *
   from public.cities
-  where lower(name) like lower(trim(p_query)) || '%'
-    and length(trim(p_query)) >= 2
+  where length(trim(p_query)) >= 2
+    and public.immutable_unaccent(lower(name)) like
+        public.immutable_unaccent(lower(
+          replace(replace(replace(trim(p_query), '\', '\\'), '%', '\%'), '_', '\_')
+        )) || '%'
   order by population desc
   limit 8
 $$;
 
-revoke execute on function public.search_cities(text) from public, anon;
+revoke execute on function
+  public.search_cities(text),
+  public.immutable_unaccent(text)
+from public, anon;
 
 -- Blocks (created now so matching and requests respect them from day one;
 -- the block/unblock UI ships with the rest of the safety tooling in Phase 4).
@@ -71,6 +94,42 @@ create policy blocks_delete_own
 
 revoke all on public.blocks from anon;
 revoke update, truncate, references, trigger on public.blocks from authenticated;
+
+-- A block severs the relationship EVERYWHERE, immediately: pending requests
+-- between the pair are silently declined (the sender can't tell — declines
+-- are invisible by design), and any existing chat closes, which re-hides
+-- social handles via the accepted-chat gate.
+create function public.sever_on_block()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.message_requests
+    set status = 'declined', responded_at = now()
+    where status = 'pending'
+      and ((sender_id = new.blocker_id and recipient_id = new.blocked_id)
+        or (sender_id = new.blocked_id and recipient_id = new.blocker_id));
+
+  update public.chats
+    set status = 'closed'
+    where status = 'active'
+      and id in (
+        select a.chat_id
+        from public.chat_participants a
+        join public.chat_participants b on b.chat_id = a.chat_id
+        where a.user_id = new.blocker_id and b.user_id = new.blocked_id
+      );
+  return new;
+end
+$$;
+
+create trigger blocks_sever
+  after insert on public.blocks
+  for each row execute function public.sever_on_block();
+
+revoke execute on function public.sever_on_block() from public, anon, authenticated;
 
 -- True when a block exists between the caller and p_other in either
 -- direction. Caller-scoped; the caller can never probe third-party pairs.
@@ -145,7 +204,9 @@ begin
      and new.end_date = old.end_date then
     return new;
   end if;
-  if new.end_date < current_date then
+  -- One day of slack: the server clock is UTC but travelers aren't, and a
+  -- user west of UTC saving "today" late evening must not be rejected.
+  if new.end_date < current_date - 1 then
     raise exception 'trip is entirely in the past' using errcode = 'check_violation';
   end if;
   if new.start_date > current_date + 730 then
@@ -160,7 +221,10 @@ create trigger trips_validate_dates
   for each row execute function public.validate_trip_dates();
 
 -- Anti-scrape cap: overlap-gated visibility is only meaningful if one account
--- can't hold trips in every city at once.
+-- can't hold trips in every city at once. Fires on INSERT and UPDATE — a
+-- cancel -> insert -> reactivate cycle must not mint extra active trips —
+-- and takes a per-user advisory lock so concurrent writes can't race past
+-- the count.
 create function public.enforce_trip_limit()
 returns trigger
 language plpgsql
@@ -168,9 +232,14 @@ security definer
 set search_path = public
 as $$
 begin
+  if new.status <> 'active' then
+    return new;
+  end if;
+  perform pg_advisory_xact_lock(hashtext('trip_limit:' || new.user_id::text));
   if (select count(*) from public.trips
       where user_id = new.user_id and status = 'active'
-        and end_date >= current_date) >= 5 then
+        and end_date >= current_date
+        and id <> new.id) >= 5 then
     raise exception 'active trip limit reached (5)' using errcode = 'check_violation';
   end if;
   return new;
@@ -178,7 +247,7 @@ end
 $$;
 
 create trigger trips_limit
-  before insert on public.trips
+  before insert or update on public.trips
   for each row execute function public.enforce_trip_limit();
 
 create trigger trips_updated_at
@@ -212,12 +281,14 @@ create policy trips_select_own
   using (user_id = auth.uid());
 
 -- The core privacy rule for trips: other users' travel plans are only
--- readable through a genuine city+date overlap with one of YOUR active trips.
+-- readable through a genuine city+date overlap with one of YOUR active
+-- trips, and trips whose window already ended are not browsable by others.
 create policy trips_select_overlap
   on public.trips for select to authenticated
   using (
     user_id <> auth.uid()
     and status = 'active'
+    and end_date >= current_date - 1
     and public.is_discoverable_owner(user_id)
     and not public.is_blocked_pair(user_id)
     and public.overlaps_own_trip(city_id, start_date, end_date)
@@ -287,6 +358,7 @@ as $$
    and theirs.user_id <> mine.user_id
    and theirs.start_date <= mine.end_date
    and mine.start_date <= theirs.end_date
+   and theirs.end_date >= current_date -- a window that already ended is not a match
   join public.profiles p on p.user_id = theirs.user_id
   join public.cities c on c.id = theirs.city_id
   where mine.user_id = auth.uid()
@@ -502,9 +574,30 @@ begin
   end if;
 
   if p_accept then
-    insert into public.chats default values returning id into v_chat;
-    insert into public.chat_participants (chat_id, user_id)
-    values (v_chat, v_req.sender_id), (v_chat, v_req.recipient_id);
+    -- Re-validate at accept time: a block created (or an account banned)
+    -- after the request was sent must prevent the chat — and therefore the
+    -- social-handle unlock — from ever forming.
+    if public.is_blocked_pair(v_req.sender_id)
+       or not public.is_discoverable_owner(v_req.sender_id) then
+      raise exception 'request unavailable';
+    end if;
+
+    -- If a chat between the pair already exists (the reverse-direction
+    -- request was accepted first), attach to it instead of creating a
+    -- duplicate conversation.
+    select c.id into v_chat
+    from public.chats c
+    join public.chat_participants a on a.chat_id = c.id and a.user_id = v_req.sender_id
+    join public.chat_participants b on b.chat_id = c.id and b.user_id = v_req.recipient_id
+    where c.status = 'active'
+    limit 1;
+
+    if v_chat is null then
+      insert into public.chats default values returning id into v_chat;
+      insert into public.chat_participants (chat_id, user_id)
+      values (v_chat, v_req.sender_id), (v_chat, v_req.recipient_id);
+    end if;
+
     update public.message_requests
       set status = 'accepted', chat_id = v_chat, responded_at = now()
       where id = p_request_id;

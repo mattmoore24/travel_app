@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import { useEffect } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,11 +10,12 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useMatches, useSentRequests } from '@/features/matching/hooks';
+import { useMatches, useMyChats, useSentRequests } from '@/features/matching/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { formatDateRange } from '@/features/trips/dates';
 import { useCancelTrip, useMyTrips } from '@/features/trips/hooks';
 import { useTheme } from '@/hooks/use-theme';
+import { analytics } from '@/lib/analytics';
 import type { MatchRow, SentRequestRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -44,13 +46,26 @@ function TripChip({
   );
 }
 
-function MatchCard({ match, sent }: { match: MatchRow; sent: SentRequestRow | undefined }) {
+function MatchCard({
+  match,
+  sent,
+  chatId,
+}: {
+  match: MatchRow;
+  sent: SentRequestRow | undefined;
+  chatId: string | undefined;
+}) {
   const theme = useTheme();
   const { data: photoUrl } = usePhotoUrl(match.photo_path);
 
+  // An existing chat (either direction's accept) always wins over composing.
+  const openChatId =
+    chatId ?? (sent?.state === 'accepted' ? (sent.chat_id ?? undefined) : undefined);
+  const requested = openChatId == null && sent?.state === 'sent';
+
   const action = () => {
-    if (sent?.state === 'accepted' && sent.chat_id) {
-      router.push(`/chat/${sent.chat_id}`);
+    if (openChatId) {
+      router.push(`/chat/${openChatId}`);
       return;
     }
     router.push({
@@ -63,12 +78,13 @@ function MatchCard({ match, sent }: { match: MatchRow; sent: SentRequestRow | un
     });
   };
 
-  const requested = sent?.state === 'sent';
-  const accepted = sent?.state === 'accepted';
-
   return (
     <ThemedView type="backgroundElement" style={styles.card}>
-      <View style={[styles.cardPhoto, { backgroundColor: theme.backgroundSelected }]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`View ${match.display_name ?? 'traveler'}'s profile`}
+        onPress={() => router.push(`/profile/${match.user_id}`)}
+        style={[styles.cardPhoto, { backgroundColor: theme.backgroundSelected }]}>
         {photoUrl ? (
           <Image source={{ uri: photoUrl }} style={styles.cardImage} contentFit="cover" />
         ) : (
@@ -78,21 +94,23 @@ function MatchCard({ match, sent }: { match: MatchRow; sent: SentRequestRow | un
             tintColor={theme.textSecondary}
           />
         )}
-      </View>
+      </Pressable>
       <View style={styles.cardBody}>
-        <View style={styles.nameRow}>
-          <ThemedText type="smallBold" style={styles.nameText}>
-            {match.display_name ?? 'Traveler'}
-            {match.age != null ? `, ${match.age}` : ''}
-          </ThemedText>
-          {match.verified ? (
-            <SymbolView
-              name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
-              size={14}
-              tintColor={theme.tint}
-            />
-          ) : null}
-        </View>
+        <Pressable onPress={() => router.push(`/profile/${match.user_id}`)}>
+          <View style={styles.nameRow}>
+            <ThemedText type="smallBold" style={styles.nameText}>
+              {match.display_name ?? 'Traveler'}
+              {match.age != null ? `, ${match.age}` : ''}
+            </ThemedText>
+            {match.verified ? (
+              <SymbolView
+                name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
+                size={14}
+                tintColor={theme.tint}
+              />
+            ) : null}
+          </View>
+        </Pressable>
         <ThemedText type="small" themeColor="textSecondary">
           {match.city_name} · {formatDateRange(match.overlap_start, match.overlap_end)} together
         </ThemedText>
@@ -103,7 +121,7 @@ function MatchCard({ match, sent }: { match: MatchRow; sent: SentRequestRow | un
         ) : null}
         <PrimaryButton
           variant={requested ? 'ghost' : 'filled'}
-          label={accepted ? 'Open chat' : requested ? 'Requested' : 'Say hi'}
+          label={openChatId ? 'Open chat' : requested ? 'Requested' : 'Say hi'}
           disabled={requested}
           onPress={action}
         />
@@ -114,10 +132,19 @@ function MatchCard({ match, sent }: { match: MatchRow; sent: SentRequestRow | un
 
 export default function TravelersScreen() {
   const insets = useSafeAreaInsets();
-  const { data: trips = [] } = useMyTrips();
+  const tripsQuery = useMyTrips();
+  const trips = tripsQuery.data ?? [];
   const { data: matches = [] } = useMatches();
   const { data: sentRequests = [] } = useSentRequests();
+  const { data: chats = [] } = useMyChats();
   const cancelTrip = useCancelTrip();
+
+  // §6: matching DAU / browse depth.
+  useEffect(() => {
+    if (matches.length > 0) {
+      analytics.capture('matches_viewed', { count: matches.length });
+    }
+  }, [matches.length]);
 
   if (!isSupabaseConfigured) {
     return (
@@ -131,8 +158,18 @@ export default function TravelersScreen() {
   }
 
   const sentByRecipient = new Map(sentRequests.map((r) => [r.recipient_id, r]));
-  // A traveler can appear once per overlapping trip pair — show them once.
-  const uniqueMatches = [...new Map(matches.map((m) => [m.user_id, m])).values()];
+  const chatByUser = new Map(
+    chats.filter((c) => c.chat_status === 'active').map((c) => [c.other_user_id, c.chat_id])
+  );
+  // One card per traveler; get_matches is ordered soonest-first, so first-wins
+  // keeps the nearest shared window.
+  const byUser = new Map<string, MatchRow>();
+  for (const match of matches) {
+    if (!byUser.has(match.user_id)) {
+      byUser.set(match.user_id, match);
+    }
+  }
+  const uniqueMatches = [...byUser.values()];
 
   const header = (
     <View style={styles.headerBlock}>
@@ -165,6 +202,11 @@ export default function TravelersScreen() {
     </View>
   );
 
+  // Don't flash the first-trip empty state while the cache is still cold.
+  if (tripsQuery.isPending) {
+    return <ThemedView style={styles.root} />;
+  }
+
   if (trips.length === 0) {
     return (
       <PlaceholderScreen
@@ -189,7 +231,11 @@ export default function TravelersScreen() {
           { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
         ]}
         renderItem={({ item }) => (
-          <MatchCard match={item} sent={sentByRecipient.get(item.user_id)} />
+          <MatchCard
+            match={item}
+            sent={sentByRecipient.get(item.user_id)}
+            chatId={chatByUser.get(item.user_id)}
+          />
         )}
       />
     </ThemedView>
