@@ -64,6 +64,95 @@ export type SocialHandleRow = {
   created_at: string;
 };
 
+export type TripStatus = 'active' | 'cancelled';
+export type RequestSource = 'trip_match' | 'pin';
+
+export type CityRow = {
+  id: number;
+  name: string;
+  country_code: string;
+  country_name: string;
+  lat: number;
+  lng: number;
+  population: number;
+};
+
+export type TripRow = {
+  id: string;
+  user_id: string;
+  city_id: number;
+  start_date: string;
+  end_date: string;
+  status: TripStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Row shape returned by the get_matches() RPC. */
+export type MatchRow = {
+  trip_id: string;
+  user_id: string;
+  display_name: string | null;
+  age: number | null;
+  verified: boolean;
+  languages: string[];
+  bio: string | null;
+  gender: Gender;
+  city_id: number;
+  city_name: string;
+  city_country: string;
+  overlap_start: string;
+  overlap_end: string;
+  photo_path: string | null;
+};
+
+/** Row shape returned by incoming_requests(). */
+export type IncomingRequestRow = {
+  id: string;
+  sender_id: string;
+  display_name: string | null;
+  age: number | null;
+  verified: boolean;
+  profile_element: string | null;
+  first_message: string;
+  photo_path: string | null;
+  created_at: string;
+};
+
+/**
+ * Row shape returned by sent_requests(). `state` deliberately collapses
+ * pending/declined/expired into 'sent' — the DB never tells a sender they
+ * were declined (invariant 4).
+ */
+export type SentRequestRow = {
+  id: string;
+  recipient_id: string;
+  source: RequestSource;
+  profile_element: string | null;
+  first_message: string;
+  state: 'sent' | 'accepted' | 'blocked';
+  chat_id: string | null;
+  created_at: string;
+};
+
+/** Row shape returned by my_chats(). */
+export type ChatListRow = {
+  chat_id: string;
+  chat_status: ChatStatus;
+  other_user_id: string;
+  other_display_name: string | null;
+  other_photo_path: string | null;
+  first_message: string | null;
+  first_message_sender_id: string | null;
+  created_at: string;
+};
+
+export type SendRequestResult = {
+  request_id: string;
+  delivered: boolean;
+  blocked: boolean;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -127,6 +216,56 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      cities: {
+        Row: CityRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      trips: {
+        Row: TripRow;
+        Insert: {
+          user_id: string;
+          city_id: number;
+          start_date: string;
+          end_date: string;
+        };
+        Update: Partial<Pick<TripRow, 'city_id' | 'start_date' | 'end_date' | 'status'>>;
+        Relationships: [];
+      };
+      blocks: {
+        Row: {
+          blocker_id: string;
+          blocked_id: string;
+          created_at: string;
+        };
+        Insert: {
+          blocker_id: string;
+          blocked_id: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
+      message_requests: {
+        // Recipient-side view (senders read via sent_requests()); the
+        // moderation_verdict column has no client grant — select explicit
+        // columns only.
+        Row: {
+          id: string;
+          sender_id: string;
+          recipient_id: string;
+          source: RequestSource;
+          profile_element: string | null;
+          first_message: string;
+          status: 'pending' | 'accepted';
+          chat_id: string | null;
+          created_at: string;
+          responded_at: string | null;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -135,6 +274,39 @@ export type Database = {
         Args: { owner_id: string };
         Returns: boolean;
       };
+      search_cities: {
+        Args: { p_query: string };
+        Returns: CityRow[];
+      };
+      get_matches: {
+        Args: Record<string, never>;
+        Returns: MatchRow[];
+      };
+      send_message_request: {
+        Args: {
+          p_recipient: string;
+          p_source: RequestSource;
+          p_first_message: string;
+          p_profile_element?: string | null;
+        };
+        Returns: SendRequestResult;
+      };
+      respond_to_message_request: {
+        Args: { p_request_id: string; p_accept: boolean };
+        Returns: { accepted: boolean; chat_id?: string };
+      };
+      sent_requests: {
+        Args: Record<string, never>;
+        Returns: SentRequestRow[];
+      };
+      incoming_requests: {
+        Args: Record<string, never>;
+        Returns: IncomingRequestRow[];
+      };
+      my_chats: {
+        Args: Record<string, never>;
+        Returns: ChatListRow[];
+      };
     };
     Enums: {
       user_status: UserStatus;
@@ -142,6 +314,8 @@ export type Database = {
       moderation_status: ModerationStatus;
       social_platform: SocialPlatform;
       chat_status: ChatStatus;
+      trip_status: TripStatus;
+      request_source: RequestSource;
     };
     CompositeTypes: Record<string, never>;
   };
