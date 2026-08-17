@@ -102,14 +102,62 @@ Recommended against for the same reason as Kith.
 | **Wheatear**  | everything but bare `.com`    | Obscure, and reads as "wheat ear"             |
 | **Farflung**  | `.app` `.io` + prefixes       | Means _distant_; the product is about _near_  |
 
+### Short and modern — the founder's stated preference
+
+Roughly 800 names have now been screened. The structural result: **every short
+real English word is domain-squatted.** The 4–6 letter space is entirely gone —
+`rove`, `cove`, `nook`, `trove`, `terra`, `vamos`, `bora`, `ciao`, `huddle`,
+`mingle`, `flock`, `arc`, `rise`, `loom`, `ramp`, `verge` all return saturated.
+What survives is unusable (`wenn`, `rovi`, `gaggle`, `swarm`). Further hunting in
+that space is wasted effort.
+
+**Read domain saturation carefully.** For short common words it is a _bad_ proxy
+for App Store crowding: squatters register them regardless of whether any product
+uses the name. It is only a useful signal for coined or compound names, where a
+registration usually implies a real brand (this is what made Amble's 16-of-17 a
+genuine warning). Do not let squatters veto a good name.
+
+Best short names on merit, domains ignored:
+
+| Name       | Len | Why it fits                                                | Risk                                              |
+| ---------- | --- | ---------------------------------------------------------- | ------------------------------------------------- |
+| **Rove**   | 4   | To wander freely; sounds like a current app; travel-native | Slightly archaic; Land Rover / Rover associations |
+| **Bora**   | 4   | Brazilian Portuguese "let's go" — everyday slang in Lisbon | Opaque to non-speakers; English ear hears "bore"  |
+| **Vamos**  | 5   | "Let's go"; widely understood; inherently social           | Common, so collisions likely                      |
+| **Huddle** | 6   | A group gathering briefly to plan — never romantic         | Slack Huddles dilute it badly                     |
+| **Covey**  | 5   | A small flock that stays together; 2/8 domains free        | Obscure — the flaw that sank Amble                |
+
+Ruled out despite strong meaning: **Sonder** (Sonder Holdings is a hospitality
+company — direct category conflict) and **Yalla** (well-known MENA social app).
+
 ## Current recommendation
 
-1. **Tagalong** — does the most work. It is the sentence a traveler already says,
-   it is warm, and it forecloses the dating read entirely.
-2. **Who's In** — the safest strong choice. No negative reading, understood by a
-   first-timer instantly, conversational in the way the product wants to be.
-3. **Samewhere** — sharpest at describing the mechanic, most ownable, survived
-   every round of shortlisting on merit.
+1. **Rove** — the pick if "short and modern" is the priority. Four letters,
+   travel-native, globally pronounceable, no dating read.
+2. **Samewhere** — the safer pick. Best meaning, genuinely uncrowded at 6/8 free,
+   survived every round of shortlisting on merit. Nine letters is its only flaw.
+3. **Who's In** — instantly clear to a first-timer, zero negative reading.
+
+Withdrawn: **Tagalong** was ranked first before its saturation was measured; it
+came back 8/8 taken. **Amble** was a founder favourite but is 16/17 taken
+including `amble.travel` and `amble.social`, which points to an active travel
+brand. **Somewhere** (as distinct from Samewhere) is fully saturated.
+
+### The name does not have to carry search
+
+The founder's concern was that people search "how to meet people while
+travelling," so the name should say the use case. On the App Store these are
+different fields, and all of them are indexed:
+
+| Field       | Limit     | Content                                                   |
+| ----------- | --------- | --------------------------------------------------------- |
+| App Name    | 30 chars  | `Rove: Meet People Traveling` (27)                        |
+| Subtitle    | 30 chars  | `Travel friends, never dates` (27)                        |
+| Keywords    | 100 chars | `solo travel,backpacker,hostel,trip buddy,meet travelers` |
+| Home screen | ~12 chars | `Rove` (this one is NOT indexed — it is pure brand)       |
+
+So a short brand costs nothing in discoverability. The pattern is standard:
+_Hostelworld: Hostel Travel App_, _Meetup: Social Events & Groups_.
 
 ## Before committing to a name
 
