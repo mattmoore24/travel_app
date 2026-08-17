@@ -265,7 +265,7 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 select throws_ok(
   $$ select public.send_message_request(
        '00000000-0000-0000-0000-00000000000c', 'pin', 'hi there', 'pin') $$,
-  'recipient has no active pin',
+  'recipient unavailable',
   'pin-source request requires a live pin'
 );
 
@@ -286,7 +286,7 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 select throws_ok(
   $$ select public.send_message_request(
        '00000000-0000-0000-0000-00000000000c', 'pin', 'hi there', 'pin') $$,
-  'recipient has no active pin',
+  'recipient unavailable',
   'pins in deactivated cities are not an existence oracle'
 );
 

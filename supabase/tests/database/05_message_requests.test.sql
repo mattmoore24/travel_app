@@ -56,7 +56,7 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select throws_ok(
   $$ select public.send_message_request(
        '00000000-0000-0000-0000-00000000000a', 'trip_match', 'hello!', 'bio') $$,
-  'no overlapping trip with recipient',
+  'recipient unavailable',
   'requests require a real overlap'
 );
 
