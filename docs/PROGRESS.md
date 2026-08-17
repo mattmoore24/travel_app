@@ -208,15 +208,9 @@ with real ones.
    tradeoff: prefix-only search of city names (no neighborhoods/venues). Phase 3 venue
    search will need its own answer regardless. Say the word if you want Google/Mapbox
    autocomplete instead.
-4. **Supabase project (the one real blocker)** — create a free project at
-   [supabase.com](https://supabase.com), then:
-   - Put `EXPO_PUBLIC_SUPABASE_URL` + `EXPO_PUBLIC_SUPABASE_ANON_KEY` (Project Settings →
-     API) into `.env` locally.
-   - Give me the project ref + a `SUPABASE_ACCESS_TOKEN` (or run
-     `npx supabase link && npx supabase db push` yourself) so the migrations reach the
-     hosted DB.
-   - In Auth settings: decide **email confirmation** on/off for early testing (off = faster
-     TestFlight loops; the app handles both).
+4. **Supabase project (the one real blocker)** — full step-by-step walkthrough now lives
+   in [`SUPABASE_SETUP.md`](SUPABASE_SETUP.md) (~15 min: create project → copy two keys →
+   `.env` → `supabase db push` → auth settings → verify).
 5. **Apple Developer Program** ($99/yr) — needed before Apple Sign-In can be tested
    end-to-end (entitlement + Services ID, then enable the Apple provider in Supabase Auth).
    Email auth works without it. Also unlocks EAS dev builds, push (Phase 4), TestFlight

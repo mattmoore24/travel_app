@@ -23,7 +23,7 @@ Prerequisites: Node 22+, npm 10+. No Mac/Xcode required for development.
 git clone https://github.com/mattmoore24/travel_app.git
 cd travel_app
 npm install
-cp .env.example .env   # fill in Supabase keys when available; the app runs without them
+cp .env.example .env   # keys: see docs/SUPABASE_SETUP.md; the app runs without them
 npx expo start
 ```
 
