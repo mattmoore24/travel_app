@@ -1,6 +1,6 @@
 -- Establishment rooms, guest mode, reactions, and the 14-day traveler window.
 begin;
-select plan(36);
+select plan(40);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -324,6 +324,29 @@ select is(
     where chat_id = 'bbbbbbbb-0000-4000-8000-000000000001'),
   0,
   'an expired member no longer sees the room'
+);
+
+-- The cron worker invoker is SECURITY DEFINER and posts a service-role bearer
+-- token, so reaching it from a session role would be a real escalation.
+select has_function('public', 'invoke_edge_worker', array['text'],
+  'the worker invoker exists');
+select ok(
+  not has_function_privilege('anon', 'public.invoke_edge_worker(text)', 'execute'),
+  'anon cannot invoke the edge workers'
+);
+select ok(
+  not has_function_privilege('authenticated', 'public.invoke_edge_worker(text)', 'execute'),
+  'authenticated cannot invoke the edge workers'
+);
+-- The name is concatenated into a URL, so anything outside the allowlist must
+-- be refused rather than fetched. Runs as admin because a session role cannot
+-- reach the function at all (asserted above).
+select pg_temp.admin();
+select throws_ok(
+  $$select public.invoke_edge_worker('../../admin')$$,
+  '23514',
+  null,
+  'an unknown worker name is refused, not interpolated into a URL'
 );
 
 select * from finish();

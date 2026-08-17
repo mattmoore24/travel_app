@@ -7,3 +7,5 @@
 2026-08-17 — deploy run 3: Phase 6 launch hardening (rate limits, admin views, delete-account)
 2026-08-17 — deploy run 4: Phase 7 schema (pending_moderation enum, photo slots, guest mode,
              establishment rooms + reactions) and ANTHROPIC_API_KEY sync for moderation-worker
+2026-08-17 — deploy run 5: pg_cron schedules for moderation-worker and push-worker
+             (credentials read from Vault, never committed)
