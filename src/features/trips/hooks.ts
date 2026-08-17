@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useOwnUserId } from '@/features/profile/hooks';
 import { cancelTrip, createTrip, fetchMyTrips, searchCities } from '@/features/trips/api';
+import { daysUntil } from '@/features/trips/dates';
 import { analytics } from '@/lib/analytics';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -36,6 +37,10 @@ export function useCreateTrip() {
         city_name: input.cityName,
         start_date: trip.start_date,
         end_date: trip.end_date,
+        // §6 retention is "within a trip window", not calendar — this lets
+        // PostHog cohort on trips that start imminently (see DASHBOARD.md).
+        starts_within_days: daysUntil(trip.start_date),
+        trip_length_days: daysUntil(trip.end_date) - daysUntil(trip.start_date),
       });
       queryClient.invalidateQueries({ queryKey: ['trips', userId] });
       queryClient.invalidateQueries({ queryKey: ['matches', userId] });

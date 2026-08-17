@@ -11,7 +11,10 @@
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.mattmoore.travelapp",
       "supportsTablet": false,
-      "usesAppleSignIn": true
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -41,7 +44,9 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Lets you choose profile photos to share with other travelers."
+          "photosPermission": "Lets you choose profile photos to share with other travelers.",
+          "cameraPermission": "Lets you take a selfie to verify that your profile photos are really you.",
+          "microphonePermission": false
         }
       ]
     ],

@@ -20,6 +20,12 @@ export function addDays(date: Date, days: number): Date {
   return copy;
 }
 
+/** Whole days from today to an ISO date (negative when it's in the past). */
+export function daysUntil(iso: string): number {
+  const today = parseISODate(toISODate(new Date()));
+  return Math.round((parseISODate(iso).getTime() - today.getTime()) / 86_400_000);
+}
+
 const SHORT = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' });
 const SHORT_YEAR = new Intl.DateTimeFormat('en', {
   month: 'short',

@@ -173,7 +173,7 @@ export default function MapScreen() {
       : dateFilter === 'today'
         ? toISODate(new Date())
         : toISODate(addDays(new Date(), 1));
-  const { data: allPins = [] } = useCityPins(activeCityId);
+  const { data: allPins = [], isSuccess: pinsLoaded } = useCityPins(activeCityId);
   const { data: heat = [] } = useHeatCells(activeCityId, filterISO);
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
 
@@ -312,6 +312,30 @@ export default function MapScreen() {
         </View>
       </View>
 
+      {activeCity && pinsLoaded && pins.length === 0 && !selectedPin ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Be the first to drop a pin"
+          onPress={() =>
+            router.push({ pathname: '/drop-pin', params: { cityId: activeCity.city_id } })
+          }
+          style={[
+            styles.emptyBanner,
+            { bottom: BottomTabInset + insets.bottom + Spacing.five + 64 },
+          ]}>
+          <ThemedView style={styles.emptyCard}>
+            <ThemedText type="smallBold">
+              {dateFilter === 'all'
+                ? `No pins in ${activeCity.cities.name} yet`
+                : `Nothing pinned for ${dateFilter} yet`}
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Be the first — drop a pin where you&apos;re headed and travelers here will see it.
+            </ThemedText>
+          </ThemedView>
+        </Pressable>
+      ) : null}
+
       {activeCity && !selectedPin ? (
         <Pressable
           accessibilityRole="button"
@@ -404,6 +428,20 @@ const styles = StyleSheet.create({
   },
   markerEmoji: {
     fontSize: 16,
+  },
+  emptyBanner: {
+    position: 'absolute',
+    left: Spacing.four,
+    right: Spacing.four,
+  },
+  emptyCard: {
+    gap: Spacing.one,
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
   },
   fab: {
     position: 'absolute',

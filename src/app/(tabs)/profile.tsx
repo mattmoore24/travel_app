@@ -11,6 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { LANGUAGES } from '@/constants/languages';
 import { signOut } from '@/features/auth/api';
+import { deleteAccount } from '@/features/profile/api';
 import {
   useLatestVerification,
   useOwnPhotos,
@@ -151,6 +152,11 @@ export default function ProfileScreen() {
 
         <View style={styles.actions}>
           <PrimaryButton label="Edit profile" onPress={() => router.push('/edit-profile')} />
+          <PrimaryButton
+            variant="ghost"
+            label="Guidelines & support"
+            onPress={() => router.push('/guidelines')}
+          />
           {!profile?.verified ? (
             <PrimaryButton
               variant="ghost"
@@ -163,6 +169,34 @@ export default function ProfileScreen() {
             label="Sign out"
             onPress={() => {
               signOut().catch(() => Alert.alert('Sign out failed', 'Please try again.'));
+            }}
+          />
+          {/* App Review 5.1.1(v): account deletion must be available in-app. */}
+          <PrimaryButton
+            variant="ghost"
+            label="Delete account"
+            onPress={() => {
+              Alert.alert(
+                'Delete your account?',
+                'This permanently removes your profile, photos, trips, pins, and chats (for both sides). It cannot be undone.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Delete forever',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await deleteAccount();
+                      } catch {
+                        Alert.alert('Deletion failed', 'Check your connection and try again.');
+                        return;
+                      }
+                      // The auth user no longer exists; clear the local session.
+                      signOut().catch(() => {});
+                    },
+                  },
+                ]
+              );
             }}
           />
         </View>

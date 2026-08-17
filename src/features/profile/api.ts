@@ -197,6 +197,19 @@ export async function submitVerificationSelfie(userId: string, localUri: string)
   return data;
 }
 
+/**
+ * Permanently delete the signed-in account (App Review 5.1.1(v)). The Edge
+ * Function removes storage objects, hard-deletes the user's chats for both
+ * members, then deletes the auth user — cascading the whole profile.
+ */
+export async function deleteAccount() {
+  const { data, error } = await supabase.functions.invoke('delete-account');
+  if (error) {
+    throw error;
+  }
+  return data as { deleted: boolean };
+}
+
 export async function fetchOwnSocialHandles(userId: string) {
   const { data, error } = await supabase
     .from('social_handles')

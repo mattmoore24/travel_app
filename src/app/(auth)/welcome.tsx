@@ -82,6 +82,18 @@ export default function WelcomeScreen() {
             disabled={!isSupabaseConfigured}
             onPress={() => router.push('/email')}
           />
+          {/* App Review 1.2: UGC apps must have users agree to content rules
+              with zero tolerance for objectionable content. */}
+          <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
+            By continuing you agree to our{' '}
+            <ThemedText
+              type="small"
+              style={{ color: theme.tint }}
+              onPress={() => router.push('/guidelines')}>
+              community guidelines
+            </ThemedText>
+            . This is a friends app — flirting and harassment get accounts removed.
+          </ThemedText>
         </ThemedView>
       </SafeAreaView>
     </ThemedView>

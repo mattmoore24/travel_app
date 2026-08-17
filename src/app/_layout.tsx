@@ -119,6 +119,9 @@ function RootNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
+      {/* Outside every guard: the guidelines must be readable BEFORE sign-up
+          (the welcome screen links to them) and from the profile tab after. */}
+      <Stack.Screen name="guidelines" options={{ presentation: 'modal' }} />
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
