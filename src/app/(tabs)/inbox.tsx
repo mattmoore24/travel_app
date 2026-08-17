@@ -133,17 +133,23 @@ function describeElement(element: string): string {
 }
 
 function ChatRow({ chat }: { chat: ChatListRow }) {
+  const preview = chat.last_message ?? chat.first_message;
   return (
     <ThemedView type="backgroundElement" style={styles.chatRow}>
       <Avatar path={chat.other_photo_path} />
       <View style={styles.chatRowText}>
         <ThemedText type="smallBold">{chat.other_display_name ?? 'Traveler'}</ThemedText>
-        {chat.first_message ? (
+        {preview ? (
           <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-            {chat.first_message}
+            {preview}
           </ThemedText>
         ) : null}
       </View>
+      {chat.chat_status !== 'active' ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          closed
+        </ThemedText>
+      ) : null}
     </ThemedView>
   );
 }

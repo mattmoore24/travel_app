@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
 import { useAuthStore } from '@/features/auth/store';
+import { registerForPushNotifications } from '@/features/notifications/push';
 import { analytics } from '@/lib/analytics';
 import { queryClient } from '@/lib/query-client';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
@@ -39,6 +40,12 @@ export function useAuthListener() {
       setSession(session);
       if (session?.user.id) {
         analytics.identify(session.user.id);
+      }
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+        // Fire-and-forget: silently no-ops in Expo Go / simulator / pre-EAS.
+        // The session guard keeps the OS permission prompt from firing for
+        // signed-out users at app launch.
+        registerForPushNotifications();
       }
       // Drop all cached server state on sign-out so the next account (or a
       // fresh sign-in) never sees the previous user's data or errored queries.

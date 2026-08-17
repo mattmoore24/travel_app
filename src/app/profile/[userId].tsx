@@ -1,13 +1,15 @@
 import { Image } from 'expo-image';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LANGUAGES } from '@/constants/languages';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { useBlockUser } from '@/features/chat/hooks';
 import { usePhotoUrl, usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -36,6 +38,7 @@ export default function PublicProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
   const profileQuery = usePublicProfile(userId ?? null);
   const { data: photos = [] } = usePublicPhotos(userId ?? null);
+  const block = useBlockUser();
   const profile = profileQuery.data;
 
   if (profileQuery.isSuccess && !profile) {
@@ -111,6 +114,45 @@ export default function PublicProfileScreen() {
             Social handles stay hidden until you both accept a chat.
           </ThemedText>
         </ThemedView>
+
+        <View style={styles.safetyRow}>
+          <View style={styles.safetyButton}>
+            <PrimaryButton
+              variant="ghost"
+              label="Report"
+              onPress={() =>
+                router.push({ pathname: '/report', params: { userId, context: 'profile' } })
+              }
+            />
+          </View>
+          <View style={styles.safetyButton}>
+            <PrimaryButton
+              variant="danger"
+              label="Block"
+              onPress={() =>
+                Alert.alert(
+                  `Block ${profile.display_name ?? 'this traveler'}?`,
+                  'They disappear from your map and matches and can never message you. They are not told.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Block',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await block.mutateAsync(userId!);
+                          router.back();
+                        } catch {
+                          // Surfaced by the global mutation error alert.
+                        }
+                      },
+                    },
+                  ]
+                )
+              }
+            />
+          </View>
+        </View>
       </ScrollView>
     </ThemedView>
   );
@@ -179,5 +221,12 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     padding: Spacing.three,
     borderRadius: Spacing.three,
+  },
+  safetyRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  safetyButton: {
+    flex: 1,
   },
 });

@@ -91,6 +91,7 @@ function RootNavigator() {
           name="profile/[userId]"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
+        <Stack.Screen name="report" options={{ presentation: 'modal' }} />
       </Stack.Protected>
     </Stack>
   );

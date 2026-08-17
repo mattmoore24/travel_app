@@ -72,6 +72,7 @@ export type CityRow = {
   name: string;
   country_code: string;
   country_name: string;
+  admin: string | null;
   lat: number;
   lng: number;
   population: number;
@@ -135,7 +136,7 @@ export type SentRequestRow = {
   created_at: string;
 };
 
-/** Row shape returned by my_chats(). */
+/** Row shape returned by my_chats(), ordered by last activity. */
 export type ChatListRow = {
   chat_id: string;
   chat_status: ChatStatus;
@@ -144,8 +145,21 @@ export type ChatListRow = {
   other_photo_path: string | null;
   first_message: string | null;
   first_message_sender_id: string | null;
+  last_message: string | null;
+  last_message_at: string | null;
   created_at: string;
 };
+
+export type MessageRow = {
+  id: string;
+  chat_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
+};
+
+export type ReportReason =
+  'flirtation_or_sexual' | 'harassment' | 'spam' | 'fake_profile' | 'safety_concern' | 'other';
 
 export type SendRequestResult = {
   request_id: string;
@@ -289,6 +303,47 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      messages: {
+        Row: MessageRow;
+        Insert: {
+          chat_id: string;
+          sender_id: string;
+          body: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
+      reports: {
+        Row: {
+          id: string;
+          reporter_id: string;
+          reported_user_id: string;
+          reason: ReportReason;
+          details: string | null;
+          context: string | null;
+          created_at: string;
+        };
+        Insert: {
+          reporter_id: string;
+          reported_user_id: string;
+          reason: ReportReason;
+          details?: string | null;
+          context?: string | null;
+        };
+        Update: never;
+        Relationships: [];
+      };
+      push_tokens: {
+        Row: {
+          token: string;
+          user_id: string;
+          platform: string;
+          updated_at: string;
+        };
+        Insert: never; // via register_push_token RPC
+        Update: never;
+        Relationships: [];
+      };
       pins: {
         Row: {
           id: string;
@@ -381,6 +436,14 @@ export type Database = {
       city_pins: {
         Args: { p_city_id: number };
         Returns: CityPinRow[];
+      };
+      unmatch_chat: {
+        Args: { p_chat_id: string };
+        Returns: undefined;
+      };
+      register_push_token: {
+        Args: { p_token: string; p_platform?: string };
+        Returns: undefined;
       };
       heat_cells: {
         Args: { p_city_id: number; p_date?: string | null };

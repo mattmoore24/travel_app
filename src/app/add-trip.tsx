@@ -92,21 +92,33 @@ export default function AddTripScreen() {
             value={query}
             onChangeText={setQuery}
           />
-          {suggestions.map((suggestion) => (
-            <Pressable
-              key={suggestion.id}
-              onPress={() => {
-                setCity(suggestion);
-                setQuery('');
-              }}>
-              <ThemedView type="backgroundElement" style={styles.suggestion}>
-                <ThemedText>
-                  {suggestion.name}
-                  <ThemedText themeColor="textSecondary">, {suggestion.country_name}</ThemedText>
-                </ThemedText>
-              </ThemedView>
-            </Pressable>
-          ))}
+          {suggestions.map((suggestion) => {
+            // Five US Springfields exist: show the admin region when a name
+            // repeats within the result set.
+            const duplicated =
+              suggestions.filter(
+                (other) =>
+                  other.name === suggestion.name && other.country_code === suggestion.country_code
+              ).length > 1;
+            return (
+              <Pressable
+                key={suggestion.id}
+                onPress={() => {
+                  setCity(suggestion);
+                  setQuery('');
+                }}>
+                <ThemedView type="backgroundElement" style={styles.suggestion}>
+                  <ThemedText>
+                    {suggestion.name}
+                    <ThemedText themeColor="textSecondary">
+                      {duplicated && suggestion.admin ? `, ${suggestion.admin}` : ''},{' '}
+                      {suggestion.country_name}
+                    </ThemedText>
+                  </ThemedText>
+                </ThemedView>
+              </Pressable>
+            );
+          })}
         </>
       )}
 
