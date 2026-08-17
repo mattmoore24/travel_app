@@ -12,7 +12,14 @@ import { useLaunchCities } from '@/features/pins/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Space, Spacing } from '@/constants/theme';
+import {
+  BottomTabInset,
+  Elevation,
+  MaxContentWidth,
+  Radius,
+  Space,
+  Spacing,
+} from '@/constants/theme';
 import { useMatches, useMyChats, useSentRequests } from '@/features/matching/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { formatDateRange } from '@/features/trips/dates';
@@ -101,7 +108,7 @@ function MatchCard({
       <View style={styles.cardBody}>
         <Pressable onPress={() => router.push(`/profile/${match.user_id}`)}>
           <View style={styles.nameRow}>
-            <ThemedText type="smallBold" style={styles.nameText}>
+            <ThemedText type="headline" style={styles.nameText}>
               {match.display_name ?? 'Traveler'}
               {match.age != null ? `, ${match.age}` : ''}
             </ThemedText>
@@ -121,7 +128,7 @@ function MatchCard({
           {formatDateRange(match.overlap_start, match.overlap_end)} together
         </ThemedText>
         {match.bio ? (
-          <ThemedText type="small" numberOfLines={2}>
+          <ThemedText type="body" numberOfLines={3}>
             {match.bio}
           </ThemedText>
         ) : null}
@@ -278,7 +285,7 @@ export default function TravelersScreen() {
           ))}
           <Pressable onPress={() => router.push('/add-trip')}>
             <ThemedView type="backgroundElement" style={[styles.tripChip, styles.addTrip]}>
-              <ThemedText type="smallBold">＋ Add trip</ThemedText>
+              <ThemedText type="callout">＋ Add trip</ThemedText>
             </ThemedView>
           </Pressable>
         </ScrollView>
@@ -367,12 +374,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   card: {
-    flexDirection: 'row',
-    borderRadius: Spacing.three,
+    borderRadius: Radius.xl,
     overflow: 'hidden',
+    ...Elevation.raised,
   },
   cardPhoto: {
-    width: 110,
+    width: '100%',
+    aspectRatio: 4 / 5,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -381,9 +389,8 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   cardBody: {
-    flex: 1,
-    padding: Spacing.three,
-    gap: Spacing.two,
+    padding: Space.lg,
+    gap: Space.sm,
   },
   nameRow: {
     flexDirection: 'row',

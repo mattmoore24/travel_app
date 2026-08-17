@@ -159,6 +159,10 @@ function RootNavigator() {
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
         <Stack.Screen name="report" options={{ presentation: 'modal' }} />
+        <Stack.Screen
+          name="archived-chats"
+          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        />
       </Stack.Protected>
       {/* Outside every guard so it's readable BEFORE sign-up (the welcome
           screen links to it) and from the profile tab after — but declared

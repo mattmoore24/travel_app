@@ -1,9 +1,11 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import type { MessageRow, ReportReason } from '@/lib/database.types';
+import { processAndUploadImage, removeUploadedImage } from '@/lib/image-upload';
 import { supabase } from '@/lib/supabase';
 
 const MESSAGE_PAGE = 100;
+export const CHAT_PHOTO_BUCKET = 'chat-photos';
 
 export async function fetchMessages(chatId: string) {
   const { data, error } = await supabase
@@ -29,6 +31,36 @@ export async function sendMessage(chatId: string, senderId: string, body: string
     throw error;
   }
   return data as MessageRow;
+}
+
+/**
+ * Send a photo. The message row holds the storage path; with photo moderation
+ * on it lands as 'pending' and nobody else can load the image until the
+ * worker clears it — which is not optional in a publicly-readable room.
+ */
+export async function sendPhotoMessage(chatId: string, senderId: string, localUri: string) {
+  const imagePath = await processAndUploadImage(CHAT_PHOTO_BUCKET, senderId, localUri);
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({ chat_id: chatId, sender_id: senderId, image_path: imagePath })
+    .select()
+    .single();
+  if (error) {
+    await removeUploadedImage(CHAT_PHOTO_BUCKET, imagePath);
+    throw error;
+  }
+  return data as MessageRow;
+}
+
+/** Chat photos live in their own private bucket, served via signed URLs. */
+export async function signedChatPhotoUrl(storagePath: string) {
+  const { data, error } = await supabase.storage
+    .from(CHAT_PHOTO_BUCKET)
+    .createSignedUrl(storagePath, 60 * 60);
+  if (error) {
+    throw error;
+  }
+  return data.signedUrl;
 }
 
 /**

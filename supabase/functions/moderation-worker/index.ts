@@ -1,8 +1,9 @@
-// Claude moderation worker (Phase 5). Drains three server-side queues:
+// Claude moderation worker. Drains four server-side queues:
 //
 //   1. message_requests in 'pending_moderation'  -> apply_message_verdict
 //   2. profile_photos   in 'pending'             -> apply_photo_verdict
 //   3. verification_requests in 'pending'        -> apply_verification_verdict
+//   4. messages with a pending photo             -> apply_chat_photo_verdict
 //
 // Deploy:   supabase functions deploy moderation-worker
 // Secrets:  supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
@@ -29,6 +30,7 @@ const MAX_ATTEMPTS = 10;
 const MESSAGES_PER_TICK = 10;
 const PHOTOS_PER_TICK = 5;
 const VERIFICATIONS_PER_TICK = 3;
+const CHAT_PHOTOS_PER_TICK = 8;
 const SIGNED_URL_TTL_SECONDS = 600;
 
 const MessageVerdict = z.object({
@@ -72,6 +74,7 @@ const VerificationVerdict = z.object({
 type WorkerReport = {
   messages: { approved: number; blocked: number; failed: number };
   photos: { approved: number; rejected: number; failed: number };
+  chatPhotos: { approved: number; rejected: number; failed: number };
   verifications: { approved: number; rejected: number; failed: number };
   notes: string[];
 };
@@ -124,6 +127,7 @@ Deno.serve(async () => {
   const report: WorkerReport = {
     messages: { approved: 0, blocked: 0, failed: 0 },
     photos: { approved: 0, rejected: 0, failed: 0 },
+    chatPhotos: { approved: 0, rejected: 0, failed: 0 },
     verifications: { approved: 0, rejected: 0, failed: 0 },
     notes: [],
   };
@@ -224,7 +228,7 @@ Deno.serve(async () => {
     }
   }
 
-  // -- 2. Pending photos ------------------------------------------------------
+  // -- 2. Pending profile photos ------------------------------------------------------
   const { data: photos } = await supabase
     .from('profile_photos')
     .select('id, storage_path, moderation_attempts')
@@ -305,7 +309,65 @@ Deno.serve(async () => {
     }
   }
 
-  // -- 3. Pending selfie verifications ---------------------------------------
+  // -- 3. Photos posted into chats and rooms ---------------------------------
+  // A room can be read by anyone, so an unscreened photo there is the most
+  // exposed content in the product. Same classifier, same fail-closed rule.
+  const { data: chatPhotos } = await supabase
+    .from('messages')
+    .select('id, image_path')
+    .eq('moderation_status', 'pending')
+    .not('image_path', 'is', null)
+    .order('created_at')
+    .limit(CHAT_PHOTOS_PER_TICK);
+
+  for (const photo of chatPhotos ?? []) {
+    try {
+      const url = await signedUrl('chat-photos', photo.image_path);
+      const verdict = await classify(
+        anthropic,
+        PHOTO_SYSTEM,
+        [
+          { type: 'image', source: { type: 'url', url } },
+          { type: 'text', text: 'Moderate this photo posted in a travel chat.' },
+        ],
+        PhotoVerdict
+      );
+      const payload = verdict
+        ? { ...verdict, engine: 'claude-moderator', model: MODEL }
+        : {
+            action: 'block',
+            category: 'refusal',
+            reason: 'the model refused to process this content',
+            engine: 'claude-moderator',
+            model: MODEL,
+          };
+      const { error } = await supabase.rpc('apply_chat_photo_verdict', {
+        p_message_id: photo.id,
+        p_verdict: payload,
+      });
+      if (error) {
+        throw new Error(`apply_chat_photo_verdict: ${error.message}`);
+      }
+      if (payload.action === 'allow') {
+        report.chatPhotos.approved += 1;
+      } else {
+        report.chatPhotos.rejected += 1;
+      }
+    } catch (error) {
+      if (isAuthError(error)) {
+        return Response.json(
+          { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
+          { status: 503 }
+        );
+      }
+      // Left pending, which means invisible to everyone but the sender —
+      // already fail-closed. The next tick retries.
+      report.chatPhotos.failed += 1;
+      report.notes.push(`chat photo ${photo.id}: ${(error as Error).message}`);
+    }
+  }
+
+  // -- 4. Pending selfie verifications ---------------------------------------
   const { data: verifications } = await supabase
     .from('verification_requests')
     .select('id, user_id, storage_path, attempts')

@@ -15,10 +15,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { PhotoButton } from '@/components/ui/photo-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useBlockUser, useMessages, useSendMessage, useUnmatch } from '@/features/chat/hooks';
+import {
+  useBlockUser,
+  useMessages,
+  useSendMessage,
+  useChatPhotoUrl,
+  useSendPhoto,
+  useUnmatch,
+} from '@/features/chat/hooks';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
@@ -170,6 +178,7 @@ function SocialsCard({ userId }: { userId: string }) {
 
 function MessageBubble({ message, mine }: { message: MessageRow; mine: boolean }) {
   const theme = useTheme();
+  const { data: imageUrl } = useChatPhotoUrl(message.image_path);
   return (
     <View
       style={[
@@ -177,9 +186,21 @@ function MessageBubble({ message, mine }: { message: MessageRow; mine: boolean }
         mine ? styles.bubbleMine : styles.bubbleTheirs,
         { backgroundColor: mine ? theme.tint : theme.backgroundElement },
       ]}>
-      <ThemedText type="small" style={mine ? { color: theme.onTint } : undefined}>
-        {message.body}
-      </ThemedText>
+      {message.image_path ? (
+        imageUrl ? (
+          <Image source={{ uri: imageUrl }} style={styles.messagePhoto} contentFit="cover" />
+        ) : (
+          // Held by photo moderation, or the signed URL hasn't landed yet.
+          <ThemedText type="footnote" themeColor="textSecondary">
+            Photo in review
+          </ThemedText>
+        )
+      ) : null}
+      {message.body ? (
+        <ThemedText type="small" style={mine ? { color: theme.onTint } : undefined}>
+          {message.body}
+        </ThemedText>
+      ) : null}
     </View>
   );
 }
@@ -192,6 +213,7 @@ export default function ChatScreen() {
   const chat = (chatsQuery.data ?? []).find((c) => c.chat_id === id);
   const messagesQuery = useMessages(chat?.chat_id ?? null);
   const sendMessage = useSendMessage(chat?.chat_id ?? null);
+  const sendPhoto = useSendPhoto(chat?.chat_id ?? '');
   const [draft, setDraft] = useState('');
 
   if (!chat) {
@@ -271,6 +293,15 @@ export default function ChatScreen() {
             </ThemedView>
           ) : (
             <View style={styles.composer}>
+              <PhotoButton
+                busy={sendPhoto.isPending}
+                onPick={(uri) =>
+                  sendPhoto.mutate(uri, {
+                    onError: () =>
+                      Alert.alert('Could not send', 'Check your connection and try again.'),
+                  })
+                }
+              />
               <TextInput
                 style={[
                   styles.input,
@@ -374,6 +405,12 @@ const styles = StyleSheet.create({
   firstMessageWrap: {
     gap: Spacing.two,
     marginBottom: Spacing.three,
+  },
+  messagePhoto: {
+    width: 220,
+    height: 165,
+    borderRadius: 10,
+    marginBottom: 4,
   },
   bubble: {
     maxWidth: '80%',

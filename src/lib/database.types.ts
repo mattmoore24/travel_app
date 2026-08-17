@@ -403,10 +403,12 @@ export type Database = {
       };
       messages: {
         Row: MessageRow;
+        // A message carries text, a photo, or both.
         Insert: {
           chat_id: string;
           sender_id: string;
-          body: string;
+          body?: string;
+          image_path?: string;
         };
         Update: never;
         Relationships: [];

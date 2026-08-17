@@ -18,9 +18,10 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { GlassSurface } from '@/components/ui/glass-surface';
+import { PhotoButton } from '@/components/ui/photo-button';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { MaxContentWidth, Radius, Space } from '@/constants/theme';
-import { useSendMessage } from '@/features/chat/hooks';
+import { useChatPhotoUrl, useSendMessage, useSendPhoto } from '@/features/chat/hooks';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { useMyChats } from '@/features/matching/hooks';
@@ -93,7 +94,7 @@ function RoomMessage({
 }) {
   const theme = useTheme();
   const { data: avatarUrl } = usePhotoUrl(message.photo_path);
-  const { data: imageUrl } = usePhotoUrl(message.image_path);
+  const { data: imageUrl } = useChatPhotoUrl(message.image_path);
   const isOwn = message.sender_id === ownId;
 
   if (message.removed) {
@@ -151,6 +152,7 @@ export default function RoomScreen() {
   const join = useJoinRoom(id!);
   const leave = useLeaveRoom(id!);
   const send = useSendMessage(id!);
+  const sendPhoto = useSendPhoto(id!);
   const toggle = useToggleReaction(id!);
   const [draft, setDraft] = useState('');
   const [reactingTo, setReactingTo] = useState<string | null>(null);
@@ -239,6 +241,15 @@ export default function RoomScreen() {
                 ANYONE CAN READ THIS ROOM
               </ThemedText>
               <View style={styles.composer}>
+                <PhotoButton
+                  busy={sendPhoto.isPending}
+                  onPick={(uri) =>
+                    sendPhoto.mutate(uri, {
+                      onError: () =>
+                        Alert.alert('Could not send', 'Check your connection and try again.'),
+                    })
+                  }
+                />
                 <TextInput
                   style={[
                     styles.input,

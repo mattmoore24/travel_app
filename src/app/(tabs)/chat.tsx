@@ -2,14 +2,14 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
-import { useCityRooms } from '@/features/rooms/hooks';
+import { useChatPref, useCityRooms } from '@/features/rooms/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -244,13 +244,47 @@ function RoomDiscovery({ cityId }: { cityId: number | null }) {
   );
 }
 
+/** A row plus its long-press actions — pin, mute, archive (docs/DESIGN.md). */
+function ChatRowLink({ chat }: { chat: ChatListRow }) {
+  const pref = useChatPref();
+  return (
+    <Pressable
+      onPress={() =>
+        router.push(chat.kind === 'room' ? `/room/${chat.chat_id}` : `/chat/${chat.chat_id}`)
+      }
+      onLongPress={() =>
+        Alert.alert(chat.title ?? 'Conversation', undefined, [
+          {
+            text: chat.pinned ? 'Unpin' : 'Pin to top',
+            onPress: () => pref.mutate({ chatId: chat.chat_id, pinned: !chat.pinned }),
+          },
+          {
+            text: chat.muted ? 'Unmute' : 'Mute',
+            onPress: () => pref.mutate({ chatId: chat.chat_id, muted: !chat.muted }),
+          },
+          {
+            text: 'Archive',
+            onPress: () => pref.mutate({ chatId: chat.chat_id, archived: true }),
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ])
+      }
+      style={({ pressed }) => pressed && styles.pressed}>
+      <ChatRow chat={chat} />
+    </Pressable>
+  );
+}
+
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const isGuest = useIsGuest();
   const { data: requests = [] } = useIncomingRequests();
   const { data: chats = [] } = useMyChats();
   const { data: launchCities = [] } = useLaunchCities();
+  const { data: archived = [] } = useMyChats(true);
   const cityId = launchCities[0]?.city_id ?? null;
+  const pinned = chats.filter((c) => c.pinned);
+  const rest = chats.filter((c) => !c.pinned);
 
   if (!isSupabaseConfigured) {
     return (
@@ -315,23 +349,44 @@ export default function ChatScreen() {
           </>
         ) : null}
 
-        {chats.length > 0 ? (
+        {pinned.length > 0 ? (
+          <>
+            <ThemedText type="caption" themeColor="textSecondary">
+              PINNED
+            </ThemedText>
+            {pinned.map((chat) => (
+              <ChatRowLink key={chat.chat_id} chat={chat} />
+            ))}
+          </>
+        ) : null}
+
+        {rest.length > 0 ? (
           <>
             <ThemedText type="caption" themeColor="textSecondary">
               CHATS
             </ThemedText>
-            {chats.map((chat) => (
-              <Pressable
-                key={chat.chat_id}
-                onPress={() => router.push(`/chat/${chat.chat_id}`)}
-                style={({ pressed }) => pressed && styles.pressed}>
-                <ChatRow chat={chat} />
-              </Pressable>
+            {rest.map((chat) => (
+              <ChatRowLink key={chat.chat_id} chat={chat} />
             ))}
           </>
         ) : null}
 
         <RoomDiscovery cityId={cityId} />
+
+        {archived.length > 0 ? (
+          <Pressable
+            onPress={() => router.push('/archived-chats')}
+            style={({ pressed }) => pressed && styles.pressed}>
+            <ThemedView type="backgroundElement" style={styles.chatRow}>
+              <View style={styles.chatRowText}>
+                <ThemedText type="callout">Archived</ThemedText>
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  {archived.length} conversation{archived.length === 1 ? '' : 's'} · still readable
+                </ThemedText>
+              </View>
+            </ThemedView>
+          </Pressable>
+        ) : null}
       </ScrollView>
     </ThemedView>
   );

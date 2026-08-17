@@ -61,8 +61,8 @@ export async function fetchSentRequests() {
   return (data ?? []) as SentRequestRow[];
 }
 
-export async function fetchMyChats() {
-  const { data, error } = await supabase.rpc('my_chats');
+export async function fetchMyChats(archived = false) {
+  const { data, error } = await supabase.rpc('my_chats', { p_archived: archived });
   if (error) {
     throw error;
   }

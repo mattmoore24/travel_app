@@ -6,6 +6,8 @@ import {
   fetchMessages,
   reportUser,
   sendMessage,
+  sendPhotoMessage,
+  signedChatPhotoUrl,
   subscribeToMessages,
   unmatchChat,
 } from '@/features/chat/api';
@@ -61,6 +63,21 @@ export function useSendMessage(chatId: string | null) {
   });
 }
 
+/** Send a photo into a chat or room. */
+export function useSendPhoto(chatId: string) {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (localUri: string) => sendPhotoMessage(chatId, userId!, localUri),
+    onSuccess: () => {
+      analytics.capture('message_sent', { kind: 'photo' });
+      queryClient.invalidateQueries({ queryKey: ['messages', chatId] });
+      queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
+    },
+  });
+}
+
 export function useUnmatch() {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
@@ -99,5 +116,16 @@ export function useReportUser() {
     onSuccess: () => {
       analytics.capture('user_reported');
     },
+  });
+}
+
+/** Signed URL for a chat photo (cached just under its TTL, like profile photos). */
+export function useChatPhotoUrl(storagePath: string | null) {
+  return useQuery({
+    queryKey: ['chat-photo-url', storagePath],
+    queryFn: () => signedChatPhotoUrl(storagePath!),
+    enabled: isSupabaseConfigured && storagePath != null,
+    staleTime: 50 * 60 * 1000,
+    gcTime: 55 * 60 * 1000,
   });
 }

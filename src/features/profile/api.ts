@@ -1,5 +1,3 @@
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
-
 import {
   PROFILE_COLUMNS,
   VERIFICATION_REQUEST_COLUMNS,
@@ -7,11 +5,11 @@ import {
   type SocialPlatform,
   type VerificationRequestRow,
 } from '@/lib/database.types';
+import { processAndUploadImage, removeUploadedImage } from '@/lib/image-upload';
 import { supabase } from '@/lib/supabase';
 
 export const PHOTO_BUCKET = 'profile-photos';
 export const VERIFICATION_BUCKET = 'verification-selfies';
-const PHOTO_MAX_DIMENSION = 1440;
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 // profiles has column-level SELECT grants (verification jsonb is server-only),
@@ -66,44 +64,6 @@ export async function fetchPhotos(userId: string) {
     throw error;
   }
   return data;
-}
-
-function randomId(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Downscale + JPEG-compress a picked image and upload it under the owner's
- * storage folder (<user_id>/<random>.jpg — the write policies key off that
- * prefix). Returns the storage path. Shared by profile photos and
- * verification selfies.
- */
-async function processAndUploadImage(bucket: string, userId: string, localUri: string) {
-  const context = ImageManipulator.manipulate(localUri);
-  context.resize({ width: PHOTO_MAX_DIMENSION });
-  const rendered = await context.renderAsync();
-  const result = await rendered.saveAsync({ compress: 0.8, format: SaveFormat.JPEG });
-
-  const storagePath = `${userId}/${randomId()}.jpg`;
-  const response = await fetch(result.uri);
-  const body = await response.arrayBuffer();
-
-  const { error } = await supabase.storage
-    .from(bucket)
-    .upload(storagePath, body, { contentType: 'image/jpeg' });
-  if (error) {
-    throw error;
-  }
-  return storagePath;
-}
-
-/** Best-effort cleanup when the row/RPC step after an upload fails. */
-async function removeUploadedImage(bucket: string, storagePath: string) {
-  const { error } = await supabase.storage.from(bucket).remove([storagePath]);
-  if (error) {
-    console.warn(`orphaned storage object ${storagePath}: ${error.message}`);
-  }
 }
 
 /**

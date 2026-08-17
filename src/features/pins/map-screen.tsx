@@ -9,10 +9,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { AvatarButton } from '@/components/ui/avatar-button';
+import { GlassSurface } from '@/components/ui/glass-surface';
+import { Sheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, Spacing } from '@/constants/theme';
+import { BottomTabInset, Radius, Space, Spacing } from '@/constants/theme';
 import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
 import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
 import { categoryEmoji, intentLabel } from '@/features/pins/pin-helpers';
@@ -45,10 +47,10 @@ function PinCard({
       <View style={styles.pinCardHeader}>
         <Text style={styles.pinCardEmoji}>{categoryEmoji(pin.category, pin.seeded)}</Text>
         <View style={styles.pinCardTitle}>
-          <ThemedText type="smallBold" numberOfLines={1}>
+          <ThemedText type="headline" numberOfLines={1}>
             {pin.venue_name}
           </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="footnote" themeColor="textSecondary">
             {intentLabel(pin.intent_date)}
           </ThemedText>
         </View>
@@ -67,8 +69,8 @@ function PinCard({
 
       {pin.seeded ? (
         <>
-          {pin.seed_note ? <ThemedText type="small">{pin.seed_note}</ThemedText> : null}
-          <ThemedText type="small" themeColor="textSecondary">
+          {pin.seed_note ? <ThemedText type="body">{pin.seed_note}</ThemedText> : null}
+          <ThemedText type="footnote" themeColor="textSecondary">
             {SEEDED_LABEL}
           </ThemedText>
         </>
@@ -309,11 +311,13 @@ export default function MapScreen() {
             const selected = filter.value === dateFilter;
             return (
               <Pressable key={filter.value} onPress={() => setDateFilter(filter.value)}>
-                <ThemedView
-                  type={selected ? 'backgroundSelected' : 'background'}
-                  style={styles.dateChip}>
-                  <ThemedText type={selected ? 'smallBold' : 'small'}>{filter.label}</ThemedText>
-                </ThemedView>
+                <GlassSurface variant="clear" tinted={selected} radius={Radius.pill}>
+                  <View style={styles.dateChip}>
+                    <ThemedText type="footnote" style={selected ? styles.chipSelected : undefined}>
+                      {filter.label}
+                    </ThemedText>
+                  </View>
+                </GlassSurface>
               </Pressable>
             );
           })}
@@ -331,16 +335,16 @@ export default function MapScreen() {
             styles.emptyBanner,
             { bottom: BottomTabInset + insets.bottom + Spacing.five + 64 },
           ]}>
-          <ThemedView style={styles.emptyCard}>
+          <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
             <ThemedText type="smallBold">
               {dateFilter === 'all'
                 ? `No pins in ${activeCity.cities.name} yet`
                 : `Nothing pinned for ${dateFilter} yet`}
             </ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="footnote" themeColor="textSecondary">
               Be the first — drop a pin where you&apos;re headed and travelers here will see it.
             </ThemedText>
-          </ThemedView>
+          </GlassSurface>
         </Pressable>
       ) : null}
 
@@ -367,7 +371,7 @@ export default function MapScreen() {
       ) : null}
 
       {selectedPin && activeCityId != null ? (
-        <View style={[styles.cardWrap, { bottom: BottomTabInset + insets.bottom + Spacing.four }]}>
+        <Sheet onClose={() => setSelectedPinId(null)}>
           {isGuest && !selectedPin.seeded ? (
             <SignUpGate reason="See who's going and say hi" cta="Create an account" compact />
           ) : (
@@ -377,7 +381,7 @@ export default function MapScreen() {
               onClose={() => setSelectedPinId(null)}
             />
           )}
-        </View>
+        </Sheet>
       ) : null}
     </View>
   );
@@ -399,10 +403,12 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingHorizontal: Spacing.three,
   },
+  chipSelected: {
+    fontWeight: '600',
+  },
   cityChip: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.sm,
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 6,
@@ -416,9 +422,8 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   dateChip: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-    borderRadius: Spacing.five,
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.xs,
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 4,
@@ -462,13 +467,8 @@ const styles = StyleSheet.create({
     right: Spacing.four,
   },
   emptyCard: {
-    gap: Spacing.one,
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    padding: Space.lg,
+    gap: Space.xs,
   },
   fab: {
     position: 'absolute',
@@ -495,14 +495,8 @@ const styles = StyleSheet.create({
     right: Spacing.three,
   },
   pinCard: {
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
-    gap: Spacing.two,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    gap: Space.md,
+    backgroundColor: 'transparent',
   },
   pinCardHeader: {
     flexDirection: 'row',

@@ -79,11 +79,11 @@ export function useRespondToRequest() {
   });
 }
 
-export function useMyChats() {
+export function useMyChats(archived = false) {
   const userId = useOwnUserId();
   return useQuery({
-    queryKey: ['chats', userId],
-    queryFn: fetchMyChats,
+    queryKey: ['chats', userId, String(archived)],
+    queryFn: () => fetchMyChats(archived),
     enabled: isSupabaseConfigured && userId != null,
   });
 }
