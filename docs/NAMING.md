@@ -150,6 +150,35 @@ both state the shared-presence fact. Samewhere is coined, so more ownable and
 brandable; Also Here is built from words any English learner knows and is
 slightly more available. That is the whole trade.
 
+### Round five — plain-language co-presence phrases
+
+The founder liked Also Here's direction: plain words stating a fact about being
+in the same place, rather than a metaphor. Mining that vein produced the first
+bare `.com` hits in ~900 candidates.
+
+| Name             | Free              | Note                                                          |
+| ---------------- | ----------------- | ------------------------------------------------------------- |
+| **Same Here**    | 5/8               | Everyday agreement _and_ literal co-location — double meaning |
+| **Here Too**     | 6/8               | The most concise form of the fact                             |
+| **Both Here**    | 7/8               | States mutuality, not just presence                           |
+| **Someone Here** | 8/8 · `.com` free | Warm and faintly poetic; best availability found anywhere     |
+| **Same Town**    | 7/8               | Plainest and clearest; zero ambiguity                         |
+| **Anyone Here**  | 7/8               | The question you call into a room                             |
+| **Same Week**    | 6/8               | Says the _temporal_ overlap where the others say spatial      |
+| **Who Else**     | 5/8               | The literal question the app answers                          |
+| **New Here**     | 4/8               | The exact sentence a traveler says; invites welcome           |
+| **Same Boat**    | 4/8               | Warm idiom, unmistakably platonic, quietly travel-adjacent    |
+
+Discarded despite perfect availability: **Who's Else** (`whoselse.com` is free
+because it is ungrammatical) and **Same Scene** (vague, and a "scene" is
+something you are outside of).
+
+**Same Here** is the strongest result of this round. It is not a compromise
+between Samewhere and Also Here — it is their overlap: it shares the `Same` root
+with the former, has the plain-language legibility of the latter, and adds a
+genuine double meaning neither has. A name that means two true things at once is
+usually a good sign.
+
 ## Current recommendation
 
 1. **Rove** — the pick if "short and modern" is the priority. Four letters,
