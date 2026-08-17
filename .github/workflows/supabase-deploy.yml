@@ -81,3 +81,13 @@ jobs:
       - name: Migrations — after
         if: ${{ inputs.dry_run != true }}
         run: npx --yes "$SUPABASE_CLI" migration list --project-ref "$PROJECT_REF" -p "$DB_PASSWORD"
+
+      - name: Troubleshooting hint
+        if: failure()
+        run: |
+          echo "::error::Deploy failed. If the log above shows 401/Unauthorized or"
+          echo "'Invalid access token', SUPABASE_ACCESS_TOKEN has expired — personal"
+          echo "access tokens are time-limited. Generate a new one at"
+          echo "https://supabase.com/dashboard/account/tokens and update the"
+          echo "repository secret (Settings → Secrets and variables → Actions)."
+          echo "Rotating it affects only this pipeline — never the running app."
