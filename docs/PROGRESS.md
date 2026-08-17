@@ -383,12 +383,20 @@ All six phases are built. What remains is founder-gated, not engineering-gated:
 4. **Supabase project (the one real blocker)** — full step-by-step walkthrough now lives
    in [`SUPABASE_SETUP.md`](SUPABASE_SETUP.md) (~15 min: create project → copy two keys →
    `.env` → `supabase db push` → auth settings → verify).
-5. **Anthropic API key (enables live moderation)** — Phase 5's classifier is deployed but
-   dormant until you create a key at console.anthropic.com, store it with
-   `npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...`, schedule `moderation-worker`,
-   and flip the two `app_config` flags (exact steps in SUPABASE_SETUP.md §6). Cost at v1
-   volume is negligible (fractions of a cent per screened message/photo). Until then the
-   regex pre-filter still blocks the obvious cases.
+5. **Anthropic API key** — ✅ **done.** The key is in GitHub repo secrets and was synced
+   to Edge Function secrets by deploy run 4 (2026-08-17). Two manual steps remain before
+   live moderation is actually ON, and **the order matters**:
+   1. Dashboard → Edge Functions → `moderation-worker` → **schedule it every minute**
+      (check `push-worker` has one too). The DB sweeps are already on pg_cron from the
+      migrations; only the workers need this.
+   2. **Then** flip the flags in the SQL Editor:
+      `update public.app_config set value='true' where key in
+('require_llm_moderation','require_photo_moderation');`
+
+   Flag-before-worker would silently queue every first message and photo with nothing
+   to release them. Worker-before-flag is safe. Cost at v1 volume is negligible
+   (fractions of a cent per screened message/photo).
+
 6. **Apple Developer Program** ($99/yr) — needed before Apple Sign-In can be tested
    end-to-end (entitlement + Services ID, then enable the Apple provider in Supabase Auth).
    Email auth works without it. Also unlocks EAS dev builds, push (Phase 4), TestFlight
