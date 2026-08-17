@@ -221,13 +221,35 @@ modern (Rove, Ajar, Amble), evocative (Cairn, Tern, Sonder), non-English (Junto,
 Vamos, Pamoja), and descriptive (Travel Friends). There is no seventh direction
 being held back.
 
-## Current recommendation
+## DECIDED: Samewhere (2026-08-17)
 
-1. **Rove** — the pick if "short and modern" is the priority. Four letters,
-   travel-native, globally pronounceable, no dating read.
-2. **Samewhere** — the safer pick. Best meaning, genuinely uncrowded at 6/8 free,
-   survived every round of shortlisting on merit. Nine letters is its only flaw.
-3. **Who's In** — instantly clear to a first-timer, zero negative reading.
+Chosen after six rounds and ~950 candidates. It led on the combination that
+mattered — meaning (it states the mechanic: same place, same time), ownability
+(coined, so trademarkable and clean in search), and availability (6/8, the least
+crowded of any strong name) — and it was the founder's favourite in five
+consecutive rounds, which is its own signal.
+
+Wired through: `app.json` (name, slug, scheme), bundle identifier, the welcome
+screen, `README.md`, `package.json`, `APP_STORE.md`, and the privacy policy.
+
+**Still provisional in one respect.** No App Store collision check was possible
+from the build sandbox — the iTunes Search API is blocked. Until the founder
+searches the App Store for "Samewhere" and near-spellings, treat the name as
+unverified. Swapping it now costs minutes; after the first submission the bundle
+identifier is permanent.
+
+**Bundle identifier: `com.mattmoore.samewhere`** — kept under the existing
+`com.mattmoore` namespace rather than `com.samewhere.*`, because the convention
+is to use a reverse-domain you control, and `samewhere.com` is registered to
+someone else.
+
+### Runners-up, for the record
+
+1. **Same Here** — the strongest late find. Shares the `Same` root, adds a real
+   double meaning (agreement + co-location). Would be the first alternative.
+2. **Also Here** — plain-language legibility for non-native speakers; 7/8 free.
+3. **Rove** — the pick had "short and modern" won out.
+4. **Ajar** — best four-letter option; the open-door image is the right feeling.
 
 Withdrawn: **Tagalong** was ranked first before its saturation was measured; it
 came back 8/8 taken. **Amble** was a founder favourite but is 16/17 taken

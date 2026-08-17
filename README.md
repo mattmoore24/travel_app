@@ -1,4 +1,4 @@
-# Travel App (working name TBD)
+# Samewhere
 
 A free iPhone app for travelers to make **platonic** friends and see what other travelers are
 doing in a city. Explicitly not a dating app — enforced by design (accept-gated messaging,

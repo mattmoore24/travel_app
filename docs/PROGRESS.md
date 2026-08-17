@@ -393,12 +393,17 @@ All six phases are built. What remains is founder-gated, not engineering-gated:
    end-to-end (entitlement + Services ID, then enable the Apple provider in Supabase Auth).
    Email auth works without it. Also unlocks EAS dev builds, push (Phase 4), TestFlight
    (Phase 6).
-7. **Bundle identifier** — still `com.mattmoore.travelapp` (change now if you want a
-   different reverse-domain; painful later).
-8. **Working name** — still open; full slate and research in
-   [`NAMING.md`](NAMING.md). Shortlist: **Tagalong**, **Who's In**, **Samewhere**.
-   Blocked on an App Store name search, which can only be done from a device —
-   the sandbox can reach neither the iTunes Search API nor RDAP/WHOIS.
+7. **Bundle identifier** — now `com.mattmoore.samewhere`. Deliberately kept under the
+   `com.mattmoore` namespace rather than `com.samewhere.*`, because the convention is to
+   use a reverse-domain you actually control and `samewhere.com` belongs to someone else.
+   This is the last comfortable moment to change it — it is fixed after the first App
+   Store submission.
+8. **Working name** — **Samewhere**, chosen after six rounds and ~950 candidates
+   ([`NAMING.md`](NAMING.md)). One check is still owed and only the founder can run
+   it: an **App Store search** for the name. The sandbox can reach neither the
+   iTunes Search API nor RDAP/WHOIS, so no collision check was possible from here.
+   Everything is wired up, but treat the name as provisional until that search
+   comes back clean — it is cheap to swap now and expensive after submission.
 9. **Branch** — everything is on `claude/travel-app-initial-setup-ephphz`; merge to `main`
    via PR whenever you're ready.
 

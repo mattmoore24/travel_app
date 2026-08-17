@@ -8,7 +8,7 @@ in PROGRESS.md). Everything below that needs no membership is already done.
 
 | Item                                                   | Status                                                                                 |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| Bundle id `com.mattmoore.travelapp`                    | ✅ in app.json (change now or never)                                                   |
+| Bundle id `com.mattmoore.samewhere`                    | ✅ in app.json (locked before first submission)                                        |
 | In-app account deletion (5.1.1(v))                     | ✅ Profile → Delete account (Edge Function)                                            |
 | UGC safety set (1.2): report/block/moderate            | ✅ Phases 4–5, DB-enforced                                                             |
 | UGC terms agreement + in-app guidelines (1.2)          | ✅ welcome screen consent + `/guidelines` screen                                       |
@@ -21,7 +21,7 @@ in PROGRESS.md). Everything below that needs no membership is already done.
 | Community guidelines + privacy policy (hosted)         | 📄 drafts in docs/legal/ — founder review, then host for the App Store URL field       |
 | Apple Developer Program                                | ⬜ founder                                                                             |
 | App icon final pass, screenshots                       | ⬜ after TestFlight build exists                                                       |
-| Working name decision                                  | ⬜ founder (candidates in PROGRESS.md)                                                 |
+| Working name decision                                  | ✅ **Samewhere** — App Store search still owed (docs/NAMING.md)                        |
 
 ## EAS environment variables (do this before the first build)
 

@@ -1,15 +1,15 @@
 {
   "expo": {
-    "name": "Travel App",
-    "slug": "travel-app",
+    "name": "Samewhere",
+    "slug": "samewhere",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "travelapp",
+    "scheme": "samewhere",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.mattmoore.travelapp",
+      "bundleIdentifier": "com.mattmoore.samewhere",
       "supportsTablet": false,
       "usesAppleSignIn": true,
       "infoPlist": {

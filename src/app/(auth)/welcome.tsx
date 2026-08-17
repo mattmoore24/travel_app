@@ -47,7 +47,7 @@ export default function WelcomeScreen() {
             tintColor={theme.tint}
           />
           <ThemedText type="title" style={styles.centerText}>
-            Travel App
+            Samewhere
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
             Make real friends on the road. See what travelers are up to in your city — never where

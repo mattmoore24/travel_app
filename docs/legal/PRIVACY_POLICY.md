@@ -7,7 +7,7 @@
 
 _Last updated: [date]_
 
-**[App name]** ("we") helps travelers make platonic friends. This policy
+**Samewhere** ("we") helps travelers make platonic friends. This policy
 explains what we collect, why, and your choices.
 
 ## What we collect
