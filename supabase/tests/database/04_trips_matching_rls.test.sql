@@ -36,14 +36,14 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select lives_ok(
   $$ insert into public.trips (user_id, city_id, start_date, end_date)
      values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(),
-             current_date + 30, current_date + 40) $$,
+             current_date + 3, current_date + 13) $$,
   'trip creation works'
 );
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 insert into public.trips (user_id, city_id, start_date, end_date)
   values ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(),
-          current_date + 35, current_date + 45);
+          current_date + 8, current_date + 18);
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 insert into public.trips (user_id, city_id, start_date, end_date)
@@ -72,7 +72,7 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 select results_eq(
   $$ select user_id, overlap_start, overlap_end from public.get_matches() $$,
   $$ values ('00000000-0000-0000-0000-00000000000a'::uuid,
-             current_date + 35, current_date + 40) $$,
+             current_date + 8, current_date + 13) $$,
   'get_matches computes the shared window'
 );
 
@@ -80,7 +80,7 @@ select results_eq(
 reset role;
 insert into public.trips (user_id, city_id, start_date, end_date)
   values ('00000000-0000-0000-0000-00000000000d', pg_temp.lisbon(),
-          current_date + 30, current_date + 40);
+          current_date + 3, current_date + 13);
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select is(
   (select count(*)::int from public.trips
@@ -137,7 +137,7 @@ select throws_ok(
 select throws_ok(
   $$ insert into public.trips (user_id, city_id, start_date, end_date)
      select '00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(),
-            current_date + 30 + i, current_date + 32 + i
+            current_date + 1 + i, current_date + 3 + i
      from generate_series(1, 5) i $$,
   '23514',
   null,

@@ -30,8 +30,8 @@ create function pg_temp.lisbon() returns int language sql as
 
 -- Alice & Bob overlap, request, accept -> chat. (The full Phase 2 loop.)
 insert into public.trips (user_id, city_id, start_date, end_date) values
-  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), current_date + 30, current_date + 40),
-  ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), current_date + 35, current_date + 45);
+  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), current_date + 3, current_date + 13),
+  ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), current_date + 8, current_date + 18);
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 select lives_ok(

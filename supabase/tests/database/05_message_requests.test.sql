@@ -32,8 +32,8 @@ create function pg_temp.lisbon() returns int language sql as
 
 -- Alice and Bob overlap in Lisbon; Cara has no trip at all.
 insert into public.trips (user_id, city_id, start_date, end_date) values
-  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), current_date + 30, current_date + 40),
-  ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), current_date + 35, current_date + 45);
+  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), current_date + 3, current_date + 13),
+  ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), current_date + 8, current_date + 18);
 
 -- Send.
 select pg_temp.login('00000000-0000-0000-0000-00000000000b');
@@ -190,7 +190,7 @@ select throws_ok(
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 insert into public.trips (user_id, city_id, start_date, end_date)
   values ('00000000-0000-0000-0000-00000000000c', pg_temp.lisbon(),
-          current_date + 36, current_date + 44);
+          current_date + 9, current_date + 17);
 select is(
   (public.send_message_request(
      '00000000-0000-0000-0000-00000000000b', 'trip_match',
