@@ -9,3 +9,4 @@
              establishment rooms + reactions) and ANTHROPIC_API_KEY sync for moderation-worker
 2026-08-17 — deploy run 5: pg_cron schedules for moderation-worker and push-worker
              (credentials read from Vault, never committed)
+2026-08-17 — deploy run 6: worker diagnostics (invoke log + worker_status)

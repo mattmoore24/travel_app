@@ -1,6 +1,6 @@
 -- Establishment rooms, guest mode, reactions, and the 14-day traveler window.
 begin;
-select plan(40);
+select plan(42);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -347,6 +347,17 @@ select throws_ok(
   '23514',
   null,
   'an unknown worker name is refused, not interpolated into a URL'
+);
+
+-- worker_status reports infrastructure state; it must not be reachable from a
+-- session role either.
+select ok(
+  not has_function_privilege('anon', 'public.worker_status()', 'execute'),
+  'anon cannot read worker diagnostics'
+);
+select ok(
+  not has_function_privilege('authenticated', 'public.worker_status()', 'execute'),
+  'authenticated cannot read worker diagnostics'
 );
 
 select * from finish();
