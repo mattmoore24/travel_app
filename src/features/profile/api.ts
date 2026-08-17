@@ -1,9 +1,16 @@
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
-import { PROFILE_COLUMNS, type ProfileUpdate, type SocialPlatform } from '@/lib/database.types';
+import {
+  PROFILE_COLUMNS,
+  VERIFICATION_REQUEST_COLUMNS,
+  type ProfileUpdate,
+  type SocialPlatform,
+  type VerificationRequestRow,
+} from '@/lib/database.types';
 import { supabase } from '@/lib/supabase';
 
 export const PHOTO_BUCKET = 'profile-photos';
+export const VERIFICATION_BUCKET = 'verification-selfies';
 const PHOTO_MAX_DIMENSION = 1440;
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
@@ -67,12 +74,12 @@ function randomId(): string {
 }
 
 /**
- * Downscale + JPEG-compress a picked image, upload it under the owner's
- * storage folder (<user_id>/<random>.jpg — the write policy keys off that
- * prefix), then register it in profile_photos (which runs the moderation
- * stub server-side).
+ * Downscale + JPEG-compress a picked image and upload it under the owner's
+ * storage folder (<user_id>/<random>.jpg — the write policies key off that
+ * prefix). Returns the storage path. Shared by profile photos and
+ * verification selfies.
  */
-export async function uploadPhoto(userId: string, localUri: string, position: number) {
+async function processAndUploadImage(bucket: string, userId: string, localUri: string) {
   const context = ImageManipulator.manipulate(localUri);
   context.resize({ width: PHOTO_MAX_DIMENSION });
   const rendered = await context.renderAsync();
@@ -82,24 +89,36 @@ export async function uploadPhoto(userId: string, localUri: string, position: nu
   const response = await fetch(result.uri);
   const body = await response.arrayBuffer();
 
-  const { error: uploadError } = await supabase.storage
-    .from(PHOTO_BUCKET)
+  const { error } = await supabase.storage
+    .from(bucket)
     .upload(storagePath, body, { contentType: 'image/jpeg' });
-  if (uploadError) {
-    throw uploadError;
+  if (error) {
+    throw error;
   }
+  return storagePath;
+}
 
+/** Best-effort cleanup when the row/RPC step after an upload fails. */
+async function removeUploadedImage(bucket: string, storagePath: string) {
+  const { error } = await supabase.storage.from(bucket).remove([storagePath]);
+  if (error) {
+    console.warn(`orphaned storage object ${storagePath}: ${error.message}`);
+  }
+}
+
+/**
+ * Upload a photo, then register it in profile_photos (which runs the
+ * server-side moderation chokepoint).
+ */
+export async function uploadPhoto(userId: string, localUri: string, position: number) {
+  const storagePath = await processAndUploadImage(PHOTO_BUCKET, userId, localUri);
   const { data, error } = await supabase
     .from('profile_photos')
     .insert({ user_id: userId, storage_path: storagePath, position })
     .select()
     .single();
   if (error) {
-    // Don't leave an orphaned object behind if the row insert failed.
-    const { error: cleanupError } = await supabase.storage.from(PHOTO_BUCKET).remove([storagePath]);
-    if (cleanupError) {
-      console.warn(`orphaned storage object ${storagePath}: ${cleanupError.message}`);
-    }
+    await removeUploadedImage(PHOTO_BUCKET, storagePath);
     throw error;
   }
   return data;
@@ -128,6 +147,54 @@ export async function signedPhotoUrl(storagePath: string) {
     throw error;
   }
   return data.signedUrl;
+}
+
+/**
+ * Own account standing (users row is self-readable only). Suspended/banned
+ * accounts are gated at the root navigator — and, independently, at the DB
+ * layer, so this is UX, not enforcement.
+ */
+export async function fetchAccountStanding(userId: string) {
+  const { data, error } = await supabase
+    .from('users')
+    .select('status, suspended_until')
+    .eq('id', userId)
+    .single();
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function fetchLatestVerification(userId: string) {
+  const { data, error } = await supabase
+    .from('verification_requests')
+    .select(VERIFICATION_REQUEST_COLUMNS)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    throw error;
+  }
+  return data as VerificationRequestRow | null;
+}
+
+/**
+ * Upload a selfie into the write-only verification bucket and open a
+ * verification request. The selfie is only ever read server-side (the
+ * moderation worker compares it against profile photos, then deletes it).
+ */
+export async function submitVerificationSelfie(userId: string, localUri: string) {
+  const storagePath = await processAndUploadImage(VERIFICATION_BUCKET, userId, localUri);
+  const { data, error } = await supabase.rpc('submit_verification', {
+    p_storage_path: storagePath,
+  });
+  if (error) {
+    await removeUploadedImage(VERIFICATION_BUCKET, storagePath);
+    throw error;
+  }
+  return data;
 }
 
 export async function fetchOwnSocialHandles(userId: string) {

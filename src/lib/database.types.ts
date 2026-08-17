@@ -53,6 +53,7 @@ export type ProfilePhotoRow = {
   storage_path: string;
   position: number;
   moderation_status: ModerationStatus;
+  moderation_attempts: number;
   created_at: string;
 };
 
@@ -164,8 +165,31 @@ export type ReportReason =
 export type SendRequestResult = {
   request_id: string;
   delivered: boolean;
+  /**
+   * True when the message cleared the pre-filter but is held for LLM
+   * moderation (Phase 5). The UI treats queued like delivered — the recipient
+   * simply gets it a little later if it passes.
+   */
+  queued: boolean;
   blocked: boolean;
 };
+
+export type VerificationStatus = 'pending' | 'approved' | 'rejected';
+
+/**
+ * Client-readable slice of verification_requests — the raw model verdict and
+ * attempts counter have no SELECT grant.
+ */
+export type VerificationRequestRow = {
+  id: string;
+  user_id: string;
+  status: VerificationStatus;
+  reason: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+};
+
+export const VERIFICATION_REQUEST_COLUMNS = 'id, user_id, status, reason, created_at, reviewed_at';
 
 export type PinCategory =
   'bar' | 'restaurant' | 'club' | 'museum' | 'monument' | 'beach' | 'hike' | 'other';
@@ -211,6 +235,7 @@ export type Database = {
         Row: {
           id: string;
           status: UserStatus;
+          suspended_until: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -372,6 +397,13 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      verification_requests: {
+        // Insert goes through submit_verification(); verdicts are server-side.
+        Row: VerificationRequestRow;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       message_requests: {
         // Recipient-side view (senders read via sent_requests()); the
         // moderation_verdict column has no client grant — select explicit
@@ -449,6 +481,10 @@ export type Database = {
         Args: { p_city_id: number; p_date?: string | null };
         Returns: HeatCellRow[];
       };
+      submit_verification: {
+        Args: { p_storage_path: string };
+        Returns: { request_id: string; status: 'pending' };
+      };
     };
     Enums: {
       user_status: UserStatus;
@@ -458,6 +494,7 @@ export type Database = {
       chat_status: ChatStatus;
       trip_status: TripStatus;
       request_source: RequestSource;
+      verification_status: VerificationStatus;
     };
     CompositeTypes: Record<string, never>;
   };

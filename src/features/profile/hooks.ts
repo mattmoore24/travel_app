@@ -4,11 +4,14 @@ import { useAuthStore } from '@/features/auth/store';
 import {
   deletePhoto,
   deleteSocialHandle,
+  fetchAccountStanding,
+  fetchLatestVerification,
   fetchOwnProfile,
   fetchOwnSocialHandles,
   fetchPhotos,
   fetchPublicProfile,
   signedPhotoUrl,
+  submitVerificationSelfie,
   updateOwnProfile,
   uploadPhoto,
   upsertSocialHandle,
@@ -97,6 +100,36 @@ export function usePhotoUrl(storagePath: string | null) {
     enabled: isSupabaseConfigured && storagePath != null,
     staleTime: 50 * 60 * 1000,
     gcTime: 55 * 60 * 1000,
+  });
+}
+
+/** Own users row (status + suspension expiry) — drives the account gate. */
+export function useAccountStanding() {
+  const userId = useOwnUserId();
+  return useQuery({
+    queryKey: ['account-standing', userId],
+    queryFn: () => fetchAccountStanding(userId!),
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+export function useLatestVerification() {
+  const userId = useOwnUserId();
+  return useQuery({
+    queryKey: ['verification', userId],
+    queryFn: () => fetchLatestVerification(userId!),
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+export function useSubmitVerification() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (localUri: string) => submitVerificationSelfie(userId!, localUri),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['verification', userId] });
+    },
   });
 }
 

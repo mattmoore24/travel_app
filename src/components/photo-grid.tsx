@@ -51,6 +51,22 @@ function PhotoCell({ photo, size }: { photo: ProfilePhotoRow; size: number }) {
           </ThemedText>
         </View>
       ) : null}
+      {photo.moderation_status !== 'approved' ? (
+        <View
+          style={[
+            styles.statusBadge,
+            {
+              backgroundColor:
+                photo.moderation_status === 'rejected' ? theme.danger : theme.background,
+            },
+          ]}>
+          <ThemedText
+            type="small"
+            style={photo.moderation_status === 'rejected' ? { color: theme.onTint } : undefined}>
+            {photo.moderation_status === 'rejected' ? 'Removed' : 'In review'}
+          </ThemedText>
+        </View>
+      ) : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Remove photo"
@@ -69,8 +85,9 @@ function PhotoCell({ photo, size }: { photo: ProfilePhotoRow; size: number }) {
 
 /**
  * The 7-slot photo manager (slot 0 = main profile picture). Uploads are
- * resized client-side and land in the private bucket; the server-side
- * moderation stub approves and logs them (real pipeline in Phase 5).
+ * resized client-side and land in the private bucket. With photo moderation
+ * enabled server-side, new photos hold at "In review" (visible only to the
+ * owner) until the moderation worker approves or removes them.
  */
 export function PhotoGrid() {
   const theme = useTheme();
@@ -173,6 +190,14 @@ const styles = StyleSheet.create({
   badge: {
     position: 'absolute',
     left: Spacing.two,
+    bottom: Spacing.two,
+    borderRadius: Spacing.two,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 2,
+  },
+  statusBadge: {
+    position: 'absolute',
+    right: Spacing.two,
     bottom: Spacing.two,
     borderRadius: Spacing.two,
     paddingHorizontal: Spacing.two,

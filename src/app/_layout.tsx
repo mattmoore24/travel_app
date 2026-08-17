@@ -12,7 +12,7 @@ import { Spacing } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
 import { useAuthListener } from '@/features/auth/use-auth-listener';
-import { useOwnProfile } from '@/features/profile/hooks';
+import { useAccountStanding, useOwnProfile } from '@/features/profile/hooks';
 import { queryClient } from '@/lib/query-client';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -44,20 +44,63 @@ function ProfileLoadError({ onRetry, retrying }: { onRetry: () => void; retrying
   );
 }
 
+// The DB independently refuses suspended/banned accounts on the abuse
+// channels (message requests, request responses, chat sends, verification);
+// other writes are merely invisible to others via the visibility helpers.
+// This screen tells the user what happened instead of surfacing permission
+// errors — it is UX, not the enforcement layer.
+function AccountGate({
+  status,
+  suspendedUntil,
+}: {
+  status: string;
+  suspendedUntil: string | null;
+}) {
+  const suspended = status === 'suspended';
+  const until = suspendedUntil ? new Date(suspendedUntil) : null;
+  return (
+    <ThemedView style={styles.errorRoot}>
+      <SafeAreaView style={styles.errorContent}>
+        <ThemedText type="subtitle" style={styles.errorText}>
+          {suspended ? 'Account suspended' : 'Account banned'}
+        </ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.errorText}>
+          {suspended
+            ? `Your account broke our community guidelines and is suspended${
+                until ? ` until ${until.toLocaleDateString()}` : ''
+              }. This app is for platonic travel friendships.`
+            : 'Your account has been permanently banned for repeated violations of our community guidelines.'}
+        </ThemedText>
+        <PrimaryButton
+          variant="ghost"
+          label="Sign out"
+          onPress={() => {
+            signOut().catch(() => {});
+          }}
+        />
+      </SafeAreaView>
+    </ThemedView>
+  );
+}
+
 function RootNavigator() {
   useAuthListener();
   const session = useAuthStore((s) => s.session);
   const initialized = useAuthStore((s) => s.initialized);
   const profileQuery = useOwnProfile();
+  const standingQuery = useAccountStanding();
 
   const signedIn = session != null;
   const onboarded = profileQuery.data?.onboarding_completed_at != null;
   // Hold routing until the persisted session is restored and (when signed in)
-  // the first profile fetch settles — otherwise users flash through the wrong
-  // stack on cold start.
+  // the first profile + standing fetches settle — otherwise users flash
+  // through the wrong stack on cold start.
   const ready =
     initialized &&
-    (!signedIn || !isSupabaseConfigured || profileQuery.isSuccess || profileQuery.isError);
+    (!signedIn ||
+      !isSupabaseConfigured ||
+      ((profileQuery.isSuccess || profileQuery.isError) &&
+        (standingQuery.isSuccess || standingQuery.isError)));
 
   if (!ready) {
     return null;
@@ -67,6 +110,11 @@ function RootNavigator() {
     return (
       <ProfileLoadError onRetry={() => profileQuery.refetch()} retrying={profileQuery.isFetching} />
     );
+  }
+
+  const standing = standingQuery.data;
+  if (signedIn && (standing?.status === 'suspended' || standing?.status === 'banned')) {
+    return <AccountGate status={standing.status} suspendedUntil={standing.suspended_until} />;
   }
 
   return (
@@ -80,6 +128,7 @@ function RootNavigator() {
       <Stack.Protected guard={signedIn && onboarded}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="verification" options={{ presentation: 'modal' }} />
         <Stack.Screen name="add-trip" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compose-request" options={{ presentation: 'modal' }} />
         <Stack.Screen name="drop-pin" options={{ presentation: 'modal' }} />

@@ -12,6 +12,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { LANGUAGES } from '@/constants/languages';
 import { signOut } from '@/features/auth/api';
 import {
+  useLatestVerification,
   useOwnPhotos,
   useOwnProfile,
   useOwnSocialHandles,
@@ -58,6 +59,7 @@ export default function ProfileScreen() {
   const { data: profile } = useOwnProfile();
   const { data: photos = [] } = useOwnPhotos();
   const { data: handles = [] } = useOwnSocialHandles();
+  const { data: verification } = useLatestVerification();
 
   if (!isSupabaseConfigured) {
     return (
@@ -149,6 +151,13 @@ export default function ProfileScreen() {
 
         <View style={styles.actions}>
           <PrimaryButton label="Edit profile" onPress={() => router.push('/edit-profile')} />
+          {!profile?.verified ? (
+            <PrimaryButton
+              variant="ghost"
+              label={verification?.status === 'pending' ? 'Verification in review' : 'Get verified'}
+              onPress={() => router.push('/verification')}
+            />
+          ) : null}
           <PrimaryButton
             variant="danger"
             label="Sign out"
