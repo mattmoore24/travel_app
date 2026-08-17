@@ -119,9 +119,6 @@ function RootNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      {/* Outside every guard: the guidelines must be readable BEFORE sign-up
-          (the welcome screen links to them) and from the profile tab after. */}
-      <Stack.Screen name="guidelines" options={{ presentation: 'modal' }} />
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
@@ -145,6 +142,11 @@ function RootNavigator() {
         />
         <Stack.Screen name="report" options={{ presentation: 'modal' }} />
       </Stack.Protected>
+      {/* Outside every guard so it's readable BEFORE sign-up (the welcome
+          screen links to it) and from the profile tab after — but declared
+          LAST: the first child of the stack becomes the anchor route, and an
+          unguarded screen in that slot swallows every cold start. */}
+      <Stack.Screen name="guidelines" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }
