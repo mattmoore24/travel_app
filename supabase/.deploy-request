@@ -1,0 +1,5 @@
+# Touch this file (any change) to trigger .github/workflows/supabase-deploy.yml
+# on the current branch: migrations, Edge Functions, and function secrets.
+# The line below is just a log of deploy requests.
+
+2026-08-17 — Phase 0-5 schema, push-worker + moderation-worker (initial provisioning)

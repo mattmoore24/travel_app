@@ -1,0 +1,83 @@
+# Applies database migrations and deploys Edge Functions to the hosted
+# Supabase project. Exists because the project is developed from devices that
+# can't run the Supabase CLI (phone/tablet) — GitHub's runners can.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_ACCESS_TOKEN   personal access token (supabase.com/dashboard/account/tokens)
+#   SUPABASE_PROJECT_REF    the ref in https://<ref>.supabase.co
+#   SUPABASE_DB_PASSWORD    database password chosen when the project was created
+# Optional:
+#   ANTHROPIC_API_KEY       synced to Edge Function secrets for moderation-worker
+#
+# Two ways to run it:
+#   * Commit any change to supabase/.deploy-request (works from any branch).
+#   * Actions → Supabase deploy → Run workflow (needs this file on the default
+#     branch; GitHub only lists workflow_dispatch workflows from there).
+name: Supabase deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Only list migrations that would be applied'
+        type: boolean
+        default: false
+  push:
+    paths:
+      - 'supabase/.deploy-request'
+
+# Never let two deploys touch the same database at once.
+concurrency:
+  group: supabase-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      # Pinned: the flags used below were verified against this version.
+      SUPABASE_CLI: supabase@2.114.0
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check required secrets
+        run: |
+          missing=()
+          [ -n "$SUPABASE_ACCESS_TOKEN" ] || missing+=(SUPABASE_ACCESS_TOKEN)
+          [ -n "$PROJECT_REF" ] || missing+=(SUPABASE_PROJECT_REF)
+          [ -n "$DB_PASSWORD" ] || missing+=(SUPABASE_DB_PASSWORD)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository secrets: ${missing[*]}"
+            echo "Add them under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Migrations — before
+        run: npx --yes "$SUPABASE_CLI" migration list --project-ref "$PROJECT_REF" -p "$DB_PASSWORD"
+
+      - name: Apply migrations
+        if: ${{ inputs.dry_run != true }}
+        run: npx --yes "$SUPABASE_CLI" db push --project-ref "$PROJECT_REF" -p "$DB_PASSWORD"
+
+      - name: Deploy Edge Functions
+        if: ${{ inputs.dry_run != true }}
+        # --use-api bundles server-side, so the runner needs no Docker.
+        run: npx --yes "$SUPABASE_CLI" functions deploy --project-ref "$PROJECT_REF" --use-api
+
+      - name: Sync Edge Function secrets
+        if: ${{ inputs.dry_run != true && env.ANTHROPIC_API_KEY != '' }}
+        run: |
+          npx --yes "$SUPABASE_CLI" secrets set \
+            ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" --project-ref "$PROJECT_REF"
+
+      - name: Migrations — after
+        if: ${{ inputs.dry_run != true }}
+        run: npx --yes "$SUPABASE_CLI" migration list --project-ref "$PROJECT_REF" -p "$DB_PASSWORD"
