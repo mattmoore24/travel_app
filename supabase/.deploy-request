@@ -5,3 +5,5 @@
 2026-08-17 — Phase 0-5 schema, push-worker + moderation-worker (initial provisioning)
 2026-08-17 — deploy run 2: secrets configured, provisioning the project
 2026-08-17 — deploy run 3: Phase 6 launch hardening (rate limits, admin views, delete-account)
+2026-08-17 — deploy run 4: Phase 7 schema (pending_moderation enum, photo slots, guest mode,
+             establishment rooms + reactions) and ANTHROPIC_API_KEY sync for moderation-worker
