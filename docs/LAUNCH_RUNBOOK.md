@@ -30,7 +30,7 @@ select vault.create_secret('<service_role_key>',        'service_role_key');
 ```
 
 Confirm before going further — `select jobname, active from cron.job;` lists
-both workers, and `select status, count(*) from net._http_response group by 1;`
+both workers, and `select status_code, error_msg from net._http_response order by created desc limit 5;`
 shows 200s. A 401 means the key was pasted wrong (`vault.update_secret` to fix).
 
 **c. Only then, flip the flags:**

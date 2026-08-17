@@ -397,7 +397,7 @@ All six phases are built. What remains is founder-gated, not engineering-gated:
    ```
 
    Verify with `select jobname, active from cron.job;` and
-   `select status, count(*) from net._http_response group by 1;` — 200s mean the workers
+   `select status_code, error_msg from net._http_response order by created desc limit 5;` — 200s mean the workers
    are being reached. **Then** turn moderation on:
 
    ```sql
