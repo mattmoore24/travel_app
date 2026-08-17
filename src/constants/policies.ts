@@ -8,8 +8,11 @@
  * them in step when either changes.
  */
 
-/** Founder: replace before submission (also in docs/legal/*). */
-export const SUPPORT_EMAIL = 'support@example.com';
+/**
+ * Founder's inbox for now — swap for a dedicated support address before
+ * launch (it also appears in docs/legal/* and on the App Store listing).
+ */
+export const SUPPORT_EMAIL = 'mattmoorefb24@gmail.com';
 
 export const ZERO_TOLERANCE =
   'Zero tolerance: flirting, sexual content, harassment, and abusive users are removed.';

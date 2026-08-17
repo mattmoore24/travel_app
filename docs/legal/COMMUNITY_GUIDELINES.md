@@ -41,4 +41,6 @@ don't send it.
 
 ## Contact
 
-Questions, appeals, or safety concerns: **[support email — founder to set up]**
+Questions, appeals, or safety concerns: **mattmoorefb24@gmail.com**
+
+_(Interim address — replace with a dedicated support inbox before launch.)_
