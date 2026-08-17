@@ -372,6 +372,7 @@ revoke execute on function public.get_matches() from public, anon;
 -- Message requests --------------------------------------------------------------
 
 create type public.request_source as enum ('trip_match', 'pin');
+-- Phase 5 appends 'pending_moderation' via its own ALTER TYPE migration.
 create type public.request_status as enum
   ('pending', 'accepted', 'declined', 'expired', 'blocked_by_moderation');
 
