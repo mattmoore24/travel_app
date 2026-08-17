@@ -8,7 +8,7 @@ export const AGE_MAX = 120;
 export const BIO_MAX = 500;
 export const NAME_MAX = 50;
 export const LANGUAGES_MAX = 12;
-export const PHOTOS_MAX = 7;
+export const PHOTOS_MAX = 9;
 
 export function validateDisplayName(value: string): string | null {
   const trimmed = value.trim();

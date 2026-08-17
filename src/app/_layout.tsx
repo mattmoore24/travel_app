@@ -127,6 +127,12 @@ function RootNavigator() {
       </Stack.Protected>
       <Stack.Protected guard={signedIn && onboarded}>
         <Stack.Screen name="(tabs)" />
+        {/* Profile left the tab bar (three tabs now) — it opens from the
+            avatar in the Map/Travelers headers. */}
+        <Stack.Screen
+          name="profile-me"
+          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        />
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
         <Stack.Screen name="verification" options={{ presentation: 'modal' }} />
         <Stack.Screen name="add-trip" options={{ presentation: 'modal' }} />

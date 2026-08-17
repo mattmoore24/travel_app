@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PrimaryButton } from '@/components/form/primary-button';
+import { AvatarButton } from '@/components/ui/avatar-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
@@ -277,25 +278,29 @@ export default function MapScreen() {
       )}
 
       <View style={[styles.cityBar, { top: insets.top + Spacing.two }]} pointerEvents="box-none">
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.cityChips}>
-          {launchCities.map((city) => {
-            const selected = city.city_id === activeCityId;
-            return (
-              <Pressable key={city.city_id} onPress={() => selectCity(city.city_id)}>
-                <ThemedView
-                  type={selected ? 'backgroundSelected' : 'background'}
-                  style={styles.cityChip}>
-                  <ThemedText type={selected ? 'smallBold' : 'small'}>
-                    {city.cities.name}
-                  </ThemedText>
-                </ThemedView>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <View style={styles.headerRow} pointerEvents="box-none">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.cityChips}
+            style={styles.cityScroll}>
+            {launchCities.map((city) => {
+              const selected = city.city_id === activeCityId;
+              return (
+                <Pressable key={city.city_id} onPress={() => selectCity(city.city_id)}>
+                  <ThemedView
+                    type={selected ? 'backgroundSelected' : 'background'}
+                    style={styles.cityChip}>
+                    <ThemedText type={selected ? 'smallBold' : 'small'}>
+                      {city.cities.name}
+                    </ThemedText>
+                  </ThemedView>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          <AvatarButton />
+        </View>
         <View style={styles.dateRow}>
           {DATE_FILTERS.map((filter) => {
             const selected = filter.value === dateFilter;
@@ -428,6 +433,15 @@ const styles = StyleSheet.create({
   },
   markerEmoji: {
     fontSize: 16,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingRight: Spacing.three,
+  },
+  cityScroll: {
+    flex: 1,
   },
   emptyBanner: {
     position: 'absolute',

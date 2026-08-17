@@ -27,11 +27,8 @@ export default function AppTabs() {
           <TabTrigger name="travelers" href="/travelers" asChild>
             <TabButton>Travelers</TabButton>
           </TabTrigger>
-          <TabTrigger name="inbox" href="/inbox" asChild>
-            <TabButton>Inbox</TabButton>
-          </TabTrigger>
-          <TabTrigger name="profile" href="/profile" asChild>
-            <TabButton>Profile</TabButton>
+          <TabTrigger name="chat" href="/chat" asChild>
+            <TabButton>Chat</TabButton>
           </TabTrigger>
         </CustomTabList>
       </TabList>

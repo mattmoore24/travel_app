@@ -1,13 +1,14 @@
 import { ActivityIndicator, Pressable, StyleSheet, type PressableProps } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type PrimaryButtonProps = Omit<PressableProps, 'children'> & {
   label: string;
   loading?: boolean;
-  variant?: 'filled' | 'ghost' | 'danger';
+  /** `filled` is the one primary action per screen; everything else is quiet. */
+  variant?: 'filled' | 'ghost' | 'danger' | 'tonal';
 };
 
 export function PrimaryButton({
@@ -22,18 +23,20 @@ export function PrimaryButton({
   const inactive = disabled || loading;
 
   const background =
-    variant === 'filled' ? theme.tint : variant === 'danger' ? 'transparent' : 'transparent';
+    variant === 'filled' ? theme.accent : variant === 'tonal' ? theme.accentSoft : 'transparent';
   const labelColor =
-    variant === 'filled' ? theme.onTint : variant === 'danger' ? theme.danger : theme.tint;
+    variant === 'filled' ? theme.onAccent : variant === 'danger' ? theme.danger : theme.accent;
 
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(inactive), busy: loading }}
       disabled={inactive}
       style={({ pressed }) => [
         styles.button,
         { backgroundColor: background },
-        variant !== 'filled' && styles.ghost,
+        variant === 'filled' && Elevation.raised,
+        variant !== 'filled' && variant !== 'tonal' && styles.quiet,
         pressed && styles.pressed,
         inactive && styles.disabled,
       ]}
@@ -41,7 +44,7 @@ export function PrimaryButton({
       {loading ? (
         <ActivityIndicator color={labelColor} />
       ) : (
-        <ThemedText type="smallBold" style={{ color: labelColor }}>
+        <ThemedText type="callout" style={[styles.label, { color: labelColor }]}>
           {label}
         </ThemedText>
       )}
@@ -51,20 +54,23 @@ export function PrimaryButton({
 
 const styles = StyleSheet.create({
   button: {
-    minHeight: 50,
-    borderRadius: Spacing.three,
+    minHeight: 52,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: Space.xl,
     alignSelf: 'stretch',
   },
-  ghost: {
-    minHeight: 44,
+  quiet: {
+    minHeight: HitTarget,
+  },
+  label: {
+    fontWeight: '600',
   },
   pressed: {
-    opacity: 0.75,
+    opacity: 0.72,
   },
   disabled: {
-    opacity: 0.45,
+    opacity: 0.4,
   },
 });

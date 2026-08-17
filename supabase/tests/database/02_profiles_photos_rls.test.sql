@@ -135,22 +135,22 @@ select is(
   'stub logged the moderation decision'
 );
 
--- 7-photo cap.
+-- 9-photo cap: 1 profile photo + 8 gallery slots (docs/DESIGN.md).
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select lives_ok(
   $$ insert into public.profile_photos (user_id, storage_path, position)
      select '00000000-0000-0000-0000-00000000000a',
             '00000000-0000-0000-0000-00000000000a/p' || i || '.jpg', i
-     from generate_series(1, 6) as i $$,
-  'can fill all 7 slots'
+     from generate_series(1, 8) as i $$,
+  'can fill all 9 slots'
 );
 select throws_ok(
   $$ insert into public.profile_photos (user_id, storage_path, position)
      values ('00000000-0000-0000-0000-00000000000a',
-             '00000000-0000-0000-0000-00000000000a/p8.jpg', 6) $$,
+             '00000000-0000-0000-0000-00000000000a/p10.jpg', 8) $$,
   '23514',
   null,
-  '8th photo rejected'
+  '10th photo rejected'
 );
 
 -- Shadowban: Alice disappears for Bob but not for herself.
