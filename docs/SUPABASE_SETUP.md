@@ -72,16 +72,37 @@ In the dashboard: **Authentication → Sign In / Providers → Email**:
 
 Apple Sign-In stays off until the Apple Developer account exists — email auth works today.
 
-## 6. Deploy the Edge Functions (~2 min, optional but recommended)
+## 6. Deploy the Edge Functions (~3 min, optional but recommended)
 
-Push notifications and (Phase 5) moderation run as Supabase Edge Functions:
+Push notifications and Claude moderation run as Supabase Edge Functions:
 
 ```bash
 npx supabase functions deploy push-worker
+npx supabase functions deploy moderation-worker
 ```
 
-Then in the dashboard: **Edge Functions → push-worker → add a schedule** (every minute).
+Then in the dashboard: **Edge Functions → each function → add a schedule** (every minute).
 Details: [`supabase/functions/README.md`](../supabase/functions/README.md).
+
+**To turn on live Claude moderation** (first-message classification, photo review, selfie
+verification) you additionally need an Anthropic API key
+([console.anthropic.com](https://console.anthropic.com) → API keys):
+
+```bash
+npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-your-key
+```
+
+then flip the feature flags (SQL Editor):
+
+```sql
+update public.app_config set value = 'true' where key = 'require_llm_moderation';
+update public.app_config set value = 'true' where key = 'require_photo_moderation';
+```
+
+Order matters: deploy + schedule + secret FIRST, then the flags — while a flag is on,
+messages/photos wait for the worker's verdict and nothing is delivered unscreened. Skip
+this entirely for now if you want: the built-in regex pre-filter keeps blocking the
+obvious cases, and selfie verification simply stays "in review" until the worker runs.
 
 ## 7. Verify (~1 min)
 
@@ -106,9 +127,10 @@ cross join (values
 
 ## What still needs nothing / other keys
 
-| Works immediately with just these keys           | Needs something else later                                         |
-| ------------------------------------------------ | ------------------------------------------------------------------ |
-| Sign-up, onboarding, profiles, photos            | Apple Sign-In (Apple dev account)                                  |
-| Trips, matching, requests, moderation pre-filter | Push delivery on device (Apple dev + EAS build)                    |
-| The map, pins, heatmap, seeded pins              | Claude moderation classifier (Phase 5, `ANTHROPIC_API_KEY` secret) |
-| Realtime chat, block/report/unmatch              | PostHog metrics (`EXPO_PUBLIC_POSTHOG_API_KEY` in `.env`)          |
+| Works immediately with just these keys           | Needs something else later                                        |
+| ------------------------------------------------ | ----------------------------------------------------------------- |
+| Sign-up, onboarding, profiles, photos            | Apple Sign-In (Apple dev account)                                 |
+| Trips, matching, requests, moderation pre-filter | Push delivery on device (Apple dev + EAS build)                   |
+| The map, pins, heatmap, seeded pins              | Claude moderation + selfie verification (`ANTHROPIC_API_KEY`, §6) |
+| Realtime chat, block/report/unmatch              | PostHog metrics (`EXPO_PUBLIC_POSTHOG_API_KEY` in `.env`)         |
+| Strike system, suspensions, admin report queue   |                                                                   |

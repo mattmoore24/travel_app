@@ -3,7 +3,74 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current status: **Phase 4 complete** (2026-08-16) — pending live keys for end-to-end
+## Current status: **Phase 5 complete** (2026-08-17) — pending live keys for end-to-end
+
+### Phase 5 — Trust & safety: done
+
+**Database (pgTAP suite now 209 asserts, all green):**
+
+- [x] **Hard rule 5 completed**: with `require_llm_moderation` on, a first message that
+      clears the regex pre-filter is HELD (`pending_moderation` — invisible to the
+      recipient, masked as "sent" to the sender, no push) until the Claude classifier's
+      verdict; the only exit from the held state is a service-role-only RPC. Fail-closed:
+      API outages never deliver an unscreened message (and never strike innocent senders —
+      failsafe blocks are non-strike and retryable)
+- [x] Server-only `app_config` flags (`require_llm_moderation`, `require_photo_moderation`,
+      both default off) keep keyless dev/CI on exact Phase 2–4 behavior
+- [x] **Strike ladder** on the `moderation_events` audit spine: 3 strikes → warning push,
+      5 → 7-day suspension, 7 → permanent ban; suspensions auto-lift (pg_cron, guarded);
+      all transitions audit-logged and pushed
+- [x] **Standing gates in Postgres**: suspended/banned accounts refused at
+      `send_message_request`, `respond_to_message_request`, chat-message RLS, and
+      verification; blocks filed while a message is held sever it, and release re-validates
+      the pair (belt and braces — both tested)
+- [x] Photo moderation swap-in: flag on → uploads hold at `pending` (owner-only visible)
+      for Claude vision review; reject = strike + push; flag off = Phase 1 stub behavior
+- [x] Selfie verification: write-only `verification-selfies` bucket (no client reads,
+      ever), `submit_verification` RPC (own-folder + object checks, one pending, 3/day),
+      Claude-vision likeness verdict → `profiles.verified` badge + server-only evidence.
+      Honestly labeled a likeness check, not identity/liveness verification
+- [x] **Admin report review queue**: `admin_report_queue` view (status, strike count,
+      report totals per reported user) + `admin_resolve_report`
+      (dismiss/warn/strike/suspend/ban/shadowban) — service-role only, runtime-guarded
+- [x] 75 new pgTAP assertions covering every gate, privilege, and ladder step above
+
+**Edge Function (`supabase/functions/moderation-worker`):**
+
+- [x] Drains all three queues (~1/min schedule): held messages, pending photos, pending
+      verifications; `claude-opus-5` with structured outputs (typed allow/block verdicts);
+      model refusals treated as blocks; retry bookkeeping with failsafe caps;
+      `ANTHROPIC_API_KEY` lives only as a Supabase secret
+
+**App:**
+
+- [x] Account gate screen (suspended-with-date / banned) at the root navigator —
+      `users.status` + `suspended_until` are self-readable; DB enforcement is independent
+- [x] Get-verified flow: profile-tab entry → selfie capture (front camera, library
+      fallback) → write-only upload → status card (in review / rejected reason / verified)
+- [x] Photo grid shows "In review" / "Removed" badges from the live moderation status
+- [x] Code-review pass: 12 findings, all fixed. Standouts: the strike ladder's
+      suspend→lift path could launder a shadowban into a fully active account; a
+      shadowbanned sender's released message would have ghost-notified its recipient (now
+      full-illusion suppression: "delivered" to the sender, silently declined in the DB);
+      the Phase 5 migration would have failed on any already-provisioned database (enum
+      value now lands via its own ALTER TYPE migration); admin actions that can't apply
+      logged phantom audit events (now raise); verification selfies are deleted from
+      storage the moment a verdict lands
+- [x] Verified: typecheck, lint, format, 25 Jest tests, 209 pgTAP tests
+
+### Phase 5 deliverable check
+
+"A flirtatious first message from a test account is blocked before delivery and logged":
+proven twice over in `08_trust_safety.test.sql` — the pre-filter path blocks instantly
+(Phase 2, still tested) and the classifier path holds → blocks → strikes → notifies without
+the recipient ever seeing a row. Live end-to-end additionally needs the Supabase project +
+`ANTHROPIC_API_KEY` secret + the two flags flipped (see
+[`SUPABASE_SETUP.md`](SUPABASE_SETUP.md)).
+
+---
+
+Previous phases below.
 
 ### Phase 4 — Chat & realtime: done
 
@@ -185,14 +252,11 @@ Create account → build full profile → view own profile: **implemented and co
 end-to-end execution needs a real Supabase project (keys below). The DB layer is fully
 tested locally; the moment `.env` is filled and migrations are pushed, the flow is live.
 
-## Next: Phase 5 — Trust & safety pipeline
+## Next: Phase 6 — Launch hardening
 
-The Claude moderation classifier behind the existing `screen_first_message` seam (Edge
-Function + ANTHROPIC_API_KEY secret), strike system (warn → suspend → ban) on
-`moderation_events`, selfie verification flow (liveness vendor decision), photo moderation
-swap-in for the Phase 1 stub, and the report review queue. The chokepoints, audit spine,
-and server-owned columns are already in place, so Phase 5 is mostly replacing stub engines
-with real ones.
+Rate limiting at the API layer, abuse-resistance review, App Store prep (privacy labels,
+review notes for the moderation pipeline), TestFlight via EAS, PostHog liquidity dashboard,
+seeded-pin content plan for the launch cities, and a real device pass over the whole app.
 
 ## Needs founder input
 
@@ -211,15 +275,21 @@ with real ones.
 4. **Supabase project (the one real blocker)** — full step-by-step walkthrough now lives
    in [`SUPABASE_SETUP.md`](SUPABASE_SETUP.md) (~15 min: create project → copy two keys →
    `.env` → `supabase db push` → auth settings → verify).
-5. **Apple Developer Program** ($99/yr) — needed before Apple Sign-In can be tested
+5. **Anthropic API key (enables live moderation)** — Phase 5's classifier is deployed but
+   dormant until you create a key at console.anthropic.com, store it with
+   `npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...`, schedule `moderation-worker`,
+   and flip the two `app_config` flags (exact steps in SUPABASE_SETUP.md §6). Cost at v1
+   volume is negligible (fractions of a cent per screened message/photo). Until then the
+   regex pre-filter still blocks the obvious cases.
+6. **Apple Developer Program** ($99/yr) — needed before Apple Sign-In can be tested
    end-to-end (entitlement + Services ID, then enable the Apple provider in Supabase Auth).
    Email auth works without it. Also unlocks EAS dev builds, push (Phase 4), TestFlight
    (Phase 6).
-6. **Bundle identifier** — still `com.mattmoore.travelapp` (change now if you want a
+7. **Bundle identifier** — still `com.mattmoore.travelapp` (change now if you want a
    different reverse-domain; painful later).
-7. **Working name** — unchanged ask; candidates: Overlap, Pinned, Samewhere, Crossings,
+8. **Working name** — unchanged ask; candidates: Overlap, Pinned, Samewhere, Crossings,
    Meanwhile, Waypoint.
-8. **Branch** — everything is on `claude/travel-app-initial-setup-ephphz`; merge to `main`
+9. **Branch** — everything is on `claude/travel-app-initial-setup-ephphz`; merge to `main`
    via PR whenever you're ready.
 
 ## Open technical flags
@@ -228,9 +298,10 @@ Note per brief §6 ("instrument from day one"): PostHog wiring is scheduled for 
 the first liquidity events (trips/matching) — Phase 1 has no meaningful liquidity events to
 record. Flagging the small deferral for your sign-off.
 
-See "Technical flags" in [`ARCHITECTURE.md`](ARCHITECTURE.md). New this phase: Apple
-Sign-In/photo upload need an EAS dev build for full testing (Expo Go covers email auth +
-everything else); selfie-verification liveness vendor still a Phase 5 decision.
+See "Technical flags" in [`ARCHITECTURE.md`](ARCHITECTURE.md). New this phase: selfie
+verification shipped as an honestly-labeled Claude-vision likeness check — a certified
+liveness vendor stays a deliberate deferral until fraud data justifies the cost; LLM
+moderation adds ~1min max delivery latency (worker schedule) while the flag is on.
 
 ## Phase ledger
 
@@ -241,5 +312,5 @@ everything else); selfie-verification liveness vendor still a Phase 5 decision.
 | 2 — Trips & matching | ✅ done | Overlap request → accept → chat shell (E2E pending keys)  |
 | 3 — The Map (hero)   | ✅ done | Compelling map with 15 pins (seeding path ready)          |
 | 4 — Chat & realtime  | ✅ done | Full loop to live conversation (E2E pending keys)         |
-| 5 — Trust & safety   | ⏭ next  | Flirty first message blocked + logged                     |
-| 6 — Launch hardening | ⬜      | Geofenced launch cities, TestFlight, dashboards           |
+| 5 — Trust & safety   | ✅ done | Flirty first message blocked + logged (proven in pgTAP)   |
+| 6 — Launch hardening | ⏭ next  | Geofenced launch cities, TestFlight, dashboards           |

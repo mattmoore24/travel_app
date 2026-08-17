@@ -211,6 +211,67 @@ created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited p
   and silently skips Expo Go / simulator / pre-EAS setups.
 - **Chat list** — `my_chats()` now carries last-message preview and orders by last activity.
 
+## Trust & safety (Phase 5)
+
+Hard rule 5 is now complete: the regex pre-filter (Phase 2) plus a Claude classification
+stage, both in front of delivery.
+
+- **Feature flags** (`app_config`, server-only): `require_llm_moderation` and
+  `require_photo_moderation`, both default **false** so keyless dev/CI runs exactly the
+  Phase 2–4 behavior. Flip them (SQL editor) only after `ANTHROPIC_API_KEY` is set and
+  `moderation-worker` is deployed + scheduled — held items don't move otherwise.
+- **First-message pipeline** (flag on): pre-filter block → immediate `blocked_by_moderation`
+  (unchanged); pre-filter pass → **`pending_moderation`** — invisible to the recipient
+  (RLS), masked as plain "sent" for the sender, no push. `supabase/functions/
+moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structured
+  output: allow/block + category + confidence) and applies the verdict through
+  `apply_message_verdict`, the **only** transition out of the held state —
+  service-role-only (EXECUTE revoked from clients + runtime `auth.role()` guard). Allow
+  releases the request (push fires then); block lands as `blocked_by_moderation` with a
+  strike and sender feedback. Fail-closed semantics: API failures leave the message held;
+  after 10 attempts it's blocked with engine `failsafe` (sender told to retry, **no**
+  strike); a model refusal is treated as a block. Release re-validates the pair — a block
+  filed while held, a sender no longer plain-active, a recipient turned invisible, or a
+  chat already formed via the reverse direction all end in a silent decline — and
+  `sever_on_block` also declines held requests.
+- **Strike ladder** (trigger on `moderation_events`; strike actions: `blocked`,
+  `llm_blocked`, `photo_rejected`, `admin_strike`): 3 strikes → warning (event + push),
+  5 → 7-day suspension, 7 → permanent ban. Deterministic, advisory-locked per user,
+  audit-logged. Suspensions lift via `lift_expired_suspensions()` (pg_cron, guarded).
+- **Standing gates at the DB layer**: suspended/banned callers are refused by
+  `send_message_request`, `respond_to_message_request`, `submit_verification`, and
+  `can_send_in_chat` (chat RLS). Shadowbanned users get the full illusion instead: their
+  message requests report "delivered" but land directly as `declined` (audit action
+  `shadowban_suppressed`) — no push, no inbox row, nothing the recipient can ever see —
+  and they keep chatting in chats that already exist. The strike ladder never _suspends_ a
+  shadowbanned account (that would both reveal the shadowban and launder it into `active`
+  when the suspension lifts); they still hit the ban rung. The client adds an account-gate
+  screen (`users.status`/`suspended_until` are self-readable), but that's UX; enforcement
+  is in Postgres.
+- **Photo moderation** (flag on): uploads hold at `pending` (owner-only visible — the
+  Phase 1 RLS already gates others on `approved`); the worker classifies via Claude vision
+  on a short-lived signed URL and applies `apply_photo_verdict` (reject = strike + push).
+  Photos that repeatedly fail classification are failsafe-removed without a strike (owner
+  told to re-upload) rather than left stuck "in review". Flag off = the Phase 1
+  auto-approve stub.
+- **Selfie verification**: selfie goes to a **write-only** private bucket
+  (`verification-selfies` — clients have no SELECT policy at all); `submit_verification`
+  (caller-scoped RPC: own-folder path check, object-exists check, requires an approved
+  profile photo to compare against, one pending at a time, 3/day cap) opens a request; the
+  worker compares selfie vs up to two approved profile photos with Claude vision and
+  applies `apply_verification_verdict` — approve sets `profiles.verified` + evidence into
+  the server-only `verification` jsonb; reject carries a user-facing reason. The selfie
+  object is **deleted from storage as soon as a verdict lands** (data minimization — the
+  audit trail is the verdict, not the image). **Honesty note (also in the UI): this is a
+  likeness plausibility check, not certified liveness/identity verification** — the vendor
+  upgrade path stays flagged.
+- **Admin review queue**: `admin_report_queue` view (open reports + reported user's status,
+  strike count, total reports) and `admin_resolve_report(report_id, action, note)` with
+  actions dismiss/warn/strike/suspend/ban/shadowban — both service-role-only (SQL editor
+  or a future dashboard). `strike` feeds the ladder; direct suspend/ban bypass it. An
+  action that can't apply to the account's current status (e.g. suspending a banned user)
+  raises instead of resolving the report and logging a phantom audit event.
+
 ## Privacy & secrets model
 
 - `EXPO_PUBLIC_*` env vars ship inside the client bundle. Only the Supabase URL + anon key
@@ -234,9 +295,15 @@ created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited p
 4. **React Compiler + typed routes** are enabled by the SDK 57 template (`experiments` in
    `app.json`). Kept on; if the compiler misbehaves with any dependency it can be switched off
    in one line.
-5. **Selfie verification** (Phase 5): true liveness detection needs a vendor SDK (e.g. iProov,
-   FaceTec, AWS Rekognition Liveness). Claude vision can do face-match plausibility but is not
-   a liveness system — vendor evaluation flagged for Phase 5, with cost.
+5. **Selfie verification** (Phase 5 — shipped as plausibility check): the implemented flow is
+   Claude-vision face-match plausibility, honestly labeled in the UI ("likeness check, not an
+   identity document check"). True liveness (challenge-response, anti-replay) needs a vendor
+   SDK (e.g. iProov, FaceTec, AWS Rekognition Liveness) — evaluate when verification fraud
+   becomes a real problem, with cost.
+6. **LLM moderation cost/latency** (Phase 5): with `require_llm_moderation` on, every first
+   message costs one `claude-opus-5` call (~1–3s, fractions of a cent) and delivery is
+   delayed by up to the worker's schedule interval (~1min). Fine at v1 volume; if it ever
+   matters, the classifier model is one constant in `moderation-worker`.
 
 ## Client auth & profile architecture (Phase 1)
 
@@ -297,3 +364,17 @@ created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited p
 - **2026-08-16 (Phase 4)** — Push delivery is queue-and-drain (DB triggers + scheduled Edge
   Function) rather than webhook-per-event: testable in pgTAP, no dashboard wiring in the
   critical path, and at-least-once semantics with retry on transport failure.
+- **2026-08-17 (Phase 5)** — LLM moderation is a held state + service-role verdict RPC, not
+  an inline API call from the send RPC: sends stay fast and keyless dev works, while "no
+  path to delivery without a verdict" stays structural. Same queue-and-drain worker pattern
+  as push.
+- **2026-08-17 (Phase 5)** — Moderation failures fail **closed** (message stays held, then
+  failsafe-blocks with no strike) — hard rule 5 outranks delivery latency; an outage must
+  never deliver an unscreened message, and must never put innocent users on the strike
+  ladder.
+- **2026-08-17 (Phase 5)** — Strikes are derived from `moderation_events` (the audit spine)
+  rather than a separate counter table: every strike is inherently evidence-backed, and the
+  ladder is re-computable.
+- **2026-08-17 (Phase 5)** — Selfie verification ships as an honest Claude-vision likeness
+  check (labeled as such in the UI), not fake "identity verification"; certified liveness
+  is a vendor decision deferred until fraud data justifies the cost.
