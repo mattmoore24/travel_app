@@ -54,9 +54,6 @@ export function CustomTabList(props: TabListProps) {
   return (
     <View {...props} style={styles.tabListContainer}>
       <ThemedView type="backgroundElement" style={styles.innerContainer}>
-        <ThemedText type="smallBold" style={styles.brandText}>
-          Travel App
-        </ThemedText>
         {props.children}
       </ThemedView>
     </View>
@@ -64,9 +61,14 @@ export function CustomTabList(props: TabListProps) {
 }
 
 const styles = StyleSheet.create({
+  // Bottom-anchored like the real iOS tab bar. Anchoring it to the top made it
+  // float over every screen's title, since web reports a zero top safe-area
+  // inset; screens reserve room for it below via BottomTabInset.
   tabListContainer: {
     position: 'absolute',
-    width: '100%',
+    left: 0,
+    right: 0,
+    bottom: 0,
     padding: Spacing.three,
     justifyContent: 'center',
     alignItems: 'center',
@@ -74,16 +76,14 @@ const styles = StyleSheet.create({
   },
   innerContainer: {
     paddingVertical: Spacing.two,
-    paddingHorizontal: Spacing.five,
+    paddingHorizontal: Spacing.three,
     borderRadius: Spacing.five,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-around',
     flexGrow: 1,
     gap: Spacing.two,
     maxWidth: MaxContentWidth,
-  },
-  brandText: {
-    marginRight: 'auto',
   },
   pressed: {
     opacity: 0.7,

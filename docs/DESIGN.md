@@ -198,21 +198,42 @@ Up to **9 photos**: one profile photo plus 8 gallery slots (the brief asks for
 at least 6 beyond the first; 8 gives room without turning the profile into a
 scroll marathon). Reorder by drag, first slot is always the avatar.
 
+Both profile screens open on a **full-bleed 4:5 hero** with the name set in
+white over a bottom gradient (`PhotoScrim`, backed by `expo-linear-gradient` —
+banded `View` stacks were visibly stepped on flat-coloured images). Leading with
+the face is the one thing every profile-driven app converged on: it makes the
+person, not the form fields, the thing you react to.
+
+Your own gallery renders **empty dashed slots up to 6**, which does the nudging
+that a sentence of copy can't. It stays a nudge — onboarding still only requires
+the profile photo, because an account you're asked to finish before you've seen
+anything is exactly the friction the guest ladder exists to avoid.
+
 ## Build order
 
-1. **Tokens + primitives** — palette, type, space, glass surface, buttons,
-   cards. Nothing user-visible changes shape yet, but everything gets the new
-   material. ← _in progress_
-2. **Three-tab IA** — Chat tab absorbs the inbox; profile moves behind the
+1. ~~**Tokens + primitives**~~ — palette, type, space, glass surface, buttons,
+   cards.
+2. ~~**Three-tab IA**~~ — Chat tab absorbs the inbox; profile moves behind the
    avatar.
-3. **Screen-by-screen redesign** — Map (full-bleed + sheet), Travelers (big
+3. ~~**Screen-by-screen redesign**~~ — Map (full-bleed + sheet), Travelers (big
    photo cards), Chat (sectioned list), Profile.
-4. **Guest mode** — anon policies, featured traveler, gates.
-5. **Establishment rooms** — schema, lifecycle sweep, moderation tools, UI.
-6. **Reactions + chat photos.**
+4. ~~**Guest mode**~~ — anon policies, featured traveler, gates.
+5. ~~**Establishment rooms**~~ — schema, lifecycle sweep, moderation tools, UI.
+6. ~~**Reactions + chat photos.**~~
 
 Each stage ships green (typecheck, lint, tests, pgTAP) and gets screenshots in
 the PR description.
+
+### Verifying a screen actually changed
+
+Screens are checked by exporting the real bundle (`npx expo export -p web`)
+against the mock API in the scratchpad and screenshotting it with Playwright.
+Two rounds of that were wasted reading a **stale static server** — the process
+holding the port was still serving a build from two exports earlier, so correct
+code looked broken and got "fixed" repeatedly. Kill the listener by port
+(`ss -lptnH 'sport = :54332'`), not by `pkill -f`, which matches the calling
+shell's own command line and takes the shell down with it. Confirm the new
+server logged `serving` before trusting a single pixel.
 
 ## Sources
 

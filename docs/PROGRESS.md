@@ -3,7 +3,7 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current status: **Phase 7 in progress — design overhaul + guest mode + rooms** (2026-08-17)
+## Current status: **Phase 7 complete — design overhaul + guest mode + rooms** (2026-08-17)
 
 ### Phase 7 — Beautiful, frictionless, and room-shaped
 
@@ -30,8 +30,16 @@ Glass is the native language now, and `expo-glass-effect` ships in our SDK, so
       photos go through the same moderation pipeline as profile photos, which
       is not optional in a publicly-readable room
 - [x] 36 new database assertions (suite: **268**)
-- [ ] Screen-by-screen visual redesign (Map bottom sheet, big-photo traveler
-      cards, sectioned chat list) — next
+- [x] **Screen-by-screen visual redesign** — map pin detail is a real bottom
+      sheet under floating glass controls; traveler cards lead with a 4:5
+      photo; the chat list splits into requests / pinned / chats / rooms /
+      archived; both profile screens open on a full-bleed hero photo with the
+      name set over a gradient scrim, and your own gallery shows empty slots up
+      to the six-photo target rather than describing the gap
+- [x] **Web preview is honest again** — the web-only tab bar was anchored to
+      the top and floating over every screen title (web reports a zero top
+      safe-area inset). It now sits at the bottom like the real iOS tab bar,
+      and screens reserve room for it
 
 ---
 
@@ -414,3 +422,4 @@ moderation adds ~1min max delivery latency (worker schedule) while the flag is o
 | 4 — Chat & realtime  | ✅ done | Full loop to live conversation (E2E pending keys)         |
 | 5 — Trust & safety   | ✅ done | Flirty first message blocked + logged (proven in pgTAP)   |
 | 6 — Launch hardening | ✅ done | Rate limits, deletion, dashboards, runbook, store prep    |
+| 7 — Design overhaul  | ✅ done | Guest-first 3-tab app, rooms, photo-forward screens       |

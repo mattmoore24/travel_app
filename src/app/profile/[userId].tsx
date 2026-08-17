@@ -7,8 +7,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ProfileHero } from '@/components/ui/profile-hero';
 import { LANGUAGES } from '@/constants/languages';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { useBlockUser } from '@/features/chat/hooks';
 import { usePhotoUrl, usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
@@ -17,11 +18,11 @@ const LANGUAGE_LABELS: Record<string, string> = Object.fromEntries(
   LANGUAGES.map((l) => [l.value, l.label])
 );
 
-function Photo({ path, style }: { path: string; style: object }) {
+function GalleryPhoto({ path }: { path: string }) {
   const theme = useTheme();
   const { data: url } = usePhotoUrl(path);
   return (
-    <View style={[style, { backgroundColor: theme.backgroundElement }]}>
+    <View style={[styles.galleryPhoto, { backgroundColor: theme.surfaceSunken }]}>
       {url ? <Image source={{ uri: url }} style={styles.fill} contentFit="cover" /> : null}
     </View>
   );
@@ -58,59 +59,46 @@ export default function PublicProfileScreen() {
 
   const mainPhoto = photos.find((p) => p.position === 0) ?? photos[0] ?? null;
   const gallery = photos.filter((p) => p.id !== mainPhoto?.id);
+  const home = [profile.home_city, profile.home_country].filter(Boolean).join(', ');
 
   return (
     <ThemedView style={styles.root}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        {mainPhoto ? <Photo path={mainPhoto.storage_path} style={styles.mainPhoto} /> : null}
+        <ProfileHero
+          storagePath={mainPhoto?.storage_path ?? null}
+          name={profile.display_name ?? 'Traveler'}
+          age={profile.age ?? null}
+          verified={profile.verified}
+          subtitle={home ? `From ${home}` : null}
+        />
 
-        <View style={styles.nameRow}>
-          <ThemedText type="subtitle">
-            {profile.display_name ?? 'Traveler'}
-            {profile.age != null ? `, ${profile.age}` : ''}
-          </ThemedText>
-          {profile.verified ? (
-            <SymbolView
-              name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
-              size={20}
-              tintColor={theme.tint}
-            />
-          ) : null}
-        </View>
-
-        {profile.home_city || profile.home_country ? (
-          <ThemedText themeColor="textSecondary">
-            From {[profile.home_city, profile.home_country].filter(Boolean).join(', ')}
-          </ThemedText>
-        ) : null}
+        {profile.bio ? <ThemedText type="body">{profile.bio}</ThemedText> : null}
 
         {profile.languages.length > 0 ? (
           <View style={styles.chipWrap}>
             {profile.languages.map((code) => (
-              <ThemedView key={code} type="backgroundElement" style={styles.langChip}>
-                <ThemedText type="small">{LANGUAGE_LABELS[code] ?? code}</ThemedText>
+              <ThemedView key={code} type="surfaceSunken" style={styles.chip}>
+                <ThemedText type="footnote">{LANGUAGE_LABELS[code] ?? code}</ThemedText>
               </ThemedView>
             ))}
           </View>
         ) : null}
 
-        {profile.bio ? <ThemedText>{profile.bio}</ThemedText> : null}
-
         {gallery.length > 0 ? (
           <View style={styles.gallery}>
             {gallery.map((photo) => (
-              <Photo key={photo.id} path={photo.storage_path} style={styles.galleryPhoto} />
+              <GalleryPhoto key={photo.id} path={photo.storage_path} />
             ))}
           </View>
         ) : null}
 
-        <ThemedView type="backgroundElement" style={styles.lockedCard}>
+        <ThemedView type="surfaceSunken" style={styles.lockedCard}>
           <SymbolView
             name={{ ios: 'lock.fill', android: 'lock', web: 'lock' }}
-            size={14}
+            size={13}
             tintColor={theme.textSecondary}
           />
-          <ThemedText type="small" themeColor="textSecondary">
+          <ThemedText type="footnote" themeColor="textSecondary" style={styles.lockedText}>
             Social handles stay hidden until you both accept a chat.
           </ThemedText>
         </ThemedView>
@@ -175,56 +163,51 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: MaxContentWidth,
   },
+  // A native header already covers the safe area on this screen.
   content: {
-    padding: Spacing.four,
-    gap: Spacing.three,
+    gap: Space.lg,
+    paddingHorizontal: Space.lg,
+    paddingTop: Space.sm,
+    paddingBottom: Space.xxxl,
   },
   fill: {
     width: '100%',
     height: '100%',
   },
-  mainPhoto: {
-    width: '100%',
-    aspectRatio: 4 / 5,
-    borderRadius: Spacing.three,
-    overflow: 'hidden',
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
   chipWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.two,
+    gap: Space.sm,
   },
-  langChip: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.one,
-    borderRadius: Spacing.five,
+  chip: {
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.xs,
+    borderRadius: Radius.pill,
   },
   gallery: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: Spacing.two,
+    gap: Space.sm,
   },
   galleryPhoto: {
-    width: '48.5%',
+    width: '48%',
     aspectRatio: 4 / 5,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
     overflow: 'hidden',
   },
   lockedCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
+    gap: Space.sm,
+    padding: Space.md,
+    borderRadius: Radius.lg,
+  },
+  lockedText: {
+    flex: 1,
   },
   safetyRow: {
     flexDirection: 'row',
-    gap: Spacing.two,
+    gap: Space.sm,
   },
   safetyButton: {
     flex: 1,

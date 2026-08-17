@@ -17,6 +17,7 @@ The founder's proposed stack was adopted as-is; concrete versions locked at scaf
 | Backend        | Supabase (Postgres, Auth, Realtime, Storage, Edge Functions, RLS, PostGIS)                    | supabase-js v2                           |
 | Maps           | `react-native-maps` (Apple Maps) vs Mapbox — **decision deferred to Phase 3**, criteria below | —                                        |
 | Moderation     | Supabase Edge Function → Anthropic API + regex pre-filter (Phase 5)                           | —                                        |
+| Visual polish  | `expo-glass-effect` (iOS 26 Liquid Glass), `expo-linear-gradient` (photo scrims) — Phase 7    | both ~57                                 |
 | Push           | Expo Notifications (Phase 4)                                                                  | —                                        |
 | Analytics      | PostHog (Phase 2+)                                                                            | —                                        |
 | Builds/updates | EAS Build + EAS Update (cloud; no local Mac)                                                  | —                                        |

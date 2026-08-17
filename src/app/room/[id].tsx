@@ -166,6 +166,19 @@ export default function RoomScreen() {
     });
   };
 
+  const confirmLeave = () =>
+    Alert.alert('Leave this room?', 'You can join again while you are in town.', [
+      { text: 'Stay', style: 'cancel' },
+      {
+        text: 'Leave',
+        style: 'destructive',
+        onPress: () => {
+          leave.mutate();
+          router.back();
+        },
+      },
+    ]);
+
   return (
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -174,10 +187,23 @@ export default function RoomScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
           <View style={styles.header}>
-            <ThemedText type="headline">{membership?.title ?? 'Guest room'}</ThemedText>
+            <View style={styles.headerRow}>
+              <ThemedText type="headline" style={styles.headerTitle} numberOfLines={1}>
+                {membership?.title ?? 'Guest room'}
+              </ThemedText>
+              {/* Leaving lives up here, not under the composer — a destructive
+                  action one thumb-width from Send is an accident waiting. */}
+              {isMember ? (
+                <Pressable accessibilityRole="button" onPress={confirmLeave} hitSlop={8}>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    Leave
+                  </ThemedText>
+                </Pressable>
+              ) : null}
+            </View>
             {isMember && membership?.expires_at ? (
               <ThemedText type="footnote" themeColor="textSecondary">
-                {membership.member_count} here · you leave this room on{' '}
+                {membership.member_count} here · anyone can read · you leave{' '}
                 {new Date(membership.expires_at).toLocaleDateString(undefined, {
                   day: 'numeric',
                   month: 'short',
@@ -237,9 +263,6 @@ export default function RoomScreen() {
             </View>
           ) : isMember ? (
             <View style={styles.composerWrap}>
-              <ThemedText type="caption" themeColor="textSecondary" style={styles.notice}>
-                ANYONE CAN READ THIS ROOM
-              </ThemedText>
               <View style={styles.composer}>
                 <PhotoButton
                   busy={sendPhoto.isPending}
@@ -283,24 +306,6 @@ export default function RoomScreen() {
                   />
                 </Pressable>
               </View>
-              <Pressable
-                onPress={() =>
-                  Alert.alert('Leave this room?', 'You can join again while you are in town.', [
-                    { text: 'Stay', style: 'cancel' },
-                    {
-                      text: 'Leave',
-                      style: 'destructive',
-                      onPress: () => {
-                        leave.mutate();
-                        router.back();
-                      },
-                    },
-                  ])
-                }>
-                <ThemedText type="footnote" themeColor="textSecondary" style={styles.leave}>
-                  Leave room
-                </ThemedText>
-              </Pressable>
             </View>
           ) : (
             <View style={styles.footer}>
@@ -344,6 +349,14 @@ const styles = StyleSheet.create({
     gap: Space.xs,
     paddingHorizontal: Space.lg,
     paddingBottom: Space.md,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+  },
+  headerTitle: {
+    flex: 1,
   },
   messages: {
     gap: Space.md,
@@ -408,12 +421,8 @@ const styles = StyleSheet.create({
     paddingVertical: Space.sm,
   },
   composerWrap: {
-    gap: Space.xs,
     paddingHorizontal: Space.lg,
     paddingBottom: Space.sm,
-  },
-  notice: {
-    textAlign: 'center',
   },
   composer: {
     flexDirection: 'row',
@@ -447,9 +456,5 @@ const styles = StyleSheet.create({
   },
   joinButton: {
     flex: 1,
-  },
-  leave: {
-    textAlign: 'center',
-    paddingTop: Space.xs,
   },
 });

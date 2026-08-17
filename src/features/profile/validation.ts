@@ -9,6 +9,13 @@ export const BIO_MAX = 500;
 export const NAME_MAX = 50;
 export const LANGUAGES_MAX = 12;
 export const PHOTOS_MAX = 9;
+/**
+ * Gallery photos (i.e. beyond the main one) a complete profile aims for. The
+ * brief asks for at least 6; the DB allows 8, so there is headroom above the
+ * target. This is a nudge, not a gate — onboarding still only requires the
+ * profile photo, because the account is meant to be cheap to create.
+ */
+export const GALLERY_TARGET = 6;
 
 export function validateDisplayName(value: string): string | null {
   const trimmed = value.trim();

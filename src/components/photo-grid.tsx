@@ -84,7 +84,7 @@ function PhotoCell({ photo, size }: { photo: ProfilePhotoRow; size: number }) {
 }
 
 /**
- * The 7-slot photo manager (slot 0 = main profile picture). Uploads are
+ * The 9-slot photo manager (slot 0 = main profile picture). Uploads are
  * resized client-side and land in the private bucket. With photo moderation
  * enabled server-side, new photos hold at "In review" (visible only to the
  * owner) until the moderation worker approves or removes them.
