@@ -16,20 +16,32 @@ Default config ships **dark**: photos auto-approve and only the regex filter
 screens messages. Do not let a build reach testers or App Review this way —
 the review notes claim LLM screening, and it must be true.
 
-```bash
-npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # or add the GitHub secret and redeploy
+**a. Key** — add `ANTHROPIC_API_KEY` to GitHub repo secrets and touch
+`supabase/.deploy-request`; the deploy workflow syncs it to Edge Function
+secrets. (Done 2026-08-17.)
+
+**b. Wake the workers** — the pg_cron jobs already exist from
+`20260817230000_schedule_workers.sql`, but they no-op until Vault has the two
+values they read. In the SQL editor, once:
+
+```sql
+select vault.create_secret('https://<ref>.supabase.co', 'project_url');
+select vault.create_secret('<service_role_key>',        'service_role_key');
 ```
 
-Then, in the SQL editor:
+Confirm before going further — `select jobname, active from cron.job;` lists
+both workers, and `select status, count(*) from net._http_response group by 1;`
+shows 200s. A 401 means the key was pasted wrong (`vault.update_secret` to fix).
+
+**c. Only then, flip the flags:**
 
 ```sql
 update app_config set value = 'true' where key = 'require_llm_moderation';
 update app_config set value = 'true' where key = 'require_photo_moderation';
 ```
 
-**Schedule both workers** (Dashboard → Edge Functions → the function →
-Schedules → every minute). Without a schedule, held messages never deliver
-and photos stay pending — fail-closed, but broken UX.
+Order matters: with a flag on and no worker reaching the function, every first
+message and photo waits in the held state — fail-closed, but broken UX.
 
 Verify: send a flirty first message from a test account → it must never
 arrive, and `select * from admin_moderation_stats;` must count it as blocked.

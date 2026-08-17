@@ -15,8 +15,18 @@ supabase functions deploy delete-account
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # moderation-worker only
 ```
 
-Then add a schedule for each in the Supabase dashboard (Edge Functions → the function →
-Schedules). `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided to functions
+Scheduling is **not** a dashboard step. `20260817230000_schedule_workers.sql` creates
+pg_cron jobs that invoke both workers every minute via `public.invoke_edge_worker`, so the
+schedule lives in the repo and rebuilds from a fresh clone. It reads the project URL and
+service-role key from Supabase Vault, which is populated once:
+
+```sql
+select vault.create_secret('https://<ref>.supabase.co', 'project_url');
+select vault.create_secret('<service_role_key>',        'service_role_key');
+```
+
+Until those secrets exist the invoker returns quietly, so deploy order does not matter.
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided to the functions themselves
 automatically.
 
 `moderation-worker` classifies with `claude-opus-5` and applies verdicts through
@@ -28,7 +38,7 @@ update public.app_config set value = 'true' where key = 'require_llm_moderation'
 update public.app_config set value = 'true' where key = 'require_photo_moderation';
 ```
 
-Flip the flags only AFTER the function is deployed, scheduled, and the secret is set —
+Flip the flags only AFTER the vault secrets exist and `cron.job` shows both workers —
 with a flag on and no worker running, new messages/photos wait in the held state
 (fail-closed by design; nothing is ever delivered unscreened).
 

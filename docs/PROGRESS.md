@@ -383,19 +383,30 @@ All six phases are built. What remains is founder-gated, not engineering-gated:
 4. **Supabase project (the one real blocker)** — full step-by-step walkthrough now lives
    in [`SUPABASE_SETUP.md`](SUPABASE_SETUP.md) (~15 min: create project → copy two keys →
    `.env` → `supabase db push` → auth settings → verify).
-5. **Anthropic API key** — ✅ **done.** The key is in GitHub repo secrets and was synced
-   to Edge Function secrets by deploy run 4 (2026-08-17). Two manual steps remain before
-   live moderation is actually ON, and **the order matters**:
-   1. Dashboard → Edge Functions → `moderation-worker` → **schedule it every minute**
-      (check `push-worker` has one too). The DB sweeps are already on pg_cron from the
-      migrations; only the workers need this.
-   2. **Then** flip the flags in the SQL Editor:
-      `update public.app_config set value='true' where key in
-('require_llm_moderation','require_photo_moderation');`
+5. **Anthropic API key** — ✅ **done.** Key is in GitHub repo secrets and synced to Edge
+   Function secrets (deploy run 4). The worker **schedules are also done** — they live in
+   `20260817230000_schedule_workers.sql` as pg_cron jobs rather than dashboard clicks, so
+   they rebuild from a fresh clone (deploy run 5).
 
-   Flag-before-worker would silently queue every first message and photo with nothing
-   to release them. Worker-before-flag is safe. Cost at v1 volume is negligible
-   (fractions of a cent per screened message/photo).
+   Two SQL statements remain, and the order matters. First, populate Vault so the cron
+   jobs can actually reach the functions (values from Settings → API):
+
+   ```sql
+   select vault.create_secret('https://<ref>.supabase.co', 'project_url');
+   select vault.create_secret('<service_role_key>',        'service_role_key');
+   ```
+
+   Verify with `select jobname, active from cron.job;` and
+   `select status, count(*) from net._http_response group by 1;` — 200s mean the workers
+   are being reached. **Then** turn moderation on:
+
+   ```sql
+   update public.app_config set value='true'
+   where key in ('require_llm_moderation','require_photo_moderation');
+   ```
+
+   Flags-before-workers would silently queue every first message and photo with nothing
+   to release them. Cost at v1 volume is negligible.
 
 6. **Apple Developer Program** ($99/yr) — needed before Apple Sign-In can be tested
    end-to-end (entitlement + Services ID, then enable the Apple provider in Supabase Auth).
