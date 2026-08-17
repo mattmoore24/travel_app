@@ -119,14 +119,26 @@ function RootNavigator() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={!signedIn}>
-        <Stack.Screen name="(auth)" />
+      {/* GUEST MODE: the tabs are the app's front door for everyone. A visitor
+          with no account browses the map, reads an establishment room and sees
+          one traveler; the account is asked for at the moment of action, not
+          at the door (docs/DESIGN.md). Signed-in-but-unfinished accounts are
+          the one exception — they finish onboarding first. */}
+      <Stack.Protected guard={!signedIn || onboarded}>
+        <Stack.Screen name="(tabs)" />
       </Stack.Protected>
       <Stack.Protected guard={signedIn && !onboarded}>
         <Stack.Screen name="onboarding" />
       </Stack.Protected>
+      {/* Reachable from every sign-up gate, signed in or not. */}
+      <Stack.Screen name="(auth)" />
+      {/* Establishment rooms are readable signed-out (the hostel's public
+          preview), so this sits outside the guards like guidelines does. */}
+      <Stack.Screen
+        name="room/[id]"
+        options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+      />
       <Stack.Protected guard={signedIn && onboarded}>
-        <Stack.Screen name="(tabs)" />
         {/* Profile left the tab bar (three tabs now) — it opens from the
             avatar in the Map/Travelers headers. */}
         <Stack.Screen

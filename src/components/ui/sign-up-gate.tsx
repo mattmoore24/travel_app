@@ -1,0 +1,50 @@
+import { router } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
+
+import { PrimaryButton } from '@/components/form/primary-button';
+import { ThemedText } from '@/components/themed-text';
+import { GlassSurface } from '@/components/ui/glass-surface';
+import { Radius, Space } from '@/constants/theme';
+
+/**
+ * The moment we ask for an account — and the only one. Always states WHY, in
+ * the words of the thing the person just tried to do, and never blocks
+ * anything they could already see (docs/DESIGN.md, "ask for nothing until you
+ * must").
+ */
+export function SignUpGate({
+  reason,
+  cta = 'Create an account',
+  compact = false,
+}: {
+  reason: string;
+  cta?: string;
+  compact?: boolean;
+}) {
+  return (
+    <GlassSurface radius={Radius.xl} style={compact ? styles.compact : styles.card}>
+      <View style={styles.inner}>
+        <ThemedText type="headline">{reason}</ThemedText>
+        <ThemedText type="footnote" themeColor="textSecondary">
+          Takes about a minute. Browsing stays free — an account is only needed to message, post or
+          join.
+        </ThemedText>
+        <PrimaryButton label={cta} onPress={() => router.push('/email')} />
+      </View>
+    </GlassSurface>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    marginHorizontal: Space.lg,
+  },
+  compact: {
+    marginHorizontal: Space.lg,
+    marginTop: Space.sm,
+  },
+  inner: {
+    gap: Space.md,
+    padding: Space.lg,
+  },
+});

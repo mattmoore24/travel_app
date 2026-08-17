@@ -9,10 +9,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { AvatarButton } from '@/components/ui/avatar-button';
+import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
-import { useCityPins, useDeletePin, useHeatCells, useLaunchCities } from '@/features/pins/hooks';
+import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
+import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
 import { categoryEmoji, intentLabel } from '@/features/pins/pin-helpers';
 import { addDays, toISODate } from '@/features/trips/dates';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
@@ -174,8 +176,9 @@ export default function MapScreen() {
       : dateFilter === 'today'
         ? toISODate(new Date())
         : toISODate(addDays(new Date(), 1));
-  const { data: allPins = [], isSuccess: pinsLoaded } = useCityPins(activeCityId);
-  const { data: heat = [] } = useHeatCells(activeCityId, filterISO);
+  const { data: allPins = [], isSuccess: pinsLoaded } = useMapPins(activeCityId);
+  const { data: heat = [] } = useMapHeat(activeCityId, filterISO);
+  const isGuest = useIsGuest();
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
 
   const pins = useMemo(
@@ -346,7 +349,9 @@ export default function MapScreen() {
           accessibilityRole="button"
           accessibilityLabel="Drop a pin"
           onPress={() =>
-            router.push({ pathname: '/drop-pin', params: { cityId: activeCity.city_id } })
+            router.push(
+              isGuest ? '/email' : { pathname: '/drop-pin', params: { cityId: activeCity.city_id } }
+            )
           }
           style={[
             styles.fab,
@@ -363,7 +368,15 @@ export default function MapScreen() {
 
       {selectedPin && activeCityId != null ? (
         <View style={[styles.cardWrap, { bottom: BottomTabInset + insets.bottom + Spacing.four }]}>
-          <PinCard pin={selectedPin} cityId={activeCityId} onClose={() => setSelectedPinId(null)} />
+          {isGuest && !selectedPin.seeded ? (
+            <SignUpGate reason="See who's going and say hi" cta="Create an account" compact />
+          ) : (
+            <PinCard
+              pin={selectedPin}
+              cityId={activeCityId}
+              onClose={() => setSelectedPinId(null)}
+            />
+          )}
         </View>
       ) : null}
     </View>

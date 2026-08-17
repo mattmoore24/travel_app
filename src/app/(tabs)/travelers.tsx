@@ -6,10 +6,13 @@ import { Alert, FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
+import { SignUpGate } from '@/components/ui/sign-up-gate';
+import { useFeaturedTraveler, useIsGuest } from '@/features/guest/hooks';
+import { useLaunchCities } from '@/features/pins/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, MaxContentWidth, Space, Spacing } from '@/constants/theme';
 import { useMatches, useMyChats, useSentRequests } from '@/features/matching/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { formatDateRange } from '@/features/trips/dates';
@@ -111,8 +114,11 @@ function MatchCard({
             ) : null}
           </View>
         </Pressable>
-        <ThemedText type="small" themeColor="textSecondary">
-          {match.city_name} · {formatDateRange(match.overlap_start, match.overlap_end)} together
+        <ThemedText type="footnote" themeColor="textSecondary">
+          {match.city_name} · here {formatDateRange(match.their_start, match.their_end)}
+        </ThemedText>
+        <ThemedText type="footnote" themeColor="accent">
+          {formatDateRange(match.overlap_start, match.overlap_end)} together
         </ThemedText>
         {match.bio ? (
           <ThemedText type="small" numberOfLines={2}>
@@ -130,8 +136,83 @@ function MatchCard({
   );
 }
 
+/**
+ * What a signed-out visitor sees: the single traveler people are connecting
+ * with most in this city right now, then the gate. Seeing one real person is
+ * the whole pitch — the account comes after that lands (docs/DESIGN.md).
+ */
+function GuestTravelers() {
+  const insets = useSafeAreaInsets();
+  const { data: launchCities = [] } = useLaunchCities();
+  const cityId = launchCities[0]?.city_id ?? null;
+  const { data: featured, isPending } = useFeaturedTraveler(cityId);
+  const { data: photoUrl } = usePhotoUrl(featured?.photo_path ?? null);
+  const theme = useTheme();
+
+  useEffect(() => {
+    analytics.capture('travelers_viewed', { guest: true });
+  }, []);
+
+  if (isPending) {
+    return <ThemedView style={styles.root} />;
+  }
+
+  return (
+    <ThemedView style={styles.root}>
+      <ScrollView
+        style={styles.list}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingTop: insets.top + Space.lg, paddingBottom: BottomTabInset + Space.xxl },
+        ]}>
+        <ThemedText type="title">Travelers</ThemedText>
+        {featured ? (
+          <>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              In {featured.city_name} right now
+            </ThemedText>
+            <ThemedView type="backgroundElement" style={styles.card}>
+              <View style={[styles.cardPhoto, { backgroundColor: theme.backgroundSelected }]}>
+                {photoUrl ? (
+                  <Image source={{ uri: photoUrl }} style={styles.cardImage} contentFit="cover" />
+                ) : null}
+              </View>
+              <View style={styles.cardBody}>
+                <View style={styles.nameRow}>
+                  <ThemedText type="headline" style={styles.nameText}>
+                    {featured.display_name ?? 'Traveler'}
+                    {featured.age != null ? `, ${featured.age}` : ''}
+                  </ThemedText>
+                  {featured.verified ? (
+                    <SymbolView
+                      name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
+                      size={14}
+                      tintColor={theme.accent}
+                    />
+                  ) : null}
+                </View>
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  {featured.city_name} · {formatDateRange(featured.their_start, featured.their_end)}
+                </ThemedText>
+                {featured.bio ? <ThemedText type="body">{featured.bio}</ThemedText> : null}
+              </View>
+            </ThemedView>
+          </>
+        ) : (
+          <ThemedText themeColor="textSecondary">No travelers in town this week yet.</ThemedText>
+        )}
+        <SignUpGate
+          reason="See everyone else travelling here"
+          cta="Create an account to continue"
+        />
+      </ScrollView>
+    </ThemedView>
+  );
+}
+
 export default function TravelersScreen() {
   const insets = useSafeAreaInsets();
+  const isGuest = useIsGuest();
   const tripsQuery = useMyTrips();
   const trips = tripsQuery.data ?? [];
   const { data: matches = [] } = useMatches();
@@ -159,6 +240,10 @@ export default function TravelersScreen() {
         description="Add Supabase keys to .env to post trips and browse travelers with overlapping dates."
       />
     );
+  }
+
+  if (isGuest) {
+    return <GuestTravelers />;
   }
 
   const sentByRecipient = new Map(sentRequests.map((r) => [r.recipient_id, r]));

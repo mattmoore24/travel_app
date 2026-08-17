@@ -6,6 +6,10 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
+import { SignUpGate } from '@/components/ui/sign-up-gate';
+import { useIsGuest } from '@/features/guest/hooks';
+import { useLaunchCities } from '@/features/pins/hooks';
+import { useCityRooms } from '@/features/rooms/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -133,20 +137,66 @@ function describeElement(element: string): string {
 }
 
 function ChatRow({ chat }: { chat: ChatListRow }) {
+  const theme = useTheme();
   const preview = chat.last_message ?? chat.first_message;
+  const isRoom = chat.kind === 'room';
+
   return (
     <ThemedView type="backgroundElement" style={styles.chatRow}>
-      <Avatar path={chat.other_photo_path} />
+      {isRoom ? (
+        <View style={[styles.roomBadge, { backgroundColor: theme.accentSoft }]}>
+          <SymbolView
+            name={{ ios: 'house.fill', android: 'home', web: 'home' }}
+            size={20}
+            tintColor={theme.accent}
+          />
+        </View>
+      ) : (
+        <Avatar path={chat.photo_path} />
+      )}
       <View style={styles.chatRowText}>
-        <ThemedText type="smallBold">{chat.other_display_name ?? 'Traveler'}</ThemedText>
+        <View style={styles.rowTitle}>
+          <ThemedText type="callout" style={styles.strong} numberOfLines={1}>
+            {chat.title ?? 'Traveler'}
+          </ThemedText>
+          {chat.pinned ? (
+            <SymbolView
+              name={{ ios: 'pin.fill', android: 'push_pin', web: 'push_pin' }}
+              size={12}
+              tintColor={theme.textSecondary}
+            />
+          ) : null}
+          {chat.muted ? (
+            <SymbolView
+              name={{
+                ios: 'bell.slash.fill',
+                android: 'notifications_off',
+                web: 'notifications_off',
+              }}
+              size={12}
+              tintColor={theme.textSecondary}
+            />
+          ) : null}
+        </View>
         {preview ? (
-          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+          <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
             {preview}
+          </ThemedText>
+        ) : null}
+        {isRoom && chat.member_count != null ? (
+          <ThemedText type="footnote" themeColor="textSecondary">
+            {chat.member_count} here now
+            {chat.expires_at
+              ? ` · you leave ${new Date(chat.expires_at).toLocaleDateString(undefined, {
+                  day: 'numeric',
+                  month: 'short',
+                })}`
+              : ''}
           </ThemedText>
         ) : null}
       </View>
       {chat.chat_status !== 'active' ? (
-        <ThemedText type="small" themeColor="textSecondary">
+        <ThemedText type="footnote" themeColor="textSecondary">
           closed
         </ThemedText>
       ) : null}
@@ -154,10 +204,53 @@ function ChatRow({ chat }: { chat: ChatListRow }) {
   );
 }
 
-export default function InboxScreen() {
+/** Rooms a signed-out visitor (or a signed-in non-member) can look inside. */
+function RoomDiscovery({ cityId }: { cityId: number | null }) {
+  const theme = useTheme();
+  const { data: rooms = [] } = useCityRooms(cityId);
+  if (rooms.length === 0) {
+    return null;
+  }
+  return (
+    <>
+      <ThemedText type="caption" themeColor="textSecondary">
+        ROOMS NEAR YOU
+      </ThemedText>
+      {rooms.map((room) => (
+        <Pressable
+          key={room.chat_id}
+          onPress={() => router.push(`/room/${room.chat_id}`)}
+          style={({ pressed }) => pressed && styles.pressed}>
+          <ThemedView type="backgroundElement" style={styles.chatRow}>
+            <View style={[styles.roomBadge, { backgroundColor: theme.accentSoft }]}>
+              <SymbolView
+                name={{ ios: 'house.fill', android: 'home', web: 'home' }}
+                size={20}
+                tintColor={theme.accent}
+              />
+            </View>
+            <View style={styles.chatRowText}>
+              <ThemedText type="callout" style={styles.strong}>
+                {room.name}
+              </ThemedText>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                {room.member_count} guests here now
+              </ThemedText>
+            </View>
+          </ThemedView>
+        </Pressable>
+      ))}
+    </>
+  );
+}
+
+export default function ChatScreen() {
   const insets = useSafeAreaInsets();
+  const isGuest = useIsGuest();
   const { data: requests = [] } = useIncomingRequests();
   const { data: chats = [] } = useMyChats();
+  const { data: launchCities = [] } = useLaunchCities();
+  const cityId = launchCities[0]?.city_id ?? null;
 
   if (!isSupabaseConfigured) {
     return (
@@ -167,6 +260,26 @@ export default function InboxScreen() {
         phase="waiting on backend keys"
         description="Message requests and chats appear here once Supabase keys are in .env."
       />
+    );
+  }
+
+  if (isGuest) {
+    return (
+      <ThemedView style={styles.root}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.content,
+            { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
+          ]}>
+          <ThemedText type="title">Chat</ThemedText>
+          <ThemedText type="footnote" themeColor="textSecondary">
+            Hostels and hotels run open rooms for their guests. Have a look before you join.
+          </ThemedText>
+          <RoomDiscovery cityId={cityId} />
+          <SignUpGate reason="Join the conversation" cta="Create an account" />
+        </ScrollView>
+      </ThemedView>
     );
   }
 
@@ -189,12 +302,12 @@ export default function InboxScreen() {
           styles.content,
           { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
         ]}>
-        <ThemedText type="subtitle">Inbox</ThemedText>
+        <ThemedText type="title">Chat</ThemedText>
 
         {requests.length > 0 ? (
           <>
-            <ThemedText type="smallBold" themeColor="textSecondary">
-              REQUESTS · accept to open a chat
+            <ThemedText type="caption" themeColor="textSecondary">
+              REQUESTS · ACCEPT TO OPEN A CHAT
             </ThemedText>
             {requests.map((request) => (
               <RequestCard key={request.id} request={request} />
@@ -204,7 +317,7 @@ export default function InboxScreen() {
 
         {chats.length > 0 ? (
           <>
-            <ThemedText type="smallBold" themeColor="textSecondary">
+            <ThemedText type="caption" themeColor="textSecondary">
               CHATS
             </ThemedText>
             {chats.map((chat) => (
@@ -217,6 +330,8 @@ export default function InboxScreen() {
             ))}
           </>
         ) : null}
+
+        <RoomDiscovery cityId={cityId} />
       </ScrollView>
     </ThemedView>
   );
@@ -239,6 +354,21 @@ const styles = StyleSheet.create({
   fill: {
     width: '100%',
     height: '100%',
+  },
+  roomBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowTitle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  strong: {
+    fontWeight: '600',
   },
   requestCard: {
     gap: Spacing.two,

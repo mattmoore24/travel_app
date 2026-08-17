@@ -37,20 +37,24 @@ const PLATFORM_LABELS: Record<string, string> = {
 
 function ChatHeader({ chat }: { chat: ChatListRow }) {
   const theme = useTheme();
-  const { data: photoUrl } = usePhotoUrl(chat.other_photo_path);
+  const { data: photoUrl } = usePhotoUrl(chat.photo_path);
   const block = useBlockUser();
   const unmatch = useUnmatch();
 
   const confirmBlock = () => {
     Alert.alert(
-      `Block ${chat.other_display_name ?? 'this traveler'}?`,
+      `Block ${chat.title ?? 'this traveler'}?`,
       'They disappear from your map and matches, can never message you, and this conversation freezes. They are not told.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Block',
           style: 'destructive',
-          onPress: () => block.mutate(chat.other_user_id),
+          onPress: () => {
+            if (chat.other_user_id) {
+              block.mutate(chat.other_user_id);
+            }
+          },
         },
       ]
     );
@@ -125,7 +129,7 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
             />
           )}
         </View>
-        <ThemedText type="smallBold">{chat.other_display_name ?? 'Traveler'}</ThemedText>
+        <ThemedText type="smallBold">{chat.title ?? 'Traveler'}</ThemedText>
       </Pressable>
       <Pressable
         accessibilityRole="button"
@@ -228,7 +232,7 @@ export default function ChatScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
           <ChatHeader chat={chat} />
-          <SocialsCard userId={chat.other_user_id} />
+          {chat.other_user_id ? <SocialsCard userId={chat.other_user_id} /> : null}
           <FlatList
             style={styles.flex}
             inverted
@@ -250,6 +254,7 @@ export default function ChatScreen() {
                       chat_id: chat.chat_id,
                       sender_id: chat.first_message_sender_id ?? '',
                       body: chat.first_message,
+                      image_path: null,
                       created_at: chat.created_at,
                     }}
                     mine={chat.first_message_sender_id === ownUserId}

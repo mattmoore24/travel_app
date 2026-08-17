@@ -90,6 +90,8 @@ export type TripRow = {
   updated_at: string;
 };
 
+export type ChatKind = 'direct' | 'room';
+
 /** Row shape returned by the get_matches() RPC. */
 export type MatchRow = {
   trip_id: string;
@@ -105,7 +107,69 @@ export type MatchRow = {
   city_country: string;
   overlap_start: string;
   overlap_end: string;
+  /** The counterpart's whole stay, so a card can show its length. */
+  their_start: string;
+  their_end: string;
   photo_path: string | null;
+};
+
+/** featured_traveler() — the one card a signed-out visitor sees. */
+export type FeaturedTravelerRow = {
+  user_id: string;
+  display_name: string | null;
+  age: number | null;
+  verified: boolean;
+  languages: string[];
+  bio: string | null;
+  city_name: string;
+  their_start: string;
+  their_end: string;
+  photo_path: string | null;
+};
+
+/** public_city_pins() — deliberately has no identity columns. */
+export type PublicPinRow = {
+  id: string;
+  venue_name: string;
+  category: PinCategory;
+  lat: number;
+  lng: number;
+  intent_date: string;
+  seeded: boolean;
+  seed_note: string | null;
+  expires_at: string;
+};
+
+/** city_rooms() — establishment rooms in a city. */
+export type CityRoomRow = {
+  chat_id: string;
+  establishment_id: string;
+  name: string;
+  kind: 'hostel' | 'hotel' | 'other';
+  lat: number;
+  lng: number;
+  member_count: number;
+  last_message_at: string | null;
+  public_preview: boolean;
+};
+
+/** room_messages() — readable by members, moderators, and public previews. */
+export type RoomMessageRow = {
+  id: string;
+  sender_id: string;
+  display_name: string | null;
+  photo_path: string | null;
+  body: string | null;
+  image_path: string | null;
+  removed: boolean;
+  created_at: string;
+};
+
+export type ReactionSummaryRow = {
+  message_id: string;
+  emoji: string;
+  count: number;
+  reacted_by_me: boolean;
 };
 
 /** Row shape returned by incoming_requests(). */
@@ -137,17 +201,25 @@ export type SentRequestRow = {
   created_at: string;
 };
 
-/** Row shape returned by my_chats(), ordered by last activity. */
+/** Row shape returned by my_chats(), pinned first then by last activity. */
 export type ChatListRow = {
   chat_id: string;
+  kind: ChatKind;
   chat_status: ChatStatus;
-  other_user_id: string;
-  other_display_name: string | null;
-  other_photo_path: string | null;
+  /** Establishment name for rooms, the other person's name for direct chats. */
+  title: string | null;
+  other_user_id: string | null;
+  photo_path: string | null;
   first_message: string | null;
   first_message_sender_id: string | null;
   last_message: string | null;
   last_message_at: string | null;
+  member_count: number | null;
+  pinned: boolean;
+  muted: boolean;
+  archived: boolean;
+  /** When this user's room membership lapses (rooms only). */
+  expires_at: string | null;
   created_at: string;
 };
 
@@ -155,7 +227,8 @@ export type MessageRow = {
   id: string;
   chat_id: string;
   sender_id: string;
-  body: string;
+  body: string | null;
+  image_path: string | null;
   created_at: string;
 };
 
@@ -397,6 +470,21 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      message_reactions: {
+        Row: {
+          message_id: string;
+          user_id: string;
+          emoji: string;
+          created_at: string;
+        };
+        Insert: {
+          message_id: string;
+          user_id: string;
+          emoji: string;
+        };
+        Update: never;
+        Relationships: [];
+      };
       verification_requests: {
         // Insert goes through submit_verification(); verdicts are server-side.
         Row: VerificationRequestRow;
@@ -462,8 +550,57 @@ export type Database = {
         Returns: IncomingRequestRow[];
       };
       my_chats: {
-        Args: Record<string, never>;
+        Args: { p_archived?: boolean };
         Returns: ChatListRow[];
+      };
+      featured_traveler: {
+        Args: { p_city_id: number };
+        Returns: FeaturedTravelerRow[];
+      };
+      public_city_pins: {
+        Args: { p_city_id: number };
+        Returns: PublicPinRow[];
+      };
+      public_heat_cells: {
+        Args: { p_city_id: number; p_date?: string | null };
+        Returns: HeatCellRow[];
+      };
+      city_rooms: {
+        Args: { p_city_id: number };
+        Returns: CityRoomRow[];
+      };
+      room_messages: {
+        Args: { p_chat_id: string; p_limit?: number };
+        Returns: RoomMessageRow[];
+      };
+      message_reaction_summary: {
+        Args: { p_chat_id: string };
+        Returns: ReactionSummaryRow[];
+      };
+      join_room: {
+        Args: { p_chat_id: string; p_departure_date: string };
+        Returns: { joined: boolean; expires_at: string };
+      };
+      leave_room: {
+        Args: { p_chat_id: string };
+        Returns: undefined;
+      };
+      set_chat_pref: {
+        Args: {
+          p_chat_id: string;
+          p_pinned?: boolean | null;
+          p_muted?: boolean | null;
+          p_archived?: boolean | null;
+        };
+        Returns: undefined;
+      };
+      room_remove_message: {
+        Args: { p_message_id: string };
+        Returns: undefined;
+      };
+      room_remove_member: {
+        Args: { p_chat_id: string; p_user_id: string };
+        Returns: undefined;
       };
       city_pins: {
         Args: { p_city_id: number };
@@ -495,6 +632,7 @@ export type Database = {
       trip_status: TripStatus;
       request_source: RequestSource;
       verification_status: VerificationStatus;
+      chat_kind: ChatKind;
     };
     CompositeTypes: Record<string, never>;
   };

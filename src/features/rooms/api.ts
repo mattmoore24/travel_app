@@ -1,0 +1,96 @@
+import type { CityRoomRow, ReactionSummaryRow, RoomMessageRow } from '@/lib/database.types';
+import { supabase } from '@/lib/supabase';
+
+/** Establishment rooms in a city. Readable signed-out. */
+export async function fetchCityRooms(cityId: number) {
+  const { data, error } = await supabase.rpc('city_rooms', { p_city_id: cityId });
+  if (error) {
+    throw error;
+  }
+  return (data ?? []) as CityRoomRow[];
+}
+
+/**
+ * A room's messages. Members and moderators always; everyone else only where
+ * the establishment left the public preview on — the server decides, not us.
+ */
+export async function fetchRoomMessages(chatId: string) {
+  const { data, error } = await supabase.rpc('room_messages', { p_chat_id: chatId });
+  if (error) {
+    throw error;
+  }
+  return (data ?? []) as RoomMessageRow[];
+}
+
+/** Joining asks one question: when do you leave? That drives the expiry. */
+export async function joinRoom(chatId: string, departureDate: string) {
+  const { data, error } = await supabase.rpc('join_room', {
+    p_chat_id: chatId,
+    p_departure_date: departureDate,
+  });
+  if (error) {
+    throw error;
+  }
+  return data as unknown as { joined: boolean; expires_at: string };
+}
+
+export async function leaveRoom(chatId: string) {
+  const { error } = await supabase.rpc('leave_room', { p_chat_id: chatId });
+  if (error) {
+    throw error;
+  }
+}
+
+export async function setChatPref(
+  chatId: string,
+  pref: { pinned?: boolean; muted?: boolean; archived?: boolean }
+) {
+  const { error } = await supabase.rpc('set_chat_pref', {
+    p_chat_id: chatId,
+    p_pinned: pref.pinned ?? null,
+    p_muted: pref.muted ?? null,
+    p_archived: pref.archived ?? null,
+  });
+  if (error) {
+    throw error;
+  }
+}
+
+export async function fetchReactions(chatId: string) {
+  const { data, error } = await supabase.rpc('message_reaction_summary', {
+    p_chat_id: chatId,
+  });
+  if (error) {
+    throw error;
+  }
+  return (data ?? []) as ReactionSummaryRow[];
+}
+
+export async function addReaction(messageId: string, userId: string, emoji: string) {
+  const { error } = await supabase
+    .from('message_reactions')
+    .insert({ message_id: messageId, user_id: userId, emoji });
+  if (error) {
+    throw error;
+  }
+}
+
+export async function removeReaction(messageId: string, userId: string, emoji: string) {
+  const { error } = await supabase
+    .from('message_reactions')
+    .delete()
+    .eq('message_id', messageId)
+    .eq('user_id', userId)
+    .eq('emoji', emoji);
+  if (error) {
+    throw error;
+  }
+}
+
+/** Moderator-only; the RPC re-checks staff membership server-side. */
+export async function removeRoomMessage(messageId: string) {
+  const { error } = await supabase.rpc('room_remove_message', { p_message_id: messageId });
+  if (error) {
+    throw error;
+  }
+}
