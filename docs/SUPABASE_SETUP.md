@@ -79,7 +79,13 @@ Push notifications and Claude moderation run as Supabase Edge Functions:
 ```bash
 npx supabase functions deploy push-worker
 npx supabase functions deploy moderation-worker
+npx supabase functions deploy delete-account   # required for App Review 5.1.1(v)
 ```
+
+**Or skip all of this**: the repo's GitHub Actions pipeline does migrations
+_and_ all three functions in one go — see
+[`LAUNCH_RUNBOOK.md`](LAUNCH_RUNBOOK.md) step 0. It's the supported path when
+you're not at a computer.
 
 Then in the dashboard: **Edge Functions → each function → add a schedule** (every minute).
 Details: [`supabase/functions/README.md`](../supabase/functions/README.md).

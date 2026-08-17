@@ -3,7 +3,70 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current status: **Phase 5 complete** (2026-08-17) — pending live keys for end-to-end
+## Current status: **Phase 6 complete — all six phases done** (2026-08-17)
+
+### 🎉 The backend is LIVE
+
+The Supabase project exists and is provisioned: all migrations applied (schema + 9,062
+cities), `push-worker`, `moderation-worker`, and `delete-account` deployed. Provisioning
+runs from GitHub Actions (**Supabase deploy** workflow) because development happens from a
+phone — credentials live in GitHub's encrypted secret store, never in the repo or a chat.
+
+**Before real users touch it, do [`LAUNCH_RUNBOOK.md`](LAUNCH_RUNBOOK.md) step 1**: the
+moderation pipeline ships _dark_ (photos auto-approve; messages get the regex filter only)
+until `ANTHROPIC_API_KEY` is set, both workers are scheduled, and the two `app_config`
+flags are flipped.
+
+### Phase 6 — Launch hardening: done
+
+**Database (pgTAP suite now 232 asserts, all green):**
+
+- [x] **Velocity caps** on every hot write path — messages 30/min; requests 30/day; reports
+      10/day; trips 20/day; pins 30/day; photos 25/day; blocks 50/day; profile updates
+      30/day; plus storage-object ceilings (30 photos / 10 selfies). The Phase 2–5 caps
+      bounded _state_; delete-and-recreate churn defeated them, so these bound _rate_
+- [x] **Oracle-proof errors**: every relationship failure in `send_message_request` now
+      returns one indistinguishable message — distinct errors let a sender detect a block
+- [x] **Profile text screening**: `display_name`/`bio` (broadcast to every overlapping
+      traveler) now pass the same pre-filter as first messages
+- [x] **Admin metrics views** (service-role only): `admin_liquidity` (the liquidity
+      number), `admin_request_funnel`, `admin_moderation_stats`, `admin_pin_stats`, and
+      `admin_ops_health` — the one-query liveness check for both workers and pg_cron
+- [x] Account-deletion cascade proven: profile, photos, trips, pins, requests, tokens, and
+      reports all die; the moderation audit spine survives with the subject nulled
+
+**App:**
+
+- [x] **In-app account deletion** (App Review 5.1.1(v)) — Profile → Delete account →
+      `delete-account` Edge Function (storage both buckets, chats for both sides, auth user)
+- [x] **Guidelines + consent + support contact** (App Review 1.2) — `/guidelines` readable
+      before sign-up, consent line on the welcome screen, support mailto
+- [x] "Be the first pin" empty state on the map, per city and per date filter
+- [x] `eas.json` build profiles, encryption declaration, microphone permission suppressed
+- [x] `trip_created` now carries `starts_within_days` so §6's _within-trip-window_
+      retention is actually computable
+
+**Docs (the launch-operations set):**
+
+- [x] [`LAUNCH_RUNBOOK.md`](LAUNCH_RUNBOOK.md) — go-live in order, with rollback levers
+- [x] [`APP_STORE.md`](APP_STORE.md) — privacy labels, review notes, TestFlight, EAS env vars
+- [x] [`DASHBOARD.md`](DASHBOARD.md) — every §6 metric mapped to a PostHog insight or SQL view
+- [x] [`legal/`](legal) — community guidelines + privacy policy drafts (founder review, then legal)
+- [x] `supabase/seed/launch_pins.sql` — 20 curated pins across the four launch cities
+
+**Verification:**
+
+- [x] Adversarial launch audit (4 lenses → 23 agents, App Store / abuse / privacy / ops):
+      22 findings, 15 confirmed, all fixed. Standouts: the block-detection oracle; unbounded
+      storage uploads; profile text bypassing moderation entirely; Edge Functions having no
+      static checks; cloud builds shipping with no backend keys
+- [x] typecheck, lint, format, 25 Jest, 232 pgTAP, Deno typecheck of all three functions
+
+---
+
+Previous phases below.
+
+## Phase 5 complete (2026-08-17)
 
 ### Phase 5 — Trust & safety: done
 
@@ -252,11 +315,16 @@ Create account → build full profile → view own profile: **implemented and co
 end-to-end execution needs a real Supabase project (keys below). The DB layer is fully
 tested locally; the moment `.env` is filled and migrations are pushed, the flow is live.
 
-## Next: Phase 6 — Launch hardening
+## Next: ship it
 
-Rate limiting at the API layer, abuse-resistance review, App Store prep (privacy labels,
-review notes for the moderation pipeline), TestFlight via EAS, PostHog liquidity dashboard,
-seeded-pin content plan for the launch cities, and a real device pass over the whole app.
+All six phases are built. What remains is founder-gated, not engineering-gated:
+
+1. **Runbook step 1** — Anthropic key + schedule the workers + flip the two flags, so
+   moderation is live before anyone real uses it.
+2. **Apple Developer Program** → EAS build → TestFlight (guide written and waiting).
+3. **Decide the name**, set the support email, get the legal drafts reviewed.
+4. **Open Lisbon only**, seed pins every couple of days, watch `admin_liquidity` toward
+   500–1,000 before opening city #2.
 
 ## Needs founder input
 
@@ -313,4 +381,4 @@ moderation adds ~1min max delivery latency (worker schedule) while the flag is o
 | 3 — The Map (hero)   | ✅ done | Compelling map with 15 pins (seeding path ready)          |
 | 4 — Chat & realtime  | ✅ done | Full loop to live conversation (E2E pending keys)         |
 | 5 — Trust & safety   | ✅ done | Flirty first message blocked + logged (proven in pgTAP)   |
-| 6 — Launch hardening | ⏭ next  | Geofenced launch cities, TestFlight, dashboards           |
+| 6 — Launch hardening | ✅ done | Rate limits, deletion, dashboards, runbook, store prep    |

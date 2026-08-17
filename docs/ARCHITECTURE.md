@@ -272,6 +272,45 @@ moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structure
   action that can't apply to the account's current status (e.g. suspending a banned user)
   raises instead of resolving the report and logging a phantom audit event.
 
+## Launch hardening (Phase 6)
+
+- **Velocity caps** complement the Phase 2–5 _standing_ caps (5 active trips,
+  10 live pins, 7 photos, one request per pair). Standing caps bound state;
+  these bound rate, because delete-and-recreate churn defeated the former:
+  messages 30/min, requests 30/day, reports 10/day, trips 20/day, pins 30/day,
+  photos 25/day, blocks 50/day, profile updates 30/day. Photo/block/profile
+  counters read from `moderation_events` precisely because the rows they'd
+  otherwise count can be deleted. Storage buckets gained object ceilings (30
+  photos, 10 selfies per user) — uploads were previously unbounded whenever no
+  DB row accompanied them.
+- **Oracle-proof errors**: `send_message_request` now raises the _same_
+  'recipient unavailable' for every relationship failure (blocked pair,
+  non-discoverable recipient, no overlap, no live pin). Distinct messages let
+  a sender with a known overlap detect that someone blocked them — the same
+  class of leak as the Phase 3 heatmap differencing attack.
+- **Profile text screening**: `display_name`/`bio` are broadcast to every
+  overlapping traveler but previously bypassed moderation entirely. They now
+  pass the regex pre-filter on write (LLM-grade review of profile text is a
+  flagged follow-up).
+- **Admin metrics views** (service-role only, brief §6): `admin_liquidity`
+  (the number), `admin_request_funnel`, `admin_moderation_stats`,
+  `admin_pin_stats`, and `admin_ops_health` (queue depths — the liveness check
+  for both workers and pg_cron). App-behavior metrics stay in PostHog; the
+  mapping is docs/DASHBOARD.md.
+- **Account deletion** (App Review 5.1.1(v)) is `supabase/functions/
+delete-account`: verifies the caller's JWT, clears both storage buckets,
+  hard-deletes their chats for both members (unmatch semantics), then deletes
+  the auth user — the FK graph cascades the rest, while `moderation_events`
+  survive with `subject_user_id` nulled so the audit spine isn't erasable by
+  deleting an account. Proven in `09_launch_hardening.test.sql`.
+- **In-app policy surface** (App Review 1.2): bundled community guidelines at
+  `/guidelines` (readable before sign-up), a consent line on the welcome
+  screen, and a support contact. Text lives in `src/constants/policies.ts`;
+  the long-form drafts in `docs/legal/` are the source of truth for both.
+- **Edge Functions are typechecked in CI** (`deno check`) — they're excluded
+  from `tsc`/jest as Deno code, which had left the moderation and deletion
+  paths with no static verification at all.
+
 ## Privacy & secrets model
 
 - `EXPO_PUBLIC_*` env vars ship inside the client bundle. Only the Supabase URL + anon key
@@ -378,3 +417,18 @@ moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structure
 - **2026-08-17 (Phase 5)** — Selfie verification ships as an honest Claude-vision likeness
   check (labeled as such in the UI), not fake "identity verification"; certified liveness
   is a vendor decision deferred until fraud data justifies the cost.
+- **2026-08-17 (Phase 6)** — Provisioning runs from GitHub Actions
+  (`supabase-deploy.yml`) rather than a local CLI: the founder develops from a phone, and
+  this keeps credentials in GitHub's encrypted store instead of a chat transcript. Trigger
+  is a commit to `supabase/.deploy-request` (works on any branch — `workflow_dispatch`
+  only lists workflows that already exist on the default branch).
+- **2026-08-17 (Phase 6)** — Rate limits live in DB triggers, not an API gateway: the
+  client is not the only caller (anyone can drive PostgREST with a valid JWT), so the same
+  place that enforces privacy enforces velocity. Limits are counted from `moderation_events`
+  wherever the counted rows are user-deletable.
+- **2026-08-17 (Phase 6)** — All relationship failures in `send_message_request` return one
+  indistinguishable error; usability of precise errors loses to the block-invisibility
+  invariant.
+- **2026-08-17 (Phase 6)** — Account deletion is an Edge Function rather than an RPC: it
+  must reach the storage API and `auth.admin.deleteUser`, neither of which is available to
+  SQL — and doing it in one server-side place keeps "delete" honest (storage included).

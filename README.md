@@ -15,6 +15,11 @@ Full product context: [`docs/PRODUCT_BRIEF.md`](docs/PRODUCT_BRIEF.md) ·
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/PROGRESS.md`](docs/PROGRESS.md) ·
 [`docs/RESEARCH_NOTES.md`](docs/RESEARCH_NOTES.md)
 
+Operating it: [`docs/LAUNCH_RUNBOOK.md`](docs/LAUNCH_RUNBOOK.md) (go-live, in order) ·
+[`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) · [`docs/DASHBOARD.md`](docs/DASHBOARD.md)
+(metrics + admin queries) · [`docs/APP_STORE.md`](docs/APP_STORE.md) ·
+[`docs/legal/`](docs/legal) (policy drafts)
+
 ## Run it from a fresh clone
 
 Prerequisites: Node 22+, npm 10+. No Mac/Xcode required for development.
@@ -47,8 +52,11 @@ whether `.env` is wired up.
 | `npm run format`       | Prettier write                         |
 | `npm run format:check` | Prettier check (CI runs this)          |
 
-CI (GitHub Actions) runs typecheck, lint, format check, and tests on every PR and on pushes to
-`main` — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+CI (GitHub Actions) runs typecheck, lint, format check, tests, the database RLS suite, and a
+Deno typecheck of the Edge Functions on every PR and on pushes to `main` — see
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml). A second workflow,
+[`supabase-deploy.yml`](.github/workflows/supabase-deploy.yml), applies migrations and deploys
+Edge Functions to the hosted project (trigger: commit any change to `supabase/.deploy-request`).
 
 ## Repo layout
 
