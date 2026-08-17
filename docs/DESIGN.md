@@ -46,7 +46,7 @@ that. Sources for each research claim are at the bottom.
 4. **Depth, not decoration.** Elevation and translucency for hierarchy; no
    gratuitous borders, no card-in-card.
 5. **Warm, not romantic.** This is not a dating app and it must not look like
-   one. No red/pink/purple gradients, no hearts. Trail green + warm sand.
+   one. No red/pink/purple gradients, no hearts. Indigo + amber on warm bone.
 6. **Legible above all.** 4.5:1 minimum on text, 44pt minimum touch targets,
    Dynamic Type respected, and every glass surface has a solid fallback.
 
@@ -54,23 +54,38 @@ that. Sources for each research claim are at the bottom.
 
 Defined in `src/constants/theme.ts`; nothing hardcodes a hex or a magic number.
 
-**Colour.** A single confident accent, warm neutrals, and semantic roles.
-Trail green is deliberately distinct from every dating app (which run red /
-pink / purple) and reads well on Apple Maps' beige-green canvas.
+**Colour — "Dusk": deep indigo + burnt amber on warm bone.** The light when you land
+somewhere, which is also when travellers actually make plans.
 
-| Role            | Light                    | Dark                 | Use                               |
-| --------------- | ------------------------ | -------------------- | --------------------------------- |
-| `canvas`        | `#FBFAF7` warm off-white | `#0E100F` near-black | page background                   |
-| `surface`       | `#FFFFFF`                | `#191C1B`            | cards, sheets                     |
-| `surfaceSunken` | `#F1EFEA`                | `#232725`            | inputs, chips                     |
-| `text`          | `#14171A`                | `#F5F3EF`            | primary text                      |
-| `textSecondary` | `#5C6360`                | `#A8AFAB`            | supporting text (4.6:1 on canvas) |
-| `accent`        | `#17795E` trail green    | `#38A987`            | primary actions, selection        |
-| `onAccent`      | `#FFFFFF`                | `#04120D`            | text on accent                    |
-| `accentSoft`    | `#E4F1EB`                | `#16302A`            | accent-tinted fills               |
-| `warning`       | `#B4670E`                | `#E39A48`            | expiry, moderation notices        |
-| `danger`        | `#C0362B`                | `#F08076`            | destructive, blocked              |
-| `hairline`      | `#00000012`              | `#FFFFFF14`          | 0.5pt separators only             |
+Indigo replaced the original trail green deliberately. Green was chosen partly
+for map legibility, and that turned out to be backwards: Apple Maps' basemap is
+beige _and green_, so green accents sit close to park polygons on the app's hero
+screen. A cool primary separates from the basemap; the warm bone canvas and the
+amber keep it from reading cold. It remains nothing like the red/pink/purple
+every dating app runs, which was always the more important constraint.
+
+| Role            | Light                 | Dark                 | Use                               |
+| --------------- | --------------------- | -------------------- | --------------------------------- |
+| `canvas`        | `#FBFAF7` warm bone   | `#0D0F14` near-black | page background                   |
+| `surface`       | `#FFFFFF`             | `#171A21`            | cards, sheets                     |
+| `surfaceSunken` | `#F0EFEA`             | `#212630`            | inputs, chips                     |
+| `text`          | `#14171A`             | `#F4F4F2`            | primary text                      |
+| `textSecondary` | `#585F6B`             | `#A3AAB8`            | supporting text (6.2:1 on canvas) |
+| `accent`        | `#2A4C9B` deep indigo | `#8AA6F0`            | primary actions, selection, pins  |
+| `onAccent`      | `#FFFFFF`             | `#0A1330`            | text on accent                    |
+| `accentSoft`    | `#E7EBF8`             | `#1D2742`            | accent-tinted fills               |
+| `highlight`     | `#9A5709` burnt amber | `#F0A93C`            | featured, own-pin, unread         |
+| `onHighlight`   | `#FFFFFF`             | `#2A1A00`            | text on amber                     |
+| `highlightSoft` | `#FBEEDA`             | `#33260F`            | amber-tinted fills                |
+| `warning`       | `#9A5709`             | `#F0A93C`            | expiry, moderation notices        |
+| `danger`        | `#B5342A`             | `#F08076`            | destructive, blocked              |
+| `hairline`      | `#00000012`           | `#FFFFFF14`          | 0.5pt separators only             |
+
+Amber is the deep ochre rather than a bright one on purpose: a brighter amber
+can't carry white text at 4.5:1 and loses to a beige basemap. Every pair in this
+table was **checked numerically** against WCAG 2.1 (4.5:1 for text, 3:1 for
+graphical marks), not judged by eye — which is how the previous palette shipped
+a `warning` colour that silently failed at 4.12:1.
 
 **Type.** iOS system font, seven roles, generous line height. Sizes are the
 default; all scale with Dynamic Type.

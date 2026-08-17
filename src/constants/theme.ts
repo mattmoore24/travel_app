@@ -8,52 +8,71 @@ import '@/global.css';
 import { Platform } from 'react-native';
 
 /**
- * Trail green + warm neutrals. Deliberately distinct from every dating app
- * (which run red/pink/purple) and legible on Apple Maps' beige-green canvas.
- * `textSecondary` clears 4.5:1 on `canvas` in both schemes.
+ * "Dusk": deep indigo + burnt amber on a warm bone canvas — the light when you
+ * land somewhere, which is also when travellers actually make plans.
+ *
+ * Indigo replaced the earlier trail green for a concrete reason: green accents
+ * sit close to Apple Maps' park polygons, and the map is the hero screen. A
+ * cool primary separates from the beige-and-green basemap; the warm canvas and
+ * amber keep it from reading cold. Still nothing like the red/pink/purple every
+ * dating app runs.
+ *
+ * Every pair below clears WCAG 4.5:1 in both schemes (3:1 for purely graphical
+ * marks) — verified numerically, not by eye. Amber is deliberately the deep
+ * ochre rather than a bright one: a brighter amber cannot carry white text and
+ * loses to a beige basemap.
  */
 export const Colors = {
   light: {
     canvas: '#FBFAF7',
     surface: '#FFFFFF',
-    surfaceSunken: '#F1EFEA',
+    surfaceSunken: '#F0EFEA',
     text: '#14171A',
-    textSecondary: '#5C6360',
-    accent: '#17795E',
+    textSecondary: '#585F6B',
+    accent: '#2A4C9B',
     onAccent: '#FFFFFF',
-    accentSoft: '#E4F1EB',
-    warning: '#B4670E',
-    danger: '#C0362B',
+    accentSoft: '#E7EBF8',
+    /** Second brand colour: featured badges, own-pin, unread marks. */
+    highlight: '#9A5709',
+    onHighlight: '#FFFFFF',
+    highlightSoft: '#FBEEDA',
+    // Same value as `highlight` today — kept as its own token so the semantic
+    // and brand roles can diverge without a refactor.
+    warning: '#9A5709',
+    danger: '#B5342A',
     hairline: 'rgba(0,0,0,0.07)',
-    scrim: 'rgba(12,14,13,0.32)',
+    scrim: 'rgba(10,12,18,0.32)',
 
     // Legacy aliases — kept so un-migrated screens keep compiling while the
     // redesign lands screen by screen. Remove when the last one is gone.
     background: '#FBFAF7',
-    backgroundElement: '#F1EFEA',
-    backgroundSelected: '#E4F1EB',
-    tint: '#17795E',
+    backgroundElement: '#F0EFEA',
+    backgroundSelected: '#E7EBF8',
+    tint: '#2A4C9B',
     onTint: '#FFFFFF',
   },
   dark: {
-    canvas: '#0E100F',
-    surface: '#191C1B',
-    surfaceSunken: '#232725',
-    text: '#F5F3EF',
-    textSecondary: '#A8AFAB',
-    accent: '#38A987',
-    onAccent: '#04120D',
-    accentSoft: '#16302A',
-    warning: '#E39A48',
+    canvas: '#0D0F14',
+    surface: '#171A21',
+    surfaceSunken: '#212630',
+    text: '#F4F4F2',
+    textSecondary: '#A3AAB8',
+    accent: '#8AA6F0',
+    onAccent: '#0A1330',
+    accentSoft: '#1D2742',
+    highlight: '#F0A93C',
+    onHighlight: '#2A1A00',
+    highlightSoft: '#33260F',
+    warning: '#F0A93C',
     danger: '#F08076',
     hairline: 'rgba(255,255,255,0.08)',
     scrim: 'rgba(0,0,0,0.45)',
 
-    background: '#0E100F',
-    backgroundElement: '#232725',
-    backgroundSelected: '#16302A',
-    tint: '#38A987',
-    onTint: '#04120D',
+    background: '#0D0F14',
+    backgroundElement: '#212630',
+    backgroundSelected: '#1D2742',
+    tint: '#8AA6F0',
+    onTint: '#0A1330',
   },
 } as const;
 
