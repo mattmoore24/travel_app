@@ -395,8 +395,10 @@ All six phases are built. What remains is founder-gated, not engineering-gated:
    (Phase 6).
 7. **Bundle identifier** — still `com.mattmoore.travelapp` (change now if you want a
    different reverse-domain; painful later).
-8. **Working name** — unchanged ask; candidates: Overlap, Pinned, Samewhere, Crossings,
-   Meanwhile, Waypoint.
+8. **Working name** — still open; full slate and research in
+   [`NAMING.md`](NAMING.md). Shortlist: **Tagalong**, **Who's In**, **Samewhere**.
+   Blocked on an App Store name search, which can only be done from a device —
+   the sandbox can reach neither the iTunes Search API nor RDAP/WHOIS.
 9. **Branch** — everything is on `claude/travel-app-initial-setup-ephphz`; merge to `main`
    via PR whenever you're ready.
 
