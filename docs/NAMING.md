@@ -130,6 +130,26 @@ Best short names on merit, domains ignored:
 Ruled out despite strong meaning: **Sonder** (Sonder Holdings is a hospitality
 company — direct category conflict) and **Yalla** (well-known MENA social app).
 
+### Round four — temporary stays, open doors, groups on a route
+
+| Name          | Len | Free | Note                                                                  |
+| ------------- | --- | ---- | --------------------------------------------------------------------- |
+| **Ajar**      | 4   | 1/8  | A door left open — best short/modern option found; leans on subtitle  |
+| **Also Here** | 8   | 7/8  | Literally what the app tells you; plain words for non-native speakers |
+| **Awhile**    | 6   | 5/8  | "Stay awhile" — matches the temporary overlap; a touch passive        |
+| **Caravan**   | 7   | 1/8  | Strangers joining for company on a route; in UK/AU it means an RV     |
+| **Serendip**  | 8   | 3/8  | Root of "serendipity", from a Persian tale of travelers' chance finds |
+| **Bunkmate**  | 8   | 6/8  | Hostel-native, explicitly platonic; narrows toward hostels            |
+| **Meantime**  | 8   | 3/8  | Fixes Meanwhile's flaw — during _this_ window, not elsewhere          |
+| **Wayside**   | 7   | 2/8  | The roadside resting place; but "fall by the wayside" means to fail   |
+| **Tavola**    | 6   | 4/8  | Italian for table; reads as a restaurant app                          |
+| **Flashpack** | 9   | 5/8  | Real backpacker slang; meaningless outside the subculture             |
+
+**Also Here** is the only name that competes with Samewhere on its own terms:
+both state the shared-presence fact. Samewhere is coined, so more ownable and
+brandable; Also Here is built from words any English learner knows and is
+slightly more available. That is the whole trade.
+
 ## Current recommendation
 
 1. **Rove** — the pick if "short and modern" is the priority. Four letters,
