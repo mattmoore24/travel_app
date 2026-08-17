@@ -3,7 +3,48 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current status: **Phase 3 complete** (2026-08-16) — pending live keys for end-to-end
+## Current status: **Phase 4 complete** (2026-08-16) — pending live keys for end-to-end
+
+### Phase 4 — Chat & realtime: done
+
+**Database (pgTAP suite now 134 asserts, all green):**
+
+- [x] `messages`: member-only RLS, active-chat-only sends, streamed via RLS-filtered
+      Supabase Realtime (publication add guarded for keyless environments)
+- [x] **Block vs unmatch semantics**: block freezes the chat (history preserved as report
+      evidence; unmatch refused on closed chats so an abuser can't delete the record);
+      unmatch hard-deletes chat + messages for both (brief §1), request row survives
+- [x] `reports` (reason enum + details + context) — insert-only, auto-logged to
+      `moderation_events` for the Phase 5 review queue
+- [x] Push pipeline: server-only `push_queue` filled by triggers (new request → recipient,
+      accept → sender, message → other member), `push_tokens` with shared-device
+      reassignment RPC, `push-worker` Edge Function (chunked Expo API delivery, dead-token
+      pruning, retry-on-failure) ready to deploy + schedule
+
+**App:**
+
+- [x] Live chat screen: realtime message stream + always-refetch-on-mount (no lost
+      messages), composer, first-message context bubble, unlocked-socials strip, closed-
+      chat state
+- [x] Safety tooling everywhere: chat menu (view profile / report / block / unmatch with
+      confirmations), report + block on public profiles, report modal with platonic-app
+      reason set ("Flirting / sexual" is front and center)
+- [x] Push registration wired post-sign-in (silently skips Expo Go/simulator/pre-EAS;
+      never prompts signed-out users)
+- [x] Inbox: last-message previews, activity ordering, closed badges
+- [x] Verified: typecheck, lint, 25 Jest tests, 134 pgTAP tests, iOS+web export (27 routes)
+- [x] Code-review pass: 5 findings, all fixed (incl. unmatch-on-closed evidence deletion
+      and a lost-messages cache bug)
+
+### Phase 4 deliverable check
+
+Full loop from either surface to a live conversation: overlap-or-pin → request →
+moderation → accept → push → realtime chat → socials unlocked — every hop implemented, the
+DB legs proven by tests. Live end-to-end still waits on the Supabase project keys.
+
+---
+
+Previous phases below.
 
 ### Phase 3 — The Map (hero feature): done
 
@@ -144,13 +185,14 @@ Create account → build full profile → view own profile: **implemented and co
 end-to-end execution needs a real Supabase project (keys below). The DB layer is fully
 tested locally; the moment `.env` is filled and migrations are pushed, the flow is live.
 
-## Next: Phase 4 — Chat & realtime
+## Next: Phase 5 — Trust & safety pipeline
 
-Realtime 1:1 messaging on accepted requests (Supabase Realtime), push notifications (new
-request / accepted / new message — needs the Apple developer account + EAS build), block /
-report / unmatch tooling, social-handle reveal polish. The `blocks` table and chat shells
-already exist, so Phase 4 is mostly the messages table + realtime plumbing + notification
-infrastructure.
+The Claude moderation classifier behind the existing `screen_first_message` seam (Edge
+Function + ANTHROPIC_API_KEY secret), strike system (warn → suspend → ban) on
+`moderation_events`, selfie verification flow (liveness vendor decision), photo moderation
+swap-in for the Phase 1 stub, and the report review queue. The chokepoints, audit spine,
+and server-owned columns are already in place, so Phase 5 is mostly replacing stub engines
+with real ones.
 
 ## Needs founder input
 
@@ -204,6 +246,6 @@ everything else); selfie-verification liveness vendor still a Phase 5 decision.
 | 1 — Auth & profiles  | ✅ done | Account + full profile viewable in app (E2E pending keys) |
 | 2 — Trips & matching | ✅ done | Overlap request → accept → chat shell (E2E pending keys)  |
 | 3 — The Map (hero)   | ✅ done | Compelling map with 15 pins (seeding path ready)          |
-| 4 — Chat & realtime  | ⏭ next  | Full loop to live conversation                            |
-| 5 — Trust & safety   | ⬜      | Flirty first message blocked + logged                     |
+| 4 — Chat & realtime  | ✅ done | Full loop to live conversation (E2E pending keys)         |
+| 5 — Trust & safety   | ⏭ next  | Flirty first message blocked + logged                     |
 | 6 — Launch hardening | ⬜      | Geofenced launch cities, TestFlight, dashboards           |

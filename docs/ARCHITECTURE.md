@@ -188,6 +188,29 @@ created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited p
   posture as the cities decision; a places API or curated venue seeds can layer in later
   without schema changes (flagged to founder).
 
+## Chat & realtime (Phase 4)
+
+- **`messages`** — member-only RLS both ways; senders must be the caller and the chat must
+  be ACTIVE (`can_send_in_chat()`, caller-scoped). No client UPDATE/DELETE. Streamed via
+  Supabase Realtime postgres-changes, which are RLS-filtered server-side; the publication
+  add is guarded so migrations run on environments without it (local rig, CI).
+- **Block vs unmatch — deliberate asymmetry**: a BLOCK closes the chat (Phase 2 sever
+  trigger) — history stays readable to both members as _evidence for reports_, nothing new
+  can be sent, and `unmatch_chat` refuses to touch closed chats so a reported abuser cannot
+  destroy the record. UNMATCH (active chats only) hard-deletes the chat and messages for
+  both, per the brief; the request row survives as the one-request-per-pair anti-pester rule.
+- **`reports`** — reason enum + free-text details + context ref; insert-only for clients
+  (own reports readable, review `status` is admin-only via column grant); every report
+  auto-logs to `moderation_events` — the Phase 5 review queue reads from there.
+- **Push pipeline** — DB triggers enqueue into a server-only `push_queue` (new request →
+  recipient; accept → sender; message → other member). `supabase/functions/push-worker`
+  (deploy + schedule ~1/min) drains it to the Expo push API in ≤100-notification chunks,
+  prunes `DeviceNotRegistered` tokens, and leaves rows unstamped on transport failure so
+  they retry. Device tokens live in `push_tokens`, registered via a caller-scoped RPC that
+  reassigns a token on shared-device account switches. Client registration is best-effort
+  and silently skips Expo Go / simulator / pre-EAS setups.
+- **Chat list** — `my_chats()` now carries last-message preview and orders by last activity.
+
 ## Privacy & secrets model
 
 - `EXPO_PUBLIC_*` env vars ship inside the client bundle. Only the Supabase URL + anon key
@@ -268,3 +291,9 @@ created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited p
   72h CHECK cannot be outlived by edits, and pin history can't be rewritten.
 - **2026-08-16 (Phase 3)** — Free-text venue + manual map placement for v1 pin creation
   (no venue-search API); curated seeds/places API can layer in without schema changes.
+- **2026-08-16 (Phase 4)** — Block freezes chats (evidence preserved), unmatch deletes them
+  (brief), and unmatch is refused on closed chats so blocks can't be laundered into
+  evidence deletion.
+- **2026-08-16 (Phase 4)** — Push delivery is queue-and-drain (DB triggers + scheduled Edge
+  Function) rather than webhook-per-event: testable in pgTAP, no dashboard wiring in the
+  critical path, and at-least-once semantics with retry on transport failure.
