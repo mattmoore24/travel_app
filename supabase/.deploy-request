@@ -3,3 +3,4 @@
 # The line below is just a log of deploy requests.
 
 2026-08-17 — Phase 0-5 schema, push-worker + moderation-worker (initial provisioning)
+2026-08-17 — deploy run 2: secrets configured, provisioning the project
