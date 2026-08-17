@@ -65,4 +65,14 @@ jobs:
           deno-version: v2.x
 
       - name: Typecheck Edge Functions
-        run: deno check supabase/functions/*/index.ts
+        # Checked from a copy outside the repo on purpose. In-tree, Deno finds
+        # the Expo app's package.json and switches to "bring your own
+        # node_modules" resolution, which fails because this job never runs
+        # npm ci (and installing the whole app just to typecheck three Deno
+        # files would be silly). Isolated + --node-modules-dir=auto lets Deno
+        # fetch exactly the packages the functions import.
+        run: |
+          mkdir -p "$RUNNER_TEMP/fn"
+          cp -r supabase/functions/. "$RUNNER_TEMP/fn/"
+          cd "$RUNNER_TEMP/fn"
+          deno check --node-modules-dir=auto ./*/index.ts
