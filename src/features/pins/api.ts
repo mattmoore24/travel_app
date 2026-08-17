@@ -13,7 +13,8 @@ export async function fetchLaunchCities() {
   const { data, error } = await supabase
     .from('launch_cities')
     .select('city_id, active, radius_km, heat_k, cities(*)')
-    .eq('active', true);
+    .eq('active', true)
+    .order('city_id'); // deterministic: the default city must not flip on refetch
   if (error) {
     throw error;
   }
@@ -28,8 +29,11 @@ export async function fetchCityPins(cityId: number) {
   return (data ?? []) as CityPinRow[];
 }
 
-export async function fetchHeatCells(cityId: number) {
-  const { data, error } = await supabase.rpc('heat_cells', { p_city_id: cityId });
+export async function fetchHeatCells(cityId: number, date: string | null) {
+  const { data, error } = await supabase.rpc('heat_cells', {
+    p_city_id: cityId,
+    p_date: date,
+  });
   if (error) {
     throw error;
   }

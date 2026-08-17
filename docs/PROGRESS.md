@@ -30,7 +30,16 @@ Updated at every phase boundary (and mid-phase when something changes).
       (brief §1), tap/drag map placement — no venue-search API needed for v1 (flagged)
 - [x] Pin → compose-request flow with `source='pin'`
 - [x] §6 metrics: `map_viewed`, `heatmap_rendered`, `pin_created`, `pin_tapped`
-- [x] Verified: typecheck, lint, 24 Jest tests, 98 pgTAP tests, iOS+web export (25 routes)
+- [x] Verified: typecheck, lint, 25 Jest tests, 112 pgTAP tests, iOS+web export (26 routes)
+- [x] Adversarial review (rounds for Phases 2 and 3) — all confirmed findings fixed and
+      regression-tested. Standouts: a trip-cap bypass via cancel/reactivate that would have
+      enabled travel-plan scraping (critical); a heatmap differencing attack that could
+      localize a user who blocked you (critical — `heat_cells` is now SECURITY INVOKER, so
+      heat can only ever summarize pins the caller's own RLS already shows them, making the
+      attack impossible by construction); blocks now sever pending requests and active chats
+      instantly; accept-time re-validation; full public-profile view before accept/decline;
+      clock-skew-safe pin expiry; coherent intent-date/duration pairing; today/tomorrow heat
+      filter on the map
 
 ### Phase 3 deliverable check
 

@@ -21,7 +21,7 @@ create table public.launch_cities (
   city_id int primary key references public.cities (id),
   active boolean not null default true,
   radius_km numeric not null default 40 check (radius_km between 1 and 150),
-  heat_k int not null default 3 check (heat_k >= 2),
+  heat_k int not null default 3 check (heat_k >= 3),
   created_at timestamptz not null default now()
 );
 
@@ -101,8 +101,9 @@ begin
   if new.expires_at <= now() then
     raise exception 'pin would already be expired' using errcode = 'check_violation';
   end if;
+  -- +2 absorbs client-local vs UTC date drift in both directions.
   if new.intent_date < current_date - 1
-     or new.intent_date > (new.expires_at at time zone 'UTC')::date + 1 then
+     or new.intent_date > (new.expires_at at time zone 'UTC')::date + 2 then
     raise exception 'intent date must fall within the pin''s lifetime'
       using errcode = 'check_violation';
   end if;
@@ -204,11 +205,16 @@ as $$
   order by p.intent_date, p.created_at
 $$;
 
--- The anonymized heatmap (rule 6). SECURITY DEFINER on purpose: it must
--- count pins the caller can't individually see, but its output shape carries
--- no identifiers — only quantized cell centers (~550m grid) and counts, and
--- only for cells with >= heat_k DISTINCT pinners. Seeded pins count toward
--- heat (that's the cold-start strategy); hidden users' pins do not.
+-- The anonymized heatmap (rule 6). SECURITY INVOKER — deliberately and
+-- load-bearingly so: the aggregation runs under the CALLER's own pin RLS, so
+-- heat can only ever summarize pins the caller could already read
+-- individually. That makes cell-count differencing attacks (subtract the
+-- pins you can see from a cell's count to localize a hidden or blocking
+-- user) impossible BY CONSTRUCTION: the delta is always zero. Blocked pairs,
+-- shadowbanned users, and expired pins are excluded from heat exactly
+-- because they're excluded from the caller's pin visibility. The k-threshold
+-- (distinct pinners per ~550m cell) and the identifier-free output remain as
+-- defense in depth. Found by the Phase 3 adversarial review.
 create function public.heat_cells(p_city_id int, p_date date default null)
 returns table (
   cell_lat double precision,
@@ -218,15 +224,10 @@ returns table (
 )
 language plpgsql
 stable
-security definer
-set search_path = public
 as $$
 declare
   v_k int;
 begin
-  if auth.uid() is null then
-    raise exception 'not authenticated' using errcode = '42501';
-  end if;
   select heat_k into v_k
   from public.launch_cities
   where city_id = p_city_id and active;
@@ -240,11 +241,10 @@ begin
     (floor(p.lng / 0.005) * 0.005 + 0.0025)::double precision,
     p.category,
     count(distinct coalesce(p.user_id::text, p.id::text))::int
-  from public.pins p
+  from public.pins p -- caller's RLS applies here
   where p.city_id = p_city_id
     and p.expires_at > now()
     and (p_date is null or p.intent_date = p_date)
-    and (p.seeded or public.is_discoverable_owner(p.user_id))
   group by 1, 2, 3
   having count(distinct coalesce(p.user_id::text, p.id::text)) >= v_k;
 end
@@ -346,9 +346,14 @@ begin
       raise exception 'no overlapping trip with recipient';
     end if;
   elsif p_source = 'pin' then
+    -- Only pins the sender could actually have seen count: live, and in an
+    -- ACTIVE launch city — otherwise this branch becomes an oracle for pin
+    -- existence in deactivated cities.
     if not exists (
-      select 1 from public.pins
-      where user_id = p_recipient and expires_at > now()
+      select 1
+      from public.pins p
+      join public.launch_cities lc on lc.city_id = p.city_id and lc.active
+      where p.user_id = p_recipient and p.expires_at > now()
     ) then
       raise exception 'recipient has no active pin';
     end if;

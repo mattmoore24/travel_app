@@ -13,6 +13,7 @@ import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, Spacing } from '@/constants/theme';
 import { useCityPins, useDeletePin, useHeatCells, useLaunchCities } from '@/features/pins/hooks';
 import { categoryEmoji, intentLabel } from '@/features/pins/pin-helpers';
+import { addDays, toISODate } from '@/features/trips/dates';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
@@ -70,35 +71,41 @@ function PinCard({
         </>
       ) : (
         <View style={styles.pinnerRow}>
-          <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
-            {photoUrl ? (
-              <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
-            ) : (
-              <SymbolView
-                name={{ ios: 'person.fill', android: 'person', web: 'person' }}
-                size={18}
-                tintColor={theme.textSecondary}
-              />
-            )}
-          </View>
-          <View style={styles.pinnerText}>
-            <View style={styles.nameRow}>
-              <ThemedText type="small">
-                {pin.display_name ?? 'Traveler'}
-                {pin.age != null ? `, ${pin.age}` : ''}
-              </ThemedText>
-              {pin.verified ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`View ${pin.display_name ?? 'traveler'}'s full profile`}
+            onPress={() => router.push(`/profile/${pin.user_id}`)}
+            style={({ pressed }) => [styles.pinnerPress, pressed && styles.pressed]}>
+            <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
+              {photoUrl ? (
+                <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
+              ) : (
                 <SymbolView
-                  name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
-                  size={13}
-                  tintColor={theme.tint}
+                  name={{ ios: 'person.fill', android: 'person', web: 'person' }}
+                  size={18}
+                  tintColor={theme.textSecondary}
                 />
-              ) : null}
+              )}
             </View>
-            <ThemedText type="small" themeColor="textSecondary">
-              wants to go here
-            </ThemedText>
-          </View>
+            <View style={styles.pinnerText}>
+              <View style={styles.nameRow}>
+                <ThemedText type="small">
+                  {pin.display_name ?? 'Traveler'}
+                  {pin.age != null ? `, ${pin.age}` : ''}
+                </ThemedText>
+                {pin.verified ? (
+                  <SymbolView
+                    name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
+                    size={13}
+                    tintColor={theme.tint}
+                  />
+                ) : null}
+              </View>
+              <ThemedText type="small" themeColor="textSecondary">
+                view profile
+              </ThemedText>
+            </View>
+          </Pressable>
           {isOwn ? (
             <PrimaryButton
               variant="danger"
@@ -142,6 +149,13 @@ function PinCard({
 
 const SEEDED_LABEL = 'Curated by the app — just show up.';
 
+const DATE_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'today', label: 'Today' },
+  { value: 'tomorrow', label: 'Tomorrow' },
+] as const;
+type DateFilter = (typeof DATE_FILTERS)[number]['value'];
+
 export default function MapScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -150,10 +164,23 @@ export default function MapScreen() {
   const [cityId, setCityId] = useState<number | null>(null);
   const activeCityId = cityId ?? launchCities[0]?.city_id ?? null;
   const activeCity = launchCities.find((c) => c.city_id === activeCityId);
-  const { data: pins = [] } = useCityPins(activeCityId);
-  const { data: heat = [] } = useHeatCells(activeCityId);
+  // The brief's hook is "popular today/tomorrow" — the heat date dimension
+  // is filterable, not blended.
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const filterISO =
+    dateFilter === 'all'
+      ? null
+      : dateFilter === 'today'
+        ? toISODate(new Date())
+        : toISODate(addDays(new Date(), 1));
+  const { data: allPins = [] } = useCityPins(activeCityId);
+  const { data: heat = [] } = useHeatCells(activeCityId, filterISO);
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
 
+  const pins = useMemo(
+    () => (filterISO ? allPins.filter((p) => p.intent_date === filterISO) : allPins),
+    [allPins, filterISO]
+  );
   const selectedPin = useMemo(
     () => pins.find((p) => p.id === selectedPinId) ?? null,
     [pins, selectedPinId]
@@ -269,6 +296,20 @@ export default function MapScreen() {
             );
           })}
         </ScrollView>
+        <View style={styles.dateRow}>
+          {DATE_FILTERS.map((filter) => {
+            const selected = filter.value === dateFilter;
+            return (
+              <Pressable key={filter.value} onPress={() => setDateFilter(filter.value)}>
+                <ThemedView
+                  type={selected ? 'backgroundSelected' : 'background'}
+                  style={styles.dateChip}>
+                  <ThemedText type={selected ? 'smallBold' : 'small'}>{filter.label}</ThemedText>
+                </ThemedView>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       {activeCity && !selectedPin ? (
@@ -280,7 +321,7 @@ export default function MapScreen() {
           }
           style={[
             styles.fab,
-            { backgroundColor: theme.tint, bottom: BottomTabInset + Spacing.five },
+            { backgroundColor: theme.tint, bottom: BottomTabInset + insets.bottom + Spacing.five },
           ]}>
           <SymbolView
             name={{ ios: 'plus', android: 'add', web: 'add' }}
@@ -292,7 +333,7 @@ export default function MapScreen() {
       ) : null}
 
       {selectedPin && activeCityId != null ? (
-        <View style={[styles.cardWrap, { bottom: BottomTabInset + Spacing.four }]}>
+        <View style={[styles.cardWrap, { bottom: BottomTabInset + insets.bottom + Spacing.four }]}>
           <PinCard pin={selectedPin} cityId={activeCityId} onClose={() => setSelectedPinId(null)} />
         </View>
       ) : null}
@@ -325,6 +366,31 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    marginTop: Spacing.two,
+  },
+  dateChip: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.one,
+    borderRadius: Spacing.five,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  pinnerPress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    flex: 1,
+  },
+  pressed: {
+    opacity: 0.7,
   },
   marker: {
     paddingHorizontal: 6,

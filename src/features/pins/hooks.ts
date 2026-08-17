@@ -27,15 +27,19 @@ export function useCityPins(cityId: number | null) {
     queryFn: () => fetchCityPins(cityId!),
     enabled: isSupabaseConfigured && cityId != null,
     staleTime: 20_000,
+    // The map tab stays mounted; without polling, expired pins would linger
+    // until an app background/foreground cycle.
+    refetchInterval: 60_000,
   });
 }
 
-export function useHeatCells(cityId: number | null) {
+export function useHeatCells(cityId: number | null, date: string | null) {
   return useQuery({
-    queryKey: ['heat-cells', cityId],
-    queryFn: () => fetchHeatCells(cityId!),
+    queryKey: ['heat-cells', cityId, date],
+    queryFn: () => fetchHeatCells(cityId!, date),
     enabled: isSupabaseConfigured && cityId != null,
     staleTime: 60_000,
+    refetchInterval: 120_000,
   });
 }
 

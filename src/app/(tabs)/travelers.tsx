@@ -139,7 +139,11 @@ export default function TravelersScreen() {
   const { data: chats = [] } = useMyChats();
   const cancelTrip = useCancelTrip();
 
-  // §6: matching DAU / browse depth.
+  // §6: matching DAU (the comparison metric for the map-led thesis) and
+  // browse depth.
+  useEffect(() => {
+    analytics.capture('travelers_viewed');
+  }, []);
   useEffect(() => {
     if (matches.length > 0) {
       analytics.capture('matches_viewed', { count: matches.length });

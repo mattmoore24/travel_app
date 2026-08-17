@@ -12,6 +12,7 @@ import {
   PIN_CATEGORIES,
   expiryForDuration,
   intentDateOptions,
+  validDurations,
   type PinDuration,
 } from '@/features/pins/pin-helpers';
 import { toISODate } from '@/features/trips/dates';
@@ -38,20 +39,29 @@ export default function DropPinScreen() {
     return null;
   }
 
-  const lat = coords?.lat ?? city.cities.lat;
-  const lng = coords?.lng ?? city.cities.lng;
+  // Recomputed per render: the modal can sit open across local midnight, and
+  // a stale "today" would post an already-expired pin.
+  const todayISO = toISODate(new Date());
+  const effectiveIntent = intentDate < todayISO ? todayISO : intentDate;
   const dateOptions = intentDateOptions();
+  // Only durations that keep the pin alive into its intent day.
+  const validSet = new Set(validDurations(effectiveIntent));
+  const durationOptions = DURATION_OPTIONS.filter((o) => validSet.has(o.value));
+  const effectiveDuration = validSet.has(duration) ? duration : 'end_of_day';
 
   const submit = async () => {
+    if (!coords) {
+      return;
+    }
     try {
       await createPin.mutateAsync({
         cityId: city.city_id,
         venueName: venue.trim(),
         category,
-        lat,
-        lng,
-        intentDate,
-        expiresAt: expiryForDuration(duration, intentDate).toISOString(),
+        lat: coords.lat,
+        lng: coords.lng,
+        intentDate: effectiveIntent,
+        expiresAt: expiryForDuration(effectiveDuration, effectiveIntent).toISOString(),
       });
       router.back();
     } catch {
@@ -64,15 +74,21 @@ export default function DropPinScreen() {
       title={`Drop a pin in ${city.cities.name}`}
       subtitle="Future intent, venue-level — it expires on its own (72h max) and never shows where you are."
       continueLabel="Post pin"
-      continueDisabled={venue.trim().length === 0}
+      continueDisabled={venue.trim().length === 0 || coords == null}
       continueLoading={createPin.isPending}
-      onContinue={submit}>
+      onContinue={submit}
+      footer={
+        coords == null ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            Place the marker on the map to post.
+          </ThemedText>
+        ) : undefined
+      }>
       <FormTextField
         label="Where do you want to go?"
         placeholder="Venue or spot — 'Pensão Amor', 'Arpoador sunset point'…"
         value={venue}
         onChangeText={setVenue}
-        hint="Type the name; place it on the map below."
       />
       <ThemedText type="smallBold">What kind of plan?</ThemedText>
       <ChipRow
@@ -83,20 +99,20 @@ export default function DropPinScreen() {
       <ThemedText type="smallBold">When?</ThemedText>
       <ChipRow
         options={dateOptions}
-        selected={[intentDate]}
+        selected={[effectiveIntent]}
         onToggle={(value) => setIntentDate(value)}
       />
       <ThemedText type="smallBold">Pin disappears after</ThemedText>
       <ChipRow
-        options={DURATION_OPTIONS}
-        selected={[duration]}
+        options={durationOptions}
+        selected={[effectiveDuration]}
         onToggle={(value) => setDuration(value)}
       />
       <LocationPicker
         centerLat={city.cities.lat}
         centerLng={city.cities.lng}
-        lat={lat}
-        lng={lng}
+        lat={coords?.lat ?? city.cities.lat}
+        lng={coords?.lng ?? city.cities.lng}
         onChange={(newLat, newLng) => setCoords({ lat: newLat, lng: newLng })}
       />
     </StepScreen>

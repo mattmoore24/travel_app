@@ -1,7 +1,7 @@
 -- Pins: 72h hard expiry (rule 3), geofenced launch cities, immutability,
 -- k-anonymous heatmap (rule 6), seeded pins, pin-source requests.
 begin;
-select plan(21);
+select plan(25);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -194,6 +194,48 @@ select throws_ok(
   'clients cannot create seeded pins'
 );
 
+-- DIFFERENCING REGRESSION (Phase 3 adversarial review): heat is computed
+-- under the caller's own pin RLS, so it can never contain more than the pins
+-- the caller could already see — a blocked pinner drops out of the other
+-- party's heat entirely, and k applies per-viewer.
+reset role;
+insert into public.blocks (blocker_id, blocked_id)
+  values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000c');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select is(
+  (select pin_count from public.heat_cells(pg_temp.lisbon()) where category = 'bar'),
+  3,
+  'blocked-pair pins never count toward the other party''s heat'
+);
+
+-- A 3-pinner cell renders only for viewers who can see all three.
+reset role;
+insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
+values
+  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Cell2 A', 'restaurant',
+   38.7501, -9.1701, current_date, now() + interval '24 hours'),
+  ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), 'Cell2 B', 'restaurant',
+   38.7502, -9.1702, current_date, now() + interval '24 hours'),
+  ('00000000-0000-0000-0000-00000000000d', pg_temp.lisbon(), 'Cell2 D', 'restaurant',
+   38.7503, -9.1703, current_date, now() + interval '24 hours');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select is(
+  (select count(*)::int from public.heat_cells(pg_temp.lisbon()) where category = 'restaurant'),
+  0,
+  'cell stays dark for a viewer who cannot see one of its k pinners'
+);
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  (select pin_count from public.heat_cells(pg_temp.lisbon()) where category = 'restaurant'),
+  3,
+  'the same cell renders for a viewer who sees all its pinners'
+);
+
+reset role;
+delete from public.blocks;
+
 -- Pin cap.
 select pg_temp.login('00000000-0000-0000-0000-00000000000d');
 select throws_ok(
@@ -225,6 +267,27 @@ select throws_ok(
        '00000000-0000-0000-0000-00000000000c', 'pin', 'hi there', 'pin') $$,
   'recipient has no active pin',
   'pin-source request requires a live pin'
+);
+
+-- A pin in a DEACTIVATED city must not satisfy the check — otherwise the
+-- error difference becomes an oracle for pin existence off the visible map.
+reset role;
+create function pg_temp.bangkok() returns int language sql as
+  $$ select city_id from public.launch_cities lc
+     join public.cities c on c.id = lc.city_id
+     where c.name = 'Bangkok' $$;
+insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
+select '00000000-0000-0000-0000-00000000000c', pg_temp.bangkok(),
+       'Khaosan bar', 'bar', c.lat, c.lng, current_date, now() + interval '24 hours'
+from public.cities c where c.id = pg_temp.bangkok();
+update public.launch_cities set active = false where city_id = pg_temp.bangkok();
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select throws_ok(
+  $$ select public.send_message_request(
+       '00000000-0000-0000-0000-00000000000c', 'pin', 'hi there', 'pin') $$,
+  'recipient has no active pin',
+  'pins in deactivated cities are not an existence oracle'
 );
 
 -- Anon gets nothing.

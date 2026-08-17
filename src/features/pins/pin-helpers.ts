@@ -23,6 +23,14 @@ export function categoryEmoji(category: PinCategory, seeded: boolean): string {
 
 export const MAX_PIN_HOURS = 72;
 
+// The DB CHECK compares expires_at to the SERVER clock; a device even
+// seconds ahead would fail an exactly-72h expiry, so stay safely inside.
+const SAFETY_MARGIN_MS = 5 * 60 * 1000;
+
+function maxExpiry(now: Date): Date {
+  return new Date(now.getTime() + MAX_PIN_HOURS * 3_600_000 - SAFETY_MARGIN_MS);
+}
+
 /** The three days a pin's intent can target (bounded by the 72h lifetime). */
 export function intentDateOptions(now = new Date()): { value: string; label: string }[] {
   return [0, 1, 2].map((offset) => {
@@ -43,7 +51,7 @@ export function intentDateOptions(now = new Date()): { value: string; label: str
  */
 export function expiryForIntentDate(intentISO: string, now = new Date()): Date {
   const endOfIntentDay = addDays(parseISODate(intentISO), 1); // local midnight after
-  const cap = new Date(now.getTime() + MAX_PIN_HOURS * 3_600_000);
+  const cap = maxExpiry(now);
   return endOfIntentDay < cap ? endOfIntentDay : cap;
 }
 
@@ -66,8 +74,20 @@ export function expiryForDuration(
     return expiryForIntentDate(intentISO, now);
   }
   const hours = Number(duration.replace('h', ''));
-  const capped = Math.min(hours, MAX_PIN_HOURS);
-  return new Date(now.getTime() + capped * 3_600_000);
+  const raw = new Date(now.getTime() + Math.min(hours, MAX_PIN_HOURS) * 3_600_000);
+  const cap = maxExpiry(now);
+  return raw < cap ? raw : cap;
+}
+
+/**
+ * Durations that keep the pin alive into its intent day — "Monday" with a
+ * 24h lifetime that dies Sunday is incoherent and is filtered out here.
+ */
+export function validDurations(intentISO: string, now = new Date()): PinDuration[] {
+  const intentDayStart = parseISODate(intentISO);
+  return DURATION_OPTIONS.filter(
+    (option) => expiryForDuration(option.value, intentISO, now) > intentDayStart
+  ).map((option) => option.value);
 }
 
 /** "Tonight" / "Tomorrow" / weekday label for a pin's intent date. */
