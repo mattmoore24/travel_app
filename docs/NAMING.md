@@ -179,6 +179,48 @@ with the former, has the plain-language legibility of the latter, and adds a
 genuine double meaning neither has. A name that means two true things at once is
 usually a good sign.
 
+### Round six — descriptive compounds (Travel Friends, Travel Meet…)
+
+Best availability of any round (most 4–5 of 6 free). That is the tell, not the
+win: squatters ignore generic compounds because they have no resale value.
+
+| Name               | Free | Note                                                    |
+| ------------------ | ---- | ------------------------------------------------------- |
+| **Meet Travelers** | 5/6  | Clearest statement of the use case                      |
+| **Travel Kin**     | 5/6  | "Kin" is warmer and slightly more ownable               |
+| **Travel Folk**    | 5/6  | Warm, less transactional than most here                 |
+| **Wandermates**    | 5/6  | "Mates" reads platonic; in US English can skew romantic |
+| **Hostelmates**    | 5/6  | Narrows to hostels                                      |
+| **Friends Abroad** | 5/6  | Clear, faintly expat-flavoured                          |
+| **Travel Friends** | 4/6  | The most literal version                                |
+| **Travel Buddy**   | 0/6  | Fully taken — most-attempted name in the category       |
+
+**Recommended against as a direction**, for four reasons:
+
+1. **Legally weak** — descriptive names are largely unprotectable. Anyone can
+   use "Travel Friends"; there is no trademark and no defence.
+2. **Apple discourages generic names** — metadata rules require distinctiveness
+   and prohibit keyword-stuffing.
+3. **Most competed territory in the category** — which is precisely why
+   `travelbuddy` is the one name here at 0/6.
+4. **The benefit is already free.** The App Store field structure puts the
+   keywords in the title, subtitle and keyword field regardless of the brand.
+   Making the brand _itself_ the keyword is redundant: it adds nothing and
+   costs everything ownable.
+
+**The useful find:** "Never Travel Alone" is a weak name but an excellent
+subtitle — 18 characters, states the promise, forecloses the dating read in
+three words. Recommended regardless of which name is chosen.
+
+### The space is now covered
+
+Six rounds, ~950 candidates, across every direction available to this category:
+the mechanic (Samewhere, Overlap), plain-language co-presence (Also Here, Same
+Here), the ask (Tagalong, Who's In), places (Bunkroom, Common Room), short and
+modern (Rove, Ajar, Amble), evocative (Cairn, Tern, Sonder), non-English (Junto,
+Vamos, Pamoja), and descriptive (Travel Friends). There is no seventh direction
+being held back.
+
 ## Current recommendation
 
 1. **Rove** — the pick if "short and modern" is the priority. Four letters,
