@@ -3,7 +3,39 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current status: **Phase 6 complete — all six phases done** (2026-08-17)
+## Current status: **Phase 7 in progress — design overhaul + guest mode + rooms** (2026-08-17)
+
+### Phase 7 — Beautiful, frictionless, and room-shaped
+
+Research-backed redesign (sources in [`DESIGN.md`](DESIGN.md)): iOS 26 Liquid
+Glass is the native language now, and `expo-glass-effect` ships in our SDK, so
+"modern" means native rather than imitated.
+
+- [x] **Design system** — trail-green palette (deliberately unlike every dating
+      app), warm canvas, seven-role type scale, 4pt spacing, elevation/motion
+      sets, `GlassSurface` primitive with an opaque fallback
+- [x] **Three tabs** — Map · Travelers · Chat, with Profile behind the header
+      avatar; 9 photo slots per profile
+- [x] **Guest mode** — the tabs are the front door for everyone. No account
+      needed for the map (curated pins in full, user pins with no identity
+      attached), the heat layer, one featured traveler, or reading an
+      establishment room. The account is asked for at the moment of action
+- [x] **14-day traveler window** — matching opens two weeks before arrival, and
+      cards show the whole stay, not just the overlap
+- [x] **Establishment rooms** — hostels/hotels run a room; joining asks only
+      when you leave; membership ends 7 days after that, capped at 30; staff
+      can remove messages and members; pin/mute/archive plus 14-day
+      auto-archive (Hinge-style: archived stays readable)
+- [x] **Reactions and photo messages** — long-press for quick emoji; chat
+      photos go through the same moderation pipeline as profile photos, which
+      is not optional in a publicly-readable room
+- [x] 36 new database assertions (suite: **268**)
+- [ ] Screen-by-screen visual redesign (Map bottom sheet, big-photo traveler
+      cards, sectioned chat list) — next
+
+---
+
+## Phase 6 complete (2026-08-17)
 
 ### 🎉 The backend is LIVE
 

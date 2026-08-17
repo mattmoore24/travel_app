@@ -97,11 +97,11 @@ spring for gesture-driven surfaces. Everything respects Reduce Motion.
 
 Three tabs, in the order people use them:
 
-| Tab           | Contains                                                            |
-| ------------- | ------------------------------------------------------------------- |
-| **Map**       | Full-bleed map, floating city/day controls, pin sheet, drop-pin FAB |
-| **Travelers** | Overlapping travelers; the first card is visible to everyone        |
-| **Chat**      | Requests · pinned · direct chats · establishment rooms · archived   |
+| Tab           | Contains                                                                |
+| ------------- | ----------------------------------------------------------------------- |
+| **Map**       | Full-bleed map, floating city/day controls, pin sheet, drop-pin FAB     |
+| **Travelers** | Overlapping travelers from 14 days before arrival; first card is public |
+| **Chat**      | Requests · pinned · direct chats · establishment rooms · archived       |
 
 **Profile leaves the tab bar** and lives behind the avatar in the top-right of
 Map and Travelers — standard for social apps, and it buys the third tab for
@@ -121,22 +121,31 @@ and returns you exactly where you were.
 | An establishment room, **read-only**                         | Posting, reacting, joining  |
 | Community guidelines, privacy policy                         | —                           |
 
-Two deliberate privacy calls, both flagged for founder sign-off:
+Privacy calls made here:
 
 - **Traveler pins are anonymous to signed-out visitors.** The brief says the map
   is open; it does not say strangers on the internet get names and faces
   attached to venues. Curated pins carry full detail, user pins render as
   accent dots with the venue and day only. The map still feels alive; nobody
   is exposed.
-- **The featured traveler is opt-outable.** Showing one real person's profile
-  to logged-out visitors is a growth lever with a real cost to that person. It
-  ships with a `Show me to signed-out visitors` profile switch (default on,
-  one tap off), and only verified, onboarded, in-window travelers are eligible.
-  Selection = highest connect rate (requests received per day live, last 30
-  days), tie-broken by verified then recency.
+- **The featured traveler has no opt-out** (founder decision, 2026-08-17):
+  posting a trip is the consent, nobody can message that person without an
+  account, and the slot rotates constantly because it is a live ranking —
+  whoever in the city people are connecting with most this week. Selection =
+  requests received in the last 30 days, tie-broken by verified then recency;
+  only active, onboarded travelers inside the window are eligible.
 - **Establishment rooms are publicly readable**, which members must be told
   _before_ they post — the composer carries a one-line notice, and each room
   has a `public_preview` flag an establishment can turn off.
+
+## The traveler window
+
+Matching opens **14 days before arrival** and runs to the end of the shared
+window. Two reasons: people can plan before they land (the point), and the tab
+stays full of travelers you can actually meet rather than a year of future
+bookings. Cards show the counterpart's **whole stay** ("here 19–26 Aug"), not
+just the overlap, so you can see how long someone is around. The same window
+governs sending a request — you can only message an overlap you can see.
 
 ## Chat architecture
 
