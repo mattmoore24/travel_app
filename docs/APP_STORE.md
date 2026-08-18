@@ -102,24 +102,22 @@ Yes with moderation). The DB enforces 18+ at profile level (age CHECK ≥ 18).
 - Promotional text + description (draft from README/brief once the name is
   chosen — the name decision gates this)
 
-## Testing on a phone without the Apple Developer Program
+## Expo Go: abandoned, do not retry
 
-`.github/workflows/expo-go-session.yml` runs a Metro dev server on a GitHub
-runner and tunnels it, so the app opens in **Expo Go** on a real iPhone with no
-$99 membership and no computer. Actions → **Expo Go session** → Run workflow;
-the `exp://` URL appears in the run summary.
+Two approaches were tried to get the app onto a phone without the $99
+membership. Both failed, for reasons that will not change:
 
-**What Expo Go cannot show you**, and why TestFlight is still required before
-launch:
+**Tunnelled dev server.** `expo start --tunnel` uses an ngrok token hardcoded
+inside the Expo CLI (`AsyncNgrok.js` → `NGROK_CONFIG.authToken`) against Expo's
+shared `exp.direct` account. There is no flag or env var to supply your own,
+and that shared service refuses connections from GitHub runner IPs.
 
-| Feature                   | In Expo Go                                                    |
-| ------------------------- | ------------------------------------------------------------- |
-| Map, photos, chat, rooms  | ✅ real, against the live backend                             |
-| Liquid Glass surfaces     | ⚠️ unverified — falls back to opaque if unsupported           |
-| Remote push notifications | ❌ not supported in Expo Go since SDK 53                      |
-| Sign in with Apple        | ⚠️ runs under Expo's bundle id, not `com.mattmoore.samewhere` |
-| The real app icon/splash  | ❌ you see Expo Go's                                          |
+**EAS Update.** This published successfully — see
+`.github/workflows/expo-go-publish.yml`, which works and is kept — but Expo Go
+rejected the update as incompatible. Expo Go bundles native modules for one
+SDK, and reconciling would mean downgrading the whole project off SDK 57,
+giving up `expo-glass-effect` and the iOS 26 work.
 
-So Expo Go answers "does the product work" — the flows, the data, the copy, the
-colours. It does not answer "does the build ship correctly", which is what
-TestFlight is for.
+Even when Expo Go works it cannot show the app icon, remote push, Liquid Glass,
+or Sign in with Apple under the real bundle id. **TestFlight is the only path
+that shows the actual product, and it is required before launch regardless.**
