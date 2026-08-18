@@ -1,0 +1,114 @@
+# Publishes the JS bundle to EAS Update so it can be opened in Expo Go.
+#
+# Replaces the tunnel approach, which could not be made to work: `expo start
+# --tunnel` uses an ngrok token hardcoded inside the Expo CLI
+# (AsyncNgrok.js -> NGROK_CONFIG.authToken) against Expo's shared exp.direct
+# account. There is no way to supply your own, and that shared service refuses
+# connections from GitHub runner IPs. EAS Update needs no tunnel at all — the
+# bundle goes to Expo's CDN and the phone fetches it.
+#
+# Required repository secrets:
+#   EXPO_TOKEN                     expo.dev -> Access tokens
+#   EXPO_PUBLIC_SUPABASE_URL       baked into the bundle at publish time
+#   EXPO_PUBLIC_SUPABASE_ANON_KEY  the ANON key, never service_role
+name: Publish to Expo Go
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'EAS Update branch to publish to'
+        type: string
+        default: 'expo-go'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Check required secrets
+        env:
+          TOKEN: ${{ secrets.EXPO_TOKEN }}
+          URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          missing=()
+          [ -n "$TOKEN" ] || missing+=(EXPO_TOKEN)
+          [ -n "$URL" ] || missing+=(EXPO_PUBLIC_SUPABASE_URL)
+          [ -n "$KEY" ] || missing+=(EXPO_PUBLIC_SUPABASE_ANON_KEY)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Install
+        run: npm ci
+
+      # Expo Go identifies compatible updates by an `exposdk:` runtime, not by
+      # the appVersion policy real builds use. Rewritten here rather than
+      # committed so device builds keep their own runtime.
+      - name: Target the Expo Go runtime
+        run: |
+          node -e "
+            const fs = require('fs');
+            const major = require('./node_modules/expo/package.json').version.split('.')[0];
+            const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            app.expo.runtimeVersion = 'exposdk:' + major + '.0.0';
+            fs.writeFileSync('app.json', JSON.stringify(app, null, 2) + '\n');
+            console.log('runtimeVersion =', app.expo.runtimeVersion);
+          "
+
+      - name: Publish update
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          BRANCH="${{ inputs.branch }}"
+          [ -n "$BRANCH" ] || BRANCH=expo-go
+          npx --yes eas-cli@latest update \
+            --branch "$BRANCH" \
+            --message "Expo Go session $(git rev-parse --short HEAD)" \
+            --non-interactive 2>&1 | tee eas.log
+
+      - name: Write the Expo Go link
+        if: always()
+        run: |
+          BRANCH="${{ inputs.branch }}"
+          [ -n "$BRANCH" ] || BRANCH=expo-go
+          PROJECT_ID=$(node -p "require('./app.json').expo.extra.eas.projectId")
+          RUNTIME=$(node -p "'exposdk:'+require('./node_modules/expo/package.json').version.split('.')[0]+'.0.0'")
+          URL="exp://u.expo.dev/${PROJECT_ID}?channel-name=${BRANCH}&runtime-version=${RUNTIME}"
+          printf '%s\n' "$URL" > expo-go-url.txt
+          echo "::notice title=Open in Expo Go::$URL"
+          {
+            echo "## Open in Expo Go"
+            echo
+            echo "Easiest: open **Expo Go** -> **Projects** tab -> **samewhere**."
+            echo
+            echo "Or paste this into Expo Go's \"Enter URL manually\":"
+            echo
+            echo '```'
+            echo "$URL"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the link as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expo-go-url
+          path: expo-go-url.txt
+          retention-days: 3
+
+      - name: EAS log on failure
+        if: failure()
+        run: tail -80 eas.log || true
