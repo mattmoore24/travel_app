@@ -383,30 +383,17 @@ All six phases are built. What remains is founder-gated, not engineering-gated:
 4. **Supabase project (the one real blocker)** — full step-by-step walkthrough now lives
    in [`SUPABASE_SETUP.md`](SUPABASE_SETUP.md) (~15 min: create project → copy two keys →
    `.env` → `supabase db push` → auth settings → verify).
-5. **Anthropic API key** — ✅ **done.** Key is in GitHub repo secrets and synced to Edge
-   Function secrets (deploy run 4). The worker **schedules are also done** — they live in
-   `20260817230000_schedule_workers.sql` as pg_cron jobs rather than dashboard clicks, so
-   they rebuild from a fresh clone (deploy run 5).
+5. **Anthropic API key + live moderation** — ✅ **DONE 2026-08-18.** Key synced to Edge
+   Function secrets; both workers scheduled by pg_cron from
+   `20260817230000_schedule_workers.sql`; Vault credentials set via
+   `public.set_worker_credentials()`; both `app_config` flags flipped to `true`.
+   Verified: `worker_status()` shows 200s on consecutive ticks and
+   `admin_ops_health` reads all zeros.
 
-   Two SQL statements remain, and the order matters. First, populate Vault so the cron
-   jobs can actually reach the functions (values from Settings → API):
-
-   ```sql
-   select vault.create_secret('https://<ref>.supabase.co', 'project_url');
-   select vault.create_secret('<service_role_key>',        'service_role_key');
-   ```
-
-   Verify with `select jobname, active from cron.job;` and
-   `select status_code, error_msg from net._http_response order by created desc limit 5;` — 200s mean the workers
-   are being reached. **Then** turn moderation on:
-
-   ```sql
-   update public.app_config set value='true'
-   where key in ('require_llm_moderation','require_photo_moderation');
-   ```
-
-   Flags-before-workers would silently queue every first message and photo with nothing
-   to release them. Cost at v1 volume is negligible.
+   **Caveat: live but unexercised.** No real message or photo has passed through the
+   classifier yet — that needs a working build. The first genuine test is the runbook's
+   own check: send a flirty first message from a test account and confirm it never
+   arrives and `admin_moderation_stats` counts it blocked.
 
 6. **Apple Developer Program** ($99/yr) — needed before Apple Sign-In can be tested
    end-to-end (entitlement + Services ID, then enable the Apple provider in Supabase Auth).

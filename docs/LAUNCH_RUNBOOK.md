@@ -10,11 +10,17 @@ The Supabase project exists, all migrations are applied, and `push-worker` +
 change to `supabase/.deploy-request` (or Actions → **Supabase deploy** → Run
 workflow once the file is on `main`). Setup details: [`SUPABASE_SETUP.md`](SUPABASE_SETUP.md).
 
-## 1. Turn the safety pipeline on ⚠️ before any real user
+## 1. Turn the safety pipeline on — ✅ DONE 2026-08-18
 
 Default config ships **dark**: photos auto-approve and only the regex filter
 screens messages. Do not let a build reach testers or App Review this way —
 the review notes claim LLM screening, and it must be true.
+
+**Status: on.** Both `app_config` flags are `true`, both cron workers post 200s
+every minute, and `admin_ops_health` reads all zeros. Steps a–c below are the
+record of how it was done; they do not need repeating unless the project is
+rebuilt. Note this pipeline is live but **unexercised** — no real message has
+been through it yet, because that needs a working build (see step 8).
 
 **a. Key** — add `ANTHROPIC_API_KEY` to GitHub repo secrets and touch
 `supabase/.deploy-request`; the deploy workflow syncs it to Edge Function
