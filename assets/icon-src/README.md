@@ -11,12 +11,13 @@ corners here.
 | -------------------- | -------------------------------- | ------------------------------------ |
 | `iconA2-overlap.svg` | Filled circles, amber lens       | Venn-adjacent; reads as eyes          |
 | `iconB2-cross.svg`   | Two routes crossing              | Collapses to an "x" (close) at 60px   |
-| `iconC2-squares.svg` | Overlapping rounded squares      | Reads as the folder/copy glyph        |
 | `iconD-presence.svg` | Ring, warm centre, arriving dot  | Survivable; slightly camera-aperture  |
-| `iconE2-ripple.svg`  | Presence signal                  | **Reads as WiFi.** Unusable           |
 | `iconG-pin.svg`      | Map pin, amber centre            | Works at every size; generic          |
 | `iconH-same.svg`     | Equals sign — "same"             | Best concept; reads as sliders/menu   |
-| `iconI-crescent.svg` | Crescent with amber              | **Reads as a moon.** Unusable         |
+| `iconJ-routes.svg`   | Two routes crossing, bone + amber | **Strongest.** Asymmetry + two colours break the glyph read |
+| `iconL-node.svg`     | Crossing with a dominant node     | Paths still fall into a symmetric X around the dot |
+| `iconM-disc.svg`     | Routes cut out of a solid disc    | Strong silhouette; reads as a pinwheel at 60px |
+| `iconN-knot.svg`     | One line crossing itself          | Turns to mush at 60px |
 
 ## What two rounds established
 
@@ -35,3 +36,11 @@ Round 1 also used the `highlight` ochre (`#9A5709`), which is tuned to carry
 white *text* at 4.5:1 and reads muddy brown as a *mark* against indigo. Marks
 only need 3:1, so everything from round 2 on uses the dark-scheme amber
 `#F0A93C`.
+
+## The crossing-paths round
+
+The founder liked the crossing-routes idea; the problem with `iconB2` was never
+the concept, it was that a **symmetric, monochrome** cross is the close glyph.
+Breaking either property fixes it. `iconJ` breaks both — the two paths run at
+different angles and in different colours — and it is the only version that
+still reads as two routes rather than an "x" at 60px.
