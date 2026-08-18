@@ -101,3 +101,25 @@ Yes with moderation). The DB enforces 18+ at profile level (age CHECK ≥ 18).
 - App Store icon 1024px (current icon.png is the working placeholder)
 - Promotional text + description (draft from README/brief once the name is
   chosen — the name decision gates this)
+
+## Testing on a phone without the Apple Developer Program
+
+`.github/workflows/expo-go-session.yml` runs a Metro dev server on a GitHub
+runner and tunnels it, so the app opens in **Expo Go** on a real iPhone with no
+$99 membership and no computer. Actions → **Expo Go session** → Run workflow;
+the `exp://` URL appears in the run summary.
+
+**What Expo Go cannot show you**, and why TestFlight is still required before
+launch:
+
+| Feature                   | In Expo Go                                                    |
+| ------------------------- | ------------------------------------------------------------- |
+| Map, photos, chat, rooms  | ✅ real, against the live backend                             |
+| Liquid Glass surfaces     | ⚠️ unverified — falls back to opaque if unsupported           |
+| Remote push notifications | ❌ not supported in Expo Go since SDK 53                      |
+| Sign in with Apple        | ⚠️ runs under Expo's bundle id, not `com.mattmoore.samewhere` |
+| The real app icon/splash  | ❌ you see Expo Go's                                          |
+
+So Expo Go answers "does the product work" — the flows, the data, the copy, the
+colours. It does not answer "does the build ship correctly", which is what
+TestFlight is for.

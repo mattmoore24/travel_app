@@ -1,0 +1,95 @@
+# Runs a Metro dev server on a GitHub runner and exposes it through a tunnel,
+# so the app can be opened in Expo Go on a phone. Exists because development
+# happens from a phone with no computer to run `npx expo start` on.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   EXPO_PUBLIC_SUPABASE_URL       same project URL used everywhere else
+#   EXPO_PUBLIC_SUPABASE_ANON_KEY  the ANON key (public by design; never
+#                                  service_role, which would ship full
+#                                  database access to every user)
+#
+# The tunnel dies when the job ends, so this is a session, not a deployment.
+name: Expo Go session
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: 'Minutes to keep the session alive (max 300)'
+        type: string
+        default: '45'
+
+jobs:
+  session:
+    runs-on: ubuntu-latest
+    # Job timeout must exceed the requested session or the run is killed
+    # mid-session with no summary.
+    timeout-minutes: 310
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Check required secrets
+        env:
+          URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          missing=()
+          [ -n "$URL" ] || missing+=(EXPO_PUBLIC_SUPABASE_URL)
+          [ -n "$KEY" ] || missing+=(EXPO_PUBLIC_SUPABASE_ANON_KEY)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository secrets: ${missing[*]}"
+            echo "Without them the app runs with no backend and every screen fails."
+            exit 1
+          fi
+
+      - name: Install
+        run: npm ci
+
+      - name: Start tunnelled dev server
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          EXPO_NO_TELEMETRY: '1'
+          CI: '' # Expo suppresses the tunnel URL banner when CI is set.
+        run: |
+          npm install --global @expo/ngrok@^4.1.0
+          nohup npx expo start --tunnel --non-interactive > expo.log 2>&1 &
+          echo "Waiting for the tunnel to come up…"
+          for i in $(seq 1 90); do
+            if grep -qE 'exp(\+[a-z0-9-]+)?://' expo.log; then break; fi
+            sleep 5
+          done
+          URL=$(grep -oE 'exp(\+[a-z0-9-]+)?://[^ ]+' expo.log | head -1 || true)
+          if [ -z "$URL" ]; then
+            echo "::error::Tunnel never came up. Log follows:"
+            cat expo.log
+            exit 1
+          fi
+          echo "::notice title=Open this in Expo Go::$URL"
+          {
+            echo "## Open in Expo Go"
+            echo
+            echo '```'
+            echo "$URL"
+            echo '```'
+            echo
+            echo "Paste that into Expo Go, or open it on the phone directly."
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat expo.log
+
+      - name: Hold the session open
+        run: |
+          MINUTES=${{ inputs.minutes }}
+          case "$MINUTES" in ''|*[!0-9]*) MINUTES=45 ;; esac
+          [ "$MINUTES" -gt 300 ] && MINUTES=300
+          echo "Session open for $MINUTES minutes. Cancel the run to end it early."
+          sleep $(( MINUTES * 60 ))
+
+      - name: Dev server log
+        if: always()
+        run: tail -120 expo.log || true
