@@ -72,6 +72,10 @@ jobs:
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_NO_TELEMETRY: '1'
         run: |
+          # Without pipefail the step takes tee's exit code, so a failed
+          # publish reports success — which is exactly what happened on the
+          # first run.
+          set -o pipefail
           BRANCH="${{ inputs.branch }}"
           [ -n "$BRANCH" ] || BRANCH=expo-go
           npx --yes eas-cli@latest update \
