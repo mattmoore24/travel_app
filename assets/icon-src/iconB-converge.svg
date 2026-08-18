@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- B: two routes sweeping up from opposite corners to one meeting point. -->
-  <rect width="1024" height="1024" fill="#2A4C9B"/>
-  <g fill="none" stroke="#FBFAF7" stroke-width="62" stroke-linecap="round">
-    <path d="M 214 830 C 214 596, 330 430, 512 372"/>
-    <path d="M 810 830 C 810 596, 694 430, 512 372"/>
-  </g>
-  <circle cx="512" cy="356" r="86" fill="#9A5709"/>
-</svg>
