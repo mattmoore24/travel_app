@@ -55,18 +55,32 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           EXPO_NO_TELEMETRY: '1'
-          CI: '' # Expo suppresses the tunnel URL banner when CI is set.
+          # CI=1 is how the CLI is told to run non-interactively; the old
+          # --non-interactive flag was removed. Do NOT set this to an empty
+          # string to "unset" it — Expo parses CI as a boolean and an empty
+          # value throws GetEnv.NoBoolean before the server ever starts.
+          CI: '1'
         run: |
           npm install --global @expo/ngrok@^4.1.0
-          nohup npx expo start --tunnel --non-interactive > expo.log 2>&1 &
-          echo "Waiting for the tunnel to come up…"
+          nohup npx expo start --tunnel > expo.log 2>&1 &
+          EXPO_PID=$!
+          echo "Waiting for the tunnel…"
+          URL=""
           for i in $(seq 1 90); do
-            if grep -qE 'exp(\+[a-z0-9-]+)?://' expo.log; then break; fi
+            # Bail the moment the server dies rather than waiting out the full
+            # loop — the first version spent 7 minutes waiting on a process
+            # that had already exited.
+            if ! kill -0 "$EXPO_PID" 2>/dev/null; then
+              echo "::error::Dev server exited before the tunnel came up."
+              cat expo.log
+              exit 1
+            fi
+            URL=$(grep -oE 'exp://[^[:space:]]+' expo.log | head -1 || true)
+            [ -n "$URL" ] && break
             sleep 5
           done
-          URL=$(grep -oE 'exp(\+[a-z0-9-]+)?://[^ ]+' expo.log | head -1 || true)
           if [ -z "$URL" ]; then
-            echo "::error::Tunnel never came up. Log follows:"
+            echo "::error::Tunnel did not come up in time. Log follows:"
             cat expo.log
             exit 1
           fi
@@ -78,7 +92,7 @@ jobs:
             echo "$URL"
             echo '```'
             echo
-            echo "Paste that into Expo Go, or open it on the phone directly."
+            echo "Expo Go -> Enter URL manually -> paste."
           } >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' "$URL" > session-url.txt
           cat expo.log
