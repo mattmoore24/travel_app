@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- A: two overlapping circles; the lens where they meet is the shared place. -->
+  <defs>
+    <clipPath id="leftCircle"><circle cx="392" cy="512" r="252"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" fill="#2A4C9B"/>
+  <circle cx="632" cy="512" r="252" fill="#9A5709" clip-path="url(#leftCircle)"/>
+  <g fill="none" stroke="#FBFAF7" stroke-width="56">
+    <circle cx="392" cy="512" r="252"/>
+    <circle cx="632" cy="512" r="252"/>
+  </g>
+</svg>
