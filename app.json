@@ -53,6 +53,18 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "owner": "mattmoore24",
+    "updates": {
+      "url": "https://u.expo.dev/4e5da662-4b34-482a-bc54-8578d237bf54"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4e5da662-4b34-482a-bc54-8578d237bf54"
+      }
     }
   }
 }
