@@ -80,7 +80,19 @@ jobs:
             echo
             echo "Paste that into Expo Go, or open it on the phone directly."
           } >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$URL" > session-url.txt
           cat expo.log
+
+      # GitHub serves no job logs over the API until a job finishes, and this
+      # job deliberately runs for the whole session — so the URL would be
+      # unreadable except by opening the web page. An artifact is available as
+      # soon as it uploads, mid-run.
+      - name: Publish the URL as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: expo-session-url
+          path: session-url.txt
+          retention-days: 1
 
       - name: Hold the session open
         run: |
