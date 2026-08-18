@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- D: the map's "you are here" idiom. One ring, one warm centre, and a
-       second traveller breaking the ring where they arrive. -->
-  <rect width="1024" height="1024" fill="#2A4C9B"/>
-  <circle cx="512" cy="512" r="286" fill="none" stroke="#FBFAF7" stroke-width="70"/>
-  <circle cx="512" cy="512" r="132" fill="#F0A93C"/>
-  <circle cx="714" cy="310" r="116" fill="#2A4C9B"/>
-  <circle cx="714" cy="310" r="80" fill="#FBFAF7"/>
-</svg>

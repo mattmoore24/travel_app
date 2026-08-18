@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- G: the one semi-literal option, included as a foil — dropping a pin is
-       the app's core verb, and a pin is the most legible shape here. -->
-  <rect width="1024" height="1024" fill="#2A4C9B"/>
-  <path d="M 512 218 C 372 218 262 330 262 468 C 262 640 512 830 512 830
-           C 512 830 762 640 762 468 C 762 330 652 218 512 218 Z" fill="#FBFAF7"/>
-  <circle cx="512" cy="462" r="98" fill="#F0A93C"/>
-</svg>
