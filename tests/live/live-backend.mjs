@@ -192,13 +192,11 @@ try {
     check('social handles VISIBLE post-accept', (postHandles ?? []).length === 1);
 
     if (resp?.chat_id) {
-      const { error: msgErr } = await brit.client
-        .from('messages')
-        .insert({
-          chat_id: resp.chat_id,
-          sender_id: brit.userId,
-          body: 'Sounds great, see you there!',
-        });
+      const { error: msgErr } = await brit.client.from('messages').insert({
+        chat_id: resp.chat_id,
+        sender_id: brit.userId,
+        body: 'Sounds great, see you there!',
+      });
       check('chat reply sends', !msgErr, msgErr?.message);
     }
   }

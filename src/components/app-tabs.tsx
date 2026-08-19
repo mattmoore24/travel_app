@@ -16,6 +16,7 @@ export default function AppTabs() {
   return (
     <NativeTabs
       backgroundColor={colors.canvas}
+      tintColor={colors.accent}
       indicatorColor={colors.accentSoft}
       labelStyle={{ selected: { color: colors.accent } }}>
       <NativeTabs.Trigger name="index">

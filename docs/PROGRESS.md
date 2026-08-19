@@ -3,7 +3,35 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current status: **Phase 7 complete — design overhaul + guest mode + rooms** (2026-08-17)
+## Current status: **Phase 8 complete — Samewhere is on TestFlight, audited end-to-end** (2026-08-19)
+
+### Phase 8 — Identity, TestFlight, and Claude's eyes
+
+- [x] **Name: Samewhere** (six rounds, ~950 candidates — [`NAMING.md`](NAMING.md)); slug,
+      scheme, and bundle ID (`com.mattmoore.samewhere`) all wired. Apple accepted the app
+      record under the name, which doubles as the availability check
+- [x] **Dusk palette** — indigo `#2A4C9B` + burnt amber, every pair WCAG-checked
+      ([`DESIGN.md`](DESIGN.md)); **campfire mark** (O4) rendered to icon / splash /
+      adaptive-icon / in-app brand from `assets/icon-src/`
+- [x] **TestFlight pipeline** — Actions → **TestFlight** builds, signs, and submits with
+      zero interactive steps; certificates are minted per-build straight from the App
+      Store Connect API ([`APP_STORE.md`](APP_STORE.md) has the war stories). **The app
+      is live on TestFlight**
+- [x] **Claude's eyes: simulator E2E** — Actions → **E2E simulator** builds the app,
+      drives it with Maestro on an iOS simulator, and pushes screenshots to the
+      `e2e-results` branch, so the agent can see and audit real native pixels
+- [x] **Live-backend canary** — anon-key-only integration tests against the production
+      Supabase (Actions → **Live backend tests**, weekly + on demand): 17/17 green,
+      including a real Claude moderation release (~21 s) and a flirty message that never
+      arrived
+- [x] **Two real bugs caught by the harnesses**: signups were silently dead-ended by the
+      email-confirmation toggle (now off for v1 — see runbook), and the selected tab
+      rendered iOS system blue instead of the accent (fixed: `NativeTabs` needed
+      `tintColor`)
+
+---
+
+## Phase 7 complete — design overhaul + guest mode + rooms (2026-08-17)
 
 ### Phase 7 — Beautiful, frictionless, and room-shaped
 
@@ -390,10 +418,18 @@ All six phases are built. What remains is founder-gated, not engineering-gated:
    Verified: `worker_status()` shows 200s on consecutive ticks and
    `admin_ops_health` reads all zeros.
 
-   **Caveat: live but unexercised.** No real message or photo has passed through the
-   classifier yet — that needs a working build. The first genuine test is the runbook's
-   own check: send a flirty first message from a test account and confirm it never
-   arrives and `admin_moderation_stats` counts it blocked.
+   **Exercised 2026-08-19.** The live-backend canary (Actions → **Live backend tests**,
+   `tests/live/live-backend.mjs`, also scheduled weekly) ran the runbook's own check
+   against the production project: a clean first message was released by a real Claude
+   verdict in ~21 s, a flirty first message was still undelivered after a 4-minute
+   watch, and 17/17 checks passed — handle gating pre/post-accept, guest RLS, and
+   delete-account teardown included.
+
+   **Email confirmation is OFF for v1.** The canary's first run caught that with
+   Supabase's "Confirm email" toggle on, `signUp` returns no session and the app has no
+   confirmation deep-link flow — every real signup silently dead-ended. The toggle is
+   now off (founder, 2026-08-19). Before public launch: either keep it off knowingly or
+   build the deep-linked confirmation flow, then re-enable.
 
 6. **Apple Developer Program** ($99/yr) — needed before Apple Sign-In can be tested
    end-to-end (entitlement + Services ID, then enable the Apple provider in Supabase Auth).
@@ -426,13 +462,14 @@ moderation adds ~1min max delivery latency (worker schedule) while the flag is o
 
 ## Phase ledger
 
-| Phase                | Status  | Deliverable                                               |
-| -------------------- | ------- | --------------------------------------------------------- |
-| 0 — Repo & scaffold  | ✅ done | Fresh clone → `npx expo start` works                      |
-| 1 — Auth & profiles  | ✅ done | Account + full profile viewable in app (E2E pending keys) |
-| 2 — Trips & matching | ✅ done | Overlap request → accept → chat shell (E2E pending keys)  |
-| 3 — The Map (hero)   | ✅ done | Compelling map with 15 pins (seeding path ready)          |
-| 4 — Chat & realtime  | ✅ done | Full loop to live conversation (E2E pending keys)         |
-| 5 — Trust & safety   | ✅ done | Flirty first message blocked + logged (proven in pgTAP)   |
-| 6 — Launch hardening | ✅ done | Rate limits, deletion, dashboards, runbook, store prep    |
-| 7 — Design overhaul  | ✅ done | Guest-first 3-tab app, rooms, photo-forward screens       |
+| Phase                 | Status  | Deliverable                                               |
+| --------------------- | ------- | --------------------------------------------------------- |
+| 0 — Repo & scaffold   | ✅ done | Fresh clone → `npx expo start` works                      |
+| 1 — Auth & profiles   | ✅ done | Account + full profile viewable in app (E2E pending keys) |
+| 2 — Trips & matching  | ✅ done | Overlap request → accept → chat shell (E2E pending keys)  |
+| 3 — The Map (hero)    | ✅ done | Compelling map with 15 pins (seeding path ready)          |
+| 4 — Chat & realtime   | ✅ done | Full loop to live conversation (E2E pending keys)         |
+| 5 — Trust & safety    | ✅ done | Flirty first message blocked + logged (proven in pgTAP)   |
+| 6 — Launch hardening  | ✅ done | Rate limits, deletion, dashboards, runbook, store prep    |
+| 7 — Design overhaul   | ✅ done | Guest-first 3-tab app, rooms, photo-forward screens       |
+| 8 — Name & TestFlight | ✅ done | Samewhere on TestFlight; E2E + live canary both green     |

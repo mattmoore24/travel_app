@@ -16,11 +16,23 @@ Default config ships **dark**: photos auto-approve and only the regex filter
 screens messages. Do not let a build reach testers or App Review this way —
 the review notes claim LLM screening, and it must be true.
 
-**Status: on.** Both `app_config` flags are `true`, both cron workers post 200s
-every minute, and `admin_ops_health` reads all zeros. Steps a–c below are the
-record of how it was done; they do not need repeating unless the project is
-rebuilt. Note this pipeline is live but **unexercised** — no real message has
-been through it yet, because that needs a working build (see step 8).
+**Status: on and exercised.** Both `app_config` flags are `true`, both cron
+workers post 200s every minute, and `admin_ops_health` reads all zeros. Steps
+a–c below are the record of how it was done; they do not need repeating unless
+the project is rebuilt.
+
+**Exercised 2026-08-19** by the live-backend canary (Actions → **Live backend
+tests**, also scheduled weekly): against the production project, a clean first
+message was held and then released by a real Claude verdict in ~21 seconds, and
+a flirty first message was still undelivered after a 4-minute watch — 17/17
+checks passed, including handle gating pre/post-accept, guest RLS, and full
+delete-account teardown. Re-run it any time from the Actions tab.
+
+> **Email confirmation is OFF for v1** (Auth → Sign In / Providers → Email →
+> "Confirm email" toggle). With it on, `signUp` returns no session and the app
+> has no confirmation deep-link flow, so every real signup silently dead-ends —
+> the canary caught this. Before public launch, either keep it off knowingly or
+> build the deep-linked confirmation flow first, then re-enable.
 
 **a. Key** — add `ANTHROPIC_API_KEY` to GitHub repo secrets and touch
 `supabase/.deploy-request`; the deploy workflow syncs it to Edge Function
