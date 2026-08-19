@@ -1,0 +1,162 @@
+# Builds a signed iOS binary on EAS's macOS builders and submits it to
+# TestFlight. Exists because development happens from a phone: the GitHub
+# runner is the keyboard, EAS is the Mac.
+#
+# Required repository secrets:
+#   EXPO_TOKEN       expo.dev access token
+#   ASC_ISSUER_ID    App Store Connect API -> Issuer ID (UUID)
+#   ASC_KEY_ID       App Store Connect API -> Key ID (~10 chars)
+#   ASC_KEY_P8       full contents of the AuthKey_XXXX.p8 file
+#   APPLE_TEAM_ID    10-char Apple team id (Apple Developer app -> Membership)
+#
+# Two-step first flight, by necessity: the App Store Connect *app record*
+# cannot be created until the bundle id exists, and the bundle id is
+# registered by the first build's credential setup. So: run `build`, create
+# the app record on appstoreconnect.apple.com, then run `submit`. Once the
+# record exists, `build-then-submit` does both in one go.
+name: TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'What to do'
+        type: choice
+        options: [build, submit, build-then-submit]
+        default: build
+
+jobs:
+  ios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Check required secrets
+        env:
+          T: ${{ secrets.EXPO_TOKEN }}
+          I: ${{ secrets.ASC_ISSUER_ID }}
+          K: ${{ secrets.ASC_KEY_ID }}
+          P: ${{ secrets.ASC_KEY_P8 }}
+          A: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=()
+          [ -n "$T" ] || missing+=(EXPO_TOKEN)
+          [ -n "$I" ] || missing+=(ASC_ISSUER_ID)
+          [ -n "$K" ] || missing+=(ASC_KEY_ID)
+          [ -n "$P" ] || missing+=(ASC_KEY_P8)
+          [ -n "$A" ] || missing+=(APPLE_TEAM_ID)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Install
+        run: npm ci
+
+      - name: Write the ASC key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          umask 077
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
+
+      - name: Build on EAS
+        if: ${{ inputs.action != 'submit' }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          # These five let EAS create the distribution certificate,
+          # provisioning profile and bundle-id registration without a human,
+          # per the EAS "App Store Connect API key in CI" flow.
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          set -o pipefail
+          npx --yes eas-cli@latest build \
+            --platform ios \
+            --profile production \
+            --non-interactive \
+            --wait 2>&1 | tee build.log
+          {
+            echo "## iOS build finished"
+            grep -oE 'https://expo\.dev/[^ ]*builds/[^ ]+' build.log | head -1 || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Submit to TestFlight
+        if: ${{ inputs.action != 'build' }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          set -o pipefail
+          npm install --no-save jsonwebtoken
+
+          # Resolve the App Store Connect numeric app id from the bundle id.
+          # eas submit --non-interactive refuses to guess it, and it only
+          # exists once the founder has created the app record.
+          node - <<'EOF'
+          const fs = require('fs');
+          const jwt = require('jsonwebtoken');
+          const bundleId = JSON.parse(fs.readFileSync('app.json', 'utf8')).expo.ios.bundleIdentifier;
+          const token = jwt.sign(
+            { iss: process.env.ASC_ISSUER_ID, aud: 'appstoreconnect-v1' },
+            fs.readFileSync(process.env.RUNNER_TEMP + '/asc.p8', 'utf8'),
+            { algorithm: 'ES256', expiresIn: '10m', keyid: process.env.ASC_KEY_ID }
+          );
+          fetch(`https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=${bundleId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+            .then(async (r) => {
+              const body = await r.json();
+              if (!r.ok) throw new Error(`ASC API ${r.status}: ${JSON.stringify(body).slice(0, 400)}`);
+              const app = body.data?.[0];
+              if (!app) {
+                console.error(
+                  `::error::No App Store Connect app record for ${bundleId}. ` +
+                  'Create it first: appstoreconnect.apple.com -> My Apps -> + -> New App ' +
+                  `(iOS, name "Samewhere", bundle id ${bundleId}, SKU samewhere), then re-run with action=submit.`
+                );
+                process.exit(1);
+              }
+              const eas = JSON.parse(fs.readFileSync('eas.json', 'utf8'));
+              eas.submit.production.ios = {
+                ascApiKeyPath: process.env.RUNNER_TEMP + '/asc.p8',
+                ascApiKeyId: process.env.ASC_KEY_ID,
+                ascApiKeyIssuerId: process.env.ASC_ISSUER_ID,
+                ascAppId: app.id,
+                appleTeamId: process.env.APPLE_TEAM_ID,
+              };
+              fs.writeFileSync('eas.json', JSON.stringify(eas, null, 2) + '\n');
+              console.log(`Resolved ${bundleId} -> ascAppId ${app.id}`);
+            })
+            .catch((e) => { console.error('::error::' + e.message); process.exit(1); });
+          EOF
+
+          npx --yes eas-cli@latest submit \
+            --platform ios \
+            --profile production \
+            --latest \
+            --non-interactive 2>&1 | tee submit.log
+          {
+            echo "## Submitted to TestFlight"
+            echo "Apple processes the build for ~5-15 minutes, then it appears"
+            echo "in the TestFlight tab of App Store Connect."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          tail -60 build.log 2>/dev/null || true
+          tail -60 submit.log 2>/dev/null || true
