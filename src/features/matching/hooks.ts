@@ -74,6 +74,12 @@ export function useRespondToRequest() {
       queryClient.invalidateQueries({ queryKey: ['incoming-requests', userId] });
       if (result.accepted) {
         queryClient.invalidateQueries({ queryKey: ['chats', userId] });
+        // Accepting is exactly what unlocks their handles and makes their
+        // profile readable to us — refetch both instead of waiting out the
+        // 30s staleTime with a profile that still says "shared once you
+        // two are chatting".
+        queryClient.invalidateQueries({ queryKey: ['unlocked-socials'] });
+        queryClient.invalidateQueries({ queryKey: ['public-profile'] });
       }
     },
   });

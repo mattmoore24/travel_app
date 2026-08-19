@@ -1,7 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useOwnUserId } from '@/features/profile/hooks';
-import { cancelTrip, createTrip, fetchMyTrips, searchCities } from '@/features/trips/api';
+import {
+  cancelTrip,
+  createTrip,
+  deleteTrip,
+  fetchMyTrips,
+  fetchTravelerTrips,
+  searchCities,
+  updateTrip,
+} from '@/features/trips/api';
 import { daysUntil } from '@/features/trips/dates';
 import { analytics } from '@/lib/analytics';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -56,6 +64,47 @@ export function useCancelTrip() {
     onSuccess: () => {
       analytics.capture('trip_cancelled');
       queryClient.invalidateQueries({ queryKey: ['trips', userId] });
+      queryClient.invalidateQueries({ queryKey: ['matches', userId] });
+    },
+  });
+}
+
+/** Whatever the viewer is allowed to see of someone else's plans. */
+export function useTravelerTrips(userId: string | null) {
+  return useQuery({
+    queryKey: ['traveler-trips', userId],
+    queryFn: () => fetchTravelerTrips(userId!),
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+export function useUpdateTrip() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      tripId: string;
+      cityId?: number;
+      startDate?: string;
+      endDate?: string;
+    }) => updateTrip(input.tripId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['trips', userId] });
+      queryClient.invalidateQueries({ queryKey: ['traveler-trips', userId] });
+      queryClient.invalidateQueries({ queryKey: ['matches', userId] });
+    },
+  });
+}
+
+export function useDeleteTrip() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (tripId: string) => deleteTrip(tripId),
+    onSuccess: () => {
+      analytics.capture('trip_deleted');
+      queryClient.invalidateQueries({ queryKey: ['trips', userId] });
+      queryClient.invalidateQueries({ queryKey: ['traveler-trips', userId] });
       queryClient.invalidateQueries({ queryKey: ['matches', userId] });
     },
   });

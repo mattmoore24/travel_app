@@ -31,11 +31,7 @@ function StatusChip({ status }: { status: ProfilePhotoRow['moderation_status'] }
   }
   const rejected = status === 'rejected';
   return (
-    <View
-      style={[
-        styles.statusChip,
-        { backgroundColor: rejected ? theme.danger : theme.surface },
-      ]}>
+    <View style={[styles.statusChip, { backgroundColor: rejected ? theme.danger : theme.surface }]}>
       <ThemedText type="caption" style={rejected ? { color: theme.onAccent } : undefined}>
         {rejected ? 'Removed' : 'In review'}
       </ThemedText>
@@ -185,9 +181,10 @@ export function PhotoGrid() {
     }
     // Recomputed after the picker await: the list can change while the sheet
     // is open, and a stale slot would make a second "profile photo".
-    const position = preferred != null && !photos.some((p) => p.position === preferred)
-      ? preferred
-      : nextPosition();
+    const position =
+      preferred != null && !photos.some((p) => p.position === preferred)
+        ? preferred
+        : nextPosition();
     if (position == null) {
       return;
     }

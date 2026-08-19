@@ -4,6 +4,7 @@ import { StyleSheet } from 'react-native';
 
 import { ChipRow } from '@/components/form/chip-row';
 import { FormTextField } from '@/components/form/form-text-field';
+import { SelectField } from '@/components/form/select-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
@@ -18,12 +19,12 @@ import {
 } from '@/features/profile/validation';
 import type { Gender, ProfileRow } from '@/lib/database.types';
 
-const GENDER_OPTIONS = [
+const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: 'woman', label: 'Woman' },
   { value: 'man', label: 'Man' },
   { value: 'nonbinary', label: 'Non-binary' },
-  { value: 'unspecified', label: 'Prefer not to say' },
-] as const;
+  { value: 'unspecified', label: 'Rather not say' },
+];
 
 // Only reachable once onboarded, so the profile row always exists; the inner
 // form initializes from it directly (no state-syncing effects).
@@ -45,6 +46,7 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
   const [country, setCountry] = useState(profile.home_country ?? '');
   const [languages, setLanguages] = useState<string[]>(profile.languages);
   const [bio, setBio] = useState(profile.bio ?? '');
+  const [occupation, setOccupation] = useState(profile.occupation ?? '');
 
   const nameError = validateDisplayName(name);
   const ageError = validateAge(age);
@@ -71,6 +73,7 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
         home_country: country.trim() || null,
         languages,
         bio: bio.trim() || null,
+        occupation: occupation.trim() || null,
       });
       router.back();
     } catch {
@@ -93,8 +96,13 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
         onChangeText={setAge}
         error={ageError}
       />
-      <ThemedText type="smallBold">Gender</ThemedText>
-      <ChipRow options={GENDER_OPTIONS} selected={[gender]} onToggle={(v) => setGender(v)} />
+      <SelectField label="Gender" options={GENDER_OPTIONS} value={gender} onChange={setGender} />
+      <FormTextField
+        label="What you do"
+        placeholder="Nurse, studying architecture, between jobs"
+        value={occupation}
+        onChangeText={setOccupation}
+      />
       <FormTextField label="Home city" value={city} onChangeText={setCity} />
       <FormTextField label="Home country" value={country} onChangeText={setCountry} />
       <ThemedText type="smallBold">Languages</ThemedText>
@@ -112,7 +120,7 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
       <PhotoGrid />
       <ThemedText type="smallBold">Socials</ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
-        Only revealed to people you&apos;re in an accepted chat with.
+        Only shared with people you are chatting with.
       </ThemedText>
       <SocialHandlesEditor />
     </StepScreen>

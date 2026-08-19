@@ -84,7 +84,10 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
 
   // Saved as you pass each step rather than all at the end, so a dropped
   // connection on step six does not cost someone their whole profile.
-  const saveAndGo = async (patch: Parameters<typeof updateProfile.mutateAsync>[0], next: number) => {
+  const saveAndGo = async (
+    patch: Parameters<typeof updateProfile.mutateAsync>[0],
+    next: number
+  ) => {
     try {
       await updateProfile.mutateAsync(patch);
       go(next);
@@ -146,9 +149,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         subtitle="Home base, not where you happen to be today."
         continueDisabled={!homeOk}
         continueLoading={updateProfile.isPending}
-        note={
-          languages.length === 0 ? 'Pick at least one language you can chat in.' : null
-        }
+        note={languages.length === 0 ? 'Pick at least one language you can chat in.' : null}
         onBack={() => go(3)}
         onContinue={() =>
           saveAndGo(
