@@ -45,10 +45,9 @@ arrive — runbook step 4 is the gate. Prep is done: the moderation classifier
 prompts moved to the `MODERATION_PROMPTS` secret and were redacted from all
 git history before publication. The founder adds that GitHub secret, flips
 visibility, then the next Supabase deploy re-arms the worker (it fails closed
-until then). Second founder chore: delete the stray test account
-`mattmoorefb24+sw-e2e-mszmrvug@gmail.com` (Supabase → Auth → Users) — its
-teardown was skipped by a since-fixed workflow bug, and it shows as "Maestro
-Test" to real travelers in Bangkok until deleted.
+until then). The one stray test account (an early workflow bug skipped its
+teardown) was deleted by the founder on 2026-08-19 — no test data remains
+visible to real users.
 
 ## Phase 8 complete — Samewhere is on TestFlight, audited end-to-end (2026-08-19)
 
