@@ -1,7 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { StyleSheet, useColorScheme } from 'react-native';
+import { StyleSheet, useColorScheme, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
@@ -106,7 +106,10 @@ function RootNavigator() {
         (standingQuery.isSuccess || standingQuery.isError)));
 
   if (!ready || intro.seen === null) {
-    return null;
+    // Splash-colored hold, not null: the splash overlay fades out on its own
+    // clock, and fading over the window's white root would flash white if
+    // readiness resolves late. Indigo under indigo is invisible.
+    return <View style={styles.bootHold} />;
   }
 
   if (signedIn && profileQuery.isError) {
@@ -199,6 +202,12 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
+  // The splash field's exact indigo — hardcoded for the same reason the
+  // splash overlay's is (components/animated-icon.tsx).
+  bootHold: {
+    flex: 1,
+    backgroundColor: '#2A4C9B',
+  },
   errorRoot: {
     flex: 1,
     flexDirection: 'row',

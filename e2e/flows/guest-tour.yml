@@ -1,14 +1,44 @@
 # The guest ladder, walked by a robot: cold start with no account must land
 # on the tabs, and each tab must render something real from the live backend.
+# The first-run tour is part of the ladder now — this flow walks all four
+# pages and dismisses through the real "Just looking for now" choice, so the
+# welcome scene and the transitions are in the screenshot record. (The
+# signed-in flow still covers the Skip path.)
 appId: com.mattmoore.samewhere
 ---
 - launchApp:
     clearState: true
-# First launch shows the tour; skip straight past it to the app.
+# The welcome scene: wait for the staggered entrance to finish landing.
 - extendedWaitUntil:
-    visible: 'Skip'
+    visible: 'Show me around'
     timeout: 20000
-- tapOn: 'Skip'
+# The staggered entrance starts the button at alpha 0, where UIKit skips it
+# in hit-testing and a too-early tap falls through — let the entrance land.
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 00-welcome
+- tapOn: 'Show me around'
+# The glow breathes forever, so waitForAnimationToEnd only ever exits on its
+# timeout — it still buys enough settle time for a crisp page screenshot.
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 00a-tour-map
+- swipe:
+    start: 85%, 50%
+    end: 15%, 50%
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 00b-tour-travelers
+- swipe:
+    start: 85%, 50%
+    end: 15%, 50%
+- extendedWaitUntil:
+    visible: 'Just looking for now'
+    timeout: 5000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 00c-tour-choice
+- tapOn: 'Just looking for now'
 - takeScreenshot: 01-cold-start
 - extendedWaitUntil:
     visible: 'Travelers'

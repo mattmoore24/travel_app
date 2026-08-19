@@ -44,6 +44,13 @@ const MARK = 200;
 const EMBLEM_SCALE = 0.35;
 /** Emblem center sits this far below the top inset once docked. */
 const EMBLEM_CENTER = (MARK * EMBLEM_SCALE) / 2 + 8;
+/**
+ * The tour is a fixed full-screen composition with no scroll, so unbounded
+ * Dynamic Type would push the join/browse buttons off small screens with no
+ * way to reach them. Capped the way Apple caps its own onboarding scenes;
+ * everything said here is re-learnable in the app at full text size.
+ */
+const MAX_FONT_SCALE = 1.2;
 
 type Page = {
   icon: SymbolViewProps['name'];
@@ -206,7 +213,9 @@ function TourButton({
       onPress={onPress}
       containerStyle={styles.buttonContainer}
       style={[styles.button, tone === 'amber' ? styles.buttonAmber : styles.buttonGhost]}>
-      <Text style={[styles.buttonLabel, tone === 'amber' ? styles.labelAmber : styles.labelGhost]}>
+      <Text
+        maxFontSizeMultiplier={MAX_FONT_SCALE}
+        style={[styles.buttonLabel, tone === 'amber' ? styles.labelAmber : styles.labelGhost]}>
         {label}
       </Text>
     </PressableScale>
@@ -255,14 +264,18 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
   }));
 
   const last = page === PAGE_COUNT - 1;
-  // Slotted under the mark: screen center is where the splash left it.
-  const welcomeTop = height / 2 + MARK / 2 + Space.lg;
+  // Slotted under the mark (screen center is where the splash left it) and
+  // capped above the dots: on short screens the box shrinks instead of the
+  // button sliding off the bottom or into the dots.
+  const welcomeTop = height / 2 + MARK / 2 + Space.md;
+  const welcomeBottom = insets.bottom + 64;
 
   return (
-    <Animated.View
-      entering={FadeIn.duration(400)}
-      style={[StyleSheet.absoluteFill, styles.root]}
-      testID="intro-tour">
+    // No entrance fade: the splash overlay fades out over this, and two
+    // stacked fades over the window's white root would let white bleed
+    // through mid-crossover. Solid from the first frame keeps the indigo
+    // field unbroken from app icon to tour.
+    <Animated.View style={[StyleSheet.absoluteFill, styles.root]} testID="intro-tour">
       <StatusBar style="light" animated />
 
       <Animated.ScrollView
@@ -281,16 +294,27 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
             index={0}
             width={width}
             factor={0.3}
-            style={[styles.welcomeBlock, { top: welcomeTop }]}>
-            <Animated.Text entering={FadeInUp.delay(350).duration(500)} style={styles.wordmark}>
-              Samewhere
-            </Animated.Text>
-            <Animated.Text entering={FadeInUp.delay(500).duration(500)} style={styles.tagline}>
-              Connect. Plan. Explore.
-            </Animated.Text>
-            <Animated.Text entering={FadeInUp.delay(650).duration(500)} style={styles.welcomeLine}>
-              Welcome to the Samewhere community.
-            </Animated.Text>
+            style={[styles.welcomeBlock, { top: welcomeTop, bottom: welcomeBottom }]}>
+            <View style={styles.welcomeCopy}>
+              <Animated.Text
+                entering={FadeInUp.delay(350).duration(500)}
+                maxFontSizeMultiplier={MAX_FONT_SCALE}
+                style={styles.wordmark}>
+                Samewhere
+              </Animated.Text>
+              <Animated.Text
+                entering={FadeInUp.delay(500).duration(500)}
+                maxFontSizeMultiplier={MAX_FONT_SCALE}
+                style={styles.tagline}>
+                Connect. Plan. Explore.
+              </Animated.Text>
+              <Animated.Text
+                entering={FadeInUp.delay(650).duration(500)}
+                maxFontSizeMultiplier={MAX_FONT_SCALE}
+                style={styles.welcomeLine}>
+                Welcome to the Samewhere community.
+              </Animated.Text>
+            </View>
             <Animated.View
               entering={FadeInUp.delay(820).duration(500)}
               style={styles.welcomeAction}>
@@ -311,7 +335,7 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
               key={item.title}
               style={[
                 styles.page,
-                { width, paddingTop: insets.top + MARK * EMBLEM_SCALE, paddingBottom: 96 },
+                { width, paddingTop: insets.top + MARK * EMBLEM_SCALE + 8, paddingBottom: 96 },
               ]}>
               <PageLayer scrollX={scrollX} index={index} width={width} factor={0.55}>
                 <View style={styles.iconBadge}>
@@ -324,8 +348,12 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
                 width={width}
                 factor={0.25}
                 style={styles.textLayer}>
-                <Text style={styles.pageTitle}>{item.title}</Text>
-                <Text style={styles.pageBody}>{item.body}</Text>
+                <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.pageTitle}>
+                  {item.title}
+                </Text>
+                <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.pageBody}>
+                  {item.body}
+                </Text>
                 {choice ? (
                   <View style={styles.choice}>
                     <TourButton
@@ -347,12 +375,18 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
 
       <TourMark scrollX={scrollX} width={width} height={height} topInset={insets.top} />
 
+      {/* Entrance fade and scroll-driven fade on separate views: Reanimated
+          rejects an entering animation and an animated style sharing opacity. */}
       <Animated.View
         entering={FadeIn.delay(900).duration(400)}
-        style={[styles.skip, { top: insets.top + Space.sm }, skipStyle]}>
-        <Pressable hitSlop={12} disabled={last} onPress={onDone} accessibilityRole="button">
-          <Text style={styles.skipLabel}>Skip</Text>
-        </Pressable>
+        style={[styles.skip, { top: insets.top + Space.sm }]}>
+        <Animated.View style={skipStyle}>
+          <Pressable hitSlop={12} disabled={last} onPress={onDone} accessibilityRole="button">
+            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.skipLabel}>
+              Skip
+            </Text>
+          </Pressable>
+        </Animated.View>
       </Animated.View>
 
       <Animated.View
@@ -397,7 +431,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: Space.xl,
+  },
+  welcomeCopy: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
     gap: Space.md,
   },
   wordmark: {
@@ -424,7 +463,7 @@ const styles = StyleSheet.create({
   },
   welcomeAction: {
     alignSelf: 'stretch',
-    marginTop: Space.lg,
+    marginTop: Space.md,
   },
   page: {
     flex: 1,
