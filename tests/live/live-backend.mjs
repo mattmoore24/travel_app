@@ -36,9 +36,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Each principal gets its own client: supabase-js holds one session per instance.
 const newClient = () => createClient(URL_, KEY, { auth: { persistSession: false } });
 
+// Hosted Supabase rejects RFC-2606 test domains ("Email address is
+// invalid"), so test accounts plus-address the founder's real inbox: valid
+// by every validator, and if confirmation emails are ever enabled they land
+// in the founder's own mailbox rather than a stranger's.
+const EMAIL_BASE = process.env.TEST_EMAIL_BASE || 'mattmoorefb24@gmail.com';
+const [EMAIL_USER, EMAIL_DOMAIN] = EMAIL_BASE.split('@');
+
 async function signUpUser(tag) {
   const client = newClient();
-  const email = `sw-live-${RUN}-${tag}@example.com`;
+  const email = `${EMAIL_USER}+sw-live-${RUN}-${tag}@${EMAIL_DOMAIN}`;
   const password = `Test-${RUN}-${tag}-pw1`;
   let { data, error } = await client.auth.signUp({ email, password });
   if (error) throw new Error(`signUp(${tag}): ${error.message}`);
