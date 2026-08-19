@@ -118,7 +118,9 @@ function RootNavigator() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    // minimal back button: without it iOS labels "back" with the previous
+    // route's name, which for tab pushes is the literal group name "(tabs)".
+    <Stack screenOptions={{ headerShown: false, headerBackButtonDisplayMode: 'minimal' }}>
       {/* GUEST MODE: the tabs are the app's front door for everyone. A visitor
           with no account browses the map, reads an establishment room and sees
           one traveler; the account is asked for at the moment of action, not

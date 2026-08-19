@@ -108,8 +108,8 @@ export default function ProfileScreen() {
         ) : null}
 
         <View style={styles.section}>
-          <ThemedText type="caption" themeColor="textSecondary">
-            PHOTOS
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            Photos
           </ThemedText>
           <View style={styles.gallery}>
             {gallery.map((photo) => (

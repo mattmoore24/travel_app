@@ -63,8 +63,10 @@ appId: com.mattmoore.samewhere
 - tapOn: 'Travelers'
 - takeScreenshot: 17-travelers-signed-in
 - tapOn: 'Map'
+# The avatar's first tap is the regression under test here; the name is
+# the above-the-fold proof the profile actually opened.
 - tapOn: 'Your profile'
 - extendedWaitUntil:
-    visible: 'Edit profile'
+    visible: 'Maestro Test.*'
     timeout: 15000
 - takeScreenshot: 18-profile-me
