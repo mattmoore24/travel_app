@@ -38,10 +38,14 @@ walked sign-in → place mode → pan → form → **a real pin posted and refet
 onto the map** → signed-in Travelers → profile via the avatar's FIRST tap.
 Screenshots confirmed the indigo tab tint and the amber dock. Two cosmetic
 fixes from the screenshots (back chevron said "(tabs)"; PHOTOS → Photos) are
-committed but their on-device validation run could not start: **the GitHub
-Actions minutes/spending limit is exhausted** (macOS E2E bills at 10x). Until
-billing is raised in GitHub → Settings → Billing, no CI (deploys, TestFlight,
-E2E) can run. Second founder chore: delete the stray test account
+committed but their on-device validation run could not start: the GitHub
+Actions minutes ran out. **Decision: the repo goes PUBLIC while building**
+(unlimited free standard-runner minutes) and flips private before real users
+arrive — runbook step 4 is the gate. Prep is done: the moderation classifier
+prompts moved to the `MODERATION_PROMPTS` secret and were redacted from all
+git history before publication. The founder adds that GitHub secret, flips
+visibility, then the next Supabase deploy re-arms the worker (it fails closed
+until then). Second founder chore: delete the stray test account
 `mattmoorefb24+sw-e2e-mszmrvug@gmail.com` (Supabase → Auth → Users) — its
 teardown was skipped by a since-fixed workflow bug, and it shows as "Maestro
 Test" to real travelers in Bangkok until deleted.
