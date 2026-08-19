@@ -49,8 +49,11 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'venue-input'
 - inputText: 'Rooftop hello from Maestro'
-- hideKeyboard
 - takeScreenshot: 15-pin-form-filled
+# Maestro's hideKeyboard can't dismiss this keyboard (no scroll view under
+# it); Return blurs a single-line input, and the sheet is keyboard-avoiding
+# so 'Drop it' stays reachable regardless.
+- pressKey: Enter
 - tapOn: 'Drop it'
 - extendedWaitUntil:
     visible: 'Rooftop hello from Maestro'
