@@ -66,7 +66,7 @@ async function setup() {
       home_city: 'Testville',
       home_country: 'US',
       languages: ['en'],
-      bio: 'Simulator E2E account — deleted right after the run.',
+      bio: 'Simulator test account, deleted right after the run.',
       onboarding_completed_at: new Date().toISOString(),
     }),
   });
