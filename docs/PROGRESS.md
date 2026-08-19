@@ -33,6 +33,19 @@ pass"). Shipped on top of it:
       onboarded per run, Maestro signs in, drops a real pin through the new
       flow, opens the profile via the avatar, account destroyed after
 
+**Audit outcome (2026-08-19):** live-backend canary 17/17 twice; simulator E2E
+walked sign-in → place mode → pan → form → **a real pin posted and refetched
+onto the map** → signed-in Travelers → profile via the avatar's FIRST tap.
+Screenshots confirmed the indigo tab tint and the amber dock. Two cosmetic
+fixes from the screenshots (back chevron said "(tabs)"; PHOTOS → Photos) are
+committed but their on-device validation run could not start: **the GitHub
+Actions minutes/spending limit is exhausted** (macOS E2E bills at 10x). Until
+billing is raised in GitHub → Settings → Billing, no CI (deploys, TestFlight,
+E2E) can run. Second founder chore: delete the stray test account
+`mattmoorefb24+sw-e2e-mszmrvug@gmail.com` (Supabase → Auth → Users) — its
+teardown was skipped by a since-fixed workflow bug, and it shows as "Maestro
+Test" to real travelers in Bangkok until deleted.
+
 ## Phase 8 complete — Samewhere is on TestFlight, audited end-to-end (2026-08-19)
 
 ### Phase 8 — Identity, TestFlight, and Claude's eyes
