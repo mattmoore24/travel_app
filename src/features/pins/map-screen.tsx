@@ -169,7 +169,7 @@ function PinCard({
                 }
               />
               <ThemedText type="footnote" themeColor="textSecondary" style={styles.centerNote}>
-                They will see your message and can say yes or no. You will not know if they pass.
+                If they accept, we will let you know and your chat opens.
               </ThemedText>
             </>
           )}

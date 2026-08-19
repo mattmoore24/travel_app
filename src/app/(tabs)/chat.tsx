@@ -18,6 +18,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useIncomingRequests, useMyChats, useRespondToRequest } from '@/features/matching/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
+import { haptics } from '@/lib/haptics';
 import type { ChatListRow, IncomingRequestRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -58,6 +59,7 @@ function RequestCard({ request }: { request: IncomingRequestRow }) {
     try {
       const result = await respond.mutateAsync({ requestId: request.id, accept });
       if (result.accepted && result.chat_id) {
+        haptics.success();
         router.push(`/chat/${result.chat_id}`);
       }
     } catch {

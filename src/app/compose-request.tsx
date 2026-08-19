@@ -66,7 +66,7 @@ export default function ComposeRequestScreen() {
   return (
     <StepScreen
       title={`Say hi to ${params.name ?? 'this traveler'}`}
-      subtitle="They see this and your profile, then decide. If they pass, you will not hear about it. One go per person, so make it count."
+      subtitle="They see this and your profile. If they accept, we will let you know and your chat opens. One go per person, so make it count."
       continueLabel="Send request"
       continueDisabled={message.trim().length === 0 || message.length > MESSAGE_MAX}
       continueLoading={sendRequest.isPending}
