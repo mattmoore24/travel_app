@@ -1,0 +1,6 @@
+# Not a test. The first Maestro flow of a run pays for building the XCUITest
+# driver, and that cold start has now failed the first flow twice. Burning it
+# here means the real flows all start warm; its own result is ignored.
+appId: com.mattmoore.samewhere
+---
+- launchApp

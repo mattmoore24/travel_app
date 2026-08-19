@@ -101,6 +101,8 @@ jobs:
           curl -Ls https://get.maestro.mobile.dev | bash
           export PATH="$HOME/.maestro/bin:$PATH"
           mkdir -p shots && cd shots
+          # Build the driver on a throwaway launch so flow #1 starts warm.
+          maestro --udid "$UDID" test ../e2e/warmup.yml || true
           STATUS=0
           for flow in ../e2e/flows/*.yml; do
             # One retry: the first attempt pays the driver build cost and
