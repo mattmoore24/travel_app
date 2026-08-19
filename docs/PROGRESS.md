@@ -49,6 +49,33 @@ until then). The one stray test account (an early workflow bug skipped its
 teardown) was deleted by the founder on 2026-08-19 — no test data remains
 visible to real users.
 
+**The founder's idea batch (2026-08-19)** — all shipped and E2E-validated:
+
+- [x] **First-run tour, now cinematic** — the splash dissolves into an indigo
+      welcome scene (the campfire mark never leaves the screen), "Connect.
+      Plan. Explore. / Welcome to the Samewhere community." staggers in, and
+      "Show me around" starts the tour: the mark glides up into a docked
+      emblem while pages parallax underneath, dots and all driven by the live
+      scroll offset. Ends in join-or-browse; 'Skip' stays in the corner (the
+      E2E flows key off it)
+- [x] **Guest profile screen** — the header avatar always lands somewhere real
+      now: signed out it invites join/sign-in (root cause: the route lived
+      inside the auth guard, so guest taps silently no-oped)
+- [x] **Demo travelers** — Actions → **Demo travelers** seeds/purges six
+      AI-portrait personas (Lisbon ×3, Bangkok ×3) with pins and overlapping
+      trips so Travelers/matching/requests are testable on a phone; `[demo]`
+      bios, `DEMO_PASSWORD`-gated sign-in; purge is a runbook step 4 gate
+- [x] **Pins wear their poster's face** — signed-in users see the poster's
+      photo in the marker (guests get plain glyphs, enforced server-side);
+      the pin sheet links to profile and message request
+- [x] **One clear signup** — email/password page says it's step one of two,
+      then a single profile builder (photos, basics, bio) ends in "Create
+      account"; everything editable later
+- [x] **Copy pass + the yes moment** — casual, direct copy throughout, em
+      dashes gone from app copy; when a message request is accepted, a
+      full-screen celebration springs the accepter's photo in with haptics
+      and opens the chat ("{name} said yes")
+
 ## Phase 8 complete — Samewhere is on TestFlight, audited end-to-end (2026-08-19)
 
 ### Phase 8 — Identity, TestFlight, and Claude's eyes

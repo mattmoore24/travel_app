@@ -336,6 +336,23 @@ gesture, the root of the dead-first-tap bug); scale animations live on an
 inner view because Fabric hit-tests transformed rects; splash overlay is
 brand indigo (was leftover template blue).
 
+### The welcome sequence (2026-08-19)
+
+First launch opens on the splash field itself: `IntroTour` reuses the exact
+indigo (`#2A4C9B`) and the 200 pt campfire mark position, so native splash →
+animated overlay → welcome scene plays as one unbroken shot. The mark is a
+single shared element floating above the pager: as the first swipe begins it
+glides up and shrinks into a docked emblem, with scale and translate driven
+directly by the scroll offset so it tracks the finger. The amber glow
+breathes behind it on the welcome page only, each page's icon and text move
+at different parallax factors for depth, and the dots stretch with the
+scroll. The last page carries the join-or-browse choice; the sequence never
+theme-switches, same as the splash.
+
+**House rule going forward — transitions read as one scene**: prefer shared
+elements over hard cuts and gesture/scroll-driven motion over time-driven
+motion whenever two states are visually adjacent.
+
 ### Researched, deliberately deferred
 
 Worth building when the moment is right, in rough order of value:
