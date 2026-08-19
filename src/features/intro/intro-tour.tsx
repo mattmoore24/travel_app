@@ -361,7 +361,7 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
                       tone="amber"
                       onPress={() => {
                         onDone();
-                        router.push('/email');
+                        router.push('/join');
                       }}
                     />
                     <TourButton label="Just looking for now" tone="ghost" onPress={onDone} />

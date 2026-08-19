@@ -86,7 +86,7 @@ function GuestProfile() {
           Make a profile and you can say hi to people, drop pins where you&apos;re headed, and join
           the hostel chats. Takes about a minute.
         </ThemedText>
-        <PrimaryButton label="Make my profile" onPress={() => router.push('/email')} />
+        <PrimaryButton label="Make my profile" onPress={() => router.push('/join')} />
         <PrimaryButton
           variant="ghost"
           label="I already have an account"

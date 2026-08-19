@@ -310,7 +310,7 @@ export default function MapScreen() {
 
   const enterPlaceMode = () => {
     if (isGuest) {
-      router.push('/email');
+      router.push('/join');
       return;
     }
     if (!activeCity) {

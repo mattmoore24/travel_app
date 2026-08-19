@@ -97,7 +97,7 @@ export default function WelcomeScreen() {
           <PrimaryButton
             label="Continue with email"
             disabled={!isSupabaseConfigured}
-            onPress={() => router.push('/email')}
+            onPress={() => router.push('/join')}
           />
           {/* App Review 1.2: UGC apps must have users agree to content rules
               with zero tolerance for objectionable content. */}
