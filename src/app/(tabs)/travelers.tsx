@@ -1,9 +1,9 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect } from 'react';
-import { Alert, FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
@@ -23,128 +23,23 @@ import {
   Spacing,
 } from '@/constants/theme';
 import { useMatches, useMyChats, useSentRequests } from '@/features/matching/hooks';
-import { usePhotoUrl } from '@/features/profile/hooks';
+import { usePassedTravelers } from '@/features/matching/passed';
+import { usePhotoUrl, usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
+import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { formatDateRange } from '@/features/trips/dates';
-import { useCancelTrip, useMyTrips } from '@/features/trips/hooks';
+import { useMyTrips, useTravelerTrips } from '@/features/trips/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
-import type { MatchRow, SentRequestRow } from '@/lib/database.types';
+import { haptics } from '@/lib/haptics';
+import type { MatchRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
-function TripChip({
-  city,
-  range,
-  onCancel,
-}: {
-  city: string;
-  range: string;
-  onCancel: () => void;
-}) {
-  return (
-    <PressableScale
-      scaleTo={0.96}
-      onLongPress={() =>
-        Alert.alert('Cancel this trip?', `${city} · ${range}`, [
-          { text: 'Keep', style: 'cancel' },
-          { text: 'Cancel trip', style: 'destructive', onPress: onCancel },
-        ])
-      }>
-      <ThemedView type="backgroundElement" style={styles.tripChip}>
-        <ThemedText type="smallBold">{city}</ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          {range}
-        </ThemedText>
-      </ThemedView>
-    </PressableScale>
-  );
-}
-
-function MatchCard({
-  match,
-  sent,
-  chatId,
-}: {
+/** One traveler and every window the two of you share. */
+type Candidate = {
+  userId: string;
   match: MatchRow;
-  sent: SentRequestRow | undefined;
-  chatId: string | undefined;
-}) {
-  const theme = useTheme();
-  const { data: photoUrl } = usePhotoUrl(match.photo_path);
-
-  // An existing chat (either direction's accept) always wins over composing.
-  const openChatId =
-    chatId ?? (sent?.state === 'accepted' ? (sent.chat_id ?? undefined) : undefined);
-  const requested = openChatId == null && sent?.state === 'sent';
-
-  const action = () => {
-    if (openChatId) {
-      router.push(`/chat/${openChatId}`);
-      return;
-    }
-    router.push({
-      pathname: '/compose-request',
-      params: {
-        userId: match.user_id,
-        name: match.display_name ?? 'Traveler',
-        photoPath: match.photo_path ?? '',
-      },
-    });
-  };
-
-  return (
-    <ThemedView type="backgroundElement" style={styles.card}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`View ${match.display_name ?? 'traveler'}'s profile`}
-        onPress={() => router.push(`/profile/${match.user_id}`)}
-        style={[styles.cardPhoto, { backgroundColor: theme.backgroundSelected }]}>
-        {photoUrl ? (
-          <Image source={{ uri: photoUrl }} style={styles.cardImage} contentFit="cover" />
-        ) : (
-          <SymbolView
-            name={{ ios: 'person.fill', android: 'person', web: 'person' }}
-            size={40}
-            tintColor={theme.textSecondary}
-          />
-        )}
-      </Pressable>
-      <View style={styles.cardBody}>
-        <Pressable onPress={() => router.push(`/profile/${match.user_id}`)}>
-          <View style={styles.nameRow}>
-            <ThemedText type="headline" style={styles.nameText}>
-              {match.display_name ?? 'Traveler'}
-              {match.age != null ? `, ${match.age}` : ''}
-            </ThemedText>
-            {match.verified ? (
-              <SymbolView
-                name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
-                size={14}
-                tintColor={theme.tint}
-              />
-            ) : null}
-          </View>
-        </Pressable>
-        <ThemedText type="footnote" themeColor="textSecondary">
-          {match.city_name} · here {formatDateRange(match.their_start, match.their_end)}
-        </ThemedText>
-        <ThemedText type="footnote" themeColor="accent">
-          {formatDateRange(match.overlap_start, match.overlap_end)} together
-        </ThemedText>
-        {match.bio ? (
-          <ThemedText type="body" numberOfLines={3}>
-            {match.bio}
-          </ThemedText>
-        ) : null}
-        <PrimaryButton
-          variant={requested ? 'ghost' : 'filled'}
-          label={openChatId ? 'Open chat' : requested ? 'Requested' : 'Say hi'}
-          disabled={requested}
-          onPress={action}
-        />
-      </View>
-    </ThemedView>
-  );
-}
+  overlaps: Map<string, { start: string; end: string }>;
+};
 
 /**
  * What a signed-out visitor sees: the single traveler people are connecting
@@ -217,26 +112,143 @@ function GuestTravelers() {
   );
 }
 
+/**
+ * One traveler, full page, with the dates you share called out on their
+ * trips. Reading one person at a time is the point: a list of everybody
+ * turns into a grid nobody reads, and a profile you actually look at is what
+ * makes a first message worth sending (founder review).
+ */
+function TravelerPage({
+  candidate,
+  width,
+  onSayHi,
+  onNext,
+  chatId,
+  requested,
+}: {
+  candidate: Candidate;
+  width: number;
+  onSayHi: () => void;
+  onNext: () => void;
+  chatId: string | undefined;
+  requested: boolean;
+}) {
+  const insets = useSafeAreaInsets();
+  const { data: profile } = usePublicProfile(candidate.userId);
+  const { data: photos = [] } = usePublicPhotos(candidate.userId);
+  const { data: trips = [] } = useTravelerTrips(candidate.userId);
+
+  // Fall back to what the match row already carries, so the page has a name
+  // and a photo before the profile query lands.
+  const fallback = {
+    user_id: candidate.userId,
+    display_name: candidate.match.display_name,
+    age: candidate.match.age,
+    home_city: null,
+    home_country: null,
+    languages: candidate.match.languages,
+    bio: candidate.match.bio,
+    occupation: candidate.match.occupation,
+    gender: candidate.match.gender,
+    verified: candidate.match.verified,
+    onboarding_completed_at: null,
+    created_at: '',
+    updated_at: '',
+  };
+  const shown = profile ?? fallback;
+  const shownPhotos =
+    photos.length > 0
+      ? photos
+      : candidate.match.photo_path
+        ? [
+            {
+              id: 'match-photo',
+              user_id: candidate.userId,
+              storage_path: candidate.match.photo_path,
+              position: 0,
+              moderation_status: 'approved' as const,
+              moderation_attempts: 0,
+              created_at: '',
+            },
+          ]
+        : [];
+
+  const profileTrips: ProfileTrip[] = (
+    trips.length > 0
+      ? trips.map((trip) => ({
+          id: trip.trip_id,
+          cityId: trip.city_id,
+          cityLabel: `${trip.city_name}, ${trip.city_country}`,
+          startDate: trip.start_date,
+          endDate: trip.end_date,
+        }))
+      : [
+          {
+            id: candidate.match.trip_id,
+            cityId: candidate.match.city_id,
+            cityLabel: `${candidate.match.city_name}, ${candidate.match.city_country}`,
+            startDate: candidate.match.their_start,
+            endDate: candidate.match.their_end,
+          },
+        ]
+  ).map((trip) => ({ ...trip, overlap: candidate.overlaps.get(trip.id) ?? null }));
+
+  return (
+    <View style={{ width }}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: BottomTabInset + 120 }}
+        showsVerticalScrollIndicator={false}>
+        <ProfileView
+          profile={shown}
+          photos={shownPhotos}
+          trips={profileTrips}
+          handles={[]}
+          owner={false}
+        />
+      </ScrollView>
+
+      <View
+        style={[styles.actionBar, { paddingBottom: BottomTabInset + insets.bottom / 2 + Space.sm }]}
+        pointerEvents="box-none">
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel="Next traveler"
+          haptic="light"
+          scaleTo={0.94}
+          onPress={onNext}
+          style={styles.nextButton}>
+          <SymbolView
+            name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }}
+            size={18}
+            tintColor="#FFFFFF"
+          />
+        </PressableScale>
+        <View style={styles.sayHiWrap}>
+          <PrimaryButton
+            label={chatId ? 'Open chat' : requested ? 'Message sent' : 'Say hi'}
+            disabled={requested && !chatId}
+            onPress={onSayHi}
+          />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function TravelersScreen() {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const isGuest = useIsGuest();
-  const tripsQuery = useMyTrips();
-  const trips = tripsQuery.data ?? [];
+  const { data: trips = [] } = useMyTrips();
   const { data: matches = [] } = useMatches();
   const { data: sentRequests = [] } = useSentRequests();
   const { data: chats = [] } = useMyChats();
-  const cancelTrip = useCancelTrip();
+  const passed = usePassedTravelers();
+  const [index, setIndex] = useState(0);
 
-  // §6: matching DAU (the comparison metric for the map-led thesis) and
-  // browse depth.
   useEffect(() => {
     analytics.capture('travelers_viewed');
   }, []);
-  useEffect(() => {
-    if (matches.length > 0) {
-      analytics.capture('matches_viewed', { count: matches.length });
-    }
-  }, [matches.length]);
 
   if (!isSupabaseConfigured) {
     return (
@@ -257,96 +269,155 @@ export default function TravelersScreen() {
   const chatByUser = new Map(
     chats.filter((c) => c.chat_status === 'active').map((c) => [c.other_user_id, c.chat_id])
   );
-  // One card per traveler; get_matches is ordered soonest-first, so first-wins
-  // keeps the nearest shared window.
-  const byUser = new Map<string, MatchRow>();
+
+  // Every overlapping trip, kept per traveler rather than collapsed to one.
+  const byUser = new Map<string, Candidate>();
   for (const match of matches) {
-    if (!byUser.has(match.user_id)) {
-      byUser.set(match.user_id, match);
-    }
+    const existing = byUser.get(match.user_id);
+    const entry = existing ?? { userId: match.user_id, match, overlaps: new Map() };
+    entry.overlaps.set(match.trip_id, {
+      start: match.overlap_start,
+      end: match.overlap_end,
+    });
+    byUser.set(match.user_id, entry);
   }
-  const uniqueMatches = [...byUser.values()];
-
-  const header = (
-    <View style={styles.headerBlock}>
-      <ThemedText type="subtitle">Travelers</ThemedText>
-      <View style={styles.tripsRow}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tripsScroll}>
-          {trips.map((trip) => (
-            <TripChip
-              key={trip.id}
-              city={trip.cities.name}
-              range={formatDateRange(trip.start_date, trip.end_date)}
-              onCancel={() => cancelTrip.mutate(trip.id)}
-            />
-          ))}
-          <PressableScale
-            scaleTo={0.96}
-            haptic="selection"
-            onPress={() => router.push('/add-trip')}>
-            <ThemedView type="backgroundElement" style={[styles.tripChip, styles.addTrip]}>
-              <ThemedText type="callout">＋ Add trip</ThemedText>
-            </ThemedView>
-          </PressableScale>
-        </ScrollView>
-      </View>
-      {trips.length > 0 && uniqueMatches.length === 0 ? (
-        <ThemedText themeColor="textSecondary">
-          Nobody overlapping yet. More people add trips every day, so check back.
-        </ThemedText>
-      ) : null}
-    </View>
+  const queue = [...byUser.values()].filter(
+    (candidate) => !passed.has(candidate.userId) && !chatByUser.has(candidate.userId)
   );
+  const current = queue[Math.min(index, Math.max(0, queue.length - 1))];
 
-  // Don't flash the first-trip empty state while the cache is still cold.
-  if (tripsQuery.isPending) {
-    return <ThemedView style={styles.root} />;
-  }
+  const advance = () => {
+    haptics.selection();
+    setIndex((i) => i + 1);
+  };
 
   if (trips.length === 0) {
     return (
-      <PlaceholderScreen
-        icon={{ ios: 'person.2.fill', android: 'group', web: 'group' }}
-        title="Travelers"
-        phase="where to next?"
-        description="Add a trip and we will show you who else is around on your dates.">
-        <PrimaryButton label="Add your first trip" onPress={() => router.push('/add-trip')} />
-      </PlaceholderScreen>
+      <ThemedView style={styles.root}>
+        <View style={[styles.empty, { paddingTop: insets.top + Space.xxl }]}>
+          <ThemedText type="title" style={styles.emptyText}>
+            Add a trip first
+          </ThemedText>
+          <ThemedText themeColor="textSecondary" style={styles.emptyText}>
+            Travelers here are the people who will be in the same city as you, on the same dates.
+            Your trips live on your profile.
+          </ThemedText>
+          <PrimaryButton label="Go to my profile" onPress={() => router.push('/profile-me')} />
+        </View>
+      </ThemedView>
     );
   }
 
+  if (queue.length === 0 || !current) {
+    return (
+      <ThemedView style={styles.root}>
+        <View style={[styles.empty, { paddingTop: insets.top + Space.xxl }]}>
+          <ThemedText type="title" style={styles.emptyText}>
+            That is everyone for now
+          </ThemedText>
+          <ThemedText themeColor="textSecondary" style={styles.emptyText}>
+            More people add trips every day. Check back, or add another city to your plans.
+          </ThemedText>
+          {passed.count > 0 ? (
+            <PrimaryButton
+              variant="ghost"
+              label="Look through them again"
+              onPress={() => {
+                passed.reset();
+                setIndex(0);
+              }}
+            />
+          ) : null}
+        </View>
+      </ThemedView>
+    );
+  }
+
+  const sent = sentByRecipient.get(current.userId);
+  const chatId =
+    chatByUser.get(current.userId) ??
+    (sent?.state === 'accepted' ? (sent.chat_id ?? undefined) : undefined);
+
   return (
     <ThemedView style={styles.root}>
-      <FlatList
-        style={styles.list}
-        data={uniqueMatches}
-        keyExtractor={(m) => m.user_id}
-        ListHeaderComponent={header}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
-        ]}
-        renderItem={({ item, index }) => (
-          // Staggered entrance for the first visible cards only — items
-          // below the fold shouldn't queue up animations.
-          <Animated.View
-            entering={index < 6 ? FadeInDown.duration(280).delay(index * 45) : undefined}>
-            <MatchCard
-              match={item}
-              sent={sentByRecipient.get(item.user_id)}
-              chatId={chatByUser.get(item.user_id)}
-            />
-          </Animated.View>
-        )}
-      />
+      <Animated.View entering={FadeIn.duration(200)} style={styles.deck} key={current.userId}>
+        <TravelerPage
+          candidate={current}
+          width={Math.min(width, MaxContentWidth)}
+          chatId={chatId}
+          requested={sent?.state === 'sent'}
+          onNext={() => {
+            passed.add(current.userId);
+            advance();
+          }}
+          onSayHi={() => {
+            if (chatId) {
+              router.push(`/chat/${chatId}`);
+              return;
+            }
+            router.push({
+              pathname: '/compose-request',
+              params: {
+                userId: current.userId,
+                name: current.match.display_name ?? 'Traveler',
+                photoPath: current.match.photo_path ?? '',
+                source: 'trip_match',
+              },
+            });
+          }}
+        />
+      </Animated.View>
+      <View style={[styles.counter, { top: insets.top + Space.sm }]} pointerEvents="none">
+        <ThemedText type="caption" themeColor="textSecondary">
+          {Math.min(index + 1, queue.length)} OF {queue.length}
+        </ThemedText>
+      </View>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
+  deck: {
+    flex: 1,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: MaxContentWidth,
+  },
+  counter: {
+    position: 'absolute',
+    right: Space.lg,
+  },
+  actionBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    paddingHorizontal: Space.lg,
+    paddingTop: Space.sm,
+  },
+  nextButton: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(33,30,26,0.72)',
+  },
+  sayHiWrap: {
+    flex: 1,
+  },
+  empty: {
+    flex: 1,
+    gap: Space.md,
+    padding: Space.lg,
+    alignItems: 'stretch',
+  },
+  emptyText: {
+    textAlign: 'center',
+  },
   root: {
     flex: 1,
     flexDirection: 'row',
