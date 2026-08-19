@@ -295,7 +295,7 @@ export default function ChatScreen() {
         icon={{ ios: 'bubble.left.and.bubble.right.fill', android: 'chat', web: 'chat' }}
         title="Inbox"
         phase="waiting on backend keys"
-        description="Requests and chats show up here once Supabase keys are in .env."
+        description="Chats show up here once Supabase keys are in .env."
       />
     );
   }

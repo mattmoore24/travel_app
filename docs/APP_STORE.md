@@ -72,11 +72,11 @@ Data used for tracking across apps/companies: **No**.
 
 ## App Review notes (paste into the Review Notes field)
 
-> This is a platonic travel friend-finding app — explicitly not a dating app,
-> and the design enforces that: (1) every first message is screened by a
-> moderation pipeline (keyword filter + LLM classification) BEFORE delivery;
-> flirtatious/sexual content is blocked and repeat offenders are
-> warned/suspended/banned automatically. (2) Users can report and block from
+> This is a travel friend-finding app, not a dating app, and the design
+> enforces it: (1) every first message is screened by a moderation pipeline
+> (keyword filter + LLM classification) BEFORE delivery; explicit or sexual
+> content is blocked and repeat offenders are warned, suspended, or removed
+> automatically. (2) Users can report and block from
 > every profile and chat; blocking instantly severs visibility both ways.
 > (3) Social media handles stay hidden until both users accept a chat.
 > (4) The app never requests device location: the map shows only

@@ -73,7 +73,7 @@ export function useAcceptedCelebration() {
       ? {
           requestId: pending.id,
           chatId: pending.chat_id,
-          name: chat?.title ?? 'They',
+          name: chat?.title ?? 'this traveler',
           photoPath: chat?.photo_path ?? null,
         }
       : null;

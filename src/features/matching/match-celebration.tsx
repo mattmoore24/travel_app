@@ -84,16 +84,14 @@ export function MatchCelebration({
 
       <Animated.View entering={FadeInDown.duration(400).delay(140)} style={styles.text}>
         <ThemedText type="display" style={styles.title}>
-          {match.name} said yes
+          Connected with {match.name}
         </ThemedText>
-        <ThemedText style={styles.body}>
-          Your chat is open. Go make a plan before one of you moves on.
-        </ThemedText>
+        <ThemedText style={styles.body}>Your chat is open.</ThemedText>
       </Animated.View>
 
       <Animated.View entering={FadeInDown.duration(400).delay(240)} style={styles.actions}>
         <PrimaryButton
-          label={`Message ${match.name}`}
+          label="Go to chat"
           onPress={() => {
             onDismiss();
             router.push(`/chat/${match.chatId}`);

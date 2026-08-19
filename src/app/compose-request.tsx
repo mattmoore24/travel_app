@@ -68,8 +68,8 @@ export default function ComposeRequestScreen() {
   return (
     <StepScreen
       title={`Say hi to ${params.name ?? 'this traveler'}`}
-      subtitle="They see this and your profile. If they accept, we will let you know and your chat opens. One go per person, so make it count."
-      continueLabel="Send request"
+      subtitle="They see this and your profile. If they reply, your chat opens."
+      continueLabel="Send"
       continueDisabled={message.trim().length === 0 || message.length > MESSAGE_MAX}
       continueLoading={sendRequest.isPending}
       onContinue={submit}>
@@ -102,7 +102,7 @@ export default function ComposeRequestScreen() {
         multiline
         numberOfLines={4}
         style={styles.messageInput}
-        placeholder="Say something they can actually reply to. Friends only here, no flirting."
+        placeholder="Say something they can actually reply to."
         value={message}
         onChangeText={setMessage}
       />
@@ -116,8 +116,7 @@ export default function ComposeRequestScreen() {
             That message can&apos;t be sent
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            It reads as flirtatious or explicit, which isn&apos;t what this app is for. Rewrite it
-            and try again. Keep pushing it and accounts get suspended.
+            That came across as explicit. Reword it and send again.
           </ThemedText>
         </ThemedView>
       ) : null}

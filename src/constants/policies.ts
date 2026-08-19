@@ -15,24 +15,24 @@
 export const SUPPORT_EMAIL = 'mattmoorefb24@gmail.com';
 
 export const ZERO_TOLERANCE =
-  'Zero tolerance: flirting, sexual content, harassment, and abusive users are removed.';
+  'Keep it casual and friendly. Explicit content, harassment and spam are not allowed.';
 
 export const GUIDELINE_SECTIONS = [
   {
-    title: 'This is a friends app, not a dating app',
-    body: 'Keep every message platonic. No flirting, no romantic or sexual advances, no comments on how someone looks. If you would not say it to a new friend in a hostel common room with everyone listening, do not send it.',
+    title: 'Keep it casual and friendly',
+    body: 'Explicit content is not allowed. Otherwise, write the way you would to someone you had a good chat with at your hostel.',
   },
   {
-    title: 'How we enforce it',
-    body: 'Every first message gets checked before it lands. Anything flirty, sexual, nasty or spammy never reaches the other person. Blocked messages and removed photos add up: 3 gets you a warning, 5 suspends you for a week, 7 is the end of the road.',
+    title: 'Moderation',
+    body: 'First messages and photos are checked before they land, so explicit or abusive content never reaches anyone. Repeat problems mean losing access to the app.',
   },
   {
     title: 'Also not allowed',
-    body: 'Harassment, hate speech, or discrimination. Fake profiles or photos that are not you. Spam, scams, or commercial solicitation. Sharing someone else’s private information. Explicit, suggestive, or violent photos. Anyone under 18.',
+    body: 'Harassment, hate speech, or discrimination. Fake profiles or photos that are not you. Spam, scams, or commercial solicitation. Sharing someone else’s private information. Explicit or violent photos. Anyone under 18.',
   },
   {
     title: 'Your privacy',
-    body: 'We never collect your device location. Pins are plans you type in yourself, and they vanish within 72 hours. Your socials stay hidden until you and someone else both accept a chat. You can delete your account, and everything in it, from your profile whenever you like.',
+    body: 'We never collect your device location. Pins are plans you type in yourself, and they vanish within 72 hours. Your socials are only shared once you and someone else are chatting. You can delete your account, and everything in it, from your profile whenever you like.',
   },
   {
     title: 'Staying safe',

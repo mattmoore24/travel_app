@@ -7,7 +7,7 @@
 
 _Last updated: [date]_
 
-**Samewhere** ("we") helps travelers make platonic friends. This policy
+**Samewhere** ("we") helps travelers make friends. This policy
 explains what we collect, why, and your choices.
 
 ## What we collect
@@ -44,7 +44,7 @@ explains what we collect, why, and your choices.
 
 ## Content moderation
 
-To keep the app platonic and safe, first messages, photos, and verification
+To keep the app safe, first messages, photos, and verification
 selfies are screened automatically (including by an AI classifier run
 server-side via Anthropic's API). Moderation decisions and reports are
 logged. We never use your content to train AI models.

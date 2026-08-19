@@ -1,3 +1,4 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -19,6 +20,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { PhotoButton } from '@/components/ui/photo-button';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl, useSendMessage, useSendPhoto } from '@/features/chat/hooks';
@@ -32,7 +34,7 @@ import {
   useRoomMessages,
   useToggleReaction,
 } from '@/features/rooms/hooks';
-import { addDays, toISODate } from '@/features/trips/dates';
+import { addDays, formatDateRange, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import type { RoomMessageRow } from '@/lib/database.types';
 
@@ -150,6 +152,8 @@ export default function RoomScreen() {
   const { data: messages = [] } = useRoomMessages(id ?? null);
   const { data: chats = [] } = useMyChats();
   const join = useJoinRoom(id!);
+  const [departure, setDeparture] = useState(addDays(new Date(), 3));
+  const [pickingDeparture, setPickingDeparture] = useState(false);
   const leave = useLeaveRoom(id!);
   const send = useSendMessage(id!);
   const sendPhoto = useSendPhoto(id!);
@@ -310,20 +314,47 @@ export default function RoomScreen() {
           ) : (
             <View style={styles.footer}>
               <ThemedText type="footnote" themeColor="textSecondary">
-                Joining asks one thing: when you leave. You come out of the room a week after that.
+                When are you checking out? You leave the room a week after that.
               </ThemedText>
-              <View style={styles.joinRow}>
-                {[3, 7, 14].map((days) => (
-                  <View key={days} style={styles.joinButton}>
-                    <PrimaryButton
-                      variant={days === 7 ? 'filled' : 'tonal'}
-                      label={`${days} days`}
-                      loading={join.isPending}
-                      onPress={() => submitJoin(addDays(new Date(), days))}
-                    />
-                  </View>
-                ))}
-              </View>
+              {/* The real date, not three guesses at it: people know their
+                  checkout day, and picking "7 days" when you mean Thursday
+                  is worse than useless. */}
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Choose your checkout date"
+                haptic="light"
+                scaleTo={0.98}
+                onPress={() => setPickingDeparture((open) => !open)}
+                style={[styles.dateField, { backgroundColor: theme.surfaceSunken }]}>
+                <ThemedText type="caption" themeColor="textSecondary">
+                  CHECKING OUT
+                </ThemedText>
+                <ThemedText type="callout">
+                  {formatDateRange(toISODate(departure), toISODate(departure))}
+                </ThemedText>
+              </PressableScale>
+              {pickingDeparture ? (
+                <DateTimePicker
+                  value={departure}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                  minimumDate={new Date()}
+                  accentColor={theme.accent}
+                  onChange={(_event, selected) => {
+                    if (selected) {
+                      setDeparture(selected);
+                    }
+                    if (Platform.OS !== 'ios') {
+                      setPickingDeparture(false);
+                    }
+                  }}
+                />
+              ) : null}
+              <PrimaryButton
+                label="Join this room"
+                loading={join.isPending}
+                onPress={() => submitJoin(departure)}
+              />
             </View>
           )}
         </KeyboardAvoidingView>
@@ -333,6 +364,13 @@ export default function RoomScreen() {
 }
 
 const styles = StyleSheet.create({
+  dateField: {
+    gap: 2,
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.md,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
   root: {
     flex: 1,
     flexDirection: 'row',

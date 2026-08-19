@@ -68,10 +68,10 @@ function AccountGate({
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.errorText}>
           {suspended
-            ? `Your account broke our community guidelines and is suspended${
+            ? `Your account is suspended${
                 until ? ` until ${until.toLocaleDateString()}` : ''
-              }. This app is for platonic travel friendships.`
-            : 'Your account has been permanently banned for repeated violations of our community guidelines.'}
+              } for breaking our community guidelines.`
+            : 'Your account has been closed for repeated breaches of our community guidelines.'}
         </ThemedText>
         <PrimaryButton
           variant="ghost"

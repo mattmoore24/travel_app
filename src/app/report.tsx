@@ -10,7 +10,7 @@ import { useReportUser } from '@/features/chat/hooks';
 import type { ReportReason } from '@/lib/database.types';
 
 const REASON_OPTIONS: { value: ReportReason; label: string }[] = [
-  { value: 'flirtation_or_sexual', label: 'Flirting / sexual' },
+  { value: 'flirtation_or_sexual', label: 'Explicit or sexual' },
   { value: 'harassment', label: 'Harassment' },
   { value: 'spam', label: 'Spam' },
   { value: 'fake_profile', label: 'Fake profile' },
@@ -21,7 +21,7 @@ const REASON_OPTIONS: { value: ReportReason; label: string }[] = [
 export default function ReportScreen() {
   const params = useLocalSearchParams<{ userId: string; context?: string }>();
   const report = useReportUser();
-  const [reason, setReason] = useState<ReportReason>('flirtation_or_sexual');
+  const [reason, setReason] = useState<ReportReason>('harassment');
   const [details, setDetails] = useState('');
 
   const submit = async () => {
@@ -48,7 +48,7 @@ export default function ReportScreen() {
   return (
     <StepScreen
       title="Report someone"
-      subtitle="This is a friends app. Flirting counts, not just the obvious stuff."
+      subtitle="A real person reads every report."
       continueLabel="Submit report"
       continueLoading={report.isPending}
       onContinue={submit}>

@@ -1,8 +1,8 @@
 # Samewhere
 
-A free iPhone app for travelers to make **platonic** friends and see what other travelers are
-doing in a city. Explicitly not a dating app — enforced by design (accept-gated messaging,
-first-message moderation, no live location, ever).
+A free iPhone app for travelers to make friends and see what other travelers are doing in a
+city. Friendship-first by design (accept-gated messaging, first-message moderation, no live
+location, ever).
 
 Two surfaces:
 

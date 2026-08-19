@@ -3,24 +3,22 @@
 > **Status: draft for founder review. Not yet published. Legal review is a
 > separate, required step before launch.**
 
-This app exists so travelers can make **friends**. It is not a dating app,
-and we enforce that — with software, not just words.
+This app exists so travelers can make friends. Keep it casual and friendly
+and you will never think about these rules again.
 
 ## The one big rule
 
-**Keep it platonic.** No flirting, no romantic or sexual advances, no
-comments on people's looks or bodies, no asking for "spicy" photos, no
-nudging conversations somewhere they weren't invited to go. If you wouldn't
-say it to a new friend in a hostel common room with everyone listening,
+**Keep it casual and friendly.** Explicit or sexual content is not allowed.
+If you wouldn't say it to someone you had just met in a hostel common room,
 don't send it.
 
-## How we enforce it
+## Moderation
 
 - **Every first message is screened before it's delivered.** Messages that
-  read as flirtatious, sexual, harassing, or spam are blocked — the recipient
-  never sees them.
-- **Strikes add up.** Blocked messages and removed photos earn strikes:
-  3 strikes = a warning, 5 = a 7-day suspension, 7 = a permanent ban.
+  are explicit, harassing, or spam are blocked — the recipient never sees
+  them.
+- **Repeated problems have consequences.** Blocked messages and removed
+  photos are recorded, and repeat offenders lose access to the app.
 - **Reports are reviewed.** Every report is logged with evidence and
   reviewed. Blocking someone instantly hides you from each other everywhere.
 

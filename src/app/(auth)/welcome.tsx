@@ -109,7 +109,7 @@ export default function WelcomeScreen() {
               onPress={() => router.push('/guidelines')}>
               community guidelines
             </ThemedText>
-            . This is a friends app. Flirting and harassment get accounts removed.
+            . Keep it casual and friendly.
           </ThemedText>
         </ThemedView>
       </SafeAreaView>

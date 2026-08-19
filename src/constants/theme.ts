@@ -133,10 +133,14 @@ export const Space = {
 } as const;
 
 export const Radius = {
+  /** The tail corner of a chat bubble. */
+  xs: 5,
   sm: 10,
   md: 14,
   lg: 20,
   xl: 28,
+  /** Chat bubbles: the familiar messaging-app corner. */
+  bubble: 20,
   pill: 999,
 } as const;
 

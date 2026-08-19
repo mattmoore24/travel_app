@@ -5,7 +5,6 @@ import { useState } from 'react';
 import {
   ActionSheetIOS,
   Alert,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -23,14 +22,17 @@ import {
   useBlockUser,
   useMessages,
   useSendMessage,
-  useChatPhotoUrl,
   useSendPhoto,
   useUnmatch,
 } from '@/features/chat/hooks';
+import { MessageThread } from '@/features/chat/message-thread';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
+// Reactions are chat-shaped, not room-shaped: the table and the summary RPC
+// take any chat id, so direct chats reuse exactly what rooms use.
+import { useReactions, useToggleReaction } from '@/features/rooms/hooks';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
-import type { ChatListRow, MessageRow } from '@/lib/database.types';
+import type { ChatListRow } from '@/lib/database.types';
 
 const PLATFORM_LABELS: Record<string, string> = {
   instagram: 'Instagram',
@@ -156,7 +158,16 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
 
 function SocialsCard({ userId }: { userId: string }) {
   const theme = useTheme();
-  const { data: socials = [] } = useUnlockedSocialHandles(userId);
+  const { data: socials = [], isError } = useUnlockedSocialHandles(userId);
+  if (isError) {
+    return (
+      <ThemedView type="backgroundElement" style={styles.socialsCard}>
+        <ThemedText type="small" themeColor="textSecondary">
+          Could not load their socials just now.
+        </ThemedText>
+      </ThemedView>
+    );
+  }
   if (socials.length === 0) {
     return null;
   }
@@ -176,35 +187,6 @@ function SocialsCard({ userId }: { userId: string }) {
   );
 }
 
-function MessageBubble({ message, mine }: { message: MessageRow; mine: boolean }) {
-  const theme = useTheme();
-  const { data: imageUrl } = useChatPhotoUrl(message.image_path);
-  return (
-    <View
-      style={[
-        styles.bubble,
-        mine ? styles.bubbleMine : styles.bubbleTheirs,
-        { backgroundColor: mine ? theme.tint : theme.backgroundElement },
-      ]}>
-      {message.image_path ? (
-        imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.messagePhoto} contentFit="cover" />
-        ) : (
-          // Held by photo moderation, or the signed URL hasn't landed yet.
-          <ThemedText type="footnote" themeColor="textSecondary">
-            Photo in review
-          </ThemedText>
-        )
-      ) : null}
-      {message.body ? (
-        <ThemedText type="small" style={mine ? { color: theme.onTint } : undefined}>
-          {message.body}
-        </ThemedText>
-      ) : null}
-    </View>
-  );
-}
-
 export default function ChatScreen() {
   const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -214,6 +196,8 @@ export default function ChatScreen() {
   const messagesQuery = useMessages(chat?.chat_id ?? null);
   const sendMessage = useSendMessage(chat?.chat_id ?? null);
   const sendPhoto = useSendPhoto(chat?.chat_id ?? '');
+  const { data: reactions = [] } = useReactions(chat?.chat_id ?? null);
+  const toggleReaction = useToggleReaction(chat?.chat_id ?? '');
   const [draft, setDraft] = useState('');
 
   if (!chat) {
@@ -232,6 +216,23 @@ export default function ChatScreen() {
 
   const closed = chat.chat_status !== 'active';
   const messages = messagesQuery.data ?? [];
+  // The opening message lives on the chat row rather than in messages, but
+  // it is part of the conversation and reads as one (it can be reacted to
+  // like any other message once it is a real row; until then it is shown in
+  // place, oldest, at the bottom of the inverted list).
+  const thread = chat.first_message
+    ? [
+        ...messages,
+        {
+          id: `first:${chat.chat_id}`,
+          chat_id: chat.chat_id,
+          sender_id: chat.first_message_sender_id ?? '',
+          body: chat.first_message,
+          image_path: null,
+          created_at: chat.created_at,
+        },
+      ]
+    : messages;
 
   const submit = async () => {
     const body = draft.trim();
@@ -255,34 +256,12 @@ export default function ChatScreen() {
           keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
           <ChatHeader chat={chat} />
           {chat.other_user_id ? <SocialsCard userId={chat.other_user_id} /> : null}
-          <FlatList
-            style={styles.flex}
-            inverted
-            data={messages}
-            keyExtractor={(m) => m.id}
-            contentContainerStyle={styles.messages}
-            renderItem={({ item }) => (
-              <MessageBubble message={item} mine={item.sender_id === ownUserId} />
-            )}
-            ListFooterComponent={
-              chat.first_message ? (
-                <View style={styles.firstMessageWrap}>
-                  <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
-                    The request that started it
-                  </ThemedText>
-                  <MessageBubble
-                    message={{
-                      id: 'first',
-                      chat_id: chat.chat_id,
-                      sender_id: chat.first_message_sender_id ?? '',
-                      body: chat.first_message,
-                      image_path: null,
-                      created_at: chat.created_at,
-                    }}
-                    mine={chat.first_message_sender_id === ownUserId}
-                  />
-                </View>
-              ) : null
+          <MessageThread
+            messages={thread}
+            ownUserId={ownUserId}
+            reactions={reactions}
+            onToggleReaction={(messageId, emoji, on) =>
+              toggleReaction.mutate({ messageId, emoji, on })
             }
           />
           {closed ? (
