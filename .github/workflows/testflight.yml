@@ -92,7 +92,11 @@ jobs:
           openssl x509 -inform der -in "$RUNNER_TEMP/dist.der" -out "$RUNNER_TEMP/dist.pem"
           P12_PASSWORD=$(openssl rand -hex 16)
           echo "::add-mask::$P12_PASSWORD"
-          openssl pkcs12 -export -out "$RUNNER_TEMP/dist.p12" \
+          # -legacy: macOS's `security import` on the EAS builder rejects
+          # OpenSSL 3's default PBES2/SHA-256 p12 encryption; the legacy
+          # format imports cleanly and still parses with @expo/pkcs12
+          # (verified locally against both formats).
+          openssl pkcs12 -export -legacy -out "$RUNNER_TEMP/dist.p12" \
             -inkey "$RUNNER_TEMP/dist.key" -in "$RUNNER_TEMP/dist.pem" \
             -passout "pass:$P12_PASSWORD"
           P12_PASSWORD="$P12_PASSWORD" node -e "
