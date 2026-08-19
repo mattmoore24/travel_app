@@ -117,6 +117,15 @@ jobs:
           xcrun simctl io "$UDID" screenshot zz-final-state.png || true
           ls -la
 
+      # BEFORE the publish step: publishing checks out an orphan branch,
+      # which deletes e2e/account.mjs from the working tree.
+      - name: Destroy the throwaway account
+        if: always()
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: node e2e/account.mjs teardown
+
       # Even a failed flow usually produced screenshots — publish whatever
       # exists, then fail the job afterwards so red still means broken.
       - name: Publish screenshots to the e2e-results branch
@@ -136,13 +145,6 @@ jobs:
           git add results
           git -c user.name=e2e -c user.email=e2e@local commit -m "e2e screenshots"
           git push --force origin e2e-results
-
-      - name: Destroy the throwaway account
-        if: always()
-        env:
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
-        run: node e2e/account.mjs teardown
 
       - name: Propagate flow failures
         if: always()

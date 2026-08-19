@@ -21,10 +21,23 @@ appId: com.mattmoore.samewhere
 - inputText: ${E2E_PASSWORD}
 - hideKeyboard
 - tapOn: 'Sign in'
+# iOS offers to save the password after a successful sign-in; the system
+# dialog owns the a11y tree and eats taps until dismissed. It can arrive
+# seconds late, so wait for it, dismiss it, and guard once more below.
+- extendedWaitUntil:
+    visible: 'Not Now'
+    timeout: 12000
+    optional: true
+- tapOn:
+    text: 'Not Now'
+    optional: true
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
 - takeScreenshot: 11-signed-in-map
+- tapOn:
+    text: 'Not Now'
+    optional: true
 - tapOn: 'Drop a pin'
 - takeScreenshot: 12-place-mode
 - swipe:
