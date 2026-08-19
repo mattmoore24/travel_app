@@ -23,7 +23,9 @@
         "venue": "Pastelaria near the miradouro",
         "category": "restaurant",
         "offset": [0.008, -0.012]
-      }
+      },
+      "replyOpener": "Ah yes, glad you said something. I am doing coffee then wandering most mornings, join me whenever.",
+      "pingMessage": "Hey! We are here the same days it looks like. I am doing a pastry and coffee crawl this week, no agenda, come along if you want."
     },
     {
       "slug": "dev",
@@ -35,7 +37,13 @@
       "bio": "Six months into a very slow trip around Asia. I will absolutely talk your ear off about street food. Looking for people to explore with. [demo]",
       "city": "Bangkok",
       "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/f41649e7-07c0-4987-b0d5-69c3df99200c/Candid_travel_photo_of_a_man_in_his_early_thirties_with_shor.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiOGVjMmM1MzUxNTM0YmJlOCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzMwNTE0MX0.jB4Ly8fOgPokF_PLDLpumZKZZfKhVyovDvI3PbF1saE",
-      "pin": { "venue": "Rooftop for sunset drinks", "category": "bar", "offset": [-0.01, 0.014] }
+      "pin": {
+        "venue": "Rooftop for sunset drinks",
+        "category": "bar",
+        "offset": [-0.01, 0.014]
+      },
+      "replyOpener": "Yes! I have a running list of street food places and nobody to drag along, so your timing is perfect.",
+      "pingMessage": "Hey, looks like we overlap. I am eating my way through the night markets this week if you want in."
     },
     {
       "slug": "freja",
@@ -51,7 +59,9 @@
         "venue": "Coast walk, meeting at the tram stop",
         "category": "hike",
         "offset": [0.015, 0.006]
-      }
+      },
+      "replyOpener": "Nice, I was hoping someone would say yes. I am walking the coast path this week, easy pace, good swim halfway.",
+      "pingMessage": "Hi! Saw we are around at the same time. I am doing a coast walk with a swim stop, tell me if that is your kind of thing."
     },
     {
       "slug": "theo",
@@ -63,7 +73,13 @@
       "bio": "Here for the night markets and the questionable karaoke. I take photos of everything, sorry in advance. [demo]",
       "city": "Bangkok",
       "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/9ac93791-7d76-44a2-a2e7-b5acb8dfa596/Candid_travel_photo_of_a_man_in_his_late_twenties_with_glass.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiY2YyNjhjMWFhNWQwOGU0NSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzI0MDM0Nn0.NNNmgUrggCMp4QhWIYk3EexMBkf9OLVK3vRlHe9QaKE",
-      "pin": { "venue": "Night market crawl", "category": "other", "offset": [0.006, 0.011] }
+      "pin": {
+        "venue": "Night market crawl",
+        "category": "other",
+        "offset": [0.006, 0.011]
+      },
+      "replyOpener": "Great, I need someone to keep me from taking 400 photos of the same noodle stall. When are you free?",
+      "pingMessage": "Hey, we seem to be here the same week. Night market and questionable karaoke is the plan, you are very welcome to join."
     },
     {
       "slug": "nora",
@@ -75,7 +91,13 @@
       "bio": "Taking a proper break from work for once. Museums in the morning, long dinners at night. Say hi if you like either. [demo]",
       "city": "Lisbon",
       "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/3dda46f2-2ba7-4515-b269-12a74e073db9/Candid_travel_photo_of_a_woman_in_her_early_thirties_with_sh.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiM2E5YWUwYmY3ZWY4ZjRkZCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzI2NzAwN30.tMoqmE0MsApBRwhDxTHGqwkMnGxICUIzpnGiJ1aOgtE",
-      "pin": { "venue": "Tile museum, then lunch", "category": "museum", "offset": [-0.012, 0.004] }
+      "pin": {
+        "venue": "Tile museum, then lunch",
+        "category": "museum",
+        "offset": [-0.012, 0.004]
+      },
+      "replyOpener": "Lovely, I was after some company for dinner. I do museums in the morning and long dinners at night, pick either.",
+      "pingMessage": "Hi there, looks like our dates line up. I am doing museums then a long dinner this week if you fancy either one."
     },
     {
       "slug": "luca",
@@ -87,7 +109,13 @@
       "bio": "First big trip and loving it. Staying in hostels, saying yes to most things. Teach me a card game. [demo]",
       "city": "Bangkok",
       "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/bcd5356f-4471-4b81-a07a-0c8a8fdc3dae/Candid_travel_photo_of_a_man_in_his_mid_twenties_with_tousle.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNzFlZWQ0MWE5MTE0NTU2MiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzMyMDQ3NH0.5P0BnTfoQtACmi8z5lUkM7J6s77VQGFzCNqjhmJYsm0",
-      "pin": { "venue": "Hostel rooftop hang", "category": "bar", "offset": [0.004, -0.008] }
+      "pin": {
+        "venue": "Hostel rooftop hang",
+        "category": "bar",
+        "offset": [0.004, -0.008]
+      },
+      "replyOpener": "Yes! First big trip and I am saying yes to everything, so tell me what you are doing and I am in.",
+      "pingMessage": "Hey! We are in town at the same time. I am staying at a hostel with a decent rooftop, come hang out if you are free."
     }
   ]
 }

@@ -1,6 +1,8 @@
 # Demo travelers for testing the Travelers tab, matching, pins and messaging.
 # Creates them through the public signup path with the anon key (no elevated
-# privileges), and purges them the same way through delete-account.
+# privileges), purges them the same way through delete-account, and drives
+# the message-request loop from their side so both ends of it can be seen on
+# a real phone.
 #
 # These are not real people: AI-generated portraits, [demo] marked bios.
 # LAUNCH_RUNBOOK step 4 requires purging before real users arrive.
@@ -12,9 +14,11 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'seed (create/refresh) or purge (delete)'
+        description: >-
+          seed/purge the accounts, or drive the request loop: accept (they
+          answer a request you sent), ping (one of them writes to you), both
         type: choice
-        options: [seed, purge]
+        options: [seed, purge, accept, ping, both]
         default: seed
 
 jobs:
@@ -31,4 +35,8 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
-        run: node scripts/seed-demo-travelers.mjs ${{ inputs.action }}
+        run: |
+          case "${{ inputs.action }}" in
+            seed|purge) node scripts/seed-demo-travelers.mjs "${{ inputs.action }}" ;;
+            *)          node scripts/demo-interactions.mjs "${{ inputs.action }}" ;;
+          esac
