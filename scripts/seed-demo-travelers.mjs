@@ -1,0 +1,205 @@
+// Demo travelers for testing the Travelers tab, matching, pins and messaging.
+//
+//   node scripts/seed-demo-travelers.mjs seed
+//   node scripts/seed-demo-travelers.mjs purge
+//
+// These accounts are created through the PUBLIC signup path with the anon key,
+// exactly like a real phone would: no service-role key, no special privileges,
+// so nothing here can do something a user could not.
+//
+// They are not real people. The portraits are AI-generated (no real person's
+// likeness), every bio carries a visible [demo] marker, and LAUNCH_RUNBOOK
+// step 4 requires purging them before real users arrive.
+//
+// Env: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY, DEMO_PASSWORD
+//      (shared password for the demo accounts; keep it in GitHub secrets so
+//      strangers cannot sign in as a demo traveler while the repo is public)
+
+import { readFileSync } from 'node:fs';
+
+const URL_ = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+const PASSWORD = process.env.DEMO_PASSWORD;
+const EMAIL_BASE = process.env.TEST_EMAIL_BASE || 'mattmoorefb24@gmail.com';
+
+if (!URL_ || !KEY) {
+  console.error('::error::EXPO_PUBLIC_SUPABASE_URL / _ANON_KEY not set');
+  process.exit(1);
+}
+if (!PASSWORD || PASSWORD.length < 12) {
+  console.error('::error::DEMO_PASSWORD secret missing (needs 12+ characters)');
+  process.exit(1);
+}
+
+const [EMAIL_USER, EMAIL_DOMAIN] = EMAIL_BASE.split('@');
+const emailFor = (slug) => `${EMAIL_USER}+sw-demo-${slug}@${EMAIL_DOMAIN}`;
+const { people } = JSON.parse(readFileSync(new URL('./demo-travelers.json', import.meta.url)));
+
+async function api(path, { token, raw, ...init } = {}) {
+  const res = await fetch(`${URL_}${path}`, {
+    ...init,
+    headers: {
+      apikey: KEY,
+      Authorization: `Bearer ${token ?? KEY}`,
+      ...(raw ? {} : { 'Content-Type': 'application/json' }),
+      ...init.headers,
+    },
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`${path} -> ${res.status}: ${text.slice(0, 300)}`);
+  }
+  return text ? JSON.parse(text) : null;
+}
+
+async function signIn(slug) {
+  return api('/auth/v1/token?grant_type=password', {
+    method: 'POST',
+    body: JSON.stringify({ email: emailFor(slug), password: PASSWORD }),
+  });
+}
+
+/** Signs up, or signs in when the account already exists (re-runnable). */
+async function ensureAccount(slug) {
+  try {
+    const session = await api('/auth/v1/signup', {
+      method: 'POST',
+      body: JSON.stringify({ email: emailFor(slug), password: PASSWORD }),
+    });
+    if (session?.access_token) {
+      return { session, created: true };
+    }
+  } catch (e) {
+    if (!/already|registered/i.test(e.message)) throw e;
+  }
+  return { session: await signIn(slug), created: false };
+}
+
+const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+
+async function seed() {
+  for (const person of people) {
+    const { session, created } = await ensureAccount(person.slug);
+    const token = session.access_token;
+    const userId = session.user.id;
+
+    await api(`/rest/v1/profiles?user_id=eq.${userId}`, {
+      method: 'PATCH',
+      token,
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        display_name: person.name,
+        age: person.age,
+        home_city: person.homeCity,
+        home_country: person.homeCountry,
+        languages: person.languages,
+        bio: person.bio,
+        onboarding_completed_at: new Date().toISOString(),
+      }),
+    });
+
+    const cities = await api('/rest/v1/rpc/search_cities', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ p_query: person.city }),
+    });
+    const city = (cities ?? []).find((c) => c.name === person.city);
+    if (!city) throw new Error(`city ${person.city} not found`);
+
+    // A wide window so a founder testing on any date sees an overlap. Trips
+    // are replaced rather than stacked so re-running stays idempotent.
+    await api(`/rest/v1/trips?user_id=eq.${userId}`, { method: 'DELETE', token });
+    await api('/rest/v1/trips', {
+      method: 'POST',
+      token,
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        user_id: userId,
+        city_id: city.id,
+        start_date: day(-2),
+        end_date: day(25),
+      }),
+    });
+
+    // One photo, uploaded through the same storage path the app uses, so it
+    // goes through the real moderation queue like any user's photo.
+    const existing = await api(`/rest/v1/profile_photos?user_id=eq.${userId}&select=id`, { token });
+    if (created || (existing ?? []).length === 0) {
+      try {
+        const image = await fetch(person.photoUrl);
+        if (!image.ok) throw new Error(`photo fetch ${image.status}`);
+        const bytes = Buffer.from(await image.arrayBuffer());
+        const path = `${userId}/${person.slug}-1.png`;
+        await api(`/storage/v1/object/profile-photos/${path}`, {
+          method: 'POST',
+          token,
+          raw: true,
+          headers: { 'Content-Type': 'image/png' },
+          body: bytes,
+        });
+        await api('/rest/v1/profile_photos', {
+          method: 'POST',
+          token,
+          headers: { Prefer: 'return=minimal' },
+          body: JSON.stringify({ user_id: userId, storage_path: path, position: 0 }),
+        });
+      } catch (e) {
+        // A dead generation link should not block the rest of the seed.
+        console.log(`::warning::photo for ${person.slug} skipped: ${e.message}`);
+      }
+    }
+
+    // A live pin so the map has real user pins (avatar markers) to test.
+    if (person.pin) {
+      const [dLat, dLng] = person.pin.offset;
+      await api(`/rest/v1/pins?user_id=eq.${userId}`, { method: 'DELETE', token });
+      await api('/rest/v1/pins', {
+        method: 'POST',
+        token,
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          user_id: userId,
+          city_id: city.id,
+          venue_name: person.pin.venue,
+          category: person.pin.category,
+          lat: Number(city.lat) + dLat,
+          lng: Number(city.lng) + dLng,
+          intent_date: day(0),
+          // Just inside the 72h ceiling, so pins survive a few days of testing.
+          expires_at: new Date(Date.now() + 71 * 3600000).toISOString(),
+        }),
+      });
+    }
+
+    console.log(`ok   ${person.name} (${person.city}) ${created ? 'created' : 'refreshed'}`);
+  }
+  console.log(`\n${people.length} demo travelers ready. Purge with: seed-demo-travelers.mjs purge`);
+}
+
+async function purge() {
+  let gone = 0;
+  for (const person of people) {
+    try {
+      const session = await signIn(person.slug);
+      await api('/functions/v1/delete-account', {
+        method: 'POST',
+        token: session.access_token,
+      });
+      gone += 1;
+      console.log(`ok   ${person.name} deleted`);
+    } catch (e) {
+      console.log(`--   ${person.name} not present (${e.message.slice(0, 60)})`);
+    }
+  }
+  console.log(`\n${gone} demo travelers removed.`);
+}
+
+const mode = process.argv[2];
+try {
+  if (mode === 'seed') await seed();
+  else if (mode === 'purge') await purge();
+  else throw new Error('usage: seed-demo-travelers.mjs seed|purge');
+} catch (e) {
+  console.error(`::error::${mode} failed: ${e.message}`);
+  process.exit(1);
+}

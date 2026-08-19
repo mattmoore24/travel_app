@@ -1,0 +1,34 @@
+# Demo travelers for testing the Travelers tab, matching, pins and messaging.
+# Creates them through the public signup path with the anon key (no elevated
+# privileges), and purges them the same way through delete-account.
+#
+# These are not real people: AI-generated portraits, [demo] marked bios.
+# LAUNCH_RUNBOOK step 4 requires purging before real users arrive.
+#
+# Secrets: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY, DEMO_PASSWORD
+name: Demo travelers
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'seed (create/refresh) or purge (delete)'
+        type: choice
+        options: [seed, purge]
+        default: seed
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: ${{ inputs.action }} demo travelers
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
+        run: node scripts/seed-demo-travelers.mjs ${{ inputs.action }}

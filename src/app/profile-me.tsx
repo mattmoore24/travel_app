@@ -11,6 +11,7 @@ import { ProfileHero } from '@/components/ui/profile-hero';
 import { LANGUAGES } from '@/constants/languages';
 import { MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
+import { useAuthStore } from '@/features/auth/store';
 import { deleteAccount } from '@/features/profile/api';
 import {
   useLatestVerification,
@@ -59,8 +60,51 @@ function GallerySlot({ onPress }: { onPress: () => void }) {
   );
 }
 
+/** What a signed-out visitor sees when they tap the header avatar. */
+function GuestProfile() {
+  return (
+    <ThemedView style={styles.root}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.guestContent}>
+        <View style={styles.guestHero}>
+          <Image
+            source={require('@/assets/images/logo-glow.png')}
+            style={styles.guestGlow}
+            contentFit="contain"
+          />
+          <View style={styles.guestBadge}>
+            <Image
+              source={require('@/assets/images/splash-icon.png')}
+              style={styles.guestMark}
+              contentFit="contain"
+            />
+          </View>
+        </View>
+        <ThemedText type="title" style={styles.guestText}>
+          You&apos;re browsing as a guest
+        </ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.guestText}>
+          Make a profile and you can say hi to people, drop pins where you&apos;re headed, and join
+          the hostel chats. Takes about a minute.
+        </ThemedText>
+        <PrimaryButton label="Make my profile" onPress={() => router.push('/email')} />
+        <PrimaryButton
+          variant="ghost"
+          label="I already have an account"
+          onPress={() => router.push('/email')}
+        />
+        <PrimaryButton
+          variant="ghost"
+          label="House rules"
+          onPress={() => router.push('/guidelines')}
+        />
+      </ScrollView>
+    </ThemedView>
+  );
+}
+
 export default function ProfileScreen() {
   const theme = useTheme();
+  const signedIn = useAuthStore((s) => s.session) != null;
   const { data: profile } = useOwnProfile();
   const { data: photos = [] } = useOwnPhotos();
   const { data: handles = [] } = useOwnSocialHandles();
@@ -75,6 +119,10 @@ export default function ProfileScreen() {
         description="Copy .env.example to .env with your Supabase project keys, restart the dev server, and sign in to build your profile."
       />
     );
+  }
+
+  if (!signedIn) {
+    return <GuestProfile />;
   }
 
   const mainPhoto = photos.find((p) => p.position === 0) ?? photos[0] ?? null;
@@ -201,6 +249,37 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  guestContent: {
+    padding: Space.lg,
+    gap: Space.md,
+    alignItems: 'stretch',
+    paddingTop: Space.xxl,
+  },
+  guestHero: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Space.sm,
+  },
+  guestGlow: {
+    position: 'absolute',
+    width: 190,
+    height: 190,
+  },
+  guestBadge: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
+    backgroundColor: '#2A4C9B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guestMark: {
+    width: 82,
+    height: 82,
+  },
+  guestText: {
+    textAlign: 'center',
+  },
   root: {
     flex: 1,
     flexDirection: 'row',

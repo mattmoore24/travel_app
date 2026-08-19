@@ -5,6 +5,8 @@ import { StyleSheet, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { IntroTour } from '@/features/intro/intro-tour';
+import { useIntroState } from '@/features/intro/store';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -87,6 +89,7 @@ function RootNavigator() {
   useAuthListener();
   const session = useAuthStore((s) => s.session);
   const initialized = useAuthStore((s) => s.initialized);
+  const intro = useIntroState();
   const profileQuery = useOwnProfile();
   const standingQuery = useAccountStanding();
 
@@ -102,7 +105,7 @@ function RootNavigator() {
       ((profileQuery.isSuccess || profileQuery.isError) &&
         (standingQuery.isSuccess || standingQuery.isError)));
 
-  if (!ready) {
+  if (!ready || intro.seen === null) {
     return null;
   }
 
@@ -115,6 +118,12 @@ function RootNavigator() {
   const standing = standingQuery.data;
   if (signedIn && (standing?.status === 'suspended' || standing?.status === 'banned')) {
     return <AccountGate status={standing.status} suspendedUntil={standing.suspended_until} />;
+  }
+
+  // First launch, no account: explain the three tabs before anything else.
+  // Someone already signed in has seen the app and does not need the tour.
+  if (intro.seen === false && !signedIn) {
+    return <IntroTour onDone={intro.dismiss} />;
   }
 
   return (
@@ -140,13 +149,15 @@ function RootNavigator() {
         name="room/[id]"
         options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
       />
+      {/* Profile opens from the avatar in the Map/Travelers headers, and it
+          is deliberately OUTSIDE the signed-in guard: a guest who taps the
+          avatar must land on a real screen (which then invites them to join)
+          rather than have the tap silently do nothing. */}
+      <Stack.Screen
+        name="profile-me"
+        options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+      />
       <Stack.Protected guard={signedIn && onboarded}>
-        {/* Profile left the tab bar (three tabs now) — it opens from the
-            avatar in the Map/Travelers headers. */}
-        <Stack.Screen
-          name="profile-me"
-          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
-        />
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
         <Stack.Screen name="verification" options={{ presentation: 'modal' }} />
         <Stack.Screen name="add-trip" options={{ presentation: 'modal' }} />
