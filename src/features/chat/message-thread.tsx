@@ -202,8 +202,18 @@ export function MessageThread({
             older == null ||
             new Date(older.created_at).toDateString() !== new Date(item.created_at).toDateString();
 
+          // Inverted list: within a cell the content still runs top to
+          // bottom, and the boundary this separator marks is with the OLDER
+          // message, which sits above. So it is drawn before the bubble.
           return (
             <>
+              {newDay ? (
+                <View style={styles.dayRow}>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    {dayLabel(item.created_at).toUpperCase()}
+                  </ThemedText>
+                </View>
+              ) : null}
               <Bubble
                 message={item}
                 mine={mine}
@@ -213,13 +223,6 @@ export function MessageThread({
                 onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
                 onLongPress={() => setPicking(item.id)}
               />
-              {newDay ? (
-                <View style={styles.dayRow}>
-                  <ThemedText type="caption" themeColor="textSecondary">
-                    {dayLabel(item.created_at).toUpperCase()}
-                  </ThemedText>
-                </View>
-              ) : null}
             </>
           );
         }}

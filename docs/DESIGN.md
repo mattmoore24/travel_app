@@ -353,6 +353,35 @@ theme-switches, same as the splash.
 elements over hard cuts and gesture/scroll-driven motion over time-driven
 motion whenever two states are visually adjacent.
 
+### The founder review (2026-08-19)
+
+Thirteen asks from the first real-device pass. The structural ones:
+
+**One profile component.** `features/profile/profile-view.tsx` renders both
+your own profile and everyone else's — photo first with the name over it,
+travel plans immediately under it, then about, details, photos, socials.
+Owner mode adds edit affordances and inline trip management; nothing else
+differs, which is the only honest way to know what a stranger sees.
+
+**Trips moved to the profile.** They are the most important thing on it, so
+they sit directly under the hero and are editable in place. Travelers marks
+every window two people share, not just the nearest.
+
+**One at a time in Travelers.** A list of everyone reads as a grid nobody
+looks at. One person, full page, say hi or move on — deliberately not framed
+as a swipe deck, and the copy never uses the word.
+
+**Chat conventions, not invented ones.** Bubble geometry, grouping, day
+separators and long-press reactions follow what WhatsApp/Telegram/iMessage
+have settled on, because a messaging screen is the one place novelty is a
+cost.
+
+**Tone.** The anti-dating framing was doing more harm than good: it opened
+the guidelines with a threat about flirting and pre-accused people in the
+message composer. The rule is now "keep it casual and friendly", explicit
+content is not allowed, and enforcement detail lives in moderation rather
+than in the user's face.
+
 ### Researched, deliberately deferred
 
 Worth building when the moment is right, in rough order of value:

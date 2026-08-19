@@ -74,7 +74,55 @@ visible to real users.
 - [x] **Copy pass + the yes moment** — casual, direct copy throughout, em
       dashes gone from app copy; when a message request is accepted, a
       full-screen celebration springs the accepter's photo in with haptics
-      and opens the chat ("{name} said yes")
+      and opens the chat ("Connected with {name}")
+
+### Phase 10 — The founder's review batch (2026-08-19)
+
+A full pass on a real device produced thirteen asks, all researched with a
+subsystem-by-subsystem map before anything was rewritten. Shipped:
+
+- [x] **Signup is six screens, not two.** Email, then password twice, then
+      name/age/gender (a dropdown, no explainer), home and languages, the
+      optional bio/occupation/socials, and photos last. One shared shell with
+      a springing progress bar and slide-through transitions. **The tour's
+      "Make my profile" now opens account creation** — `/email` opened in
+      sign-in mode for everyone, so every new user was asked for a password
+      they had never set
+- [x] **One profile.** Own and other-traveler profiles were two different
+      pages; they are now the same component, photo first with the name over
+      it, so what you see of yourself is what a stranger sees. Owner gets
+      edit affordances on the same page
+- [x] **Trips are the headline.** Add, edit and delete them on the profile,
+      every planned trip visible to others, and every shared window shown in
+      Travelers instead of only the nearest one. Matching looks a season
+      ahead rather than a fortnight
+- [x] **Travelers is one person at a time** — full profile, say hi or move
+      on; skipped people return after a fortnight
+- [x] **Optional occupation/school line**, and **socials with real platform
+      logos**, an automatic @ where it belongs, and one-tap add
+- [x] **The handles bug**: the public profile drew a hardcoded "hidden" card
+      and never fetched. It asks now, RLS decides, and accepting invalidates
+      the query so the unlock is immediate
+- [x] **Chat looks like chat** — grouped bubbles with tails, day separators,
+      in-bubble timestamps, long-press reactions. Hostel rooms take your real
+      checkout date instead of three preset buttons
+- [x] **Drop-a-pin works.** The search field's input was mounted inside a
+      native visual-effect view, so it never received a tap; the sheet's
+      keyboard lift was unclamped, so the form rode off the top of the
+      screen. Pins now carry details and the street they sit on, and "Ask
+      about this plan" opens a chat with the question already written
+- [x] **Tone.** No more "not a dating app", "keep it platonic", "no
+      flirting", or the 3/5/7 ban tally; a first message is a message, not a
+      "request"; the celebration says "Connected with {name}" with a "Go to
+      chat" button. Push notification copy rewritten to match
+
+**Privacy note for the founder:** making trips visible on profiles is a
+deliberate widening — upcoming trips of a discoverable traveler are readable
+by any signed-in traveler now, where before you could only see trips that
+overlapped your own. Past trips stay private, blocked and hidden accounts
+stay invisible, and no live location is involved. A first pass exposed the
+whole trips table to a bulk read; that was caught in review and replaced
+with a gated call before any client used it.
 
 ## Phase 8 complete — Samewhere is on TestFlight, audited end-to-end (2026-08-19)
 
