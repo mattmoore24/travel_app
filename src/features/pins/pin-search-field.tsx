@@ -96,7 +96,9 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
 
   return (
     <Animated.View style={shakeStyle}>
-      <GlassSurface variant="clear" radius={Radius.pill}>
+      {/* Regular glass, not clear: this control carries live text over the
+          map, and clear glass needs a dimming layer to stay legible. */}
+      <GlassSurface radius={Radius.pill}>
         <View style={styles.row}>
           <SymbolView
             name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
