@@ -56,6 +56,8 @@ jobs:
   drive:
     needs: app
     runs-on: macos-15
+    permissions:
+      contents: write
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -100,7 +102,10 @@ jobs:
           git checkout --orphan e2e-results
           git rm -rfq . || true
           mkdir -p results
-          cp shots/*.png results/ 2>/dev/null || true
+          # Maestro writes takeScreenshot files to its CWD on pass but under
+          # ~/.maestro/tests on failure — sweep both rather than guessing.
+          find shots "$HOME/.maestro/tests" -name '*.png' -exec cp {} results/ \; 2>/dev/null || true
+          ls -la results/
           date -u +"%Y-%m-%dT%H:%M:%SZ" > results/RUN
           echo "${{ github.sha }}" >> results/RUN
           git add results
