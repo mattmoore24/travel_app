@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { haptics } from '@/lib/haptics';
 
 type ChipRowProps<T extends string> = {
   options: readonly { value: T; label: string }[];
@@ -23,7 +24,10 @@ export function ChipRow<T extends string>({ options, selected, onToggle }: ChipR
             key={option.value}
             accessibilityRole="button"
             accessibilityState={{ selected: isSelected }}
-            onPress={() => onToggle(option.value)}
+            onPress={() => {
+              haptics.selection();
+              onToggle(option.value);
+            }}
             style={({ pressed }) => [
               styles.chip,
               {

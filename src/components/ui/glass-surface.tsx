@@ -13,6 +13,13 @@ type GlassSurfaceProps = {
   tinted?: boolean;
   radius?: number;
   style?: ViewStyle | ViewStyle[];
+  /**
+   * Set 'none' when a Pressable wraps this surface. The native glass view
+   * mounts children inside a UIVisualEffectView whose hit-testing competes
+   * with RN's responder — opting the glass out of touches entirely is what
+   * makes the wrapping Pressable reliable on the first tap.
+   */
+  pointerEvents?: 'auto' | 'none' | 'box-none';
 };
 
 /**
@@ -26,6 +33,7 @@ export function GlassSurface({
   tinted = false,
   radius = Radius.lg,
   style,
+  pointerEvents,
 }: GlassSurfaceProps) {
   const theme = useTheme();
   const shape = [{ borderRadius: radius }, Elevation.floating, style];
@@ -35,6 +43,7 @@ export function GlassSurface({
       <GlassView
         glassEffectStyle={variant}
         tintColor={tinted ? theme.accentSoft : undefined}
+        pointerEvents={pointerEvents}
         style={[styles.clip, shape]}>
         {children}
       </GlassView>
@@ -43,6 +52,7 @@ export function GlassSurface({
 
   return (
     <View
+      pointerEvents={pointerEvents}
       style={[styles.clip, { backgroundColor: tinted ? theme.accentSoft : theme.surface }, shape]}>
       {children}
     </View>

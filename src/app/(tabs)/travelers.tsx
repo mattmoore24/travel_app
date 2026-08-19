@@ -3,9 +3,11 @@ import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect } from 'react';
 import { Alert, FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useFeaturedTraveler, useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
@@ -39,7 +41,8 @@ function TripChip({
   onCancel: () => void;
 }) {
   return (
-    <Pressable
+    <PressableScale
+      scaleTo={0.96}
       onLongPress={() =>
         Alert.alert('Cancel this trip?', `${city} · ${range}`, [
           { text: 'Keep', style: 'cancel' },
@@ -52,7 +55,7 @@ function TripChip({
           {range}
         </ThemedText>
       </ThemedView>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -283,11 +286,14 @@ export default function TravelersScreen() {
               onCancel={() => cancelTrip.mutate(trip.id)}
             />
           ))}
-          <Pressable onPress={() => router.push('/add-trip')}>
+          <PressableScale
+            scaleTo={0.96}
+            haptic="selection"
+            onPress={() => router.push('/add-trip')}>
             <ThemedView type="backgroundElement" style={[styles.tripChip, styles.addTrip]}>
               <ThemedText type="callout">＋ Add trip</ThemedText>
             </ThemedView>
-          </Pressable>
+          </PressableScale>
         </ScrollView>
       </View>
       {trips.length > 0 && uniqueMatches.length === 0 ? (
@@ -326,12 +332,17 @@ export default function TravelersScreen() {
           styles.listContent,
           { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
         ]}
-        renderItem={({ item }) => (
-          <MatchCard
-            match={item}
-            sent={sentByRecipient.get(item.user_id)}
-            chatId={chatByUser.get(item.user_id)}
-          />
+        renderItem={({ item, index }) => (
+          // Staggered entrance for the first visible cards only — items
+          // below the fold shouldn't queue up animations.
+          <Animated.View
+            entering={index < 6 ? FadeInDown.duration(280).delay(index * 45) : undefined}>
+            <MatchCard
+              match={item}
+              sent={sentByRecipient.get(item.user_id)}
+              chatId={chatByUser.get(item.user_id)}
+            />
+          </Animated.View>
         )}
       />
     </ThemedView>

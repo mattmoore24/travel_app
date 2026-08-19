@@ -27,7 +27,9 @@ export const Colors = {
     canvas: '#FBFAF7',
     surface: '#FFFFFF',
     surfaceSunken: '#F0EFEA',
-    text: '#14171A',
+    // Warm ink rather than a cool near-black: type sits on a warm canvas,
+    // and the 2026 direction for community products is warmth throughout.
+    text: '#211E1A',
     textSecondary: '#585F6B',
     accent: '#2A4C9B',
     onAccent: '#FFFFFF',
@@ -167,6 +169,24 @@ export const Motion = {
   quick: 150,
   standard: 250,
   slow: 400,
+} as const;
+
+/**
+ * Reanimated spring presets — one vocabulary so every interaction shares a
+ * physical feel (values from the motion research in docs/DESIGN.md).
+ * `press`/`release` pair up in PressableScale; `sheet` is the iOS system
+ * spring (SwiftUI response 0.55 / damping 0.825 converted); `snap` settles
+ * without overshoot; `drop` lands with one crisp bounce; `pop` celebrates.
+ */
+export const Springs = {
+  press: { damping: 30, stiffness: 500 },
+  release: { damping: 15, stiffness: 350 },
+  gentle: { damping: 22, stiffness: 220 },
+  bouncy: { damping: 12, stiffness: 200 },
+  sheet: { mass: 1, stiffness: 130, damping: 19 },
+  snap: { duration: 350, dampingRatio: 0.92, overshootClamping: true },
+  drop: { mass: 1, damping: 14, stiffness: 260 },
+  pop: { duration: 550, dampingRatio: 0.75 },
 } as const;
 
 /** Minimum tappable area (Apple HIG). */

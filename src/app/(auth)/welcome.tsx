@@ -1,8 +1,9 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
-import { Alert, StyleSheet, useColorScheme } from 'react-native';
+import { Alert, StyleSheet, View, useColorScheme } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -41,18 +42,34 @@ export default function WelcomeScreen() {
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safeArea}>
         <ThemedView style={styles.hero}>
-          <SymbolView
-            name={{ ios: 'map.fill', android: 'map', web: 'map' }}
-            size={64}
-            tintColor={theme.tint}
-          />
-          <ThemedText type="title" style={styles.centerText}>
-            Samewhere
-          </ThemedText>
-          <ThemedText themeColor="textSecondary" style={styles.centerText}>
-            Make real friends on the road. See what travelers are up to in your city — never where
-            they are.
-          </ThemedText>
+          <Animated.View entering={FadeInDown.duration(500)} style={styles.markWrap}>
+            <Image
+              source={require('@/assets/images/logo-glow.png')}
+              style={styles.glow}
+              contentFit="contain"
+            />
+            {/* Brand indigo, not the theme accent: the dark-scheme accent is
+                a pale indigo that would wash the mark out. Icon colors don't
+                theme-switch. */}
+            <View style={styles.markBadge}>
+              <Image
+                source={require('@/assets/images/splash-icon.png')}
+                style={styles.mark}
+                contentFit="contain"
+              />
+            </View>
+          </Animated.View>
+          <Animated.View entering={FadeInDown.duration(500).delay(80)}>
+            <ThemedText type="title" style={styles.centerText}>
+              Samewhere
+            </ThemedText>
+          </Animated.View>
+          <Animated.View entering={FadeInDown.duration(500).delay(160)}>
+            <ThemedText themeColor="textSecondary" style={styles.centerText}>
+              Make real friends on the road. See what travelers are up to in your city — never where
+              they are.
+            </ThemedText>
+          </Animated.View>
         </ThemedView>
 
         <ThemedView style={styles.actions}>
@@ -117,6 +134,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
+  },
+  markWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glow: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+  },
+  markBadge: {
+    width: 112,
+    height: 112,
+    borderRadius: 28,
+    backgroundColor: '#2A4C9B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  mark: {
+    width: 96,
+    height: 96,
   },
   centerText: {
     textAlign: 'center',

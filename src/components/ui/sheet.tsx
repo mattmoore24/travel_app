@@ -1,6 +1,13 @@
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  SlideInDown,
+  SlideOutDown,
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Elevation, MaxContentWidth, Motion, Radius, Space } from '@/constants/theme';
@@ -16,15 +23,24 @@ export function Sheet({
   children,
   onClose,
   dimmed = true,
+  avoidKeyboard = false,
 }: {
   children: ReactNode;
   onClose: () => void;
   dimmed?: boolean;
+  /** Lift the sheet above the keyboard — for sheets that contain inputs. */
+  avoidKeyboard?: boolean;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const sheetWidth = Math.min(width, MaxContentWidth);
+  const keyboard = useAnimatedKeyboard();
+  const keyboardStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: avoidKeyboard ? -Math.max(0, keyboard.height.value - insets.bottom) : 0 },
+    ],
+  }));
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -43,8 +59,10 @@ export function Sheet({
       ) : null}
 
       <Animated.View
-        entering={SlideInDown.duration(Motion.standard)}
-        exiting={SlideOutDown.duration(Motion.quick)}
+        // The iOS system-sheet spring (SwiftUI response .55 / damping .825
+        // converted); dismissal is quicker than presentation by convention.
+        entering={SlideInDown.springify().mass(1).stiffness(130).damping(19)}
+        exiting={SlideOutDown.duration(200)}
         style={[
           styles.sheet,
           Elevation.sheet,
@@ -53,6 +71,7 @@ export function Sheet({
             backgroundColor: theme.surface,
             paddingBottom: insets.bottom + Space.lg,
           },
+          keyboardStyle,
         ]}>
         <View style={[styles.grabber, { backgroundColor: theme.hairline }]} />
         {children}

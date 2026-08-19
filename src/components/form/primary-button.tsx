@@ -1,6 +1,7 @@
-import { ActivityIndicator, Pressable, StyleSheet, type PressableProps } from 'react-native';
+import { ActivityIndicator, StyleSheet, type PressableProps } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -28,16 +29,18 @@ export function PrimaryButton({
     variant === 'filled' ? theme.onAccent : variant === 'danger' ? theme.danger : theme.accent;
 
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityState={{ disabled: Boolean(inactive), busy: loading }}
       disabled={inactive}
-      style={({ pressed }) => [
+      scaleTo={0.97}
+      haptic={variant === 'filled' ? 'soft' : 'none'}
+      containerStyle={styles.container}
+      style={[
         styles.button,
         { backgroundColor: background },
         variant === 'filled' && Elevation.raised,
         variant !== 'filled' && variant !== 'tonal' && styles.quiet,
-        pressed && styles.pressed,
         inactive && styles.disabled,
       ]}
       {...rest}>
@@ -48,11 +51,14 @@ export function PrimaryButton({
           {label}
         </ThemedText>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    alignSelf: 'stretch',
+  },
   button: {
     minHeight: 52,
     borderRadius: Radius.pill,
@@ -66,9 +72,6 @@ const styles = StyleSheet.create({
   },
   label: {
     fontWeight: '600',
-  },
-  pressed: {
-    opacity: 0.72,
   },
   disabled: {
     opacity: 0.4,

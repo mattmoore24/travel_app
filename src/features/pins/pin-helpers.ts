@@ -90,6 +90,19 @@ export function validDurations(intentISO: string, now = new Date()): PinDuration
   ).map((option) => option.value);
 }
 
+/**
+ * Campfire-voiced countdown for the ≤72h pin lifetime — the expiry is the
+ * product's heartbeat, so it's worth saying out loud on every pin.
+ */
+export function burnOutLabel(expiresAtISO: string, now = new Date()): string {
+  const msLeft = new Date(expiresAtISO).getTime() - now.getTime();
+  const hours = Math.floor(msLeft / 3_600_000);
+  if (hours < 1) {
+    return 'burns out soon';
+  }
+  return `burns out in ${hours}h`;
+}
+
 /** "Tonight" / "Tomorrow" / weekday label for a pin's intent date. */
 export function intentLabel(intentISO: string, now = new Date()): string {
   const today = toISODate(now);

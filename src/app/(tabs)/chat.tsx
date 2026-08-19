@@ -6,6 +6,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
@@ -213,14 +214,14 @@ function RoomDiscovery({ cityId }: { cityId: number | null }) {
   }
   return (
     <>
-      <ThemedText type="caption" themeColor="textSecondary">
-        ROOMS NEAR YOU
+      <ThemedText type="smallBold" themeColor="textSecondary">
+        Rooms near you
       </ThemedText>
       {rooms.map((room) => (
-        <Pressable
+        <PressableScale
           key={room.chat_id}
-          onPress={() => router.push(`/room/${room.chat_id}`)}
-          style={({ pressed }) => pressed && styles.pressed}>
+          scaleTo={0.98}
+          onPress={() => router.push(`/room/${room.chat_id}`)}>
           <ThemedView type="backgroundElement" style={styles.chatRow}>
             <View style={[styles.roomBadge, { backgroundColor: theme.accentSoft }]}>
               <SymbolView
@@ -238,7 +239,7 @@ function RoomDiscovery({ cityId }: { cityId: number | null }) {
               </ThemedText>
             </View>
           </ThemedView>
-        </Pressable>
+        </PressableScale>
       ))}
     </>
   );
@@ -248,7 +249,8 @@ function RoomDiscovery({ cityId }: { cityId: number | null }) {
 function ChatRowLink({ chat }: { chat: ChatListRow }) {
   const pref = useChatPref();
   return (
-    <Pressable
+    <PressableScale
+      scaleTo={0.98}
       onPress={() =>
         router.push(chat.kind === 'room' ? `/room/${chat.chat_id}` : `/chat/${chat.chat_id}`)
       }
@@ -268,10 +270,9 @@ function ChatRowLink({ chat }: { chat: ChatListRow }) {
           },
           { text: 'Cancel', style: 'cancel' },
         ])
-      }
-      style={({ pressed }) => pressed && styles.pressed}>
+      }>
       <ChatRow chat={chat} />
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -318,13 +319,15 @@ export default function ChatScreen() {
   }
 
   if (requests.length === 0 && chats.length === 0) {
+    // Empty states are invitations: name the one next action.
     return (
       <PlaceholderScreen
         icon={{ ios: 'bubble.left.and.bubble.right.fill', android: 'chat', web: 'chat' }}
         title="Inbox"
         phase="all quiet for now"
-        description="Message requests land here for you to accept or decline. Chats only open once you accept."
-      />
+        description="Say hi to someone heading where you're heading — chats open once a request is accepted.">
+        <PrimaryButton label="Find travelers" onPress={() => router.push('/travelers')} />
+      </PlaceholderScreen>
     );
   }
 
@@ -340,8 +343,8 @@ export default function ChatScreen() {
 
         {requests.length > 0 ? (
           <>
-            <ThemedText type="caption" themeColor="textSecondary">
-              REQUESTS · ACCEPT TO OPEN A CHAT
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              Requests · accept to open a chat
             </ThemedText>
             {requests.map((request) => (
               <RequestCard key={request.id} request={request} />
@@ -351,8 +354,8 @@ export default function ChatScreen() {
 
         {pinned.length > 0 ? (
           <>
-            <ThemedText type="caption" themeColor="textSecondary">
-              PINNED
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              Pinned
             </ThemedText>
             {pinned.map((chat) => (
               <ChatRowLink key={chat.chat_id} chat={chat} />
@@ -362,8 +365,8 @@ export default function ChatScreen() {
 
         {rest.length > 0 ? (
           <>
-            <ThemedText type="caption" themeColor="textSecondary">
-              CHATS
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              Chats
             </ThemedText>
             {rest.map((chat) => (
               <ChatRowLink key={chat.chat_id} chat={chat} />
@@ -374,9 +377,7 @@ export default function ChatScreen() {
         <RoomDiscovery cityId={cityId} />
 
         {archived.length > 0 ? (
-          <Pressable
-            onPress={() => router.push('/archived-chats')}
-            style={({ pressed }) => pressed && styles.pressed}>
+          <PressableScale scaleTo={0.98} onPress={() => router.push('/archived-chats')}>
             <ThemedView type="backgroundElement" style={styles.chatRow}>
               <View style={styles.chatRowText}>
                 <ThemedText type="callout">Archived</ThemedText>
@@ -385,7 +386,7 @@ export default function ChatScreen() {
                 </ThemedText>
               </View>
             </ThemedView>
-          </Pressable>
+          </PressableScale>
         ) : null}
       </ScrollView>
     </ThemedView>

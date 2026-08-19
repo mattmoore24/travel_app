@@ -13,9 +13,10 @@ export default function AppTabs() {
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
 
+  // Untinted system glass — HIG: never paint the tab bar's background; the
+  // accent lives only on the selected item.
   return (
     <NativeTabs
-      backgroundColor={colors.canvas}
       tintColor={colors.accent}
       indicatorColor={colors.accentSoft}
       labelStyle={{ selected: { color: colors.accent } }}>
