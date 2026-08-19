@@ -62,8 +62,13 @@ export function useCreatePin() {
         category: pin.category,
         intent_date: pin.intent_date,
       });
+      // Both cache families: 'city-pins'/'heat-cells' feed the web list,
+      // 'map-pins'/'map-heat' (guest hooks) feed the native map. Missing the
+      // second pair meant a posted pin never appeared until app restart.
       queryClient.invalidateQueries({ queryKey: ['city-pins', pin.city_id] });
       queryClient.invalidateQueries({ queryKey: ['heat-cells', pin.city_id] });
+      queryClient.invalidateQueries({ queryKey: ['map-pins', pin.city_id] });
+      queryClient.invalidateQueries({ queryKey: ['map-heat', pin.city_id] });
     },
   });
 }
@@ -75,6 +80,8 @@ export function useDeletePin(cityId: number | null) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['city-pins', cityId] });
       queryClient.invalidateQueries({ queryKey: ['heat-cells', cityId] });
+      queryClient.invalidateQueries({ queryKey: ['map-pins', cityId] });
+      queryClient.invalidateQueries({ queryKey: ['map-heat', cityId] });
     },
   });
 }
