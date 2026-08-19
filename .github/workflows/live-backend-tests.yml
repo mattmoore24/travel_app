@@ -1,0 +1,35 @@
+# Integration tests against the LIVE Supabase project — the same RPCs the app
+# calls, with anon-key power only, so anything the tests can do a phone can
+# do. Includes a real pass through the moderation pipeline: a clean first
+# message must be held and released by an actual Claude verdict, a flirty one
+# must never arrive. Test accounts are destroyed through the delete-account
+# Edge Function, which live-tests the App Review 5.1.1(v) path as a side
+# effect.
+#
+# Costs a few Anthropic API calls (fractions of a cent) and ~10 minutes.
+name: Live backend tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly canary, Mondays 09:00 UTC: catches a dead worker, an expired
+    # key, or a drifted policy before a real user does.
+    - cron: '0 9 * * 1'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install
+        run: npm ci
+      - name: Run live tests
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: node tests/live/live-backend.mjs
