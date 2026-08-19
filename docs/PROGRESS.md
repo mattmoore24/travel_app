@@ -3,7 +3,37 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current status: **Phase 8 complete — Samewhere is on TestFlight, audited end-to-end** (2026-08-19)
+## Current status: **Phase 9 — the craft pass** (2026-08-19)
+
+### Phase 9 — Research-backed beauty + the founder's fix list
+
+Six parallel research agents surveyed the HIG, award-tier apps, map UX,
+motion, color, and the RN engineering of all of it — full synthesis and the
+deliberately-deferred ideas list in [`DESIGN.md`](DESIGN.md) ("The craft
+pass"). Shipped on top of it:
+
+- [x] **Drop-a-pin rebuilt in place** (founder ask): docked amber action →
+      placement mode on the same map — fixed center pin with lift/settle
+      springs + haptics, on-device address search (CLGeocoder, no keys, no
+      user location), form as a sheet over the map, posted pin drops in
+      selected
+- [x] **Map pins redesigned** (founder ask): emoji stickers → ringed indigo
+      category-glyph markers, amber star for curated seeds; correct Apple
+      Maps anchoring (`centerOffset` — `anchor` is Google-only), collision
+      priority, camera nudge above the detail sheet
+- [x] **Avatar first-tap bug** (founder ask): root causes addressed — glass
+      is now decorative-only under touch targets, and press-scale transforms
+      moved off the Pressable's hit rect (Fabric hit-tests transformed rects)
+- [x] **Press physics + haptic vocabulary everywhere** — PressableScale +
+      semantic haptics; spring tokens match the iOS system feel
+- [x] **HIG iOS 26 fixes** — untinted glass tab bar, Title Case sections,
+      warm ink text, staggered card entrances, brand-indigo splash overlay
+      (was template blue), campfire mark on the welcome hero
+- [x] **E2E now drives the signed-in app** — throwaway account created and
+      onboarded per run, Maestro signs in, drops a real pin through the new
+      flow, opens the profile via the avatar, account destroyed after
+
+## Phase 8 complete — Samewhere is on TestFlight, audited end-to-end (2026-08-19)
 
 ### Phase 8 — Identity, TestFlight, and Claude's eyes
 

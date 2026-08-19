@@ -269,3 +269,87 @@ server logged `serving` before trusting a single pixel.
   [WhatsApp reactions behaviour](https://techwiser.com/things-to-know-about-whatsapp-message-reactions/)
 - [Hostelworld Social Pass](https://www.hostelworld.com/blog/hostelworld-social-pass-the-social-app-no-booking-required/) ·
   [Hostelworld chat windows](https://support.hostelworld.com/knowledge/guest-chat)
+
+## The craft pass (2026-08-19)
+
+Six parallel research agents surveyed iOS 26 HIG/Liquid Glass guidance, Apple
+Design Award-tier apps (Flighty, Airbnb 2025, Partiful, Not Boring, Family,
+Things, Luma, Lumy), map UX (Apple Maps, Airbnb, Uber pickers, Zenly),
+motion/haptics standards, 2025-26 color direction, and the RN/Expo engineering
+of all of it (verified against installed SDK 57 types). What shipped:
+
+### Palette verdict: keep Dusk
+
+Three researchers independently concluded the indigo + amber campfire pairing
+is an ownable identity — competitors cluster in coral (Airbnb), black/purple
+(Hinge/Partiful), and green (Beli) — and the icon locks it in. Adjustments
+made rather than replacement:
+
+- **Warm ink** — light-mode text is now `#211E1A` (was a cool near-black);
+  warmth throughout is the 2026 direction for community products.
+- **Amber owns action and reward** — the docked "Drop a pin" button is amber
+  (`highlight`/`onHighlight`, both schemes WCAG-checked already): lighting a
+  fire is THE core act, and amber is spent nowhere else on that screen.
+  Indigo recedes to structure, links, selected states, and the pins.
+- Dark mode already followed the research (lifted indigo `#8AA6F0`,
+  indigo-tinged near-blacks, amber `#F0A93C` at 9:1) — no change needed.
+
+### Motion vocabulary (Springs in `constants/theme.ts`, haptics in `lib/haptics.ts`)
+
+| Moment                        | Spring                                                    | Haptic                                    |
+| ----------------------------- | --------------------------------------------------------- | ----------------------------------------- |
+| Press down / release          | `press` d30/s500 → `release` d15/s350 (scale 0.92–0.98)   | `soft` on primary CTAs only               |
+| Sheet present                 | `sheet` m1/s130/d19 — the converted SwiftUI system spring | none                                      |
+| Center-pin lift               | `snap` 350ms, ratio .92, clamped                          | none                                      |
+| Center-pin settle             | `drop` m1/d14/s260 — one crisp bounce                     | `medium` at landing                       |
+| Marker drop-in / select       | FadeInDown spring / scale 1.12 `snap`                     | `light` on select                         |
+| Success (pin posted, accept)  | `pop` 550ms ratio .75                                     | `success` — budgeted to ≤3 flows app-wide |
+| Refusal (search miss, blocks) | ±7pt shake ≤220ms                                         | `error`                                   |
+
+Chip taps tick with `selection`. Chat send, scrolling, tab switches: nothing —
+the system owns tabs, and 100×/day actions get no animation.
+
+### The map pins
+
+Emoji markers are gone. Pins are ringed dots with a tail (tip on the exact
+coordinate — note `anchor` is Google-only; Apple Maps uses `centerOffset`):
+indigo body + white category glyph for traveler pins, amber + star for curated
+seeds. Two colors total; the glyph carries the category; selected pins scale
+up, raise zIndex, and the camera nudges them above the detail sheet.
+`displayPriority` keeps real traveler pins from ever being collision-hidden.
+
+### The drop-a-pin flow (in place, one screen)
+
+Docked amber pill (bottom-center, not a floating FAB — iOS convention) →
+placement mode on the same map: chrome swaps out, a fixed center pin lifts
+while the map pans and settles with a thud, on-device CLGeocoder search
+("Search a place in Bangkok…" — no keys, no user location, submit-only to
+respect rate limits) flies the camera, "Pin here" → the detail form as a
+keyboard-aware sheet over the same map → posted pin drops in selected.
+
+### HIG compliance fixes
+
+Untinted system-glass tab bar (no painted background); Title Case section
+headers (ALL-CAPS retired in iOS 26); glass is decorative-only under touch
+targets (`pointerEvents="none"` — the effect view otherwise competes for the
+gesture, the root of the dead-first-tap bug); scale animations live on an
+inner view because Fabric hit-tests transformed rects; splash overlay is
+brand indigo (was leftover template blue).
+
+### Researched, deliberately deferred
+
+Worth building when the moment is right, in rough order of value:
+
+1. **Travel Log share card** — Flighty-Passport-style postcard after each trip
+   (city, days, meetups joined); free-tier growth artifact.
+2. **Ember-cooling expiry** — pin color cools `#F0A93C` → `#9A5709` → gray as
+   the 72h burns down; the countdown ring variant needs design time.
+3. **Lottie/HEVC-alpha illustration set** — 4–5 warm 3D-ish hero assets
+   (campfire, tent, backpack) for empty states, à la Airbnb Lava.
+4. **MKLocalSearch Expo module** (~60 lines Swift) for true venue-name search;
+   CLGeocoder is address-oriented.
+5. **Live Activity** for a joined meetup countdown (plan, not people — no
+   location involved).
+6. **Time-of-day map chrome tint** (Lumy's window-to-the-world; "Dusk" as a
+   felt behavior), **minimize-on-scroll tab bar** on list tabs, and
+   **morphing-tray** unification of the map's sheets.

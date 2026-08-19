@@ -68,6 +68,7 @@ export default function EmailAuthScreen() {
       }>
       <FormTextField
         label="Email"
+        testID="email-input"
         autoCapitalize="none"
         autoComplete="email"
         keyboardType="email-address"
@@ -77,6 +78,7 @@ export default function EmailAuthScreen() {
       />
       <FormTextField
         label="Password"
+        testID="password-input"
         secureTextEntry
         autoComplete={mode === 'sign-in' ? 'current-password' : 'new-password'}
         textContentType={mode === 'sign-in' ? 'password' : 'newPassword'}

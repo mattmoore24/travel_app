@@ -85,6 +85,7 @@ export function PinFormSheet({
       <View style={styles.form}>
         <ThemedText type="headline">Pin this spot in {cityName}</ThemedText>
         <FormTextField
+          testID="venue-input"
           placeholder="What's the place? 'Pensão Amor', 'Arpoador sunset point'…"
           value={venue}
           onChangeText={setVenue}

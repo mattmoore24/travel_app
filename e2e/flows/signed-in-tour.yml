@@ -1,0 +1,54 @@
+# The signed-in path, end to end on the live backend: the guest taps the
+# primary action and is walked to sign-in (the gate itself is under test),
+# signs into the pre-onboarded E2E account, then drops a real pin through
+# the new in-place flow — place mode, pan, confirm, form sheet, posted —
+# and finally opens their own profile via the header avatar (the first-tap
+# regression under test). Credentials arrive via -e E2E_EMAIL/E2E_PASSWORD.
+appId: com.mattmoore.samewhere
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+- tapOn: 'Drop a pin'
+- takeScreenshot: 10-auth-gate
+- tapOn:
+    id: 'email-input'
+- inputText: ${E2E_EMAIL}
+- tapOn:
+    id: 'password-input'
+- inputText: ${E2E_PASSWORD}
+- hideKeyboard
+- tapOn: 'Sign in'
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+- takeScreenshot: 11-signed-in-map
+- tapOn: 'Drop a pin'
+- takeScreenshot: 12-place-mode
+- swipe:
+    start: 50%, 62%
+    end: 58%, 42%
+- takeScreenshot: 13-place-after-pan
+- tapOn: 'Pin here'
+- takeScreenshot: 14-pin-form
+- tapOn:
+    id: 'venue-input'
+- inputText: 'Rooftop hello from Maestro'
+- hideKeyboard
+- takeScreenshot: 15-pin-form-filled
+- tapOn: 'Drop it'
+- extendedWaitUntil:
+    visible: 'Rooftop hello from Maestro'
+    timeout: 20000
+- takeScreenshot: 16-pin-posted
+- tapOn: 'Close'
+- tapOn: 'Travelers'
+- takeScreenshot: 17-travelers-signed-in
+- tapOn: 'Map'
+- tapOn: 'Your profile'
+- extendedWaitUntil:
+    visible: 'Edit profile'
+    timeout: 15000
+- takeScreenshot: 18-profile-me

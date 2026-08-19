@@ -62,6 +62,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # A real signed-in session for the signed-in flow: created fresh and
+      # onboarded against the live backend, destroyed in the last step.
+      - name: Create a throwaway signed-in account
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: node e2e/account.mjs setup
+
       - name: Install the app into a booted simulator
         run: |
           set -o pipefail
@@ -97,8 +105,10 @@ jobs:
           for flow in ../e2e/flows/*.yml; do
             # One retry: the first attempt pays the driver build cost and
             # occasionally times out anyway; the second starts warm.
-            maestro --udid "$UDID" test "$flow" \
-              || maestro --udid "$UDID" test "$flow" \
+            maestro --udid "$UDID" test \
+              -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" "$flow" \
+              || maestro --udid "$UDID" test \
+                -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" "$flow" \
               || STATUS=1
           done
           echo "MAESTRO_STATUS=$STATUS" >> "$GITHUB_ENV"
@@ -126,6 +136,13 @@ jobs:
           git add results
           git -c user.name=e2e -c user.email=e2e@local commit -m "e2e screenshots"
           git push --force origin e2e-results
+
+      - name: Destroy the throwaway account
+        if: always()
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: node e2e/account.mjs teardown
 
       - name: Propagate flow failures
         if: always()
