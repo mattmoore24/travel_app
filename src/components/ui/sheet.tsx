@@ -13,6 +13,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Elevation, MaxContentWidth, Motion, Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+/** Keep at least this much of the screen below the sheet's top edge. */
+const MIN_VISIBLE_SHEET = 220;
+
 /**
  * The default container for anything that doesn't deserve a full screen —
  * previews, detail, confirmations (docs/DESIGN.md; it's the 2026 convention
@@ -33,14 +36,17 @@ export function Sheet({
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const sheetWidth = Math.min(width, MaxContentWidth);
   const keyboard = useAnimatedKeyboard();
-  const keyboardStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: avoidKeyboard ? -Math.max(0, keyboard.height.value - insets.bottom) : 0 },
-    ],
-  }));
+  // Clamped: an unclamped lift pushes a tall sheet clean off the top of the
+  // screen, which is exactly what made the pin form unreadable while typing.
+  // The sheet rises only as far as it needs to and never past the top inset.
+  const maxLift = Math.max(0, height - insets.top - MIN_VISIBLE_SHEET);
+  const keyboardStyle = useAnimatedStyle(() => {
+    const lift = avoidKeyboard ? Math.max(0, keyboard.height.value - insets.bottom) : 0;
+    return { transform: [{ translateY: -Math.min(lift, maxLift) }] };
+  });
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">

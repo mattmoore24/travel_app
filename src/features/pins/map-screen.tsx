@@ -65,6 +65,11 @@ function PinCard({
           <ThemedText type="footnote" themeColor="textSecondary">
             {intentLabel(pin.intent_date)} · {burnOutLabel(pin.expires_at)}
           </ThemedText>
+          {pin.place_label ? (
+            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+              {pin.place_label}
+            </ThemedText>
+          ) : null}
         </View>
         <Pressable
           accessibilityRole="button"
@@ -78,6 +83,8 @@ function PinCard({
           />
         </Pressable>
       </View>
+
+      {pin.note ? <ThemedText type="body">{pin.note}</ThemedText> : null}
 
       {pin.seeded ? (
         <>
@@ -154,7 +161,7 @@ function PinCard({
           ) : (
             <>
               <PrimaryButton
-                label={`Say hi to ${pin.display_name ?? 'them'}`}
+                label="Ask about this plan"
                 onPress={() =>
                   router.push({
                     pathname: '/compose-request',
@@ -164,12 +171,17 @@ function PinCard({
                       photoPath: pin.photo_path ?? '',
                       source: 'pin',
                       element: `pin:${pin.venue_name.slice(0, 50)}`,
+                      // Opens with the question already written, because
+                      // "what do I even say" is what stops most people.
+                      draft: `Hey! I would like more details on your plans at ${
+                        pin.place_label ?? pin.venue_name
+                      }.`,
                     },
                   })
                 }
               />
               <ThemedText type="footnote" themeColor="textSecondary" style={styles.centerNote}>
-                If they accept, we will let you know and your chat opens.
+                If they say yes, your chat opens.
               </ThemedText>
             </>
           )}

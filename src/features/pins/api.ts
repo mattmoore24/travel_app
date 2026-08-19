@@ -44,6 +44,8 @@ export async function createPin(input: {
   userId: string;
   cityId: number;
   venueName: string;
+  note?: string | null;
+  placeLabel?: string | null;
   category: PinCategory;
   lat: number;
   lng: number;
@@ -56,6 +58,8 @@ export async function createPin(input: {
       user_id: input.userId,
       city_id: input.cityId,
       venue_name: input.venueName,
+      note: input.note ?? null,
+      place_label: input.placeLabel ?? null,
       category: input.category,
       lat: input.lat,
       lng: input.lng,

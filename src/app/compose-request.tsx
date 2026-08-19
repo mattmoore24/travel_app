@@ -32,13 +32,15 @@ export default function ComposeRequestScreen() {
     photoPath: string;
     source?: string;
     element?: string;
+    /** Opening line supplied by the surface that sent you here (e.g. a pin). */
+    draft?: string;
   }>();
   const { data: photoUrl } = usePhotoUrl(params.photoPath || null);
   const sendRequest = useSendRequest();
 
   const source = params.source === 'pin' ? ('pin' as const) : ('trip_match' as const);
   const [element, setElement] = useState<string>(params.element ?? 'bio');
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(params.draft ?? '');
   const [blockedNotice, setBlockedNotice] = useState(false);
 
   const submit = async () => {

@@ -145,6 +145,8 @@ export type FeaturedTravelerRow = {
 export type PublicPinRow = {
   id: string;
   venue_name: string;
+  note: string | null;
+  place_label: string | null;
   category: PinCategory;
   lat: number;
   lng: number;
@@ -298,6 +300,10 @@ export type CityPinRow = {
   verified: boolean;
   photo_path: string | null;
   venue_name: string;
+  /** What the plan actually is, in the author's words. */
+  note: string | null;
+  /** Street or area the pin sits on, as the author confirmed it. */
+  place_label: string | null;
   category: PinCategory;
   lat: number;
   lng: number;
@@ -464,6 +470,8 @@ export type Database = {
           user_id: string | null;
           city_id: number;
           venue_name: string;
+          note: string | null;
+          place_label: string | null;
           category: PinCategory;
           lat: number;
           lng: number;
@@ -477,6 +485,8 @@ export type Database = {
           user_id: string;
           city_id: number;
           venue_name: string;
+          note?: string | null;
+          place_label?: string | null;
           category: PinCategory;
           lat: number;
           lng: number;

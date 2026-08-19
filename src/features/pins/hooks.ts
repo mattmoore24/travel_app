@@ -50,6 +50,8 @@ export function useCreatePin() {
     mutationFn: (input: {
       cityId: number;
       venueName: string;
+      note?: string | null;
+      placeLabel?: string | null;
       category: PinCategory;
       lat: number;
       lng: number;
