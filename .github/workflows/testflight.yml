@@ -66,18 +66,52 @@ jobs:
           umask 077
           printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
 
+      # eas-cli cannot CREATE iOS credentials non-interactively (its
+      # non-interactive path only reuses ones already on Expo's servers — a
+      # literal TODO in SetUpDistributionCertificate.js). So this does what
+      # fastlane does: mint the cert and App Store profile via the ASC API
+      # and hand them to the build as local credentials.
+      - name: Mint signing credentials via the ASC API
+        if: ${{ inputs.action != 'submit' }}
+        env:
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          set -o pipefail
+          npm install --no-save jsonwebtoken
+          openssl genrsa -out "$RUNNER_TEMP/dist.key" 2048
+          openssl req -new -key "$RUNNER_TEMP/dist.key" \
+            -out "$RUNNER_TEMP/dist.csr" -subj "/CN=Samewhere Distribution/OU=CI"
+          export ASC_KEY_PATH="$RUNNER_TEMP/asc.p8"
+          export CSR_PATH="$RUNNER_TEMP/dist.csr"
+          export CERT_DER_OUT="$RUNNER_TEMP/dist.der"
+          export PROFILE_OUT="$RUNNER_TEMP/profile.mobileprovision"
+          export BUNDLE_ID=$(node -p "require('./app.json').expo.ios.bundleIdentifier")
+          export APP_NAME=$(node -p "require('./app.json').expo.name")
+          node scripts/asc-provision.mjs
+          openssl x509 -inform der -in "$RUNNER_TEMP/dist.der" -out "$RUNNER_TEMP/dist.pem"
+          P12_PASSWORD=$(openssl rand -hex 16)
+          echo "::add-mask::$P12_PASSWORD"
+          openssl pkcs12 -export -out "$RUNNER_TEMP/dist.p12" \
+            -inkey "$RUNNER_TEMP/dist.key" -in "$RUNNER_TEMP/dist.pem" \
+            -passout "pass:$P12_PASSWORD"
+          P12_PASSWORD="$P12_PASSWORD" node -e "
+            const fs = require('fs');
+            fs.writeFileSync('credentials.json', JSON.stringify({
+              ios: {
+                provisioningProfilePath: process.env.RUNNER_TEMP + '/profile.mobileprovision',
+                distributionCertificate: {
+                  path: process.env.RUNNER_TEMP + '/dist.p12',
+                  password: process.env.P12_PASSWORD,
+                },
+              },
+            }, null, 2));
+          "
+
       - name: Build on EAS
         if: ${{ inputs.action != 'submit' }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          # These five let EAS create the distribution certificate,
-          # provisioning profile and bundle-id registration without a human,
-          # per the EAS "App Store Connect API key in CI" flow.
-          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc.p8
-          EXPO_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
           EXPO_NO_TELEMETRY: '1'
         run: |
           set -o pipefail

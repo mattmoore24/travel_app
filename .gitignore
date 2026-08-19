@@ -46,3 +46,6 @@ coverage/
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+
+# iOS signing material generated in CI — never committed
+credentials.json

@@ -20,7 +20,8 @@
     "production": {
       "autoIncrement": true,
       "channel": "production",
-      "environment": "production"
+      "environment": "production",
+      "credentialsSource": "local"
     }
   },
   "submit": {
