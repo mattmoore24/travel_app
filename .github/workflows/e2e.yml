@@ -82,6 +82,12 @@ jobs:
           xcrun simctl install "$UDID" "$APP"
 
       - name: Run Maestro flows
+        env:
+          # The driver builds an XCUITest runner via xcodebuild on first
+          # launch; the default startup timeout is too short for a cold
+          # runner (run 2 died on exactly this).
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: '240000'
+          MAESTRO_CLI_NO_ANALYTICS: '1'
         run: |
           set -o pipefail
           curl -Ls https://get.maestro.mobile.dev | bash
@@ -89,9 +95,16 @@ jobs:
           mkdir -p shots && cd shots
           STATUS=0
           for flow in ../e2e/flows/*.yml; do
-            maestro --udid "$UDID" test "$flow" || STATUS=1
+            # One retry: the first attempt pays the driver build cost and
+            # occasionally times out anyway; the second starts warm.
+            maestro --udid "$UDID" test "$flow" \
+              || maestro --udid "$UDID" test "$flow" \
+              || STATUS=1
           done
           echo "MAESTRO_STATUS=$STATUS" >> "$GITHUB_ENV"
+          # Whatever happened above, capture the screen raw — pixels beat a
+          # green flag, and simctl needs nothing from Maestro.
+          xcrun simctl io "$UDID" screenshot zz-final-state.png || true
           ls -la
 
       # Even a failed flow usually produced screenshots — publish whatever
@@ -104,7 +117,9 @@ jobs:
           mkdir -p results
           # Maestro writes takeScreenshot files to its CWD on pass but under
           # ~/.maestro/tests on failure — sweep both rather than guessing.
-          find shots "$HOME/.maestro/tests" -name '*.png' -exec cp {} results/ \; 2>/dev/null || true
+          find shots "$HOME/.maestro" "$GITHUB_WORKSPACE" -name '*.png' \
+            -not -path '*/node_modules/*' -not -path '*/assets/*' -not -path '*/sim-app/*' \
+            -exec cp {} results/ \; 2>/dev/null || true
           ls -la results/
           date -u +"%Y-%m-%dT%H:%M:%SZ" > results/RUN
           echo "${{ github.sha }}" >> results/RUN
