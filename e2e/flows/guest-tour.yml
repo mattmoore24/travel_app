@@ -4,6 +4,11 @@ appId: com.mattmoore.samewhere
 ---
 - launchApp:
     clearState: true
+# First launch shows the tour; skip straight past it to the app.
+- extendedWaitUntil:
+    visible: 'Skip'
+    timeout: 20000
+- tapOn: 'Skip'
 - takeScreenshot: 01-cold-start
 - extendedWaitUntil:
     visible: 'Travelers'
