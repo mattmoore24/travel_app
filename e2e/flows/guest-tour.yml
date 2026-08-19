@@ -1,0 +1,17 @@
+# The guest ladder, walked by a robot: cold start with no account must land
+# on the tabs, and each tab must render something real from the live backend.
+appId: com.mattmoore.samewhere
+---
+- launchApp:
+    clearState: true
+- takeScreenshot: 01-cold-start
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+- takeScreenshot: 02-map-tab
+- tapOn: 'Travelers'
+- takeScreenshot: 03-travelers-guest
+- tapOn: 'Chat'
+- takeScreenshot: 04-chat-guest
+- tapOn: 'Map'
+- takeScreenshot: 05-back-to-map

@@ -22,6 +22,13 @@
       "channel": "production",
       "environment": "production",
       "credentialsSource": "local"
+    },
+    "simulator": {
+      "distribution": "internal",
+      "environment": "production",
+      "ios": {
+        "simulator": true
+      }
     }
   },
   "submit": {

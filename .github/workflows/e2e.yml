@@ -1,0 +1,112 @@
+# Runs the real native app in an iOS Simulator and screenshots every step of
+# the Maestro flows in e2e/flows/. Results are force-pushed to the
+# `e2e-results` branch because workflow artifacts cannot be downloaded from
+# the development sandbox, but a git branch can.
+#
+# Split into two jobs so the 10x-billed macOS runner never sits waiting on an
+# EAS build queue.
+name: E2E simulator
+
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: 'Build a fresh simulator app first (needed after native changes)'
+        type: boolean
+        default: false
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      url: ${{ steps.resolve.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install
+        run: npm ci
+      - name: Build or reuse the simulator app
+        id: resolve
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          set -o pipefail
+          if [ "${{ inputs.build }}" = "true" ]; then
+            npx --yes eas-cli@latest build --platform ios --profile simulator \
+              --non-interactive --wait --json > build.json
+          else
+            npx --yes eas-cli@latest build:list --platform ios --status finished \
+              --build-profile simulator --limit 1 --json --non-interactive > build.json
+          fi
+          URL=$(node -p "
+            const b = JSON.parse(require('fs').readFileSync('build.json','utf8'));
+            (Array.isArray(b) ? b[0] : b)?.artifacts?.buildUrl ?? ''
+          ")
+          if [ -z "$URL" ]; then
+            echo "::error::No finished simulator build found. Re-run with build=true."
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+  drive:
+    needs: app
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the app into a booted simulator
+        run: |
+          set -o pipefail
+          curl -fsSL "${{ needs.app.outputs.url }}" -o app.tar.gz
+          mkdir sim-app && tar -xzf app.tar.gz -C sim-app
+          APP=$(find sim-app -maxdepth 2 -name '*.app' | head -1)
+          UDID=$(xcrun simctl list devices available -j | node -e "
+            const d = JSON.parse(require('fs').readFileSync(0,'utf8')).devices;
+            const phones = Object.entries(d)
+              .flatMap(([rt, list]) => list.map((x) => ({ rt, ...x })))
+              .filter((x) => x.name.includes('iPhone'));
+            phones.sort((a, b) => b.rt.localeCompare(a.rt));
+            console.log(phones[0].udid);
+          ")
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$APP"
+
+      - name: Run Maestro flows
+        run: |
+          set -o pipefail
+          curl -Ls https://get.maestro.mobile.dev | bash
+          export PATH="$HOME/.maestro/bin:$PATH"
+          mkdir -p shots && cd shots
+          STATUS=0
+          for flow in ../e2e/flows/*.yml; do
+            maestro --udid "$UDID" test "$flow" || STATUS=1
+          done
+          echo "MAESTRO_STATUS=$STATUS" >> "$GITHUB_ENV"
+          ls -la
+
+      # Even a failed flow usually produced screenshots — publish whatever
+      # exists, then fail the job afterwards so red still means broken.
+      - name: Publish screenshots to the e2e-results branch
+        if: always()
+        run: |
+          git checkout --orphan e2e-results
+          git rm -rfq . || true
+          mkdir -p results
+          cp shots/*.png results/ 2>/dev/null || true
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > results/RUN
+          echo "${{ github.sha }}" >> results/RUN
+          git add results
+          git -c user.name=e2e -c user.email=e2e@local commit -m "e2e screenshots"
+          git push --force origin e2e-results
+
+      - name: Propagate flow failures
+        if: always()
+        run: exit "${MAESTRO_STATUS:-1}"
