@@ -12,3 +12,4 @@
 2026-08-17 — deploy run 6: worker diagnostics (invoke log + worker_status)
 2026-08-18 — deploy run 7: set_worker_credentials (swap-proof vault setter)
 2026-08-18 — deploy run 8: seed_launch_pins() and seed_launch_establishments()
+2026-08-19 — deploy run 9: profile-first (occupation, upcoming-trip visibility, all overlaps over 180 days)

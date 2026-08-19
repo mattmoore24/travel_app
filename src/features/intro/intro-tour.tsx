@@ -68,7 +68,7 @@ const PAGES: Page[] = [
   {
     icon: { ios: 'person.2.fill', android: 'group', web: 'group' },
     title: 'Find people on your dates',
-    body: "Add your trip and you'll see travelers who are in town when you are. No swiping, no games.",
+    body: "Add your trips and you'll see who else is in town while you are. Same dates, same city, that is the whole idea.",
   },
   {
     icon: { ios: 'bubble.left.and.bubble.right.fill', android: 'chat', web: 'chat' },

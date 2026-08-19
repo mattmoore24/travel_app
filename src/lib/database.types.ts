@@ -21,6 +21,8 @@ export type ProfileRow = {
   home_country: string | null;
   languages: string[];
   bio: string | null;
+  /** Optional one-liner: what you do, or what you study. */
+  occupation: string | null;
   gender: Gender;
   verified: boolean;
   onboarding_completed_at: string | null;
@@ -29,7 +31,7 @@ export type ProfileRow = {
 };
 
 export const PROFILE_COLUMNS =
-  'user_id, display_name, age, home_city, home_country, languages, bio, gender, verified, onboarding_completed_at, created_at, updated_at';
+  'user_id, display_name, age, home_city, home_country, languages, bio, occupation, gender, verified, onboarding_completed_at, created_at, updated_at';
 
 // Columns the client is actually allowed to update (see the column-level
 // GRANT in the core migration) — verified/verification are server-owned.
@@ -42,6 +44,7 @@ export type ProfileUpdate = Partial<
     | 'home_country'
     | 'languages'
     | 'bio'
+    | 'occupation'
     | 'gender'
     | 'onboarding_completed_at'
   >
@@ -101,6 +104,7 @@ export type MatchRow = {
   verified: boolean;
   languages: string[];
   bio: string | null;
+  occupation: string | null;
   gender: Gender;
   city_id: number;
   city_name: string;
@@ -111,6 +115,16 @@ export type MatchRow = {
   their_start: string;
   their_end: string;
   photo_path: string | null;
+};
+
+/** traveler_trips() — every upcoming trip on someone's profile. */
+export type TravelerTripRow = {
+  trip_id: string;
+  city_id: number;
+  city_name: string;
+  city_country: string;
+  start_date: string;
+  end_date: string;
 };
 
 /** featured_traveler() — the one card a signed-out visitor sees. */
@@ -529,6 +543,10 @@ export type Database = {
       get_matches: {
         Args: Record<string, never>;
         Returns: MatchRow[];
+      };
+      traveler_trips: {
+        Args: { p_user_id: string };
+        Returns: TravelerTripRow[];
       };
       send_message_request: {
         Args: {
