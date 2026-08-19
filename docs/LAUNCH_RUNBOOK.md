@@ -34,9 +34,15 @@ delete-account teardown. Re-run it any time from the Actions tab.
 > the canary caught this. Before public launch, either keep it off knowingly or
 > build the deep-linked confirmation flow first, then re-enable.
 
-**a. Key** — add `ANTHROPIC_API_KEY` to GitHub repo secrets and touch
-`supabase/.deploy-request`; the deploy workflow syncs it to Edge Function
-secrets. (Done 2026-08-17.)
+**a. Keys** — add `ANTHROPIC_API_KEY` **and `MODERATION_PROMPTS`** to GitHub
+repo secrets and touch `supabase/.deploy-request`; the deploy workflow syncs
+both to Edge Function secrets. `MODERATION_PROMPTS` is the JSON of classifier
+system prompts (`supabase/functions/moderation-worker/prompts.example.json`
+documents the shape) — it lives only in the secret because the repo is public
+and the exact BLOCK/ALLOW rules would double as an evasion manual. Without it
+the worker fails closed: nothing auto-approves, queues hold, and
+`admin_ops_health.oldest_held_message_minutes` climbs. Editing the secret and
+re-running the deploy workflow retunes moderation with no code change.
 
 **b. Wake the workers** — the pg_cron jobs already exist from
 `20260817230000_schedule_workers.sql`, but they no-op until Vault has the two
@@ -91,13 +97,34 @@ Seed curated pins so the map is never empty: run
 expire within 72h — re-run it every 2 days** during launch, or the map goes
 cold. Check supply with `select * from admin_pin_stats;`.
 
-## 4. Ship the build
+## 4. Repo goes private again before real users arrive
+
+The repo is **public while building** (free unlimited CI minutes — the macOS
+E2E runner alone bills 10x on private repos). That trade is only safe
+pre-launch. Before opening the app to real users, in this order:
+
+- **Flip the repo private**: GitHub → Settings → General → Danger Zone →
+  Change visibility. Everything public until that moment stays public forever
+  (clones, archive crawlers), which is fine for code and docs — it is NOT fine
+  for what comes next, which is why this happens before launch, not after.
+- **Stop the `e2e-results` screenshot branch first**: post-launch E2E runs
+  screenshot the app against the production backend — real names, photos and
+  pins force-pushed to a git branch. Private repo makes that branch private
+  again; delete the historical branch too (`git push origin :e2e-results`).
+- **Re-check Actions billing**: private CI bills minutes again. Set a spending
+  limit (Settings → Billing) that covers ~$1.10 per full E2E run and pennies
+  per deploy/TestFlight orchestration, or lean on the 2,000 free monthly
+  minutes and expect the occasional cap.
+- Optional hardening: rotate the `MODERATION_PROMPTS` wording — the prompts
+  were never in the public repo, so this is belt-and-suspenders only.
+
+## 5. Ship the build
 
 [`APP_STORE.md`](APP_STORE.md) has the full sequence: EAS environment
 variables → `eas build` → TestFlight → App Review notes → privacy labels.
 Needs the Apple Developer membership.
 
-## 5. Watch the numbers
+## 6. Watch the numbers
 
 Daily, from [`DASHBOARD.md`](DASHBOARD.md): `admin_liquidity` (the number that
 matters), `admin_request_funnel` (accept rate — a collapse means creep),

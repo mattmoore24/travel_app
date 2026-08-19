@@ -8,6 +8,8 @@
 #   SUPABASE_DB_PASSWORD    database password chosen when the project was created
 # Optional:
 #   ANTHROPIC_API_KEY       synced to Edge Function secrets for moderation-worker
+#   MODERATION_PROMPTS      classifier system prompts (JSON) — kept out of this
+#                           public repo; see moderation-worker/prompts.example.json
 #
 # Two ways to run it:
 #   * Commit any change to supabase/.deploy-request (works from any branch).
@@ -41,6 +43,7 @@ jobs:
       PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      MODERATION_PROMPTS: ${{ secrets.MODERATION_PROMPTS }}
     steps:
       - uses: actions/checkout@v4
 
@@ -77,6 +80,13 @@ jobs:
         run: |
           npx --yes "$SUPABASE_CLI" secrets set \
             ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" --project-ref "$PROJECT_REF"
+          if [ -n "$MODERATION_PROMPTS" ]; then
+            npx --yes "$SUPABASE_CLI" secrets set \
+              MODERATION_PROMPTS="$MODERATION_PROMPTS" --project-ref "$PROJECT_REF"
+          else
+            echo "::warning::MODERATION_PROMPTS repo secret is not set — the"\
+              "moderation worker fails closed (queues hold) until it exists."
+          fi
 
       - name: Migrations — after
         if: ${{ inputs.dry_run != true }}

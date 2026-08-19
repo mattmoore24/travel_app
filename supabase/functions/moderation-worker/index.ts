@@ -6,7 +6,8 @@
 //   4. messages with a pending photo             -> apply_chat_photo_verdict
 //
 // Deploy:   supabase functions deploy moderation-worker
-// Secrets:  supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+// Secrets:  ANTHROPIC_API_KEY + MODERATION_PROMPTS (see prompts.example.json),
+//           both synced from GitHub secrets by the deploy workflow.
 // Schedule: every minute (Dashboard -> Edge Functions -> Schedules), then flip
 //           app_config require_llm_moderation / require_photo_moderation.
 //
@@ -54,22 +55,34 @@ const VerificationVerdict = z.object({
   reason: z.string(),
 });
 
-[redacted — the classifier prompt lives in the MODERATION_PROMPTS function secret]
+// The classifier instructions are deliberately NOT in this (public) source:
+// publishing the exact BLOCK/ALLOW rules would hand evaders a how-to guide.
+// They live in the MODERATION_PROMPTS function secret as JSON with keys
+// { message, photo, verification } — prompts.example.json documents the
+// shape, and the deploy workflow syncs the GitHub secret to the function.
+// Absent or malformed prompts fail CLOSED (hard rule 5): the worker refuses
+// to classify, queues hold, and admin_ops_health raises
+// oldest_held_message_minutes rather than anything auto-approving.
+type ModerationPrompts = { message: string; photo: string; verification: string };
 
-[redacted — the classifier prompt lives in the MODERATION_PROMPTS function secret]
-[redacted — the classifier prompt lives in the MODERATION_PROMPTS function secret]
-[redacted — the classifier prompt lives in the MODERATION_PROMPTS function secret]
-[redacted — the classifier prompt lives in the MODERATION_PROMPTS function secret]
-[redacted — the classifier prompt lives in the MODERATION_PROMPTS function secret]
-[redacted — the classifier prompt lives in the MODERATION_PROMPTS function secret]
+function loadPrompts(): ModerationPrompts | null {
+  const raw = Deno.env.get('MODERATION_PROMPTS');
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const keys = ['message', 'photo', 'verification'] as const;
+    if (keys.every((key) => typeof parsed[key] === 'string' && parsed[key].length >= 40)) {
+      return parsed as ModerationPrompts;
+    }
+  } catch {
+    // fall through — malformed JSON is the same as missing
+  }
+  return null;
+}
 
-[redacted — the classifier prompt lives in the MODERATION_PROMPTS function secret]
-
-[redacted — the classifier prompt lives in the MODERATION_PROMPTS function secret]
-
-[redacted — the classifier prompt lives in the MODERATION_PROMPTS function secret]
-
-[redacted — the classifier prompt lives in the MODERATION_PROMPTS function secret]
+const PROMPTS = loadPrompts();
 
 type WorkerReport = {
   messages: { approved: number; blocked: number; failed: number };
@@ -118,6 +131,12 @@ Deno.serve(async () => {
       { status: 503 }
     );
   }
+  if (!PROMPTS) {
+    return Response.json(
+      { error: 'MODERATION_PROMPTS secret missing or malformed; queues left untouched' },
+      { status: 503 }
+    );
+  }
   const anthropic = new Anthropic({ apiKey: anthropicKey });
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -157,7 +176,7 @@ Deno.serve(async () => {
     try {
       const verdict = await classify(
         anthropic,
-        MESSAGE_SYSTEM,
+        PROMPTS.message,
         [
           {
             type: 'text',
@@ -242,7 +261,7 @@ Deno.serve(async () => {
       const url = await signedUrl('profile-photos', photo.storage_path);
       const verdict = await classify(
         anthropic,
-        PHOTO_SYSTEM,
+        PROMPTS.photo,
         [
           { type: 'image', source: { type: 'url', url } },
           { type: 'text', text: 'Moderate this profile photo.' },
@@ -325,7 +344,7 @@ Deno.serve(async () => {
       const url = await signedUrl('chat-photos', photo.image_path);
       const verdict = await classify(
         anthropic,
-        PHOTO_SYSTEM,
+        PROMPTS.photo,
         [
           { type: 'image', source: { type: 'url', url } },
           { type: 'text', text: 'Moderate this photo posted in a travel chat.' },
@@ -438,7 +457,7 @@ Deno.serve(async () => {
         ]),
         { type: 'text', text: 'Is this selfie plausibly the same person as the profile photos?' },
       ];
-      const verdict = await classify(anthropic, VERIFICATION_SYSTEM, content, VerificationVerdict);
+      const verdict = await classify(anthropic, PROMPTS.verification, content, VerificationVerdict);
       const payload = verdict
         ? { ...verdict, engine: 'claude-verifier', model: MODEL }
         : {

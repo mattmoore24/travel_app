@@ -1,0 +1,13 @@
+{
+  "_readme": [
+    "Shape of the MODERATION_PROMPTS function secret. The real classifier",
+    "instructions are operational secrets: this repo is public, and the exact",
+    "BLOCK/ALLOW rules would double as an evasion manual. Keep the real value",
+    "in the GitHub secret MODERATION_PROMPTS (Settings -> Secrets -> Actions);",
+    "the Supabase deploy workflow syncs it to the Edge Function. Each value is",
+    "a full system prompt (min 40 chars, enforced by the worker's loader)."
+  ],
+  "message": "System prompt for first-message moderation on a strictly platonic travel app. Must instruct the model to return an allow/block verdict per the MessageVerdict schema, define what gets blocked (romantic/sexual advances, harassment, spam/scams, off-platform payment lures) and what stays allowed (friendly platonic plans), and say which way to lean on ambiguity.",
+  "photo": "System prompt for profile/chat photo moderation (18+ app, platonic). Must instruct the model to return an allow/block verdict per the PhotoVerdict schema and define blocked imagery vs normal travel photos, including how to treat readable personal contact info.",
+  "verification": "System prompt for selfie-vs-profile-photos plausibility review. Must instruct the model to return an approve/reject verdict per the VerificationVerdict schema, with short non-accusatory user-facing reasons on reject."
+}
