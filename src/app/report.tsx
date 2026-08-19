@@ -37,7 +37,7 @@ export default function ReportScreen() {
       });
       Alert.alert(
         'Report received',
-        'Thank you — a human reviews every report. Consider blocking them too.',
+        'Thanks. A real person reads every report. You can block them too.',
         [{ text: 'Done', onPress: () => router.back() }]
       );
     } catch {
@@ -47,8 +47,8 @@ export default function ReportScreen() {
 
   return (
     <StepScreen
-      title="Report"
-      subtitle="This is a platonic travel app — flirting is reportable here, not just harassment."
+      title="Report someone"
+      subtitle="This is a friends app. Flirting counts, not just the obvious stuff."
       continueLabel="Submit report"
       continueLoading={report.isPending}
       onContinue={submit}>
@@ -59,7 +59,7 @@ export default function ReportScreen() {
         multiline
         numberOfLines={4}
         style={styles.details}
-        placeholder="Anything that helps us act quickly."
+        placeholder="Anything that helps us sort it out fast."
         value={details}
         onChangeText={setDetails}
       />

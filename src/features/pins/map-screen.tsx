@@ -87,51 +87,61 @@ function PinCard({
           </ThemedText>
         </>
       ) : (
-        <View style={styles.pinnerRow}>
-          <Pressable
+        <>
+          {/* Tap the person to read them properly before deciding. */}
+          <PressableScale
             accessibilityRole="button"
-            accessibilityLabel={`View ${pin.display_name ?? 'traveler'}'s full profile`}
-            onPress={() => router.push(`/profile/${pin.user_id}`)}
-            style={({ pressed }) => [styles.pinnerPress, pressed && styles.pressed]}>
-            <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
-              {photoUrl ? (
-                <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
-              ) : (
-                <SymbolView
-                  name={{ ios: 'person.fill', android: 'person', web: 'person' }}
-                  size={18}
-                  tintColor={theme.textSecondary}
-                />
-              )}
-            </View>
-            <View style={styles.pinnerText}>
-              <View style={styles.nameRow}>
-                <ThemedText type="small">
-                  {pin.display_name ?? 'Traveler'}
-                  {pin.age != null ? `, ${pin.age}` : ''}
-                </ThemedText>
-                {pin.verified ? (
+            accessibilityLabel={`View ${pin.display_name ?? 'traveler'}'s profile`}
+            scaleTo={0.98}
+            haptic="soft"
+            onPress={() => router.push(`/profile/${pin.user_id}`)}>
+            <ThemedView type="surfaceSunken" style={styles.pinnerCard}>
+              <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
+                {photoUrl ? (
+                  <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
+                ) : (
                   <SymbolView
-                    name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
-                    size={13}
-                    tintColor={theme.tint}
+                    name={{ ios: 'person.fill', android: 'person', web: 'person' }}
+                    size={20}
+                    tintColor={theme.textSecondary}
                   />
-                ) : null}
+                )}
               </View>
-              <ThemedText type="small" themeColor="textSecondary">
-                view profile
-              </ThemedText>
-            </View>
-          </Pressable>
+              <View style={styles.pinnerText}>
+                <View style={styles.nameRow}>
+                  <ThemedText type="callout" style={styles.strong}>
+                    {pin.display_name ?? 'Traveler'}
+                    {pin.age != null ? `, ${pin.age}` : ''}
+                  </ThemedText>
+                  {pin.verified ? (
+                    <SymbolView
+                      name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
+                      size={13}
+                      tintColor={theme.accent}
+                    />
+                  ) : null}
+                </View>
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  Tap to see their profile
+                </ThemedText>
+              </View>
+              <SymbolView
+                name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+                size={14}
+                tintColor={theme.textSecondary}
+              />
+            </ThemedView>
+          </PressableScale>
+
           {isOwn ? (
             <PrimaryButton
               variant="danger"
-              label="Remove"
+              label="Take this pin down"
               onPress={() =>
-                Alert.alert('Remove this pin?', undefined, [
-                  { text: 'Keep', style: 'cancel' },
+                Alert.alert('Take this pin down?', undefined, [
+                  { text: 'Keep it', style: 'cancel' },
                   {
-                    text: 'Remove',
+                    text: 'Take it down',
                     style: 'destructive',
                     onPress: () => {
                       deletePin.mutate(pin.id);
@@ -142,29 +152,34 @@ function PinCard({
               }
             />
           ) : (
-            <PrimaryButton
-              label="Say hi"
-              onPress={() =>
-                router.push({
-                  pathname: '/compose-request',
-                  params: {
-                    userId: pin.user_id!,
-                    name: pin.display_name ?? 'Traveler',
-                    photoPath: pin.photo_path ?? '',
-                    source: 'pin',
-                    element: `pin:${pin.venue_name.slice(0, 50)}`,
-                  },
-                })
-              }
-            />
+            <>
+              <PrimaryButton
+                label={`Say hi to ${pin.display_name ?? 'them'}`}
+                onPress={() =>
+                  router.push({
+                    pathname: '/compose-request',
+                    params: {
+                      userId: pin.user_id!,
+                      name: pin.display_name ?? 'Traveler',
+                      photoPath: pin.photo_path ?? '',
+                      source: 'pin',
+                      element: `pin:${pin.venue_name.slice(0, 50)}`,
+                    },
+                  })
+                }
+              />
+              <ThemedText type="footnote" themeColor="textSecondary" style={styles.centerNote}>
+                They will see your message and can say yes or no. You will not know if they pass.
+              </ThemedText>
+            </>
           )}
-        </View>
+        </>
       )}
     </ThemedView>
   );
 }
 
-const SEEDED_LABEL = 'Curated by the app — just show up.';
+const SEEDED_LABEL = 'One of our picks. Just show up.';
 
 const DATE_FILTERS = [
   { value: 'all', label: 'All' },
@@ -183,7 +198,10 @@ function CityPinMarker({
   selected: boolean;
   onPress: () => void;
 }) {
-  const tracking = useMarkerTracking(selected);
+  // Signed-in viewers see the poster's face on the map; a guest's feed has no
+  // photo_path at all (server-stripped), so this simply resolves to nothing.
+  const { data: photoUri } = usePhotoUrl(pin.photo_path);
+  const tracking = useMarkerTracking(`${selected}:${photoUri ?? ''}`);
   return (
     <Marker
       coordinate={{ latitude: pin.lat, longitude: pin.lng }}
@@ -198,7 +216,12 @@ function CityPinMarker({
         event.stopPropagation();
         onPress();
       }}>
-      <PinMarkerView category={pin.category} seeded={pin.seeded} selected={selected} />
+      <PinMarkerView
+        category={pin.category}
+        seeded={pin.seeded}
+        selected={selected}
+        photoUri={photoUri ?? null}
+      />
     </Marker>
   );
 }
@@ -263,7 +286,7 @@ export default function MapScreen() {
         icon={{ ios: 'map.fill', android: 'map', web: 'map' }}
         title="The Map"
         phase="waiting on backend keys"
-        description="Add Supabase keys to .env to see intent pins and the heatmap in launch cities."
+        description="Add Supabase keys to .env to see pins and the heat layer in launch cities."
       />
     );
   }
@@ -533,7 +556,7 @@ export default function MapScreen() {
                 : `Nothing pinned for ${dateFilter} yet`}
             </ThemedText>
             <ThemedText type="footnote" themeColor="textSecondary">
-              Be the first — drop a pin where you&apos;re headed and travelers here will see it.
+              Be the first. Drop a pin for what you are up to and people here will see it.
             </ThemedText>
           </GlassSurface>
         </Pressable>
@@ -665,11 +688,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pinnerPress: {
+  pinnerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
-    flex: 1,
+    gap: Space.md,
+    padding: Space.md,
+    borderRadius: Radius.md,
+  },
+  strong: {
+    fontWeight: '600',
+  },
+  centerNote: {
+    textAlign: 'center',
   },
   pressed: {
     opacity: 0.7,

@@ -41,7 +41,7 @@ export default function MapScreenWeb() {
         ]}>
         <ThemedText type="subtitle">Pins in {city.cities.name}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
-          Web fallback list — the real map renders on iOS.
+          Web fallback list. The real map renders on iOS.
         </ThemedText>
         {pins.map((pin) => (
           <ThemedView key={pin.id} type="backgroundElement" style={styles.row}>

@@ -24,7 +24,7 @@ export const GUIDELINE_SECTIONS = [
   },
   {
     title: 'How we enforce it',
-    body: 'Every first message is screened before it is delivered — flirtatious, sexual, harassing, or spam messages never reach the recipient. Blocked messages and removed photos earn strikes: 3 is a warning, 5 suspends your account for a week, 7 is a permanent ban.',
+    body: 'Every first message gets checked before it lands. Anything flirty, sexual, nasty or spammy never reaches the other person. Blocked messages and removed photos add up: 3 gets you a warning, 5 suspends you for a week, 7 is the end of the road.',
   },
   {
     title: 'Also not allowed',
@@ -32,10 +32,10 @@ export const GUIDELINE_SECTIONS = [
   },
   {
     title: 'Your privacy',
-    body: 'We never collect your device location — pins are venue-level plans you type in yourself, and they disappear within 72 hours. Your social handles stay hidden until you and another traveler both accept a chat. You can delete your account, and everything in it, from your profile at any time.',
+    body: 'We never collect your device location. Pins are plans you type in yourself, and they vanish within 72 hours. Your socials stay hidden until you and someone else both accept a chat. You can delete your account, and everything in it, from your profile whenever you like.',
   },
   {
     title: 'Staying safe',
-    body: 'Meet in public places and tell someone where you are going. Report anything that feels off — you are never wasting our time. Blocking someone hides you from each other everywhere, instantly.',
+    body: 'Meet somewhere public and tell a friend where you are going. Report anything that feels off, you are never wasting our time. Blocking hides you from each other everywhere, straight away.',
   },
 ] as const;

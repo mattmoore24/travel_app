@@ -211,7 +211,7 @@ export default function RoomScreen() {
               </ThemedText>
             ) : (
               <ThemedText type="footnote" themeColor="textSecondary">
-                Anyone can read this room — join to post.
+                Anyone can read this chat. Join in to post.
               </ThemedText>
             )}
           </View>

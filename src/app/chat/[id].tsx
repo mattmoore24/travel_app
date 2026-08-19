@@ -288,7 +288,7 @@ export default function ChatScreen() {
           {closed ? (
             <ThemedView type="backgroundElement" style={styles.closedNotice}>
               <ThemedText type="small" themeColor="textSecondary">
-                This conversation is closed — you can&apos;t reply.
+                This chat is closed, so you can&apos;t reply.
               </ThemedText>
             </ThemedView>
           ) : (

@@ -293,7 +293,7 @@ export default function ChatScreen() {
         icon={{ ios: 'bubble.left.and.bubble.right.fill', android: 'chat', web: 'chat' }}
         title="Inbox"
         phase="waiting on backend keys"
-        description="Message requests and chats appear here once Supabase keys are in .env."
+        description="Requests and chats show up here once Supabase keys are in .env."
       />
     );
   }
@@ -309,10 +309,10 @@ export default function ChatScreen() {
           ]}>
           <ThemedText type="title">Chat</ThemedText>
           <ThemedText type="footnote" themeColor="textSecondary">
-            Hostels and hotels run open rooms for their guests. Have a look before you join.
+            Hostels run open chats for their guests. Have a look before you join one.
           </ThemedText>
           <RoomDiscovery cityId={cityId} />
-          <SignUpGate reason="Join the conversation" cta="Create an account" />
+          <SignUpGate reason="Want to join in?" cta="Make a profile" />
         </ScrollView>
       </ThemedView>
     );
@@ -324,8 +324,8 @@ export default function ChatScreen() {
       <PlaceholderScreen
         icon={{ ios: 'bubble.left.and.bubble.right.fill', android: 'chat', web: 'chat' }}
         title="Inbox"
-        phase="all quiet for now"
-        description="Say hi to someone heading where you're heading — chats open once a request is accepted.">
+        phase="nothing here yet"
+        description="Find someone going where you are going and say hi. Chats open once they accept.">
         <PrimaryButton label="Find travelers" onPress={() => router.push('/travelers')} />
       </PlaceholderScreen>
     );
@@ -344,7 +344,7 @@ export default function ChatScreen() {
         {requests.length > 0 ? (
           <>
             <ThemedText type="smallBold" themeColor="textSecondary">
-              Requests · accept to open a chat
+              Requests
             </ThemedText>
             {requests.map((request) => (
               <RequestCard key={request.id} request={request} />
@@ -382,7 +382,7 @@ export default function ChatScreen() {
               <View style={styles.chatRowText}>
                 <ThemedText type="callout">Archived</ThemedText>
                 <ThemedText type="footnote" themeColor="textSecondary">
-                  {archived.length} conversation{archived.length === 1 ? '' : 's'} · still readable
+                  {archived.length} chat{archived.length === 1 ? '' : 's'} · still readable
                 </ThemedText>
               </View>
             </ThemedView>

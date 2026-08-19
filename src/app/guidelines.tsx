@@ -39,7 +39,7 @@ export default function GuidelinesScreen() {
           <View style={styles.section}>
             <ThemedText type="smallBold">Contact us</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Questions, appeals, or safety concerns — we read every message.
+              Questions, appeals, anything that feels off. We read every message.
             </ThemedText>
             <PrimaryButton
               variant="ghost"

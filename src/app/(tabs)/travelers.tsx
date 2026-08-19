@@ -211,10 +211,7 @@ function GuestTravelers() {
         ) : (
           <ThemedText themeColor="textSecondary">No travelers in town this week yet.</ThemedText>
         )}
-        <SignUpGate
-          reason="See everyone else travelling here"
-          cta="Create an account to continue"
-        />
+        <SignUpGate reason="See everyone else in town" cta="Make a profile" />
       </ScrollView>
     </ThemedView>
   );
@@ -247,7 +244,7 @@ export default function TravelersScreen() {
         icon={{ ios: 'person.2.fill', android: 'group', web: 'group' }}
         title="Travelers"
         phase="waiting on backend keys"
-        description="Add Supabase keys to .env to post trips and browse travelers with overlapping dates."
+        description="Add Supabase keys to .env to post trips and browse travelers."
       />
     );
   }
@@ -298,7 +295,7 @@ export default function TravelersScreen() {
       </View>
       {trips.length > 0 && uniqueMatches.length === 0 ? (
         <ThemedText themeColor="textSecondary">
-          No overlapping travelers yet — you&apos;ll see them here as more people post trips.
+          Nobody overlapping yet. More people add trips every day, so check back.
         </ThemedText>
       ) : null}
     </View>
@@ -314,8 +311,8 @@ export default function TravelersScreen() {
       <PlaceholderScreen
         icon={{ ios: 'person.2.fill', android: 'group', web: 'group' }}
         title="Travelers"
-        phase="where are you headed?"
-        description="Post a trip to see other travelers who'll be in the same city on your dates.">
+        phase="where to next?"
+        description="Add a trip and we will show you who else is around on your dates.">
         <PrimaryButton label="Add your first trip" onPress={() => router.push('/add-trip')} />
       </PlaceholderScreen>
     );

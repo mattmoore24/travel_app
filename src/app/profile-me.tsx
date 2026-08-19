@@ -116,7 +116,7 @@ export default function ProfileScreen() {
         icon={{ ios: 'person.crop.circle', android: 'person', web: 'person' }}
         title="Profile"
         phase="waiting on backend keys"
-        description="Copy .env.example to .env with your Supabase project keys, restart the dev server, and sign in to build your profile."
+        description="Copy .env.example to .env with your Supabase keys, restart the dev server, then sign in."
       />
     );
   }
@@ -177,7 +177,7 @@ export default function ProfileScreen() {
               tintColor={theme.textSecondary}
             />
             <ThemedText type="footnote" themeColor="textSecondary">
-              Socials — hidden until you accept a chat
+              Socials, hidden until you accept a chat
             </ThemedText>
           </View>
           {handles.length > 0 ? (
@@ -188,7 +188,7 @@ export default function ProfileScreen() {
             ))
           ) : (
             <ThemedText type="callout" themeColor="textSecondary">
-              None added yet.
+              None yet.
             </ThemedText>
           )}
         </ThemedView>
@@ -204,7 +204,7 @@ export default function ProfileScreen() {
           ) : null}
           <PrimaryButton
             variant="ghost"
-            label="Guidelines & support"
+            label="House rules and help"
             onPress={() => router.push('/guidelines')}
           />
           <PrimaryButton

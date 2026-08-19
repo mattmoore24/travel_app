@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -52,6 +53,12 @@ type PinMarkerViewProps = {
   category: PinCategory;
   seeded: boolean;
   selected?: boolean;
+  /**
+   * The poster's profile photo. Present only for signed-in viewers: the
+   * server strips identity from a guest's pin feed, so a guest simply never
+   * has a URL to render here.
+   */
+  photoUri?: string | null;
 };
 
 /**
@@ -61,7 +68,12 @@ type PinMarkerViewProps = {
  * selected-state spring), because with `tracksViewChanges={false}` the view
  * is a bitmap and animation frames would never paint.
  */
-export function PinMarkerView({ category, seeded, selected = false }: PinMarkerViewProps) {
+export function PinMarkerView({
+  category,
+  seeded,
+  selected = false,
+  photoUri = null,
+}: PinMarkerViewProps) {
   const scale = useSharedValue(1);
 
   useEffect(() => {
@@ -74,6 +86,8 @@ export function PinMarkerView({ category, seeded, selected = false }: PinMarkerV
 
   const fill = seeded ? PIN_AMBER : PIN_INDIGO;
   const glyph = seeded ? SEEDED_GLYPH : CATEGORY_GLYPHS[category];
+  // A face beats an icon: knowing WHO is going is the reason to tap.
+  const showFace = !seeded && photoUri != null;
 
   return (
     <Animated.View
@@ -82,7 +96,21 @@ export function PinMarkerView({ category, seeded, selected = false }: PinMarkerV
       entering={FadeInDown.springify().mass(1).damping(14).stiffness(260)}
       style={[styles.wrap, animatedStyle]}>
       <View style={[styles.body, { backgroundColor: fill }, selected && styles.bodySelected]}>
-        <SymbolView name={glyph} size={15} tintColor={PIN_RING} />
+        {showFace ? (
+          <>
+            {/* Own clipping layer: the body keeps visible overflow so the
+                category badge can sit proud of the ring. */}
+            <View style={styles.faceClip}>
+              <Image source={{ uri: photoUri }} style={styles.face} contentFit="cover" />
+            </View>
+            {/* Category still readable at a glance, tucked in the corner. */}
+            <View style={[styles.categoryDot, { backgroundColor: fill }]}>
+              <SymbolView name={glyph} size={9} tintColor={PIN_RING} />
+            </View>
+          </>
+        ) : (
+          <SymbolView name={glyph} size={15} tintColor={PIN_RING} />
+        )}
       </View>
       <View style={[styles.tail, { backgroundColor: fill }]} />
     </Animated.View>
@@ -94,13 +122,14 @@ export function PinMarkerView({ category, seeded, selected = false }: PinMarkerV
  * glyph is in the bitmap) and around every selected-state change (so the
  * spring actually paints), then freeze for map-pan performance.
  */
-export function useMarkerTracking(selected: boolean): boolean {
+export function useMarkerTracking(key: string): boolean {
   const [tracking, setTracking] = useState(true);
-  // Re-arm during render when `selected` flips — the sanctioned
-  // "storing information from previous renders" pattern.
-  const [prevSelected, setPrevSelected] = useState(selected);
-  if (prevSelected !== selected) {
-    setPrevSelected(selected);
+  // Re-arm during render when the key changes (selection flip, or a photo
+  // finally resolving) — the sanctioned "storing information from previous
+  // renders" pattern.
+  const [prevKey, setPrevKey] = useState(key);
+  if (prevKey !== key) {
+    setPrevKey(key);
     if (!tracking) {
       setTracking(true);
     }
@@ -128,6 +157,7 @@ const styles = StyleSheet.create({
     width: BODY,
     height: BODY,
     borderRadius: BODY / 2,
+    overflow: 'visible',
     borderWidth: 2.5,
     borderColor: PIN_RING,
     alignItems: 'center',
@@ -142,6 +172,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 7,
     shadowOffset: { width: 0, height: 4 },
+  },
+  faceClip: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: BODY / 2,
+    overflow: 'hidden',
+  },
+  face: {
+    width: '100%',
+    height: '100%',
+  },
+  categoryDot: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: PIN_RING,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tail: {
     width: TAIL,

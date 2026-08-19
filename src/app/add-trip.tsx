@@ -66,8 +66,8 @@ export default function AddTripScreen() {
 
   return (
     <StepScreen
-      title="Add a trip"
-      subtitle="City and dates only — this is future intent, never your live location."
+      title="Where are you off to?"
+      subtitle="Just the city and your dates. We never track where you actually are."
       continueLabel="Post trip"
       continueDisabled={!city || rangeError != null}
       continueLoading={createTrip.isPending}
@@ -87,7 +87,7 @@ export default function AddTripScreen() {
         <>
           <FormTextField
             label="City"
-            placeholder="Start typing — Lisbon, Bangkok, Mexico City…"
+            placeholder="Start typing: Lisbon, Bangkok, Mexico City"
             autoCorrect={false}
             value={query}
             onChangeText={setQuery}

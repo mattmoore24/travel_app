@@ -72,7 +72,7 @@ export default function DropPinScreen() {
   return (
     <StepScreen
       title={`Drop a pin in ${city.cities.name}`}
-      subtitle="Future intent, venue-level — it expires on its own (72h max) and never shows where you are."
+      subtitle="A plan, not a location. It disappears on its own within 72 hours."
       continueLabel="Post pin"
       continueDisabled={venue.trim().length === 0 || coords == null}
       continueLoading={createPin.isPending}
@@ -85,8 +85,8 @@ export default function DropPinScreen() {
         ) : undefined
       }>
       <FormTextField
-        label="Where do you want to go?"
-        placeholder="Venue or spot — 'Pensão Amor', 'Arpoador sunset point'…"
+        label="Where are you headed?"
+        placeholder="The place: Pensão Amor, Arpoador sunset point"
         value={venue}
         onChangeText={setVenue}
       />

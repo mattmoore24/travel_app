@@ -66,7 +66,7 @@ export default function WelcomeScreen() {
           </Animated.View>
           <Animated.View entering={FadeInDown.duration(500).delay(160)}>
             <ThemedText themeColor="textSecondary" style={styles.centerText}>
-              Make real friends on the road. See what travelers are up to in your city — never where
+              Make real friends on the road. See what people are up to in your city, never where
               they are.
             </ThemedText>
           </Animated.View>
@@ -109,7 +109,7 @@ export default function WelcomeScreen() {
               onPress={() => router.push('/guidelines')}>
               community guidelines
             </ThemedText>
-            . This is a friends app — flirting and harassment get accounts removed.
+            . This is a friends app. Flirting and harassment get accounts removed.
           </ThemedText>
         </ThemedView>
       </SafeAreaView>

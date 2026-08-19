@@ -16,7 +16,7 @@ export function LocationPicker(_props: LocationPickerProps) {
   return (
     <ThemedView type="backgroundElement" style={styles.note}>
       <ThemedText type="small" themeColor="textSecondary">
-        Location picking needs the native map — on web the pin is placed at the city center.
+        Picking a spot needs the native map. On web the pin sits at the city center.
       </ThemedText>
     </ThemedView>
   );

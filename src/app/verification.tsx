@@ -74,7 +74,7 @@ export default function VerificationScreen() {
       await submit.mutateAsync(selfieUri);
       Alert.alert(
         'Selfie submitted',
-        'We compare it with your profile photos — your badge appears once it clears review.'
+        'We check it against your profile photos. Your badge shows up once it clears.'
       );
       router.back();
     } catch {
@@ -92,8 +92,8 @@ export default function VerificationScreen() {
 
   return (
     <StepScreen
-      title="Get verified"
-      subtitle="A verified badge tells other travelers your photos are really you. Take a quick selfie — it's compared with your profile photos, never shown to anyone, and deleted after review. This is a likeness check, not an identity document check."
+      title="Get your badge"
+      subtitle="The badge tells people your photos are really you. Take a quick selfie: nobody else ever sees it, and we delete it after the check. No ID needed."
       continueLabel={continueLabel}
       continueLoading={submit.isPending}
       onContinue={onSubmit}>
@@ -132,7 +132,7 @@ export default function VerificationScreen() {
             </View>
           ) : null}
           <ThemedText type="small" themeColor="textSecondary">
-            Tips: good light, face the camera, no sunglasses — like the photos on your profile.
+            Good light, face the camera, lose the sunglasses. Same vibe as your profile photos.
           </ThemedText>
         </>
       )}
