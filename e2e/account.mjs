@@ -67,6 +67,7 @@ async function setup() {
       home_country: 'US',
       languages: ['en'],
       bio: 'Simulator test account, deleted right after the run.',
+      occupation: 'Test runner',
       onboarding_completed_at: new Date().toISOString(),
     }),
   });
