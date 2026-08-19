@@ -121,3 +121,30 @@ giving up `expo-glass-effect` and the iOS 26 work.
 Even when Expo Go works it cannot show the app icon, remote push, Liquid Glass,
 or Sign in with Apple under the real bundle id. **TestFlight is the only path
 that shows the actual product, and it is required before launch regardless.**
+
+## The TestFlight pipeline (live as of 2026-08-19)
+
+`.github/workflows/testflight.yml` — actions: `build`, `submit`,
+`build-then-submit`. Five repository secrets drive it: `EXPO_TOKEN`,
+`ASC_ISSUER_ID`, `ASC_KEY_ID`, `ASC_KEY_P8`, `APPLE_TEAM_ID`.
+
+What the first flight taught, so nobody re-learns it:
+
+1. **eas-cli cannot create iOS credentials non-interactively.** Its
+   non-interactive path is a literal TODO that only reuses a certificate
+   already on Expo's servers. `scripts/asc-provision.mjs` therefore mints the
+   distribution certificate and App Store profile directly via the ASC API
+   (registering the bundle id and the PUSH_NOTIFICATIONS / APPLE_ID_AUTH
+   capabilities) and feeds the build through `credentials.json`.
+2. **The p12 must be exported with `openssl pkcs12 -legacy`.** The EAS Mac's
+   keychain import rejects OpenSSL 3's default encryption; the failure shows
+   up as an opaque "Prepare credentials" error on the EAS side.
+3. **The provisioning is stateless**: every build revokes the previous
+   pipeline certificate and mints fresh. Apple emails a scary
+   "null null has revoked your certificate" notice each time — "null null"
+   is the API key's empty name. Expected. Safe ONLY while this pipeline is
+   the team's sole signer; rework to key-reuse before any Mac/Xcode joins.
+4. **The bundleIdCapabilities relationship endpoint rejects paging params.**
+5. Build #4 (2026-08-19) proved the pipeline: signed .ipa in ~7 minutes.
+   `submit` resolves the ASC app id from the bundle id at runtime and needs
+   the App Store Connect app record to exist (founder-created, once).

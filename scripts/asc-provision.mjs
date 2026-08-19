@@ -89,8 +89,8 @@ if (bid) {
 // expo-notifications) and Sign in with Apple (usesAppleSignIn). A profile
 // minted without them fails at signing, not here.
 const have = new Set(
-  (// This relationship endpoint rejects paging params (400 PARAMETER_ERROR.ILLEGAL).
-  await asc('GET', `/bundleIds/${bid.id}/bundleIdCapabilities`)).data.map(
+  // This relationship endpoint rejects paging params (400 PARAMETER_ERROR.ILLEGAL).
+  (await asc('GET', `/bundleIds/${bid.id}/bundleIdCapabilities`)).data.map(
     (c) => c.attributes.capabilityType
   )
 );
