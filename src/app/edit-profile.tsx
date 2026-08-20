@@ -2,13 +2,12 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet } from 'react-native';
 
-import { ChipRow } from '@/components/form/chip-row';
+import { LanguageField } from '@/components/form/language-field';
 import { FormTextField } from '@/components/form/form-text-field';
 import { SelectField } from '@/components/form/select-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
-import { LANGUAGES } from '@/constants/languages';
 import { useOwnProfile, useUpdateOwnProfile } from '@/features/profile/hooks';
 import { SocialHandlesEditor } from '@/features/profile/social-handles-editor';
 import {
@@ -53,16 +52,6 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
   const bioError = validateBio(bio);
   const valid = nameError == null && ageError == null && bioError == null && languages.length > 0;
 
-  const toggleLanguage = (code: string) => {
-    setLanguages((current) =>
-      current.includes(code)
-        ? current.filter((c) => c !== code)
-        : current.length < LANGUAGES_MAX
-          ? [...current, code]
-          : current
-    );
-  };
-
   const save = async () => {
     try {
       await updateProfile.mutateAsync({
@@ -106,7 +95,7 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
       <FormTextField label="Home city" value={city} onChangeText={setCity} />
       <FormTextField label="Home country" value={country} onChangeText={setCountry} />
       <ThemedText type="smallBold">Languages</ThemedText>
-      <ChipRow options={LANGUAGES} selected={languages} onToggle={toggleLanguage} />
+      <LanguageField selected={languages} onChange={setLanguages} max={LANGUAGES_MAX} />
       <FormTextField
         label="Bio"
         multiline

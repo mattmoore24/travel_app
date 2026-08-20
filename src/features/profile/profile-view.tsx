@@ -7,7 +7,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { LANGUAGES } from '@/constants/languages';
+import { languageLabel } from '@/constants/languages';
 import { MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { SocialLogo } from '@/features/profile/social-logo';
@@ -15,10 +15,6 @@ import { formatDateRange } from '@/features/trips/dates';
 import { TripEditor, type EditableTrip } from '@/features/trips/trip-editor';
 import { useTheme } from '@/hooks/use-theme';
 import type { ProfilePhotoRow, ProfileRow, SocialHandleRow } from '@/lib/database.types';
-
-const LANGUAGE_LABELS: Record<string, string> = Object.fromEntries(
-  LANGUAGES.map((l) => [l.value, l.label])
-);
 
 export type ProfileTrip = {
   id: string;
@@ -392,7 +388,7 @@ export function ProfileView({
               <View style={styles.chipWrap}>
                 {profile.languages.map((code) => (
                   <View key={code} style={[styles.chip, { backgroundColor: theme.surfaceSunken }]}>
-                    <ThemedText type="footnote">{LANGUAGE_LABELS[code] ?? code}</ThemedText>
+                    <ThemedText type="footnote">{languageLabel(code)}</ThemedText>
                   </View>
                 ))}
               </View>

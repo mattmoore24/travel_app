@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { ChipRow } from '@/components/form/chip-row';
+import { LanguageField } from '@/components/form/language-field';
 import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { SelectField } from '@/components/form/select-field';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
-import { LANGUAGES } from '@/constants/languages';
 import { Radius, Space } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useOwnPhotos, useOwnProfile, useUpdateOwnProfile } from '@/features/profile/hooks';
@@ -65,16 +64,6 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   const bioError = validateBio(bio);
   const basicsOk = validateDisplayName(name) == null && validateAge(age) == null;
   const homeOk = (city.trim().length > 0 || country.trim().length > 0) && languages.length > 0;
-
-  const toggleLanguage = (code: string) => {
-    setLanguages((current) =>
-      current.includes(code)
-        ? current.filter((c) => c !== code)
-        : current.length < LANGUAGES_MAX
-          ? [...current, code]
-          : current
-    );
-  };
 
   const go = (next: number) => {
     haptics.light();
@@ -184,7 +173,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
           <ThemedText type="footnote" themeColor="textSecondary">
             Anything you can hold a conversation in.
           </ThemedText>
-          <ChipRow options={LANGUAGES} selected={languages} onToggle={toggleLanguage} />
+          <LanguageField selected={languages} onChange={setLanguages} max={LANGUAGES_MAX} />
         </View>
       </StepShell>
     );
