@@ -52,6 +52,8 @@ const nocturne = {
   accentSoft: '#1D2742',
   /** The deep brand blue, usable only as a fill under white (8.1:1). */
   accentDeep: '#2A4C9B',
+  /** White on accentDeep is 8.2:1. This is the sent-message bubble. */
+  onAccentDeep: '#FFFFFF',
 
   // Warm light — map pins, own-pin, unread marks, heat. Kept warm on purpose:
   // a blue pin on a dark blue basemap is the same collision that pushed the

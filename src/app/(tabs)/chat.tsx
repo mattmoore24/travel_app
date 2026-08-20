@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { Segmented } from '@/components/ui/segmented';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
@@ -278,6 +279,13 @@ function ChatRowLink({ chat }: { chat: ChatListRow }) {
   );
 }
 
+type Tab = 'individual' | 'groups';
+
+const TABS: { value: Tab; label: string }[] = [
+  { value: 'individual', label: 'Individual' },
+  { value: 'groups', label: 'Groups' },
+];
+
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const isGuest = useIsGuest();
@@ -286,8 +294,14 @@ export default function ChatScreen() {
   const { data: launchCities = [] } = useLaunchCities();
   const { data: archived = [] } = useMyChats(true);
   const cityId = launchCities[0]?.city_id ?? null;
-  const pinned = chats.filter((c) => c.pinned);
-  const rest = chats.filter((c) => !c.pinned);
+  const [tab, setTab] = useState<Tab>('individual');
+
+  // One-to-one conversations and group rooms are different things people
+  // look for at different moments, so they get a switch rather than one
+  // scroll that mixes them.
+  const inTab = chats.filter((c) => (tab === 'groups' ? c.kind === 'room' : c.kind !== 'room'));
+  const pinned = inTab.filter((c) => c.pinned);
+  const rest = inTab.filter((c) => !c.pinned);
 
   if (!isSupabaseConfigured) {
     return (
@@ -309,27 +323,27 @@ export default function ChatScreen() {
             styles.content,
             { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
           ]}>
-          <ThemedText type="title">Chat</ThemedText>
-          <ThemedText type="footnote" themeColor="textSecondary">
-            Hostels run open chats for their guests. Have a look before you join one.
-          </ThemedText>
-          <RoomDiscovery cityId={cityId} />
+          <Segmented
+            options={TABS}
+            value={tab}
+            onChange={setTab}
+            accessibilityLabel="Individual or group chats"
+          />
+          {tab === 'groups' ? (
+            <>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                Hostels run open chats for their guests. Have a look before you join one.
+              </ThemedText>
+              <RoomDiscovery cityId={cityId} />
+            </>
+          ) : (
+            <ThemedText type="footnote" themeColor="textSecondary">
+              One-to-one chats start when you say hi to someone and they answer.
+            </ThemedText>
+          )}
           <SignUpGate reason="Want to join in?" cta="Make a profile" />
         </ScrollView>
       </ThemedView>
-    );
-  }
-
-  if (requests.length === 0 && chats.length === 0) {
-    // Empty states are invitations: name the one next action.
-    return (
-      <PlaceholderScreen
-        icon={{ ios: 'bubble.left.and.bubble.right.fill', android: 'chat', web: 'chat' }}
-        title="Inbox"
-        phase="nothing here yet"
-        description="Find someone going where you are going and say hi. Chats open once they accept.">
-        <PrimaryButton label="Find travelers" onPress={() => router.push('/travelers')} />
-      </PlaceholderScreen>
     );
   }
 
@@ -341,9 +355,14 @@ export default function ChatScreen() {
           styles.content,
           { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
         ]}>
-        <ThemedText type="title">Chat</ThemedText>
+        <Segmented
+          options={TABS}
+          value={tab}
+          onChange={setTab}
+          accessibilityLabel="Individual or group chats"
+        />
 
-        {requests.length > 0 ? (
+        {requests.length > 0 && tab === 'individual' ? (
           <>
             <ThemedText type="smallBold" themeColor="textSecondary">
               Requests
@@ -368,7 +387,7 @@ export default function ChatScreen() {
         {rest.length > 0 ? (
           <>
             <ThemedText type="smallBold" themeColor="textSecondary">
-              Chats
+              {tab === 'groups' ? 'Groups' : 'Chats'}
             </ThemedText>
             {rest.map((chat) => (
               <ChatRowLink key={chat.chat_id} chat={chat} />
@@ -376,7 +395,24 @@ export default function ChatScreen() {
           </>
         ) : null}
 
-        <RoomDiscovery cityId={cityId} />
+        {/* Empty states are invitations: name the one next action. */}
+        {inTab.length === 0 && (tab === 'groups' || requests.length === 0) ? (
+          <ThemedView type="backgroundElement" style={styles.emptyCard}>
+            <ThemedText type="callout">
+              {tab === 'groups' ? 'No groups yet' : 'No chats yet'}
+            </ThemedText>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              {tab === 'groups'
+                ? 'Join a hostel chat below, or start a group with people you have met.'
+                : 'Find someone going where you are going and say hi. The chat opens once they answer.'}
+            </ThemedText>
+            {tab === 'individual' ? (
+              <PrimaryButton label="Find travelers" onPress={() => router.push('/travelers')} />
+            ) : null}
+          </ThemedView>
+        ) : null}
+
+        {tab === 'groups' ? <RoomDiscovery cityId={cityId} /> : null}
 
         {archived.length > 0 ? (
           <PressableScale scaleTo={0.98} onPress={() => router.push('/archived-chats')}>
@@ -396,6 +432,11 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
+  emptyCard: {
+    gap: Spacing.three,
+    padding: Spacing.four,
+    borderRadius: Spacing.four,
+  },
   root: {
     flex: 1,
     flexDirection: 'row',

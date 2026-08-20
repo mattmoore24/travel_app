@@ -245,6 +245,8 @@ export type MessageRow = {
   sender_id: string;
   body: string | null;
   image_path: string | null;
+  /** Set when the SENDER took the message back. Distinct from moderator removal. */
+  unsent_at?: string | null;
   created_at: string;
 };
 
@@ -606,6 +608,14 @@ export type Database = {
       message_reaction_summary: {
         Args: { p_chat_id: string };
         Returns: ReactionSummaryRow[];
+      };
+      set_reaction: {
+        Args: { p_message_id: string; p_emoji: string };
+        Returns: undefined;
+      };
+      unsend_message: {
+        Args: { p_message_id: string };
+        Returns: undefined;
       };
       join_room: {
         Args: { p_chat_id: string; p_departure_date: string };

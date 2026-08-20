@@ -1,12 +1,13 @@
 import { Image } from 'expo-image';
-import { useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
-import Animated, { FadeIn, FadeOut, ZoomIn } from 'react-native-reanimated';
+import { useRef, useState } from 'react';
+import { FlatList, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Elevation, Radius, Space } from '@/constants/theme';
+import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
+import { separatorFor } from '@/features/chat/separators';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import type { MessageRow, ReactionSummaryRow } from '@/lib/database.types';
@@ -17,22 +18,22 @@ export const QUICK_REACTIONS = ['❤️', '😂', '👍', '🔥', '😮', '🙏'
 /** Messages from the same person within this window read as one turn. */
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
 
-const TIME = new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' });
-const DAY = new Intl.DateTimeFormat('en', { weekday: 'long', month: 'short', day: 'numeric' });
+/** Height of the emoji row, so it can be positioned before it lays out. */
+const PILL_HEIGHT = 52;
 
-function dayLabel(iso: string) {
-  const date = new Date(iso);
-  const today = new Date();
-  const yesterday = new Date(today.getTime() - 86400000);
-  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
-  if (sameDay(date, today)) {
-    return 'Today';
-  }
-  if (sameDay(date, yesterday)) {
-    return 'Yesterday';
-  }
-  return DAY.format(date);
-}
+/** Height of one row in the action card below a lifted message. */
+const ACTION_HEIGHT = 44;
+
+/** Breathing room between the lifted message and the things around it. */
+const LIFT_GAP = 10;
+
+type Rect = { x: number; y: number; width: number; height: number };
+
+/** A message's box in the thread's own coordinates, plus what it is. */
+type MenuTarget = Rect & {
+  message: MessageRow;
+  mine: boolean;
+};
 
 function Reactions({
   rows,
@@ -74,6 +75,56 @@ function Reactions({
   );
 }
 
+/**
+ * The visuals of one bubble, with no press behaviour attached. Shared by the
+ * thread and by the copy that floats above the scrim while its menu is open,
+ * so the lifted message is the same object the user pressed rather than an
+ * approximation of it.
+ */
+function BubbleBody({
+  message,
+  mine,
+  tailed,
+}: {
+  message: MessageRow;
+  mine: boolean;
+  /** Last of its group: the corner that gets the tail. */
+  tailed: boolean;
+}) {
+  const theme = useTheme();
+  const { data: imageUrl } = useChatPhotoUrl(message.image_path);
+  const tail = tailed ? Radius.xs : Radius.bubble;
+
+  return (
+    <View
+      style={[
+        styles.bubble,
+        {
+          backgroundColor: mine ? theme.accentDeep : theme.surfaceSunken,
+          borderBottomRightRadius: mine ? tail : Radius.bubble,
+          borderBottomLeftRadius: mine ? Radius.bubble : tail,
+        },
+      ]}>
+      {message.image_path ? (
+        imageUrl ? (
+          <Image source={{ uri: imageUrl }} style={styles.photo} contentFit="cover" />
+        ) : (
+          <ThemedText
+            type="footnote"
+            style={{ color: mine ? theme.onAccentDeep : theme.textSecondary }}>
+            Photo in review
+          </ThemedText>
+        )
+      ) : null}
+      {message.body ? (
+        <ThemedText style={mine ? { color: theme.onAccentDeep } : undefined}>
+          {message.body}
+        </ThemedText>
+      ) : null}
+    </View>
+  );
+}
+
 function Bubble({
   message,
   mine,
@@ -81,7 +132,7 @@ function Bubble({
   last,
   reactions,
   onToggleReaction,
-  onLongPress,
+  onOpenMenu,
 }: {
   message: MessageRow;
   mine: boolean;
@@ -91,95 +142,245 @@ function Bubble({
   last: boolean;
   reactions: ReactionSummaryRow[];
   onToggleReaction: (emoji: string, on: boolean) => void;
-  onLongPress?: () => void;
+  onOpenMenu?: (rect: Rect) => void;
 }) {
-  const theme = useTheme();
-  const { data: imageUrl } = useChatPhotoUrl(message.image_path);
+  const anchor = useRef<View>(null);
 
-  const tail = last ? Radius.xs : Radius.bubble;
   return (
-    <View style={[styles.bubbleRow, mine ? styles.rowMine : styles.rowTheirs]}>
+    <View
+      style={[
+        styles.bubbleRow,
+        mine ? styles.rowMine : styles.rowTheirs,
+        { marginTop: grouped ? 2 : Space.sm },
+      ]}>
       <View style={styles.bubbleColumn}>
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel={message.body ?? 'Photo'}
-          haptic="none"
-          scaleTo={0.98}
-          delayLongPress={220}
-          onLongPress={
-            onLongPress
-              ? () => {
-                  haptics.soft();
-                  onLongPress();
-                }
-              : undefined
-          }
-          style={[
-            styles.bubble,
-            {
-              backgroundColor: mine ? theme.accent : theme.surfaceSunken,
-              borderBottomRightRadius: mine ? tail : Radius.bubble,
-              borderBottomLeftRadius: mine ? Radius.bubble : tail,
-              marginTop: grouped ? 2 : Space.sm,
-            },
-          ]}>
-          {message.image_path ? (
-            imageUrl ? (
-              <Image source={{ uri: imageUrl }} style={styles.photo} contentFit="cover" />
-            ) : (
-              <ThemedText type="footnote" themeColor="textSecondary">
-                Photo in review
-              </ThemedText>
-            )
-          ) : null}
-          {message.body ? (
-            <ThemedText style={mine ? { color: theme.onAccent } : undefined}>
-              {message.body}
-            </ThemedText>
-          ) : null}
-          <ThemedText
-            type="caption"
-            style={[styles.time, { color: mine ? 'rgba(255,255,255,0.72)' : theme.textSecondary }]}>
-            {TIME.format(new Date(message.created_at))}
-          </ThemedText>
-        </PressableScale>
+        {/* A plain view around the pressable, because the menu needs to know
+            where on screen this bubble actually is and PressableScale keeps
+            its animated inner view to itself. */}
+        <View ref={anchor} collapsable={false}>
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={message.body ?? 'Photo'}
+            accessibilityHint={onOpenMenu ? 'Press and hold to react' : undefined}
+            haptic="none"
+            scaleTo={0.98}
+            delayLongPress={220}
+            onLongPress={
+              onOpenMenu
+                ? () => {
+                    anchor.current?.measureInWindow((x, y, width, height) => {
+                      haptics.soft();
+                      onOpenMenu({ x, y, width, height });
+                    });
+                  }
+                : undefined
+            }>
+            <BubbleBody message={message} mine={mine} tailed={last} />
+          </PressableScale>
+        </View>
         <Reactions rows={reactions} onToggle={onToggleReaction} />
       </View>
     </View>
   );
 }
 
+/** "You unsent a message", rendered where the message used to be. */
+function UnsentNote({ mine, otherName }: { mine: boolean; otherName?: string | null }) {
+  return (
+    <View style={[styles.bubbleRow, mine ? styles.rowMine : styles.rowTheirs, styles.unsentRow]}>
+      <ThemedText type="caption" themeColor="textSecondary">
+        {mine ? 'You unsent a message' : `${otherName ?? 'They'} unsent a message`}
+      </ThemedText>
+    </View>
+  );
+}
+
+/**
+ * The long-press menu, anchored to the message it belongs to.
+ *
+ * The founder's note was exact: the reaction picker used to be a slab in the
+ * middle of the screen with no relationship to what was being reacted to.
+ * This lifts the pressed bubble above a scrim, puts the emoji row directly
+ * over it and the actions directly under it, and shifts the whole group when
+ * a message near an edge would push either off screen.
+ */
+function MessageMenu({
+  target,
+  hostHeight,
+  existingEmoji,
+  onPick,
+  onUnsend,
+  onReport,
+  onClose,
+}: {
+  target: MenuTarget;
+  hostHeight: number;
+  existingEmoji: string | null;
+  onPick: (emoji: string) => void;
+  onUnsend?: () => void;
+  onReport?: () => void;
+  onClose: () => void;
+}) {
+  const theme = useTheme();
+  const mine = target.mine;
+
+  const actions: { label: string; run: () => void }[] = [];
+  if (onUnsend) {
+    actions.push({ label: 'Unsend', run: onUnsend });
+  }
+  if (onReport) {
+    actions.push({ label: 'Report', run: onReport });
+  }
+
+  const top = target.y;
+  const actionsHeight = actions.length * ACTION_HEIGHT + Space.xs * 2;
+
+  // Keep the pill, the message and the actions on screen as one block.
+  const wantedTop = top - LIFT_GAP - PILL_HEIGHT - Space.md;
+  const wantedBottom = top + target.height + LIFT_GAP + actionsHeight + Space.md;
+  let shift = 0;
+  if (wantedBottom > hostHeight) {
+    shift = hostHeight - wantedBottom;
+  }
+  if (wantedTop + shift < 0) {
+    shift = -wantedTop;
+  }
+
+  return (
+    <Animated.View
+      entering={FadeIn.duration(120)}
+      exiting={FadeOut.duration(100)}
+      style={[styles.menuLayer, { backgroundColor: theme.scrim }]}>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss"
+        haptic="none"
+        scaleTo={1}
+        onPress={onClose}
+        containerStyle={StyleSheet.absoluteFill}
+        style={StyleSheet.absoluteFill}
+      />
+
+      {/* The emoji row, directly above the message. */}
+      <View
+        style={[styles.menuSide, { top: top + shift - LIFT_GAP - PILL_HEIGHT }, sideOf(mine)]}
+        pointerEvents="box-none">
+        <Animated.View
+          entering={FadeIn.duration(140)}
+          style={[styles.pill, Elevation.floating, { backgroundColor: theme.surface }]}>
+          {QUICK_REACTIONS.map((emoji) => (
+            <PressableScale
+              key={emoji}
+              accessibilityRole="button"
+              accessibilityLabel={emoji}
+              haptic="light"
+              scaleTo={0.85}
+              onPress={() => onPick(emoji)}
+              style={[
+                styles.pillItem,
+                existingEmoji === emoji ? { backgroundColor: theme.accentSoft } : undefined,
+              ]}>
+              <ThemedText type="title">{emoji}</ThemedText>
+            </PressableScale>
+          ))}
+        </Animated.View>
+      </View>
+
+      {/* The message itself, lifted out of the dimmed thread. */}
+      <View style={[styles.menuSide, { top: top + shift }, sideOf(mine)]} pointerEvents="none">
+        <View style={styles.liftedWidth}>
+          <BubbleBody message={target.message} mine={mine} tailed />
+        </View>
+      </View>
+
+      {actions.length > 0 ? (
+        <View
+          style={[styles.menuSide, { top: top + shift + target.height + LIFT_GAP }, sideOf(mine)]}
+          pointerEvents="box-none">
+          <Animated.View
+            entering={FadeIn.duration(160)}
+            style={[styles.actionCard, Elevation.floating, { backgroundColor: theme.surface }]}>
+            {actions.map((action, index) => (
+              <PressableScale
+                key={action.label}
+                accessibilityRole="button"
+                accessibilityLabel={action.label}
+                haptic="light"
+                scaleTo={0.98}
+                onPress={action.run}
+                style={[
+                  styles.action,
+                  index > 0
+                    ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.hairline }
+                    : null,
+                ]}>
+                <ThemedText style={{ color: theme.danger }}>{action.label}</ThemedText>
+              </PressableScale>
+            ))}
+          </Animated.View>
+        </View>
+      ) : null}
+    </Animated.View>
+  );
+}
+
+function sideOf(mine: boolean) {
+  return mine ? styles.alignEnd : styles.alignStart;
+}
+
 /**
  * The conversation itself, shaped like every messaging app people already
- * use: newest at the bottom, own messages on the right, consecutive
- * messages from one person grouped under a single tail, day separators, and
- * a long press to react (founder review — the old layout was a list of
- * detached cards).
+ * use: newest at the bottom, own messages on the right, consecutive messages
+ * from one person grouped under a single tail, time stamps between clusters
+ * rather than inside bubbles, and a long press that lifts the message and
+ * puts the reactions right on top of it.
  */
 export function MessageThread({
   messages,
   ownUserId,
+  otherName,
   reactions,
   onToggleReaction,
+  onUnsend,
+  onReport,
   footer,
 }: {
   messages: MessageRow[];
   ownUserId: string | null;
+  /** Whose name goes on "X unsent a message". */
+  otherName?: string | null;
   reactions: ReactionSummaryRow[];
   onToggleReaction: (messageId: string, emoji: string, on: boolean) => void;
+  onUnsend?: (messageId: string) => void;
+  onReport?: (messageId: string) => void;
   /** Rendered above the oldest message (inverted list ⇒ list footer). */
   footer?: React.ReactElement | null;
 }) {
-  const theme = useTheme();
-  const [picking, setPicking] = useState<string | null>(null);
+  const host = useRef<View>(null);
+  const origin = useRef({ x: 0, y: 0 });
+  const [hostHeight, setHostHeight] = useState(0);
+  const [menu, setMenu] = useState<MenuTarget | null>(null);
 
   const byMessage = new Map<string, ReactionSummaryRow[]>();
   for (const row of reactions) {
     byMessage.set(row.message_id, [...(byMessage.get(row.message_id) ?? []), row]);
   }
 
+  // The menu positions itself from window coordinates, which only mean
+  // anything once it knows where this view starts.
+  const onHostLayout = (event: LayoutChangeEvent) => {
+    setHostHeight(event.nativeEvent.layout.height);
+    host.current?.measureInWindow((x, y) => {
+      origin.current = { x, y };
+    });
+  };
+
+  const mineFor = (m: MessageRow) => m.sender_id === ownUserId;
+  const myEmojiOn = (messageId: string) =>
+    (byMessage.get(messageId) ?? []).find((r) => r.reacted_by_me)?.emoji ?? null;
+
   return (
-    <>
+    <View ref={host} onLayout={onHostLayout} style={styles.flex} collapsable={false}>
       <FlatList
         style={styles.flex}
         inverted
@@ -191,7 +392,8 @@ export function MessageThread({
           // Inverted: "next" is visually above, "previous" is below.
           const older = messages[index + 1];
           const newer = messages[index - 1];
-          const mine = item.sender_id === ownUserId;
+          const mine = mineFor(item);
+          const unsent = item.unsent_at != null;
           const grouped =
             older != null &&
             older.sender_id === item.sender_id &&
@@ -204,10 +406,8 @@ export function MessageThread({
               GROUP_WINDOW_MS;
           // The opening message is carried on the chat row, not the messages
           // table, so there is no id for a reaction to hang off.
-          const reactable = !item.id.startsWith('first:');
-          const newDay =
-            older == null ||
-            new Date(older.created_at).toDateString() !== new Date(item.created_at).toDateString();
+          const reactable = !item.id.startsWith('first:') && !unsent;
+          const separator = separatorFor(item, older);
 
           // One wrapper, not two siblings: an inverted list flips the cell
           // itself, so a fragment's children come out bottom-to-top and the
@@ -215,72 +415,77 @@ export function MessageThread({
           // a single view, ordinary top-to-bottom layout applies again.
           return (
             <View>
-              {newDay ? (
-                <View style={styles.dayRow}>
+              {separator ? (
+                <View style={styles.separatorRow}>
                   <ThemedText type="caption" themeColor="textSecondary">
-                    {dayLabel(item.created_at).toUpperCase()}
+                    {separator}
                   </ThemedText>
                 </View>
               ) : null}
-              <Bubble
-                message={item}
-                mine={mine}
-                grouped={grouped && !newDay}
-                last={last}
-                reactions={byMessage.get(item.id) ?? []}
-                onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
-                onLongPress={reactable ? () => setPicking(item.id) : undefined}
-              />
+              {unsent ? (
+                <UnsentNote mine={mine} otherName={otherName} />
+              ) : (
+                <Bubble
+                  message={item}
+                  mine={mine}
+                  grouped={grouped && separator == null}
+                  last={last}
+                  reactions={byMessage.get(item.id) ?? []}
+                  onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
+                  onOpenMenu={
+                    reactable
+                      ? (rect) =>
+                          setMenu({
+                            ...rect,
+                            x: rect.x - origin.current.x,
+                            y: rect.y - origin.current.y,
+                            message: item,
+                            mine,
+                          })
+                      : undefined
+                  }
+                />
+              )}
             </View>
           );
         }}
         ListFooterComponent={footer}
       />
 
-      {picking ? (
-        <Animated.View
-          entering={FadeIn.duration(140)}
-          exiting={FadeOut.duration(120)}
-          style={styles.pickerBackdrop}>
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-            haptic="none"
-            scaleTo={1}
-            onPress={() => setPicking(null)}
-            containerStyle={StyleSheet.absoluteFill}
-            style={StyleSheet.absoluteFill}
-          />
-          <Animated.View
-            entering={ZoomIn.springify().damping(16)}
-            style={[styles.picker, Elevation.floating, { backgroundColor: theme.surface }]}>
-            {QUICK_REACTIONS.map((emoji) => {
-              const existing = (byMessage.get(picking) ?? []).find((r) => r.emoji === emoji);
-              return (
-                <PressableScale
-                  key={emoji}
-                  accessibilityRole="button"
-                  accessibilityLabel={emoji}
-                  haptic="light"
-                  scaleTo={0.85}
-                  onPress={() => {
-                    // Tapping one you already used takes it back rather than
-                    // trying to add it twice (which the DB refuses).
-                    onToggleReaction(picking, emoji, !existing?.reacted_by_me);
-                    setPicking(null);
-                  }}
-                  style={[
-                    styles.pickerItem,
-                    existing?.reacted_by_me ? { backgroundColor: theme.accentSoft } : undefined,
-                  ]}>
-                  <ThemedText type="title">{emoji}</ThemedText>
-                </PressableScale>
-              );
-            })}
-          </Animated.View>
-        </Animated.View>
+      {menu ? (
+        <MessageMenu
+          target={menu}
+          hostHeight={hostHeight}
+          existingEmoji={myEmojiOn(menu.message.id)}
+          onPick={(emoji) => {
+            // Tapping the one you already used takes it back; tapping a
+            // different one moves yours, since a person gets one reaction.
+            const current = myEmojiOn(menu.message.id);
+            onToggleReaction(menu.message.id, emoji, current !== emoji);
+            setMenu(null);
+          }}
+          onUnsend={
+            menu.mine && onUnsend
+              ? () => {
+                  const id = menu.message.id;
+                  setMenu(null);
+                  onUnsend(id);
+                }
+              : undefined
+          }
+          onReport={
+            !menu.mine && onReport
+              ? () => {
+                  const id = menu.message.id;
+                  setMenu(null);
+                  onReport(id);
+                }
+              : undefined
+          }
+          onClose={() => setMenu(null)}
+        />
       ) : null}
-    </>
+    </View>
   );
 }
 
@@ -309,17 +514,16 @@ const styles = StyleSheet.create({
     paddingVertical: Space.sm,
     borderRadius: Radius.bubble,
     borderCurve: 'continuous',
-    gap: 2,
-  },
-  time: {
-    alignSelf: 'flex-end',
-    fontWeight: '400',
-    letterSpacing: 0,
+    gap: Space.xs,
   },
   photo: {
     width: 220,
     height: 220,
     borderRadius: Radius.md,
+  },
+  unsentRow: {
+    marginTop: Space.sm,
+    paddingHorizontal: Space.sm,
   },
   reactionRow: {
     flexDirection: 'row',
@@ -336,27 +540,57 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     borderWidth: 1,
   },
-  dayRow: {
+  separatorRow: {
     alignItems: 'center',
-    paddingVertical: Space.md,
+    paddingTop: Space.lg,
+    paddingBottom: Space.sm,
   },
-  pickerBackdrop: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
+  menuLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     zIndex: 20,
   },
-  picker: {
+  menuSide: {
+    position: 'absolute',
+    left: Space.md,
+    right: Space.md,
+  },
+  alignEnd: {
+    alignItems: 'flex-end',
+  },
+  alignStart: {
+    alignItems: 'flex-start',
+  },
+  pill: {
     flexDirection: 'row',
-    gap: Space.sm,
-    padding: Space.md,
+    gap: Space.xs,
+    paddingHorizontal: Space.sm,
+    paddingVertical: Space.xs,
     borderRadius: Radius.pill,
   },
-  pickerItem: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+  pillItem: {
+    width: HitTarget,
+    height: HitTarget,
+    borderRadius: HitTarget / 2,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  liftedWidth: {
+    maxWidth: '80%',
+  },
+  actionCard: {
+    minWidth: 180,
+    paddingVertical: Space.xs,
+    borderRadius: Radius.lg,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
+  },
+  action: {
+    height: ACTION_HEIGHT,
+    justifyContent: 'center',
+    paddingHorizontal: Space.lg,
   },
 });

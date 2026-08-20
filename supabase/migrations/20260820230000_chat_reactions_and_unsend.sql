@@ -130,3 +130,33 @@ end;
 $$;
 
 grant execute on function public.unsend_message(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 3. Setting a reaction, in one statement
+-- ---------------------------------------------------------------------------
+--
+-- PostgREST's upsert writes EVERY column in the payload on the conflict
+-- branch, including message_id and user_id, and update is granted on `emoji`
+-- alone — so `.upsert()` from the client fails with permission denied. Worse,
+-- widening the grant to fix that would let a member move an existing reaction
+-- onto a message in a chat they are not in, since the update policy can only
+-- see user_id.
+--
+-- So the move is a function. SECURITY INVOKER on purpose: it runs with the
+-- caller's privileges and under the caller's RLS, which means the insert
+-- policy still proves chat membership and the update policy still proves
+-- ownership. All this adds is the ability to touch one column.
+create or replace function public.set_reaction(p_message_id uuid, p_emoji text)
+returns void
+language sql
+volatile
+security invoker
+set search_path = public
+as $$
+  insert into public.message_reactions (message_id, user_id, emoji)
+  values (p_message_id, auth.uid(), p_emoji)
+  on conflict (message_id, user_id) do update set emoji = excluded.emoji;
+$$;
+
+revoke execute on function public.set_reaction(uuid, text) from public, anon;
+grant execute on function public.set_reaction(uuid, text) to authenticated;

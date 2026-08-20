@@ -2,13 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useOwnUserId } from '@/features/profile/hooks';
 import {
-  addReaction,
+  setReaction,
   fetchCityRooms,
   fetchReactions,
   fetchRoomMessages,
   joinRoom,
   leaveRoom,
   removeReaction,
+  unsendMessage,
   removeRoomMessage,
   setChatPref,
 } from '@/features/rooms/api';
@@ -85,14 +86,31 @@ export function useReactions(chatId: string | null) {
   });
 }
 
+/**
+ * `on: false` takes your reaction back; `on: true` sets it, replacing
+ * whichever emoji you had on that message before. Nobody stacks six.
+ */
 export function useToggleReaction(chatId: string) {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ messageId, emoji, on }: { messageId: string; emoji: string; on: boolean }) =>
-      on ? addReaction(messageId, userId!, emoji) : removeReaction(messageId, userId!, emoji),
+      on ? setReaction(messageId, emoji) : removeReaction(messageId, userId!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reactions', chatId] });
+    },
+  });
+}
+
+export function useUnsendMessage(chatId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (messageId: string) => unsendMessage(messageId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['messages', chatId] });
+      queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
+      queryClient.invalidateQueries({ queryKey: ['reactions', chatId] });
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
     },
   });
 }

@@ -29,7 +29,7 @@ import { MessageThread } from '@/features/chat/message-thread';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
 // Reactions are chat-shaped, not room-shaped: the table and the summary RPC
 // take any chat id, so direct chats reuse exactly what rooms use.
-import { useReactions, useToggleReaction } from '@/features/rooms/hooks';
+import { useReactions, useToggleReaction, useUnsendMessage } from '@/features/rooms/hooks';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import type { ChatListRow } from '@/lib/database.types';
@@ -202,7 +202,12 @@ export default function ChatScreen() {
   const sendPhoto = useSendPhoto(chat?.chat_id ?? '');
   const { data: reactions = [] } = useReactions(chat?.chat_id ?? null);
   const toggleReaction = useToggleReaction(chat?.chat_id ?? '');
+  const unsend = useUnsendMessage(chat?.chat_id ?? '');
   const [draft, setDraft] = useState('');
+  // A picked photo waits here until it is actually sent. It used to fly off
+  // the moment the picker closed, with no preview and no way to change your
+  // mind — which is not how any messaging app behaves.
+  const [attachment, setAttachment] = useState<string | null>(null);
 
   if (!chat) {
     return (
@@ -238,17 +243,35 @@ export default function ChatScreen() {
       ]
     : messages;
 
+  const busy = sendMessage.isPending || sendPhoto.isPending;
+  const canSend = (draft.trim().length > 0 || attachment != null) && !busy;
+
   const submit = async () => {
-    const body = draft.trim();
-    if (body.length === 0 || sendMessage.isPending) {
+    if (!canSend) {
       return;
     }
+    const body = draft.trim();
     try {
-      await sendMessage.mutateAsync(body);
-      setDraft('');
+      // Photo first so it reads above its caption, and as its own message
+      // because a photo goes through moderation and text does not.
+      if (attachment) {
+        await sendPhoto.mutateAsync(attachment);
+        setAttachment(null);
+      }
+      if (body.length > 0) {
+        await sendMessage.mutateAsync(body);
+        setDraft('');
+      }
     } catch {
-      // Surfaced by the global mutation error alert; keep the draft.
+      // Surfaced by the global mutation error alert; keep what was typed.
     }
+  };
+
+  const confirmUnsend = (messageId: string) => {
+    Alert.alert('Unsend this message?', 'It disappears for both of you.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Unsend', style: 'destructive', onPress: () => unsend.mutate(messageId) },
+    ]);
   };
 
   return (
@@ -263,9 +286,20 @@ export default function ChatScreen() {
           <MessageThread
             messages={thread}
             ownUserId={ownUserId}
+            otherName={chat.title}
             reactions={reactions}
             onToggleReaction={(messageId, emoji, on) =>
               toggleReaction.mutate({ messageId, emoji, on })
+            }
+            onUnsend={confirmUnsend}
+            onReport={(messageId) =>
+              router.push({
+                pathname: '/report',
+                params: {
+                  userId: chat.other_user_id,
+                  context: `chat:${chat.chat_id}:message:${messageId}`,
+                },
+              })
             }
           />
           {closed ? (
@@ -275,50 +309,67 @@ export default function ChatScreen() {
               </ThemedText>
             </ThemedView>
           ) : (
-            <View style={styles.composer}>
-              <PhotoButton
-                busy={sendPhoto.isPending}
-                onPick={(uri) =>
-                  sendPhoto.mutate(uri, {
-                    onError: () =>
-                      Alert.alert('Could not send', 'Check your connection and try again.'),
-                  })
-                }
-              />
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    color: theme.text,
-                    backgroundColor: theme.backgroundElement,
-                    fontFamily: Fonts?.sans,
-                  },
-                ]}
-                placeholder="Message…"
-                placeholderTextColor={theme.textSecondary}
-                value={draft}
-                onChangeText={setDraft}
-                multiline
-                maxLength={2000}
-              />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Send"
-                onPress={submit}
-                disabled={draft.trim().length === 0 || sendMessage.isPending}
-                style={[
-                  styles.sendButton,
-                  {
-                    backgroundColor: theme.tint,
-                    opacity: draft.trim().length === 0 || sendMessage.isPending ? 0.4 : 1,
-                  },
-                ]}>
-                <SymbolView
-                  name={{ ios: 'arrow.up', android: 'arrow_upward', web: 'arrow_upward' }}
-                  size={18}
-                  tintColor={theme.onTint}
+            <View>
+              {attachment ? (
+                <View style={styles.attachmentRow}>
+                  <View style={styles.attachment}>
+                    <Image source={{ uri: attachment }} style={styles.fill} contentFit="cover" />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove photo"
+                      hitSlop={8}
+                      onPress={() => setAttachment(null)}
+                      style={styles.attachmentRemove}>
+                      <SymbolView
+                        name={{ ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' }}
+                        size={22}
+                        tintColor={theme.text}
+                      />
+                    </Pressable>
+                  </View>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    Tap send when you&apos;re ready.
+                  </ThemedText>
+                </View>
+              ) : null}
+              <View style={styles.composer}>
+                <PhotoButton
+                  busy={sendPhoto.isPending}
+                  disabled={attachment != null}
+                  onPick={setAttachment}
                 />
-              </Pressable>
+                <TextInput
+                  style={[
+                    styles.input,
+                    {
+                      color: theme.text,
+                      backgroundColor: theme.surfaceSunken,
+                      fontFamily: Fonts?.sans,
+                    },
+                  ]}
+                  placeholder={attachment ? 'Add a message…' : 'Message…'}
+                  placeholderTextColor={theme.textSecondary}
+                  value={draft}
+                  onChangeText={setDraft}
+                  multiline
+                  maxLength={2000}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Send"
+                  onPress={submit}
+                  disabled={!canSend}
+                  style={[
+                    styles.sendButton,
+                    { backgroundColor: theme.accentDeep, opacity: canSend ? 1 : 0.4 },
+                  ]}>
+                  <SymbolView
+                    name={{ ios: 'arrow.up', android: 'arrow_upward', web: 'arrow_upward' }}
+                    size={18}
+                    tintColor={theme.onAccentDeep}
+                  />
+                </Pressable>
+              </View>
             </View>
           )}
         </KeyboardAvoidingView>
@@ -414,6 +465,24 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     borderRadius: Spacing.three,
     alignItems: 'center',
+  },
+  attachmentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+  },
+  attachment: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  attachmentRemove: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
   },
   composer: {
     flexDirection: 'row',

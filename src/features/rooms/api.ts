@@ -66,22 +66,40 @@ export async function fetchReactions(chatId: string) {
   return (data ?? []) as ReactionSummaryRow[];
 }
 
-export async function addReaction(messageId: string, userId: string, emoji: string) {
-  const { error } = await supabase
-    .from('message_reactions')
-    .insert({ message_id: messageId, user_id: userId, emoji });
+/**
+ * One reaction per person per message: picking a second emoji MOVES yours
+ * rather than stacking. The move is a single statement server-side, because
+ * PostgREST's own upsert rewrites every column in the payload and only
+ * `emoji` may be updated.
+ */
+export async function setReaction(messageId: string, emoji: string) {
+  const { error } = await supabase.rpc('set_reaction', {
+    p_message_id: messageId,
+    p_emoji: emoji,
+  });
   if (error) {
     throw error;
   }
 }
 
-export async function removeReaction(messageId: string, userId: string, emoji: string) {
+export async function removeReaction(messageId: string, userId: string) {
   const { error } = await supabase
     .from('message_reactions')
     .delete()
     .eq('message_id', messageId)
-    .eq('user_id', userId)
-    .eq('emoji', emoji);
+    .eq('user_id', userId);
+  if (error) {
+    throw error;
+  }
+}
+
+/**
+ * Take a message back. The row survives with its content emptied and the
+ * original archived, so a report filed against it stays reviewable — you
+ * cannot send something abusive and then erase the evidence.
+ */
+export async function unsendMessage(messageId: string) {
+  const { error } = await supabase.rpc('unsend_message', { p_message_id: messageId });
   if (error) {
     throw error;
   }
