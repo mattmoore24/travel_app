@@ -26,6 +26,18 @@ export type ProfileTrip = {
   overlap?: { start: string; end: string } | null;
 };
 
+/**
+ * Something on a profile you can answer, the way Hinge lets you reply to one
+ * photo or one prompt rather than to the person in general. `key` is what the
+ * request stores; the rest is what the composer shows you are replying to.
+ */
+export type RespondTarget = {
+  key: string;
+  label: string;
+  photoPath?: string | null;
+  quote?: string | null;
+};
+
 function Photo({ path, style }: { path: string; style?: object }) {
   const theme = useTheme();
   const { data: url } = usePhotoUrl(path);
@@ -36,14 +48,55 @@ function Photo({ path, style }: { path: string; style?: object }) {
   );
 }
 
+/** The affordance itself: a bubble you tap to answer one specific thing. */
+function ReplyButton({
+  label,
+  onPress,
+  onPhoto = false,
+}: {
+  label: string;
+  onPress: () => void;
+  /** Sitting on an image, where it needs its own ground to stay legible. */
+  onPhoto?: boolean;
+}) {
+  const theme = useTheme();
+  return (
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      haptic="light"
+      scaleTo={0.9}
+      onPress={onPress}
+      containerStyle={onPhoto ? styles.replyAnchor : undefined}
+      style={[
+        onPhoto ? styles.replyOnPhoto : styles.replyInline,
+        { backgroundColor: onPhoto ? theme.surface : theme.accentSoft },
+      ]}>
+      <SymbolView
+        name={{ ios: 'bubble.left', android: 'chat_bubble', web: 'chat_bubble' }}
+        size={onPhoto ? 17 : 13}
+        tintColor={theme.accent}
+      />
+      {onPhoto ? null : (
+        <ThemedText type="footnote" themeColor="accent">
+          Reply
+        </ThemedText>
+      )}
+    </PressableScale>
+  );
+}
+
 function SectionHeader({
   title,
   icon,
   onEdit,
+  onReply,
 }: {
   title: string;
   icon: SymbolViewProps['name'];
   onEdit?: () => void;
+  /** Visitors get this where the owner gets Edit; never both. */
+  onReply?: () => void;
 }) {
   const theme = useTheme();
   return (
@@ -64,6 +117,8 @@ function SectionHeader({
             Edit
           </ThemedText>
         </PressableScale>
+      ) : onReply ? (
+        <ReplyButton label={`Reply to their ${title.toLowerCase()}`} onPress={onReply} />
       ) : null}
     </View>
   );
@@ -75,11 +130,13 @@ function TripsSection({
   owner,
   onEditTrip,
   onAddTrip,
+  onReply,
 }: {
   trips: ProfileTrip[];
   owner: boolean;
   onEditTrip: (trip: ProfileTrip) => void;
   onAddTrip: () => void;
+  onReply?: () => void;
 }) {
   const theme = useTheme();
 
@@ -87,6 +144,7 @@ function TripsSection({
     <View style={styles.section}>
       <SectionHeader
         title="Travel plans"
+        onReply={onReply}
         icon={{ ios: 'airplane', android: 'flight', web: 'flight' }}
       />
       {trips.length === 0 ? (
@@ -250,6 +308,7 @@ export function ProfileView({
   connected = false,
   actions,
   onEditSection,
+  onRespondTo,
 }: {
   profile: ProfileRow;
   photos: ProfilePhotoRow[];
@@ -261,6 +320,12 @@ export function ProfileView({
   /** Screen-supplied buttons (say hi, report, sign out…). */
   actions?: ReactNode;
   onEditSection?: (section: 'photos' | 'about' | 'details' | 'socials') => void;
+  /**
+   * Supplied when the viewer could still open a conversation. Every photo
+   * and every written block then carries a reply bubble, so the first
+   * message is about one specific thing instead of about nothing.
+   */
+  onRespondTo?: (target: RespondTarget) => void;
 }) {
   const theme = useTheme();
   const { width } = useWindowDimensions();
@@ -335,6 +400,19 @@ export function ProfileView({
               />
             </PressableScale>
           ) : null}
+          {onRespondTo && main ? (
+            <ReplyButton
+              onPhoto
+              label="Reply to this photo"
+              onPress={() =>
+                onRespondTo({
+                  key: 'photo:0',
+                  label: 'their first photo',
+                  photoPath: main.storage_path,
+                })
+              }
+            />
+          ) : null}
         </View>
 
         <View style={styles.body}>
@@ -351,6 +429,16 @@ export function ProfileView({
               })
             }
             onAddTrip={() => setAddingTrip(true)}
+            onReply={
+              onRespondTo
+                ? () =>
+                    onRespondTo({
+                      key: 'trip',
+                      label: 'their travel plans',
+                      quote: trips[0]?.cityLabel ?? null,
+                    })
+                : undefined
+            }
           />
 
           {profile.bio || owner ? (
@@ -359,6 +447,11 @@ export function ProfileView({
                 title="About"
                 icon={{ ios: 'text.quote', android: 'format_quote', web: 'format_quote' }}
                 onEdit={edit('about')}
+                onReply={
+                  onRespondTo && profile.bio
+                    ? () => onRespondTo({ key: 'bio', label: 'their bio', quote: profile.bio })
+                    : undefined
+                }
               />
               {profile.bio ? (
                 <ThemedText>{profile.bio}</ThemedText>
@@ -370,20 +463,22 @@ export function ProfileView({
             </View>
           ) : null}
 
-          {gallery.length > 0 ? (
-            <Animated.View entering={FadeIn.duration(240)} style={styles.gallery}>
-              {gallery.slice(0, 2).map((photo) => (
-                <Photo key={photo.id} path={photo.storage_path} style={styles.galleryPhoto} />
-              ))}
-            </Animated.View>
-          ) : null}
-
           {profile.languages.length > 0 || owner ? (
             <View style={styles.section}>
               <SectionHeader
                 title="Details"
                 icon={{ ios: 'globe', android: 'language', web: 'language' }}
                 onEdit={edit('details')}
+                onReply={
+                  onRespondTo && profile.languages.length > 0
+                    ? () =>
+                        onRespondTo({
+                          key: 'languages',
+                          label: 'the languages they speak',
+                          quote: profile.languages.map(languageLabel).join(', '),
+                        })
+                    : undefined
+                }
               />
               <View style={styles.chipWrap}>
                 {profile.languages.map((code) => (
@@ -395,20 +490,39 @@ export function ProfileView({
             </View>
           ) : null}
 
-          {gallery.length > 2 ? (
-            <View style={styles.gallery}>
-              {gallery.slice(2).map((photo) => (
-                <Photo key={photo.id} path={photo.storage_path} style={styles.galleryPhoto} />
-              ))}
-            </View>
-          ) : null}
-
           <SocialsSection
             handles={handles}
             owner={owner}
             connected={connected}
             onEdit={edit('socials')}
           />
+
+          {/* Photo, then everything the profile says, then the rest of the
+              photos — the founder's order. One per row rather than a grid:
+              a thumbnail two fingers wide is a contact-sheet entry, and the
+              point of these is to be looked at. */}
+          {gallery.length > 0 ? (
+            <Animated.View entering={FadeIn.duration(240)} style={styles.gallery}>
+              {gallery.map((photo, index) => (
+                <View key={photo.id}>
+                  <Photo path={photo.storage_path} style={styles.galleryPhoto} />
+                  {onRespondTo ? (
+                    <ReplyButton
+                      onPhoto
+                      label={`Reply to photo ${index + 2}`}
+                      onPress={() =>
+                        onRespondTo({
+                          key: `photo:${photo.position}`,
+                          label: `photo ${index + 2}`,
+                          photoPath: photo.storage_path,
+                        })
+                      }
+                    />
+                  ) : null}
+                </View>
+              ))}
+            </Animated.View>
+          ) : null}
 
           {actions ? <View style={styles.actions}>{actions}</View> : null}
         </View>
@@ -475,6 +589,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  replyAnchor: {
+    position: 'absolute',
+    right: Space.md,
+    bottom: Space.md,
+  },
+  replyOnPhoto: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  replyInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+    paddingHorizontal: Space.sm,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+  },
   body: {
     padding: Space.lg,
     gap: Space.xl,
@@ -532,13 +666,10 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   gallery: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Space.sm,
+    gap: Space.md,
   },
   galleryPhoto: {
-    flexGrow: 1,
-    flexBasis: '46%',
+    width: '100%',
     aspectRatio: 4 / 5,
     borderRadius: Radius.lg,
     borderCurve: 'continuous',

@@ -137,6 +137,9 @@ function describeElement(element: string): string {
   if (element === 'home') {
     return 'where you are from';
   }
+  if (element === 'trip') {
+    return 'your travel plans';
+  }
   return 'your bio';
 }
 

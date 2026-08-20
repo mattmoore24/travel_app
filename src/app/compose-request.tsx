@@ -8,6 +8,7 @@ import { FormTextField } from '@/components/form/form-text-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { Spacing } from '@/constants/theme';
 import { useSendRequest } from '@/features/matching/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
@@ -32,16 +33,25 @@ export default function ComposeRequestScreen() {
     photoPath: string;
     source?: string;
     element?: string;
+    /** What the profile said this element was, for the card below. */
+    targetLabel?: string;
+    targetPhoto?: string;
+    targetQuote?: string;
     /** Opening line supplied by the surface that sent you here (e.g. a pin). */
     draft?: string;
   }>();
   const { data: photoUrl } = usePhotoUrl(params.photoPath || null);
+  const { data: targetPhotoUrl } = usePhotoUrl(params.targetPhoto || null);
   const sendRequest = useSendRequest();
 
   const source = params.source === 'pin' ? ('pin' as const) : ('trip_match' as const);
   const [element, setElement] = useState<string>(params.element ?? 'bio');
   const [message, setMessage] = useState(params.draft ?? '');
   const [blockedNotice, setBlockedNotice] = useState(false);
+  // Arriving from a reply bubble on the profile, the thing being answered is
+  // already decided and shown. The old chip row stays as the fallback for
+  // anyone who got here from the Say hi button instead.
+  const [pickingElement, setPickingElement] = useState(!params.targetLabel);
 
   const submit = async () => {
     if (!params.userId || message.trim().length === 0) {
@@ -86,7 +96,7 @@ export default function ComposeRequestScreen() {
         <ThemedText type="small" themeColor="textSecondary">
           About their pin{params.element ? `: ${params.element.replace(/^pin:/, '')}` : ''}
         </ThemedText>
-      ) : (
+      ) : pickingElement ? (
         <>
           <ThemedText type="smallBold">What are you replying to?</ThemedText>
           <ChipRow
@@ -95,6 +105,32 @@ export default function ComposeRequestScreen() {
             onToggle={(value) => setElement(value)}
           />
         </>
+      ) : (
+        <ThemedView type="backgroundElement" style={styles.targetCard}>
+          {targetPhotoUrl ? (
+            <Image source={{ uri: targetPhotoUrl }} style={styles.targetPhoto} contentFit="cover" />
+          ) : null}
+          <View style={styles.targetText}>
+            <ThemedText type="caption" themeColor="textSecondary">
+              REPLYING TO {(params.targetLabel ?? '').toUpperCase()}
+            </ThemedText>
+            {params.targetQuote ? (
+              <ThemedText type="small" numberOfLines={3}>
+                {params.targetQuote}
+              </ThemedText>
+            ) : null}
+          </View>
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Reply to something else"
+            haptic="light"
+            scaleTo={0.94}
+            onPress={() => setPickingElement(true)}>
+            <ThemedText type="footnote" themeColor="accent">
+              Change
+            </ThemedText>
+          </PressableScale>
+        </ThemedView>
       )}
 
       <FormTextField
@@ -139,6 +175,22 @@ const styles = StyleSheet.create({
   avatarImage: {
     width: '100%',
     height: '100%',
+  },
+  targetCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: Spacing.three,
+  },
+  targetPhoto: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+  },
+  targetText: {
+    flex: 1,
+    gap: 2,
   },
   messageInput: {
     minHeight: 110,

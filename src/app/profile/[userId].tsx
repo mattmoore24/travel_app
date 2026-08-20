@@ -7,6 +7,7 @@ import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Space } from '@/constants/theme';
 import { useBlockUser } from '@/features/chat/hooks';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
+import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
 import { useTravelerTrips } from '@/features/trips/hooks';
@@ -63,6 +64,20 @@ export default function PublicProfileScreen() {
           handles={handlesQuery.data ?? []}
           owner={false}
           connected={connected}
+          // Only while there is still a conversation to start. Once you are
+          // connected, the reply bubbles would just be a slower way to open
+          // a chat you already have.
+          onRespondTo={
+            connected || !userId
+              ? undefined
+              : (target) =>
+                  openReply({
+                    userId,
+                    name: profile.display_name ?? 'Traveler',
+                    photoPath: photos[0]?.storage_path ?? null,
+                    target,
+                  })
+          }
           actions={
             <>
               {connected && handlesQuery.isError ? (

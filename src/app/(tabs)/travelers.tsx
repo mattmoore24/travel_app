@@ -25,6 +25,7 @@ import {
 import { useMatches, useMyChats, useSentRequests } from '@/features/matching/hooks';
 import { usePassedTravelers } from '@/features/matching/passed';
 import { usePhotoUrl, usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
+import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { formatDateRange } from '@/features/trips/dates';
 import { useMyTrips, useTravelerTrips } from '@/features/trips/hooks';
@@ -133,6 +134,8 @@ function TravelerPage({
   chatId: string | undefined;
   requested: boolean;
 }) {
+  // Nothing left to open once a message is out or a chat exists.
+  const canOpen = chatId == null && !requested;
   const insets = useSafeAreaInsets();
   const { data: profile } = usePublicProfile(candidate.userId);
   const { data: photos = [] } = usePublicPhotos(candidate.userId);
@@ -210,6 +213,17 @@ function TravelerPage({
           trips={profileTrips}
           handles={[]}
           owner={false}
+          onRespondTo={
+            canOpen
+              ? (target) =>
+                  openReply({
+                    userId: candidate.userId,
+                    name: shown.display_name ?? 'Traveler',
+                    photoPath: candidate.match.photo_path ?? null,
+                    target,
+                  })
+              : undefined
+          }
         />
       </ScrollView>
 
