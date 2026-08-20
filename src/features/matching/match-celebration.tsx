@@ -17,7 +17,7 @@ import Animated, {
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
-import { Motion, Space, Springs } from '@/constants/theme';
+import { BrandDeep, Motion, Space, Springs } from '@/constants/theme';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import type { AcceptedMatch } from '@/features/matching/use-accepted-celebration';
 import { haptics } from '@/lib/haptics';
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   photoFallback: {
-    backgroundColor: '#2A4C9B',
+    backgroundColor: BrandDeep,
   },
   text: {
     gap: Space.sm,

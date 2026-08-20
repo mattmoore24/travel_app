@@ -9,7 +9,7 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet } from '@/components/ui/sheet';
-import { HitTarget, Radius, Space } from '@/constants/theme';
+import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
 import {
   addDays,
   formatDateRange,
@@ -212,7 +212,7 @@ export function TripEditor({
             display={Platform.OS === 'ios' ? 'inline' : 'default'}
             minimumDate={minDate}
             accentColor={theme.accent}
-            themeVariant={theme.canvas === '#FBFAF7' ? 'light' : 'dark'}
+            themeVariant={NativeAppearance}
             onChange={(_event, selected) => {
               if (!selected) {
                 return;

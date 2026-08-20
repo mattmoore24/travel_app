@@ -29,32 +29,43 @@ the door.
 
 ## Tokens (`src/constants/theme.ts` — nothing hardcodes a hex)
 
-**Dusk**: deep indigo and burnt amber on a warm bone canvas.
+**Nocturne**, and **dark only**. A traveler's map at night: the ground is the
+unlit city, warm light is the signal. `Colors.light` and `Colors.dark` hold
+the same palette on purpose, so a light scheme can be restored later by
+filling one key back in without touching a component.
 
-| Role          | Light     | Dark      |
-| ------------- | --------- | --------- |
-| canvas        | `#FBFAF7` | `#0D0F14` |
-| surface       | `#FFFFFF` | `#171A21` |
-| text          | `#211E1A` | `#F4F4F2` |
-| textSecondary | `#585F6B` | `#A3AAB8` |
-| accent        | `#2A4C9B` | `#8AA6F0` |
-| highlight     | `#9A5709` | `#F0A93C` |
-| danger        | `#B5342A` | `#F08076` |
+| Role          | Value     | On the ground                                  |
+| ------------- | --------- | ---------------------------------------------- |
+| canvas        | `#0E1020` | the unlit map                                  |
+| surface       | `#171A2E` | cards, rows                                    |
+| surfaceSunken | `#20243D` | sheets, modals                                 |
+| text          | `#F1F0F7` | 16.7:1                                         |
+| textSecondary | `#A6A9C4` | 8.2:1                                          |
+| textTertiary  | `#6E7196` | 4.0:1 — labels and large text ONLY, never body |
+| accent        | `#8AA6F0` | 7.9:1                                          |
+| onAccent      | `#0E1020` | 7.9:1 on accent                                |
+| accentDeep    | `#2A4C9B` | fill only, under white (8.1:1)                 |
+| highlight     | `#FF9A5A` | 9.0:1 — pins, own-pin, unread                  |
+| ember         | `#FF6B54` | 6.7:1 — heat scale top end                     |
+| success       | `#7FD9A8` | 11.1:1                                         |
+| warning       | `#FFC168` | 11.8:1                                         |
+| danger        | `#FF6B6B` | 6.8:1                                          |
+| hairline      | `#2E3350` | decorative dividers only                       |
+| border        | `#5E6499` | 3.4:1 — input outlines, edges a user must see  |
 
-Indigo is not a taste preference: green accents sat too close to Apple Maps'
-park polygons, and the map is the hero screen. A cool primary separates from
-the beige-and-green basemap; the warm canvas and amber stop it reading cold.
-Amber is the deep ochre, not a bright one — a bright amber cannot carry white
-text and loses against the basemap.
+**The accent is the brand blue, and it is NOT `#2A4C9B`.** That value scores
+**2.34:1** on this ground: it fails the 4.5:1 body floor and also the 3:1
+floor for large text and UI edges. Its dark-scheme sibling `#8AA6F0` is the
+same brand blue at 7.9:1. `#2A4C9B` survives only as a fill under white.
 
-Every pair clears **WCAG 4.5:1** in both schemes (3:1 for purely graphical
-marks), verified numerically. A critique that proposes a colour must state
-its ratio against the surface behind it.
+**Pins stay warm.** Blue markers on a dark blue basemap are the same
+collision that pushed the brand off green originally, inverted. Heat reads as
+one light source intensifying, amber to ember, never as a hue swap.
 
-Other scales: seven type roles (`display` 34 → `caption` 11), a **4pt** space
-grid, radii `xs 5 … xl 28` plus `bubble 20` and `pill`, exactly **three**
-elevation levels, `Motion.quick/standard/slow` = 150/250/400ms, and a
-`Springs` vocabulary so every interaction shares one physical feel.
+Other scales, all Nocturne's: seven type roles (`display` 32 → `caption` 11),
+a **4pt** space grid, radii `sm 8 / md 12 / lg 16 / xl 20`, `bubble 18`
+(iMessage's corner), `pill`. Three elevation levels,
+`Motion.quick/standard/slow` = 150/250/400ms, a `Springs` vocabulary.
 `HitTarget = 44`.
 
 ## Accessibility, as it actually bites here

@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Fonts, Radius, Space, Type } from '@/constants/theme';
+import { Fonts, Radius, Space, SplashField, Type } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 
 /**
@@ -30,7 +30,7 @@ import { haptics } from '@/lib/haptics';
  * theme-switches, same as the splash itself: one indigo field from app icon
  * to first swipe. Colors are deliberately hardcoded to the icon's values.
  */
-const FIELD = '#2A4C9B';
+const FIELD = SplashField;
 const AMBER = '#F0A93C';
 const ON_AMBER = '#2A1A00';
 const WHITE = '#FFFFFF';

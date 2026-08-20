@@ -6,7 +6,7 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Space } from '@/constants/theme';
+import { BrandDeep, MaxContentWidth, Space } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
 import { deleteAccount } from '@/features/profile/api';
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 24,
-    backgroundColor: '#2A4C9B',
+    backgroundColor: BrandDeep,
     alignItems: 'center',
     justifyContent: 'center',
   },

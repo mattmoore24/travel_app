@@ -9,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { BrandDeep, MaxContentWidth, Spacing } from '@/constants/theme';
 import { appleSignInAvailable, signInWithApple } from '@/features/auth/api';
 import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
     width: 112,
     height: 112,
     borderRadius: 28,
-    backgroundColor: '#2A4C9B',
+    backgroundColor: BrandDeep,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',

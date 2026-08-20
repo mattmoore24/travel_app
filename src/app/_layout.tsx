@@ -1,7 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query';
-import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { StyleSheet, useColorScheme, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
@@ -10,7 +10,7 @@ import { useIntroState } from '@/features/intro/store';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Spacing, SplashField } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
 import { useAuthListener } from '@/features/auth/use-auth-listener';
@@ -190,10 +190,10 @@ function RootNavigator() {
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      {/* Always dark: Nocturne is a dark theme (constants/theme.ts). */}
+      <ThemeProvider value={DarkTheme}>
         <AnimatedSplashOverlay />
         <RootNavigator />
       </ThemeProvider>
@@ -202,11 +202,11 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  // The splash field's exact indigo — hardcoded for the same reason the
-  // splash overlay's is (components/animated-icon.tsx).
+  // Must equal the native splash background, for the same reason the splash
+  // overlay does (components/animated-icon.tsx).
   bootHold: {
     flex: 1,
-    backgroundColor: '#2A4C9B',
+    backgroundColor: SplashField,
   },
   errorRoot: {
     flex: 1,

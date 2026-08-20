@@ -8,75 +8,106 @@ import '@/global.css';
 import { Platform } from 'react-native';
 
 /**
- * "Dusk": deep indigo + burnt amber on a warm bone canvas — the light when you
- * land somewhere, which is also when travellers actually make plans.
+ * "Nocturne" — a traveler's map at night.
  *
- * Indigo replaced the earlier trail green for a concrete reason: green accents
- * sit close to Apple Maps' park polygons, and the map is the hero screen. A
- * cool primary separates from the beige-and-green basemap; the warm canvas and
- * amber keep it from reading cold. Still nothing like the red/pink/purple every
- * dating app runs.
+ * The ground is the unlit city (deep ink-violet). Warm light is the signal:
+ * an intent pin glowing, a lantern at a hostel door. Heat on the map reads as
+ * that light getting MORE INTENSE (amber -> ember), never as a different hue.
  *
- * Every pair below clears WCAG 4.5:1 in both schemes (3:1 for purely graphical
- * marks) — verified numerically, not by eye. Amber is deliberately the deep
- * ochre rather than a bright one: a brighter amber cannot carry white text and
- * loses to a beige basemap.
+ * DARK ONLY, deliberately. Nocturne is a dark theme and the app is dark-first,
+ * so both keys below hold the same palette rather than pretending a light
+ * scheme exists. Every component already reads `Colors[scheme]`, so restoring
+ * a light scheme later is a matter of filling `light` back in — nothing else
+ * has to change.
+ *
+ * ACCENT — the brand blue, not Nocturne's orange, at the founder's direction.
+ * The literal request was the blue in use today, #2A4C9B. That value cannot
+ * be used for anything a person has to READ on this ground: it scores 2.34:1
+ * against #0E1020, failing not just the 4.5:1 body-text floor but the 3:1
+ * floor for large text and UI edges. Its dark-scheme sibling #8AA6F0 is the
+ * same brand blue and scores 7.90:1, so that is the accent. #2A4C9B survives
+ * as a FILL underneath white text (8.06:1), which is where it still works.
+ *
+ * Every pair below is computed, not eyeballed. Ratios are against
+ * `background` unless noted. Do not substitute a colour without re-checking.
  */
-export const Colors = {
-  light: {
-    canvas: '#FBFAF7',
-    surface: '#FFFFFF',
-    surfaceSunken: '#F0EFEA',
-    // Warm ink rather than a cool near-black: type sits on a warm canvas,
-    // and the 2026 direction for community products is warmth throughout.
-    text: '#211E1A',
-    textSecondary: '#585F6B',
-    accent: '#2A4C9B',
-    onAccent: '#FFFFFF',
-    accentSoft: '#E7EBF8',
-    /** Second brand colour: featured badges, own-pin, unread marks. */
-    highlight: '#9A5709',
-    onHighlight: '#FFFFFF',
-    highlightSoft: '#FBEEDA',
-    // Same value as `highlight` today — kept as its own token so the semantic
-    // and brand roles can diverge without a refactor.
-    warning: '#9A5709',
-    danger: '#B5342A',
-    hairline: 'rgba(0,0,0,0.07)',
-    scrim: 'rgba(10,12,18,0.32)',
+const nocturne = {
+  // Ground — the unlit map
+  canvas: '#0E1020',
+  surface: '#171A2E',
+  /** Sheets, modals, popovers — the layer that floats above a card. */
+  surfaceSunken: '#20243D',
 
-    // Legacy aliases — kept so un-migrated screens keep compiling while the
-    // redesign lands screen by screen. Remove when the last one is gone.
-    background: '#FBFAF7',
-    backgroundElement: '#F0EFEA',
-    backgroundSelected: '#E7EBF8',
-    tint: '#2A4C9B',
-    onTint: '#FFFFFF',
-  },
-  dark: {
-    canvas: '#0D0F14',
-    surface: '#171A21',
-    surfaceSunken: '#212630',
-    text: '#F4F4F2',
-    textSecondary: '#A3AAB8',
-    accent: '#8AA6F0',
-    onAccent: '#0A1330',
-    accentSoft: '#1D2742',
-    highlight: '#F0A93C',
-    onHighlight: '#2A1A00',
-    highlightSoft: '#33260F',
-    warning: '#F0A93C',
-    danger: '#F08076',
-    hairline: 'rgba(255,255,255,0.08)',
-    scrim: 'rgba(0,0,0,0.45)',
+  // Text
+  text: '#F1F0F7', // 16.7:1
+  textSecondary: '#A6A9C4', // 8.2:1
+  /** 4.0:1 — large text and non-critical labels only, never body copy. */
+  textTertiary: '#6E7196',
 
-    background: '#0D0F14',
-    backgroundElement: '#212630',
-    backgroundSelected: '#1D2742',
-    tint: '#8AA6F0',
-    onTint: '#0A1330',
-  },
+  // Lantern, in the brand's blue
+  accent: '#8AA6F0', // 7.9:1
+  accentPressed: '#6E8BD8', // 5.7:1
+  onAccent: '#0E1020', // 7.9:1 on accent. White here would be illegible.
+  /** Tinted ground for selected rows and soft chips; text sits at 13.1:1. */
+  accentSoft: '#1D2742',
+  /** The deep brand blue, usable only as a fill under white (8.1:1). */
+  accentDeep: '#2A4C9B',
+
+  // Warm light — map pins, own-pin, unread marks, heat. Kept warm on purpose:
+  // a blue pin on a dark blue basemap is the same collision that pushed the
+  // brand off green in the first place, just inverted.
+  highlight: '#FF9A5A', // 9.0:1
+  onHighlight: '#0E1020', // 9.0:1
+  highlightSoft: '#33260F',
+  /** Reserved for the heat scale's top end and rare high-emphasis moments. */
+  ember: '#FF6B54', // 6.7:1
+
+  // Semantic
+  success: '#7FD9A8', // 11.1:1
+  warning: '#FFC168', // 11.8:1
+  danger: '#FF6B6B', // 6.8:1
+
+  /** Decorative dividers only — deliberately below the functional floor. */
+  hairline: '#2E3350',
+  /** Input outlines and anything whose edge a user must see — 3.4:1. */
+  border: '#5E6499',
+  scrim: 'rgba(6,7,16,0.62)',
+
+  // Legacy aliases, kept so un-migrated screens keep compiling.
+  background: '#0E1020',
+  backgroundElement: '#20243D',
+  backgroundSelected: '#1D2742',
+  tint: '#8AA6F0',
+  onTint: '#0E1020',
 } as const;
+
+export const Colors = {
+  light: nocturne,
+  dark: nocturne,
+} as const;
+
+/**
+ * What native controls should render as. Some UIKit components (the date
+ * picker, keyboards) pick their own colours and have to be told, and they
+ * cannot read our tokens — so this is the one honest place to say it.
+ */
+export const NativeAppearance = 'dark' as const;
+
+/**
+ * The splash field, mirrored from app.json's expo-splash-screen background.
+ * Hardcoded rather than themed because the JS side has to match a native
+ * screen that renders before any JS runs — if these two drift, the handoff
+ * flashes. Change both together.
+ */
+export const SplashField = '#0E1020' as const;
+
+/**
+ * The deep brand blue, for static styles that need a FILL and cannot read a
+ * theme (StyleSheet.create runs at module scope). Legible only under white
+ * or near-white content: 8.1:1. Never put it behind body text on the app's
+ * own dark ground, where it scores 2.3:1.
+ */
+export const BrandDeep = '#2A4C9B' as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
@@ -110,9 +141,9 @@ export const Fonts = Platform.select({
  * Dynamic Type because nothing disables `allowFontScaling`.
  */
 export const Type = {
-  display: { fontSize: 34, lineHeight: 40, fontWeight: '700' },
-  title: { fontSize: 26, lineHeight: 32, fontWeight: '700' },
-  headline: { fontSize: 19, lineHeight: 24, fontWeight: '600' },
+  display: { fontSize: 32, lineHeight: 38, fontWeight: '700' },
+  title: { fontSize: 24, lineHeight: 30, fontWeight: '700' },
+  headline: { fontSize: 18, lineHeight: 24, fontWeight: '600' },
   body: { fontSize: 16, lineHeight: 23, fontWeight: '400' },
   callout: { fontSize: 15, lineHeight: 20, fontWeight: '500' },
   footnote: { fontSize: 13, lineHeight: 18, fontWeight: '400' },
@@ -135,12 +166,15 @@ export const Space = {
 export const Radius = {
   /** The tail corner of a chat bubble. */
   xs: 5,
-  sm: 10,
-  md: 14,
-  lg: 20,
-  xl: 28,
-  /** Chat bubbles: the familiar messaging-app corner. */
-  bubble: 20,
+  /** Inputs and small chips. */
+  sm: 8,
+  /** Cards. */
+  md: 12,
+  /** Sheets and modals. */
+  lg: 16,
+  xl: 20,
+  /** Chat bubbles: iMessage's corner, which is rounder than a card's. */
+  bubble: 18,
   pill: 999,
 } as const;
 
