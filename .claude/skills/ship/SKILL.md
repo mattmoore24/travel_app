@@ -47,15 +47,21 @@ to the working branch, then:
   `action: update`. It publishes `eas update --branch production`. The
   founder gets it by force-quitting and reopening the app — no App Store
   round trip, no build quota.
-- **Build, free — BLOCKED as of 2026-08-20.** `build-local-then-submit`
-  cannot compile Expo SDK 57 on GitHub's `macos-15` image: every installed
-  Xcode fails, in two contradictory ways. See `traps` for the swept table.
-  The mechanism is sound and every other part of the path works (credentials,
-  linkage proof, submit-by-path); only the toolchain is missing. Re-test when
-  Expo or the runner image moves. Until then a native change needs the hosted
-  builder below. What follows describes the path for when it works again.
-- **Build, free (when it works):** the same workflow with
-  **`build-local-then-submit`**. This
+- **Build, hosted — the working path for native changes.**
+  `build-then-submit`. The account is on the **Starter plan** (upgraded
+  2026-08-20): $19/month carrying $45 of build credit, with further usage
+  billed at Expo's usage-based rates. So builds are no longer rationed to a
+  monthly count, but they are **not free** — each one draws down real credit.
+  Batch native changes rather than building per-commit, and keep shipping
+  JavaScript over the air, which still costs nothing.
+- **Build, local — BLOCKED as of 2026-08-20, and no longer needed.**
+  `build-local-then-submit` cannot compile Expo SDK 57 on GitHub's `macos-15`
+  image: every installed Xcode fails, in two contradictory ways. See `traps`
+  for the swept table. The mechanism is sound and every other part of that
+  path works (credentials on either OS, linkage proof, submit-by-path); only
+  the toolchain is missing. It stays as a fallback worth re-testing if the
+  subscription ever lapses or the runner image moves.
+  How the local path works, for whenever it is testable again: this
   runs the identical EAS build process on GitHub's own macOS runner
   (`eas build --local`), which spends **no** EAS build allowance — Expo's
   servers are contacted only to check the project exists and to bump the
@@ -66,13 +72,15 @@ to the working branch, then:
   the plan's monthly iOS builds. Reserve it for when the local path is broken
   or the quota is genuinely spare.
 
-**Hosted quota is a hard wall, and simulator builds share it.** Every E2E run
-with `build: true` spends one of the same monthly iOS builds a TestFlight
-release does. When it runs out, EAS refuses the job at queue time — nothing is
-built and nothing is consumed, but the hosted path stays closed until the 1st
-of the month. The remote `buildNumber` is incremented _before_ the refusal, so
-a rejected attempt still burns a build number; do not promise a specific one
-until a build actually starts.
+**Simulator builds draw on the same credit.** Every E2E run with
+`build: true` is a real iOS build. Leave it `false` unless native code
+changed — a false run reuses the last binary and pushes current JS to it over
+the `e2e` channel, which costs nothing.
+
+**Never promise a build number before a build starts.** The remote
+`buildNumber` increments when the build is requested, including for attempts
+that are then refused or that fail — several numbers were burned that way on
+2026-08-20. Read the number back from the finished build instead.
 
 **The local path is not behind that wall**, which is why it is the default.
 Its own limit is the repository being public. When the repo flips private at

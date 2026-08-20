@@ -79,7 +79,8 @@ classifier prompts into this repo while it is public — they live in a GitHub
 secret so it cannot be read for how to evade them.
 
 Then read `ship` to decide between an over-the-air update and an EAS build.
-Build quota is scarce and the founder has already been warned at 80%.
+Builds are hosted on Expo's Starter plan and draw down real credit, so batch
+native changes; JavaScript still ships over the air for free.
 
 ## Scope these down
 

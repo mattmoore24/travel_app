@@ -115,10 +115,12 @@ device does something else.
   **fails to compile** on Swift 6.2 and newer. No version satisfies both, so
   this is Expo's own source-compatibility gap, not a configuration mistake.
   EAS's hosted builders evidently carry an Xcode point release GitHub's image
-  does not. **Do not re-run this sweep on `macos-15`.** The untried avenue is
-  the `macos-26` runner image, which carries different point releases
-  (26.4.1, 26.5, 26.6) — but those are further along the axis that already
-  fails, so treat it as a long shot, not a plan.
+  does not, and they build this project fine. **Do not re-run this sweep on
+  `macos-15`**, and do not reach for the local path at all while the Expo
+  subscription is active — it exists only as a fallback. If it ever matters
+  again, the one untried avenue is the `macos-26` runner image and its
+  different point releases (26.4.1, 26.5, 26.6), but those sit further along
+  the axis that already fails.
 
 - **`xcbeautify` swallows the stderr of a failing script phase**, and Expo
   then pattern-matches the raw log and prints its own guess — which named
