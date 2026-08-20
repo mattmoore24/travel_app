@@ -1,19 +1,33 @@
-# Builds a signed iOS binary on EAS's macOS builders and submits it to
-# TestFlight. Exists because development happens from a phone: the GitHub
-# runner is the keyboard, EAS is the Mac.
+# Builds a signed iOS binary and submits it to TestFlight. Exists because
+# development happens from a phone: the GitHub runner is the keyboard, and
+# either EAS or this runner is the Mac.
 #
 # Required repository secrets:
-#   EXPO_TOKEN       expo.dev access token
-#   ASC_ISSUER_ID    App Store Connect API -> Issuer ID (UUID)
-#   ASC_KEY_ID       App Store Connect API -> Key ID (~10 chars)
-#   ASC_KEY_P8       full contents of the AuthKey_XXXX.p8 file
-#   APPLE_TEAM_ID    10-char Apple team id (Apple Developer app -> Membership)
+#   EXPO_TOKEN                     expo.dev access token
+#   ASC_ISSUER_ID                  App Store Connect API -> Issuer ID (UUID)
+#   ASC_KEY_ID                     App Store Connect API -> Key ID (~10 chars)
+#   ASC_KEY_P8                     full contents of the AuthKey_XXXX.p8 file
+#   APPLE_TEAM_ID                  10-char Apple team id (Membership tab)
+#   EXPO_PUBLIC_SUPABASE_URL       for local builds, which cannot read EAS
+#   EXPO_PUBLIC_SUPABASE_ANON_KEY  variables marked "Secret"
 #
-# Most changes here are JavaScript, and JavaScript ships over the air:
-# `action: update` publishes to the channel the TestFlight build already
-# listens on, costs no EAS build quota, and lands on a tester's phone the
-# next time they open the app. Reserve `build` for native or config changes
-# (new native module, app.json/plugin changes, version bumps).
+# THREE WAYS TO SHIP, cheapest first:
+#
+#   update      JavaScript only. Publishes to the channel the installed
+#               TestFlight build already listens on. Free, unlimited, lands
+#               on the next app launch. Use this for almost everything.
+#
+#   build-local Native changes, still free. Runs the identical EAS build
+#               process on GitHub's macOS runner (`eas build --local`), which
+#               spends NO monthly iOS build allowance. Standard macOS runners
+#               are free and unlimited on a PUBLIC repository — once this repo
+#               goes private they bill at 10x against the free minutes, so
+#               revisit this comment at launch.
+#
+#   build       Native changes on EAS's hosted builders. Faster and cached,
+#               but each one spends a build from the plan's monthly quota,
+#               which the free plan exhausts quickly. Reserve it for when the
+#               local path is broken or the quota is genuinely spare.
 #
 # Two-step first flight, by necessity: the App Store Connect *app record*
 # cannot be created until the bundle id exists, and the bundle id is
@@ -27,16 +41,21 @@ on:
     inputs:
       action:
         description: >-
-          update = push JS to the TestFlight build people already have (no
-          EAS build spent, arrives on next app launch). build/submit spend an
-          iOS build and are only needed when native code or config changes.
+          update = push JS to the build people already have (free, arrives on
+          next app launch). build-local* compiles on GitHub's macOS runner,
+          which is free on a public repo and spends NO EAS quota — use this
+          for native changes. build/build-then-submit use EAS's hosted
+          builders and spend one of the plan's monthly iOS builds.
         type: choice
-        options: [update, build, submit, build-then-submit]
+        options: [update, build-local-then-submit, build-local, build, submit, build-then-submit]
         default: update
 
 jobs:
   ios:
-    runs-on: ubuntu-latest
+    # A local build needs a Mac; everything else is happier (and faster) on
+    # Linux. Standard macOS runners are free and unlimited on a PUBLIC repo,
+    # which is what makes the build-local path cost nothing.
+    runs-on: ${{ startsWith(inputs.action, 'build-local') && 'macos-15' || 'ubuntu-latest' }}
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
@@ -113,8 +132,19 @@ jobs:
         run: |
           set -o pipefail
           npm install --no-save jsonwebtoken
-          openssl genrsa -out "$RUNNER_TEMP/dist.key" 2048
-          openssl req -new -key "$RUNNER_TEMP/dist.key" \
+          # This step now runs on Linux OR macOS, and they ship different TLS
+          # tools: macOS's `openssl` is LibreSSL, which has no -legacy flag
+          # because it already writes the old p12 format. Prefer a real
+          # OpenSSL 3 when one is installed, and only pass -legacy to that.
+          SSL="$(command -v openssl)"
+          for cand in /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl; do
+            if [ -x "$cand" ]; then SSL="$cand"; break; fi
+          done
+          LEGACY=""
+          "$SSL" version | grep -qi libressl || LEGACY="-legacy"
+          echo "Using $("$SSL" version) ${LEGACY:-(no -legacy flag)}"
+          "$SSL" genrsa -out "$RUNNER_TEMP/dist.key" 2048
+          "$SSL" req -new -key "$RUNNER_TEMP/dist.key" \
             -out "$RUNNER_TEMP/dist.csr" -subj "/CN=Samewhere Distribution/OU=CI"
           export ASC_KEY_PATH="$RUNNER_TEMP/asc.p8"
           export CSR_PATH="$RUNNER_TEMP/dist.csr"
@@ -123,14 +153,13 @@ jobs:
           export BUNDLE_ID=$(node -p "require('./app.json').expo.ios.bundleIdentifier")
           export APP_NAME=$(node -p "require('./app.json').expo.name")
           node scripts/asc-provision.mjs
-          openssl x509 -inform der -in "$RUNNER_TEMP/dist.der" -out "$RUNNER_TEMP/dist.pem"
-          P12_PASSWORD=$(openssl rand -hex 16)
+          "$SSL" x509 -inform der -in "$RUNNER_TEMP/dist.der" -out "$RUNNER_TEMP/dist.pem"
+          P12_PASSWORD=$("$SSL" rand -hex 16)
           echo "::add-mask::$P12_PASSWORD"
-          # -legacy: macOS's `security import` on the EAS builder rejects
-          # OpenSSL 3's default PBES2/SHA-256 p12 encryption; the legacy
-          # format imports cleanly and still parses with @expo/pkcs12
-          # (verified locally against both formats).
-          openssl pkcs12 -export -legacy -out "$RUNNER_TEMP/dist.p12" \
+          # macOS's `security import` rejects OpenSSL 3's default PBES2/SHA-256
+          # p12 encryption; the legacy format imports cleanly and still parses
+          # with @expo/pkcs12 (verified locally against both formats).
+          "$SSL" pkcs12 -export $LEGACY -out "$RUNNER_TEMP/dist.p12" \
             -inkey "$RUNNER_TEMP/dist.key" -in "$RUNNER_TEMP/dist.pem" \
             -passout "pass:$P12_PASSWORD"
           P12_PASSWORD="$P12_PASSWORD" node -e "
@@ -147,7 +176,7 @@ jobs:
           "
 
       - name: Build on EAS
-        if: ${{ inputs.action != 'submit' && inputs.action != 'update' }}
+        if: ${{ inputs.action == 'build' || inputs.action == 'build-then-submit' }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_NO_TELEMETRY: '1'
@@ -174,8 +203,108 @@ jobs:
             grep -oE 'https://expo\.dev/[^ ]*builds/[^ ]+' build.log | head -1 || true
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The free path. `eas build --local` runs the identical build process on
+      # THIS runner instead of EAS's builders, so it draws on no monthly build
+      # allowance — Expo's servers are contacted only to check the project
+      # exists and to bump the remote build number. Standard macOS runners are
+      # free and unlimited on a public repository, which is what makes this
+      # cost nothing at all.
+      - name: Pick an Xcode
+        if: ${{ startsWith(inputs.action, 'build-local') }}
+        run: |
+          ls -d /Applications/Xcode*.app
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          pod --version
+          fastlane --version | tail -1
+
+      - name: Build on this runner
+        if: ${{ startsWith(inputs.action, 'build-local') }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_NO_TELEMETRY: '1'
+          # Local builds cannot read EAS variables marked "Secret", and a build
+          # that bakes an empty Supabase URL into the bundle ships a working
+          # app pointed at nothing. Supplying them from repository secrets as
+          # well means the value is present either way; the check below proves
+          # which one landed.
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          # Keep the generated Xcode project around so the next step can read
+          # which native modules autolinking actually wired in.
+          EAS_LOCAL_BUILD_SKIP_CLEANUP: '1'
+          EAS_LOCAL_BUILD_WORKINGDIR: ${{ runner.temp }}/eas-local
+        run: |
+          set -o pipefail
+          npx --yes eas-cli@latest build \
+            --platform ios \
+            --profile production \
+            --local \
+            --non-interactive \
+            --output "$RUNNER_TEMP/samewhere.ipa" 2>&1 | tee build.log
+
+      # A build that succeeds and ships nothing new is the expensive failure
+      # here: it looks identical to a good one until somebody taps the feature
+      # on a real phone. Prove the two things that could silently be missing.
+      # A build that succeeds and ships nothing new is the expensive failure
+      # here: it looks identical to a good one until somebody taps the feature
+      # on a real phone. Prove the two things that could silently be missing.
+      - name: Prove the binary carries what it should
+        if: ${{ startsWith(inputs.action, 'build-local') }}
+        run: |
+          # Deliberately no pipefail: several checks below end in `wc -l` after
+          # a grep that is ALLOWED to match nothing, and pipefail would abort
+          # on the grep before the readable error message is printed.
+          set -eu
+          IPA="$RUNNER_TEMP/samewhere.ipa"
+          ls -lh "$IPA"
+
+          WORK="$RUNNER_TEMP/verify"
+          rm -rf "$WORK" && mkdir -p "$WORK"
+          unzip -q "$IPA" -d "$WORK"
+          APP=$(find "$WORK/Payload" -maxdepth 1 -name '*.app' | head -1)
+
+          # 1. Autolinking wired the local native module in. The generated
+          #    provider is the file the app registers its modules from, so it
+          #    is the authoritative answer; the compiled bundle is the backup
+          #    if the build cleaned its working directory up anyway.
+          PROVIDER=$(find "$RUNNER_TEMP/eas-local" -name 'ExpoModulesProvider.swift' 2>/dev/null | head -1)
+          if [ -n "$PROVIDER" ]; then
+            echo "Modules registered by $PROVIDER:"
+            grep -oE '[A-Za-z0-9_]+Module\.self' "$PROVIDER" | sort -u
+            LINKED=$(grep -c 'LocalSearchModule' "$PROVIDER" || true)
+            HOW="the generated ExpoModulesProvider"
+          else
+            LINKED=$(grep -rl 'LocalSearch' "$APP" 2>/dev/null | wc -l | tr -d ' ')
+            HOW="strings in the compiled app"
+          fi
+          if [ "$LINKED" = "0" ]; then
+            echo "::error::LocalSearchModule is absent according to $HOW. The pod did not link and venue search would ship dead. Run 'npx expo-modules-autolinking resolve -p apple --json' and check modules[].packageName."
+            exit 1
+          fi
+          echo "LocalSearchModule linked, per $HOW."
+
+          # 2. A real Supabase URL is baked in. The client falls back to
+          #    'placeholder.supabase.co' when the variable is empty, so a
+          #    supabase host on its own proves nothing.
+          REAL=$(grep -rhoaE 'https://[a-z0-9-]+\.supabase\.co' "$APP" 2>/dev/null |
+            grep -v placeholder | sort -u | wc -l | tr -d ' ')
+          if [ "$REAL" = "0" ]; then
+            echo "::error::The bundle carries no real Supabase URL, only the placeholder fallback: this build would launch against nothing. Check the EXPO_PUBLIC_SUPABASE_* repository secrets."
+            exit 1
+          fi
+          echo "Real Supabase host baked in ($REAL distinct)."
+
+          {
+            echo "## Built on this runner, for free"
+            echo "No EAS build quota was spent."
+            echo ""
+            echo "- LocalSearchModule linked: yes (per $HOW)"
+            echo "- Real Supabase host in the bundle: yes"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Submit to TestFlight
-        if: ${{ inputs.action != 'build' && inputs.action != 'update' }}
+        if: ${{ inputs.action == 'submit' || endsWith(inputs.action, 'then-submit') }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -227,10 +356,21 @@ jobs:
             .catch((e) => { console.error('::error::' + e.message); process.exit(1); });
           EOF
 
+          # A local build is never registered on EAS's servers, so --latest
+          # would happily upload the last CLOUD build instead — an older
+          # binary, submitted silently and looking like a success. Point
+          # submit at the file when there is one.
+          if [ -f "$RUNNER_TEMP/samewhere.ipa" ]; then
+            SOURCE=(--path "$RUNNER_TEMP/samewhere.ipa")
+            echo "Submitting the binary built on this runner."
+          else
+            SOURCE=(--latest)
+            echo "Submitting the latest build from EAS."
+          fi
           npx --yes eas-cli@latest submit \
             --platform ios \
             --profile production \
-            --latest \
+            "${SOURCE[@]}" \
             --non-interactive 2>&1 | tee submit.log
           {
             echo "## Submitted to TestFlight"
