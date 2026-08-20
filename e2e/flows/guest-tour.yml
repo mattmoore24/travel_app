@@ -6,8 +6,13 @@
 # signed-in flow still covers the Skip path.)
 appId: com.mattmoore.samewhere
 ---
-- launchApp:
-    clearState: true
+# State is reset by the workflow before this flow runs, not by Maestro's
+# own state clear. Clearing state deletes the app's data container, and the
+# over-the-air update that carries the JS under test lives inside it, so
+# clearing sends the flow back to whatever JS was embedded in the binary.
+# Running this by hand? Wipe "Library/Application Support/<bundle id>" in the
+# app's data container first.
+- launchApp
 # The welcome scene: wait for the staggered entrance to finish landing.
 - extendedWaitUntil:
     visible: 'Show me around'

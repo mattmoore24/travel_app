@@ -135,6 +135,26 @@ device does something else.
   directory (`EAS_LOCAL_BUILD_SKIP_CLEANUP=1`), in `logs/*.log`. Grep those
   for `error:` before believing any summary line.
 
+## Over-the-air updates
+
+- **An update is never applied on the launch that downloads it.**
+  `launchWaitMs` defaults to **0**, so expo-updates starts the app on the
+  bundle it already has and fetches the new one in the background. The
+  download becomes the running code on the _next_ launch. Anything that
+  verifies "the current code" after a single launch is verifying the previous
+  build.
+- **The download lives in the app's data container**
+  (`Library/Application Support/.expo-internal`), so any state clear deletes
+  it. Maestro's `clearState: true` on every flow meant the E2E suite screen
+  shotted the binary's **embedded** JS for weeks while reporting green. The
+  fix in `e2e.yml`: publish, launch once to fetch, poll `expo-v2.db` for the
+  published update id at `status = 1`, then reset only the app's own storage
+  between flows. Never re-introduce a state clear into a flow.
+- `UpdatesConfigOverride` can only override the update URL and request
+  headers at runtime. `launchWaitMs` and `checkOnLaunch` are baked into
+  `Expo.plist` at build time, so there is no way to make an existing binary
+  block on the download.
+
 ## Tests
 
 - **Never loosen an assertion to make a run pass.** A wildcard once let a

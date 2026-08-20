@@ -6,8 +6,13 @@
 # regression under test). Credentials arrive via -e E2E_EMAIL/E2E_PASSWORD.
 appId: com.mattmoore.samewhere
 ---
-- launchApp:
-    clearState: true
+# State is reset by the workflow before this flow runs, not by Maestro's
+# own state clear. Clearing state deletes the app's data container, and the
+# over-the-air update that carries the JS under test lives inside it, so
+# clearing sends the flow back to whatever JS was embedded in the binary.
+# Running this by hand? Wipe "Library/Application Support/<bundle id>" in the
+# app's data container first.
+- launchApp
 # First launch shows the tour; skip straight past it to the app.
 - extendedWaitUntil:
     visible: 'Skip'

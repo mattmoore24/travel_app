@@ -24,6 +24,7 @@ jobs:
     timeout-minutes: 60
     outputs:
       url: ${{ steps.resolve.outputs.url }}
+      update-id: ${{ steps.update.outputs.id }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,19 +59,32 @@ jobs:
 
       # Reusing a binary means reusing its JavaScript too, which would test
       # the wrong code. Publishing to the channel it listens on ('e2e') keeps
-      # the run honest without spending an iOS build. Builds made before the
-      # channel existed simply have nothing to fetch, so this is a no-op for
-      # them rather than a failure.
+      # the run honest without spending an iOS build.
+      #
+      # The id is carried to the next job and asserted there. A warning used
+      # to be enough here; it was not. A run that quietly kept the binary's
+      # own JS still produced twenty confident screenshots of the wrong code.
       - name: Push current JS to the reused build
+        id: update
         if: ${{ inputs.build != true }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_NO_TELEMETRY: '1'
         run: |
+          set -o pipefail
           npx --yes eas-cli@latest update --branch e2e \
-            --message "e2e ${{ github.sha }}" --non-interactive || {
-            echo "::warning::Could not publish an update; the reused build keeps its bundled JS."
-          }
+            --message "e2e ${{ github.sha }}" --non-interactive --json > update.json
+          ID=$(node -p "
+            const raw = require('fs').readFileSync('update.json','utf8');
+            const u = JSON.parse(raw.slice(raw.search(/[\[{]/)));
+            (Array.isArray(u) ? u : [u]).find((x) => x.platform === 'ios')?.id ?? ''
+          ")
+          if [ -z "$ID" ]; then
+            echo "::error::eas update published nothing for iOS. The run would"
+            echo "::error::have screenshotted the binary's embedded JS instead."
+            exit 1
+          fi
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
 
   drive:
     needs: app
@@ -104,9 +118,63 @@ jobs:
             console.log(phones[0].udid);
           ")
           echo "UDID=$UDID" >> "$GITHUB_ENV"
+          echo "BUNDLE_ID=$(node -p "require('./app.json').expo.ios.bundleIdentifier")" \
+            >> "$GITHUB_ENV"
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" "$APP"
+
+      # THE STALE-SCREENSHOT TRAP, and why the next two steps look odd.
+      #
+      # expo-updates ships with launchWaitMs = 0. It launches on whatever
+      # bundle it already has and fetches the new one in the BACKGROUND, so a
+      # freshly installed app ALWAYS runs the JS that was embedded at build
+      # time. The download only becomes the running code on the NEXT launch.
+      # On top of that, the downloaded update lives inside the app's data
+      # container ("Library/Application Support/.expo-internal"), which
+      # Maestro's `clearState: true` deletes — so every flow threw the
+      # download away and started over.
+      #
+      # Together those two facts meant every screenshot from a reused binary
+      # showed the code of the last EAS BUILD rather than the commit under
+      # test, silently, with the run green. So: launch once to fetch, wait
+      # for the row to reach StatusReady, kill it, and let the flows launch
+      # into it. State is reset between flows by hand below instead of by
+      # `clearState`, so the download survives.
+      - name: Fetch the published update into the app
+        if: ${{ inputs.build != true }}
+        run: |
+          set -o pipefail
+          WANT=$(echo "${{ needs.app.outputs.update-id }}" | tr -d '-' | tr 'A-Z' 'a-z')
+          DATA=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)
+          DB="$DATA/Library/Application Support/.expo-internal/expo-v2.db"
+          xcrun simctl launch "$UDID" "$BUNDLE_ID"
+          READY=0
+          for _ in $(seq 1 45); do
+            # status 1 is StatusReady: manifest AND every asset downloaded.
+            # A row can exist as StatusPending with the bundle still missing.
+            # Guarded on the file existing because sqlite3 CREATES an empty
+            # database at any path it is handed, and an empty expo-v2.db is a
+            # worse outcome than a slow poll.
+            if [ -f "$DB" ]; then
+              READY=$(sqlite3 "$DB" \
+                "select count(*) from updates where status = 1 and lower(hex(id)) = '$WANT';" \
+                2>/dev/null || echo 0)
+            fi
+            if [ "$READY" = "1" ]; then
+              break
+            fi
+            sleep 2
+          done
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" || true
+          if [ "${READY:-0}" != "1" ]; then
+            echo "::error::The app never finished downloading update $WANT, so the"
+            echo "::error::flows would have run the binary's embedded JS. If the"
+            echo "::error::reused build predates the 'e2e' channel or the current"
+            echo "::error::app version, re-run this workflow with build=true."
+            exit 1
+          fi
+          echo "Update $WANT is downloaded; the next launch runs it."
 
       - name: Run Maestro flows
         env:
@@ -120,16 +188,41 @@ jobs:
           curl -Ls https://get.maestro.mobile.dev | bash
           export PATH="$HOME/.maestro/bin:$PATH"
           mkdir -p shots && cd shots
+
+          # Each flow starts from a first-run app: no tour dismissed, nobody
+          # signed in. `clearState: true` would do that AND delete the
+          # downloaded update with it (see the step above), so wipe exactly
+          # what the app persists and nothing else. AsyncStorage holds both
+          # the tour flag and the encrypted Supabase session, so clearing it
+          # signs the account out even though the keychain half survives.
+          reset_state() {
+            xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+            local data
+            data=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)
+            rm -rf "$data/Library/Application Support/$BUNDLE_ID" \
+                   "$data/Documents/RCTAsyncLocalStorage_V1" \
+                   "$data/Documents/RCTAsyncLocalStorage" \
+                   "$data/Library/Caches" \
+                   "$data/tmp"
+          }
+
           # Build the driver on a throwaway launch so flow #1 starts warm.
+          reset_state
           maestro --udid "$UDID" test ../e2e/warmup.yml || true
           STATUS=0
           for flow in ../e2e/flows/*.yml; do
             # One retry: the first attempt pays the driver build cost and
-            # occasionally times out anyway; the second starts warm.
+            # occasionally times out anyway; the second starts warm. Reset
+            # before each attempt, since a half-finished flow leaves the app
+            # signed in and past the tour.
+            reset_state
             maestro --udid "$UDID" test \
               -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" "$flow" \
-              || maestro --udid "$UDID" test \
-                -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" "$flow" \
+              || {
+                reset_state
+                maestro --udid "$UDID" test \
+                  -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" "$flow"
+              } \
               || STATUS=1
           done
           echo "MAESTRO_STATUS=$STATUS" >> "$GITHUB_ENV"

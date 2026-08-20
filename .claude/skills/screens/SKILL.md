@@ -39,6 +39,13 @@ branch.
 `results/RUN` holds the run's timestamp and commit — confirm it matches what
 you expect before trusting the shots.
 
+**A matching commit is necessary and was once not sufficient.** Reused
+binaries run the JS embedded at build time unless the published update is
+downloaded AND applied on a later launch, and for weeks the suite captured
+the wrong code while reporting green (see `traps`, "Over-the-air updates"). The workflow now fails outright rather than falling back to
+embedded JS, so a green run is trustworthy again. If shots ever look like an
+older version of a screen, suspect this before suspecting the screen.
+
 ## 3. Publish it
 
 If `screens.html` came down with the shots, publish that file directly with
