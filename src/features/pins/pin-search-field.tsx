@@ -1,14 +1,8 @@
 import * as Location from 'expo-location';
 import { SymbolView } from 'expo-symbols';
-import { useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, TextInput, View } from 'react-native';
-import Animated, {
-  FadeIn,
-  useAnimatedStyle,
-  useSharedValue,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -30,6 +24,16 @@ const SEARCH_RADIUS_M = 30_000;
 /** Anything geocoded further out than this isn't this city's plan. */
 const MAX_KM_FROM_CENTER = 40;
 
+/**
+ * Long enough that a search fires when you pause, short enough that it never
+ * feels like waiting. Below this, every keystroke would start a request the
+ * next keystroke throws away.
+ */
+const DEBOUNCE_MS = 280;
+
+/** One or two letters match half the city and tell the user nothing. */
+const MIN_QUERY = 2;
+
 function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const rad = Math.PI / 180;
   const dLat = (bLat - aLat) * rad;
@@ -40,19 +44,21 @@ function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number): num
 }
 
 /**
- * Jump the map to an address or area. Two things used to make this look
- * completely broken on a real phone:
+ * Find the place you're planning to be, by typing its name.
  *
- *   1. the input was mounted inside a native visual-effect view, whose
- *      content view does not take touches — the field could never even be
- *      focused, so nothing typed ever happened;
- *   2. every failure collapsed into one silent shake, including "that is a
- *      venue name, and the geocoder only knows addresses".
+ * Suggestions arrive as you type — no button to hunt for, which is what
+ * everyone expects from a search field and what the founder asked for after
+ * using it. Two things this has to get right that a naive typeahead does not:
  *
- * So: a plain opaque field that takes taps, an explicit search button, and a
- * message that says which of those two things went wrong. Panning the map by
- * hand stays the first-class way to place a pin — this is a shortcut, and it
- * now admits when it cannot help.
+ *   1. **Stale responses.** A slow request for "tim" must not overwrite the
+ *      results for "time out market" just because it landed later. Every
+ *      search carries a sequence number and anything but the newest is
+ *      dropped on arrival.
+ *   2. **Honest emptiness.** "No results yet" and "there is genuinely nothing
+ *      by that name here" look identical unless you say which is which.
+ *
+ * Panning the map by hand stays the first-class way to place a pin; this is
+ * the shortcut.
  */
 export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearchFieldProps) {
   const theme = useTheme();
@@ -61,147 +67,167 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
   const [searching, setSearching] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [hits, setHits] = useState<LocalSearchResult[]>([]);
-  const shake = useSharedValue(0);
 
-  const shakeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: shake.value }],
-  }));
+  // Guards against out-of-order responses; see the note above.
+  const seq = useRef(0);
 
-  const fail = (text: string) => {
-    setMessage(text);
-    haptics.error();
-    // eslint-disable-next-line react-hooks/immutability -- Reanimated shared values are mutable by contract
-    shake.value = withSequence(
-      withTiming(-7, { duration: 45 }),
-      withTiming(7, { duration: 90 }),
-      withTiming(-5, { duration: 90 }),
-      withTiming(0, { duration: 45 })
-    );
+  const run = useCallback(
+    async (text: string) => {
+      const mine = ++seq.current;
+      setSearching(true);
+      try {
+        if (venueSearchAvailable) {
+          const places = await searchPlaces({
+            query: text,
+            latitude: cityLat,
+            longitude: cityLng,
+            radiusMeters: SEARCH_RADIUS_M,
+          });
+          if (mine !== seq.current) {
+            return;
+          }
+          const nearby = places.filter(
+            (p) => distanceKm(p.latitude, p.longitude, cityLat, cityLng) <= MAX_KM_FROM_CENTER
+          );
+          if (nearby.length > 0) {
+            setHits(nearby.slice(0, 6));
+            setMessage(null);
+            return;
+          }
+        }
+
+        // Either this build predates the venue module (an over-the-air update
+        // can reach one) or the venue index had nothing. Fall back to
+        // addresses, scoped to the city so "Rua Rosa" lands here.
+        const results = await Location.geocodeAsync(`${text}, ${cityName}`);
+        if (mine !== seq.current) {
+          return;
+        }
+        const near = results.filter(
+          (r) => distanceKm(r.latitude, r.longitude, cityLat, cityLng) <= MAX_KM_FROM_CENTER
+        );
+        if (near.length > 0) {
+          setHits(
+            near.slice(0, 4).map((r) => ({
+              name: text,
+              address: null,
+              locality: cityName,
+              latitude: r.latitude,
+              longitude: r.longitude,
+              category: null,
+            }))
+          );
+          setMessage(null);
+          return;
+        }
+        setHits([]);
+        setMessage(
+          results.length > 0
+            ? `Found that, but not in ${cityName}.`
+            : `Nothing by that name in ${cityName}. Try the street, or drag the map to the spot.`
+        );
+      } catch {
+        if (mine === seq.current) {
+          setHits([]);
+          setMessage('Search is unavailable right now. Drag the map to the spot instead.');
+        }
+      } finally {
+        if (mine === seq.current) {
+          setSearching(false);
+        }
+      }
+    },
+    [cityLat, cityLng, cityName]
+  );
+
+  // Clearing happens on the keystroke, not in an effect: it is a response to
+  // what the user just did, and doing it here keeps the effect below free of
+  // synchronous state writes.
+  const onChangeText = (text: string) => {
+    setQuery(text);
+    if (text.trim().length < MIN_QUERY) {
+      // Abandon anything in flight so a late response cannot repopulate the
+      // list after the field has been emptied.
+      seq.current += 1;
+      setHits([]);
+      setMessage(null);
+      setSearching(false);
+    }
   };
+
+  // Fire on a pause in typing rather than on every keystroke.
+  useEffect(() => {
+    const text = query.trim();
+    if (text.length < MIN_QUERY) {
+      return;
+    }
+    const id = setTimeout(() => run(text), DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [query, run]);
 
   const pick = (result: LocalSearchResult) => {
     haptics.light();
     inputRef.current?.blur();
+    seq.current += 1;
     setHits([]);
     setMessage(null);
+    setQuery('');
     // The venue's own name goes into the pin, so "Pensão Amor" arrives
     // spelled the way the map spells it.
     onFound({ lat: result.latitude, lng: result.longitude }, result.name);
   };
 
-  const search = async () => {
-    const text = query.trim();
-    if (text.length === 0 || searching) {
-      return;
-    }
-    setSearching(true);
-    setMessage(null);
-    setHits([]);
-    try {
-      // Venues first, through Apple's own point-of-interest index. This is
-      // the whole reason the native module exists: CLGeocoder resolves
-      // ADDRESSES, and people dropping a pin think in places.
-      if (venueSearchAvailable) {
-        const places = await searchPlaces({
-          query: text,
-          latitude: cityLat,
-          longitude: cityLng,
-          radiusMeters: SEARCH_RADIUS_M,
-        });
-        const nearby = places.filter(
-          (p) => distanceKm(p.latitude, p.longitude, cityLat, cityLng) <= MAX_KM_FROM_CENTER
-        );
-        if (nearby.length === 1) {
-          pick(nearby[0]);
-          return;
-        }
-        if (nearby.length > 1) {
-          // More than one plausible answer is a question, not a guess.
-          setHits(nearby.slice(0, 6));
-          return;
-        }
-      }
-
-      // Either the build predates the module (an over-the-air update can
-      // reach one) or the venue index had nothing: fall back to addresses,
-      // scoped to the city so "Rua Rosa" lands here.
-      const results = await Location.geocodeAsync(`${text}, ${cityName}`);
-      const hit = results.find(
-        (r) => distanceKm(r.latitude, r.longitude, cityLat, cityLng) <= MAX_KM_FROM_CENTER
-      );
-      if (hit) {
-        haptics.light();
-        inputRef.current?.blur();
-        setMessage(null);
-        onFound({ lat: hit.latitude, lng: hit.longitude }, text);
-      } else if (results.length > 0) {
-        fail(`That one is not in ${cityName}. Try adding the street.`);
-      } else {
-        fail(
-          venueSearchAvailable
-            ? `Nothing by that name in ${cityName}. Try the street, or drag the map to the spot.`
-            : 'No match. Street or area names work best, or drag the map to the spot.'
-        );
-      }
-    } catch {
-      fail('Search is unavailable right now. Drag the map to the spot instead.');
-    } finally {
-      setSearching(false);
-    }
-  };
+  const showClear = query.length > 0;
 
   return (
     <View style={styles.wrap}>
-      <Animated.View style={shakeStyle}>
-        {/* Opaque, not glass: a text field inside a UIVisualEffectView never
-            receives the tap that would focus it. */}
-        <View style={[styles.row, Elevation.floating, { backgroundColor: theme.surface }]}>
-          <SymbolView
-            name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
-            size={17}
-            tintColor={message ? theme.danger : theme.textSecondary}
-          />
-          <TextInput
-            ref={inputRef}
-            value={query}
-            onChangeText={(text) => {
-              setQuery(text);
-              setMessage(null);
-              setHits([]);
-            }}
-            placeholder={
-              venueSearchAvailable ? `Search ${cityName}` : `Street or area in ${cityName}`
-            }
-            placeholderTextColor={theme.textSecondary}
-            returnKeyType="search"
-            autoCorrect={false}
-            onSubmitEditing={search}
-            accessibilityLabel="Search for an address or area"
-            testID="pin-search-input"
-            style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
-          />
-          {searching ? (
-            <ActivityIndicator size="small" color={theme.textSecondary} />
-          ) : query.trim().length > 0 ? (
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel="Search"
-              haptic="soft"
-              scaleTo={0.92}
-              onPress={search}
-              style={[styles.go, { backgroundColor: theme.accent }]}>
-              <SymbolView
-                name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }}
-                size={14}
-                tintColor={theme.onAccent}
-              />
-            </PressableScale>
-          ) : null}
-        </View>
-      </Animated.View>
+      {/* Opaque, not glass: a text field inside a UIVisualEffectView never
+          receives the tap that would focus it. */}
+      <View style={[styles.row, Elevation.floating, { backgroundColor: theme.surface }]}>
+        <SymbolView
+          name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
+          size={17}
+          tintColor={message ? theme.danger : theme.textSecondary}
+        />
+        <TextInput
+          ref={inputRef}
+          value={query}
+          onChangeText={onChangeText}
+          placeholder={
+            venueSearchAvailable ? `Search ${cityName}` : `Street or area in ${cityName}`
+          }
+          placeholderTextColor={theme.textSecondary}
+          returnKeyType="search"
+          autoCorrect={false}
+          autoCapitalize="words"
+          clearButtonMode="never"
+          accessibilityLabel={`Search for a place in ${cityName}`}
+          testID="pin-search-input"
+          style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
+        />
+        {searching ? <ActivityIndicator size="small" color={theme.textSecondary} /> : null}
+        {showClear && !searching ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+            hitSlop={10}
+            onPress={() => {
+              setQuery('');
+              inputRef.current?.focus();
+            }}>
+            <SymbolView
+              name={{ ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' }}
+              size={17}
+              tintColor={theme.textSecondary}
+            />
+          </Pressable>
+        ) : null}
+      </View>
+
       {hits.length > 0 ? (
         <Animated.View
-          entering={FadeIn.duration(160)}
+          entering={FadeIn.duration(140)}
+          exiting={FadeOut.duration(100)}
           style={[styles.results, { backgroundColor: theme.surface }, Elevation.floating]}>
           {hits.map((hit, i) => (
             <PressableScale
@@ -230,7 +256,7 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
 
       {message ? (
         <Animated.View
-          entering={FadeIn.duration(160)}
+          entering={FadeIn.duration(140)}
           style={[styles.message, { backgroundColor: theme.surface }, Elevation.raised]}>
           <ThemedText type="footnote" themeColor="textSecondary">
             {message}
@@ -250,7 +276,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Space.sm,
     paddingLeft: Space.lg,
-    paddingRight: Space.xs,
+    paddingRight: Space.lg,
     height: HitTarget + 6,
     borderRadius: Radius.pill,
   },
@@ -258,13 +284,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     paddingVertical: 0,
-  },
-  go: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   message: {
     paddingHorizontal: Space.lg,
