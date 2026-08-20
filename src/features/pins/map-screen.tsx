@@ -54,6 +54,16 @@ function PinCard({
   const deletePin = useDeletePin(cityId);
   const isOwn = pin.user_id != null && pin.user_id === ownUserId;
 
+  // This card lives inside a Sheet, which is a Modal. Navigating out from
+  // under a presented modal leaves its full-screen scrim alive above the map:
+  // the profile opens, you come back, and every tap afterwards lands on an
+  // invisible overlay instead of the map. It reads as a total freeze. So the
+  // sheet is dismissed FIRST and the push waits for it to finish leaving.
+  const leaveThen = (go: () => void) => {
+    onClose();
+    setTimeout(go, SHEET_EXIT_MS);
+  };
+
   return (
     <ThemedView style={styles.pinCard}>
       <View style={styles.pinCardHeader}>
@@ -101,7 +111,7 @@ function PinCard({
             accessibilityLabel={`View ${pin.display_name ?? 'traveler'}'s profile`}
             scaleTo={0.98}
             haptic="soft"
-            onPress={() => router.push(`/profile/${pin.user_id}`)}>
+            onPress={() => leaveThen(() => router.push(`/profile/${pin.user_id}`))}>
             <ThemedView type="surfaceSunken" style={styles.pinnerCard}>
               <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
                 {photoUrl ? (
@@ -163,26 +173,25 @@ function PinCard({
               <PrimaryButton
                 label="Ask about this plan"
                 onPress={() =>
-                  router.push({
-                    pathname: '/compose-request',
-                    params: {
-                      userId: pin.user_id!,
-                      name: pin.display_name ?? 'Traveler',
-                      photoPath: pin.photo_path ?? '',
-                      source: 'pin',
-                      element: `pin:${pin.venue_name.slice(0, 50)}`,
-                      // Opens with the question already written, because
-                      // "what do I even say" is what stops most people.
-                      draft: `Hey! I would like more details on your plans at ${
-                        pin.place_label ?? pin.venue_name
-                      }.`,
-                    },
-                  })
+                  leaveThen(() =>
+                    router.push({
+                      pathname: '/compose-request',
+                      params: {
+                        userId: pin.user_id!,
+                        name: pin.display_name ?? 'Traveler',
+                        photoPath: pin.photo_path ?? '',
+                        source: 'pin',
+                        element: `pin:${pin.venue_name.slice(0, 50)}`,
+                        // Opens with the question already written, because
+                        // "what do I even say" is what stops most people.
+                        draft: `Hey! I would like more details on your plans at ${
+                          pin.place_label ?? pin.venue_name
+                        }.`,
+                      },
+                    })
+                  )
                 }
               />
-              <ThemedText type="footnote" themeColor="textSecondary" style={styles.centerNote}>
-                If they say yes, your chat opens.
-              </ThemedText>
             </>
           )}
         </>
@@ -190,6 +199,13 @@ function PinCard({
     </ThemedView>
   );
 }
+
+/**
+ * How long to let a Sheet finish leaving before navigating out from under it.
+ * The exit animation is 200ms (components/ui/sheet.tsx); the margin covers a
+ * busy frame, and the cost of being generous is imperceptible.
+ */
+const SHEET_EXIT_MS = 320;
 
 const SEEDED_LABEL = 'One of our picks. Just show up.';
 
@@ -713,9 +729,6 @@ const styles = StyleSheet.create({
   },
   strong: {
     fontWeight: '600',
-  },
-  centerNote: {
-    textAlign: 'center',
   },
   pressed: {
     opacity: 0.7,

@@ -23,6 +23,13 @@ device does something else.
 - **iOS silently drops a modal presentation that starts while another modal
   is dismissing.** Nothing throws; the second screen just never appears.
   Delay the second presentation (~450ms) or wait for the first to finish.
+- **Navigating out from under a presented modal freezes the screen behind
+  it.** `router.push` from inside a Sheet pushes the route into the stack
+  below, but the Sheet's full-screen scrim survives — so when the user comes
+  back, every tap lands on an invisible overlay and the screen looks dead.
+  This is what made the map unusable after viewing a pin's profile. Always
+  dismiss the sheet FIRST and push after its exit animation (`leaveThen` in
+  `features/pins/map-screen.tsx`).
 - **A page inside a flex parent needs `flex: 1` of its own** or it collapses
   to content height and its empty state renders off-screen.
 - **`entering` and an animated style must not both drive `opacity`.** The
