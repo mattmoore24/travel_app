@@ -405,3 +405,22 @@ jobs:
         run: |
           tail -60 build.log 2>/dev/null || true
           tail -60 submit.log 2>/dev/null || true
+          # xcbeautify formats the archive output and drops the stderr of any
+          # script phase that fails, so the reason never reaches this log —
+          # Expo then prints its own guess, which has already been wrong once.
+          # The raw Xcode logs survive in the kept working directory.
+          DIR="$RUNNER_TEMP/eas-local"
+          if [ -d "$DIR" ]; then
+            echo "===== raw Xcode logs under $DIR ====="
+            find "$DIR" -name '*.log' -newermt '-2 hours' 2>/dev/null | head -20
+            find "$DIR" -name '*.log' 2>/dev/null | while read -r f; do
+              if grep -qE '(^|[^A-Za-z])error:|error: |failed with a nonzero exit' "$f" 2>/dev/null; then
+                echo "----- $f"
+                grep -nE '(^|[^A-Za-z])error:|error: |failed with a nonzero exit|Could not resolve|No space left' "$f" \
+                  | head -40
+              fi
+            done
+            echo "===== ExpoModulesJSI script phase context ====="
+            grep -rn -A25 'Build ExpoModulesJSI xcframework' "$DIR" --include='*.log' 2>/dev/null |
+              head -80
+          fi
