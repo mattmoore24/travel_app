@@ -628,8 +628,12 @@ export default function MapScreen() {
           onPosted={(pinId) => {
             setMode('browse');
             setLifted(false);
-            // Selects once the invalidated pins query delivers the new row.
-            setSelectedPinId(pinId);
+            // Sheets are presented as modals, and iOS silently drops a
+            // presentation that begins while another modal is still
+            // dismissing — which left a freshly dropped pin with no
+            // confirmation card at all. Wait for the form to finish leaving,
+            // then select it (the card also needs the refetched row).
+            setTimeout(() => setSelectedPinId(pinId), 450);
           }}
         />
       ) : null}
