@@ -79,6 +79,18 @@ device does something else.
   an OTA update cannot add native code. Consume them through
   `requireOptionalNativeModule`, which returns `null` on an older binary
   instead of throwing, and give the feature a JS fallback.
+- **A local module without a `.podspec` is silently dropped.** Autolinking's
+  `resolve` step returns `null` for any module directory containing no
+  podspec, so the build succeeds, the app ships, and the Swift is simply
+  never compiled in. `search` still lists it, which makes it look fine.
+  Prove linkage before spending a build:
+
+  ```
+  npx expo-modules-autolinking resolve -p apple --json
+  ```
+
+  The module must appear under `modules[].packageName`. Being listed by
+  `search` is not the same thing.
 
 ## Tests
 

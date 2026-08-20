@@ -95,6 +95,10 @@ public class LocalSearchModule: Module {
         promise.resolve(results)
       }
     }
+    // MapKit is main-thread-affine, and `activeSearch` is touched by every
+    // call — pinning the function to the main queue satisfies both without a
+    // lock. The search itself is asynchronous, so nothing blocks here.
+    .runOnQueue(.main)
   }
 }
 
