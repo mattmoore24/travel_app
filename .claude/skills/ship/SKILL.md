@@ -47,7 +47,15 @@ to the working branch, then:
   `action: update`. It publishes `eas update --branch production`. The
   founder gets it by force-quitting and reopening the app — no App Store
   round trip, no build quota.
-- **Build, free:** the same workflow with **`build-local-then-submit`**. This
+- **Build, free — BLOCKED as of 2026-08-20.** `build-local-then-submit`
+  cannot compile Expo SDK 57 on GitHub's `macos-15` image: every installed
+  Xcode fails, in two contradictory ways. See `traps` for the swept table.
+  The mechanism is sound and every other part of the path works (credentials,
+  linkage proof, submit-by-path); only the toolchain is missing. Re-test when
+  Expo or the runner image moves. Until then a native change needs the hosted
+  builder below. What follows describes the path for when it works again.
+- **Build, free (when it works):** the same workflow with
+  **`build-local-then-submit`**. This
   runs the identical EAS build process on GitHub's own macOS runner
   (`eas build --local`), which spends **no** EAS build allowance — Expo's
   servers are contacted only to check the project exists and to bump the

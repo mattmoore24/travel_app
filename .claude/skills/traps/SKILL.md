@@ -101,14 +101,25 @@ device does something else.
   package dependencies". The image also carries Xcode 26.x; select it by
   version, set both `xcode-select` and `DEVELOPER_DIR`, and assert
   `xcrun --sdk iphoneos --show-sdk-version` before building.
-- **But newest is wrong too.** Under Xcode 26.3, Expo's own
-  `expo-modules-jsi/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift:53`
-  fails with "type of expression is ambiguous without a type annotation" —
-  a Swift source break in a dependency, nothing this repo can fix. So the
-  project sits between two walls: a floor at the iOS 26 SDK
-  (`expo-glass-effect`) and a ceiling below 26.3 (`expo-modules-jsi`). The
-  version is a workflow input, defaulted to 26.1; sweep it when Expo's own
-  sources stop compiling. Never pin "latest".
+- **No Xcode on the `macos-15` image can compile Expo SDK 57.** Swept
+  exhaustively on 2026-08-20, six runs, and the bracket closed empty:
+
+  | Xcode              | Result                                                                      |
+  | ------------------ | --------------------------------------------------------------------------- |
+  | 16.4               | iOS 18.5 SDK — cannot see `expo-glass-effect`'s iOS 26 APIs                 |
+  | 26.0, 26.1, 26.1.1 | 16 errors: `'weak' must be a mutable variable` — `weak let` needs Swift 6.2 |
+  | 26.2, 26.3         | 1 error: `JavaScriptCodable+Date.swift:53` type of expression is ambiguous  |
+
+  The two failures are contradictory, and that is the finding:
+  `expo-modules-jsi@57.0.4` **requires** Swift 6.2 (it uses `weak let`) and
+  **fails to compile** on Swift 6.2 and newer. No version satisfies both, so
+  this is Expo's own source-compatibility gap, not a configuration mistake.
+  EAS's hosted builders evidently carry an Xcode point release GitHub's image
+  does not. **Do not re-run this sweep on `macos-15`.** The untried avenue is
+  the `macos-26` runner image, which carries different point releases
+  (26.4.1, 26.5, 26.6) — but those are further along the axis that already
+  fails, so treat it as a long shot, not a plan.
+
 - **`xcbeautify` swallows the stderr of a failing script phase**, and Expo
   then pattern-matches the raw log and prints its own guess — which named
   the wrong subsystem twice here. The real error is in the kept working
