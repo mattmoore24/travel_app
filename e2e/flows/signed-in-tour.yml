@@ -60,9 +60,11 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'venue-input'
 - inputText: 'Rooftop hello from Maestro'
-# With the keyboard up the sheet shows about a screen of form, so scroll the
-# next field into view before tapping it — typing into a field that never
-# took focus silently appends to the previous one.
+# Return first: Name is single-line, so this dismisses the keyboard, and the
+# tap below then lands on the details field. Tapping a second field with the
+# keyboard still up is what silently appended the details onto the name in
+# three earlier runs.
+- pressKey: Enter
 - scrollUntilVisible:
     element:
       id: 'note-input'
