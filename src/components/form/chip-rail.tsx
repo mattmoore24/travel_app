@@ -29,7 +29,7 @@ export function ChipRail<T extends string>({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
+      keyboardShouldPersistTaps="always"
       accessibilityLabel={label}
       contentContainerStyle={styles.row}>
       {options.map((option) => {

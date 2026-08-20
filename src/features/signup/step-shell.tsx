@@ -102,7 +102,7 @@ export function StepShell({
           <ScrollView
             style={styles.flex}
             contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled"
+            keyboardShouldPersistTaps="always"
             keyboardDismissMode="interactive">
             {/* Keyed on the step so each one animates in as its own scene. */}
             <Animated.View

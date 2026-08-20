@@ -38,7 +38,7 @@ export function StepScreen({
           <ScrollView
             style={styles.flex}
             contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled">
+            keyboardShouldPersistTaps="always">
             <ThemedText type="subtitle">{title}</ThemedText>
             {subtitle ? <ThemedText themeColor="textSecondary">{subtitle}</ThemedText> : null}
             {children}

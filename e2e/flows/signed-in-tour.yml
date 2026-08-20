@@ -71,12 +71,16 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'note-input'
 - inputText: 'Meeting by the door around 7'
+# Proves the tap moved focus rather than appending to the previous field.
+- assertVisible: 'Meeting by the door around 7'
 - takeScreenshot: 15-pin-form-filled
 # 'Drop it' sits outside the form's scroll area and the sheet lifts with the
 # keyboard, so it is reachable with the keyboard still up.
 - tapOn: 'Drop it'
+# Exact, deliberately: a loose match here passed a run in which the details
+# had been appended to the name.
 - extendedWaitUntil:
-    visible: 'Rooftop hello from Maestro.*'
+    visible: 'Rooftop hello from Maestro'
     timeout: 20000
 - takeScreenshot: 16-pin-posted
 - tapOn: 'Close'

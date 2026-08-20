@@ -113,7 +113,11 @@ export function PinFormSheet({
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.form}
-        keyboardShouldPersistTaps="handled"
+        // "always", not "handled": with the keyboard up, the scroll view's
+        // dismiss recogniser can swallow the tap meant for another field, so
+        // the text keeps going into the one that still has focus. That is
+        // exactly how a plan's details ended up appended to its name.
+        keyboardShouldPersistTaps="always"
         showsVerticalScrollIndicator={false}>
         <ThemedText type="headline">What is the plan?</ThemedText>
         <FormTextField
