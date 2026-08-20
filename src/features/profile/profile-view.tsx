@@ -290,7 +290,7 @@ export function ProfileView({
             <View style={[styles.fill, { backgroundColor: theme.surfaceSunken }]} />
           )}
           <LinearGradient
-            colors={['transparent', 'rgba(10,12,18,0.05)', 'rgba(10,12,18,0.78)']}
+            colors={['transparent', 'rgba(14,16,32,0.05)', 'rgba(14,16,32,0.82)']}
             locations={[0, 0.55, 1]}
             style={styles.heroScrim}
             pointerEvents="none"
@@ -439,6 +439,12 @@ const styles = StyleSheet.create({
   },
   hero: {
     justifyContent: 'flex-end',
+    // A rounded card, not a photo that happens to reach the screen edge.
+    // Matters most on the travelers tab, which has no navigation header
+    // above it to give the image a top edge.
+    borderRadius: Radius.lg,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
   },
   photoFrame: {
     overflow: 'hidden',

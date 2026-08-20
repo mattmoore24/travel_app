@@ -196,7 +196,13 @@ function TravelerPage({
   return (
     <View style={[styles.page, { width }]}>
       <ScrollView
-        contentContainerStyle={{ paddingBottom: BottomTabInset + 120 }}
+        // Headroom for the notch. This screen has no navigation header, so
+        // without it the hero photo starts at y=0 and the top of every
+        // traveler's face is clipped by the status bar.
+        contentContainerStyle={{
+          paddingTop: insets.top + Space.sm,
+          paddingBottom: BottomTabInset + 120,
+        }}
         showsVerticalScrollIndicator={false}>
         <ProfileView
           profile={shown}
