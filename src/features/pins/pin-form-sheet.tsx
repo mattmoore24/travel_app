@@ -155,16 +155,16 @@ export function PinFormSheet({
           selected={[effectiveDuration]}
           onToggle={(value) => setDuration(value)}
         />
-        <PrimaryButton
-          label="Drop it"
-          loading={createPin.isPending}
-          disabled={venue.trim().length === 0}
-          onPress={submit}
-        />
-        <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
-          Expires on its own (72h max) and never shows where you are.
-        </ThemedText>
       </ScrollView>
+      <PrimaryButton
+        label="Drop it"
+        loading={createPin.isPending}
+        disabled={venue.trim().length === 0}
+        onPress={submit}
+      />
+      <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
+        Expires on its own (72h max) and never shows where you are.
+      </ThemedText>
     </Sheet>
   );
 }
