@@ -166,6 +166,26 @@ jobs:
             fi
             sleep 2
           done
+          if [ "${READY:-0}" != "1" ]; then
+            # Say WHY, while the simulator is still up and holding the
+            # evidence. Guessing at this from an exit code is how the stale
+            # screenshots survived as long as they did.
+            echo "--- app support directory ---"
+            ls -la "$DATA/Library/Application Support" || true
+            echo "--- updates known to the app ---"
+            if [ -f "$DB" ]; then
+              sqlite3 -header "$DB" \
+                "select lower(hex(id)) as id, status, runtime_version,
+                        datetime(commit_time / 1000, 'unixepoch') as committed
+                   from updates order by commit_time desc limit 10;" || true
+            else
+              echo "no expo-v2.db — expo-updates never initialised"
+            fi
+            echo "--- what expo-updates said ---"
+            xcrun simctl spawn "$UDID" log show --style compact --last 5m \
+              --predicate 'subsystem CONTAINS "expo" OR eventMessage CONTAINS "expo-updates"' \
+              2>/dev/null | tail -60 || true
+          fi
           xcrun simctl terminate "$UDID" "$BUNDLE_ID" || true
           if [ "${READY:-0}" != "1" ]; then
             echo "::error::The app never finished downloading update $WANT, so the"
