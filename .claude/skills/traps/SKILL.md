@@ -99,9 +99,21 @@ device does something else.
   SDK cannot compile `expo-glass-effect`'s iOS 26 APIs — the archive dies
   ~3 minutes in, and Expo's error detector mislabels it "Could not resolve
   package dependencies". The image also carries Xcode 26.x; select it by
-  version (`ls -d /Applications/Xcode_*.app | sort -V | tail -1`), set both
-  `xcode-select` and `DEVELOPER_DIR`, and assert
+  version, set both `xcode-select` and `DEVELOPER_DIR`, and assert
   `xcrun --sdk iphoneos --show-sdk-version` before building.
+- **But newest is wrong too.** Under Xcode 26.3, Expo's own
+  `expo-modules-jsi/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift:53`
+  fails with "type of expression is ambiguous without a type annotation" —
+  a Swift source break in a dependency, nothing this repo can fix. So the
+  project sits between two walls: a floor at the iOS 26 SDK
+  (`expo-glass-effect`) and a ceiling below 26.3 (`expo-modules-jsi`). The
+  version is a workflow input, defaulted to 26.1; sweep it when Expo's own
+  sources stop compiling. Never pin "latest".
+- **`xcbeautify` swallows the stderr of a failing script phase**, and Expo
+  then pattern-matches the raw log and prints its own guess — which named
+  the wrong subsystem twice here. The real error is in the kept working
+  directory (`EAS_LOCAL_BUILD_SKIP_CLEANUP=1`), in `logs/*.log`. Grep those
+  for `error:` before believing any summary line.
 
 ## Tests
 

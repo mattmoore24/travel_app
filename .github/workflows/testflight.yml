@@ -49,6 +49,15 @@ on:
         type: choice
         options: [update, build-local-then-submit, build-local, build, submit, build-then-submit]
         default: update
+      xcode:
+        description: >-
+          Xcode version prefix for local builds. This project is pinned
+          between two walls: expo-glass-effect needs the iOS 26 SDK (so not
+          16.x), and expo-modules-jsi does not compile under 26.3's Swift
+          (JavaScriptCodable+Date.swift, ambiguous expression). Sweep this if
+          a build fails to compile Expo's own sources.
+        type: string
+        default: '26.1'
 
 jobs:
   ios:
@@ -219,13 +228,19 @@ jobs:
         run: |
           set -eu
           ls -d /Applications/Xcode*.app
-          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null |
+          # Newest is NOT the answer here, and neither is the default symlink.
+          # The project sits between two walls: expo-glass-effect needs the
+          # iOS 26 SDK, and expo-modules-jsi fails to compile under 26.3's
+          # Swift. So the version is an explicit input, swept when Expo's own
+          # sources stop compiling.
+          WANT="${{ inputs.xcode }}"
+          PICK=$(ls -d /Applications/Xcode_${WANT}*.app 2>/dev/null |
             sed 's#.*/Xcode_##; s#\.app$##' | sort -V | tail -1)
-          if [ -z "$LATEST" ]; then
-            echo "::error::No versioned Xcode on this runner; only the default symlink."
+          if [ -z "$PICK" ]; then
+            echo "::error::No Xcode matching '${WANT}' on this runner. Installed: $(ls -d /Applications/Xcode_*.app | sed 's#.*/Xcode_##; s#\.app$##' | tr '\n' ' ')"
             exit 1
           fi
-          DEV="/Applications/Xcode_${LATEST}.app/Contents/Developer"
+          DEV="/Applications/Xcode_${PICK}.app/Contents/Developer"
           sudo xcode-select -s "$DEV"
           # gym reads DEVELOPER_DIR ahead of the xcode-select symlink, so set
           # both rather than trusting one.
