@@ -15,6 +15,7 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { Elevation, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
+import { searchPlaces, venueSearchAvailable, type LocalSearchResult } from '@/modules/local-search';
 
 type PinSearchFieldProps = {
   cityName: string;
@@ -22,6 +23,9 @@ type PinSearchFieldProps = {
   cityLng: number;
   onFound: (coords: { lat: number; lng: number }, query: string) => void;
 };
+
+/** Results outside this are somebody else's city. */
+const SEARCH_RADIUS_M = 30_000;
 
 /** Anything geocoded further out than this isn't this city's plan. */
 const MAX_KM_FROM_CENTER = 40;
@@ -56,6 +60,7 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [hits, setHits] = useState<LocalSearchResult[]>([]);
   const shake = useSharedValue(0);
 
   const shakeStyle = useAnimatedStyle(() => ({
@@ -74,6 +79,16 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
     );
   };
 
+  const pick = (result: LocalSearchResult) => {
+    haptics.light();
+    inputRef.current?.blur();
+    setHits([]);
+    setMessage(null);
+    // The venue's own name goes into the pin, so "Pensão Amor" arrives
+    // spelled the way the map spells it.
+    onFound({ lat: result.latitude, lng: result.longitude }, result.name);
+  };
+
   const search = async () => {
     const text = query.trim();
     if (text.length === 0 || searching) {
@@ -81,9 +96,35 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
     }
     setSearching(true);
     setMessage(null);
+    setHits([]);
     try {
-      // Scoped to the city so "Rua Rosa" lands here rather than the best
-      // match anywhere on Earth.
+      // Venues first, through Apple's own point-of-interest index. This is
+      // the whole reason the native module exists: CLGeocoder resolves
+      // ADDRESSES, and people dropping a pin think in places.
+      if (venueSearchAvailable) {
+        const places = await searchPlaces({
+          query: text,
+          latitude: cityLat,
+          longitude: cityLng,
+          radiusMeters: SEARCH_RADIUS_M,
+        });
+        const nearby = places.filter(
+          (p) => distanceKm(p.latitude, p.longitude, cityLat, cityLng) <= MAX_KM_FROM_CENTER
+        );
+        if (nearby.length === 1) {
+          pick(nearby[0]);
+          return;
+        }
+        if (nearby.length > 1) {
+          // More than one plausible answer is a question, not a guess.
+          setHits(nearby.slice(0, 6));
+          return;
+        }
+      }
+
+      // Either the build predates the module (an over-the-air update can
+      // reach one) or the venue index had nothing: fall back to addresses,
+      // scoped to the city so "Rua Rosa" lands here.
       const results = await Location.geocodeAsync(`${text}, ${cityName}`);
       const hit = results.find(
         (r) => distanceKm(r.latitude, r.longitude, cityLat, cityLng) <= MAX_KM_FROM_CENTER
@@ -96,8 +137,11 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
       } else if (results.length > 0) {
         fail(`That one is not in ${cityName}. Try adding the street.`);
       } else {
-        // The honest limit: this looks up addresses, not venue names.
-        fail('No match. Street or area names work best, or drag the map to the spot.');
+        fail(
+          venueSearchAvailable
+            ? `Nothing by that name in ${cityName}. Try the street, or drag the map to the spot.`
+            : 'No match. Street or area names work best, or drag the map to the spot.'
+        );
       }
     } catch {
       fail('Search is unavailable right now. Drag the map to the spot instead.');
@@ -123,8 +167,11 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
             onChangeText={(text) => {
               setQuery(text);
               setMessage(null);
+              setHits([]);
             }}
-            placeholder={`Street or area in ${cityName}`}
+            placeholder={
+              venueSearchAvailable ? `Search ${cityName}` : `Street or area in ${cityName}`
+            }
             placeholderTextColor={theme.textSecondary}
             returnKeyType="search"
             autoCorrect={false}
@@ -152,6 +199,35 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
           ) : null}
         </View>
       </Animated.View>
+      {hits.length > 0 ? (
+        <Animated.View
+          entering={FadeIn.duration(160)}
+          style={[styles.results, { backgroundColor: theme.surface }, Elevation.floating]}>
+          {hits.map((hit, i) => (
+            <PressableScale
+              key={`${hit.name}:${hit.latitude}:${hit.longitude}`}
+              accessibilityRole="button"
+              accessibilityLabel={hit.name}
+              haptic="selection"
+              scaleTo={0.99}
+              onPress={() => pick(hit)}
+              style={[
+                styles.result,
+                i > 0
+                  ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.hairline }
+                  : null,
+              ]}>
+              <ThemedText numberOfLines={1}>{hit.name}</ThemedText>
+              {hit.address || hit.locality ? (
+                <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+                  {[hit.address, hit.locality].filter(Boolean).join(', ')}
+                </ThemedText>
+              ) : null}
+            </PressableScale>
+          ))}
+        </Animated.View>
+      ) : null}
+
       {message ? (
         <Animated.View
           entering={FadeIn.duration(160)}
@@ -195,5 +271,15 @@ const styles = StyleSheet.create({
     paddingVertical: Space.sm,
     borderRadius: Radius.md,
     borderCurve: 'continuous',
+  },
+  results: {
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
+  },
+  result: {
+    gap: 2,
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.md,
   },
 });

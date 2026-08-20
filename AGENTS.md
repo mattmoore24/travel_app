@@ -17,5 +17,11 @@ unreachable.
   work unpushed at session end. Never commit secrets — `.env` is gitignored,
   `.env.example` is the template.
 - Before pushing: `npm run typecheck && npx expo lint && npm run format:check && npm test`.
+- **Migrations that change a function's OUT columns must `drop function` first** —
+  Postgres refuses to add columns to an existing `RETURNS TABLE` signature via
+  `create or replace`, and the deploy fails after the migration's earlier
+  statements have already applied. Re-state grants after any drop.
+- **Ship JavaScript over the air** (Actions → TestFlight → `update`); spend an
+  EAS build only when native code or config changes. See docs/APP_STORE.md.
 - iOS-first; keep code cross-platform-clean (no iOS-only APIs outside clearly marked spots
   like SF Symbol tab icons).

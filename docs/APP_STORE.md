@@ -91,6 +91,15 @@ JavaScript ships over the air.
 Rough rule: if `npx expo prebuild` would produce different native projects,
 it needs a build. Otherwise it does not.
 
+**`modules/local-search` is the current example.** It is a local Expo module
+(iOS only, Apple MapKit venue search). Autolinking picks up anything under
+`modules/` with no config change — `nativeModulesDir` defaults to `./modules`
+(expo-modules-autolinking/build/commands/autolinkingOptions.js). Because it is
+native, it only exists in builds made after it was added: the JS side uses
+`requireOptionalNativeModule`, which returns null rather than throwing on older
+binaries, and the pin search falls back to address geocoding there. So the
+feature ships dark over the air and lights up at the next build.
+
 ## App Review notes (paste into the Review Notes field)
 
 > This is a travel friend-finding app, not a dating app, and the design
