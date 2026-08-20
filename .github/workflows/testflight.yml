@@ -17,17 +17,17 @@
 #               TestFlight build already listens on. Free, unlimited, lands
 #               on the next app launch. Use this for almost everything.
 #
-#   build-local Native changes, still free. Runs the identical EAS build
-#               process on GitHub's macOS runner (`eas build --local`), which
-#               spends NO monthly iOS build allowance. Standard macOS runners
-#               are free and unlimited on a PUBLIC repository — once this repo
-#               goes private they bill at 10x against the free minutes, so
-#               revisit this comment at launch.
+#   build-local Free, and currently BROKEN. Runs the identical EAS build
+#               process on GitHub's macOS runner (`eas build --local`),
+#               spending no EAS credit — but no Xcode on the macos-15 image
+#               compiles Expo SDK 57. Kept as a fallback; re-test if the
+#               subscription lapses or the runner image moves.
 #
-#   build       Native changes on EAS's hosted builders. Faster and cached,
-#               but each one spends a build from the plan's monthly quota,
-#               which the free plan exhausts quickly. Reserve it for when the
-#               local path is broken or the quota is genuinely spare.
+#   build       Native changes on EAS's hosted builders. THE WORKING PATH:
+#               the local one cannot compile Expo SDK 57 on any Xcode the
+#               macos-15 image carries (see .claude/skills/traps). Draws on
+#               the paid plan's credit, so batch native changes rather than
+#               building per commit.
 #
 # Two-step first flight, by necessity: the App Store Connect *app record*
 # cannot be created until the bundle id exists, and the bundle id is
@@ -42,10 +42,10 @@ on:
       action:
         description: >-
           update = push JS to the build people already have (free, arrives on
-          next app launch). build-local* compiles on GitHub's macOS runner,
-          which is free on a public repo and spends NO EAS quota — use this
-          for native changes. build/build-then-submit use EAS's hosted
-          builders and spend one of the plan's monthly iOS builds.
+          next app launch) — right for almost everything.
+          build-then-submit = native changes, on EAS's hosted builders, which
+          draw on the paid plan's credit. build-local* is free but currently
+          cannot compile this SDK; see .claude/skills/traps.
         type: choice
         options: [update, build-local-then-submit, build-local, build, submit, build-then-submit]
         default: update
@@ -287,13 +287,26 @@ jobs:
       # here: it looks identical to a good one until somebody taps the feature
       # on a real phone. Prove the two things that could silently be missing.
       - name: Prove the binary carries what it should
-        if: ${{ startsWith(inputs.action, 'build-local') }}
+        if: ${{ contains(inputs.action, 'build') }}
         run: |
           # Deliberately no pipefail: several checks below end in `wc -l` after
           # a grep that is ALLOWED to match nothing, and pipefail would abort
           # on the grep before the readable error message is printed.
           set -eu
+          # The local path leaves the .ipa on disk. A hosted build leaves it
+          # on Expo's CDN, and it needs checking just as much — this step
+          # used to skip hosted builds entirely, which meant the one build
+          # that actually shipped was the one nobody verified.
           IPA="$RUNNER_TEMP/samewhere.ipa"
+          if [ ! -f "$IPA" ]; then
+            URL=$(grep -oE 'https://expo\.dev/artifacts/eas/[^ ]+\.ipa' build.log | head -1)
+            if [ -z "$URL" ]; then
+              echo "::error::No local .ipa and no artifact URL in build.log; nothing to verify."
+              exit 1
+            fi
+            echo "Downloading the hosted artifact to verify it."
+            curl -fsSL -o "$IPA" "$URL"
+          fi
           ls -lh "$IPA"
 
           WORK="$RUNNER_TEMP/verify"
@@ -305,6 +318,9 @@ jobs:
           #    provider is the file the app registers its modules from, so it
           #    is the authoritative answer; the compiled bundle is the backup
           #    if the build cleaned its working directory up anyway.
+          # Only the local path keeps a working directory, so a hosted build
+          # falls through to the compiled-strings check below. That is the
+          # weaker of the two, but it reads the binary that actually ships.
           PROVIDER=$(find "$RUNNER_TEMP/eas-local" -name 'ExpoModulesProvider.swift' 2>/dev/null | head -1)
           if [ -n "$PROVIDER" ]; then
             echo "Modules registered by $PROVIDER:"
@@ -333,8 +349,7 @@ jobs:
           echo "Real Supabase host baked in ($REAL distinct)."
 
           {
-            echo "## Built on this runner, for free"
-            echo "No EAS build quota was spent."
+            echo "## Binary verified"
             echo ""
             echo "- LocalSearchModule linked: yes (per $HOW)"
             echo "- Real Supabase host in the bundle: yes"
