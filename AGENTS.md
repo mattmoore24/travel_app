@@ -25,3 +25,13 @@ unreachable.
   EAS build only when native code or config changes. See docs/APP_STORE.md.
 - iOS-first; keep code cross-platform-clean (no iOS-only APIs outside clearly marked spots
   like SF Symbol tab icons).
+
+# Skills in this repo (`.claude/skills/`)
+
+- **`traps`** — platform bugs this project has already paid for (touch, keyboard, modals,
+  inverted lists, Postgres function signatures). Read it before building a sheet, a
+  keyboard-adjacent form, a list, or a migration.
+- **`ship`** — how a change reaches the founder's phone, and how to tell an over-the-air
+  update from a change that needs an EAS build.
+- **`screens`** — run the simulator suite and review the app as pictures, not as an exit
+  code.

@@ -170,3 +170,52 @@ jobs:
       - name: Propagate flow failures
         if: always()
         run: exit "${MAESTRO_STATUS:-1}"
+
+  # Pixels are the point of this workflow, and twenty loose PNGs on a branch
+  # are not something a person reviews from a phone. Assemble them into one
+  # self-contained page and push it back alongside them. Runs on ubuntu even
+  # though the shots come from macOS: the 10x-billed runner should not be
+  # paying for image encoding.
+  gallery:
+    needs: drive
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Just the encoder, not the whole tree: a full install here would cost
+      # more than the job it serves.
+      - name: Install the image encoder
+        run: npm install --no-save --no-audit --no-fund jimp-compact
+      - name: Build the gallery
+        run: |
+          set -o pipefail
+          git fetch origin e2e-results --depth 1
+          rm -rf shots && mkdir shots
+          git --work-tree=shots checkout FETCH_HEAD -- results
+          # If the run died before publishing, the branch still holds the
+          # PREVIOUS run's shots. Rebuilding a gallery from those and calling
+          # it this run's would be the worst kind of wrong.
+          if ! grep -qx "${{ github.sha }}" shots/results/RUN; then
+            echo "::warning::e2e-results does not hold this run's shots; skipping the gallery."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          node scripts/screens-gallery.mjs shots/results "$RUNNER_TEMP/screens.html"
+      # Onto the same branch the shots live on, because workflow artifacts
+      # cannot be fetched from the development sandbox but a branch can.
+      - name: Publish the gallery to the e2e-results branch
+        if: ${{ env.SKIP != '1' }}
+        run: |
+          set -o pipefail
+          git reset
+          git checkout -B e2e-results FETCH_HEAD
+          cp "$RUNNER_TEMP/screens.html" screens.html
+          git add screens.html
+          git -c user.name=e2e -c user.email=e2e@local commit -m "e2e gallery"
+          git push --force origin e2e-results
