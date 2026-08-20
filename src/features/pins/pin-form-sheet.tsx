@@ -2,7 +2,7 @@ import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 
-import { ChipRow } from '@/components/form/chip-row';
+import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { Sheet } from '@/components/ui/sheet';
@@ -131,29 +131,32 @@ export function PinFormSheet({
           label="Details"
           testID="note-input"
           multiline
-          numberOfLines={3}
+          numberOfLines={2}
           style={styles.noteInput}
-          placeholder="Meeting at the tram stop around 7, staying for one or two"
+          placeholder="Meeting at the tram stop around 7"
           value={note}
           onChangeText={setNote}
         />
-        <ThemedText type="smallBold">What kind of plan?</ThemedText>
-        <ChipRow
+        {/* Single scrolling lines, not wrapped grids: with a keyboard up the
+            sheet has room for about a screen and a half of form, and the
+            three questions below used to eat most of it. */}
+        <ChipRail
+          label="What kind of plan"
           options={CATEGORY_OPTIONS}
-          selected={[category]}
-          onToggle={(value) => setCategory(value)}
+          selected={category}
+          onSelect={setCategory}
         />
-        <ThemedText type="smallBold">When?</ThemedText>
-        <ChipRow
+        <ChipRail
+          label="When"
           options={dateOptions}
-          selected={[effectiveIntent]}
-          onToggle={(value) => setIntentDate(value)}
+          selected={effectiveIntent}
+          onSelect={setIntentDate}
         />
-        <ThemedText type="smallBold">Pin disappears after</ThemedText>
-        <ChipRow
+        <ChipRail
+          label="Pin disappears after"
           options={durationOptions}
-          selected={[effectiveDuration]}
-          onToggle={(value) => setDuration(value)}
+          selected={effectiveDuration}
+          onSelect={setDuration}
         />
       </ScrollView>
       <PrimaryButton
@@ -176,7 +179,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   noteInput: {
-    minHeight: 84,
+    minHeight: 62,
     textAlignVertical: 'top',
   },
   form: {

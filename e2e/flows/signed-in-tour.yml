@@ -60,6 +60,14 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'venue-input'
 - inputText: 'Rooftop hello from Maestro'
+# With the keyboard up the sheet shows about a screen of form, so scroll the
+# next field into view before tapping it — typing into a field that never
+# took focus silently appends to the previous one.
+- scrollUntilVisible:
+    element:
+      id: 'note-input'
+    direction: DOWN
+    timeout: 8000
 - tapOn:
     id: 'note-input'
 - inputText: 'Meeting by the door around 7'
@@ -68,7 +76,7 @@ appId: com.mattmoore.samewhere
 # keyboard, so it is reachable with the keyboard still up.
 - tapOn: 'Drop it'
 - extendedWaitUntil:
-    visible: 'Rooftop hello from Maestro'
+    visible: 'Rooftop hello from Maestro.*'
     timeout: 20000
 - takeScreenshot: 16-pin-posted
 - tapOn: 'Close'
