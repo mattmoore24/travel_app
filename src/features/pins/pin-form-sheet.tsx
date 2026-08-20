@@ -171,9 +171,9 @@ export function PinFormSheet({
 
 const styles = StyleSheet.create({
   scroll: {
-    // Bounded so a long form scrolls inside the sheet instead of pushing it
-    // up the screen.
-    maxHeight: 460,
+    // Shrinks rather than overflows: the sheet is capped to the screen and
+    // grows a keyboard-sized floor, so this is what gives way.
+    flexShrink: 1,
   },
   noteInput: {
     minHeight: 84,

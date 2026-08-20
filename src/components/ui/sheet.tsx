@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   FadeIn,
@@ -36,15 +36,15 @@ export function Sheet({
   const { width, height } = useWindowDimensions();
   const sheetWidth = Math.min(width, MaxContentWidth);
   const keyboard = useAnimatedKeyboard();
-  const [sheetHeight, setSheetHeight] = useState(0);
-  // Clamped against the sheet's own measured height: an unclamped lift
-  // pushes a tall sheet clean off the top of the screen, which is what made
-  // the pin form unreadable while typing. It rises as far as the keyboard
-  // needs and no further than the safe area.
-  const maxLift = Math.max(0, height - insets.top - sheetHeight);
+  // A bottom-anchored sheet should make room for the keyboard, not slide up
+  // over it. Translating worked for short sheets and failed badly for tall
+  // ones — either the top ran off the screen, or (once clamped) it could not
+  // move at all and its own button stayed buried. Growing the bottom padding
+  // pushes the content up by exactly the keyboard's height, and the cap
+  // below lets a long form's scroll area shrink instead of overflowing.
   const keyboardStyle = useAnimatedStyle(() => {
-    const lift = avoidKeyboard ? Math.max(0, keyboard.height.value - insets.bottom) : 0;
-    return { transform: [{ translateY: -Math.min(lift, maxLift) }] };
+    const lift = avoidKeyboard ? keyboard.height.value : 0;
+    return { paddingBottom: insets.bottom + Space.lg + lift };
   });
 
   return (
@@ -60,9 +60,12 @@ export function Sheet({
             entering={FadeIn.duration(Motion.quick)}
             exiting={FadeOut.duration(Motion.quick)}
             style={[StyleSheet.absoluteFill, { backgroundColor: theme.scrim }]}>
+            {/* "Dismiss", not "Close": sheets often contain their own Close
+                button, and two identical labels are ambiguous to VoiceOver
+                and to anything driving the app. */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Close"
+              accessibilityLabel="Dismiss"
               style={StyleSheet.absoluteFill}
               onPress={onClose}
             />
@@ -80,11 +83,10 @@ export function Sheet({
             {
               width: sheetWidth,
               backgroundColor: theme.surface,
-              paddingBottom: insets.bottom + Space.lg,
+              maxHeight: height - insets.top - Space.lg,
             },
             keyboardStyle,
-          ]}
-          onLayout={(event) => setSheetHeight(event.nativeEvent.layout.height)}>
+          ]}>
           <View style={[styles.grabber, { backgroundColor: theme.hairline }]} />
           {children}
         </Animated.View>
