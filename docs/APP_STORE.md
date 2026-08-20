@@ -70,6 +70,27 @@ Declare **Data Linked to You**:
 
 Data used for tracking across apps/companies: **No**.
 
+## Shipping changes without spending a build
+
+EAS free plans include a limited number of iOS builds per month, and this
+project hit 80% of one period's allowance in a day of iterating. Almost none
+of that was necessary: this app's changes are overwhelmingly JavaScript, and
+JavaScript ships over the air.
+
+- **JS/TS, styles, copy, SQL** → Actions -> **TestFlight** -> `update`. No
+  build spent. Testers get it the next time they fully close and reopen the
+  app. `runtimeVersion` follows `app.json`'s `version`, so an update can only
+  ever reach a build able to run it.
+- **Native changes** → a real build is unavoidable: adding or removing a
+  native module, anything under `plugins` in app.json, permission strings,
+  icons/splash, the app version, or an SDK upgrade.
+- **E2E** → `build=false` (the default) reuses the last simulator binary and
+  pushes current JS to its `e2e` channel first. Only pass `build=true` after
+  a native change.
+
+Rough rule: if `npx expo prebuild` would produce different native projects,
+it needs a build. Otherwise it does not.
+
 ## App Review notes (paste into the Review Notes field)
 
 > This is a travel friend-finding app, not a dating app, and the design

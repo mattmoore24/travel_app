@@ -9,6 +9,12 @@
 #   ASC_KEY_P8       full contents of the AuthKey_XXXX.p8 file
 #   APPLE_TEAM_ID    10-char Apple team id (Apple Developer app -> Membership)
 #
+# Most changes here are JavaScript, and JavaScript ships over the air:
+# `action: update` publishes to the channel the TestFlight build already
+# listens on, costs no EAS build quota, and lands on a tester's phone the
+# next time they open the app. Reserve `build` for native or config changes
+# (new native module, app.json/plugin changes, version bumps).
+#
 # Two-step first flight, by necessity: the App Store Connect *app record*
 # cannot be created until the bundle id exists, and the bundle id is
 # registered by the first build's credential setup. So: run `build`, create
@@ -20,10 +26,13 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'What to do'
+        description: >-
+          update = push JS to the TestFlight build people already have (no
+          EAS build spent, arrives on next app launch). build/submit spend an
+          iOS build and are only needed when native code or config changes.
         type: choice
-        options: [build, submit, build-then-submit]
-        default: build
+        options: [update, build, submit, build-then-submit]
+        default: update
 
 jobs:
   ios:
@@ -47,10 +56,13 @@ jobs:
         run: |
           missing=()
           [ -n "$T" ] || missing+=(EXPO_TOKEN)
-          [ -n "$I" ] || missing+=(ASC_ISSUER_ID)
-          [ -n "$K" ] || missing+=(ASC_KEY_ID)
-          [ -n "$P" ] || missing+=(ASC_KEY_P8)
-          [ -n "$A" ] || missing+=(APPLE_TEAM_ID)
+          # Signing secrets only matter when an actual build or submit runs.
+          if [ "${{ inputs.action }}" != "update" ]; then
+            [ -n "$I" ] || missing+=(ASC_ISSUER_ID)
+            [ -n "$K" ] || missing+=(ASC_KEY_ID)
+            [ -n "$P" ] || missing+=(ASC_KEY_P8)
+            [ -n "$A" ] || missing+=(APPLE_TEAM_ID)
+          fi
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing repository secrets: ${missing[*]}"
             exit 1
@@ -59,7 +71,29 @@ jobs:
       - name: Install
         run: npm ci
 
+      # JS-only change: no EAS build, no App Store processing, no waiting for
+      # a tester to install anything. The runtime version comes from the app
+      # version (app.json), so this only ever reaches builds that can run it,
+      # and a native change still needs a real build.
+      - name: Publish an over-the-air update
+        if: ${{ inputs.action == 'update' }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          set -o pipefail
+          npx --yes eas-cli@latest update \
+            --branch production \
+            --message "${{ github.event.head_commit.message || github.sha }}" \
+            --non-interactive 2>&1 | tee update.log
+          {
+            echo "## Over-the-air update published"
+            echo "Testers get it the next time they open the app (close it fully first)."
+            grep -oE 'https://expo\.dev/[^ ]*updates/[^ ]+' update.log | head -1 || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Write the ASC key
+        if: ${{ inputs.action != 'update' }}
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
@@ -72,7 +106,7 @@ jobs:
       # fastlane does: mint the cert and App Store profile via the ASC API
       # and hand them to the build as local credentials.
       - name: Mint signing credentials via the ASC API
-        if: ${{ inputs.action != 'submit' }}
+        if: ${{ inputs.action != 'submit' && inputs.action != 'update' }}
         env:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -113,7 +147,7 @@ jobs:
           "
 
       - name: Build on EAS
-        if: ${{ inputs.action != 'submit' }}
+        if: ${{ inputs.action != 'submit' && inputs.action != 'update' }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_NO_TELEMETRY: '1'
@@ -130,7 +164,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Submit to TestFlight
-        if: ${{ inputs.action != 'build' }}
+        if: ${{ inputs.action != 'build' && inputs.action != 'update' }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}

@@ -26,6 +26,7 @@
     "simulator": {
       "distribution": "internal",
       "environment": "production",
+      "channel": "e2e",
       "ios": {
         "simulator": true
       }

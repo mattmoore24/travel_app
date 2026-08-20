@@ -11,7 +11,10 @@ on:
   workflow_dispatch:
     inputs:
       build:
-        description: 'Build a fresh simulator app first (needed after native changes)'
+        description: >-
+          Build a fresh simulator app first. Only needed after NATIVE changes
+          — JS changes are pushed to the last build over the air, which costs
+          no EAS build quota.
         type: boolean
         default: false
 
@@ -52,6 +55,22 @@ jobs:
             exit 1
           fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      # Reusing a binary means reusing its JavaScript too, which would test
+      # the wrong code. Publishing to the channel it listens on ('e2e') keeps
+      # the run honest without spending an iOS build. Builds made before the
+      # channel existed simply have nothing to fetch, so this is a no-op for
+      # them rather than a failure.
+      - name: Push current JS to the reused build
+        if: ${{ inputs.build != true }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          npx --yes eas-cli@latest update --branch e2e \
+            --message "e2e ${{ github.sha }}" --non-interactive || {
+            echo "::warning::Could not publish an update; the reused build keeps its bundled JS."
+          }
 
   drive:
     needs: app
