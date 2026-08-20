@@ -209,12 +209,34 @@ jobs:
       # exists and to bump the remote build number. Standard macOS runners are
       # free and unlimited on a public repository, which is what makes this
       # cost nothing at all.
+      # /Applications/Xcode.app on GitHub's macOS image is NOT the newest one
+      # installed — on macos-15 it is 16.4, whose iOS 18.5 SDK cannot compile
+      # expo-glass-effect's iOS 26 APIs. The image also carries Xcode 26.x, so
+      # pick the highest version explicitly and refuse to build on a toolchain
+      # that would fail thirty minutes later.
       - name: Pick an Xcode
         if: ${{ startsWith(inputs.action, 'build-local') }}
         run: |
+          set -eu
           ls -d /Applications/Xcode*.app
-          sudo xcode-select -s /Applications/Xcode.app
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null |
+            sed 's#.*/Xcode_##; s#\.app$##' | sort -V | tail -1)
+          if [ -z "$LATEST" ]; then
+            echo "::error::No versioned Xcode on this runner; only the default symlink."
+            exit 1
+          fi
+          DEV="/Applications/Xcode_${LATEST}.app/Contents/Developer"
+          sudo xcode-select -s "$DEV"
+          # gym reads DEVELOPER_DIR ahead of the xcode-select symlink, so set
+          # both rather than trusting one.
+          echo "DEVELOPER_DIR=$DEV" >> "$GITHUB_ENV"
           xcodebuild -version
+          SDK=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "iOS SDK $SDK"
+          if [ "${SDK%%.*}" -lt 26 ]; then
+            echo "::error::iOS SDK $SDK is too old. expo-glass-effect compiles against iOS 26 APIs, so this build would fail in the archive phase."
+            exit 1
+          fi
           pod --version
           fastlane --version | tail -1
 

@@ -92,6 +92,17 @@ device does something else.
   The module must appear under `modules[].packageName`. Being listed by
   `search` is not the same thing.
 
+## CI runners
+
+- **`/Applications/Xcode.app` on a GitHub macOS runner is not the newest
+  Xcode installed.** On `macos-15` the symlink points at 16.4, whose iOS 18.5
+  SDK cannot compile `expo-glass-effect`'s iOS 26 APIs — the archive dies
+  ~3 minutes in, and Expo's error detector mislabels it "Could not resolve
+  package dependencies". The image also carries Xcode 26.x; select it by
+  version (`ls -d /Applications/Xcode_*.app | sort -V | tail -1`), set both
+  `xcode-select` and `DEVELOPER_DIR`, and assert
+  `xcrun --sdk iphoneos --show-sdk-version` before building.
+
 ## Tests
 
 - **Never loosen an assertion to make a run pass.** A wildcard once let a
