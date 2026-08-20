@@ -39,6 +39,8 @@ don't send it.
 
 ## Contact
 
-Questions, appeals, or safety concerns: **mattmoorefb24@gmail.com**
+Questions, appeals, or safety concerns: use **Contact us** in the app
+(Guidelines screen), which reaches a real person and lets us reply to you.
 
-_(Interim address — replace with a dedicated support inbox before launch.)_
+_(A dedicated support address still has to exist for the App Store listing
+and the privacy policy: `SUPPORT_INBOX` in the deploy secrets.)_

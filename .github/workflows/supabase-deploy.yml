@@ -44,6 +44,9 @@ jobs:
       DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       MODERATION_PROMPTS: ${{ secrets.MODERATION_PROMPTS }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      SUPPORT_INBOX: ${{ secrets.SUPPORT_INBOX }}
+      SUPPORT_FROM: ${{ secrets.SUPPORT_FROM }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,6 +89,20 @@ jobs:
           else
             echo "::warning::MODERATION_PROMPTS repo secret is not set — the"\
               "moderation worker fails closed (queues hold) until it exists."
+          fi
+
+      # Separate from the Anthropic block above so a project with a support
+      # inbox but no classifier key (or the other way round) still gets the
+      # half it has configured.
+      - name: Sync support mailer secrets
+        if: ${{ inputs.dry_run != true && env.RESEND_API_KEY != '' && env.SUPPORT_INBOX != '' }}
+        run: |
+          npx --yes "$SUPABASE_CLI" secrets set \
+            RESEND_API_KEY="$RESEND_API_KEY" \
+            SUPPORT_INBOX="$SUPPORT_INBOX" --project-ref "$PROJECT_REF"
+          if [ -n "$SUPPORT_FROM" ]; then
+            npx --yes "$SUPABASE_CLI" secrets set \
+              SUPPORT_FROM="$SUPPORT_FROM" --project-ref "$PROJECT_REF"
           fi
 
       - name: Migrations — after

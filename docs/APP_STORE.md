@@ -12,7 +12,7 @@ in PROGRESS.md). Everything below that needs no membership is already done.
 | In-app account deletion (5.1.1(v))                     | ✅ Profile → Delete account (Edge Function)                                            |
 | UGC safety set (1.2): report/block/moderate            | ✅ Phases 4–5, DB-enforced                                                             |
 | UGC terms agreement + in-app guidelines (1.2)          | ✅ welcome screen consent + `/guidelines` screen                                       |
-| Published developer contact (1.2)                      | ✅ mattmoorefb24@gmail.com (interim — swap for a support inbox before launch)          |
+| Published developer contact (1.2)                      | ⚠️ in-app Contact us form ships; App Store Connect still needs a support address       |
 | Permission purpose strings                             | ✅ photos + camera; microphone suppressed                                              |
 | Encryption declaration (ITSAppUsesNonExemptEncryption) | ✅ app.json — no "missing compliance" stall                                            |
 | EAS build profiles                                     | ✅ eas.json (development/preview/production)                                           |

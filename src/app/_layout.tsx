@@ -185,6 +185,9 @@ function RootNavigator() {
           LAST: the first child of the stack becomes the anchor route, and an
           unguarded screen in that slot swallows every cold start. */}
       <Stack.Screen name="guidelines" options={{ presentation: 'modal' }} />
+      {/* Unguarded for the same reason, and one more: somebody who cannot
+          sign in is the person most likely to need to write in. */}
+      <Stack.Screen name="contact" options={{ presentation: 'modal' }} />
     </Stack>
   );
 }

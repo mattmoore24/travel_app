@@ -455,6 +455,27 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      support_messages: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          reply_to: string;
+          body: string;
+          created_at: string;
+          delivered_at: string | null;
+          delivery_attempts: number;
+          delivery_error: string | null;
+        };
+        Insert: {
+          user_id?: string | null;
+          reply_to: string;
+          body: string;
+        };
+        // Delivery bookkeeping belongs to the mailer, which runs as the
+        // service role. There is no client update path at all.
+        Update: never;
+        Relationships: [];
+      };
       push_tokens: {
         Row: {
           token: string;

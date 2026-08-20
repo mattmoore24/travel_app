@@ -8,12 +8,6 @@
  * them in step when either changes.
  */
 
-/**
- * Founder's inbox for now — swap for a dedicated support address before
- * launch (it also appears in docs/legal/* and on the App Store listing).
- */
-export const SUPPORT_EMAIL = 'mattmoorefb24@gmail.com';
-
 export const ZERO_TOLERANCE =
   'Treat everyone here with respect and kindness. Explicit content, harassment and spam are not allowed.';
 

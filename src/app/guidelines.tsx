@@ -1,12 +1,12 @@
 import { router } from 'expo-router';
-import { Linking, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
-import { GUIDELINE_SECTIONS, SUPPORT_EMAIL, ZERO_TOLERANCE } from '@/constants/policies';
+import { GUIDELINE_SECTIONS, ZERO_TOLERANCE } from '@/constants/policies';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -43,10 +43,8 @@ export default function GuidelinesScreen() {
             </ThemedText>
             <PrimaryButton
               variant="ghost"
-              label={SUPPORT_EMAIL}
-              onPress={() => {
-                Linking.openURL(`mailto:${SUPPORT_EMAIL}`).catch(() => {});
-              }}
+              label="Send us a message"
+              onPress={() => router.push('/contact')}
             />
           </View>
         </ScrollView>

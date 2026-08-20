@@ -66,8 +66,8 @@ confirm: eu-west]). Push notifications are delivered via Expo and Apple.
 ## Your rights
 
 Depending on where you live (including the EU/GDPR), you may have rights to
-access, correct, export, or delete your data. Contact us:
-**mattmoorefb24@gmail.com**.
+access, correct, export, or delete your data. Use **Contact us** in the app,
+or write to the support address on our App Store listing.
 
 ## Children
 
@@ -77,6 +77,6 @@ This app is for adults 18+. We remove underage accounts.
 
 We'll notify you in-app about material changes to this policy.
 
-**Contact**: mattmoorefb24@gmail.com _(interim — replace with a dedicated
-support inbox before launch)_ · [legal entity name and address — still
-required for GDPR]
+**Contact**: the in-app **Contact us** form, or [support address — still
+required here and on the App Store listing] · [legal entity name and address
+— still required for GDPR]

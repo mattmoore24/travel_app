@@ -23,6 +23,11 @@ export function useOwnUserId() {
   return useAuthStore((s) => s.session?.user.id ?? null);
 }
 
+/** The address the account signs in with, for prefilling a reply-to field. */
+export function useOwnEmail() {
+  return useAuthStore((s) => s.session?.user.email ?? null);
+}
+
 export function useOwnProfile() {
   const userId = useOwnUserId();
   return useQuery({
