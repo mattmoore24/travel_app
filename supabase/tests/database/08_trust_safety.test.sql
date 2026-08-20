@@ -128,7 +128,7 @@ select pg_temp.admin();
 select is(
   (select count(*)::int from public.push_queue
     where user_id = '00000000-0000-0000-0000-00000000000a'
-      and title = 'New message request'),
+      and title = 'Someone said hi'),
   1,
   'no request push while the message is held (only the earlier baseline push)'
 );
@@ -160,7 +160,7 @@ select pg_temp.admin();
 select is(
   (select count(*)::int from public.push_queue
     where user_id = '00000000-0000-0000-0000-00000000000a'
-      and title = 'New message request'),
+      and title = 'Someone said hi'),
   2,
   'release enqueues the request push'
 );
@@ -349,7 +349,7 @@ select is(
 select is(
   (select count(*)::int from public.push_queue
     where user_id = '00000000-0000-0000-0000-00000000000c'
-      and title = 'New message request'),
+      and title = 'Someone said hi'),
   0,
   'no push ever reaches the recipient of a suppressed request'
 );

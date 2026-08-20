@@ -75,43 +75,48 @@ returns table (
 language sql
 stable
 as $$
-  -- distinct on (theirs.id): when the viewer has two overlapping trips of
-  -- their own, keep the earliest shared window rather than emitting the
-  -- same traveler trip twice.
-  select distinct on (theirs.id)
-    theirs.id,
-    theirs.user_id,
-    p.display_name,
-    p.age,
-    p.verified,
-    p.languages,
-    p.bio,
-    p.occupation,
-    p.gender,
-    c.id,
-    c.name,
-    c.country_name,
-    greatest(mine.start_date, theirs.start_date),
-    least(mine.end_date, theirs.end_date),
-    theirs.start_date,
-    theirs.end_date,
-    (select pp.storage_path from public.profile_photos pp
-      where pp.user_id = theirs.user_id and pp.moderation_status = 'approved'
-      order by pp.position limit 1)
-  from public.trips mine
-  join public.trips theirs
-    on theirs.city_id = mine.city_id
-   and theirs.user_id <> mine.user_id
-   and theirs.start_date <= mine.end_date
-   and mine.start_date <= theirs.end_date
-   and theirs.end_date >= current_date
-  join public.profiles p on p.user_id = theirs.user_id
-  join public.cities c on c.id = theirs.city_id
-  where mine.user_id = auth.uid()
-    and mine.status = 'active'
-    and mine.end_date >= current_date
-    and greatest(mine.start_date, theirs.start_date) <= current_date + 180
-  order by theirs.id, greatest(mine.start_date, theirs.start_date)
+  -- distinct on (theirs.id) needs ORDER BY to lead with that column, which
+  -- is not the order anyone wants to read; so the dedupe happens inside and
+  -- the soonest-shared-window-first ordering is restored outside it.
+  select *
+  from (
+    select distinct on (theirs.id)
+      theirs.id as trip_id,
+      theirs.user_id as user_id,
+      p.display_name as display_name,
+      p.age as age,
+      p.verified as verified,
+      p.languages as languages,
+      p.bio as bio,
+      p.occupation as occupation,
+      p.gender as gender,
+      c.id as city_id,
+      c.name as city_name,
+      c.country_name as city_country,
+      greatest(mine.start_date, theirs.start_date) as overlap_start,
+      least(mine.end_date, theirs.end_date) as overlap_end,
+      theirs.start_date as their_start,
+      theirs.end_date as their_end,
+      (select pp.storage_path from public.profile_photos pp
+        where pp.user_id = theirs.user_id and pp.moderation_status = 'approved'
+        order by pp.position limit 1) as photo_path
+    from public.trips mine
+    join public.trips theirs
+      on theirs.city_id = mine.city_id
+     and theirs.user_id <> mine.user_id
+     and theirs.start_date <= mine.end_date
+     and mine.start_date <= theirs.end_date
+     and theirs.end_date >= current_date
+    join public.profiles p on p.user_id = theirs.user_id
+    join public.cities c on c.id = theirs.city_id
+    where mine.user_id = auth.uid()
+      and mine.status = 'active'
+      and mine.end_date >= current_date
+      and greatest(mine.start_date, theirs.start_date) <= current_date + 180
+    -- Earliest shared window wins when the viewer has two overlapping trips.
+    order by theirs.id, greatest(mine.start_date, theirs.start_date)
+  ) m
+  order by m.overlap_start, m.their_start, m.trip_id
 $$;
 
 revoke execute on function public.get_matches() from public, anon;

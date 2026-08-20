@@ -103,7 +103,9 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         total={SIGNUP_TOTAL_STEPS}
         title="Who are you?"
         subtitle="The name people will see, and your age."
-        continueDisabled={!basicsOk}
+        // Deliberately pressable while incomplete: pressing is what marks the
+        // fields touched, which is what shows the person WHY it will not go
+        // through. A disabled button just sits there.
         continueLoading={updateProfile.isPending}
         onContinue={() => {
           setTouched(true);
@@ -147,19 +149,20 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         total={SIGNUP_TOTAL_STEPS}
         title="Where are you from?"
         subtitle="Home base, not where you happen to be today."
-        continueDisabled={!homeOk}
         continueLoading={updateProfile.isPending}
-        note={languages.length === 0 ? 'Pick at least one language you can chat in.' : null}
+        note={!homeOk ? 'Add where you are from and at least one language you can chat in.' : null}
         onBack={() => go(3)}
         onContinue={() =>
-          saveAndGo(
-            {
-              home_city: city.trim() || null,
-              home_country: country.trim() || null,
-              languages,
-            },
-            5
-          )
+          !homeOk
+            ? undefined
+            : saveAndGo(
+                {
+                  home_city: city.trim() || null,
+                  home_country: country.trim() || null,
+                  languages,
+                },
+                5
+              )
         }>
         <FormTextField
           label="City"

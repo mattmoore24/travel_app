@@ -152,6 +152,7 @@ export default function RoomScreen() {
   const { data: messages = [] } = useRoomMessages(id ?? null);
   const { data: chats = [] } = useMyChats();
   const join = useJoinRoom(id!);
+  const { data: allReactions = [] } = useReactions(id ?? null);
   const [departure, setDeparture] = useState(addDays(new Date(), 3));
   const [pickingDeparture, setPickingDeparture] = useState(false);
   const leave = useLeaveRoom(id!);
@@ -244,7 +245,16 @@ export default function RoomScreen() {
                   <Pressable
                     key={emoji}
                     onPress={() => {
-                      toggle.mutate({ messageId: reactingTo, emoji, on: true });
+                      // Tapping one you already used takes it back; always
+                      // inserting made it a duplicate-key error instead.
+                      const existing = allReactions.find(
+                        (r) => r.message_id === reactingTo && r.emoji === emoji
+                      );
+                      toggle.mutate({
+                        messageId: reactingTo,
+                        emoji,
+                        on: !existing?.reacted_by_me,
+                      });
                       setReactingTo(null);
                     }}>
                     <ThemedText type="title">{emoji}</ThemedText>

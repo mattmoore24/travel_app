@@ -91,7 +91,7 @@ function Bubble({
   last: boolean;
   reactions: ReactionSummaryRow[];
   onToggleReaction: (emoji: string, on: boolean) => void;
-  onLongPress: () => void;
+  onLongPress?: () => void;
 }) {
   const theme = useTheme();
   const { data: imageUrl } = useChatPhotoUrl(message.image_path);
@@ -106,10 +106,14 @@ function Bubble({
           haptic="none"
           scaleTo={0.98}
           delayLongPress={220}
-          onLongPress={() => {
-            haptics.soft();
-            onLongPress();
-          }}
+          onLongPress={
+            onLongPress
+              ? () => {
+                  haptics.soft();
+                  onLongPress();
+                }
+              : undefined
+          }
           style={[
             styles.bubble,
             {
@@ -198,15 +202,19 @@ export function MessageThread({
             newer.sender_id !== item.sender_id ||
             new Date(newer.created_at).getTime() - new Date(item.created_at).getTime() >=
               GROUP_WINDOW_MS;
+          // The opening message is carried on the chat row, not the messages
+          // table, so there is no id for a reaction to hang off.
+          const reactable = !item.id.startsWith('first:');
           const newDay =
             older == null ||
             new Date(older.created_at).toDateString() !== new Date(item.created_at).toDateString();
 
-          // Inverted list: within a cell the content still runs top to
-          // bottom, and the boundary this separator marks is with the OLDER
-          // message, which sits above. So it is drawn before the bubble.
+          // One wrapper, not two siblings: an inverted list flips the cell
+          // itself, so a fragment's children come out bottom-to-top and the
+          // separator would mark the boundary with the NEWER message. Inside
+          // a single view, ordinary top-to-bottom layout applies again.
           return (
-            <>
+            <View>
               {newDay ? (
                 <View style={styles.dayRow}>
                   <ThemedText type="caption" themeColor="textSecondary">
@@ -221,9 +229,9 @@ export function MessageThread({
                 last={last}
                 reactions={byMessage.get(item.id) ?? []}
                 onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
-                onLongPress={() => setPicking(item.id)}
+                onLongPress={reactable ? () => setPicking(item.id) : undefined}
               />
-            </>
+            </View>
           );
         }}
         ListFooterComponent={footer}

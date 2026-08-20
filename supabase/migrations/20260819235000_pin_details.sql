@@ -4,15 +4,20 @@
 -- is a name, a place, and a couple of lines of detail.
 
 alter table public.pins
-  add column note text check (note is null or char_length(note) <= 200),
+  add column if not exists note text check (note is null or char_length(note) <= 200),
   -- What the map itself calls this spot (reverse-geocoded street or area at
   -- drop time), so the card can say where it is without exposing anybody's
   -- position — this is the PIN's location, entered or confirmed by its
   -- author, never a device reading.
-  add column place_label text check (place_label is null or char_length(place_label) <= 120);
+  add column if not exists place_label text
+    check (place_label is null or char_length(place_label) <= 120);
 
--- Same read paths, now carrying the detail. Signed-in view first.
-create or replace function public.city_pins(p_city_id int)
+-- Same read paths, now carrying the detail. Postgres refuses to add OUT
+-- columns to an existing RETURNS TABLE function, so each one is dropped and
+-- recreated rather than replaced.
+drop function if exists public.city_pins(int);
+
+create function public.city_pins(p_city_id int)
 returns table (
   id uuid,
   user_id uuid,
@@ -60,7 +65,9 @@ as $$
 $$;
 
 -- Guests see the plan too; they still see no person behind it.
-create or replace function public.public_city_pins(p_city_id int)
+drop function if exists public.public_city_pins(int);
+
+create function public.public_city_pins(p_city_id int)
 returns table (
   id uuid,
   venue_name text,
@@ -99,4 +106,7 @@ as $$
   order by p.intent_date, p.created_at
 $$;
 
+-- Re-stating what the drops removed: city_pins stays signed-in only, the
+-- public one is readable by guests (it exposes no person).
+revoke execute on function public.city_pins(int) from public, anon;
 grant execute on function public.public_city_pins(int) to anon, authenticated;

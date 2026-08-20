@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -194,7 +194,7 @@ function TravelerPage({
   ).map((trip) => ({ ...trip, overlap: candidate.overlaps.get(trip.id) ?? null }));
 
   return (
-    <View style={{ width }}>
+    <View style={[styles.page, { width }]}>
       <ScrollView
         contentContainerStyle={{ paddingBottom: BottomTabInset + 120 }}
         showsVerticalScrollIndicator={false}>
@@ -239,12 +239,13 @@ export default function TravelersScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isGuest = useIsGuest();
-  const { data: trips = [] } = useMyTrips();
-  const { data: matches = [] } = useMatches();
+  const tripsQuery = useMyTrips();
+  const matchesQuery = useMatches();
+  const trips = tripsQuery.data ?? [];
+  const matches = matchesQuery.data ?? [];
   const { data: sentRequests = [] } = useSentRequests();
   const { data: chats = [] } = useMyChats();
   const passed = usePassedTravelers();
-  const [index, setIndex] = useState(0);
 
   useEffect(() => {
     analytics.capture('travelers_viewed');
@@ -284,12 +285,15 @@ export default function TravelersScreen() {
   const queue = [...byUser.values()].filter(
     (candidate) => !passed.has(candidate.userId) && !chatByUser.has(candidate.userId)
   );
-  const current = queue[Math.min(index, Math.max(0, queue.length - 1))];
+  // No cursor: passing someone removes them from the queue, so the next
+  // person slides into the same slot. Advancing an index as well is what
+  // would skip every second traveler.
+  const current = queue[0];
 
-  const advance = () => {
-    haptics.selection();
-    setIndex((i) => i + 1);
-  };
+  // Blank frame rather than "add a trip first" while we are still asking.
+  if (tripsQuery.isPending || matchesQuery.isPending) {
+    return <ThemedView style={styles.root} />;
+  }
 
   if (trips.length === 0) {
     return (
@@ -322,10 +326,7 @@ export default function TravelersScreen() {
             <PrimaryButton
               variant="ghost"
               label="Look through them again"
-              onPress={() => {
-                passed.reset();
-                setIndex(0);
-              }}
+              onPress={() => passed.reset()}
             />
           ) : null}
         </View>
@@ -347,8 +348,8 @@ export default function TravelersScreen() {
           chatId={chatId}
           requested={sent?.state === 'sent'}
           onNext={() => {
+            haptics.selection();
             passed.add(current.userId);
-            advance();
           }}
           onSayHi={() => {
             if (chatId) {
@@ -369,7 +370,7 @@ export default function TravelersScreen() {
       </Animated.View>
       <View style={[styles.counter, { top: insets.top + Space.sm }]} pointerEvents="none">
         <ThemedText type="caption" themeColor="textSecondary">
-          {Math.min(index + 1, queue.length)} OF {queue.length}
+          {queue.length} TO GO
         </ThemedText>
       </View>
     </ThemedView>
@@ -379,9 +380,11 @@ export default function TravelersScreen() {
 const styles = StyleSheet.create({
   deck: {
     flex: 1,
-    alignSelf: 'center',
     width: '100%',
     maxWidth: MaxContentWidth,
+  },
+  page: {
+    flex: 1,
   },
   counter: {
     position: 'absolute',

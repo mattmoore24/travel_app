@@ -159,9 +159,11 @@ export function PhotoGrid() {
   const extraWidth =
     width > 0 ? Math.floor((width - GAP * (EXTRA_COLUMNS - 1)) / EXTRA_COLUMNS) : 0;
 
-  const nextPosition = () => {
+  // `from` matters: deleting the main photo leaves slot 0 free, and an
+  // "add another photo" tap must not quietly become the profile photo.
+  const nextPosition = (from = 0) => {
     const taken = new Set(photos.map((p) => p.position));
-    for (let i = 0; i < PHOTOS_MAX; i += 1) {
+    for (let i = from; i < PHOTOS_MAX; i += 1) {
       if (!taken.has(i)) {
         return i;
       }
@@ -169,7 +171,7 @@ export function PhotoGrid() {
     return null;
   };
 
-  const pickAndUpload = async (preferred: number | null) => {
+  const pickAndUpload = async (preferred: number | null, from = 0) => {
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
@@ -184,7 +186,7 @@ export function PhotoGrid() {
     const position =
       preferred != null && !photos.some((p) => p.position === preferred)
         ? preferred
-        : nextPosition();
+        : nextPosition(from);
     if (position == null) {
       return;
     }
@@ -243,13 +245,13 @@ export function PhotoGrid() {
                   main={false}
                 />
               ))}
-              {photos.length < PHOTOS_MAX ? (
+              {extras.length < PHOTOS_MAX - 1 ? (
                 <EmptySlot
                   width={extraWidth}
                   height={extraWidth * RATIO}
                   main={false}
                   busy={uploadPhoto.isPending}
-                  onPress={() => pickAndUpload(null)}
+                  onPress={() => pickAndUpload(null, 1)}
                 />
               ) : null}
             </View>

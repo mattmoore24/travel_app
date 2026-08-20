@@ -1,4 +1,4 @@
--- Establishment rooms, guest mode, reactions, and the 14-day traveler window.
+-- Establishment rooms, guest mode, reactions, and the traveler horizon.
 begin;
 select plan(42);
 
@@ -38,26 +38,28 @@ $$;
 create function pg_temp.lisbon() returns int language sql as
   $$ select id from public.cities where name = 'Lisbon' and country_code = 'PT' $$;
 
--- THE 14-DAY WINDOW ------------------------------------------------------------
--- Alice and Bob overlap next week; Cara overlaps with Alice, but not for
--- another two months.
+-- THE MATCHING HORIZON ---------------------------------------------------------
+-- Alice and Bob overlap next week; Cara overlaps with Alice, but past the
+-- horizon. That window is a season now (180 days, set in
+-- 20260819210000_profile_first) rather than a fortnight, so Cara moves out
+-- with it — the point of the fixture is the boundary, not the number.
 insert into public.trips (user_id, city_id, start_date, end_date) values
-  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), current_date + 2, current_date + 70),
+  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), current_date + 2, current_date + 300),
   ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), current_date + 3, current_date + 9),
-  ('00000000-0000-0000-0000-00000000000c', pg_temp.lisbon(), current_date + 60, current_date + 65);
+  ('00000000-0000-0000-0000-00000000000c', pg_temp.lisbon(), current_date + 200, current_date + 205);
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select is(
   (select count(*)::int from public.get_matches()
     where user_id = '00000000-0000-0000-0000-00000000000b'),
   1,
-  'a traveler arriving within 14 days is matched'
+  'a traveler arriving inside the horizon is matched'
 );
 select is(
   (select count(*)::int from public.get_matches()
     where user_id = '00000000-0000-0000-0000-00000000000c'),
   0,
-  'an overlap that only starts in two months is not shown yet'
+  'an overlap beyond the matching horizon is not shown yet'
 );
 select is(
   (select their_end from public.get_matches()

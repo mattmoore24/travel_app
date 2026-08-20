@@ -1,7 +1,7 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { Alert, Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { FormTextField } from '@/components/form/form-text-field';
@@ -58,6 +58,11 @@ export function TripEditor({
 
   const { data: suggestions = [] } = useCitySearch(city ? '' : query);
   const rangeError = validateTripRange(toISODate(start), toISODate(end));
+  // A trip you are already on started in the past; the picker must not
+  // forbid its own current value.
+  const todayStart = parseISODate(toISODate(new Date()));
+  const tripStart = trip ? parseISODate(trip.startDate) : todayStart;
+  const minDate = tripStart < todayStart ? tripStart : todayStart;
   const busy = createTrip.isPending || updateTrip.isPending || deleteTrip.isPending;
 
   const pickCity = (row: CityRow) => {
@@ -93,17 +98,32 @@ export function TripEditor({
     }
   };
 
-  const remove = async () => {
+  const remove = () => {
     if (!trip) {
       return;
     }
-    try {
-      await deleteTrip.mutateAsync(trip.id);
-      haptics.success();
-      onClose();
-    } catch {
-      // Surfaced by the global mutation error alert.
-    }
+    // Every other destructive action in the app asks first; deleting travel
+    // plans that other people can see should too.
+    Alert.alert(
+      `Delete your trip to ${trip.cityLabel}?`,
+      'It disappears from your profile and from other travelers.',
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteTrip.mutateAsync(trip.id);
+              haptics.success();
+              onClose();
+            } catch {
+              // Surfaced by the global mutation error alert.
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -190,7 +210,7 @@ export function TripEditor({
             value={picking === 'start' ? start : end}
             mode="date"
             display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            minimumDate={new Date()}
+            minimumDate={minDate}
             accentColor={theme.accent}
             themeVariant={theme.canvas === '#FBFAF7' ? 'light' : 'dark'}
             onChange={(_event, selected) => {

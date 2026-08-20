@@ -8,7 +8,12 @@ export const queryClient = new QueryClient({
   // mutateAsync; this cache handler owns the messaging.
   mutationCache: new MutationCache({
     onError: (error) => {
-      const message = error instanceof Error ? error.message : 'Something went wrong.';
+      // Duck-typed, not instanceof: PostgREST hands back a plain object, so
+      // an instanceof check discarded every message the database sent and
+      // showed "Something went wrong." for all of them. Real Error
+      // subclasses (AuthError, StorageError) carry .message too.
+      const raw = (error as { message?: unknown })?.message;
+      const message = typeof raw === 'string' && raw.trim() ? raw : 'Something went wrong.';
       if (Platform.OS === 'web') {
         // react-native-web's Alert is a silent no-op; use the browser dialog.
         (globalThis as { alert?: (msg: string) => void }).alert?.(`Could not save: ${message}`);
