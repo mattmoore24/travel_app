@@ -157,7 +157,18 @@ jobs:
             --platform ios \
             --profile production \
             --non-interactive \
-            --wait 2>&1 | tee build.log
+            --wait 2>&1 | tee build.log || {
+            # EAS refuses the job at queue time once the month's iOS builds
+            # are spent and reports it as a generic "build command failed",
+            # which reads like a compile error. Name it instead, so nobody
+            # goes looking for a bug that isn't there or re-dispatches into
+            # the same wall.
+            if grep -q 'has used its iOS builds' build.log; then
+              RESET=$(grep -oE 'will reset in [^.]*' build.log | head -1)
+              echo "::error::EAS iOS build quota is spent for this month ($RESET). No builder ran, so this attempt consumed nothing. Ship JavaScript with action=update meanwhile, or upgrade the plan at https://expo.dev/accounts/mattmoore24s-team/settings/billing"
+            fi
+            exit 1
+          }
           {
             echo "## iOS build finished"
             grep -oE 'https://expo\.dev/[^ ]*builds/[^ ]+' build.log | head -1 || true

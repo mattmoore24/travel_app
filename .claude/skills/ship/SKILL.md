@@ -50,6 +50,14 @@ to the working branch, then:
 - **Build:** the same workflow with the build action. Costs quota and takes
   ~20 minutes plus Apple processing. Say so before starting one.
 
+**Quota is a hard wall, and simulator builds share it.** Every E2E run with
+`build: true` spends one of the same monthly iOS builds a TestFlight release
+does. When it runs out, EAS refuses the job at queue time — nothing is built
+and nothing is consumed, but the only way forward is to wait for the reset
+(the 1st of the month) or upgrade the plan. The remote `buildNumber` is
+incremented _before_ the refusal, so a rejected attempt still burns a build
+number; do not promise a specific one until a build actually starts.
+
 `runtimeVersion` is `{policy: 'appVersion'}`, so an update only reaches
 builds whose `version` in `app.json` matches. Bumping `version` orphans
 every existing install from future updates until a new build ships.
