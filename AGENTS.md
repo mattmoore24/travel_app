@@ -35,3 +35,11 @@ unreachable.
   update from a change that needs an EAS build.
 - **`screens`** — run the simulator suite and review the app as pictures, not as an exit
   code.
+- **`design-review`** — the brief the `design:*` plugin skills are missing: real palette and
+  contrast contract, type/space/motion scales, per-screen intent, and the banned vocabulary.
+  Load it with `design:design-critique`, `design:accessibility-review` or `design:ux-copy`,
+  and before writing any user-facing string.
+- **`change-review`** — the brief the `engineering:*` plugin skills are missing: the §7 rules
+  a diff may never break, where each kind of test belongs, and what counts as evidence.
+  Load it with `engineering:code-review`, `engineering:testing-strategy` or
+  `engineering:debug`.
