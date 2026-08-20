@@ -368,11 +368,6 @@ export default function TravelersScreen() {
           }}
         />
       </Animated.View>
-      <View style={[styles.counter, { top: insets.top + Space.sm }]} pointerEvents="none">
-        <ThemedText type="caption" themeColor="textSecondary">
-          {queue.length} TO GO
-        </ThemedText>
-      </View>
     </ThemedView>
   );
 }
@@ -385,10 +380,6 @@ const styles = StyleSheet.create({
   },
   page: {
     flex: 1,
-  },
-  counter: {
-    position: 'absolute',
-    right: Space.lg,
   },
   actionBar: {
     position: 'absolute',

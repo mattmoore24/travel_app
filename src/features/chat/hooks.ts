@@ -9,7 +9,7 @@ import {
   sendPhotoMessage,
   signedChatPhotoUrl,
   subscribeToMessages,
-  unmatchChat,
+  leaveChat,
 } from '@/features/chat/api';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
@@ -78,13 +78,13 @@ export function useSendPhoto(chatId: string) {
   });
 }
 
-export function useUnmatch() {
+export function useLeaveChat() {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (chatId: string) => unmatchChat(chatId),
+    mutationFn: (chatId: string) => leaveChat(chatId),
     onSuccess: () => {
-      analytics.capture('unmatched');
+      analytics.capture('left_chat');
       queryClient.invalidateQueries({ queryKey: ['chats', userId] });
       queryClient.invalidateQueries({ queryKey: ['sent-requests', userId] });
     },

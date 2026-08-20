@@ -15,12 +15,12 @@
 export const SUPPORT_EMAIL = 'mattmoorefb24@gmail.com';
 
 export const ZERO_TOLERANCE =
-  'Keep it casual and friendly. Explicit content, harassment and spam are not allowed.';
+  'Treat everyone here with respect and kindness. Explicit content, harassment and spam are not allowed.';
 
 export const GUIDELINE_SECTIONS = [
   {
-    title: 'Keep it casual and friendly',
-    body: 'Explicit content is not allowed. Otherwise, write the way you would to someone you had a good chat with at your hostel.',
+    title: 'Respect and kindness',
+    body: 'Treat everyone here the way you would someone you had a good chat with at your hostel. That is the whole rule.',
   },
   {
     title: 'Moderation',
@@ -33,9 +33,5 @@ export const GUIDELINE_SECTIONS = [
   {
     title: 'Your privacy',
     body: 'We never collect your device location. Pins are plans you type in yourself, and they vanish within 72 hours. Your socials are only shared once you and someone else are chatting. You can delete your account, and everything in it, from your profile whenever you like.',
-  },
-  {
-    title: 'Staying safe',
-    body: 'Meet somewhere public and tell a friend where you are going. Report anything that feels off, you are never wasting our time. Blocking hides you from each other everywhere, straight away.',
   },
 ] as const;

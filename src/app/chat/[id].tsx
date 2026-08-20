@@ -23,7 +23,7 @@ import {
   useMessages,
   useSendMessage,
   useSendPhoto,
-  useUnmatch,
+  useLeaveChat,
 } from '@/features/chat/hooks';
 import { MessageThread } from '@/features/chat/message-thread';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
@@ -49,7 +49,7 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
   const theme = useTheme();
   const { data: photoUrl } = usePhotoUrl(chat.photo_path);
   const block = useBlockUser();
-  const unmatch = useUnmatch();
+  const leaveChat = useLeaveChat();
 
   const confirmBlock = () => {
     Alert.alert(
@@ -70,26 +70,30 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
     );
   };
 
-  const confirmUnmatch = () => {
-    Alert.alert('Unmatch?', 'This deletes the conversation for both of you. It cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Unmatch',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await unmatch.mutateAsync(chat.chat_id);
-            router.back();
-          } catch {
-            // Surfaced by the global mutation error alert.
-          }
+  const confirmLeaveChat = () => {
+    Alert.alert(
+      'Leave this chat?',
+      'This deletes the conversation for both of you. It cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave chat',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await leaveChat.mutateAsync(chat.chat_id);
+              router.back();
+            } catch {
+              // Surfaced by the global mutation error alert.
+            }
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   const openMenu = () => {
-    const actions = ['View profile', 'Report', 'Block', 'Unmatch', 'Cancel'];
+    const actions = ['View profile', 'Report', 'Block', 'Leave chat', 'Cancel'];
     const handle = (index: number) => {
       if (index === 0) {
         router.push(`/profile/${chat.other_user_id}`);
@@ -101,7 +105,7 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
       } else if (index === 2) {
         confirmBlock();
       } else if (index === 3) {
-        confirmUnmatch();
+        confirmLeaveChat();
       }
     };
     if (Platform.OS === 'ios') {
@@ -115,7 +119,7 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
         { text: 'View profile', onPress: () => handle(0) },
         { text: 'Report', onPress: () => handle(1) },
         { text: 'Block', style: 'destructive', onPress: () => handle(2) },
-        { text: 'Unmatch', style: 'destructive', onPress: () => handle(3) },
+        { text: 'Leave chat', style: 'destructive', onPress: () => handle(3) },
         { text: 'Cancel', style: 'cancel' },
       ]);
     }

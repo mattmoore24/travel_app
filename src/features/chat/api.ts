@@ -81,7 +81,7 @@ export function subscribeToMessages(
     .subscribe();
 }
 
-export async function unmatchChat(chatId: string) {
+export async function leaveChat(chatId: string) {
   const { error } = await supabase.rpc('unmatch_chat', { p_chat_id: chatId });
   if (error) {
     throw error;
