@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 import { useOwnUserId } from '@/features/profile/hooks';
 import {
@@ -12,6 +13,7 @@ import {
   unsendMessage,
   removeRoomMessage,
   setChatPref,
+  subscribeToRoomMessages,
 } from '@/features/rooms/api';
 import { analytics } from '@/lib/analytics';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -25,7 +27,8 @@ export function useCityRooms(cityId: number | null) {
 }
 
 export function useRoomMessages(chatId: string | null) {
-  return useQuery({
+  const queryClient = useQueryClient();
+  const query = useQuery({
     queryKey: ['room-messages', chatId],
     queryFn: () => fetchRoomMessages(chatId!),
     enabled: isSupabaseConfigured && chatId != null,
@@ -34,6 +37,23 @@ export function useRoomMessages(chatId: string | null) {
     staleTime: 0,
     refetchOnMount: 'always',
   });
+
+  // Rooms and groups had no subscription at all: two people in the same
+  // hostel chat, both with the screen open, never saw each other's messages
+  // for as long as they stayed on it.
+  useEffect(() => {
+    if (!isSupabaseConfigured || chatId == null) {
+      return;
+    }
+    const channel = subscribeToRoomMessages(chatId, () => {
+      queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
+    });
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [chatId, queryClient]);
+
+  return query;
 }
 
 export function useJoinRoom(chatId: string) {

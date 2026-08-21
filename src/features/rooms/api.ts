@@ -1,3 +1,5 @@
+import type { RealtimeChannel } from '@supabase/supabase-js';
+
 import type { CityRoomRow, ReactionSummaryRow, RoomMessageRow } from '@/lib/database.types';
 import { supabase } from '@/lib/supabase';
 
@@ -20,6 +22,26 @@ export async function fetchRoomMessages(chatId: string) {
     throw error;
   }
   return (data ?? []) as RoomMessageRow[];
+}
+
+/**
+ * Live inserts for one room.
+ *
+ * Its own channel topic, not the direct-chat one, so a room and a chat can
+ * never end up sharing a subscription. The callback gets no payload on
+ * purpose: room_messages is an RPC that joins the sender's name and photo, so
+ * a raw messages row would render as a message from nobody. The caller
+ * refetches instead.
+ */
+export function subscribeToRoomMessages(chatId: string, onInsert: () => void): RealtimeChannel {
+  return supabase
+    .channel(`room-messages:${chatId}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
+      () => onInsert()
+    )
+    .subscribe();
 }
 
 /** Joining asks one question: when do you leave? That drives the expiry. */

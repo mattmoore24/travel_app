@@ -58,6 +58,12 @@ export function useSendMessage(chatId: string | null) {
       queryClient.setQueryData<MessageRow[]>(['messages', chatId], (current = []) =>
         current.some((m) => m.id === message.id) ? current : [message, ...current]
       );
+      // This same hook sends into rooms and groups, which read a DIFFERENT
+      // key and a different row shape (room_messages joins the sender), so
+      // the merge above cannot serve them and they have to refetch. Without
+      // this, posting in a group looked like nothing happened at all until
+      // you left the screen and came back. useSendPhoto already did it.
+      queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
       queryClient.invalidateQueries({ queryKey: ['chats', userId] });
     },
   });

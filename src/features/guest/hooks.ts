@@ -46,6 +46,13 @@ export function useMapPins(cityId: number | null) {
       })) as CityPinRow[];
     },
     enabled: isSupabaseConfigured && cityId != null,
+    // The map tab stays mounted for the whole foreground session, so without
+    // polling a pin that burned out at 22:00 was still drawn at 22:30 —
+    // tappable, with a card offering to message somebody about a plan that is
+    // over. useCityPins (the web list) already carried this; the native map,
+    // which is what anyone actually uses, did not.
+    staleTime: 20_000,
+    refetchInterval: 60_000,
   });
 }
 
@@ -65,6 +72,10 @@ export function useMapHeat(cityId: number | null, date: string | null) {
       return (data ?? []) as HeatCellRow[];
     },
     enabled: isSupabaseConfigured && cityId != null,
+    // Same reason as the pins it sits under: the heat has to cool as pins
+    // burn out, not at the next cold start.
+    staleTime: 20_000,
+    refetchInterval: 60_000,
   });
 }
 
