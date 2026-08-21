@@ -32,11 +32,18 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'email-input'
 - inputText: ${E2E_EMAIL}
-- tapOn:
-    id: 'password-input'
+# Return, not a tap on the next field. Tapping a second field while the
+# keyboard is up does not reliably move focus under XCUITest, and run 23
+# proved it does not on a device either: the password box came back empty.
+# The form now wires Return to move along, so this is the human path too.
+- pressKey: Enter
 - inputText: ${E2E_PASSWORD}
-- hideKeyboard
-- tapOn: 'Sign in'
+# Return on the password field submits. hideKeyboard has no reliable dismiss
+# path here, which is where the same run actually died.
+- pressKey: Enter
+- tapOn:
+    text: 'Sign in'
+    optional: true
 # iOS offers to save the password after a successful sign-in; the system
 # dialog owns the a11y tree and eats taps until dismissed. It can arrive
 # seconds late, so wait for it, dismiss it, and guard once more below.

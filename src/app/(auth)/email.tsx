@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { TextInput } from 'react-native';
 
 import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -18,6 +19,10 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Return moves you along. Tapping the next field while the keyboard is up
+  // does not reliably move focus on iOS — that is how a sign-in attempt came
+  // back with the password box still empty.
+  const passwordField = useRef<TextInput>(null);
 
   const canSubmit = email.trim().length > 3 && password.length > 0;
 
@@ -53,18 +58,30 @@ export default function SignInScreen() {
         label="Email"
         testID="email-input"
         autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
         autoComplete="email"
         keyboardType="email-address"
         textContentType="emailAddress"
+        returnKeyType="next"
+        submitBehavior="submit"
+        onSubmitEditing={() => passwordField.current?.focus()}
         value={email}
         onChangeText={setEmail}
       />
       <FormTextField
         label="Password"
         testID="password-input"
+        inputRef={passwordField}
         secureTextEntry
         autoComplete="current-password"
         textContentType="password"
+        returnKeyType="go"
+        onSubmitEditing={() => {
+          if (canSubmit) {
+            submit();
+          }
+        }}
         value={password}
         onChangeText={setPassword}
         error={error}

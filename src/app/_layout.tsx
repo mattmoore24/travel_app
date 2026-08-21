@@ -10,7 +10,7 @@ import { useIntroState } from '@/features/intro/store';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing, SplashField } from '@/constants/theme';
+import { Colors, Spacing, SplashField } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
 import { useAuthListener } from '@/features/auth/use-auth-listener';
@@ -192,11 +192,31 @@ function RootNavigator() {
   );
 }
 
+/**
+ * React Navigation's own chrome, in Nocturne's values. Its DarkTheme paints
+ * #121212 cards on #010101, which is close enough to the app's ground to look
+ * like a mistake and far enough to show a seam at every header.
+ */
+const NavigationTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: Colors.dark.canvas,
+    card: Colors.dark.canvas,
+    text: Colors.dark.text,
+    border: Colors.dark.hairline,
+    primary: Colors.dark.accent,
+    notification: Colors.dark.highlight,
+  },
+};
+
 export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Always dark: Nocturne is a dark theme (constants/theme.ts). */}
-      <ThemeProvider value={DarkTheme}>
+      {/* Always dark, and in Nocturne's own values: React Navigation's
+          DarkTheme paints near-black chrome (#121212 cards on #010101), which
+          left a visible seam wherever a navigation header met the page. */}
+      <ThemeProvider value={NavigationTheme}>
         <AnimatedSplashOverlay />
         <RootNavigator />
       </ThemeProvider>

@@ -9,15 +9,29 @@ type FormTextFieldProps = TextInputProps & {
   label?: string;
   error?: string | null;
   hint?: string;
+  /**
+   * A handle on the input itself, so one field's Return key can move focus
+   * to the next. Tapping from field to field with the keyboard already up is
+   * not reliable on iOS, and this app has now been bitten by that twice.
+   */
+  inputRef?: React.Ref<TextInput>;
 };
 
-export function FormTextField({ label, error, hint, style, ...rest }: FormTextFieldProps) {
+export function FormTextField({
+  label,
+  error,
+  hint,
+  style,
+  inputRef,
+  ...rest
+}: FormTextFieldProps) {
   const theme = useTheme();
 
   return (
     <ThemedView style={styles.container}>
       {label ? <ThemedText type="smallBold">{label}</ThemedText> : null}
       <TextInput
+        ref={inputRef}
         placeholderTextColor={theme.textSecondary}
         style={[
           styles.input,

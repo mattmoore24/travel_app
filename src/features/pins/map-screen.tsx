@@ -546,13 +546,20 @@ export default function MapScreen() {
                     haptic="selection"
                     scaleTo={0.94}
                     onPress={() => selectCity(city.city_id)}>
-                    <ThemedView
-                      type={selected ? 'backgroundSelected' : 'background'}
-                      style={styles.cityChip}>
-                      <ThemedText type={selected ? 'smallBold' : 'small'}>
+                    <View
+                      style={[
+                        styles.cityChip,
+                        {
+                          backgroundColor: selected ? theme.accent : theme.surface,
+                          borderColor: selected ? 'transparent' : theme.hairline,
+                        },
+                      ]}>
+                      <ThemedText
+                        type={selected ? 'smallBold' : 'small'}
+                        style={selected ? { color: theme.onAccent } : undefined}>
                         {city.cities.name}
                       </ThemedText>
-                    </ThemedView>
+                    </View>
                   </PressableScale>
                 );
               })}
@@ -568,19 +575,18 @@ export default function MapScreen() {
                   haptic="selection"
                   scaleTo={0.94}
                   onPress={() => setDateFilter(filter.value)}>
-                  <GlassSurface
-                    variant="clear"
-                    tinted={selected}
-                    radius={Radius.pill}
-                    pointerEvents="none">
-                    <View style={styles.dateChip}>
-                      <ThemedText
-                        type="footnote"
-                        style={selected ? styles.chipSelected : undefined}>
-                        {filter.label}
-                      </ThemedText>
-                    </View>
-                  </GlassSurface>
+                  <View
+                    style={[
+                      styles.dateChip,
+                      {
+                        backgroundColor: selected ? theme.accentSoft : theme.surface,
+                        borderColor: selected ? theme.accent : theme.hairline,
+                      },
+                    ]}>
+                    <ThemedText type="footnote" style={selected ? styles.chipSelected : undefined}>
+                      {filter.label}
+                    </ThemedText>
+                  </View>
                 </PressableScale>
               );
             })}
@@ -654,21 +660,22 @@ export default function MapScreen() {
           exiting={FadeOut.duration(Motion.quick)}
           style={[styles.dock, { bottom: BottomTabInset + insets.bottom + Space.sm }]}
           pointerEvents="box-none">
-          {/* The one warm-accent action on the screen: amber belongs to the
-              moments that light a fire, and this is the app's core act. */}
+          {/* Blue, not amber. Amber now belongs to the pins themselves, and
+              two warm things on one screen means neither reads as the
+              signal. Controls are the brand blue; the map's content is warm. */}
           <PressableScale
             accessibilityRole="button"
             accessibilityLabel="Drop a pin"
             scaleTo={0.95}
             haptic="light"
             onPress={enterPlaceMode}
-            style={[styles.dockButton, { backgroundColor: theme.highlight }]}>
+            style={[styles.dockButton, { backgroundColor: theme.accent }]}>
             <SymbolView
               name={{ ios: 'mappin.and.ellipse', android: 'add_location', web: 'add_location' }}
               size={19}
-              tintColor={theme.onHighlight}
+              tintColor={theme.onAccent}
             />
-            <Text style={[styles.dockLabel, { color: theme.onHighlight }]}>Drop a pin</Text>
+            <Text style={[styles.dockLabel, { color: theme.onAccent }]}>Drop a pin</Text>
           </PressableScale>
         </Animated.View>
       ) : null}
@@ -752,6 +759,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.lg,
     paddingVertical: Space.sm,
     borderRadius: Radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
     shadowOpacity: 0.15,
     shadowRadius: 6,
@@ -766,7 +774,9 @@ const styles = StyleSheet.create({
   },
   dateChip: {
     paddingHorizontal: Space.md,
-    paddingVertical: Space.xs,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   searchWrap: {
     flex: 1,

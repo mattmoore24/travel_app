@@ -54,13 +54,17 @@ export function Segmented<T extends string>({
       accessibilityRole="tablist"
       accessibilityLabel={accessibilityLabel}
       onLayout={onLayout}
-      style={[styles.track, { backgroundColor: theme.surfaceSunken }]}>
+      style={[styles.track, { backgroundColor: theme.surface }]}>
       {segmentWidth > 0 ? (
         <Animated.View
           style={[
             styles.thumb,
             thumbStyle,
-            { width: segmentWidth, backgroundColor: theme.surface },
+            {
+              width: segmentWidth,
+              backgroundColor: theme.surfaceSunken,
+              borderColor: theme.hairline,
+            },
           ]}
         />
       ) : null}
@@ -103,6 +107,7 @@ const styles = StyleSheet.create({
   },
   thumb: {
     position: 'absolute',
+    borderWidth: StyleSheet.hairlineWidth,
     top: INSET,
     left: INSET,
     bottom: INSET,

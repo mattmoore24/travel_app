@@ -77,11 +77,23 @@ function GuestTravelers() {
             <ThemedText type="footnote" themeColor="textSecondary">
               In {featured.city_name} right now
             </ThemedText>
+            {/* Compact on purpose. This is a teaser with a sign-up card
+                under it, and a full-height photo pushed that card off the
+                bottom of the screen — where a guest never saw the one thing
+                the screen is asking them to do. A guest's feed also arrives
+                without photo paths, so the placeholder is the common case
+                here, not the rare one. */}
             <ThemedView type="backgroundElement" style={styles.card}>
               <View style={[styles.cardPhoto, { backgroundColor: theme.backgroundSelected }]}>
                 {photoUrl ? (
                   <Image source={{ uri: photoUrl }} style={styles.cardImage} contentFit="cover" />
-                ) : null}
+                ) : (
+                  <SymbolView
+                    name={{ ios: 'person.fill', android: 'person', web: 'person' }}
+                    size={34}
+                    tintColor={theme.textSecondary}
+                  />
+                )}
               </View>
               <View style={styles.cardBody}>
                 <View style={styles.nameRow}>
@@ -473,7 +485,9 @@ const styles = StyleSheet.create({
   },
   cardPhoto: {
     width: '100%',
-    aspectRatio: 4 / 5,
+    // Wide rather than tall: a portrait crop here filled the screen and
+    // buried the sign-up card below the fold.
+    aspectRatio: 16 / 9,
     alignItems: 'center',
     justifyContent: 'center',
   },
