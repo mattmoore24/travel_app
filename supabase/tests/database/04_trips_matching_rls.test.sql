@@ -1,7 +1,7 @@
 -- Trips: other users' travel plans are readable ONLY through a genuine
 -- city+date overlap with one of the caller's own active trips.
 begin;
-select plan(17);
+select plan(21);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -184,6 +184,57 @@ select is(
   (select count(*)::int from public.search_cities('%%')),
   0,
   'LIKE wildcards in input are inert'
+);
+
+-- THE DAY OF SLACK ------------------------------------------------------------
+-- These comparisons run on the SERVER's clock, which is UTC, while the app
+-- filters the same trips on the DEVICE's. West of UTC that gap opens every
+-- evening, so a trip whose last day is still "today" on the phone has to keep
+-- matching after the server has already rolled over.
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+delete from public.trips;
+
+insert into public.trips (user_id, city_id, start_date, end_date, status) values
+  ('00000000-0000-0000-0000-00000000000a',
+    (select id from public.cities limit 1),
+    current_date - 6, current_date - 1, 'active'),
+  ('00000000-0000-0000-0000-00000000000b',
+    (select id from public.cities limit 1),
+    current_date - 6, current_date - 1, 'active');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  (select count(*)::int from public.get_matches()
+    where user_id = '00000000-0000-0000-0000-00000000000b'),
+  1,
+  'a trip that ended yesterday on the server still matches, because it may be today on the phone'
+);
+select is(
+  (select count(*)::int from public.traveler_trips('00000000-0000-0000-0000-00000000000b')),
+  1,
+  'and their profile still lists it'
+);
+
+-- Both sides of the join got the slack, not just theirs.
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select is(
+  (select count(*)::int from public.get_matches()
+    where user_id = '00000000-0000-0000-0000-00000000000a'),
+  1,
+  'and it is symmetric, so the caller_s own last day counts the same way'
+);
+
+-- Nothing can sit in the gap: the trigger draws its line in the same place.
+select throws_ok(
+  $$insert into public.trips (user_id, city_id, start_date, end_date, status)
+    values ('00000000-0000-0000-0000-00000000000b',
+      (select id from public.cities limit 1),
+      current_date - 9, current_date - 2, 'active')$$,
+  '23514',
+  'trip is entirely in the past',
+  'a trip that ended the day before that cannot exist at all, so matching and the trigger agree'
 );
 
 -- Signed-out clients get nothing.

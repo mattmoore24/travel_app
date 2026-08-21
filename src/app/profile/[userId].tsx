@@ -20,7 +20,7 @@ import { useTravelerTrips } from '@/features/trips/hooks';
  * handles never showed up after connecting).
  */
 export default function PublicProfileScreen() {
-  const { userId } = useLocalSearchParams<{ userId: string }>();
+  const { userId, from } = useLocalSearchParams<{ userId: string; from?: string }>();
   const profileQuery = usePublicProfile(userId ?? null);
   const { data: photos = [] } = usePublicPhotos(userId ?? null);
   const { data: trips = [] } = useTravelerTrips(userId ?? null);
@@ -76,6 +76,10 @@ export default function PublicProfileScreen() {
                     name: profile.display_name ?? 'Traveler',
                     photoPath: photos[0]?.storage_path ?? null,
                     target,
+                    // What the database will be asked to verify. Reached from
+                    // a pin, that is the pin; from anywhere else, a shared
+                    // trip, which is how this screen is otherwise found.
+                    source: from === 'pin' ? 'pin' : 'trip_match',
                   })
           }
           actions={

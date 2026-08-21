@@ -240,6 +240,9 @@ function TravelerPage({
                     name: shown.display_name ?? 'Traveler',
                     photoPath: candidate.match.photo_path ?? null,
                     target,
+                    // This tab only ever shows people whose trip overlaps
+                    // yours, which is exactly what the trip_match check wants.
+                    source: 'trip_match',
                   })
               : undefined
           }

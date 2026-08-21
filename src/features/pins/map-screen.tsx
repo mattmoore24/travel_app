@@ -126,7 +126,16 @@ function PinCard({
             accessibilityLabel={`View ${pin.display_name ?? 'traveler'}'s profile`}
             scaleTo={0.98}
             haptic="soft"
-            onPress={() => leaveThen(() => router.push(`/profile/${pin.user_id}`))}>
+            onPress={() =>
+              leaveThen(() =>
+                router.push({
+                  pathname: '/profile/[userId]',
+                  // Carried so a reply started from this profile is sent as a
+                  // pin request. A pinner does not have to share your dates.
+                  params: { userId: pin.user_id!, from: 'pin' },
+                })
+              )
+            }>
             <ThemedView type="surfaceSunken" style={styles.pinnerCard}>
               <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
                 {photoUrl ? (
