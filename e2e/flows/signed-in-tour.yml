@@ -162,9 +162,16 @@ appId: com.mattmoore.samewhere
 - takeScreenshot: 24-group-message
 # The founder's exact complaint: the picker used to be a slab in the middle
 # of the screen. This shot is the evidence that it now sits on the message.
+#
+# Run 31 photographed no menu at all here, which is what sent groups onto the
+# same MessageThread a one-to-one chat uses instead of the room's own older
+# reaction strip. Waiting on the scrim's Dismiss button rather than a fixed
+# animation delay, so a menu that does not open fails HERE, naming the menu,
+# rather than three steps later on a missing emoji.
 - longPressOn: 'First one in'
-- waitForAnimationToEnd:
-    timeout: 2000
+- extendedWaitUntil:
+    visible: 'Dismiss'
+    timeout: 10000
 - takeScreenshot: 25-reaction-menu
 - tapOn: '❤️'
 - waitForAnimationToEnd:

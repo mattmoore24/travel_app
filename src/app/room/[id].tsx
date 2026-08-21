@@ -1,9 +1,8 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useMemo, useState } from 'react';
-import { Alert, FlatList, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -11,132 +10,27 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { LoadError } from '@/components/ui/load-error';
-import { GlassSurface } from '@/components/ui/glass-surface';
 import { PhotoButton } from '@/components/ui/photo-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { MaxContentWidth, Radius, Space } from '@/constants/theme';
-import { useChatPhotoUrl, useSendMessage, useSendPhoto } from '@/features/chat/hooks';
+import { useSendMessage, useSendPhoto } from '@/features/chat/hooks';
 import { useIsGuest } from '@/features/guest/hooks';
-import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
+import { useOwnUserId } from '@/features/profile/hooks';
 import { useGroup } from '@/features/groups/hooks';
 import { useMyChats } from '@/features/matching/hooks';
+import { MessageThread } from '@/features/chat/message-thread';
 import {
   useJoinRoom,
   useLeaveRoom,
   useReactions,
+  useRemoveRoomMessage,
   useRoomMessages,
   useToggleReaction,
+  useUnsendMessage,
 } from '@/features/rooms/hooks';
 import { addDays, formatDateRange, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
-import type { RoomMessageRow } from '@/lib/database.types';
-
-/** The six that cover almost every reaction; "more" is a follow-up. */
-const QUICK_REACTIONS = ['👍', '🙌', '🔥', '😂', '❤️', '👀'];
-
-function Reactions({
-  messageId,
-  chatId,
-  canReact,
-}: {
-  messageId: string;
-  chatId: string;
-  canReact: boolean;
-}) {
-  const theme = useTheme();
-  const { data: all = [] } = useReactions(chatId);
-  const toggle = useToggleReaction(chatId);
-  const mine = all.filter((r) => r.message_id === messageId);
-  if (mine.length === 0) {
-    return null;
-  }
-  return (
-    <View style={styles.reactionRow}>
-      {mine.map((r) => (
-        <Pressable
-          key={r.emoji}
-          disabled={!canReact}
-          onPress={() => toggle.mutate({ messageId, emoji: r.emoji, on: !r.reacted_by_me })}>
-          <View
-            style={[
-              styles.reactionPill,
-              {
-                backgroundColor: r.reacted_by_me ? theme.accentSoft : theme.surfaceSunken,
-              },
-            ]}>
-            <ThemedText type="footnote">
-              {r.emoji} {r.count}
-            </ThemedText>
-          </View>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
-function RoomMessage({
-  message,
-  chatId,
-  canReact,
-  ownId,
-  onLongPress,
-}: {
-  message: RoomMessageRow;
-  chatId: string;
-  canReact: boolean;
-  ownId: string | null;
-  onLongPress: () => void;
-}) {
-  const theme = useTheme();
-  const { data: avatarUrl } = usePhotoUrl(message.photo_path);
-  const { data: imageUrl } = useChatPhotoUrl(message.image_path);
-  const isOwn = message.sender_id === ownId;
-
-  if (message.removed) {
-    return (
-      <ThemedText type="footnote" themeColor="textSecondary" style={styles.removed}>
-        Message removed by the host
-      </ThemedText>
-    );
-  }
-
-  return (
-    <Pressable onLongPress={canReact ? onLongPress : undefined} delayLongPress={250}>
-      <View style={[styles.messageRow, isOwn && styles.messageRowOwn]}>
-        {!isOwn ? (
-          <View style={[styles.avatar, { backgroundColor: theme.surfaceSunken }]}>
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.fill} contentFit="cover" />
-            ) : null}
-          </View>
-        ) : null}
-        <View style={styles.messageBody}>
-          {!isOwn ? (
-            <ThemedText type="footnote" themeColor="textSecondary">
-              {message.display_name ?? 'Traveler'}
-            </ThemedText>
-          ) : null}
-          <View
-            style={[
-              styles.bubble,
-              { backgroundColor: isOwn ? theme.accent : theme.surfaceSunken },
-            ]}>
-            {imageUrl ? (
-              <Image source={{ uri: imageUrl }} style={styles.photo} contentFit="cover" />
-            ) : null}
-            {message.body ? (
-              <ThemedText type="body" style={isOwn ? { color: theme.onAccent } : undefined}>
-                {message.body}
-              </ThemedText>
-            ) : null}
-          </View>
-          <Reactions messageId={message.id} chatId={chatId} canReact={canReact} />
-        </View>
-      </View>
-    </Pressable>
-  );
-}
 
 export default function RoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -144,7 +38,7 @@ export default function RoomScreen() {
   const isGuest = useIsGuest();
   const ownId = useOwnUserId();
   const messagesQuery = useRoomMessages(id ?? null);
-  const messages = messagesQuery.data ?? [];
+  const messages = useMemo(() => messagesQuery.data ?? [], [messagesQuery.data]);
   const chatsQuery = useMyChats();
   const join = useJoinRoom(id!);
   const { data: allReactions = [] } = useReactions(id ?? null);
@@ -154,8 +48,9 @@ export default function RoomScreen() {
   const send = useSendMessage(id!);
   const sendPhoto = useSendPhoto(id!);
   const toggle = useToggleReaction(id!);
+  const unsend = useUnsendMessage(id!);
+  const removeMessage = useRemoveRoomMessage(id!);
   const [draft, setDraft] = useState('');
-  const [reactingTo, setReactingTo] = useState<string | null>(null);
 
   const membership = useMemo(
     () => chatsQuery.data?.find((c) => c.chat_id === id) ?? null,
@@ -169,6 +64,25 @@ export default function RoomScreen() {
   // The database refuses the insert anyway; this is so the person is told
   // why instead of watching Send do nothing.
   const muted = isGroup && group.speaking === 'granted' && membership?.my_role === 'member';
+  const isModerator = membership?.my_role === 'admin';
+
+  // The shared thread speaks MessageRow. A room row carries three things it
+  // does not — who sent it by name, their photo, and whether a moderator took
+  // it down — so those are looked up by id rather than widened into the type
+  // every direct chat would then have to carry.
+  const byId = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
+  const thread = useMemo(
+    () =>
+      messages.map((m) => ({
+        id: m.id,
+        chat_id: id!,
+        sender_id: m.sender_id,
+        body: m.body,
+        image_path: m.image_path,
+        created_at: m.created_at,
+      })),
+    [messages, id]
+  );
 
   const submitJoin = (departure: Date) => {
     join.mutate(toISODate(departure), {
@@ -242,16 +156,46 @@ export default function RoomScreen() {
             )}
           </View>
 
-          <FlatList
-            style={styles.flex}
-            inverted
-            data={messages}
-            keyExtractor={(m) => m.id}
-            contentContainerStyle={styles.messages}
-            // An inverted list draws this the right way up, so it does not
-            // need flipping. A brand new group used to be a screen-height of
-            // nothing with a composer under it.
-            ListEmptyComponent={
+          {/* The same thread a one-to-one chat uses, so a group gets the
+              anchored long-press menu rather than the slab this screen used
+              to put in the middle of the screen. What a group adds is who
+              said it and what a host took down. */}
+          <MessageThread
+            messages={thread}
+            ownUserId={ownId}
+            reactions={allReactions}
+            canReact={isMember}
+            authorFor={(m) => byId.get(m.id)?.display_name ?? 'Someone'}
+            noteFor={(m) => (byId.get(m.id)?.removed ? 'Message removed by the host' : null)}
+            onToggleReaction={(messageId, emoji, on) => toggle.mutate({ messageId, emoji, on })}
+            onUnsend={(messageId) =>
+              Alert.alert('Unsend this message?', 'It disappears for everyone.', [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Unsend',
+                  style: 'destructive',
+                  onPress: () => unsend.mutate(messageId),
+                },
+              ])
+            }
+            onReport={
+              isModerator
+                ? (messageId) =>
+                    Alert.alert(
+                      'Remove this message?',
+                      'It disappears for everyone in the group.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Remove',
+                          style: 'destructive',
+                          onPress: () => removeMessage.mutate(messageId),
+                        },
+                      ]
+                    )
+                : undefined
+            }
+            emptyState={
               messagesQuery.isError ? (
                 <LoadError
                   compact
@@ -270,52 +214,7 @@ export default function RoomScreen() {
                 </View>
               )
             }
-            renderItem={({ item }) => (
-              <RoomMessage
-                message={item}
-                chatId={id!}
-                canReact={isMember}
-                ownId={ownId}
-                onLongPress={() => setReactingTo(item.id)}
-              />
-            )}
           />
-
-          {reactingTo ? (
-            <GlassSurface variant="clear" radius={Radius.pill} style={styles.reactionBar}>
-              <View style={styles.reactionBarInner}>
-                {QUICK_REACTIONS.map((emoji) => (
-                  <Pressable
-                    key={emoji}
-                    accessibilityRole="button"
-                    accessibilityLabel={`React with ${emoji}`}
-                    hitSlop={8}
-                    onPress={() => {
-                      // Tapping one you already used takes it back; always
-                      // inserting made it a duplicate-key error instead.
-                      const existing = allReactions.find(
-                        (r) => r.message_id === reactingTo && r.emoji === emoji
-                      );
-                      toggle.mutate({
-                        messageId: reactingTo,
-                        emoji,
-                        on: !existing?.reacted_by_me,
-                      });
-                      setReactingTo(null);
-                    }}>
-                    <ThemedText type="title">{emoji}</ThemedText>
-                  </Pressable>
-                ))}
-                <Pressable onPress={() => setReactingTo(null)} hitSlop={8}>
-                  <SymbolView
-                    name={{ ios: 'xmark', android: 'close', web: 'close' }}
-                    size={16}
-                    tintColor={theme.textSecondary}
-                  />
-                </Pressable>
-              </View>
-            </GlassSurface>
-          ) : null}
 
           {chatsQuery.isPending ? null : isGuest ? (
             <View style={styles.footer}>
@@ -462,34 +361,9 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
   },
-  messages: {
-    gap: Space.md,
-    paddingHorizontal: Space.lg,
-    paddingVertical: Space.md,
-  },
-  messageRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: Space.sm,
-  },
-  messageRowOwn: {
-    justifyContent: 'flex-end',
-  },
   messageBody: {
     flexShrink: 1,
     gap: Space.xs,
-  },
-  avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  bubble: {
-    borderRadius: Radius.lg,
-    paddingHorizontal: Space.md,
-    paddingVertical: Space.sm,
-    overflow: 'hidden',
   },
   photo: {
     width: 220,
@@ -501,9 +375,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  removed: {
-    fontStyle: 'italic',
-  },
   reactionRow: {
     flexDirection: 'row',
     gap: Space.xs,
@@ -512,17 +383,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     paddingHorizontal: Space.sm,
     paddingVertical: 2,
-  },
-  reactionBar: {
-    alignSelf: 'center',
-    marginBottom: Space.sm,
-  },
-  reactionBarInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Space.md,
-    paddingHorizontal: Space.lg,
-    paddingVertical: Space.sm,
   },
   mutedNotice: {
     padding: Space.md,

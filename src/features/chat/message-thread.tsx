@@ -367,6 +367,10 @@ export function MessageThread({
   onToggleReaction,
   onUnsend,
   onReport,
+  authorFor,
+  noteFor,
+  canReact = true,
+  emptyState,
   footer,
 }: {
   messages: MessageRow[];
@@ -377,6 +381,22 @@ export function MessageThread({
   onToggleReaction: (messageId: string, emoji: string, on: boolean) => void;
   onUnsend?: (messageId: string) => void;
   onReport?: (messageId: string) => void;
+  /**
+   * Who sent this, when that is not obvious. A one-to-one chat has exactly
+   * two people and needs no labels; a group has to say. Returns the name to
+   * print above the first bubble of somebody's run, or null for no label.
+   */
+  authorFor?: (message: MessageRow) => string | null;
+  /**
+   * A line to print in place of the bubble — "Message removed by the host".
+   * Unsending already works this way internally; this opens the same slot to
+   * a caller whose messages can be taken down by somebody else.
+   */
+  noteFor?: (message: MessageRow) => string | null;
+  /** False for somebody reading a room they have not joined. */
+  canReact?: boolean;
+  /** Shown when there are no messages at all. */
+  emptyState?: React.ReactElement | null;
   /** Rendered above the oldest message (inverted list ⇒ list footer). */
   footer?: React.ReactElement | null;
 }) {
@@ -430,8 +450,13 @@ export function MessageThread({
               GROUP_WINDOW_MS;
           // The opening message is carried on the chat row, not the messages
           // table, so there is no id for a reaction to hang off.
-          const reactable = !item.id.startsWith('first:') && !unsent;
+          const note = noteFor?.(item) ?? null;
+          const reactable = canReact && !item.id.startsWith('first:') && !unsent && note == null;
           const separator = separatorFor(item, older);
+          // Only above the first bubble of a run, and never above your own:
+          // repeating a name on every bubble is what makes a group thread
+          // unreadable.
+          const author = !mine && !grouped ? (authorFor?.(item) ?? null) : null;
 
           // One wrapper, not two siblings: an inverted list flips the cell
           // itself, so a fragment's children come out bottom-to-top and the
@@ -446,7 +471,18 @@ export function MessageThread({
                   </ThemedText>
                 </View>
               ) : null}
-              {unsent ? (
+              {author ? (
+                <ThemedText type="caption" themeColor="textSecondary" style={styles.authorLine}>
+                  {author}
+                </ThemedText>
+              ) : null}
+              {note ? (
+                <View style={[styles.bubbleRow, styles.unsentRow, styles.rowTheirs]}>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    {note}
+                  </ThemedText>
+                </View>
+              ) : unsent ? (
                 <UnsentNote mine={mine} otherName={otherName} />
               ) : (
                 <Bubble
@@ -473,6 +509,7 @@ export function MessageThread({
             </View>
           );
         }}
+        ListEmptyComponent={emptyState}
         ListFooterComponent={footer}
       />
 
@@ -514,6 +551,10 @@ export function MessageThread({
 }
 
 const styles = StyleSheet.create({
+  authorLine: {
+    marginLeft: Space.lg,
+    marginBottom: 2,
+  },
   flex: {
     flex: 1,
   },
