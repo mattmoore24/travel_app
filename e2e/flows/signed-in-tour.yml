@@ -114,8 +114,20 @@ appId: com.mattmoore.samewhere
 # anyone can start one, so this reaches the new-group form, the room, the
 # composer and the reaction menu without needing a second person to accept a
 # message request.
-- back
+#
+# Relaunch rather than `back`. Run 28 failed here with the profile still on
+# screen at the tap that follows, so whatever `back` does on iOS it did not
+# pop this push. A relaunch keeps the session (it is in the keychain, not the
+# data container) and lands on the Map tab every time, which is all this
+# needs. Do NOT add clearState — see the note at the top of this file.
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
 - tapOn: 'Chat'
+- extendedWaitUntil:
+    visible: 'Groups'
+    timeout: 15000
 - takeScreenshot: 20-chat-individual
 - tapOn: 'Groups'
 - takeScreenshot: 21-chat-groups
