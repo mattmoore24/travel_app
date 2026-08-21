@@ -150,6 +150,16 @@ device does something else.
   fix in `e2e.yml`: publish, launch once to fetch, poll `expo-v2.db` for the
   published update id at `status = 1`, then reset only the app's own storage
   between flows. Never re-introduce a state clear into a flow.
+- **The iOS Simulator on GitHub's macOS runners cannot reach `u.expo.dev`.**
+  expo-updates' own log says
+  `checkError: "Unknown error: A TLS error caused the secure connection to
+failed"` on every check, while the same simulator talks to Supabase over
+  HTTPS without trouble, and expo-updates uses a plain
+  `URLSessionConfiguration.default`. So it is the environment, not the
+  config. The consequence is that **the E2E suite cannot be run against a
+  reused binary**: `build: true` is the default and the only honest setting
+  there, because it embeds the code under test rather than relying on a
+  fetch that always fails.
 - **The updates database is `expo-v11.db` today, and was `expo-v2.db` not
   long ago.** `UpdatesDatabaseInitialization.swift` bumps the filename with
   every schema migration. Anything inspecting it must glob `expo-v*.db`;

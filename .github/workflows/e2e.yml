@@ -12,11 +12,13 @@ on:
     inputs:
       build:
         description: >-
-          Build a fresh simulator app first. Only needed after NATIVE changes
-          — JS changes are pushed to the last build over the air, which costs
-          no EAS build quota.
+          Build a fresh simulator app, so the binary EMBEDS the code under
+          test. Leave this on. The over-the-air path is cheaper and does not
+          work here: the simulator on GitHub's macOS runners cannot complete a
+          TLS handshake with u.expo.dev, so expo-updates never fetches
+          anything and the run would picture the previous build's JS.
         type: boolean
-        default: false
+        default: true
 
 jobs:
   app:

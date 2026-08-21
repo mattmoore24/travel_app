@@ -6,10 +6,10 @@ macOS runner, drives it with [Maestro](https://maestro.mobile.dev) flows from
 branch — which is how a session with no macOS and no phone gets eyes on the
 actual product. Fetch that branch and read the PNGs.
 
-Inputs: `build=true` produces a fresh EAS simulator build first (uses an EAS
-build credit, ~10 min); `build=false` reuses the latest finished one and
-pushes the current JS to it over the air — right for JS-only changes, wrong
-after native changes, which an update cannot carry.
+Inputs: `build` defaults to **true** and should stay there. It produces a
+fresh EAS simulator build, which costs a build credit and about twenty
+minutes, and is the only way this suite can picture the code under test —
+see below.
 
 ## How the current JS actually reaches the simulator
 
@@ -23,6 +23,17 @@ it already has and fetches the new one in the background. The download
 becomes the running code on the _next_ launch. Worse, it is stored inside the
 app's data container, so Maestro's `clearState` deletes it before it is ever
 applied.
+
+**And on GitHub's runners, that fetch never succeeds.** expo-updates' own
+log records `A TLS error caused the secure connection to fail` on every
+check against `u.expo.dev`, while the same simulator talks to Supabase over
+HTTPS in the same run and expo-updates uses a plain
+`URLSessionConfiguration.default`. It is the environment, not the config,
+and it is why `build` defaults to true: a fresh binary embeds the commit
+under test and needs no fetch at all.
+
+The freshness gate below stays in place regardless. If the update path ever
+starts working, it will be trusted only when it can prove itself.
 
 The workflow therefore does three things, and all three matter:
 
