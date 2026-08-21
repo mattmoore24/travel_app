@@ -32,4 +32,9 @@ jobs:
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          # Test accounts plus-address a real inbox, because hosted Supabase
+          # rejects RFC-2606 domains outright. Set this secret and the address
+          # stops being a literal in a public repo — see the fallback in the
+          # script, which exists only until it is.
+          TEST_EMAIL_BASE: ${{ secrets.TEST_EMAIL_BASE }}
         run: node tests/live/live-backend.mjs

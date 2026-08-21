@@ -103,6 +103,9 @@ jobs:
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          # Set this secret and the throwaway account's address stops being a
+          # literal in a public repo. See the fallback in e2e/account.mjs.
+          TEST_EMAIL_BASE: ${{ secrets.TEST_EMAIL_BASE }}
         run: node e2e/account.mjs setup
 
       - name: Install the app into a booted simulator

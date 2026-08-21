@@ -157,10 +157,15 @@ JavaScript went out as iOS update `01a021dc-3e10-7739-a751-7245751b745c`
    skips that step, which is the expected state. The push channel above needs
    nothing but the one SQL statement, so the form can be live before either
    secret exists.
-2. **A real support address** is still needed for App Store Connect and the
+2. **Add a `TEST_EMAIL_BASE` repo secret** (any inbox you can read; the
+   suites plus-address it). Hosted Supabase rejects RFC-2606 test domains, so
+   the test accounts fall back to a literal address in `tests/live` and
+   `e2e/account.mjs` — both workflows now pass the secret when it exists, and
+   the literal comes out of the repo the moment it does.
+3. **A real support address** is still needed for App Store Connect and the
    privacy policy. Removing the personal one from the repo stops it
    spreading; it does not unpublish it from the history of a public repo.
-3. **Visual reviews now cost a build credit.** The simulator on GitHub's
+4. **Visual reviews now cost a build credit.** The simulator on GitHub's
    runners cannot reach `u.expo.dev` (TLS, environment not config), so the
    E2E suite must embed the code under test rather than fetch it. `build`
    defaults to true for that reason; see the `traps` skill.
