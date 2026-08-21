@@ -110,10 +110,25 @@ jobs:
           EXPO_NO_TELEMETRY: '1'
         run: |
           set -o pipefail
-          npx --yes eas-cli@latest update \
+          # Bounded, because it has hung. Run 18 sat on this step for 37
+          # minutes with no output and would have held the runner for the
+          # job's full 150 before anyone noticed; the same command in the
+          # E2E workflow finishes in about two. A publish that has not
+          # finished in ten is stuck, and should say so.
+          # `|| status=$?` and not a bare call: the step runs under `bash -e`,
+          # which would exit on the failing pipeline before the status could
+          # be read, and 124 is the whole point.
+          status=0
+          timeout 600 npx --yes eas-cli@latest update \
             --branch production \
             --message "${{ github.event.head_commit.message || github.sha }}" \
-            --non-interactive 2>&1 | tee update.log
+            --non-interactive 2>&1 | tee update.log || status=$?
+          if [ "$status" -eq 124 ]; then
+            echo "::error::eas update did not finish in 10 minutes. Nothing was"
+            echo "::error::published. Re-run; if it hangs again, check status.expo.dev."
+            exit 1
+          fi
+          [ "$status" -eq 0 ] || exit "$status"
           {
             echo "## Over-the-air update published"
             echo "Testers get it the next time they open the app (close it fully first)."
