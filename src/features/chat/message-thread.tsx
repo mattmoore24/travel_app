@@ -38,6 +38,9 @@ const ACTION_HEIGHT = 44;
  */
 const ACTION_SCALE_CAP = 1.4;
 
+/** Stand-in bubble height before a measurement arrives. */
+const UNMEASURED_HEIGHT = 80;
+
 /** Breathing room between the lifted message and the things around it. */
 const LIFT_GAP = 10;
 
@@ -156,7 +159,7 @@ function Bubble({
   last: boolean;
   reactions: ReactionSummaryRow[];
   onToggleReaction: (emoji: string, on: boolean) => void;
-  onOpenMenu?: (rect: Rect) => void;
+  onOpenMenu?: (rect: Rect | null) => void;
 }) {
   const anchor = useRef<View>(null);
 
@@ -182,9 +185,19 @@ function Bubble({
             onLongPress={
               onOpenMenu
                 ? () => {
+                    haptics.soft();
+                    // Open FIRST, then refine. This used to happen only
+                    // inside measureInWindow's callback, which made the whole
+                    // interaction a silent no-op whenever that callback did
+                    // not arrive — the press did nothing at all, with no way
+                    // to tell that from a press that never registered. A long
+                    // press must always produce a menu; where it sits is a
+                    // detail the measurement improves a frame later.
+                    onOpenMenu(null);
                     anchor.current?.measureInWindow((x, y, width, height) => {
-                      haptics.soft();
-                      onOpenMenu({ x, y, width, height });
+                      if (width > 0 && height > 0) {
+                        onOpenMenu({ x, y, width, height });
+                      }
                     });
                   }
                 : undefined
@@ -495,13 +508,27 @@ export function MessageThread({
                   onOpenMenu={
                     reactable
                       ? (rect) =>
-                          setMenu({
-                            ...rect,
-                            x: rect.x - origin.current.x,
-                            y: rect.y - origin.current.y,
-                            message: item,
-                            mine,
-                          })
+                          setMenu(
+                            rect
+                              ? {
+                                  ...rect,
+                                  x: rect.x - origin.current.x,
+                                  y: rect.y - origin.current.y,
+                                  message: item,
+                                  mine,
+                                }
+                              : // No measurement yet. The menu still opens,
+                                // parked mid-thread, and jumps onto the
+                                // message when the measurement lands.
+                                {
+                                  x: 0,
+                                  y: Math.max(hostHeight / 2 - UNMEASURED_HEIGHT / 2, 0),
+                                  width: 0,
+                                  height: UNMEASURED_HEIGHT,
+                                  message: item,
+                                  mine,
+                                }
+                          )
                       : undefined
                   }
                 />
