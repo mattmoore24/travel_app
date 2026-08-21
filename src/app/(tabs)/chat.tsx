@@ -2,7 +2,15 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
@@ -15,6 +23,7 @@ import { useChatPref, useCityRooms } from '@/features/rooms/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { LoadError } from '@/components/ui/load-error';
 import { BottomTabInset, HitTarget, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useIncomingRequests, useMyChats, useRespondToRequest } from '@/features/matching/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
@@ -313,8 +322,14 @@ function promptForInvite() {
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const isGuest = useIsGuest();
-  const { data: requests = [] } = useIncomingRequests();
-  const { data: chats = [] } = useMyChats();
+  const requestsQuery = useIncomingRequests();
+  const chatsQuery = useMyChats();
+  const requests = requestsQuery.data ?? [];
+  const chats = chatsQuery.data ?? [];
+  const refresh = () => {
+    chatsQuery.refetch();
+    requestsQuery.refetch();
+  };
   const { data: launchCities = [] } = useLaunchCities();
   const { data: archived = [] } = useMyChats(true);
   const cityId = launchCities[0]?.city_id ?? null;
@@ -376,6 +391,15 @@ export default function ChatScreen() {
     <ThemedView style={styles.root}>
       <ScrollView
         style={styles.scroll}
+        // Nothing in the app could be pulled to refresh, on the one screen
+        // people reflexively pull.
+        refreshControl={
+          <RefreshControl
+            refreshing={chatsQuery.isFetching || requestsQuery.isFetching}
+            onRefresh={refresh}
+            tintColor={theme.textSecondary}
+          />
+        }
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
@@ -438,8 +462,16 @@ export default function ChatScreen() {
           </>
         ) : null}
 
+        {/* A failed fetch is not an empty inbox. Somebody with six
+            conversations, offline, was being told they had none. */}
+        {chatsQuery.isError ? (
+          <LoadError compact what="your chats" error={chatsQuery.error} onRetry={refresh} />
+        ) : null}
+
         {/* Empty states are invitations: name the one next action. */}
-        {inTab.length === 0 && (tab === 'groups' || requests.length === 0) ? (
+        {!chatsQuery.isError &&
+        inTab.length === 0 &&
+        (tab === 'groups' || requests.length === 0) ? (
           <ThemedView type="backgroundElement" style={styles.emptyCard}>
             <ThemedText type="callout">
               {tab === 'groups' ? 'No groups yet' : 'No chats yet'}

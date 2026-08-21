@@ -14,6 +14,7 @@ import { useLaunchCities } from '@/features/pins/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { LoadError } from '@/components/ui/load-error';
 import {
   BottomTabInset,
   Elevation,
@@ -338,6 +339,24 @@ export default function TravelersScreen() {
   // Blank frame rather than "add a trip first" while we are still asking.
   if (tripsQuery.isPending || matchesQuery.isPending) {
     return <ThemedView style={styles.root} />;
+  }
+
+  // And never "add a trip first" when the question failed. Somebody with a
+  // Lisbon trip already posted, offline, was being told as a fact that they
+  // had none.
+  if (tripsQuery.isError || matchesQuery.isError) {
+    return (
+      <ThemedView style={styles.root}>
+        <LoadError
+          what="your travelers"
+          error={tripsQuery.error ?? matchesQuery.error}
+          onRetry={() => {
+            tripsQuery.refetch();
+            matchesQuery.refetch();
+          }}
+        />
+      </ThemedView>
+    );
   }
 
   if (trips.length === 0) {

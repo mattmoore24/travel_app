@@ -1,6 +1,8 @@
 import { MutationCache, QueryClient, focusManager } from '@tanstack/react-query';
 import { Alert, AppState, Platform } from 'react-native';
 
+import { saveFailureMessage } from '@/lib/failure-message';
+
 export const queryClient = new QueryClient({
   // Mutations that individual screens don't handle still surface to the user
   // instead of failing silently (review finding: onboarding saves swallowed
@@ -12,8 +14,12 @@ export const queryClient = new QueryClient({
       // an instanceof check discarded every message the database sent and
       // showed "Something went wrong." for all of them. Real Error
       // subclasses (AuthError, StorageError) carry .message too.
-      const raw = (error as { message?: unknown })?.message;
-      const message = typeof raw === 'string' && raw.trim() ? raw : 'Something went wrong.';
+      //
+      // What it must NOT pass through is the transport's own words. A
+      // traveller on hostel wifi was being shown "Could not save: TypeError:
+      // Network request failed", which names a JavaScript class at somebody
+      // whose actual problem is the wifi.
+      const message = saveFailureMessage(error);
       if (Platform.OS === 'web') {
         // react-native-web's Alert is a silent no-op; use the browser dialog.
         (globalThis as { alert?: (msg: string) => void }).alert?.(`Could not save: ${message}`);

@@ -56,7 +56,8 @@ export function TripEditor({
   const [end, setEnd] = useState(trip ? parseISODate(trip.endDate) : addDays(new Date(), 12));
   const [picking, setPicking] = useState<'start' | 'end' | null>(null);
 
-  const { data: suggestions = [] } = useCitySearch(city ? '' : query);
+  const search = useCitySearch(city ? '' : query);
+  const suggestions = search.data ?? [];
   const rangeError = validateTripRange(toISODate(start), toISODate(end));
   // A trip you are already on started in the past; the picker must not
   // forbid its own current value.
@@ -159,6 +160,16 @@ export function TripEditor({
             value={query}
             onChangeText={setQuery}
           />
+          {search.isError ? (
+            <ThemedText type="footnote" themeColor="textSecondary">
+              Could not search right now. Check your connection and type again.
+            </ThemedText>
+          ) : null}
+          {search.isSuccess && query.trim().length > 0 && suggestions.length === 0 ? (
+            <ThemedText type="footnote" themeColor="textSecondary">
+              Nothing called that. Try the country too, like Lisbon Portugal.
+            </ThemedText>
+          ) : null}
           {suggestions.slice(0, 5).map((row) => (
             <PressableScale
               key={row.id}

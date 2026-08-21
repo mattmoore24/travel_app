@@ -9,6 +9,7 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { LoadError } from '@/components/ui/load-error';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
@@ -44,6 +45,17 @@ export default function JoinGroupScreen() {
 
   if (preview.isPending) {
     return <ThemedView style={styles.root} />;
+  }
+
+  if (preview.isError) {
+    // Distinct from "not open". This query does not even retry, so one flaky
+    // moment used to tell somebody their friend's link was dead and send them
+    // back to ask for another one.
+    return (
+      <ThemedView style={styles.root}>
+        <LoadError what="this invite" error={preview.error} onRetry={() => preview.refetch()} />
+      </ThemedView>
+    );
   }
 
   if (!group) {

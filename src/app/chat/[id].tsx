@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PhotoButton } from '@/components/ui/photo-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { LoadError } from '@/components/ui/load-error';
 import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import {
   useBlockUser,
@@ -203,7 +204,16 @@ export default function ChatScreen() {
     return (
       <ThemedView style={styles.root}>
         <SafeAreaView style={styles.loading}>
-          {chatsQuery.isSuccess ? (
+          {chatsQuery.isError ? (
+            // Not "Chat not found": a failed fetch used to render nothing at
+            // all here, so tapping a push notification offline opened a blank
+            // dark screen with no message and no way forward.
+            <LoadError
+              what="this conversation"
+              error={chatsQuery.error}
+              onRetry={() => chatsQuery.refetch()}
+            />
+          ) : chatsQuery.isSuccess ? (
             <ThemedText themeColor="textSecondary" style={styles.centerText}>
               Chat not found.
             </ThemedText>
@@ -273,6 +283,17 @@ export default function ChatScreen() {
           keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
           <ChatHeader chat={chat} />
           {chat.other_user_id ? <SocialsCard userId={chat.other_user_id} /> : null}
+          {/* The chat row can be served from cache while the messages call
+              fails, and then the conversation reads as empty rather than as
+              unloaded. */}
+          {messagesQuery.isError ? (
+            <LoadError
+              compact
+              what="the rest of this conversation"
+              error={messagesQuery.error}
+              onRetry={() => messagesQuery.refetch()}
+            />
+          ) : null}
           <MessageThread
             messages={thread}
             ownUserId={ownUserId}

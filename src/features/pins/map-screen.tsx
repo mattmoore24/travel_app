@@ -12,6 +12,7 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { AvatarButton } from '@/components/ui/avatar-button';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { LoadError } from '@/components/ui/load-error';
 import { Sheet, leavingSheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { ThemedText } from '@/components/themed-text';
@@ -318,7 +319,8 @@ export default function MapScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
-  const { data: launchCities = [] } = useLaunchCities();
+  const launchCitiesQuery = useLaunchCities();
+  const launchCities = launchCitiesQuery.data ?? [];
   const [cityId, setCityId] = useState<number | null>(null);
   const activeCityId = cityId ?? launchCities[0]?.city_id ?? null;
   const activeCity = launchCities.find((c) => c.city_id === activeCityId);
@@ -527,12 +529,25 @@ export default function MapScreen() {
           ))}
         </MapView>
       ) : (
-        <PlaceholderScreen
-          icon={{ ios: 'map.fill', android: 'map', web: 'map' }}
-          title="The Map"
-          phase="no launch cities yet"
-          description="Launch cities appear here once they're switched on."
-        />
+        <ThemedView style={StyleSheet.absoluteFill}>
+          {launchCitiesQuery.isError ? (
+            // The hero screen used to answer a FAILED query with a dev phase
+            // badge reading "no launch cities yet" — an internal note shown
+            // to somebody in an airport with bad wifi.
+            <LoadError
+              what="the map"
+              error={launchCitiesQuery.error}
+              onRetry={() => launchCitiesQuery.refetch()}
+            />
+          ) : launchCitiesQuery.isSuccess ? (
+            <PlaceholderScreen
+              icon={{ ios: 'map.fill', android: 'map', web: 'map' }}
+              title="The Map"
+              phase="no launch cities yet"
+              description="Launch cities appear here once they're switched on."
+            />
+          ) : null}
+        </ThemedView>
       )}
 
       {/* Fixed centre pin the map pans underneath while placing. */}
