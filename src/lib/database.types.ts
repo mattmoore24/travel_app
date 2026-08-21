@@ -237,6 +237,41 @@ export type ChatListRow = {
   /** When this user's room membership lapses (rooms only). */
   expires_at: string | null;
   created_at: string;
+  /** Traveler groups only: 'admin' | 'speaker' | 'member'. Null elsewhere. */
+  my_role: GroupRole | null;
+};
+
+export type GroupRole = 'admin' | 'speaker' | 'member';
+
+export type GroupSpeaking = 'everyone' | 'granted';
+
+export type GroupRow = {
+  chat_id: string;
+  created_by: string | null;
+  name: string;
+  photo_path: string | null;
+  speaking: GroupSpeaking;
+  max_stay_until: string;
+  created_at: string;
+};
+
+export type GroupMemberRow = {
+  user_id: string;
+  display_name: string | null;
+  photo_path: string | null;
+  role: GroupRole;
+  departure_date: string;
+  joined_at: string;
+};
+
+export type GroupInvitePreviewRow = {
+  chat_id: string;
+  name: string;
+  photo_path: string | null;
+  member_count: number;
+  max_stay_until: string;
+  speaking: GroupSpeaking;
+  already_member: boolean;
 };
 
 export type MessageRow = {
@@ -455,6 +490,13 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      groups: {
+        Row: GroupRow;
+        // Every write goes through create_group / update_group.
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       support_messages: {
         Row: {
           id: string;
@@ -629,6 +671,50 @@ export type Database = {
       message_reaction_summary: {
         Args: { p_chat_id: string };
         Returns: ReactionSummaryRow[];
+      };
+      create_group: {
+        Args: {
+          p_name: string;
+          p_max_stay_until: string;
+          p_speaking?: GroupSpeaking;
+          p_photo_path?: string | null;
+        };
+        Returns: string;
+      };
+      update_group: {
+        Args: {
+          p_chat_id: string;
+          p_name?: string | null;
+          p_speaking?: GroupSpeaking | null;
+          p_max_stay_until?: string | null;
+          p_photo_path?: string | null;
+          p_clear_photo?: boolean;
+        };
+        Returns: undefined;
+      };
+      set_group_role: {
+        Args: { p_chat_id: string; p_user_id: string; p_role: 'member' | 'speaker' };
+        Returns: undefined;
+      };
+      group_members: {
+        Args: { p_chat_id: string };
+        Returns: GroupMemberRow[];
+      };
+      group_invite_token: {
+        Args: { p_chat_id: string };
+        Returns: string;
+      };
+      revoke_group_invites: {
+        Args: { p_chat_id: string };
+        Returns: undefined;
+      };
+      group_invite_preview: {
+        Args: { p_token: string };
+        Returns: GroupInvitePreviewRow[];
+      };
+      join_group_with_invite: {
+        Args: { p_token: string; p_stay_until: string };
+        Returns: { chat_id: string; stay_until: string; expires_at: string };
       };
       set_reaction: {
         Args: { p_message_id: string; p_emoji: string };

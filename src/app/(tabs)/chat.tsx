@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
@@ -15,7 +15,7 @@ import { useChatPref, useCityRooms } from '@/features/rooms/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { BottomTabInset, HitTarget, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useIncomingRequests, useMyChats, useRespondToRequest } from '@/features/matching/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
@@ -289,6 +289,27 @@ const TABS: { value: Tab; label: string }[] = [
   { value: 'groups', label: 'Groups' },
 ];
 
+/**
+ * A samewhere:// link is not tappable in every text message app, so the code
+ * inside it is a first-class way in rather than a fallback nobody mentions.
+ */
+function promptForInvite() {
+  const open = (code: string | undefined) => {
+    const token = (code ?? '').trim();
+    if (token.length > 0) {
+      router.push(`/join-group/${encodeURIComponent(token)}`);
+    }
+  };
+  if (Platform.OS === 'ios' && Alert.prompt) {
+    Alert.prompt('Invite code', 'Paste the code from the invite.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Join', onPress: open },
+    ]);
+  } else {
+    Alert.alert('Invite code', 'Open the invite link you were sent to join the group.');
+  }
+}
+
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const isGuest = useIsGuest();
@@ -298,6 +319,7 @@ export default function ChatScreen() {
   const { data: archived = [] } = useMyChats(true);
   const cityId = launchCities[0]?.city_id ?? null;
   const [tab, setTab] = useState<Tab>('individual');
+  const theme = useTheme();
 
   // One-to-one conversations and group rooms are different things people
   // look for at different moments, so they get a switch rather than one
@@ -358,12 +380,30 @@ export default function ChatScreen() {
           styles.content,
           { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
         ]}>
-        <Segmented
-          options={TABS}
-          value={tab}
-          onChange={setTab}
-          accessibilityLabel="Individual or group chats"
-        />
+        <View style={styles.headerRow}>
+          <View style={styles.headerSwitch}>
+            <Segmented
+              options={TABS}
+              value={tab}
+              onChange={setTab}
+              accessibilityLabel="Individual or group chats"
+            />
+          </View>
+          {/* Anyone can start a group; this is where. */}
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Start a group"
+            haptic="light"
+            scaleTo={0.92}
+            onPress={() => router.push('/new-group')}
+            style={[styles.headerAction, { backgroundColor: theme.surface }]}>
+            <SymbolView
+              name={{ ios: 'plus', android: 'add', web: 'add' }}
+              size={18}
+              tintColor={theme.accent}
+            />
+          </PressableScale>
+        </View>
 
         {requests.length > 0 && tab === 'individual' ? (
           <>
@@ -415,7 +455,31 @@ export default function ChatScreen() {
           </ThemedView>
         ) : null}
 
-        {tab === 'groups' ? <RoomDiscovery cityId={cityId} /> : null}
+        {tab === 'groups' ? (
+          <>
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Join a group with an invite code"
+              haptic="light"
+              scaleTo={0.98}
+              onPress={promptForInvite}>
+              <ThemedView type="backgroundElement" style={styles.chatRow}>
+                <View style={styles.chatRowText}>
+                  <ThemedText type="callout">Have an invite?</ThemedText>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    Paste the code somebody sent you.
+                  </ThemedText>
+                </View>
+                <SymbolView
+                  name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+                  size={14}
+                  tintColor={theme.textSecondary}
+                />
+              </ThemedView>
+            </PressableScale>
+            <RoomDiscovery cityId={cityId} />
+          </>
+        ) : null}
 
         {archived.length > 0 ? (
           <PressableScale scaleTo={0.98} onPress={() => router.push('/archived-chats')}>
@@ -435,6 +499,22 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  headerSwitch: {
+    flex: 1,
+  },
+  headerAction: {
+    width: HitTarget,
+    height: HitTarget,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   emptyCard: {
     gap: Spacing.three,
     padding: Spacing.four,

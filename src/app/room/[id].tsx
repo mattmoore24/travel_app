@@ -26,6 +26,7 @@ import { MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl, useSendMessage, useSendPhoto } from '@/features/chat/hooks';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
+import { useGroup } from '@/features/groups/hooks';
 import { useMyChats } from '@/features/matching/hooks';
 import {
   useJoinRoom,
@@ -164,6 +165,13 @@ export default function RoomScreen() {
 
   const membership = useMemo(() => chats.find((c) => c.chat_id === id) ?? null, [chats, id]);
   const isMember = membership != null;
+  // A traveler group, as opposed to a hostel's room. Null for the latter,
+  // which is exactly what tells the two apart on this screen.
+  const { data: group } = useGroup(membership?.kind === 'room' ? (id ?? null) : null);
+  const isGroup = group != null;
+  // The database refuses the insert anyway; this is so the person is told
+  // why instead of watching Send do nothing.
+  const muted = isGroup && group.speaking === 'granted' && membership?.my_role === 'member';
 
   const submitJoin = (departure: Date) => {
     join.mutate(toISODate(departure), {
@@ -198,7 +206,19 @@ export default function RoomScreen() {
               </ThemedText>
               {/* Leaving lives up here, not under the composer — a destructive
                   action one thumb-width from Send is an accident waiting. */}
-              {isMember ? (
+              {isGroup ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Group details"
+                  onPress={() => router.push(`/group/${id}`)}
+                  hitSlop={8}>
+                  <SymbolView
+                    name={{ ios: 'info.circle', android: 'info', web: 'info' }}
+                    size={20}
+                    tintColor={theme.text}
+                  />
+                </Pressable>
+              ) : isMember ? (
                 <Pressable accessibilityRole="button" onPress={confirmLeave} hitSlop={8}>
                   <ThemedText type="footnote" themeColor="textSecondary">
                     Leave
@@ -208,7 +228,10 @@ export default function RoomScreen() {
             </View>
             {isMember && membership?.expires_at ? (
               <ThemedText type="footnote" themeColor="textSecondary">
-                {membership.member_count} here · anyone can read · you leave{' '}
+                {membership.member_count} here
+                {/* A private group is not readable by passers-by, and saying
+                    it is would be worse than saying nothing. */}
+                {isGroup ? '' : ' · anyone can read'} · you leave{' '}
                 {new Date(membership.expires_at).toLocaleDateString(undefined, {
                   day: 'numeric',
                   month: 'short',
@@ -274,6 +297,15 @@ export default function RoomScreen() {
           {isGuest ? (
             <View style={styles.footer}>
               <SignUpGate reason="Join this room to post" cta="Create an account" compact />
+            </View>
+          ) : muted ? (
+            <View style={styles.footer}>
+              <ThemedView type="backgroundElement" style={styles.mutedNotice}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Only the admin and the people they pick can post here right now. You can read
+                  everything and react.
+                </ThemedText>
+              </ThemedView>
             </View>
           ) : isMember ? (
             <View style={styles.composerWrap}>
@@ -467,6 +499,11 @@ const styles = StyleSheet.create({
     gap: Space.md,
     paddingHorizontal: Space.lg,
     paddingVertical: Space.sm,
+  },
+  mutedNotice: {
+    padding: Space.md,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
   },
   composerWrap: {
     paddingHorizontal: Space.lg,

@@ -175,6 +175,11 @@ function RootNavigator() {
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
         <Stack.Screen name="report" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="new-group" options={{ presentation: 'modal' }} />
+        <Stack.Screen
+          name="group/[id]"
+          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        />
         <Stack.Screen
           name="archived-chats"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
@@ -188,6 +193,13 @@ function RootNavigator() {
       {/* Unguarded for the same reason, and one more: somebody who cannot
           sign in is the person most likely to need to write in. */}
       <Stack.Screen name="contact" options={{ presentation: 'modal' }} />
+      {/* An invite link can arrive before a person has an account. The screen
+          shows what the group is and offers to make one, rather than bouncing
+          them to a welcome page that says nothing about why they tapped. */}
+      <Stack.Screen
+        name="join-group/[token]"
+        options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+      />
     </Stack>
   );
 }

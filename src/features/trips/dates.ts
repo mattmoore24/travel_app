@@ -33,6 +33,13 @@ const SHORT_YEAR = new Intl.DateTimeFormat('en', {
   year: 'numeric',
 });
 
+/** "2026-03-04" -> "Mar 4" (with the year once it is not this one). */
+export function formatDate(iso: string): string {
+  const date = parseISODate(iso);
+  const fmt = date.getFullYear() === new Date().getFullYear() ? SHORT : SHORT_YEAR;
+  return fmt.format(date);
+}
+
 /** "2026-03-04".."2026-03-09" -> "Mar 4 – 9" / "Mar 30 – Apr 2" (year only when not current). */
 export function formatDateRange(startISO: string, endISO: string): string {
   const start = parseISODate(startISO);
