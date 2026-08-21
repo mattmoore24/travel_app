@@ -367,7 +367,15 @@ export function ProfileView({
       <View style={styles.page}>
         {/* Photo first, name over it — the shape every profile people
             already use has settled on. */}
-        <View style={[styles.hero, { width: heroWidth, height: heroWidth * 1.15 }]}>
+        {/* Without a photo the frame collapses to a band. It used to reserve
+            the full portrait height and show 450 points of flat fill, which
+            is now the COMMON first state rather than a rare one: with photo
+            moderation on, a new traveler's only photo is pending for the
+            first few minutes and their own profile shows what others are
+            actually served. A name on a band is a profile still being made;
+            an empty portrait frame is a profile that looks broken. */}
+        <View
+          style={[styles.hero, { width: heroWidth }, main ? { height: heroWidth * 1.15 } : null]}>
           {main ? (
             <Photo path={main.storage_path} style={styles.fill} />
           ) : (
@@ -406,6 +414,11 @@ export function ProfileView({
               <ThemedText style={styles.onPhotoSoft}>{profile.occupation}</ThemedText>
             ) : null}
             {home ? <ThemedText style={styles.onPhotoSoft}>From {home}</ThemedText> : null}
+            {main == null && owner ? (
+              <ThemedText type="footnote" style={styles.onPhotoSoft}>
+                Add a photo and this becomes your profile.
+              </ThemedText>
+            ) : null}
           </View>
           {owner && onEditSection ? (
             <PressableScale
