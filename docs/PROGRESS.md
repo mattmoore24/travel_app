@@ -51,19 +51,26 @@ DarkTheme left a seam at every header; the segmented control was inside out;
 the selected city was nearly invisible; the guest travelers card pushed its
 own sign-up card off the screen and rendered an empty photo frame.
 
+**Shipped 2026-08-21.** All three migrations
+(`20260820230000_chat_reactions_and_unsend`, `20260821000000_support_messages`,
+`20260821010000_traveler_groups`) applied on Supabase deploy run 20, and the
+JavaScript went out as iOS update `01a021dc-3e10-7739-a751-7245751b745c`
+(group `167d5dae-f8a0-42d0-b2c7-cbc8e6ccab5d`) from commit `5e58d48`.
+
 **Waiting on the founder:**
 
-1. **Two migrations are not deployed yet** —
-   `20260820230000_chat_reactions_and_unsend` and
-   `20260821010000_traveler_groups`. The client code for reactions, unsend
-   and groups needs them. Actions → Supabase deploy → Run workflow.
-2. **The contact form needs two repo secrets** to actually email:
+1. **The contact form needs two repo secrets** to actually email:
    `RESEND_API_KEY` and `SUPPORT_INBOX` (plus `SUPPORT_FROM` once a domain
    is verified). Until they exist, messages still land in the
-   `support_messages` table and are readable from the dashboard.
-3. **A real support address** is still needed for App Store Connect and the
+   `support_messages` table and are readable from the dashboard — the deploy
+   skipped that step, which is the expected state.
+2. **A real support address** is still needed for App Store Connect and the
    privacy policy. Removing the personal one from the repo stops it
    spreading; it does not unpublish it from the history of a public repo.
+3. **Visual reviews now cost a build credit.** The simulator on GitHub's
+   runners cannot reach `u.expo.dev` (TLS, environment not config), so the
+   E2E suite must embed the code under test rather than fetch it. `build`
+   defaults to true for that reason; see the `traps` skill.
 
 ## Current status: **Phase 9 — the craft pass** (2026-08-19)
 
