@@ -104,7 +104,7 @@ export default function PublicProfileScreen() {
                 onPress={() =>
                   Alert.alert(
                     `Block ${profile.display_name ?? 'this traveler'}?`,
-                    'They disappear from your map and matches and can never message you. They are not told.',
+                    'They disappear from the map and from Travelers, and can never message you. They are not told.',
                     [
                       { text: 'Cancel', style: 'cancel' },
                       {

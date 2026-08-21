@@ -442,7 +442,7 @@ export default function ChatScreen() {
         {requests.length > 0 && tab === 'individual' ? (
           <>
             <ThemedText type="smallBold" themeColor="textSecondary">
-              Requests
+              Waiting on you
             </ThemedText>
             {requests.map((request) => (
               <RequestCard key={request.id} request={request} />

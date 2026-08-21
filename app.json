@@ -48,7 +48,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Lets you choose profile photos to share with other travelers.",
-          "cameraPermission": "Lets you take a selfie to verify that your profile photos are really you.",
+          "cameraPermission": "Lets you take a photo for your profile, for a chat, or a selfie to verify your profile photos are really you.",
           "microphonePermission": false
         }
       ],

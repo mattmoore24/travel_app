@@ -90,6 +90,13 @@ function ReplyButton({
   );
 }
 
+/** What "reply to this section" is called out loud, per section. */
+const REPLY_LABELS: Record<string, string> = {
+  About: 'Reply to their bio',
+  Details: 'Reply to their details',
+  'Travel plans': 'Reply to their travel plans',
+};
+
 function SectionHeader({
   title,
   icon,
@@ -123,7 +130,13 @@ function SectionHeader({
           </ThemedText>
         </PressableScale>
       ) : onReply ? (
-        <ReplyButton label={`Reply to their ${title.toLowerCase()}`} onPress={onReply} />
+        <ReplyButton
+          // Not `Reply to their ${title.toLowerCase()}`: that produced "Reply
+          // to their about", which is not a sentence. The section names read
+          // as things in some cases and not others, so they are mapped.
+          label={REPLY_LABELS[title] ?? `Reply to ${title.toLowerCase()}`}
+          onPress={onReply}
+        />
       ) : null}
     </View>
   );

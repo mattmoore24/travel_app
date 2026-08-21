@@ -45,7 +45,7 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
   const confirmBlock = () => {
     Alert.alert(
       `Block ${chat.title ?? 'this traveler'}?`,
-      'They disappear from your map and matches, can never message you, and this conversation freezes. They are not told.',
+      'They disappear from the map and from Travelers, can never message you, and this conversation freezes. They are not told.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
