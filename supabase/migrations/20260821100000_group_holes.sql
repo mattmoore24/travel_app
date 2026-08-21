@@ -32,6 +32,31 @@ create policy chat_photos_select_own
 
 -- 2. Removal did not stick --------------------------------------------------
 
+create or replace function public.room_remove_member(p_chat_id uuid, p_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_room_moderator(p_chat_id) then
+    raise exception 'room not found';
+  end if;
+  delete from public.room_members where chat_id = p_chat_id and user_id = p_user_id;
+  -- clock_timestamp(), not the now() default: now() is frozen for the whole
+  -- transaction, so a removal and a readmission written in one would carry
+  -- the SAME created_at, and the rule below would be deciding by whichever
+  -- random uuid sorted higher. This is the timestamp of the act, and it
+  -- advances.
+  insert into public.moderation_events
+    (subject_user_id, entity_type, entity_id, action, source, metadata, created_at)
+  values (p_user_id, 'room_member', p_chat_id, 'removed_by_moderator',
+          'establishment', jsonb_build_object('chat_id', p_chat_id), clock_timestamp());
+end
+$$;
+
+revoke execute on function public.room_remove_member(uuid, uuid) from public, anon;
+
 create or replace function public.join_group_with_invite(p_token text, p_stay_until date)
 returns jsonb
 language plpgsql
@@ -72,15 +97,18 @@ begin
   -- so there is one record of this rather than two that can disagree. The
   -- LATEST of the two actions wins, which is what gives an admin a way to
   -- let somebody back in (allow_group_rejoin) without erasing the history.
+  -- Both are stamped with clock_timestamp(), so "latest" is always decidable;
+  -- a tie would otherwise have been broken by a random uuid.
   if (
-    select action from public.moderation_events
+    select coalesce(max(created_at) filter (where action = 'removed_by_moderator'),
+                    '-infinity'::timestamptz)
+         > coalesce(max(created_at) filter (where action = 'readmitted_by_moderator'),
+                    '-infinity'::timestamptz)
+      from public.moderation_events
      where subject_user_id = v_user
        and entity_type = 'room_member'
        and entity_id = v_chat
-       and action in ('removed_by_moderator', 'readmitted_by_moderator')
-     order by created_at desc, id desc
-     limit 1
-  ) = 'removed_by_moderator' then
+  ) then
     raise exception 'You were removed from this group. Ask an admin to let you back in.'
       using errcode = '42501';
   end if;
@@ -127,9 +155,9 @@ begin
   end if;
 
   insert into public.moderation_events
-    (subject_user_id, entity_type, entity_id, action, source, metadata)
+    (subject_user_id, entity_type, entity_id, action, source, metadata, created_at)
   values (p_user_id, 'room_member', p_chat_id, 'readmitted_by_moderator',
-          'establishment', jsonb_build_object('chat_id', p_chat_id));
+          'establishment', jsonb_build_object('chat_id', p_chat_id), clock_timestamp());
 end
 $$;
 

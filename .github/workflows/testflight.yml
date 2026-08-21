@@ -81,9 +81,17 @@ jobs:
           K: ${{ secrets.ASC_KEY_ID }}
           P: ${{ secrets.ASC_KEY_P8 }}
           A: ${{ secrets.APPLE_TEAM_ID }}
+          SU: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          SK: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
         run: |
           missing=()
           [ -n "$T" ] || missing+=(EXPO_TOKEN)
+          # The bundler inlines these, so an update without them ships an app
+          # pointed at nothing. Required for every action: a build reads them
+          # from EAS's own environment, but the check costs nothing and the
+          # failure is silent either way.
+          [ -n "$SU" ] || missing+=(EXPO_PUBLIC_SUPABASE_URL)
+          [ -n "$SK" ] || missing+=(EXPO_PUBLIC_SUPABASE_ANON_KEY)
           # Signing secrets only matter when an actual build or submit runs.
           if [ "${{ inputs.action }}" != "update" ]; then
             [ -n "$I" ] || missing+=(ASC_ISSUER_ID)
@@ -108,8 +116,37 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_NO_TELEMETRY: '1'
+          # Metro inlines EXPO_PUBLIC_* at bundle time, and this bundling
+          # happens HERE, on this runner. A build gets these from the EAS
+          # environment named in eas.json; an update gets nothing unless it is
+          # handed them, and src/lib/supabase falls back to
+          # placeholder.supabase.co when they are missing. So every update
+          # published from this step before now shipped an app pointed at a
+          # host that does not exist, and every tester's app would have gone
+          # dead on its next launch. expo-go-publish.yml has always passed
+          # them; this step never did.
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
         run: |
           set -o pipefail
+
+          # Prove the bundle before it goes anywhere. A build is verified
+          # below and an update was not, which is backwards: an update reaches
+          # every tester at once, on their next launch, and cannot be
+          # un-sent. --no-bytecode so the strings are greppable.
+          rm -rf ota-proof
+          npx --yes expo export --platform ios --no-bytecode --output-dir ota-proof
+          REAL=$(grep -rhoaE 'https://[a-z0-9-]+\.supabase\.co' ota-proof 2>/dev/null |
+            grep -v placeholder | sort -u | wc -l | tr -d ' ')
+          if [ "$REAL" = "0" ]; then
+            echo "::error::The bundle carries no real Supabase URL, only the"
+            echo "::error::placeholder fallback. Publishing this would point every"
+            echo "::error::tester's app at nothing. Check the EXPO_PUBLIC_SUPABASE_*"
+            echo "::error::repository secrets."
+            exit 1
+          fi
+          echo "Real Supabase host in the bundle ($REAL distinct)."
+
           # Bounded as a safety net, not because of an observed hang. I
           # cancelled run 18 believing it had sat here for 37 minutes; the
           # clock says it had been running about three, and run 19 published
