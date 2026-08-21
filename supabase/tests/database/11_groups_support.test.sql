@@ -5,7 +5,7 @@
 -- who can read an invite token, and whether a shared group counts as a
 -- connection for the social-handle gate (hard rule 4 — it must not).
 begin;
-select plan(45);
+select plan(48);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -348,6 +348,49 @@ select is(
     where chat_id = pg_temp.crew() and role = 'admin'),
   1,
   'and never sweeps away the admin, which would leave the group unrunnable'
+);
+
+-- SUCCESSION -------------------------------------------------------------------
+-- A group is other people's conversation. Losing its only admin must not
+-- leave it running with a live invite link and nobody able to revoke it.
+
+select pg_temp.admin();
+delete from public.room_members where chat_id = pg_temp.crew();
+insert into public.room_members (chat_id, user_id, departure_date, expires_at, role) values
+  (pg_temp.crew(), '00000000-0000-0000-0000-00000000000a', current_date + 10,
+    now() + interval '10 days', 'admin'),
+  (pg_temp.crew(), '00000000-0000-0000-0000-00000000000c', current_date + 10,
+    now() + interval '10 days', 'member');
+
+delete from public.room_members
+ where chat_id = pg_temp.crew() and user_id = '00000000-0000-0000-0000-00000000000a';
+
+select is(
+  (select role from public.room_members
+    where chat_id = pg_temp.crew() and user_id = '00000000-0000-0000-0000-00000000000c'),
+  'admin',
+  'losing the only admin promotes whoever is left, so the group stays runnable'
+);
+
+-- And when the last person goes, the group goes with them.
+delete from public.room_members
+ where chat_id = pg_temp.crew() and user_id = '00000000-0000-0000-0000-00000000000c';
+select is(
+  (select status::text from public.chats where id = pg_temp.crew()),
+  'closed',
+  'and an empty group closes rather than lingering with a live invite link'
+);
+
+-- Deleting an orphaned selfie needs a SELECT policy as well as a DELETE one:
+-- storage resolves the row before removing it, so without this the cleanup
+-- call succeeded having removed nothing.
+select ok(
+  exists (
+    select 1 from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname = 'verification_selfies_select_own'
+  ),
+  'a traveler can read back their own verification selfie, so the cleanup can delete it'
 );
 
 -- HARD RULE 4 ------------------------------------------------------------------

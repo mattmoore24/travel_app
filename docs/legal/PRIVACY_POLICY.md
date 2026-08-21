@@ -35,10 +35,21 @@ explains what we collect, why, and your choices.
 ## How your information is shared with other users
 
 - Your profile (name, age, photos, bio, languages, verified badge) is
-  visible to travelers you overlap with or who can see your pins.
+  visible to any signed-in traveler who can reach it: someone whose trip
+  overlaps yours, someone who taps one of your pins, or someone opening your
+  profile from a chat or a group you share.
 - **Your social handles are hidden until you and another traveler both
-  accept a chat.**
-- Your trips are only visible to users with a genuinely overlapping trip.
+  accept a chat.** This is enforced by the database, not just by the app.
+- Your upcoming trips are part of your profile, so any signed-in traveler who
+  can open your profile can see them. Trips that have finished are private to
+  you.
+- **One traveler at a time is shown to signed-out visitors.** The Travelers
+  tab shows a single featured card — name, age, photo, bio, languages, city
+  and dates — to people who have not made an account, chosen automatically
+  from whoever in that city other travelers are messaging most. Posting a
+  trip is what makes you eligible. Nobody can message you without an account,
+  and there is currently no way to opt out of being featured; if you would
+  rather not be, delete your trip or your account.
 - Heatmap data is aggregated and anonymous; areas with very few pins are
   never shown to others.
 
