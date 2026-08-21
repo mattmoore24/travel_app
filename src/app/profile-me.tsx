@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
+import { BuildStamp } from '@/components/ui/build-stamp';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -186,6 +187,7 @@ export default function ProfileScreen() {
                   );
                 }}
               />
+              <BuildStamp />
             </>
           }
         />
