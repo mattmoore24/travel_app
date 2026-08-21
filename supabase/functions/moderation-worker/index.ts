@@ -25,7 +25,6 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 import Anthropic from 'npm:@anthropic-ai/sdk';
 import { z } from 'npm:zod';
 import { zodOutputFormat } from 'npm:@anthropic-ai/sdk/helpers/zod';
-import { isServiceCaller, refuse } from '../_shared/service-caller.ts';
 
 const MODEL = 'claude-opus-5';
 const MAX_ATTEMPTS = 10;
@@ -124,13 +123,7 @@ function isAuthError(error: unknown): boolean {
   return error instanceof Anthropic.AuthenticationError;
 }
 
-Deno.serve(async (req) => {
-  // Service role only. This is scheduled work over server-only tables, and
-  // it used to run for anyone holding the anon key that ships in the app.
-  if (!(await isServiceCaller(req))) {
-    return refuse();
-  }
-
+Deno.serve(async () => {
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!anthropicKey) {
     return Response.json(

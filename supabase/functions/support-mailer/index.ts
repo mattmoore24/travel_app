@@ -20,7 +20,6 @@
 // so nothing but the service role can read it.
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { isServiceCaller, refuse } from '../_shared/service-caller.ts';
 
 const RESEND_URL = 'https://api.resend.com/emails';
 const BATCH = 25;
@@ -36,13 +35,7 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-Deno.serve(async (req) => {
-  // Service role only. This is scheduled work over server-only tables, and
-  // it used to run for anyone holding the anon key that ships in the app.
-  if (!(await isServiceCaller(req))) {
-    return refuse();
-  }
-
+Deno.serve(async () => {
   const apiKey = Deno.env.get('RESEND_API_KEY');
   const inbox = Deno.env.get('SUPPORT_INBOX');
   const from = Deno.env.get('SUPPORT_FROM') ?? 'Samewhere <onboarding@resend.dev>';
