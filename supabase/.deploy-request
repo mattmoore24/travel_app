@@ -16,3 +16,4 @@
 2026-08-19 — deploy run 10: profile-first fixes (no bulk trip reads, deduped matches, aligned horizon)
 2026-08-19 — deploy run 11: pin note + place label
 2026-08-19 — deploy run 12: copy pass on push notifications
+2026-08-21 — deploy: support delivery (push channel, submit/status RPCs)
