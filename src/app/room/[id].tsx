@@ -151,7 +151,7 @@ export default function RoomScreen() {
   const isGuest = useIsGuest();
   const ownId = useOwnUserId();
   const { data: messages = [] } = useRoomMessages(id ?? null);
-  const { data: chats = [] } = useMyChats();
+  const chatsQuery = useMyChats();
   const join = useJoinRoom(id!);
   const { data: allReactions = [] } = useReactions(id ?? null);
   const [departure, setDeparture] = useState(addDays(new Date(), 3));
@@ -163,7 +163,10 @@ export default function RoomScreen() {
   const [draft, setDraft] = useState('');
   const [reactingTo, setReactingTo] = useState<string | null>(null);
 
-  const membership = useMemo(() => chats.find((c) => c.chat_id === id) ?? null, [chats, id]);
+  const membership = useMemo(
+    () => chatsQuery.data?.find((c) => c.chat_id === id) ?? null,
+    [chatsQuery.data, id]
+  );
   const isMember = membership != null;
   // A traveler group, as opposed to a hostel's room. Null for the latter,
   // which is exactly what tells the two apart on this screen.
@@ -226,7 +229,11 @@ export default function RoomScreen() {
                 </Pressable>
               ) : null}
             </View>
-            {isMember && membership?.expires_at ? (
+            {/* While the list is still loading — which it is for a beat right
+                after a group is created, since creating one invalidates it —
+                say nothing rather than "anyone can read this chat", which is
+                both wrong and alarming for a private group. */}
+            {chatsQuery.isPending ? null : isMember && membership?.expires_at ? (
               <ThemedText type="footnote" themeColor="textSecondary">
                 {membership.member_count} here
                 {/* A private group is not readable by passers-by, and saying
@@ -294,7 +301,7 @@ export default function RoomScreen() {
             </GlassSurface>
           ) : null}
 
-          {isGuest ? (
+          {chatsQuery.isPending ? null : isGuest ? (
             <View style={styles.footer}>
               <SignUpGate reason="Join this room to post" cta="Create an account" compact />
             </View>
