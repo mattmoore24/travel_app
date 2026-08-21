@@ -69,3 +69,30 @@ describe('onboarding completeness', () => {
     ).toEqual(['name', 'age', 'home', 'languages', 'profile photo']);
   });
 });
+
+describe('handles keep the shape their own platform uses', () => {
+  it('takes the username out of a pasted profile link', () => {
+    expect(normalizeHandle('https://www.instagram.com/alice/')).toBe('alice');
+    expect(normalizeHandle('https://instagram.com/alice/?hl=en')).toBe('alice');
+    expect(normalizeHandle('www.tiktok.com/@alice.travels')).toBe('alice.travels');
+  });
+
+  it('leaves a bare handle alone', () => {
+    expect(normalizeHandle('alice')).toBe('alice');
+    expect(normalizeHandle('https://instagram.com')).toBe('https://instagram.com');
+  });
+
+  it('keeps the case and the spaces a name or a number needs', () => {
+    // The Facebook field's own placeholder asks for "Your name or profile
+    // link", and the WhatsApp field asks for a phone number. Both used to be
+    // refused outright for containing a space.
+    expect(normalizeHandle('Matt Moore', false)).toBe('Matt Moore');
+    expect(validateHandle('Matt Moore', false)).toBeNull();
+    expect(normalizeHandle('  +44 7700  900123 ', false)).toBe('+44 7700 900123');
+    expect(validateHandle('+44 7700 900123', false)).toBeNull();
+  });
+
+  it('still refuses a spaced-out username, where it is ambiguous', () => {
+    expect(validateHandle('alice travels')).not.toBeNull();
+  });
+});

@@ -49,21 +49,52 @@ export function validateBio(value: string): string | null {
   return null;
 }
 
-/** "@Alice.Travels " -> "alice.travels" (handles are stored bare). */
-export function normalizeHandle(value: string): string {
-  return value.trim().replace(/^@+/, '').toLowerCase();
+/**
+ * The last path segment of a pasted profile link, or null if this is not a
+ * link. Instagram's share sheet hands you the whole URL and that is what
+ * people paste, so storing it verbatim printed "@https://instagram.com/alice/"
+ * to the person they connected with.
+ */
+function handleFromUrl(value: string): string | null {
+  if (!/^(https?:\/\/|www\.)/i.test(value)) {
+    return null;
+  }
+  const path = value
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .split(/[?#]/)[0];
+  const segments = path.split('/').filter(Boolean);
+  return segments.length > 1 ? segments[segments.length - 1] : null;
 }
 
-export function validateHandle(value: string): string | null {
-  const normalized = normalizeHandle(value);
+/**
+ * Handles are stored the way their platform writes them.
+ *
+ * An @name is bare and lowercase ("@Alice.Travels " -> "alice.travels"), and
+ * a pasted profile link gives up its last segment. A phone number or a real
+ * name keeps its case and its spaces, because "Matt Moore" and
+ * "+44 7700 900123" are exactly what Facebook and WhatsApp call you — and
+ * lowercasing a name or refusing a spaced-out number is a dead end on a
+ * field whose own placeholder asked for them.
+ */
+export function normalizeHandle(value: string, usesAt = true): string {
+  const trimmed = value.trim();
+  if (!usesAt) {
+    return trimmed.replace(/\s+/g, ' ');
+  }
+  return (handleFromUrl(trimmed) ?? trimmed).replace(/^@+/, '').trim().toLowerCase();
+}
+
+export function validateHandle(value: string, usesAt = true): string | null {
+  const normalized = normalizeHandle(value, usesAt);
   if (normalized.length === 0) {
     return 'Enter a handle.';
   }
   if (normalized.length > 80) {
     return 'Handles are capped at 80 characters.';
   }
-  if (/\s/.test(normalized)) {
-    return 'Handles cannot contain spaces.';
+  if (usesAt && /\s/.test(normalized)) {
+    return 'A username cannot contain spaces.';
   }
   return null;
 }

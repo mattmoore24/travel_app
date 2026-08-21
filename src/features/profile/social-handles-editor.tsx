@@ -67,15 +67,15 @@ export function SocialHandlesEditor() {
   const [touched, setTouched] = useState(false);
 
   const taken = new Set(handles.map((h) => h.platform));
-  const error = touched && value !== '' ? validateHandle(value) : null;
+  const error = touched && value !== '' && adding ? validateHandle(value, usesAt(adding)) : null;
 
   const save = async (platform: SocialPlatform) => {
     setTouched(true);
-    if (validateHandle(value) != null) {
+    if (validateHandle(value, usesAt(platform)) != null) {
       return;
     }
     try {
-      await upsert.mutateAsync({ platform, handle: normalizeHandle(value) });
+      await upsert.mutateAsync({ platform, handle: normalizeHandle(value, usesAt(platform)) });
       haptics.success();
       setAdding(null);
       setValue('');
