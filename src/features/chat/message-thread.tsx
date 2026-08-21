@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
 import {
   FlatList,
+  Keyboard,
   StyleSheet,
   View,
   type LayoutChangeEvent,
@@ -209,12 +210,52 @@ function Bubble({
                     // to tell that from a press that never registered. A long
                     // press must always produce a menu; where it sits is a
                     // detail the measurement improves a frame later.
-                    onOpenMenu(null);
-                    anchor.current?.measureInWindow((x, y, width, height) => {
-                      if (width > 0 && height > 0) {
-                        onOpenMenu({ x, y, width, height });
+                    const open = () => {
+                      onOpenMenu(null);
+                      anchor.current?.measureInWindow((x, y, width, height) => {
+                        if (width > 0 && height > 0) {
+                          onOpenMenu({ x, y, width, height });
+                        }
+                      });
+                    };
+
+                    if (!Keyboard.isVisible()) {
+                      open();
+                      return;
+                    }
+
+                    // The keyboard goes, the way it does in Messages. The
+                    // menu has to WAIT for it rather than race it: the thread
+                    // stands on a keyboard-sized floor (KeyboardFloor) and an
+                    // inverted list is anchored to its own bottom, so every
+                    // bubble slides down by the keyboard's height as that
+                    // floor collapses. Measuring before the slide would pin
+                    // the menu to where the message used to be — off by
+                    // roughly a third of the screen.
+                    let settled = false;
+                    let hidden: { remove: () => void } | null = null;
+                    let failsafe: ReturnType<typeof setTimeout> | null = null;
+                    const openOnceStill = () => {
+                      if (settled) {
+                        return;
                       }
-                    });
+                      settled = true;
+                      hidden?.remove();
+                      if (failsafe) {
+                        clearTimeout(failsafe);
+                      }
+                      // Two frames past the event. keyboardDidHide says the
+                      // SYSTEM keyboard has finished; the floor above it is a
+                      // Reanimated style, and measureInWindow reads whatever
+                      // the native view's frame is at that instant.
+                      requestAnimationFrame(() => requestAnimationFrame(open));
+                    };
+                    hidden = Keyboard.addListener('keyboardDidHide', openOnceStill);
+                    // A long press must always produce a menu, so a
+                    // keyboardDidHide that never lands cannot be the only way
+                    // out. Slightly longer than iOS's own 250ms dismissal.
+                    failsafe = setTimeout(openOnceStill, 400);
+                    Keyboard.dismiss();
                   }
                 : undefined
             }>

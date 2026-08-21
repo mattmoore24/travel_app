@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
-import { FlatList } from 'react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { FlatList, Keyboard } from 'react-native';
 
 import { MessageThread } from '@/features/chat/message-thread';
 import type { MessageRow } from '@/lib/database.types';
@@ -114,5 +114,48 @@ describe('the list must not eat the press', () => {
   it('lets a press through to the bubble while a field is focused', () => {
     renderThread();
     expect(screen.UNSAFE_getByType(FlatList).props.keyboardShouldPersistTaps).toBe('handled');
+  });
+});
+
+describe('the keyboard gets out of the way first', () => {
+  // Messages behaves this way and the founder asked for it. The ordering is
+  // the whole trick: the thread stands on a keyboard-sized floor and the list
+  // is anchored to its own bottom, so every bubble slides down as the
+  // keyboard leaves. Measuring before that slide pins the menu to where the
+  // message used to be, which is why this waits rather than racing.
+  it('dismisses the keyboard, and does not open until it has gone', () => {
+    jest.useFakeTimers();
+    const visible = jest.spyOn(Keyboard, 'isVisible').mockReturnValue(true);
+    const dismiss = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+    try {
+      renderThread();
+      fireEvent(screen.getByLabelText('First one in'), 'longPress');
+
+      expect(dismiss).toHaveBeenCalled();
+      expect(screen.queryByLabelText('Dismiss')).toBeNull();
+
+      act(() => {
+        jest.advanceTimersByTime(1000);
+      });
+      expect(screen.getByLabelText('Dismiss')).toBeTruthy();
+    } finally {
+      visible.mockRestore();
+      dismiss.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
+  it('opens straight away when there is no keyboard to move', () => {
+    const visible = jest.spyOn(Keyboard, 'isVisible').mockReturnValue(false);
+    const dismiss = jest.spyOn(Keyboard, 'dismiss').mockImplementation(() => {});
+    try {
+      renderThread();
+      fireEvent(screen.getByLabelText('First one in'), 'longPress');
+      expect(screen.getByLabelText('Dismiss')).toBeTruthy();
+      expect(dismiss).not.toHaveBeenCalled();
+    } finally {
+      visible.mockRestore();
+      dismiss.mockRestore();
+    }
   });
 });
