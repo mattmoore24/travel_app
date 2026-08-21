@@ -2,6 +2,7 @@ import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
 
 import {
   MAX_PIN_HOURS,
+  burnOutLabel,
   categoryForPoi,
   defaultHoursForIntent,
   expiryForDuration,
@@ -136,5 +137,29 @@ describe('hoursLabel', () => {
     expect(hoursLabel(24)).toBe('1 day');
     expect(hoursLabel(30)).toBe('1 day 6h');
     expect(hoursLabel(72)).toBe('3 days');
+  });
+});
+
+describe('burnOutLabel', () => {
+  const now = new Date(2026, 2, 4, 15, 0);
+
+  it('does not shave an hour off a pin the moment it is posted', () => {
+    // The bug this covers: a pin set to 23 hours read "burns out in 22h" on
+    // the card that appeared right after posting it, because the countdown
+    // floored 22.99.
+    const posted = expiryForHours(23, now);
+    const aBeatLater = new Date(now.getTime() + 2_000);
+    expect(burnOutLabel(posted.toISOString(), aBeatLater)).toBe('burns out in 23h');
+  });
+
+  it('counts down to the nearest hour', () => {
+    const inTwoHours = new Date(now.getTime() + 2 * 3_600_000 + 60_000);
+    expect(burnOutLabel(inTwoHours.toISOString(), now)).toBe('burns out in 2h');
+  });
+
+  it('says soon rather than round up the last hour', () => {
+    const inHalfAnHour = new Date(now.getTime() + 30 * 60_000);
+    expect(burnOutLabel(inHalfAnHour.toISOString(), now)).toBe('burns out soon');
+    expect(burnOutLabel(new Date(now.getTime() - 1_000).toISOString(), now)).toBe('burns out soon');
   });
 });

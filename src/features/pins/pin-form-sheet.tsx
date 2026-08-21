@@ -153,7 +153,12 @@ export function PinFormSheet({
         // how the details box came to hide the rest of the form with no way
         // back. Dragging the list now dismisses it, and iOS gets a Done bar.
         keyboardDismissMode="interactive"
-        showsVerticalScrollIndicator={false}>
+        // Left on, unlike the rest of the app's scrollers. With a keyboard up
+        // this form is cut roughly in half, and the cut lands right above the
+        // Drop it button, so without a bar there is nothing to say the day
+        // chips and the expiry slider still exist below.
+        showsVerticalScrollIndicator
+        indicatorStyle="white">
         <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
           LOCATION
         </ThemedText>

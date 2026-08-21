@@ -197,11 +197,13 @@ export function hoursLabel(hours: number): string {
  */
 export function burnOutLabel(expiresAtISO: string, now = new Date()): string {
   const msLeft = new Date(expiresAtISO).getTime() - now.getTime();
-  const hours = Math.floor(msLeft / 3_600_000);
-  if (hours < 1) {
+  if (msLeft < 3_600_000) {
     return 'burns out soon';
   }
-  return `burns out in ${hours}h`;
+  // Rounded, not floored. Flooring made a pin posted for 23 hours announce
+  // "burns out in 22h" on the very next screen, which reads as the app
+  // quietly taking an hour off you.
+  return `burns out in ${Math.round(msLeft / 3_600_000)}h`;
 }
 
 /** "Tonight" / "Tomorrow" / weekday label for a pin's intent date. */
