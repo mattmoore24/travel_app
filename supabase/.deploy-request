@@ -17,3 +17,4 @@
 2026-08-19 — deploy run 11: pin note + place label
 2026-08-19 — deploy run 12: copy pass on push notifications
 2026-08-21 — deploy: support delivery (push channel, submit/status RPCs)
+2026-08-21 — deploy: sync RESEND_API_KEY + SUPPORT_INBOX to the support mailer

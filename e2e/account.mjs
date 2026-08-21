@@ -9,7 +9,13 @@
 //   node e2e/account.mjs teardown   deletes the account named by those vars
 //
 // Env: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY,
-//      TEST_EMAIL_BASE (optional), GITHUB_ENV (in CI)
+//      TEST_EMAIL_BASE, GITHUB_ENV (in CI)
+//
+// TEST_EMAIL_BASE is required rather than defaulted. Hosted Supabase rejects
+// RFC-2606 test domains outright, so a throwaway account needs a real inbox,
+// and the only real inbox available to hard-code was a person's own — in a
+// public repository. Failing loudly is the right answer: a missing secret is
+// a five-second fix, and the alternative is quietly mailing a stranger.
 
 import { appendFileSync } from 'node:fs';
 
@@ -21,7 +27,15 @@ if (!URL_ || !KEY) {
 }
 
 const CITY = 'Bangkok';
-const EMAIL_BASE = process.env.TEST_EMAIL_BASE || 'mattmoorefb24@gmail.com';
+const EMAIL_BASE = process.env.TEST_EMAIL_BASE;
+if (!EMAIL_BASE || !EMAIL_BASE.includes('@')) {
+  console.error(
+    '::error::TEST_EMAIL_BASE is not set to an email address. Test accounts ' +
+      'plus-address it, so it must be an inbox you can read. Add it under ' +
+      'Settings -> Secrets and variables -> Actions.'
+  );
+  process.exit(1);
+}
 const [EMAIL_USER, EMAIL_DOMAIN] = EMAIL_BASE.split('@');
 
 async function api(path, { token, ...init } = {}) {

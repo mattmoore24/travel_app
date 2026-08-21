@@ -35,6 +35,9 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
+          # Demo accounts plus-address this inbox. Required, so nobody's
+          # personal address has to live in a public repo as a fallback.
+          TEST_EMAIL_BASE: ${{ secrets.TEST_EMAIL_BASE }}
         run: |
           case "${{ inputs.action }}" in
             seed|purge) node scripts/seed-demo-travelers.mjs "${{ inputs.action }}" ;;

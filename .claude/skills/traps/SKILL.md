@@ -52,6 +52,19 @@ device does something else.
   real height instead of guessing, the same way `components/ui/sheet` does.
 - **A page inside a flex parent needs `flex: 1` of its own** or it collapses
   to content height and its empty state renders off-screen.
+- **`height: '100%'` is a percentage of the AVAILABLE height, not of the
+  parent's content.** Yoga resolves a child's percentage against the size
+  handed down from above — inside a ScrollView that is about a screen — even
+  when the parent's own height is `auto`. So a frame whose only flow child is
+  sized that way never collapses to its text: dropping the parent's fixed
+  height hands that child a screen-tall box and pushes everything after it
+  below the fold. `justifyContent: 'flex-end'` cannot shrink a parent either;
+  it only places flow children inside a height already decided. This is
+  exactly what removing the profile hero's height did (edcd8d7): run 33
+  photographed a full-screen slab of `surfaceSunken` with no name on it, and
+  it was reverted (612bb5c). For a container that must be as tall as its
+  content, give every child an intrinsic size — or branch to a different
+  element, which is what the no-photo profile band does.
 - **`entering` and an animated style must not both drive `opacity`.** The
   second one wins non-deterministically and the element flickers or stays
   invisible.

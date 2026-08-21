@@ -2,7 +2,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useState, type ReactNode } from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  useWindowDimensions,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
@@ -231,7 +237,7 @@ function TripsSection({
           haptic="soft"
           scaleTo={0.98}
           onPress={onAddTrip}
-          style={[styles.addTrip, { borderColor: theme.accent }]}>
+          style={[styles.dashedAction, { borderColor: theme.accent }]}>
           <SymbolView
             name={{ ios: 'plus', android: 'add', web: 'add' }}
             size={15}
@@ -317,6 +323,74 @@ function SocialsSection({
 }
 
 /**
+ * Who this is: name, age, verification, what they do, where they are from.
+ * One component for both hero branches, so the photo-less profile can never
+ * drift from the photographed one.
+ *
+ * `onPhoto` is the whole difference. Over an image the text is white and a
+ * size up, because it is sitting on a scrim and has a photo to compete with.
+ * On the app's own ground white is simply wrong — it is the theme's text and
+ * textSecondary there, one step smaller, because nothing is competing.
+ */
+function Identity({
+  profile,
+  home,
+  onPhoto,
+  style,
+}: {
+  profile: ProfileRow;
+  home: string;
+  onPhoto: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.identity, style]}>
+      <View style={styles.nameRow}>
+        <ThemedText
+          type={onPhoto ? 'display' : 'title'}
+          style={onPhoto ? styles.onPhoto : undefined}>
+          {profile.display_name ?? 'Traveler'}
+          {profile.age != null ? (
+            <ThemedText
+              type={onPhoto ? 'title' : 'headline'}
+              style={onPhoto ? styles.onPhoto : undefined}>
+              {'  '}
+              {profile.age}
+            </ThemedText>
+          ) : null}
+        </ThemedText>
+        {profile.verified ? (
+          <SymbolView
+            name={{
+              ios: 'checkmark.seal.fill',
+              android: 'verified',
+              web: 'verified',
+            }}
+            size={20}
+            tintColor={onPhoto ? '#FFFFFF' : theme.accent}
+          />
+        ) : null}
+      </View>
+      {profile.occupation ? (
+        <ThemedText
+          themeColor={onPhoto ? undefined : 'textSecondary'}
+          style={onPhoto ? styles.onPhotoSoft : undefined}>
+          {profile.occupation}
+        </ThemedText>
+      ) : null}
+      {home ? (
+        <ThemedText
+          themeColor={onPhoto ? undefined : 'textSecondary'}
+          style={onPhoto ? styles.onPhotoSoft : undefined}>
+          From {home}
+        </ThemedText>
+      ) : null}
+    </View>
+  );
+}
+
+/**
  * The one profile in the app. A traveler looking at someone else and a
  * traveler looking at themselves see the same page in the same order — the
  * owner just gets edit affordances on top, which is the only honest way to
@@ -365,79 +439,102 @@ export function ProfileView({
   return (
     <>
       <View style={styles.page}>
-        {/* Photo first, name over it — the shape every profile people
-            already use has settled on. */}
-        <View style={[styles.hero, { width: heroWidth, height: heroWidth * 1.15 }]}>
-          {main ? (
+        {main ? (
+          /* Photo first, name over it — the shape every profile people
+             already use has settled on.
+
+             The height here is NOT a tweakable detail. Every other child of
+             this frame is either absolutely positioned (the scrim, the two
+             buttons) or sized by percentage (`styles.fill`), so none of them
+             can give the frame a height — and a percentage does not mean
+             "as tall as my parent's content": Yoga resolves it against the
+             available height handed down, which inside a ScrollView is about
+             a screen. Dropping this height therefore does not collapse the
+             frame to its text (edcd8d7 tried exactly that); it hands the
+             fill a screen-tall box and pushes the name below the fold, which
+             is what E2E run 33 photographed and 612bb5c reverted. A profile
+             with no photo gets the separate branch below instead. */
+          <View style={[styles.hero, { width: heroWidth, height: heroWidth * 1.15 }]}>
             <Photo path={main.storage_path} style={styles.fill} />
-          ) : (
-            <View style={[styles.fill, { backgroundColor: theme.surfaceSunken }]} />
-          )}
-          <LinearGradient
-            colors={['transparent', 'rgba(14,16,32,0.05)', 'rgba(14,16,32,0.82)']}
-            locations={[0, 0.55, 1]}
-            style={styles.heroScrim}
-            pointerEvents="none"
-          />
-          <View style={styles.heroText} pointerEvents="none">
-            <View style={styles.nameRow}>
-              <ThemedText type="display" style={styles.onPhoto}>
-                {profile.display_name ?? 'Traveler'}
-                {profile.age != null ? (
-                  <ThemedText type="title" style={styles.onPhoto}>
-                    {'  '}
-                    {profile.age}
-                  </ThemedText>
-                ) : null}
-              </ThemedText>
-              {profile.verified ? (
-                <SymbolView
-                  name={{
-                    ios: 'checkmark.seal.fill',
-                    android: 'verified',
-                    web: 'verified',
-                  }}
-                  size={20}
-                  tintColor="#FFFFFF"
-                />
-              ) : null}
-            </View>
-            {profile.occupation ? (
-              <ThemedText style={styles.onPhotoSoft}>{profile.occupation}</ThemedText>
-            ) : null}
-            {home ? <ThemedText style={styles.onPhotoSoft}>From {home}</ThemedText> : null}
-          </View>
-          {owner && onEditSection ? (
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel="Edit photos"
-              haptic="light"
-              scaleTo={0.92}
-              hitSlop={3}
-              onPress={() => onEditSection('photos')}
-              containerStyle={styles.heroEditAnchor}
-              style={[styles.heroEdit, { backgroundColor: theme.surface }]}>
-              <SymbolView
-                name={{ ios: 'camera.fill', android: 'photo_camera', web: 'photo_camera' }}
-                size={15}
-                tintColor={theme.text}
-              />
-            </PressableScale>
-          ) : null}
-          {onRespondTo && main ? (
-            <ReplyButton
-              onPhoto
-              label="Reply to this photo"
-              onPress={() =>
-                onRespondTo({
-                  key: 'photo:0',
-                  label: 'their first photo',
-                  photoPath: main.storage_path,
-                })
-              }
+            <LinearGradient
+              colors={['transparent', 'rgba(14,16,32,0.05)', 'rgba(14,16,32,0.82)']}
+              locations={[0, 0.55, 1]}
+              style={styles.heroScrim}
+              pointerEvents="none"
             />
-          ) : null}
-        </View>
+            <View style={styles.heroText} pointerEvents="none">
+              <Identity profile={profile} home={home} onPhoto />
+            </View>
+            {owner && onEditSection ? (
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Edit photos"
+                haptic="light"
+                scaleTo={0.92}
+                hitSlop={3}
+                onPress={() => onEditSection('photos')}
+                containerStyle={styles.heroEditAnchor}
+                style={[styles.heroEdit, { backgroundColor: theme.surface }]}>
+                <SymbolView
+                  name={{ ios: 'camera.fill', android: 'photo_camera', web: 'photo_camera' }}
+                  size={15}
+                  tintColor={theme.text}
+                />
+              </PressableScale>
+            ) : null}
+            {onRespondTo ? (
+              <ReplyButton
+                onPhoto
+                label="Reply to this photo"
+                onPress={() =>
+                  onRespondTo({
+                    key: 'photo:0',
+                    label: 'their first photo',
+                    photoPath: main.storage_path,
+                  })
+                }
+              />
+            ) : null}
+          </View>
+        ) : (
+          /* No photo: a band, not an empty portrait frame. Its height is its
+             own content — a fixed 64pt avatar well and the text next to it —
+             so there is no percentage and no reserved height anywhere in
+             here, and nothing for a scroll view's available height to leak
+             into. The name is in the theme's own colours, because white
+             belongs on a photo and there is none. */
+          <View style={[styles.band, { backgroundColor: theme.surfaceSunken }]}>
+            <View style={styles.bandRow}>
+              <View style={[styles.bandAvatar, { backgroundColor: theme.surface }]}>
+                <SymbolView
+                  name={{ ios: 'person.fill', android: 'person', web: 'person' }}
+                  size={28}
+                  tintColor={theme.textSecondary}
+                />
+              </View>
+              <Identity profile={profile} home={home} onPhoto={false} style={styles.flex} />
+            </View>
+            {owner && onEditSection ? (
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="Add a photo"
+                testID="add-photo"
+                haptic="soft"
+                scaleTo={0.98}
+                onPress={() => onEditSection('photos')}
+                style={[styles.dashedAction, { borderColor: theme.accent }]}>
+                <SymbolView
+                  name={{ ios: 'camera.fill', android: 'photo_camera', web: 'photo_camera' }}
+                  size={15}
+                  tintColor={theme.accent}
+                />
+                <ThemedText type="callout" themeColor="accent">
+                  Add a photo
+                </ThemedText>
+              </PressableScale>
+            ) : null}
+          </View>
+        )}
 
         <View style={styles.body}>
           <TripsSection
@@ -588,7 +685,31 @@ const styles = StyleSheet.create({
   },
   heroText: {
     padding: Space.lg,
+  },
+  /* The name block itself, shared by both hero branches. */
+  identity: {
     gap: 2,
+  },
+  /* The no-photo hero. Content-height by construction: every child has an
+     intrinsic size, so this cannot inherit a screen's worth of height the
+     way a percentage-sized child would. */
+  band: {
+    gap: Space.md,
+    padding: Space.lg,
+    borderRadius: Radius.lg,
+    borderCurve: 'continuous',
+  },
+  bandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+  },
+  bandAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   nameRow: {
     flexDirection: 'row',
@@ -679,7 +800,9 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderCurve: 'continuous',
   },
-  addTrip: {
+  /* "Add a trip" and "Add a photo": the same dashed outline for the same
+     kind of ask, so a profile that is still being made says it once. */
+  dashedAction: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

@@ -37,10 +37,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const newClient = () => createClient(URL_, KEY, { auth: { persistSession: false } });
 
 // Hosted Supabase rejects RFC-2606 test domains ("Email address is
-// invalid"), so test accounts plus-address the founder's real inbox: valid
-// by every validator, and if confirmation emails are ever enabled they land
-// in the founder's own mailbox rather than a stranger's.
-const EMAIL_BASE = process.env.TEST_EMAIL_BASE || 'mattmoorefb24@gmail.com';
+// invalid"), so test accounts plus-address a real inbox: valid by every
+// validator, and if confirmation emails are ever enabled they land somewhere
+// the owner of this project can read.
+//
+// Required, not defaulted. The only real inbox available to hard-code was a
+// person's own, in a public repository. A missing secret is a five-second
+// fix; quietly mailing a stranger is not.
+const EMAIL_BASE = process.env.TEST_EMAIL_BASE;
+if (!EMAIL_BASE || !EMAIL_BASE.includes('@')) {
+  console.error(
+    '::error::TEST_EMAIL_BASE is not set to an email address. Add it under ' +
+      'Settings -> Secrets and variables -> Actions.'
+  );
+  process.exit(1);
+}
 const [EMAIL_USER, EMAIL_DOMAIN] = EMAIL_BASE.split('@');
 
 async function signUpUser(tag) {

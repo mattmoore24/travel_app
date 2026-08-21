@@ -20,7 +20,14 @@ import { readFileSync } from 'node:fs';
 const URL_ = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 const PASSWORD = process.env.DEMO_PASSWORD;
-const EMAIL_BASE = process.env.TEST_EMAIL_BASE || 'mattmoorefb24@gmail.com';
+const EMAIL_BASE = process.env.TEST_EMAIL_BASE;
+if (!EMAIL_BASE || !EMAIL_BASE.includes('@')) {
+  console.error(
+    '::error::TEST_EMAIL_BASE is not set to an email address. Demo accounts ' +
+      'plus-address it. Add it under Settings -> Secrets and variables -> Actions.'
+  );
+  process.exit(1);
+}
 
 if (!URL_ || !KEY) {
   console.error('::error::EXPO_PUBLIC_SUPABASE_URL / _ANON_KEY not set');
