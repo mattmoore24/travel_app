@@ -220,6 +220,53 @@ try {
   }
   const { data: guestProfiles } = await guest.from('profiles').select('*').limit(1);
   check('guest CANNOT read profiles table', (guestProfiles ?? []).length === 0);
+
+  // --- the contact form ---------------------------------------------------
+  // The app's only published way to reach a human, and App Review exercises
+  // it. A guest must get through (somebody who cannot sign in is exactly the
+  // person who needs support), the sender must be able to ask what became of
+  // their own message, and nobody else must be able to.
+  const supportBody =
+    `Automated canary from the live backend suite (run ${RUN}). ` +
+    'Nothing is wrong; this proves the contact form still reaches a human.';
+  const { data: guestSupportId, error: guestSupportErr } = await guest.rpc(
+    'submit_support_message',
+    { p_reply_to: `${EMAIL_USER}+sw-support-${RUN}@${EMAIL_DOMAIN}`, p_body: supportBody }
+  );
+  check(
+    'a guest can reach support and gets an id back',
+    !guestSupportErr && Boolean(guestSupportId),
+    guestSupportErr?.message
+  );
+
+  const { data: mineId, error: mineErr } = await brit.client.rpc('submit_support_message', {
+    p_reply_to: `${EMAIL_USER}+sw-support-${RUN}-b@${EMAIL_DOMAIN}`,
+    p_body: supportBody,
+  });
+  check('a signed-in traveler can too', !mineErr && Boolean(mineId), mineErr?.message);
+
+  if (mineId) {
+    const { data: status, error: statusErr } = await brit.client.rpc('support_message_status', {
+      p_id: mineId,
+    });
+    check(
+      'the sender can ask what became of their own message',
+      !statusErr && (status ?? []).length === 1,
+      statusErr?.message
+    );
+    // Delivery is a cron job on a five-minute tick, so this run is almost
+    // certainly too early to see it. Reported, never asserted: a slow mailer
+    // is not a broken contact form.
+    console.log(
+      `note delivered_at at this instant: ${JSON.stringify((status ?? [])[0]?.delivered_at ?? null)}`
+    );
+
+    const { data: notMine } = await alex.client.rpc('support_message_status', { p_id: mineId });
+    check('and nobody else can, even naming the id exactly', (notMine ?? []).length === 0);
+  }
+
+  const { data: supportRows } = await brit.client.from('support_messages').select('*').limit(1);
+  check('the support inbox itself stays unreadable', (supportRows ?? []).length === 0);
 } catch (e) {
   failed += 1;
   console.log(`FAIL (fatal) ${e.message}`);

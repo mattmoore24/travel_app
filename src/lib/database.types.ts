@@ -188,6 +188,16 @@ export type ReactionSummaryRow = {
   reacted_by_me: boolean;
 };
 
+/**
+ * Row shape returned by support_message_status(). Deliberately carries no body
+ * and no address: it answers "what became of mine", not "show me the inbox".
+ */
+export type SupportMessageStatusRow = {
+  created_at: string;
+  delivered_at: string | null;
+  attempts: number;
+};
+
 /** Row shape returned by incoming_requests(). */
 export type IncomingRequestRow = {
   id: string;
@@ -723,6 +733,14 @@ export type Database = {
       unsend_message: {
         Args: { p_message_id: string };
         Returns: undefined;
+      };
+      submit_support_message: {
+        Args: { p_reply_to: string; p_body: string };
+        Returns: string;
+      };
+      support_message_status: {
+        Args: { p_id: string };
+        Returns: SupportMessageStatusRow[];
       };
       join_room: {
         Args: { p_chat_id: string; p_departure_date: string };

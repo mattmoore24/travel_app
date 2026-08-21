@@ -5,7 +5,7 @@
 -- who can read an invite token, and whether a shared group counts as a
 -- connection for the social-handle gate (hard rule 4 — it must not).
 begin;
-select plan(52);
+select plan(71);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -491,6 +491,146 @@ select throws_ok(
   '23514',
   null,
   'the fourth within an hour is refused, and the address is matched case-insensitively'
+);
+
+-- DELIVERY ---------------------------------------------------------------------
+-- The contact form promises a reply, so something has to actually carry the
+-- message off this table. Email needs a third-party key; the push channel
+-- needs nothing, and stays off until somebody is named.
+
+select pg_temp.admin();
+select is(
+  (select value from public.app_config where key = 'support_notify_recipients'),
+  '[]'::jsonb,
+  'nobody is on support duty until somebody is named'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.app_config', 'select'),
+  'and a traveler cannot read who is'
+);
+
+-- Submitting through the function, which is the only way a client learns the
+-- id of what it just wrote: the insert policy is write-only.
+select pg_temp.guest();
+select isnt(
+  public.submit_support_message('lost@example.com', 'Locked out and stuck.'),
+  null,
+  'a guest can submit and gets an id back'
+);
+
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.push_queue where title like 'Support:%'),
+  0,
+  'with nobody on duty, an incoming message wakes no phone'
+);
+
+-- Name somebody and try again. By email, which is what the person setting
+-- this actually knows about themselves.
+update public.app_config
+   set value = jsonb_build_array('Bob@Example.com')
+ where key = 'support_notify_recipients';
+
+select pg_temp.guest();
+select lives_ok(
+  $$select public.submit_support_message('found@example.com', 'Second one, with somebody on duty.')$$,
+  'and once one is named the message still goes in'
+);
+
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000b'
+      and title = 'Support: found@example.com'),
+  1,
+  'whoever is on duty gets a push, addressed so it can be answered from the lock screen'
+);
+select is(
+  (select body from public.push_queue where title = 'Support: found@example.com'),
+  'Second one, with somebody on duty.',
+  'carrying the message itself'
+);
+
+-- Writing in as the person on duty must not ping the person on duty.
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select lives_ok(
+  $$select public.submit_support_message('bob@example.com', 'Testing the form myself.')$$,
+  'the person on support duty can use the form too'
+);
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.push_queue where title = 'Support: bob@example.com'),
+  0,
+  'and is not pushed their own message'
+);
+
+-- Knowing what became of yours. Not the inbox: one row, yours, no content.
+-- Definer so the test can name the id without granting anybody a read of the
+-- table, which is the whole thing being protected here.
+create function pg_temp.bob_msg() returns uuid language sql security definer as
+  $$ select id from public.support_messages where reply_to = 'bob@example.com' $$;
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select is(
+  (select count(*)::int from public.support_message_status(pg_temp.bob_msg())),
+  1,
+  'the sender can ask what became of their own message'
+);
+select is(
+  (select delivered_at from public.support_message_status(pg_temp.bob_msg())),
+  null,
+  'and is told the truth: not delivered yet'
+);
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  (select count(*)::int from public.support_message_status(pg_temp.bob_msg())),
+  0,
+  'nobody else can, even naming the id exactly'
+);
+select ok(
+  not has_function_privilege('anon', 'public.support_message_status(uuid)', 'execute'),
+  'and a guest cannot ask at all: theirs has no owner to match'
+);
+
+-- The limit lives on the table, so going through the function cannot dodge it.
+select pg_temp.guest();
+select lives_ok(
+  $$select public.submit_support_message('again@example.com', 'One more, first time.')$$,
+  'the function accepts a first message from a new address'
+);
+select lives_ok(
+  $$select public.submit_support_message('again@example.com', 'One more, second time.')$$,
+  'and a second'
+);
+select lives_ok(
+  $$select public.submit_support_message('again@example.com', 'One more, third time.')$$,
+  'and a third'
+);
+select throws_ok(
+  $$select public.submit_support_message('again@example.com', 'One more, fourth time.')$$,
+  '23514',
+  null,
+  'but the fourth is refused: the function is not a way around the limit'
+);
+
+
+-- A typo in the setting must not be able to refuse somebody's message.
+select pg_temp.admin();
+update public.app_config
+   set value = jsonb_build_array('not-an-email-or-an-id', 'nobody@example.com',
+                                 '00000000-0000-0000-0000-0000000000ff')
+ where key = 'support_notify_recipients';
+select pg_temp.guest();
+select lives_ok(
+  $$select public.submit_support_message('typo@example.com', 'Does a bad setting eat this?')$$,
+  'a recipient list full of junk still takes the message'
+);
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.push_queue where title = 'Support: typo@example.com'),
+  0,
+  'and simply wakes nobody'
 );
 
 select * from finish();

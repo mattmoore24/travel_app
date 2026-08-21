@@ -343,13 +343,31 @@ have to be restated after the drop.
 
 ## Support (Phase 10)
 
-The in-app contact form writes straight into `support_messages` and a cron'd
-`support-mailer` Edge Function sends undelivered rows through Resend. The
-row is the record and the email is only the notification, so an unconfigured
-or failing mailer cannot lose a safety report. The table has an insert
-policy for `anon` as well as `authenticated` — somebody who cannot sign in is
-the person most likely to need support — with per-address and global hourly
-limits enforced by a trigger, and no select policy for anyone.
+The in-app contact form writes into `support_messages` and the row is the
+record: delivery is only the notification, so an unconfigured or failing
+mailer cannot lose a safety report. The table has an insert policy for `anon`
+as well as `authenticated` — somebody who cannot sign in is the person most
+likely to need support — with per-address and global hourly limits enforced by
+a trigger, and no select policy for anyone.
+
+Two delivery channels, either or both:
+
+- **Email.** A cron'd `support-mailer` Edge Function sends undelivered rows
+  through Resend. Needs `RESEND_API_KEY` and `SUPPORT_INBOX` as repo secrets;
+  without them the worker returns `{skipped: 'not configured'}` and changes
+  nothing.
+- **Push, and it needs no key at all.** `app_config.support_notify_recipients`
+  is a JSON array of **emails or user ids**; an `after insert` trigger queues
+  a push to each of them with the sender's address as the title. Empty by
+  default. Emails are accepted because the person setting this knows their own
+  address and not their uuid — `support_duty_user_ids()` resolves them and
+  never raises, so a typo in the setting can never refuse somebody's message.
+
+Because the insert policy is write-only, PostgREST cannot return the new row,
+so the client submits through `submit_support_message()` and gets an id back.
+`support_message_status(id)` then answers "what became of mine" — created,
+delivered, attempts — for the author only, and returns neither body nor
+address, so it is not a way to read the inbox.
 
 ## Privacy & secrets model
 

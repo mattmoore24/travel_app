@@ -71,10 +71,22 @@ old celebrations, and the last em dashes in user-facing copy are gone.
   fourteen assertions including the clean-message release, which is the cron
   path still getting through.
 
-- **Founder-side.** `RESEND_API_KEY` and `SUPPORT_INBOX` are still unset, so
-  the in-app contact form stores messages and emails nobody while telling the
-  sender it was sent. That is the app's only published developer contact and
-  App Review will exercise it.
+- **The contact form now delivers without a key.**
+  `20260821150000_support_delivery.sql` adds a second channel: name yourself
+  in `app_config.support_notify_recipients` and every incoming message raises
+  a push on your phone, addressed so it can be read off the lock screen. One
+  statement, and it takes your **email** rather than your user id:
+
+  ```sql
+  update public.app_config
+     set value = jsonb_build_array('you@example.com')
+   where key = 'support_notify_recipients';
+  ```
+
+  Email is still the better channel for App Review and still needs
+  `RESEND_API_KEY` + `SUPPORT_INBOX` (founder-side). Neither channel can lose
+  a message: the row lands first and delivery is only the notification.
+
 - **The Info.plist change needs a build**, not an update. It is native config.
 - **Being featured to signed-out visitors has no opt-out.** The policy now
   says so plainly; whether it should exist is a founder decision.
@@ -142,7 +154,9 @@ JavaScript went out as iOS update `01a021dc-3e10-7739-a751-7245751b745c`
    `RESEND_API_KEY` and `SUPPORT_INBOX` (plus `SUPPORT_FROM` once a domain
    is verified). Until they exist, messages still land in the
    `support_messages` table and are readable from the dashboard — the deploy
-   skipped that step, which is the expected state.
+   skips that step, which is the expected state. The push channel above needs
+   nothing but the one SQL statement, so the form can be live before either
+   secret exists.
 2. **A real support address** is still needed for App Store Connect and the
    privacy policy. Removing the personal one from the repo stops it
    spreading; it does not unpublish it from the history of a public repo.
