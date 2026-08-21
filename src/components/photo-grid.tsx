@@ -47,6 +47,10 @@ function RemoveButton({ onPress }: { onPress: () => void }) {
       accessibilityLabel="Remove photo"
       haptic="light"
       scaleTo={0.88}
+      // 10 + 24 + 10 = 44. The dot stays small; the target does not. hitSlop
+      // is honoured by the Pressable itself, so the tile's overflow: hidden
+      // does not clip it.
+      hitSlop={10}
       onPress={onPress}
       containerStyle={styles.removeAnchor}
       style={[styles.remove, { backgroundColor: theme.surface }]}>

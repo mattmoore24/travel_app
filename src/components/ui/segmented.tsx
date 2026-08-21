@@ -63,7 +63,11 @@ export function Segmented<T extends string>({
             {
               width: segmentWidth,
               backgroundColor: theme.surfaceSunken,
-              borderColor: theme.hairline,
+              // border, not hairline: the thumb is the ONLY thing saying
+              // which side is on, and #20243D on #171A2E is 1.13:1 — under
+              // the 3:1 floor for a non-text indicator. #5E6499 draws the
+              // edge at 3.4:1 against the ground.
+              borderColor: theme.border,
             },
           ]}
         />

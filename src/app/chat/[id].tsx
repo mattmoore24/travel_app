@@ -31,20 +31,9 @@ import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks'
 // take any chat id, so direct chats reuse exactly what rooms use.
 import { useReactions, useToggleReaction, useUnsendMessage } from '@/features/rooms/hooks';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
-import { usesAt } from '@/features/profile/social-handles-editor';
+import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { useTheme } from '@/hooks/use-theme';
 import type { ChatListRow } from '@/lib/database.types';
-
-const PLATFORM_LABELS: Record<string, string> = {
-  instagram: 'Instagram',
-  tiktok: 'TikTok',
-  snapchat: 'Snapchat',
-  x: 'X',
-  facebook: 'Facebook',
-  whatsapp: 'WhatsApp',
-  telegram: 'Telegram',
-  other: 'Other',
-};
 
 function ChatHeader({ chat }: { chat: ChatListRow }) {
   const theme = useTheme();
@@ -185,10 +174,7 @@ function SocialsCard({ userId }: { userId: string }) {
       />
       <ThemedText type="small" themeColor="textSecondary">
         {socials
-          .map(
-            (h) =>
-              `${PLATFORM_LABELS[h.platform] ?? h.platform} ${usesAt(h.platform) ? '@' : ''}${h.handle}`
-          )
+          .map((h) => `${platformLabel(h.platform)} ${usesAt(h.platform) ? '@' : ''}${h.handle}`)
           .join(' · ')}
       </ThemedText>
     </ThemedView>
@@ -361,6 +347,8 @@ export default function ChatScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Send"
+                  // 40pt drawn, 44pt to hit.
+                  hitSlop={2}
                   onPress={submit}
                   disabled={!canSend}
                   style={[

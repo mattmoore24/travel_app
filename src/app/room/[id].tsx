@@ -274,6 +274,9 @@ export default function RoomScreen() {
                 {QUICK_REACTIONS.map((emoji) => (
                   <Pressable
                     key={emoji}
+                    accessibilityRole="button"
+                    accessibilityLabel={`React with ${emoji}`}
+                    hitSlop={8}
                     onPress={() => {
                       // Tapping one you already used takes it back; always
                       // inserting made it a duplicate-key error instead.

@@ -287,6 +287,17 @@ function CityPinMarker({
       displayPriority={pin.seeded ? 'high' : 'required'}
       zIndex={selected ? 10 : 1}
       tracksViewChanges={tracking}
+      // Without these the map — the app's hero screen — has no content at
+      // all under VoiceOver: every pin is an unlabelled image.
+      accessibilityRole="button"
+      accessibilityLabel={[
+        pin.venue_name,
+        pin.display_name,
+        intentLabel(pin.intent_date),
+        burnOutLabel(pin.expires_at),
+      ]
+        .filter(Boolean)
+        .join(', ')}
       onPress={(event) => {
         event.stopPropagation();
         onPress();
@@ -545,6 +556,10 @@ export default function MapScreen() {
                 return (
                   <PressableScale
                     key={city.city_id}
+                    accessibilityRole="button"
+                    accessibilityLabel={city.cities.name}
+                    accessibilityState={{ selected }}
+                    hitSlop={4}
                     haptic="selection"
                     scaleTo={0.94}
                     onPress={() => selectCity(city.city_id)}>
@@ -574,6 +589,12 @@ export default function MapScreen() {
               return (
                 <PressableScale
                   key={filter.value}
+                  accessibilityRole="button"
+                  accessibilityLabel={filter.label}
+                  accessibilityState={{ selected }}
+                  // The chip is drawn at 30pt on purpose, over a map that
+                  // needs the room. The target is 44.
+                  hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
                   haptic="selection"
                   scaleTo={0.94}
                   onPress={() => setDateFilter(filter.value)}>

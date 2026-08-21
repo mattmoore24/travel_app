@@ -31,6 +31,12 @@ export const PLATFORMS: { value: SocialPlatform; label: string; at: boolean }[] 
 
 const LABELS: Record<string, string> = Object.fromEntries(PLATFORMS.map((p) => [p.value, p.label]));
 
+/** What to call this platform out loud. One table, so the chat card, the
+ * profile and the editor cannot drift into calling it three things. */
+export function platformLabel(platform: SocialPlatform): string {
+  return LABELS[platform] ?? platform;
+}
+
 /** WhatsApp is a number, Facebook is a name — an @ there would be wrong. */
 /** Whether this platform's handles read as @names. Phone numbers and real
  * names do not, and printing an @ in front of one looks like a bug. */

@@ -103,8 +103,12 @@ export default function WelcomeScreen() {
               with zero tolerance for objectionable content. */}
           <ThemedText type="small" themeColor="textSecondary" style={styles.centerText}>
             By continuing you agree to our{' '}
+            {/* The role is what makes this a child element VoiceOver can
+                land on and activate. Without it the sentence reads as one
+                block and the link is unreachable. */}
             <ThemedText
               type="small"
+              accessibilityRole="link"
               style={{ color: theme.tint }}
               onPress={() => router.push('/guidelines')}>
               community guidelines

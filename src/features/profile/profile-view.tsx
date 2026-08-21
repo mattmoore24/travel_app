@@ -10,6 +10,7 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { languageLabel } from '@/constants/languages';
 import { MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { usePhotoUrl } from '@/features/profile/hooks';
+import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { SocialLogo } from '@/features/profile/social-logo';
 import { formatDateRange } from '@/features/trips/dates';
 import { TripEditor, type EditableTrip } from '@/features/trips/trip-editor';
@@ -279,10 +280,15 @@ function SocialsSection({
           {handles.map((handle) => (
             <View
               key={handle.id}
+              // The logo is the only thing naming the platform, and an image
+              // says nothing out loud. The row carries the name so it reads
+              // as "Instagram, @alice" rather than just "@alice".
+              accessible
+              accessibilityLabel={`${platformLabel(handle.platform)}, ${handle.handle}`}
               style={[styles.socialRow, { backgroundColor: theme.surfaceSunken }]}>
               <SocialLogo platform={handle.platform} size={30} />
               <ThemedText selectable style={styles.flex}>
-                {handle.platform === 'whatsapp' || handle.platform === 'facebook' ? '' : '@'}
+                {usesAt(handle.platform) ? '@' : ''}
                 {handle.handle}
               </ThemedText>
             </View>

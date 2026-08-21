@@ -65,6 +65,9 @@ export function MatchCelebration({
     <Animated.View
       entering={FadeIn.duration(Motion.standard)}
       exiting={FadeOut.duration(Motion.quick)}
+      // It covers everything, so it has to say so: without this VoiceOver
+      // reads through the overlay into the tab behind it.
+      accessibilityViewIsModal
       style={styles.root}>
       <Animated.View style={[styles.glowWrap, glowStyle]} pointerEvents="none">
         <Image
