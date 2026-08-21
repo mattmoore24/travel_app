@@ -20,3 +20,4 @@
 2026-08-21 — deploy: sync RESEND_API_KEY + SUPPORT_INBOX to the support mailer
 2026-08-21 — deploy: re-sync RESEND_API_KEY after the founder corrected it
 2026-08-21 — deploy: support retry window (next_attempt_at, backoff, higher ceiling)
+2026-08-21 — deploy: SUPPORT_INBOX corrected to the Resend account address
