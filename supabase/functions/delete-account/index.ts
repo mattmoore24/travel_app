@@ -35,16 +35,39 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   );
 
-  // 2. Storage cleanup (both buckets, everything under <uid>/).
-  for (const bucket of ['profile-photos', 'verification-selfies']) {
-    const { data: objects } = await admin.storage.from(bucket).list(user.id, { limit: 1000 });
-    const paths = (objects ?? []).map((o: any) => `${user.id}/${o.name}`);
-    if (paths.length > 0) {
+  // 2. Storage cleanup: every bucket, everything under <uid>/.
+  //
+  // chat-photos belongs on this list. Deleting the account cascades the
+  // `messages` rows, but every JPEG somebody sent into a hostel room or a
+  // group used to stay in the bucket afterwards, under a path that is their
+  // own user id. "Delete my account" has to mean the photos too.
+  //
+  // Paged, because `list` returns a bounded page: one call cleaned a light
+  // user completely and a heavy one partially, which is the worse of the two
+  // failures because it looks like it worked.
+  const PAGE = 100;
+  for (const bucket of ['profile-photos', 'verification-selfies', 'chat-photos']) {
+    for (let offset = 0; ; offset += PAGE) {
+      const { data: objects, error: listError } = await admin.storage
+        .from(bucket)
+        .list(user.id, { limit: PAGE, offset });
+      if (listError) {
+        console.error(`storage list ${bucket}: ${listError.message}`);
+        break;
+      }
+      const paths = (objects ?? []).map((o: any) => `${user.id}/${o.name}`);
+      if (paths.length === 0) {
+        break;
+      }
       const { error } = await admin.storage.from(bucket).remove(paths);
       if (error) {
         // Keep going — an orphaned unreachable object must not block the
         // user's right to delete their account; log for ops.
         console.error(`storage cleanup ${bucket}: ${error.message}`);
+        break;
+      }
+      if (paths.length < PAGE) {
+        break;
       }
     }
   }

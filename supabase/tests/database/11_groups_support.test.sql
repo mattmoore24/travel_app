@@ -5,7 +5,7 @@
 -- who can read an invite token, and whether a shared group counts as a
 -- connection for the social-handle gate (hard rule 4 — it must not).
 begin;
-select plan(40);
+select plan(45);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -271,6 +271,68 @@ select is(
   0,
   'and they are out'
 );
+
+-- REMOVAL HAS TO STICK ---------------------------------------------------------
+-- An admin removing somebody who is making the group uncomfortable was told
+-- it worked while that person still held the same link everyone was sent.
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+create table pg_temp.invite2 as select pg_temp.token() as token;
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select throws_ok(
+  format(
+    $$select public.join_group_with_invite(%L, (current_date + 1)::date)$$,
+    (select token from pg_temp.invite2)
+  ),
+  '42501',
+  'You were removed from this group. Ask an admin to let you back in.',
+  'somebody who was removed cannot walk back in through the same link'
+);
+
+-- But it is not a life sentence, and the admin is the one who decides.
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select throws_ok(
+  format(
+    $$select public.allow_group_rejoin(%L::uuid, '00000000-0000-0000-0000-00000000000b'::uuid)$$,
+    pg_temp.crew()
+  ),
+  'P0001',
+  'group not found',
+  'and somebody who is not the admin cannot undo it'
+);
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select lives_ok(
+  format(
+    $$select public.allow_group_rejoin(%L::uuid, '00000000-0000-0000-0000-00000000000b'::uuid)$$,
+    pg_temp.crew()
+  ),
+  'the admin can let somebody back in'
+);
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select lives_ok(
+  format(
+    $$select public.join_group_with_invite(%L, (current_date + 1)::date)$$,
+    (select token from pg_temp.invite2)
+  ),
+  'and then the link works for them again'
+);
+
+-- The history is still there. Nothing was erased to make this work.
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.moderation_events
+    where subject_user_id = '00000000-0000-0000-0000-00000000000b'
+      and entity_id = pg_temp.crew()
+      and action in ('removed_by_moderator', 'readmitted_by_moderator')),
+  2,
+  'both the removal and the readmission are on the record'
+);
+
+-- Put them back out for the sweep test below.
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.room_remove_member(pg_temp.crew(), '00000000-0000-0000-0000-00000000000b'::uuid);
 
 -- EXPIRY -----------------------------------------------------------------------
 

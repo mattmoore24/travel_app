@@ -7,11 +7,18 @@
 // Runs with the service role (queue and tokens are server-only tables).
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { isServiceCaller, refuse } from '../_shared/service-caller.ts';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const BATCH = 100;
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  // Service role only. This is scheduled work over server-only tables, and
+  // it used to run for anyone holding the anon key that ships in the app.
+  if (!(await isServiceCaller(req))) {
+    return refuse();
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
