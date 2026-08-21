@@ -5,7 +5,7 @@
 -- who can read an invite token, and whether a shared group counts as a
 -- connection for the social-handle gate (hard rule 4 — it must not).
 begin;
-select plan(48);
+select plan(52);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -271,6 +271,60 @@ select is(
   0,
   'and they are out'
 );
+
+-- PUSH -------------------------------------------------------------------------
+-- A group chat nobody is told about is a group chat nobody comes back to.
+
+select pg_temp.admin();
+delete from public.push_queue;
+insert into public.room_members (chat_id, user_id, departure_date, expires_at) values
+  (pg_temp.crew(), '00000000-0000-0000-0000-00000000000c', current_date + 5,
+    now() + interval '5 days');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+insert into public.messages (chat_id, sender_id, body)
+  values (pg_temp.crew(), '00000000-0000-0000-0000-00000000000a', 'anyone up for the 8pm walk?');
+
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000c'),
+  1,
+  'posting in a group reaches the other members, which it never used to'
+);
+select is(
+  (select title from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000c' limit 1),
+  'Hostel crew',
+  'and the title is the group, not the sender, the way a group reads on a lock screen'
+);
+select is(
+  (select count(*)::int from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000a'),
+  0,
+  'the sender never pushes themselves'
+);
+
+-- Muting has to mean something too.
+delete from public.push_queue;
+update public.room_members set muted = true
+  where chat_id = pg_temp.crew() and user_id = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+insert into public.messages (chat_id, sender_id, body)
+  values (pg_temp.crew(), '00000000-0000-0000-0000-00000000000a', 'and breakfast?');
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000c'),
+  0,
+  'somebody who muted the group is left alone'
+);
+
+-- Put the group back the way the sections below expect it.
+delete from public.room_members
+ where chat_id = pg_temp.crew() and user_id = '00000000-0000-0000-0000-00000000000c';
+delete from public.messages where chat_id = pg_temp.crew();
+delete from public.push_queue;
 
 -- REMOVAL HAS TO STICK ---------------------------------------------------------
 -- An admin removing somebody who is making the group uncomfortable was told

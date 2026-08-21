@@ -64,8 +64,9 @@ old celebrations, and the last em dashes in user-facing copy are gone.
 - **The Info.plist change needs a build**, not an update. It is native config.
 - **Being featured to signed-out visitors has no opt-out.** The policy now
   says so plainly; whether it should exist is a founder decision.
-- **Rooms and groups still send no push notifications** — the trigger reads
-  `chat_participants`, which they do not use.
+- ~~Rooms and groups send no push notifications~~ — fixed in
+  `20260821140000_room_push.sql`. The room is the title and the sender opens
+  the body, muting is honoured, and expired or archived members are skipped.
 
 ## Phase 10 — the launch-readiness pass (2026-08-21)
 
