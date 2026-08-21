@@ -56,10 +56,17 @@ const LIFT_GAP = 10;
  * the date separator underneath stayed perfectly legible. Screenshot 25 of
  * E2E run 35 is that, photographed.
  *
+ * 0.86 was still not enough. Run 37 showed the thread's own date separator
+ * reading clearly THROUGH the scrim, landing between the lifted message and
+ * the Unsend card — so the menu appeared to contain a stray line of text. The
+ * lifted copy sits above the original (the group shifts up to fit the actions
+ * underneath), which is what puts the separator in the gap. At 0.95 the thread
+ * behind is a hint of depth rather than legible content.
+ *
  * Not a theme token, because every sheet in the app uses that one and none of
  * them asked for this.
  */
-const MENU_SCRIM = 'rgba(2,3,9,0.86)';
+const MENU_SCRIM = 'rgba(2,3,9,0.95)';
 
 type Rect = { x: number; y: number; width: number; height: number };
 
