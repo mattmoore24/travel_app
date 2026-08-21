@@ -97,6 +97,13 @@ old celebrations, and the last em dashes in user-facing copy are gone.
   asserts a `message-menu` testID as well as the Dismiss label so the next
   failure says which half broke. Recorded in the `traps` skill.
 
+- **Shipped.** The JavaScript went out as iOS update
+  `01a0250e-a712-7f38-ab5b-86d99eeb1702` (group
+  `86c5c34b-2b4c-4a65-88b4-9c66ceec4bfc`) from commit `289ef67`, on branch
+  `production`, runtime `0.1.0`. The database side went out on Supabase deploy
+  run 26, which also proved all three workers alive and refusing the anon key.
+  E2E run 38 is the picture of what that update contains.
+
 - **The reaction menu now behaves like Messages.** The scrim was doing
   nothing visible (`rgba(6,7,16,0.62)` over `#0E1020` resolves to `#090A16`),
   so the menu floated over a live thread with the date separator legible
