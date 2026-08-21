@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
+import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -23,7 +24,17 @@ type StepScreenProps = {
   footer?: ReactNode;
 };
 
-/** Shared scaffold for onboarding steps and simple form screens. */
+/**
+ * Shared scaffold for onboarding steps and simple form screens.
+ *
+ * The keyboard is handled by asking the keyboard, not by KeyboardAvoidingView.
+ * KAV measures its own frame against its PARENT and then compares that number
+ * to a window-coordinate keyboard position, which is correct only when it is
+ * the screen root sitting at the top of the window. Most of these screens are
+ * presented as modals, and a modal card starts sixty-odd points down: KAV came
+ * up exactly that far short, so the Send button and the last field sat under
+ * the keyboard on every one of them. Same fix as the chat composer.
+ */
 export function StepScreen({
   title,
   subtitle,
@@ -39,9 +50,7 @@ export function StepScreen({
   return (
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardFloor>
           <ScrollView
             ref={scrollRef}
             style={styles.flex}
@@ -69,7 +78,7 @@ export function StepScreen({
             />
             {footer}
           </ThemedView>
-        </KeyboardAvoidingView>
+        </KeyboardFloor>
       </SafeAreaView>
     </ThemedView>
   );
