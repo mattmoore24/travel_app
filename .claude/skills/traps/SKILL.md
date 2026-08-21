@@ -34,6 +34,13 @@ device does something else.
   guest sign-up gate rendered in the same sheet — so treat ANY navigation
   inside a `<Sheet>` as this bug until it is wrapped. `Linking.openURL` is
   fine: it leaves the app rather than pushing underneath.
+- **The GitHub REST API is not reachable from this sandbox.** `curl` to
+  `api.github.com` returns 403 "GitHub access is not enabled for this
+  session" — only the `mcp__github__*` tools work. So a Bash monitor that
+  polls run status silently emits nothing and looks like "still running"
+  rather than "cannot reach". Poll with `actions_list` / `list_workflow_jobs`
+  instead, and note those return large payloads that overflow to a file: read
+  them with a python one-liner rather than dumping them into context.
 - **`KeyboardAvoidingView`'s frame is measured against its PARENT, not the
   window.** So the usual `keyboardVerticalOffset={someHeaderHeight}` recipe is
   only right when the view is the screen root. Both chat screens passed a
