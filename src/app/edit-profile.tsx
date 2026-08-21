@@ -1,6 +1,6 @@
-import { router } from 'expo-router';
-import { useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
 import { LanguageField } from '@/components/form/language-field';
 import { FormTextField } from '@/components/form/form-text-field';
@@ -8,6 +8,7 @@ import { SelectField } from '@/components/form/select-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
+import { Space } from '@/constants/theme';
 import { useOwnProfile, useUpdateOwnProfile } from '@/features/profile/hooks';
 import { SocialHandlesEditor } from '@/features/profile/social-handles-editor';
 import {
@@ -35,8 +36,35 @@ export default function EditProfileScreen() {
   return <EditProfileForm profile={profile} />;
 }
 
+/** Which block each Edit affordance on the profile is pointing at. */
+type Section = 'photos' | 'about' | 'details' | 'socials';
+
 function EditProfileForm({ profile }: { profile: ProfileRow }) {
   const updateProfile = useUpdateOwnProfile();
+  // Four Edit affordances on the profile page have always passed a section
+  // here — the hero's camera button, and the headers on About, Details and
+  // Socials — and this screen never read it, so every one of them landed you
+  // at the top of the same long form and left you to find the thing you had
+  // just tapped.
+  const { section } = useLocalSearchParams<{ section?: Section }>();
+  const scroller = useRef<ScrollView>(null);
+  const [targetY, setTargetY] = useState<number | null>(null);
+
+  // Only the block that was asked for reports its position, and the scroll
+  // happens in an effect: a handler created during render may not touch a
+  // ref, and the scroller has its content height by the time this runs.
+  const measure = (key: Section) => (event: LayoutChangeEvent) => {
+    if (section === key) {
+      setTargetY(event.nativeEvent.layout.y);
+    }
+  };
+
+  useEffect(() => {
+    if (targetY == null) {
+      return;
+    }
+    scroller.current?.scrollTo({ y: Math.max(targetY - Space.md, 0), animated: false });
+  }, [targetY]);
 
   const [name, setName] = useState(profile.display_name ?? '');
   const [age, setAge] = useState(profile.age != null ? String(profile.age) : '');
@@ -75,8 +103,17 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
       title="Edit profile"
       continueLabel="Save"
       continueDisabled={!valid}
+      // Deselect your only language to swap it and Save simply stopped
+      // working: name, age and bio all showed no error, so the one thing
+      // blocking it was the one thing not saying so.
+      note={
+        languages.length === 0 && nameError == null && ageError == null && bioError == null
+          ? 'Pick at least one language you can chat in.'
+          : null
+      }
       continueLoading={updateProfile.isPending}
-      onContinue={save}>
+      onContinue={save}
+      scrollRef={scroller}>
       <FormTextField label="Name" value={name} onChangeText={setName} error={nameError} />
       <FormTextField
         label="Age"
@@ -85,6 +122,7 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
         onChangeText={setAge}
         error={ageError}
       />
+      <View onLayout={measure('details')} />
       <SelectField label="Gender" options={GENDER_OPTIONS} value={gender} onChange={setGender} />
       <FormTextField
         label="What you do"
@@ -96,6 +134,7 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
       <FormTextField label="Home country" value={country} onChangeText={setCountry} />
       <ThemedText type="smallBold">Languages</ThemedText>
       <LanguageField selected={languages} onChange={setLanguages} max={LANGUAGES_MAX} />
+      <View onLayout={measure('about')} />
       <FormTextField
         label="Bio"
         multiline
@@ -105,9 +144,13 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
         onChangeText={setBio}
         error={bioError}
       />
-      <ThemedText type="smallBold">Photos</ThemedText>
+      <ThemedText type="smallBold" onLayout={measure('photos')}>
+        Photos
+      </ThemedText>
       <PhotoGrid />
-      <ThemedText type="smallBold">Socials</ThemedText>
+      <ThemedText type="smallBold" onLayout={measure('socials')}>
+        Socials
+      </ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
         Only shared with people you are chatting with.
       </ThemedText>

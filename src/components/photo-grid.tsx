@@ -179,7 +179,12 @@ export function PhotoGrid() {
     const picked = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      aspect: [4, 5],
+      // `aspect` is Android-only. On iOS the system editor is always square,
+      // so asking for 4:5 here changed nothing except this file: people
+      // framed themselves inside a square and the profile then cropped a
+      // further fifth off each side to fill a 4:5 frame, cutting shoulders
+      // and, on a close portrait, ears. Take the square they approved and
+      // show it as a square.
       quality: 1,
     });
     if (picked.canceled || picked.assets.length === 0) {

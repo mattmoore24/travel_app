@@ -15,6 +15,11 @@ type StepScreenProps = {
   continueDisabled?: boolean;
   continueLoading?: boolean;
   onContinue: () => void;
+  /** Quiet line above the button, e.g. what is still missing. Same slot
+   * StepShell has, so a disabled Continue can always explain itself. */
+  note?: string | null;
+  /** The scroller itself, for a caller that needs to jump to one block. */
+  scrollRef?: React.Ref<ScrollView>;
   footer?: ReactNode;
 };
 
@@ -27,6 +32,8 @@ export function StepScreen({
   continueDisabled = false,
   continueLoading = false,
   onContinue,
+  note,
+  scrollRef,
   footer,
 }: StepScreenProps) {
   return (
@@ -36,6 +43,7 @@ export function StepScreen({
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView
+            ref={scrollRef}
             style={styles.flex}
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="always"
@@ -48,6 +56,11 @@ export function StepScreen({
             {children}
           </ScrollView>
           <ThemedView style={styles.footer}>
+            {note ? (
+              <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
+                {note}
+              </ThemedText>
+            ) : null}
             <PrimaryButton
               label={continueLabel}
               disabled={continueDisabled}
@@ -63,6 +76,9 @@ export function StepScreen({
 }
 
 const styles = StyleSheet.create({
+  note: {
+    textAlign: 'center',
+  },
   root: {
     flex: 1,
     flexDirection: 'row',
