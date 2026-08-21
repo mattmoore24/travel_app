@@ -30,14 +30,22 @@ const CATEGORY_GLYPHS: Record<PinCategory, SymbolViewProps['name']> = {
 const SEEDED_GLYPH: SymbolViewProps['name'] = { ios: 'star.fill', android: 'star', web: 'star' };
 
 /**
- * Two colours only: travelers pin in the brand indigo, curated spots in the
- * campfire amber — the map stays "Samewhere blue + amber" instead of a
- * carnival of category hues. The glyph carries the category.
- * Fixed values (not theme tokens): markers sit on the basemap, which doesn't
- * follow the app's light/dark surfaces, and both clear 3:1 on it.
+ * Two colours only, both warm: travelers pin in the campfire amber, curated
+ * spots in gold. The glyph carries the category, so the map stays two
+ * colours instead of a carnival of category hues.
+ *
+ * Warm, not the brand blue, and that is deliberate. The app is dark now and
+ * the basemap follows it, so an indigo marker would sit on a dark navy map
+ * and a heat circle in the same indigo would effectively disappear. Warm
+ * light on an unlit city is the whole idea of the palette.
+ *
+ * Fixed values rather than theme tokens: markers sit on the basemap, which
+ * does not follow the app's own surfaces. The glyph is the app's ink because
+ * white on amber is 2.1:1 and unreadable; ink on amber is 9.0:1.
  */
-const PIN_INDIGO = '#2A4C9B';
-const PIN_AMBER = '#C77B14';
+const PIN_AMBER = '#FF9A5A';
+const PIN_GOLD = '#FFC168';
+const PIN_GLYPH = '#0E1020';
 const PIN_RING = '#FFFFFF';
 
 /**
@@ -84,7 +92,7 @@ export function PinMarkerView({
     transform: [{ scale: scale.value }],
   }));
 
-  const fill = seeded ? PIN_AMBER : PIN_INDIGO;
+  const fill = seeded ? PIN_GOLD : PIN_AMBER;
   const glyph = seeded ? SEEDED_GLYPH : CATEGORY_GLYPHS[category];
   // A face beats an icon: knowing WHO is going is the reason to tap.
   const showFace = !seeded && photoUri != null;
@@ -105,11 +113,11 @@ export function PinMarkerView({
             </View>
             {/* Category still readable at a glance, tucked in the corner. */}
             <View style={[styles.categoryDot, { backgroundColor: fill }]}>
-              <SymbolView name={glyph} size={9} tintColor={PIN_RING} />
+              <SymbolView name={glyph} size={9} tintColor={PIN_GLYPH} />
             </View>
           </>
         ) : (
-          <SymbolView name={glyph} size={15} tintColor={PIN_RING} />
+          <SymbolView name={glyph} size={15} tintColor={PIN_GLYPH} />
         )}
       </View>
       <View style={[styles.tail, { backgroundColor: fill }]} />

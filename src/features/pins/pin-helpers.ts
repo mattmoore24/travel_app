@@ -91,6 +91,107 @@ export function validDurations(intentISO: string, now = new Date()): PinDuration
 }
 
 /**
+ * Apple's point-of-interest categories, folded onto the eight kinds a pin
+ * can be. This exists because the "what kind of plan" chips are gone: the
+ * founder's note was that nobody should have to answer a question the map
+ * already knows the answer to. Anything unrecognised is 'other', which is a
+ * real answer rather than a failure.
+ *
+ * Matching is on the raw value's tail ("MKPOICategoryNightlife" -> nightlife)
+ * so it survives Apple adding a prefix or changing case.
+ */
+export function categoryForPoi(raw: string | null | undefined): PinCategory {
+  if (!raw) {
+    return 'other';
+  }
+  const key = raw.replace(/^MKPOICategory/i, '').toLowerCase();
+  const table: Record<string, PinCategory> = {
+    brewery: 'bar',
+    winery: 'bar',
+    nightlife: 'club',
+    cafe: 'restaurant',
+    bakery: 'restaurant',
+    restaurant: 'restaurant',
+    foodmarket: 'restaurant',
+    museum: 'museum',
+    aquarium: 'museum',
+    planetarium: 'museum',
+    zoo: 'museum',
+    library: 'museum',
+    theater: 'museum',
+    movietheater: 'museum',
+    musicvenue: 'club',
+    landmark: 'monument',
+    nationalmonument: 'monument',
+    castle: 'monument',
+    fortress: 'monument',
+    beach: 'beach',
+    marina: 'beach',
+    surfing: 'beach',
+    swimming: 'beach',
+    hiking: 'hike',
+    nationalpark: 'hike',
+    park: 'hike',
+    campground: 'hike',
+    fishing: 'hike',
+    kayaking: 'hike',
+    skating: 'hike',
+    skiing: 'hike',
+  };
+  if (table[key]) {
+    return table[key];
+  }
+  // A couple of families are easier to catch by shape than to enumerate.
+  if (key.includes('bar') || key.includes('pub')) {
+    return 'bar';
+  }
+  if (key.includes('food') || key.includes('restaurant')) {
+    return 'restaurant';
+  }
+  return 'other';
+}
+
+/** The narrowest a pin's life can be set to. */
+export const MIN_PIN_HOURS = 1;
+
+/** Expiry for a plain "this many hours from now", capped by the 72h rule. */
+export function expiryForHours(hours: number, now = new Date()): Date {
+  const wanted = Math.min(Math.max(Math.round(hours), MIN_PIN_HOURS), MAX_PIN_HOURS);
+  const raw = new Date(now.getTime() + wanted * 3_600_000);
+  const cap = maxExpiry(now);
+  return raw < cap ? raw : cap;
+}
+
+/**
+ * The fewest hours that still reach the plan's own day. Setting a pin for
+ * Friday and having it vanish on Thursday night is incoherent, so the
+ * slider starts here rather than at one.
+ */
+export function minHoursForIntent(intentISO: string, now = new Date()): number {
+  const intentDayStart = parseISODate(intentISO);
+  const hoursAway = Math.ceil((intentDayStart.getTime() - now.getTime()) / 3_600_000);
+  return Math.min(Math.max(hoursAway + 1, MIN_PIN_HOURS), MAX_PIN_HOURS);
+}
+
+/** Where the slider sits before anyone touches it: the end of the plan's day. */
+export function defaultHoursForIntent(intentISO: string, now = new Date()): number {
+  const endOfDay = expiryForIntentDate(intentISO, now);
+  const hours = Math.round((endOfDay.getTime() - now.getTime()) / 3_600_000);
+  return Math.min(Math.max(hours, minHoursForIntent(intentISO, now)), MAX_PIN_HOURS);
+}
+
+/** "1 hour" / "6 hours" / "2 days" — a duration a person would say out loud. */
+export function hoursLabel(hours: number): string {
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+  const days = Math.floor(hours / 24);
+  const rest = hours % 24;
+  const dayPart = `${days} day${days === 1 ? '' : 's'}`;
+  return rest === 0 ? dayPart : `${dayPart} ${rest}h`;
+}
+
+/**
  * Campfire-voiced countdown for the ≤72h pin lifetime — the expiry is the
  * product's heartbeat, so it's worth saying out loud on every pin.
  */

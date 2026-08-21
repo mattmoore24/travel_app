@@ -1,64 +1,93 @@
 import * as Location from 'expo-location';
+import { SymbolView } from 'expo-symbols';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import {
+  InputAccessoryView,
+  Keyboard,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
+import { HoursSlider } from '@/components/form/hours-slider';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { Sheet } from '@/components/ui/sheet';
 import { ThemedText } from '@/components/themed-text';
-import { Space } from '@/constants/theme';
+import { Radius, Space } from '@/constants/theme';
 import { useCreatePin } from '@/features/pins/hooks';
 import {
-  DURATION_OPTIONS,
-  PIN_CATEGORIES,
-  expiryForDuration,
+  MAX_PIN_HOURS,
+  categoryEmoji,
+  categoryForPoi,
+  defaultHoursForIntent,
+  expiryForHours,
+  hoursLabel,
   intentDateOptions,
-  validDurations,
-  type PinDuration,
+  minHoursForIntent,
 } from '@/features/pins/pin-helpers';
+import { openInMaps } from '@/features/pins/open-in-maps';
 import { toISODate } from '@/features/trips/dates';
+import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
-import type { PinCategory } from '@/lib/database.types';
+import type { LocalSearchResult } from '@/modules/local-search';
 
-const CATEGORY_OPTIONS = PIN_CATEGORIES.map((c) => ({
-  value: c.value,
-  label: `${c.emoji} ${c.label}`,
-}));
+/** iOS toolbar id: gives the multiline field a way out of the keyboard. */
+const ACCESSORY_ID = 'pin-form-done';
 
 type PinFormSheetProps = {
   cityId: number;
   cityName: string;
   coords: { lat: number; lng: number };
-  /** Pre-filled from the place search, if that's how the spot was found. */
-  initialVenue?: string;
+  /** Everything the place search already knows, when that is how it was found. */
+  initialPlace?: LocalSearchResult | null;
   onClose: () => void;
   onPosted: (pinId: string) => void;
 };
 
 /**
- * The last step of dropping a pin: the spot is already chosen on the map
- * behind this sheet — here it just gets a name, a kind, and a lifetime.
+ * The last step of dropping a pin. The spot is already chosen on the map
+ * behind this sheet; here it gets a name, a description and a lifetime.
+ *
+ * Two sections, because they answer different questions and the founder
+ * asked for them separately: WHERE (filled in for you, with a link into
+ * Maps) and WHAT (yours to write). The old "what kind of plan" row is gone
+ * on purpose: when the place came from search, Apple already told us it is a
+ * bar, and when it did not, the answer changes nothing anyone sees except a
+ * pin emoji.
  */
 export function PinFormSheet({
   cityId,
   cityName,
   coords,
-  initialVenue = '',
+  initialPlace = null,
   onClose,
   onPosted,
 }: PinFormSheetProps) {
+  const theme = useTheme();
   const createPin = useCreatePin();
-  const [venue, setVenue] = useState(initialVenue);
+  const [venue, setVenue] = useState(initialPlace?.name ?? '');
   const [note, setNote] = useState('');
-  const [placeLabel, setPlaceLabel] = useState<string | null>(null);
-  const [category, setCategory] = useState<PinCategory>('bar');
+  const [placeLabel, setPlaceLabel] = useState<string | null>(
+    initialPlace ? placeLabelFor(initialPlace) : null
+  );
   const [intentDate, setIntentDate] = useState(toISODate(new Date()));
-  const [duration, setDuration] = useState<PinDuration>('end_of_day');
+  const [hours, setHours] = useState(() => defaultHoursForIntent(toISODate(new Date())));
+  const [hoursTouched, setHoursTouched] = useState(false);
+
+  const category = categoryForPoi(initialPlace?.category);
 
   // Where the map says this spot is, so the card can show a street instead
-  // of a dot. Reverse-geocoding a chosen coordinate reads nobody's position.
+  // of a dot. Only when the place did not come from search, which already
+  // carries an exact address. Reverse-geocoding a chosen coordinate reads
+  // nobody's position.
   useEffect(() => {
+    if (initialPlace) {
+      return;
+    }
     let active = true;
     Location.reverseGeocodeAsync({ latitude: coords.lat, longitude: coords.lng })
       .then((places) => {
@@ -77,16 +106,18 @@ export function PinFormSheet({
     return () => {
       active = false;
     };
-  }, [coords.lat, coords.lng]);
+  }, [coords.lat, coords.lng, initialPlace]);
 
   // Recomputed per render: the sheet can sit open across local midnight, and
   // a stale "today" would post an already-expired pin.
   const todayISO = toISODate(new Date());
   const effectiveIntent = intentDate < todayISO ? todayISO : intentDate;
-  const dateOptions = intentDateOptions();
-  const validSet = new Set(validDurations(effectiveIntent));
-  const durationOptions = DURATION_OPTIONS.filter((o) => validSet.has(o.value));
-  const effectiveDuration = validSet.has(duration) ? duration : 'end_of_day';
+  const minHours = minHoursForIntent(effectiveIntent);
+  // Until it is dragged, the slider follows the day you pick. After that it
+  // is yours, and only the floor still moves.
+  const effectiveHours = hoursTouched
+    ? Math.min(Math.max(hours, minHours), MAX_PIN_HOURS)
+    : defaultHoursForIntent(effectiveIntent);
 
   const submit = async () => {
     try {
@@ -99,7 +130,7 @@ export function PinFormSheet({
         lat: coords.lat,
         lng: coords.lng,
         intentDate: effectiveIntent,
-        expiresAt: expiryForDuration(effectiveDuration, effectiveIntent).toISOString(),
+        expiresAt: expiryForHours(effectiveHours).toISOString(),
       });
       haptics.success();
       onPosted(pin.id);
@@ -118,19 +149,60 @@ export function PinFormSheet({
         // the text keeps going into the one that still has focus. That is
         // exactly how a plan's details ended up appended to its name.
         keyboardShouldPersistTaps="always"
+        // A multiline field has no Return that closes the keyboard, which is
+        // how the details box came to hide the rest of the form with no way
+        // back. Dragging the list now dismisses it, and iOS gets a Done bar.
+        keyboardDismissMode="interactive"
         showsVerticalScrollIndicator={false}>
-        <ThemedText type="headline">What is the plan?</ThemedText>
+        <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
+          LOCATION
+        </ThemedText>
+        <View style={[styles.placeCard, { backgroundColor: theme.surfaceSunken }]}>
+          <ThemedText style={styles.placeEmoji}>{categoryEmoji(category, false)}</ThemedText>
+          <View style={styles.placeText}>
+            <ThemedText type="callout" numberOfLines={1}>
+              {initialPlace?.name ?? placeLabel ?? `Where you dropped it in ${cityName}`}
+            </ThemedText>
+            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
+              {[initialPlace?.address, initialPlace?.locality ?? cityName]
+                .filter(Boolean)
+                .join(', ')}
+            </ThemedText>
+          </View>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel="View in Maps"
+            hitSlop={8}
+            onPress={() =>
+              openInMaps({
+                lat: coords.lat,
+                lng: coords.lng,
+                label: initialPlace?.name ?? (venue.trim() || cityName),
+              })
+            }
+            style={styles.mapsLink}>
+            <SymbolView
+              name={{ ios: 'map', android: 'map', web: 'map' }}
+              size={15}
+              tintColor={theme.accent}
+            />
+            <ThemedText type="footnote" themeColor="accent">
+              View in Maps
+            </ThemedText>
+          </Pressable>
+        </View>
+
+        <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
+          PLANS
+        </ThemedText>
         <FormTextField
-          label="Name"
+          label="What is the plan?"
           testID="venue-input"
           placeholder="Sunset drinks, night market crawl, morning surf"
           value={venue}
           onChangeText={setVenue}
+          returnKeyType="done"
         />
-        {/* The spot itself, in words, right where it was dropped. */}
-        <ThemedText type="footnote" themeColor="textSecondary">
-          {placeLabel ? `At ${placeLabel}` : `Where you dropped it in ${cityName}`}
-        </ThemedText>
         <FormTextField
           label="Details"
           testID="note-input"
@@ -140,28 +212,30 @@ export function PinFormSheet({
           placeholder="Meeting at the tram stop around 7"
           value={note}
           onChangeText={setNote}
+          inputAccessoryViewID={Platform.OS === 'ios' ? ACCESSORY_ID : undefined}
         />
-        {/* Single scrolling lines, not wrapped grids: with a keyboard up the
-            sheet has room for about a screen and a half of form, and the
-            three questions below used to eat most of it. */}
-        <ChipRail
-          label="What kind of plan"
-          options={CATEGORY_OPTIONS}
-          selected={category}
-          onSelect={setCategory}
-        />
+        {/* A single scrolling line, not a wrapped grid: with a keyboard up
+            the sheet has room for about a screen and a half of form. */}
         <ChipRail
           label="When"
-          options={dateOptions}
+          options={intentDateOptions()}
           selected={effectiveIntent}
           onSelect={setIntentDate}
         />
-        <ChipRail
-          label="Pin disappears after"
-          options={durationOptions}
-          selected={effectiveDuration}
-          onSelect={setDuration}
-        />
+        <View style={styles.sliderBlock}>
+          <ThemedText type="smallBold">Pin disappears after</ThemedText>
+          <HoursSlider
+            value={effectiveHours}
+            min={minHours}
+            max={MAX_PIN_HOURS}
+            onChange={(next) => {
+              setHoursTouched(true);
+              setHours(next);
+            }}
+            formatValue={hoursLabel}
+            accessibilityLabel="How long this pin stays up"
+          />
+        </View>
       </ScrollView>
       <PrimaryButton
         label="Drop it"
@@ -172,8 +246,30 @@ export function PinFormSheet({
       <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
         Expires on its own (72h max) and never shows where you are.
       </ThemedText>
+
+      {Platform.OS === 'ios' ? (
+        <InputAccessoryView nativeID={ACCESSORY_ID}>
+          <View style={[styles.accessory, { backgroundColor: theme.surface }]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Done editing"
+              hitSlop={10}
+              // Blurs whatever is focused without needing a ref to it.
+              onPress={() => Keyboard.dismiss()}>
+              <ThemedText type="smallBold" themeColor="accent">
+                Done
+              </ThemedText>
+            </Pressable>
+          </View>
+        </InputAccessoryView>
+      ) : null}
     </Sheet>
   );
+}
+
+function placeLabelFor(place: LocalSearchResult): string | null {
+  const label = [place.address, place.locality].filter(Boolean).join(', ');
+  return label || null;
 }
 
 const styles = StyleSheet.create({
@@ -189,7 +285,38 @@ const styles = StyleSheet.create({
   form: {
     gap: Space.md,
   },
+  sectionLabel: {
+    letterSpacing: 0.8,
+  },
+  placeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    padding: Space.md,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
+  placeEmoji: {
+    fontSize: 22,
+  },
+  placeText: {
+    flex: 1,
+    gap: 2,
+  },
+  mapsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+  },
+  sliderBlock: {
+    gap: Space.xs,
+  },
   note: {
     textAlign: 'center',
+  },
+  accessory: {
+    alignItems: 'flex-end',
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.sm,
   },
 });

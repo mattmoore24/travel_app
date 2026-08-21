@@ -6,7 +6,9 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import { Springs } from '@/constants/theme';
 import { haptics } from '@/lib/haptics';
 
-const PIN_INDIGO = '#2A4C9B';
+// Same warm pair as the markers it is about to become; see pin-marker.tsx.
+const PIN_AMBER = '#FF9A5A';
+const PIN_GLYPH = '#0E1020';
 const PIN_RING = '#FFFFFF';
 
 const BODY = 44;
@@ -57,7 +59,7 @@ export function PlacePinOverlay({ lifted }: { lifted: boolean }) {
             <SymbolView
               name={{ ios: 'mappin', android: 'place', web: 'place' }}
               size={20}
-              tintColor={PIN_RING}
+              tintColor={PIN_GLYPH}
             />
           </View>
           <View style={styles.tail} />
@@ -91,7 +93,7 @@ const styles = StyleSheet.create({
     borderRadius: BODY / 2,
     borderWidth: 3,
     borderColor: PIN_RING,
-    backgroundColor: PIN_INDIGO,
+    backgroundColor: PIN_AMBER,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -105,7 +107,7 @@ const styles = StyleSheet.create({
     height: TAIL,
     marginTop: -(TAIL / 2 + 5),
     borderRadius: 2.5,
-    backgroundColor: PIN_INDIGO,
+    backgroundColor: PIN_AMBER,
     transform: [{ rotate: '45deg' }],
     zIndex: -1,
   },

@@ -1,11 +1,16 @@
-import { addDays, toISODate } from '@/features/trips/dates';
+import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
 
 import {
   MAX_PIN_HOURS,
+  categoryForPoi,
+  defaultHoursForIntent,
   expiryForDuration,
+  expiryForHours,
   expiryForIntentDate,
+  hoursLabel,
   intentDateOptions,
   intentLabel,
+  minHoursForIntent,
   validDurations,
 } from '../pin-helpers';
 
@@ -65,5 +70,71 @@ describe('pin lifetime helpers (hard rule 3: <=72h)', () => {
     expect(intentLabel(toISODate(now), now)).toBe('Today');
     expect(intentLabel(toISODate(addDays(now, 1)), now)).toBe('Tomorrow');
     expect(intentLabel('2026-03-06', now)).toContain('Friday');
+  });
+});
+
+describe('categoryForPoi', () => {
+  it('reads Apple point-of-interest categories', () => {
+    expect(categoryForPoi('MKPOICategoryNightlife')).toBe('club');
+    expect(categoryForPoi('MKPOICategoryCafe')).toBe('restaurant');
+    expect(categoryForPoi('MKPOICategoryBeach')).toBe('beach');
+    expect(categoryForPoi('MKPOICategoryNationalPark')).toBe('hike');
+  });
+
+  it('catches the families it does not enumerate', () => {
+    expect(categoryForPoi('MKPOICategoryBrewery')).toBe('bar');
+    expect(categoryForPoi('MKPOICategoryFoodMarket')).toBe('restaurant');
+  });
+
+  it('treats an unknown or missing category as a real answer, not a failure', () => {
+    expect(categoryForPoi('MKPOICategoryLaundry')).toBe('other');
+    expect(categoryForPoi(null)).toBe('other');
+    expect(categoryForPoi(undefined)).toBe('other');
+  });
+});
+
+describe('the pin lifetime slider', () => {
+  const now = new Date('2026-08-21T18:00:00');
+
+  it('never lets a pin outlive the 72 hour rule', () => {
+    const expiry = expiryForHours(9999, now);
+    expect(expiry.getTime() - now.getTime()).toBeLessThanOrEqual(MAX_PIN_HOURS * 3_600_000);
+  });
+
+  it('never lets a pin be set shorter than an hour', () => {
+    const expiry = expiryForHours(0, now);
+    expect(expiry.getTime() - now.getTime()).toBeGreaterThanOrEqual(3_600_000);
+  });
+
+  it("starts the slider late enough to reach the plan's own day", () => {
+    // A plan for the day after tomorrow must not be allowed to expire tonight.
+    const dayAfter = toISODate(addDays(now, 2));
+    const min = minHoursForIntent(dayAfter, now);
+    expect(new Date(now.getTime() + min * 3_600_000).getTime()).toBeGreaterThan(
+      parseISODate(dayAfter).getTime()
+    );
+  });
+
+  it("defaults to the end of the plan's day", () => {
+    const today = toISODate(now);
+    // 18:00 to local midnight is six hours.
+    expect(defaultHoursForIntent(today, now)).toBe(6);
+  });
+
+  it('never defaults below its own floor', () => {
+    const dayAfter = toISODate(addDays(now, 2));
+    expect(defaultHoursForIntent(dayAfter, now)).toBeGreaterThanOrEqual(
+      minHoursForIntent(dayAfter, now)
+    );
+  });
+});
+
+describe('hoursLabel', () => {
+  it('says hours, then days, the way a person would', () => {
+    expect(hoursLabel(1)).toBe('1 hour');
+    expect(hoursLabel(6)).toBe('6 hours');
+    expect(hoursLabel(24)).toBe('1 day');
+    expect(hoursLabel(30)).toBe('1 day 6h');
+    expect(hoursLabel(72)).toBe('3 days');
   });
 });

@@ -25,8 +25,10 @@ import {
   PinMarkerView,
   useMarkerTracking,
 } from '@/features/pins/pin-marker';
+import { openInMaps } from '@/features/pins/open-in-maps';
 import { PinFormSheet } from '@/features/pins/pin-form-sheet';
 import { PinSearchField } from '@/features/pins/pin-search-field';
+import type { LocalSearchResult } from '@/modules/local-search';
 import { PlacePinOverlay } from '@/features/pins/place-pin-overlay';
 import { burnOutLabel, categoryEmoji, intentLabel } from '@/features/pins/pin-helpers';
 import { addDays, toISODate } from '@/features/trips/dates';
@@ -80,6 +82,25 @@ function PinCard({
               {pin.place_label}
             </ThemedText>
           ) : null}
+          {/* Getting there is somebody else's job, and the phone already has
+              an app for it. */}
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`View ${pin.venue_name} in Maps`}
+            hitSlop={8}
+            onPress={() =>
+              openInMaps({ lat: pin.lat, lng: pin.lng, label: pin.place_label ?? pin.venue_name })
+            }
+            style={styles.mapsLink}>
+            <SymbolView
+              name={{ ios: 'map', android: 'map', web: 'map' }}
+              size={13}
+              tintColor={theme.accent}
+            />
+            <ThemedText type="footnote" themeColor="accent">
+              View in Maps
+            </ThemedText>
+          </Pressable>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -209,6 +230,30 @@ const SHEET_EXIT_MS = 320;
 
 const SEEDED_LABEL = 'One of our picks. Just show up.';
 
+/**
+ * How far the map centre can drift from a searched place before the pin
+ * stops being about that place. Roughly a venue's own footprint.
+ */
+const PLACE_DRIFT_M = 40;
+
+/** Amber at one pin, ember by five, and never opaque enough to hide a street. */
+function heatFill(count: number): string {
+  const t = Math.min(Math.max((count - 1) / 4, 0), 1);
+  const r = 255;
+  const g = Math.round(154 + (107 - 154) * t);
+  const b = Math.round(90 + (84 - 90) * t);
+  return `rgba(${r}, ${g}, ${b}, ${Math.min(0.1 + count * 0.05, 0.34)})`;
+}
+
+function metersBetween(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const rad = Math.PI / 180;
+  const dLat = (bLat - aLat) * rad;
+  const dLng = (bLng - aLng) * rad;
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.sqrt(h));
+}
+
 const DATE_FILTERS = [
   { value: 'all', label: 'All' },
   { value: 'today', label: 'Today' },
@@ -283,7 +328,7 @@ export default function MapScreen() {
   const [mode, setMode] = useState<MapMode>('browse');
   const [lifted, setLifted] = useState(false);
   const [placeCoords, setPlaceCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [searchedVenue, setSearchedVenue] = useState('');
+  const [searchedPlace, setSearchedPlace] = useState<LocalSearchResult | null>(null);
   const lastRegion = useRef<Region | null>(null);
 
   const pins = useMemo(
@@ -346,7 +391,7 @@ export default function MapScreen() {
     }
     haptics.light();
     setSelectedPinId(null);
-    setSearchedVenue('');
+    setSearchedPlace(null);
     const region = lastRegion.current;
     setPlaceCoords({
       lat: region?.latitude ?? activeCity.cities.lat,
@@ -370,13 +415,13 @@ export default function MapScreen() {
     setLifted(false);
   };
 
-  const flyTo = (coords: { lat: number; lng: number }, venue: string) => {
-    setSearchedVenue(venue);
-    setPlaceCoords(coords);
+  const flyTo = (place: LocalSearchResult) => {
+    setSearchedPlace(place);
+    setPlaceCoords({ lat: place.latitude, lng: place.longitude });
     mapRef.current?.animateToRegion(
       {
-        latitude: coords.lat,
-        longitude: coords.lng,
+        latitude: place.latitude,
+        longitude: place.longitude,
         latitudeDelta: 0.012,
         longitudeDelta: 0.012,
       },
@@ -416,6 +461,17 @@ export default function MapScreen() {
             if (mode === 'place') {
               setLifted(false);
               setPlaceCoords({ lat: region.latitude, lng: region.longitude });
+              // Drag away from the place you searched for and it stops being
+              // that place. Without this the form would fill itself in with
+              // the address of a venue the pin is no longer on. The fly-to
+              // animation lands within metres of the target, so it survives.
+              setSearchedPlace((place) =>
+                place != null &&
+                metersBetween(place.latitude, place.longitude, region.latitude, region.longitude) >
+                  PLACE_DRIFT_M
+                  ? null
+                  : place
+              );
             }
           }}>
           {heat.map((cell) => (
@@ -424,7 +480,9 @@ export default function MapScreen() {
               center={{ latitude: cell.cell_lat, longitude: cell.cell_lng }}
               radius={HEAT_CELL_RADIUS_M}
               strokeColor="transparent"
-              fillColor={`rgba(42, 76, 155, ${Math.min(0.08 + cell.pin_count * 0.05, 0.32)})`}
+              // One light source intensifying, amber toward ember, never a
+              // hue swap: the heat scale has to read on a dark basemap.
+              fillColor={heatFill(cell.pin_count)}
             />
           ))}
           {pins.map((pin) => (
@@ -639,7 +697,7 @@ export default function MapScreen() {
           cityId={activeCity.city_id}
           cityName={activeCity.cities.name}
           coords={placeCoords}
-          initialVenue={searchedVenue}
+          initialPlace={searchedPlace}
           onClose={() => setMode('place')}
           onPosted={(pinId) => {
             setMode('browse');
@@ -789,6 +847,12 @@ const styles = StyleSheet.create({
   },
   pinCardEmoji: {
     fontSize: 22,
+  },
+  mapsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+    paddingTop: 2,
   },
   pinCardTitle: {
     flex: 1,

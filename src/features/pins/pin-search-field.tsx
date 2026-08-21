@@ -15,7 +15,11 @@ type PinSearchFieldProps = {
   cityName: string;
   cityLat: number;
   cityLng: number;
-  onFound: (coords: { lat: number; lng: number }, query: string) => void;
+  /**
+   * The whole place, not just where it is. The pin form fills its own
+   * location block from this, so nobody retypes what the map already knows.
+   */
+  onFound: (place: LocalSearchResult) => void;
 };
 
 /** Results outside this are somebody else's city. */
@@ -172,9 +176,10 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
     setHits([]);
     setMessage(null);
     setQuery('');
-    // The venue's own name goes into the pin, so "Pensão Amor" arrives
-    // spelled the way the map spells it.
-    onFound({ lat: result.latitude, lng: result.longitude }, result.name);
+    // The venue's own name, address and category go into the pin, so
+    // "Pensão Amor" arrives spelled the way the map spells it and nobody is
+    // asked what kind of place it is.
+    onFound(result);
   };
 
   const showClear = query.length > 0;
