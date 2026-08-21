@@ -16,9 +16,6 @@
 --      maximum the admin set. Membership expires on its own afterwards, the
 --      same sweep that already runs for hostel rooms.
 
--- Invite tokens are random bytes, which is pgcrypto's job.
-create extension if not exists pgcrypto with schema extensions;
-
 create type public.group_speaking as enum ('everyone', 'granted');
 
 create table public.groups (
@@ -331,9 +328,7 @@ create function public.group_invite_token(p_chat_id uuid)
 returns text
 language plpgsql
 security definer
--- extensions too: gen_random_bytes is pgcrypto's, and Supabase installs
--- pgcrypto into the extensions schema rather than public.
-set search_path = public, extensions
+set search_path = public
 as $$
 declare
   v_token text;
@@ -351,9 +346,13 @@ begin
   if v_token is null then
     -- url-safe: base64 with the two awkward characters folded away, so the
     -- token survives being pasted into a text message.
-    -- 18 bytes is 24 base64 characters and no padding; the three awkward
-    -- characters are folded away so the token survives a text message.
-    v_token := translate(encode(extensions.gen_random_bytes(18), 'base64'), '+/=', 'abc');
+    -- Two UUIDs' worth of hex: 64 url-safe characters and no dependency on
+    -- an extension. pgcrypto's gen_random_bytes would be the obvious choice
+    -- and is the wrong one here — Supabase keeps pgcrypto in an `extensions`
+    -- schema that the local test rig does not have, so the migration would
+    -- pass in production and fail every time anybody ran the suite.
+    v_token := replace(gen_random_uuid()::text, '-', '')
+            || replace(gen_random_uuid()::text, '-', '');
     insert into public.group_invites (token, chat_id, created_by, expires_at)
     values (v_token, p_chat_id, auth.uid(), now() + interval '30 days');
   end if;
