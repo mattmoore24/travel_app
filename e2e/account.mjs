@@ -27,16 +27,27 @@ if (!URL_ || !KEY) {
 }
 
 const CITY = 'Bangkok';
-const EMAIL_BASE = process.env.TEST_EMAIL_BASE;
-if (!EMAIL_BASE || !EMAIL_BASE.includes('@')) {
-  console.error(
-    '::error::TEST_EMAIL_BASE is not set to an email address. Test accounts ' +
-      'plus-address it, so it must be an inbox you can read. Add it under ' +
-      'Settings -> Secrets and variables -> Actions.'
-  );
-  process.exit(1);
+
+/**
+ * Required for SETUP only, and checked there rather than at module level.
+ * Teardown identifies its account by E2E_EMAIL/E2E_PASSWORD from $GITHUB_ENV
+ * and never touches the base — and a module-level exit made teardown die in
+ * zero seconds on run 39, which left the throwaway account alive in the live
+ * database. The step that cannot run without the secret is the only step
+ * that should refuse over it.
+ */
+function emailParts() {
+  const base = process.env.TEST_EMAIL_BASE;
+  if (!base || !base.includes('@')) {
+    console.error(
+      '::error::TEST_EMAIL_BASE is not set to an email address. Test accounts ' +
+        'plus-address it, so it must be an inbox you can read. Add it under ' +
+        'Settings -> Secrets and variables -> Actions.'
+    );
+    process.exit(1);
+  }
+  return base.split('@');
 }
-const [EMAIL_USER, EMAIL_DOMAIN] = EMAIL_BASE.split('@');
 
 async function api(path, { token, ...init } = {}) {
   const res = await fetch(`${URL_}${path}`, {
@@ -56,8 +67,9 @@ async function api(path, { token, ...init } = {}) {
 }
 
 async function setup() {
+  const [emailUser, emailDomain] = emailParts();
   const run = Date.now().toString(36);
-  const email = `${EMAIL_USER}+sw-e2e-${run}@${EMAIL_DOMAIN}`;
+  const email = `${emailUser}+sw-e2e-${run}@${emailDomain}`;
   const password = `E2e-${run}-${Math.random().toString(36).slice(2, 10)}`;
 
   const session = await api('/auth/v1/signup', {
