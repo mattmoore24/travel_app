@@ -1,14 +1,8 @@
 import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
-import {
-  FlatList,
-  Keyboard,
-  StyleSheet,
-  View,
-  type LayoutChangeEvent,
-  useWindowDimensions,
-} from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { FlatList, Keyboard, Modal, StyleSheet, View, useWindowDimensions } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -70,7 +64,7 @@ const MENU_SCRIM = 'rgba(2,3,9,0.95)';
 
 type Rect = { x: number; y: number; width: number; height: number };
 
-/** A message's box in the thread's own coordinates, plus what it is. */
+/** A message's box in WINDOW coordinates, plus what it is. */
 type MenuTarget = Rect & {
   message: MessageRow;
   mine: boolean;
@@ -297,19 +291,19 @@ function UnsentNote({ mine, otherName }: { mine: boolean; otherName?: string | n
  */
 function MessageMenu({
   target,
-  hostHeight,
   existingEmoji,
   onPick,
   onUnsend,
   onReport,
+  reportLabel,
   onClose,
 }: {
   target: MenuTarget;
-  hostHeight: number;
   existingEmoji: string | null;
   onPick: (emoji: string) => void;
   onUnsend?: () => void;
   onReport?: () => void;
+  reportLabel: string;
   onClose: () => void;
 }) {
   const theme = useTheme();
@@ -320,10 +314,11 @@ function MessageMenu({
     actions.push({ label: 'Unsend', run: onUnsend });
   }
   if (onReport) {
-    actions.push({ label: 'Report', run: onReport });
+    actions.push({ label: reportLabel, run: onReport });
   }
 
-  const { fontScale } = useWindowDimensions();
+  const { fontScale, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const top = target.y;
   // Scaled by the reader's own type size. The rows grow with it (minHeight,
   // not height — Unsend and Report were being clipped at larger settings),
@@ -333,14 +328,21 @@ function MessageMenu({
   const actionsHeight = actions.length * rowHeight + Space.xs * 2;
 
   // Keep the pill, the message and the actions on screen as one block.
+  //
+  // Against the WINDOW now, not the thread: the menu is presented in a modal
+  // so that the scrim reaches the header and the composer too, which means
+  // the space it has to fit in is the whole screen minus what the notch and
+  // the home indicator eat.
+  const ceiling = insets.top + Space.md;
+  const floor = windowHeight - Math.max(insets.bottom, Space.md);
   const wantedTop = top - LIFT_GAP - PILL_HEIGHT - Space.md;
   const wantedBottom = top + target.height + LIFT_GAP + actionsHeight + Space.md;
   let shift = 0;
-  if (wantedBottom > hostHeight) {
-    shift = hostHeight - wantedBottom;
+  if (wantedBottom > floor) {
+    shift = floor - wantedBottom;
   }
-  if (wantedTop + shift < 0) {
-    shift = -wantedTop;
+  if (wantedTop + shift < ceiling) {
+    shift = ceiling - wantedTop;
   }
 
   return (
@@ -352,7 +354,8 @@ function MessageMenu({
       // opacity 0; an accessibilityLabel does not.
       testID="message-menu"
       entering={FadeIn.duration(120)}
-      exiting={FadeOut.duration(100)}
+      // No exiting animation: the modal below unmounts this subtree the
+      // instant `visible` flips, so an exit would have nothing to play on.
       style={[styles.menuLayer, { backgroundColor: MENU_SCRIM }]}>
       <PressableScale
         accessibilityRole="button"
@@ -450,6 +453,7 @@ export function MessageThread({
   onToggleReaction,
   onUnsend,
   onReport,
+  reportLabel = 'Report',
   authorFor,
   noteFor,
   canReact = true,
@@ -464,6 +468,13 @@ export function MessageThread({
   onToggleReaction: (messageId: string, emoji: string, on: boolean) => void;
   onUnsend?: (messageId: string) => void;
   onReport?: (messageId: string) => void;
+  /**
+   * What the second action is called. A one-to-one chat and an ordinary room
+   * member are reporting; a room's moderator is removing, and the button used
+   * to say "Report" while the confirmation it opened said "Remove this
+   * message?" — two different acts under one word.
+   */
+  reportLabel?: string;
   /**
    * Who sent this, when that is not obvious. A one-to-one chat has exactly
    * two people and needs no labels; a group has to say. Returns the name to
@@ -483,31 +494,20 @@ export function MessageThread({
   /** Rendered above the oldest message (inverted list ⇒ list footer). */
   footer?: React.ReactElement | null;
 }) {
-  const host = useRef<View>(null);
-  const origin = useRef({ x: 0, y: 0 });
-  const [hostHeight, setHostHeight] = useState(0);
   const [menu, setMenu] = useState<MenuTarget | null>(null);
+  const { height: windowHeight } = useWindowDimensions();
 
   const byMessage = new Map<string, ReactionSummaryRow[]>();
   for (const row of reactions) {
     byMessage.set(row.message_id, [...(byMessage.get(row.message_id) ?? []), row]);
   }
 
-  // The menu positions itself from window coordinates, which only mean
-  // anything once it knows where this view starts.
-  const onHostLayout = (event: LayoutChangeEvent) => {
-    setHostHeight(event.nativeEvent.layout.height);
-    host.current?.measureInWindow((x, y) => {
-      origin.current = { x, y };
-    });
-  };
-
   const mineFor = (m: MessageRow) => m.sender_id === ownUserId;
   const myEmojiOn = (messageId: string) =>
     (byMessage.get(messageId) ?? []).find((r) => r.reacted_by_me)?.emoji ?? null;
 
   return (
-    <View ref={host} onLayout={onHostLayout} style={styles.flex} collapsable={false}>
+    <View style={styles.flex}>
       <FlatList
         style={styles.flex}
         inverted
@@ -602,19 +602,16 @@ export function MessageThread({
                       ? (rect) =>
                           setMenu(
                             rect
-                              ? {
-                                  ...rect,
-                                  x: rect.x - origin.current.x,
-                                  y: rect.y - origin.current.y,
-                                  message: item,
-                                  mine,
-                                }
+                              ? // Window coordinates, straight through: the
+                                // menu is presented in a modal, so its
+                                // coordinate space is the screen.
+                                { ...rect, message: item, mine }
                               : // No measurement yet. The menu still opens,
-                                // parked mid-thread, and jumps onto the
+                                // parked mid-screen, and jumps onto the
                                 // message when the measurement lands.
                                 {
                                   x: 0,
-                                  y: Math.max(hostHeight / 2 - UNMEASURED_HEIGHT / 2, 0),
+                                  y: Math.max(windowHeight / 2 - UNMEASURED_HEIGHT / 2, 0),
                                   width: 0,
                                   height: UNMEASURED_HEIGHT,
                                   message: item,
@@ -632,39 +629,49 @@ export function MessageThread({
         ListFooterComponent={footer}
       />
 
-      {menu ? (
-        <MessageMenu
-          target={menu}
-          hostHeight={hostHeight}
-          existingEmoji={myEmojiOn(menu.message.id)}
-          onPick={(emoji) => {
-            // Tapping the one you already used takes it back; tapping a
-            // different one moves yours, since a person gets one reaction.
-            const current = myEmojiOn(menu.message.id);
-            onToggleReaction(menu.message.id, emoji, current !== emoji);
-            setMenu(null);
-          }}
-          onUnsend={
-            menu.mine && onUnsend
-              ? () => {
-                  const id = menu.message.id;
-                  setMenu(null);
-                  onUnsend(id);
-                }
-              : undefined
-          }
-          onReport={
-            !menu.mine && onReport
-              ? () => {
-                  const id = menu.message.id;
-                  setMenu(null);
-                  onReport(id);
-                }
-              : undefined
-          }
-          onClose={() => setMenu(null)}
-        />
-      ) : null}
+      {/* In a modal, so the scrim covers the header and the composer too. An
+          overlay inside this component can only ever dim the thread, which
+          left the chrome above and below it at full brightness while the menu
+          was open. Nothing else reaches them from here. */}
+      <Modal
+        transparent
+        visible={menu != null}
+        animationType="none"
+        onRequestClose={() => setMenu(null)}>
+        {menu ? (
+          <MessageMenu
+            target={menu}
+            existingEmoji={myEmojiOn(menu.message.id)}
+            reportLabel={reportLabel}
+            onPick={(emoji) => {
+              // Tapping the one you already used takes it back; tapping a
+              // different one moves yours, since a person gets one reaction.
+              const current = myEmojiOn(menu.message.id);
+              onToggleReaction(menu.message.id, emoji, current !== emoji);
+              setMenu(null);
+            }}
+            onUnsend={
+              menu.mine && onUnsend
+                ? () => {
+                    const id = menu.message.id;
+                    setMenu(null);
+                    onUnsend(id);
+                  }
+                : undefined
+            }
+            onReport={
+              !menu.mine && onReport
+                ? () => {
+                    const id = menu.message.id;
+                    setMenu(null);
+                    onReport(id);
+                  }
+                : undefined
+            }
+            onClose={() => setMenu(null)}
+          />
+        ) : null}
+      </Modal>
     </View>
   );
 }

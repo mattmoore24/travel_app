@@ -178,6 +178,14 @@ export default function RoomScreen() {
                 },
               ])
             }
+            // A moderator takes a message down; everybody else reports it.
+            // Both used to arrive here, so a moderator's button said "Report"
+            // and opened a confirmation headed "Remove this message?" — and,
+            // worse, an ordinary member got no second action at all. A group
+            // is where you meet strangers, so it is exactly where reporting
+            // has to work. From a profile still works too; this is the one
+            // that carries the message with it.
+            reportLabel={isModerator ? 'Remove' : 'Report'}
             onReport={
               isModerator
                 ? (messageId) =>
@@ -193,7 +201,16 @@ export default function RoomScreen() {
                         },
                       ]
                     )
-                : undefined
+                : (messageId) => {
+                    const sender = byId.get(messageId)?.sender_id;
+                    if (!sender) {
+                      return;
+                    }
+                    router.push({
+                      pathname: '/report',
+                      params: { userId: sender, context: `room:${id}:message:${messageId}` },
+                    });
+                  }
             }
             emptyState={
               messagesQuery.isError ? (

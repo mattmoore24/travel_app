@@ -65,7 +65,8 @@ function GuestProfile() {
 export default function ProfileScreen() {
   const signedIn = useAuthStore((s) => s.session) != null;
   const { data: profile } = useOwnProfile();
-  const { data: photos = [] } = useOwnPhotos();
+  const ownPhotos = useOwnPhotos();
+  const photos = ownPhotos.data ?? [];
   // What a stranger would actually be served. The page below says it is
   // exactly what they see, and it was showing photos they cannot: with photo
   // moderation on, a rejected shot stayed on your own profile looking live,
@@ -124,6 +125,7 @@ export default function ProfileScreen() {
           </Pressable>
         ) : null}
         <ProfileView
+          photosPending={ownPhotos.data === undefined}
           profile={profile}
           photos={visiblePhotos}
           trips={profileTrips}

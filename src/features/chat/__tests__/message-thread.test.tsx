@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { FlatList, Keyboard } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { MessageThread } from '@/features/chat/message-thread';
 import type { MessageRow } from '@/lib/database.types';
@@ -33,15 +34,25 @@ const message = (over: Partial<MessageRow> = {}): MessageRow => ({
   ...over,
 });
 
+// The menu is presented in a modal and clamps itself against the safe area,
+// so it needs a provider. Fixed metrics rather than the device's: a test that
+// changes answer with the simulator's notch is not a test.
+const METRICS = {
+  frame: { x: 0, y: 0, width: 390, height: 844 },
+  insets: { top: 47, left: 0, right: 0, bottom: 34 },
+};
+
 function renderThread(props: Partial<Parameters<typeof MessageThread>[0]> = {}) {
   return render(
-    <MessageThread
-      messages={[message()]}
-      ownUserId="me"
-      reactions={[]}
-      onToggleReaction={jest.fn()}
-      {...props}
-    />
+    <SafeAreaProvider initialMetrics={METRICS}>
+      <MessageThread
+        messages={[message()]}
+        ownUserId="me"
+        reactions={[]}
+        onToggleReaction={jest.fn()}
+        {...props}
+      />
+    </SafeAreaProvider>
   );
 }
 
@@ -83,13 +94,15 @@ describe('the reaction menu', () => {
 describe('what a group needs and a one-to-one chat does not', () => {
   it('names the sender above their first bubble, and not on your own', () => {
     render(
-      <MessageThread
-        messages={[message({ id: 'm2', sender_id: 'me', body: 'mine' }), message()]}
-        ownUserId="me"
-        reactions={[]}
-        onToggleReaction={jest.fn()}
-        authorFor={() => 'Priya'}
-      />
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <MessageThread
+          messages={[message({ id: 'm2', sender_id: 'me', body: 'mine' }), message()]}
+          ownUserId="me"
+          reactions={[]}
+          onToggleReaction={jest.fn()}
+          authorFor={() => 'Priya'}
+        />
+      </SafeAreaProvider>
     );
     expect(screen.getByText('Priya')).toBeTruthy();
     expect(screen.queryAllByText('Priya')).toHaveLength(1);

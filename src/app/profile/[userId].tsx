@@ -22,7 +22,8 @@ import { useTravelerTrips } from '@/features/trips/hooks';
 export default function PublicProfileScreen() {
   const { userId, from } = useLocalSearchParams<{ userId: string; from?: string }>();
   const profileQuery = usePublicProfile(userId ?? null);
-  const { data: photos = [] } = usePublicPhotos(userId ?? null);
+  const photosQuery = usePublicPhotos(userId ?? null);
+  const photos = photosQuery.data ?? [];
   const { data: trips = [] } = useTravelerTrips(userId ?? null);
   const handlesQuery = useUnlockedSocialHandles(userId ?? null);
   const { data: chats = [] } = useMyChats();
@@ -56,6 +57,7 @@ export default function PublicProfileScreen() {
     <ThemedView style={styles.root}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <ProfileView
+          photosPending={photosQuery.data === undefined}
           profile={profile}
           photos={photos}
           trips={profileTrips}

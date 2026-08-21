@@ -349,7 +349,7 @@ function Identity({
       <View style={styles.nameRow}>
         <ThemedText
           type={onPhoto ? 'display' : 'title'}
-          style={onPhoto ? styles.onPhoto : undefined}>
+          style={onPhoto ? [styles.nameText, styles.onPhoto] : styles.nameText}>
           {profile.display_name ?? 'Traveler'}
           {profile.age != null ? (
             <ThemedText
@@ -401,6 +401,7 @@ export function ProfileView({
   photos,
   trips,
   handles,
+  photosPending = false,
   owner,
   connected = false,
   actions,
@@ -409,6 +410,18 @@ export function ProfileView({
 }: {
   profile: ProfileRow;
   photos: ProfilePhotoRow[];
+  /**
+   * The photo query has not answered yet.
+   *
+   * Without this the band below would flash on every profile that HAS a
+   * photo: the two queries resolve independently, `photos` defaults to `[]`
+   * while the second one is in flight, and the branch would read that as
+   * "no photo", render the short band, and then jump ~280pt when the real
+   * hero arrived — showing the owner an "Add a photo" button in the gap.
+   * Pending renders the photo frame empty, which is byte-for-byte what this
+   * screen already did before the band existed.
+   */
+  photosPending?: boolean;
   trips: ProfileTrip[];
   handles: SocialHandleRow[];
   owner: boolean;
@@ -439,7 +452,7 @@ export function ProfileView({
   return (
     <>
       <View style={styles.page}>
-        {main ? (
+        {main || photosPending ? (
           /* Photo first, name over it — the shape every profile people
              already use has settled on.
 
@@ -455,7 +468,11 @@ export function ProfileView({
              is what E2E run 33 photographed and 612bb5c reverted. A profile
              with no photo gets the separate branch below instead. */
           <View style={[styles.hero, { width: heroWidth, height: heroWidth * 1.15 }]}>
-            <Photo path={main.storage_path} style={styles.fill} />
+            {main ? (
+              <Photo path={main.storage_path} style={styles.fill} />
+            ) : (
+              <View style={[styles.fill, { backgroundColor: theme.surfaceSunken }]} />
+            )}
             <LinearGradient
               colors={['transparent', 'rgba(14,16,32,0.05)', 'rgba(14,16,32,0.82)']}
               locations={[0, 0.55, 1]}
@@ -505,7 +522,11 @@ export function ProfileView({
              belongs on a photo and there is none. */
           <View style={[styles.band, { backgroundColor: theme.surfaceSunken }]}>
             <View style={styles.bandRow}>
-              <View style={[styles.bandAvatar, { backgroundColor: theme.surface }]}>
+              <View
+                style={[
+                  styles.bandAvatar,
+                  { backgroundColor: theme.surface, borderColor: theme.hairline },
+                ]}>
                 <SymbolView
                   name={{ ios: 'person.fill', android: 'person', web: 'person' }}
                   size={28}
@@ -705,6 +726,10 @@ const styles = StyleSheet.create({
     gap: Space.md,
   },
   bandAvatar: {
+    /* theme.surface on theme.surfaceSunken is 1.13:1 — the well would not
+       read as a shape at all, only the glyph inside it would. The hairline
+       is what makes it a circle rather than a floating icon. */
+    borderWidth: StyleSheet.hairlineWidth,
     width: 64,
     height: 64,
     borderRadius: 32,
@@ -715,6 +740,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.sm,
+  },
+  /* A long display name must give way rather than push the verified badge
+     off the row. Both hero branches share this, which is the point of
+     Identity being one component. */
+  nameText: {
+    flexShrink: 1,
   },
   onPhoto: {
     color: '#FFFFFF',
