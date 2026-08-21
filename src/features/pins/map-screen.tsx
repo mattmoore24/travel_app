@@ -12,7 +12,7 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { AvatarButton } from '@/components/ui/avatar-button';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Sheet } from '@/components/ui/sheet';
+import { Sheet, leavingSheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -56,15 +56,9 @@ function PinCard({
   const deletePin = useDeletePin(cityId);
   const isOwn = pin.user_id != null && pin.user_id === ownUserId;
 
-  // This card lives inside a Sheet, which is a Modal. Navigating out from
-  // under a presented modal leaves its full-screen scrim alive above the map:
-  // the profile opens, you come back, and every tap afterwards lands on an
-  // invisible overlay instead of the map. It reads as a total freeze. So the
-  // sheet is dismissed FIRST and the push waits for it to finish leaving.
-  const leaveThen = (go: () => void) => {
-    onClose();
-    setTimeout(go, SHEET_EXIT_MS);
-  };
+  // This card lives inside a Sheet, which is a Modal, so every push from here
+  // has to leave the sheet first. See components/ui/sheet for why.
+  const leaveThen = leavingSheet(onClose);
 
   return (
     <ThemedView style={styles.pinCard}>
@@ -226,7 +220,6 @@ function PinCard({
  * The exit animation is 200ms (components/ui/sheet.tsx); the margin covers a
  * busy frame, and the cost of being generous is imperceptible.
  */
-const SHEET_EXIT_MS = 320;
 
 const SEEDED_LABEL = 'One of our picks. Just show up.';
 
@@ -722,7 +715,15 @@ export default function MapScreen() {
       {mode === 'browse' && selectedPin && activeCityId != null ? (
         <Sheet onClose={() => setSelectedPinId(null)}>
           {isGuest && !selectedPin.seeded ? (
-            <SignUpGate reason="See who's going and say hi" cta="Create an account" compact />
+            // Same trap as the card below it: this gate pushes to sign-up, and
+            // pushing from inside the sheet left the map dead to touch when
+            // the guest came back.
+            <SignUpGate
+              reason="See who's going and say hi"
+              cta="Create an account"
+              compact
+              onNavigate={leavingSheet(() => setSelectedPinId(null))}
+            />
           ) : (
             <PinCard
               pin={selectedPin}

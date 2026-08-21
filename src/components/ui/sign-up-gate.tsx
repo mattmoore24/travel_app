@@ -16,10 +16,17 @@ export function SignUpGate({
   reason,
   cta = 'Create an account',
   compact = false,
+  onNavigate = (go) => go(),
 }: {
   reason: string;
   cta?: string;
   compact?: boolean;
+  /**
+   * How to run the jump to sign-up. A caller that renders this INSIDE a sheet
+   * must pass `leavingSheet(close)`, or the sheet's scrim outlives the push
+   * and freezes whatever is behind it. See components/ui/sheet.
+   */
+  onNavigate?: (go: () => void) => void;
 }) {
   return (
     <GlassSurface radius={Radius.xl} style={compact ? styles.compact : styles.card}>
@@ -29,7 +36,7 @@ export function SignUpGate({
           Takes about a minute. Looking around is always free. You only need a profile to message
           people, drop pins or join a chat.
         </ThemedText>
-        <PrimaryButton label={cta} onPress={() => router.push('/join')} />
+        <PrimaryButton label={cta} onPress={() => onNavigate(() => router.push('/join'))} />
       </View>
     </GlassSurface>
   );

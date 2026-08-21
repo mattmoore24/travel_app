@@ -14,6 +14,29 @@ import { Elevation, MaxContentWidth, Motion, Radius, Space } from '@/constants/t
 import { useTheme } from '@/hooks/use-theme';
 
 /**
+ * How long a Sheet takes to leave, from its exiting animation below. Anything
+ * that has to wait for the sheet to be gone reads it from here so the two
+ * cannot drift apart.
+ */
+export const SHEET_EXIT_MS = 320;
+
+/**
+ * Never push a route from inside a presented Sheet. The route goes into the
+ * stack BELOW it while the sheet's full-screen scrim survives, so when the
+ * person comes back every tap lands on an invisible overlay and the screen
+ * looks dead. That is the map freeze the founder reported.
+ *
+ * Wrap the navigation in this instead: it dismisses the sheet first and goes
+ * once the sheet has finished leaving.
+ */
+export function leavingSheet(close: () => void) {
+  return (go: () => void) => {
+    close();
+    setTimeout(go, SHEET_EXIT_MS);
+  };
+}
+
+/**
  * The default container for anything that doesn't deserve a full screen —
  * previews, detail, confirmations (docs/DESIGN.md; it's the 2026 convention
  * and what iOS standardised). Tap-outside dismisses; the grabber says
