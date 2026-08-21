@@ -47,6 +47,7 @@ export default function OnboardingScreen() {
 function ProfileSteps({ profile }: { profile: ProfileRow }) {
   const updateProfile = useUpdateOwnProfile();
   const { data: photos = [] } = useOwnPhotos();
+  const hasProfilePhoto = photos.some((photo) => photo.position === 0);
 
   const [step, setStep] = useState(3);
   const [name, setName] = useState(profile.display_name ?? '');
@@ -253,9 +254,12 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
       subtitle="One is enough to start. You can add more any time."
       continueLabel="Finish"
       continueTestID="finish-profile"
-      continueDisabled={photos.length === 0}
+      // The slot the copy actually names. Adding one through the small "+"
+      // under "More photos, all optional" used to satisfy this, leaving the
+      // profile photo empty on a screen headed "Add a photo".
+      continueDisabled={!hasProfilePhoto}
       continueLoading={updateProfile.isPending}
-      note={photos.length === 0 ? 'A profile photo is the one thing we need.' : null}
+      note={hasProfilePhoto ? null : 'A profile photo is the one thing we need.'}
       onBack={() => go(5)}
       onContinue={async () => {
         try {

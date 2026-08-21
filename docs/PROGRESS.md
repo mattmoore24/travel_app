@@ -3,7 +3,71 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current status: **Phase 10 — the launch-readiness pass** (2026-08-21)
+## Current status: **Phase 11 — the unaudited-areas sweep** (2026-08-21)
+
+### Phase 11 — what nobody had looked at yet
+
+Phase 10 answered the founder's ten-item list. This phase went after the parts
+of the app that list never touched: onboarding, profile editing and photos,
+trips and matching, accessibility, failure states, security beyond the pgTAP
+suite, the data layer, the section 7 rules end-to-end through the client, App
+Store shippability, and every user-facing string. Ten areas, audited in
+parallel and then adversarially verified.
+
+**Caveat on the verification.** The verifiers ran after most of the fixes had
+already landed, so a "refuted" verdict there usually means "the code no longer
+does this" rather than "the finding was wrong". Nineteen findings survived as
+confirmed. One of them corrected me: I had dismissed a keyboard finding on the
+strength of a screenshot of the sign-in screen, and the verifier pointed out
+that `(auth)` sets `headerShown: false` while `onboarding` set it `true` — the
+same shell, two stacks, only one of them broken.
+
+The things that would have hurt most:
+
+- **Every over-the-air update so far shipped an app pointed at nothing.** The
+  TestFlight workflow's update step passed `EXPO_TOKEN` and no Supabase
+  variables. Metro inlines `EXPO_PUBLIC_*` at bundle time and that bundling
+  happens on the runner, so the published bundle fell back to
+  `placeholder.supabase.co`. Builds were unaffected — they read the EAS
+  environment named in `eas.json` — which is why this survived. The step now
+  requires the secrets, passes them, and proves the bundle before publishing.
+- **Posting in a group did nothing.** `useSendMessage` merged into the
+  direct-chat cache key; rooms and groups read a different key holding a
+  different shape. `useSendPhoto` had always invalidated both.
+- **Rooms and groups had no realtime at all.** Two people in the same chat,
+  both with it open, never saw each other.
+- **Sending a photo in a one-to-one chat always failed.** `push_queue.body` is
+  NOT NULL and a photo message has a null body, so the after-insert trigger
+  took the message down with it.
+- **The composer sat under the keyboard**, from a hardcoded
+  `keyboardVerticalOffset` of 90 that is not the height of anything.
+- **Removal from a group did not stick** — the same invite link still worked.
+- **A group's photo was unreadable by everybody**, including the admin who
+  chose it.
+- **The three cron workers authorized nobody**, and the anon key ships in the
+  app.
+- **The binary asked for location, motion and Face ID**, in Expo's default
+  wording, on an app whose whole promise is that it never asks.
+- **Failure was reported as emptiness everywhere.** Offline, you were told you
+  had no chats, no trips, no travelers, and that a friend's invite was dead.
+
+Also: the privacy policy was describing an app that no longer exists, deleting
+an account left every chat photo behind, a reinstall opened with a queue of
+old celebrations, and the last em dashes in user-facing copy are gone.
+
+### Still open after this phase
+
+- **Founder-side.** `RESEND_API_KEY` and `SUPPORT_INBOX` are still unset, so
+  the in-app contact form stores messages and emails nobody while telling the
+  sender it was sent. That is the app's only published developer contact and
+  App Review will exercise it.
+- **The Info.plist change needs a build**, not an update. It is native config.
+- **Being featured to signed-out visitors has no opt-out.** The policy now
+  says so plainly; whether it should exist is a founder decision.
+- **Rooms and groups still send no push notifications** — the trigger reads
+  `chat_participants`, which they do not use.
+
+## Phase 10 — the launch-readiness pass (2026-08-21)
 
 ### Phase 10 — the founder's ten-item review, and what the screenshots found
 

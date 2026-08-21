@@ -359,6 +359,23 @@ limits enforced by a trigger, and no select policy for anyone.
   secrets; they never appear in this repo or the app bundle.
 - `.env` is gitignored; `.env.example` is the committed template.
 
+## The app's public-facing surface
+
+Two functions are the whole of what an unauthenticated or non-overlapping
+person can see, and the privacy policy is written against them. Change either
+and the policy has to change with it.
+
+- **`featured_traveler(city_id)`** is granted to `anon`. It returns one
+  traveler's name, age, verified badge, languages, bio, city, dates and first
+  approved photo to signed-out visitors. Eligibility is having an active trip
+  in that city within the next fortnight; the ranking is who has been messaged
+  most in the last thirty days. There is deliberately no opt-out
+  (20260817190000, "posting a trip is the consent") — an open founder
+  decision, now stated in the policy.
+- **`traveler_trips(user_id)`** gates on a signed-in caller, a discoverable
+  owner and no block either way — not on overlap. Upcoming trips are part of a
+  profile; finished ones are private.
+
 ## Technical flags (raised to founder, non-blocking)
 
 1. **`expo-router/unstable-native-tabs`** — the native tabs API is new in the SDK 5x line and
