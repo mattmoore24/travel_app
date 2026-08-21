@@ -28,8 +28,12 @@ device does something else.
   below, but the Sheet's full-screen scrim survives — so when the user comes
   back, every tap lands on an invisible overlay and the screen looks dead.
   This is what made the map unusable after viewing a pin's profile. Always
-  dismiss the sheet FIRST and push after its exit animation (`leaveThen` in
-  `features/pins/map-screen.tsx`).
+  dismiss the sheet FIRST and push after its exit animation: wrap the jump in
+  `leavingSheet(close)` from `components/ui/sheet`, which owns both the rule
+  and the timing. It bit twice — the signed-in path and, a day later, the
+  guest sign-up gate rendered in the same sheet — so treat ANY navigation
+  inside a `<Sheet>` as this bug until it is wrapped. `Linking.openURL` is
+  fine: it leaves the app rather than pushing underneath.
 - **A page inside a flex parent needs `flex: 1` of its own** or it collapses
   to content height and its empty state renders off-screen.
 - **`entering` and an animated style must not both drive `opacity`.** The
