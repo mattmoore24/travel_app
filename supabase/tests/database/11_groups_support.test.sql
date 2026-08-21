@@ -5,7 +5,7 @@
 -- who can read an invite token, and whether a shared group counts as a
 -- connection for the social-handle gate (hard rule 4 — it must not).
 begin;
-select plan(71);
+select plan(73);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -631,6 +631,24 @@ select is(
   (select count(*)::int from public.push_queue where title = 'Support: typo@example.com'),
   0,
   'and simply wakes nobody'
+);
+
+-- A misconfigured mailer must not be able to abandon somebody's message.
+select pg_temp.admin();
+select is(
+  (select column_default is not null and is_nullable = 'NO'
+     from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'support_messages'
+      and column_name = 'next_attempt_at'),
+  true,
+  'every support message carries a due time, defaulted so it is sendable at once'
+);
+select is(
+  (select count(*)::int from public.support_messages
+    where next_attempt_at > created_at + interval '1 second'),
+  0,
+  'and nothing arrives already deferred'
 );
 
 select * from finish();

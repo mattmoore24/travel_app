@@ -25,7 +25,22 @@ const RESEND_URL = 'https://api.resend.com/emails';
 const BATCH = 25;
 
 /** Give up after this many tries so one poisoned row cannot block the queue. */
-const MAX_ATTEMPTS = 5;
+const MAX_ATTEMPTS = 20;
+
+/**
+ * How long to wait before trying a failed row again, doubling each time and
+ * capped at six hours.
+ *
+ * Five attempts on a five-minute tick meant a row was abandoned permanently
+ * twenty-five minutes after it arrived. On 2026-08-21 a wrong API key and
+ * then a sandbox sender rule used up every attempt on two real messages
+ * before anybody had read the error, and nothing was ever going to retry
+ * them. Spacing turns the same handful of attempts into several days, which
+ * is the timescale a person actually fixes configuration on.
+ */
+function backoffMinutes(attempts: number): number {
+  return Math.min(2 ** Math.max(attempts - 1, 0), 360);
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -108,6 +123,9 @@ Deno.serve(async (req) => {
     .select('id, user_id, reply_to, body, created_at, delivery_attempts')
     .is('delivered_at', null)
     .lt('delivery_attempts', MAX_ATTEMPTS)
+    // Only what is due. A row that just failed waits out its backoff instead
+    // of burning another attempt on the next tick.
+    .lte('next_attempt_at', new Date().toISOString())
     .order('created_at')
     .limit(BATCH);
   if (error) {
@@ -170,14 +188,19 @@ Deno.serve(async (req) => {
       report.failed += 1;
       const attempts = (message.delivery_attempts ?? 0) + 1;
       const detail = (sendError as Error).message.slice(0, 500);
+      const wait = backoffMinutes(attempts);
       await supabase
         .from('support_messages')
-        .update({ delivery_attempts: attempts, delivery_error: detail })
+        .update({
+          delivery_attempts: attempts,
+          delivery_error: detail,
+          next_attempt_at: new Date(Date.now() + wait * 60_000).toISOString(),
+        })
         .eq('id', message.id);
       report.notes.push(
         attempts >= MAX_ATTEMPTS
           ? `${message.id}: giving up after ${attempts} attempts (${detail}). The row is still in the table.`
-          : `${message.id}: ${detail}`
+          : `${message.id}: ${detail} — next try in ${wait}m`
       );
     }
   }
