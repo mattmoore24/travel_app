@@ -27,7 +27,7 @@ import { usePassedTravelers } from '@/features/matching/passed';
 import { usePhotoUrl, usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
 import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
-import { formatDateRange } from '@/features/trips/dates';
+import { formatDate, formatDateRange, toISODate } from '@/features/trips/dates';
 import { useMyTrips, useTravelerTrips } from '@/features/trips/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
@@ -74,8 +74,14 @@ function GuestTravelers() {
         <ThemedText type="title">Travelers</ThemedText>
         {featured ? (
           <>
+            {/* Say which one it is. featured_traveler's window is "in town
+                within the next two weeks", so a flat "right now" was a claim
+                the query does not make: the founder's own test profile showed
+                up under it with a trip starting five days later. */}
             <ThemedText type="footnote" themeColor="textSecondary">
-              In {featured.city_name} right now
+              {featured.their_start > toISODate(new Date())
+                ? `In ${featured.city_name} from ${formatDate(featured.their_start)}`
+                : `In ${featured.city_name} right now`}
             </ThemedText>
             {/* Compact on purpose. This is a teaser with a sign-up card
                 under it, and a full-height photo pushed that card off the

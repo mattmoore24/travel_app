@@ -31,8 +31,17 @@ import { haptics } from '@/lib/haptics';
  * to first swipe. Colors are deliberately hardcoded to the icon's values.
  */
 const FIELD = SplashField;
+/** The app icon's flame, for the mark and the tagline that sit beside it. */
 const AMBER = '#F0A93C';
-const ON_AMBER = '#2A1A00';
+/**
+ * The primary action, in the app's own accent. The tour used to answer in
+ * amber, which made the first screen a new person ever sees the only screen
+ * in the product whose main button is not blue. The mark stays amber because
+ * it is matched to the icon; the button was never part of that handoff.
+ * Ink on accent is 7.9:1.
+ */
+const ACCENT = '#8AA6F0';
+const ON_ACCENT = '#0E1020';
 const WHITE = '#FFFFFF';
 const WHITE_SOFT = 'rgba(255,255,255,0.78)';
 const BADGE_BG = 'rgba(255,255,255,0.14)';
@@ -202,7 +211,7 @@ function TourButton({
   onPress,
 }: {
   label: string;
-  tone: 'amber' | 'ghost';
+  tone: 'primary' | 'ghost';
   onPress: () => void;
 }) {
   return (
@@ -212,10 +221,10 @@ function TourButton({
       accessibilityRole="button"
       onPress={onPress}
       containerStyle={styles.buttonContainer}
-      style={[styles.button, tone === 'amber' ? styles.buttonAmber : styles.buttonGhost]}>
+      style={[styles.button, tone === 'primary' ? styles.buttonPrimary : styles.buttonGhost]}>
       <Text
         maxFontSizeMultiplier={MAX_FONT_SCALE}
-        style={[styles.buttonLabel, tone === 'amber' ? styles.labelAmber : styles.labelGhost]}>
+        style={[styles.buttonLabel, tone === 'primary' ? styles.labelPrimary : styles.labelGhost]}>
         {label}
       </Text>
     </PressableScale>
@@ -320,7 +329,7 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
               style={styles.welcomeAction}>
               <TourButton
                 label="Show me around"
-                tone="amber"
+                tone="primary"
                 onPress={() => pagerRef.current?.scrollTo({ x: width, animated: true })}
               />
             </Animated.View>
@@ -358,7 +367,7 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
                   <View style={styles.choice}>
                     <TourButton
                       label="Make my profile"
-                      tone="amber"
+                      tone="primary"
                       onPress={() => {
                         onDone();
                         router.push('/join');
@@ -512,8 +521,8 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: Space.xxl,
   },
-  buttonAmber: {
-    backgroundColor: AMBER,
+  buttonPrimary: {
+    backgroundColor: ACCENT,
   },
   buttonGhost: {
     borderWidth: 1.5,
@@ -522,8 +531,8 @@ const styles = StyleSheet.create({
   buttonLabel: {
     ...Type.headline,
   },
-  labelAmber: {
-    color: ON_AMBER,
+  labelPrimary: {
+    color: ON_ACCENT,
   },
   labelGhost: {
     color: WHITE,
