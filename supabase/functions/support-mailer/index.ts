@@ -35,7 +35,58 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-Deno.serve(async () => {
+/**
+ * Service role only.
+ *
+ * This is scheduled work over server-only tables — the push queue, the
+ * moderation backlog, the support inbox — and it used to run for whoever
+ * asked. A Supabase function accepts the ANON key as a valid JWT, and the
+ * anon key ships inside the app, so anyone who pulled it out of the IPA could
+ * drive this in a loop.
+ *
+ * The check is the `role` claim, not a comparison against
+ * SUPABASE_SERVICE_ROLE_KEY. The first attempt at this compared key strings
+ * and took moderation down for half an hour on 2026-08-21, and I never
+ * established whether the vault's bearer differed from this function's own
+ * env var or whether the shared module it lived in simply failed to bundle.
+ * The claim sidesteps both: any valid service-role credential for this
+ * project satisfies it, and this is written inline so there is nothing to
+ * bundle.
+ *
+ * Reading an unverified payload would be worthless, so note WHY it is not:
+ * these functions are deployed without --no-verify-jwt and the project has no
+ * config.toml, so verify_jwt is on and the platform has already checked the
+ * signature before this runs. If that ever changes, this check becomes
+ * forgeable and must change with it.
+ *
+ * The deploy proves it: it POSTs each worker with the ANON key and requires a
+ * 401, which fails if the guard is missing, if it is letting anon through, or
+ * if the function is not running at all.
+ */
+function isServiceCaller(req: Request): boolean {
+  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  const payload = token.split('.')[1];
+  if (!payload) {
+    return false;
+  }
+  try {
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+    return JSON.parse(atob(padded))?.role === 'service_role';
+  } catch {
+    return false;
+  }
+}
+
+function refuse(): Response {
+  return Response.json({ error: 'not authorized' }, { status: 401 });
+}
+
+Deno.serve(async (req) => {
+  if (!isServiceCaller(req)) {
+    return refuse();
+  }
+
   const apiKey = Deno.env.get('RESEND_API_KEY');
   const inbox = Deno.env.get('SUPPORT_INBOX');
   const from = Deno.env.get('SUPPORT_FROM') ?? 'Samewhere <onboarding@resend.dev>';
