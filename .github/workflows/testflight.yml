@@ -110,11 +110,13 @@ jobs:
           EXPO_NO_TELEMETRY: '1'
         run: |
           set -o pipefail
-          # Bounded, because it has hung. Run 18 sat on this step for 37
-          # minutes with no output and would have held the runner for the
-          # job's full 150 before anyone noticed; the same command in the
-          # E2E workflow finishes in about two. A publish that has not
-          # finished in ten is stuck, and should say so.
+          # Bounded as a safety net, not because of an observed hang. I
+          # cancelled run 18 believing it had sat here for 37 minutes; the
+          # clock says it had been running about three, and run 19 published
+          # in 2m40s. The miscount was mine. The cap stays anyway — this step
+          # holds a 150-minute job and would otherwise fail silently by never
+          # finishing — but ten minutes is chosen as headroom over a normal
+          # publish, not as a line something has actually crossed.
           # `|| status=$?` and not a bare call: the step runs under `bash -e`,
           # which would exit on the failing pipeline before the status could
           # be read, and 124 is the whole point.
