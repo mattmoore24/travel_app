@@ -109,6 +109,41 @@ appId: com.mattmoore.samewhere
     timeout: 15000
 - takeScreenshot: 18-profile-me
 
+# HOUSE RULES AND THE CONTACT FORM
+#
+# App Review 1.2 wants both reachable from inside the app, and this form is
+# the only published way to reach a human — the app deliberately prints
+# nobody's email address. The live-backend suite proves a message submits;
+# only a picture proves the form is usable, which is the half that has gone
+# wrong here before (a field hidden behind the keyboard renders fine in a
+# test and is unusable on a phone). Nothing is sent: the keyboard stays up on
+# purpose so the shot shows the message field clear of it.
+- scrollUntilVisible:
+    element:
+      text: 'House rules and help'
+    direction: DOWN
+    timeout: 12000
+- tapOn: 'House rules and help'
+- extendedWaitUntil:
+    visible: 'Community guidelines'
+    timeout: 15000
+- takeScreenshot: 19-house-rules
+- scrollUntilVisible:
+    element:
+      text: 'Send us a message'
+    direction: DOWN
+    timeout: 12000
+- tapOn: 'Send us a message'
+- extendedWaitUntil:
+    visible:
+      id: 'contact-message'
+    timeout: 15000
+- takeScreenshot: 19a-contact-form
+- tapOn:
+    id: 'contact-message'
+- inputText: 'Checking the form works. Nothing to answer.'
+- takeScreenshot: 19b-contact-typed
+
 # CHAT — the founder's top priority, and until now the one part of the app
 # with no picture of it at all. A group is the way in with a single account:
 # anyone can start one, so this reaches the new-group form, the room, the
