@@ -263,8 +263,18 @@ function RoomDiscovery({ cityId }: { cityId: number | null }) {
 /** A row plus its long-press actions — pin, mute, archive (docs/DESIGN.md). */
 function ChatRowLink({ chat }: { chat: ChatListRow }) {
   const pref = useChatPref();
+  const state = [chat.pinned ? 'pinned' : null, chat.muted ? 'muted' : null].filter(Boolean);
   return (
     <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={
+        state.length > 0
+          ? `${chat.title ?? 'Conversation'}, ${state.join(' and ')}`
+          : (chat.title ?? 'Conversation')
+      }
+      // Pin, mute and archive live behind a long press, which announces
+      // itself to nobody. A hint is how VoiceOver is told there is more here.
+      accessibilityHint="Press and hold for pin, mute and archive"
       scaleTo={0.98}
       onPress={() =>
         router.push(chat.kind === 'room' ? `/room/${chat.chat_id}` : `/chat/${chat.chat_id}`)

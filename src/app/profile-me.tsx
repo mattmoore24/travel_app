@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
@@ -66,6 +66,13 @@ export default function ProfileScreen() {
   const signedIn = useAuthStore((s) => s.session) != null;
   const { data: profile } = useOwnProfile();
   const { data: photos = [] } = useOwnPhotos();
+  // What a stranger would actually be served. The page below says it is
+  // exactly what they see, and it was showing photos they cannot: with photo
+  // moderation on, a rejected shot stayed on your own profile looking live,
+  // so the removal notification and the page disagreed and the page won.
+  const visiblePhotos = photos.filter((photo) => photo.moderation_status === 'approved');
+  const heldBack = photos.length - visiblePhotos.length;
+  const rejected = photos.some((photo) => photo.moderation_status === 'rejected');
   const { data: handles = [] } = useOwnSocialHandles();
   const { data: verification } = useLatestVerification();
   const { data: trips = [] } = useMyTrips();
@@ -101,9 +108,24 @@ export default function ProfileScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.pageContent}>
         {/* Exactly the page a stranger gets, with edit affordances on top —
             the only way to know what your profile actually looks like. */}
+        {heldBack > 0 ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Manage your photos"
+            onPress={() =>
+              router.push({ pathname: '/edit-profile', params: { section: 'photos' } })
+            }
+            style={styles.photoNotice}>
+            <ThemedText type="footnote" themeColor={rejected ? 'danger' : 'textSecondary'}>
+              {rejected
+                ? `${heldBack === 1 ? 'One photo was' : `${heldBack} photos were`} removed and nobody else can see ${heldBack === 1 ? 'it' : 'them'}. Tap to manage your photos.`
+                : `${heldBack === 1 ? 'One photo is' : `${heldBack} photos are`} still being checked, so nobody else can see ${heldBack === 1 ? 'it' : 'them'} yet.`}
+            </ThemedText>
+          </Pressable>
+        ) : null}
         <ProfileView
           profile={profile}
-          photos={photos}
+          photos={visiblePhotos}
           trips={profileTrips}
           handles={handles}
           owner
@@ -171,6 +193,10 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  photoNotice: {
+    paddingHorizontal: Space.lg,
+    paddingBottom: Space.sm,
+  },
   guestContent: {
     padding: Space.lg,
     gap: Space.md,

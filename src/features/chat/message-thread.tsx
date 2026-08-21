@@ -1,6 +1,12 @@
 import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
-import { FlatList, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import {
+  FlatList,
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
+  useWindowDimensions,
+} from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
@@ -21,8 +27,16 @@ const GROUP_WINDOW_MS = 5 * 60 * 1000;
 /** Height of the emoji row, so it can be positioned before it lays out. */
 const PILL_HEIGHT = 52;
 
-/** Height of one row in the action card below a lifted message. */
+/** Smallest height of one row in the action card below a lifted message. */
 const ACTION_HEIGHT = 44;
+
+/**
+ * How far the action labels are allowed to grow with Dynamic Type. Uncapped,
+ * "Unsend" and "Report" outrun a card whose position is computed before they
+ * are laid out; capped, the card can be placed correctly and the words still
+ * scale most of the way.
+ */
+const ACTION_SCALE_CAP = 1.4;
 
 /** Breathing room between the lifted message and the things around it. */
 const LIFT_GAP = 10;
@@ -232,8 +246,14 @@ function MessageMenu({
     actions.push({ label: 'Report', run: onReport });
   }
 
+  const { fontScale } = useWindowDimensions();
   const top = target.y;
-  const actionsHeight = actions.length * ACTION_HEIGHT + Space.xs * 2;
+  // Scaled by the reader's own type size. The rows grow with it (minHeight,
+  // not height — Unsend and Report were being clipped at larger settings),
+  // and this estimate has to grow with them or the shift below would push
+  // the card off the bottom of the screen instead of keeping it on.
+  const rowHeight = ACTION_HEIGHT * Math.min(Math.max(fontScale, 1), ACTION_SCALE_CAP);
+  const actionsHeight = actions.length * rowHeight + Space.xs * 2;
 
   // Keep the pill, the message and the actions on screen as one block.
   const wantedTop = top - LIFT_GAP - PILL_HEIGHT - Space.md;
@@ -314,7 +334,11 @@ function MessageMenu({
                     ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.hairline }
                     : null,
                 ]}>
-                <ThemedText style={{ color: theme.danger }}>{action.label}</ThemedText>
+                <ThemedText
+                  maxFontSizeMultiplier={ACTION_SCALE_CAP}
+                  style={{ color: theme.danger }}>
+                  {action.label}
+                </ThemedText>
               </PressableScale>
             ))}
           </Animated.View>
@@ -589,7 +613,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   action: {
-    height: ACTION_HEIGHT,
+    minHeight: ACTION_HEIGHT,
     justifyContent: 'center',
     paddingHorizontal: Space.lg,
   },

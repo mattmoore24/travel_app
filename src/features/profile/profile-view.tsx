@@ -67,6 +67,9 @@ function ReplyButton({
       accessibilityLabel={label}
       haptic="light"
       scaleTo={0.9}
+      // The inline chip is 26pt tall and the one on a photo is 40. Both keep
+      // their drawing; both now take a 44pt press.
+      hitSlop={onPhoto ? 2 : { top: 9, bottom: 9, left: 6, right: 6 }}
       onPress={onPress}
       containerStyle={onPhoto ? styles.replyAnchor : undefined}
       style={[
@@ -112,6 +115,7 @@ function SectionHeader({
           accessibilityLabel={`Edit ${title.toLowerCase()}`}
           haptic="light"
           scaleTo={0.9}
+          hitSlop={{ top: 9, bottom: 9, left: 6, right: 6 }}
           onPress={onEdit}
           style={styles.editButton}>
           <ThemedText type="footnote" themeColor="accent">
@@ -396,6 +400,7 @@ export function ProfileView({
               accessibilityLabel="Edit photos"
               haptic="light"
               scaleTo={0.92}
+              hitSlop={3}
               onPress={() => onEditSection('photos')}
               containerStyle={styles.heroEditAnchor}
               style={[styles.heroEdit, { backgroundColor: theme.surface }]}>

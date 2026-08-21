@@ -5,6 +5,7 @@ import type { TextInput } from 'react-native';
 import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { StepScreen } from '@/components/form/step-screen';
+import { isOffline } from '@/lib/failure-message';
 import { ThemedText } from '@/components/themed-text';
 import { signInWithEmail } from '@/features/auth/api';
 
@@ -33,7 +34,19 @@ export default function SignInScreen() {
       await signInWithEmail(email.trim(), password);
       // Success: the root guard swaps stacks on the auth event.
     } catch (e) {
-      setError((e as Error).message ?? 'Something went wrong.');
+      // Supabase says "Invalid login credentials" for a wrong password AND
+      // for an address that has no account, and it said it in red under the
+      // password box — pointing at the field that may well be fine, in API
+      // English. One sentence, naming both possibilities, and the way out.
+      const raw = (e as { message?: unknown })?.message;
+      const text = typeof raw === 'string' ? raw : '';
+      setError(
+        /invalid login credentials|invalid_credentials/i.test(text)
+          ? 'That email and password do not match. Check the address, or make an account.'
+          : isOffline(e)
+            ? 'No connection. Signing in needs the internet.'
+            : 'Could not sign you in. Try that again in a moment.'
+      );
     } finally {
       setLoading(false);
     }
