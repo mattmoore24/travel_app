@@ -37,7 +37,12 @@
           "imageWidth": 200
         }
       ],
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
       "expo-apple-authentication",
       [
         "expo-image-picker",
@@ -45,6 +50,15 @@
           "photosPermission": "Lets you choose profile photos to share with other travelers.",
           "cameraPermission": "Lets you take a selfie to verify that your profile photos are really you.",
           "microphonePermission": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "locationWhenInUsePermission": false,
+          "motionUsagePermission": false
         }
       ]
     ],
