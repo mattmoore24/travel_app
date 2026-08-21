@@ -3,6 +3,68 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current status: **Phase 10 — the launch-readiness pass** (2026-08-21)
+
+### Phase 10 — the founder's ten-item review, and what the screenshots found
+
+Every item from the founder's device testing on 2026-08-20 is addressed.
+
+- [x] **The E2E harness was screenshotting the wrong code.** expo-updates
+      applies a downloaded update on the NEXT launch, and Maestro's
+      `clearState` deleted the download first, so every reused-binary run
+      pictured the binary's embedded JS while reporting green. The workflow
+      now publishes with `--json`, primes the update and polls `expo-v2.db`
+      for StatusReady, resets state by hand between flows, and FAILS rather
+      than falling back. Recorded in the `traps` and `screens` skills. Every
+      "verified by screenshots" claim made before this is suspect.
+- [x] **Chat, rebuilt around the interaction.** Long press lifts the bubble
+      out of a dimmed thread with the emoji row directly above it and the
+      actions directly below (it was a slab in the middle of the screen);
+      one reaction per person per message, enforced by the primary key;
+      unsend, archiving the original first so a report stays reviewable;
+      photos wait in a preview until you press send; timestamps moved out of
+      the bubbles into separators; sent bubbles use the brand blue as a fill
+      under white.
+- [x] **Individual / Groups** segmented header; the big "Chat" title is gone.
+- [x] **Traveler groups** — anyone can start one, speaking permissions that
+      are real permissions, admin removal, invite links with a stay-until
+      date capped by the admin's maximum, membership that expires on its own.
+- [x] **Pin search suggests as you type**, and the drop-a-pin form fills its
+      own location block from the search result, links into Maps, drops the
+      activity-type row, and gives the lifetime a 1–72 hour slider. The
+      details box no longer traps the keyboard.
+- [x] **The map went warm** — amber pins and an amber-to-ember heat scale, so
+      it reads on the dark basemap; controls went back to the brand blue.
+- [x] **Traveler profile** — photo, then everything the profile says, then
+      the rest of the photos, one per row; a reply bubble on every photo and
+      every written block opens the composer quoting that specific thing.
+- [x] **Languages** — the full ISO 639-1 set, searchable, English pinned.
+- [x] **Contact form** replaces the founder's published email address.
+- [x] **The map freeze** after viewing a pin's profile (a Sheet's scrim
+      surviving a `router.push` out from under it).
+- [x] **The traveler counter** is gone.
+
+**Found by the first honest screenshots** (and fixed): sign-in could not be
+completed because tapping the password field with the keyboard up does not
+move focus on iOS; the sign-in back button said "join"; React Navigation's
+DarkTheme left a seam at every header; the segmented control was inside out;
+the selected city was nearly invisible; the guest travelers card pushed its
+own sign-up card off the screen and rendered an empty photo frame.
+
+**Waiting on the founder:**
+
+1. **Two migrations are not deployed yet** —
+   `20260820230000_chat_reactions_and_unsend` and
+   `20260821010000_traveler_groups`. The client code for reactions, unsend
+   and groups needs them. Actions → Supabase deploy → Run workflow.
+2. **The contact form needs two repo secrets** to actually email:
+   `RESEND_API_KEY` and `SUPPORT_INBOX` (plus `SUPPORT_FROM` once a domain
+   is verified). Until they exist, messages still land in the
+   `support_messages` table and are readable from the dashboard.
+3. **A real support address** is still needed for App Store Connect and the
+   privacy policy. Removing the personal one from the repo stops it
+   spreading; it does not unpublish it from the history of a public repo.
+
 ## Current status: **Phase 9 — the craft pass** (2026-08-19)
 
 ### Phase 9 — Research-backed beauty + the founder's fix list

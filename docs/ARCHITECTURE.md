@@ -312,6 +312,45 @@ delete-account`: verifies the caller's JWT, clears both storage buckets,
   from `tsc`/jest as Deno code, which had left the moderation and deletion
   paths with no static verification at all.
 
+## Groups and permissions (Phase 10)
+
+A traveler group is `chats.kind = 'room'` with a row in `public.groups`
+rather than in `public.establishments`. That was the whole point of reusing
+the rooms schema: membership with a stay window, the expiry sweep,
+pin/mute/archive, reactions, moderated photos and realtime already worked,
+and none of them had to learn about a new kind of chat.
+
+What is new sits in three places:
+
+- **`room_members.role`** (`member` / `speaker` / `admin`). Establishment
+  rooms leave it at `member` and keep their moderators in
+  `establishment_staff`; `is_room_moderator` now returns true for either.
+  The admin check deliberately ignores `expires_at`, and
+  `expire_room_members` skips admins, so a group cannot end up with nobody
+  able to run it.
+- **`may_speak_in_room`**, folded into `can_send_in_chat`. A restricted
+  group refuses a plain member's INSERT at the policy layer. The client
+  explains why; the client is not what stops them.
+- **`group_invites`**, a bearer-token table with RLS on and **no policies at
+  all**. Any select policy would make every group's invite enumerable, so
+  the only ways in are two SECURITY DEFINER functions that take a token and
+  never hand one out. One live token per group, revocable, thirty-day life.
+
+Joining clamps the stay-until date to the group's maximum server-side.
+`my_chats` had to be dropped and recreated to gain `my_role`: Postgres
+refuses to add an OUT column to an existing `RETURNS TABLE`, and the grants
+have to be restated after the drop.
+
+## Support (Phase 10)
+
+The in-app contact form writes straight into `support_messages` and a cron'd
+`support-mailer` Edge Function sends undelivered rows through Resend. The
+row is the record and the email is only the notification, so an unconfigured
+or failing mailer cannot lose a safety report. The table has an insert
+policy for `anon` as well as `authenticated` — somebody who cannot sign in is
+the person most likely to need support — with per-address and global hourly
+limits enforced by a trigger, and no select policy for anyone.
+
 ## Privacy & secrets model
 
 - `EXPO_PUBLIC_*` env vars ship inside the client bundle. Only the Supabase URL + anon key
