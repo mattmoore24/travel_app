@@ -94,6 +94,15 @@ device does something else.
   message. Wrap the pair in one `<View>` and order it there.
 - Synthetic rows (a first-message preview, a placeholder) must be excluded
   from anything that writes their `id` to the database.
+- **An inverted list standing on a keyboard-sized floor moves its rows by the
+  whole keyboard height when that keyboard goes.** The list is anchored to its
+  own bottom, so collapsing `KeyboardFloor`'s padding slides every row DOWN,
+  not up. Anything holding a measured window rect across a keyboard
+  dismissal — an anchored menu, a popover, a tooltip — is then off by roughly
+  a third of a screen. Dismiss first, wait for `keyboardDidHide`, give it two
+  more frames so the floor's own Reanimated style has committed, and measure
+  after. Keep a timeout as well: an interaction must never depend on an event
+  that might not arrive.
 
 ## Postgres / Supabase
 

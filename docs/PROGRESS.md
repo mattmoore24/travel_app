@@ -97,6 +97,21 @@ old celebrations, and the last em dashes in user-facing copy are gone.
   asserts a `message-menu` testID as well as the Dismiss label so the next
   failure says which half broke. Recorded in the `traps` skill.
 
+- **The reaction menu now behaves like Messages.** The scrim was doing
+  nothing visible (`rgba(6,7,16,0.62)` over `#0E1020` resolves to `#090A16`),
+  so the menu floated over a live thread with the date separator legible
+  between the pill and the actions. Darker now, and local to this menu rather
+  than a change to `theme.scrim`, which every sheet shares.
+
+  The keyboard also steps aside on the founder's call (`01622f8`). The
+  ordering is the trick: the thread stands on a keyboard-sized floor and an
+  inverted list is anchored to its own bottom, so every bubble slides DOWN by
+  the keyboard's height as that floor collapses. Measuring at the press would
+  pin the menu roughly a third of a screen above the message. Dismiss, wait
+  for `keyboardDidHide`, two more frames for the floor's Reanimated style to
+  commit, then measure. A 400ms failsafe means a press always produces a menu.
+  Recorded in `traps`.
+
 - **The contact form now delivers without a key.**
   `20260821150000_support_delivery.sql` adds a second channel: name yourself
   in `app_config.support_notify_recipients` and every incoming message raises
