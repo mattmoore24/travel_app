@@ -70,8 +70,22 @@ device does something else.
   the scroll area shrinks rather than overflowing.
 - A primary action inside a `ScrollView` is reachable only by scrolling.
   Keep submit buttons _outside_ the scroll area.
-- `keyboardShouldPersistTaps="handled"` swallows the first tap on a control
-  while a field is focused. Use `"always"` where the next tap is a field.
+- `keyboardShouldPersistTaps="handled"` swallows the first tap on a text
+  FIELD while another field is focused, because a `TextInput` does not claim
+  the responder. Use `"always"` where the next tap is a field. It does not
+  swallow taps on a `Pressable`, which claims in the bubble phase and so wins
+  over the list.
+- **A scroller with no `keyboardShouldPersistTaps` eats the first touch
+  whenever a field anywhere on screen has focus** — including a long press,
+  and including a composer that lives outside the list. The default is
+  `'never'`, and React Native implements that by claiming the responder in the
+  CAPTURE phase (`ScrollView._handleStartShouldSetResponderCapture`), before
+  any child is asked; `Pressability` arms its long-press timer only inside
+  `onResponderGrant`, so the timer is never scheduled, and on release the
+  scroller blurs the field. Symptom: press and hold does nothing except close
+  the keyboard, and it works on the second try. This is what stopped the chat
+  reaction menu from ever opening, through two wrong fixes, because component
+  tests call the handler directly and never enter the responder system.
 
 ## Lists
 

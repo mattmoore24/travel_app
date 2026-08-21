@@ -203,10 +203,24 @@ appId: com.mattmoore.samewhere
 # reaction strip. Waiting on the scrim's Dismiss button rather than a fixed
 # animation delay, so a menu that does not open fails HERE, naming the menu,
 # rather than three steps later on a missing emoji.
+#
+# Run 34 failed here with no menu at all, and the cause was NOT the menu: the
+# thread's FlatList had no keyboardShouldPersistTaps, so with the composer
+# still focused the list took the touch in the responder capture phase and the
+# bubble was never asked. The keyboard being UP is therefore the case worth
+# testing — do NOT add a hideKeyboard or a sacrificial tap here to make this
+# green, because that is precisely the press that was broken for a real
+# finger, and hiding it would let the bug ship.
+#
+# Two assertions, because they fail differently: no menu id means the press
+# never arrived; the id without the Dismiss label means it mounted and
+# something kept it invisible.
 - longPressOn: 'First one in'
 - extendedWaitUntil:
-    visible: 'Dismiss'
+    visible:
+      id: 'message-menu'
     timeout: 10000
+- assertVisible: 'Dismiss'
 - takeScreenshot: 25-reaction-menu
 - tapOn: '❤️'
 - waitForAnimationToEnd:

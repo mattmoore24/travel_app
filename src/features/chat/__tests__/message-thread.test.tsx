@@ -1,12 +1,23 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { FlatList } from 'react-native';
 
 import { MessageThread } from '@/features/chat/message-thread';
 import type { MessageRow } from '@/lib/database.types';
 
-// The reaction menu is the founder's headline complaint and the one
-// interaction the simulator suite cannot prove: Maestro's long press does not
-// drive React Native's Pressable on iOS, so a run can only ever show that the
-// menu did not appear, never that it does. This asks the component directly.
+// The reaction menu is the founder's headline complaint.
+//
+// Read this before trusting these tests. An earlier version of this comment
+// claimed Maestro's long press "does not drive React Native's Pressable on
+// iOS", which is false, and believing it is why a genuine E2E failure was
+// waved away once. Maestro delivers a real press. What ate it was the
+// thread's own FlatList: with no keyboardShouldPersistTaps it claimed the
+// touch in the responder CAPTURE phase while the composer had focus, so the
+// bubble was never asked.
+//
+// These tests cannot see that class of bug at all — fireEvent calls the prop
+// directly and never enters the responder system — so their passing says
+// nothing about a phone. They pin the handler's LOGIC. The interaction is
+// proven by the simulator run, and only there.
 
 jest.mock('@/features/chat/hooks', () => ({
   useChatPhotoUrl: () => ({ data: null }),
@@ -90,5 +101,18 @@ describe('what a group needs and a one-to-one chat does not', () => {
     // And there is nothing left to react to.
     fireEvent(screen.getByText('Message removed by the host'), 'longPress');
     expect(screen.queryByLabelText('Dismiss')).toBeNull();
+  });
+});
+
+describe('the list must not eat the press', () => {
+  // A weak test on purpose, and worth having anyway: it cannot prove the
+  // interaction (see the note at the top of this file), it only stops the one
+  // prop that makes the interaction possible from being deleted by somebody
+  // tidying up. Without it the FlatList defaults to 'never', takes the touch
+  // in the capture phase whenever the composer has focus, and the long press
+  // is never scheduled at all.
+  it('lets a press through to the bubble while a field is focused', () => {
+    renderThread();
+    expect(screen.UNSAFE_getByType(FlatList).props.keyboardShouldPersistTaps).toBe('handled');
   });
 });

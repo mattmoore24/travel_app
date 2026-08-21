@@ -281,6 +281,12 @@ function MessageMenu({
 
   return (
     <Animated.View
+      // An identifier as well as the Dismiss label, so a failing run says
+      // WHICH way it failed: no id and no label means the press never
+      // arrived, while the id alone means the layer mounted and something
+      // kept it invisible. An accessibilityIdentifier survives on a view at
+      // opacity 0; an accessibilityLabel does not.
+      testID="message-menu"
       entering={FadeIn.duration(120)}
       exiting={FadeOut.duration(100)}
       style={[styles.menuLayer, { backgroundColor: theme.scrim }]}>
@@ -445,6 +451,28 @@ export function MessageThread({
         keyExtractor={(m) => m.id}
         contentContainerStyle={styles.list}
         keyboardDismissMode="interactive"
+        // WITHOUT THIS, A LONG PRESS ON A BUBBLE DOES NOTHING while the
+        // composer has focus, and this is the whole reason the reaction menu
+        // never opened. Left unset, a ScrollView defaults to 'never', and
+        // React Native's own comment for that case reads: "the first tap
+        // should be sent to the scroll view and dismiss the keyboard, then
+        // the second tap goes to the actual interior view". It enforces that
+        // by claiming the responder in the CAPTURE phase
+        // (ScrollView _handleStartShouldSetResponderCapture), before the
+        // bubble is ever asked — and Pressability arms its long-press timer
+        // only inside onResponderGrant, so the timer is not cancelled, it is
+        // never scheduled. On release the scroll view blurs the composer,
+        // which is exactly what E2E run 34 photographed: keyboard gone,
+        // thread slid down a keyboard's height, no menu.
+        //
+        // 'handled' and not 'always': a Pressable claims the responder in the
+        // bubble phase and so still wins the bubble, while a tap on empty
+        // thread space finds no claimant and falls through to the list, which
+        // keeps tap-anywhere-to-dismiss. 'always' would take that away with
+        // nothing to replace it. The traps note about 'handled' swallowing a
+        // first tap applies to text FIELDS, which do not claim the responder;
+        // there are none inside this list.
+        keyboardShouldPersistTaps="handled"
         renderItem={({ item, index }) => {
           // Inverted: "next" is visually above, "previous" is below.
           const older = messages[index + 1];
