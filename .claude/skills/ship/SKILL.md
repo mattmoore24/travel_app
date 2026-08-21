@@ -98,6 +98,27 @@ check there whenever a build could plausibly succeed while shipping nothing.
 builds whose `version` in `app.json` matches. Bumping `version` orphans
 every existing install from future updates until a new build ships.
 
+## 3b. A green deploy does not mean the workers run
+
+`supabase functions deploy` reporting success means the code was UPLOADED.
+It says nothing about whether the function runs — a bad import fails at the
+first invocation, and the worker then does nothing every minute while every
+check stays green. On 2026-08-21 that took moderation down for half an hour:
+first messages held and never released, deploy green, nothing red anywhere.
+The only thing that noticed was the ten-minute live-backend suite.
+
+The deploy now POSTs each worker once and fails if it answers anything other
+than 2xx / 401 / 403. Do not remove that step, and do not treat a green
+`functions deploy` as evidence on its own.
+
+For anything touching the workers, the moderation pipeline, or RLS on a path
+the app depends on, run **Live backend tests** afterwards and read the result.
+It is the only check that exercises the real project end to end, and its
+"clean message RELEASED within 5 min" assertion is the canary for a dead
+worker. Note that its "flirty message NEVER delivered" assertion passes
+trivially when nothing is delivered at all, so a half-red run can still look
+reassuring — read the whole list.
+
 ## 4. Verify — do not assume
 
 Check the workflow run actually succeeded and report the update ID and the

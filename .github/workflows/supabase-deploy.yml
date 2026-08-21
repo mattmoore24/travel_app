@@ -47,6 +47,8 @@ jobs:
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       SUPPORT_INBOX: ${{ secrets.SUPPORT_INBOX }}
       SUPPORT_FROM: ${{ secrets.SUPPORT_FROM }}
+      ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      PROJECT_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -77,6 +79,47 @@ jobs:
         if: ${{ inputs.dry_run != true }}
         # --use-api bundles server-side, so the runner needs no Docker.
         run: npx --yes "$SUPABASE_CLI" functions deploy --project-ref "$PROJECT_REF" --use-api
+
+      # `functions deploy` reporting success means the code was uploaded. It
+      # says NOTHING about whether the function runs: a bad import fails at
+      # the first invocation, and the worker then does nothing, every minute,
+      # while every check stays green. That is exactly how moderation went
+      # down on 2026-08-21 — first messages held and never released — and the
+      # only thing that noticed was the ten-minute live-backend suite.
+      #
+      # One POST each. A 2xx means it ran; a 401 or 403 means it is alive and
+      # refused us, which is also fine and is what a caller guard should do.
+      # Anything else, including a 5xx from a module that will not import,
+      # fails the deploy while somebody is still looking at it.
+      #
+      # Invoking these is not a side effect worth worrying about: draining
+      # the queue once is precisely what cron asks them to do every minute.
+      # support-mailer is left out because it is unconfigured by design until
+      # the founder sets RESEND_API_KEY, and an honest 500 from it would fail
+      # every deploy for the wrong reason.
+      - name: Prove the workers actually respond
+        if: ${{ inputs.dry_run != true && env.ANON_KEY != '' && env.PROJECT_URL != '' }}
+        run: |
+          fail=0
+          for fn in moderation-worker push-worker; do
+            body=$(mktemp)
+            code=$(curl -sS -o "$body" -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $ANON_KEY" \
+              -H "Content-Type: application/json" \
+              "$PROJECT_URL/functions/v1/$fn" || echo 000)
+            case "$code" in
+              2*|401|403)
+                echo "$fn responded $code"
+                ;;
+              *)
+                echo "::error::$fn responded $code and is not running. First 300 bytes:"
+                head -c 300 "$body" || true
+                echo
+                fail=1
+                ;;
+            esac
+          done
+          exit "$fail"
 
       - name: Sync Edge Function secrets
         if: ${{ inputs.dry_run != true && env.ANTHROPIC_API_KEY != '' }}

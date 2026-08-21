@@ -45,7 +45,10 @@ The things that would have hurt most:
 - **A group's photo was unreadable by everybody**, including the admin who
   chose it.
 - **The three cron workers authorized nobody**, and the anon key ships in the
-  app.
+  app. The guard for this was written, deployed, and **reverted the same
+  hour**: it took the moderation worker down with it, so first messages were
+  held and never released. Caught by the live-backend suite twenty minutes
+  after the deploy, with every other check green. Still open — see below.
 - **The binary asked for location, motion and Face ID**, in Expo's default
   wording, on an app whose whole promise is that it never asks.
 - **Failure was reported as emptiness everywhere.** Offline, you were told you
@@ -56,6 +59,14 @@ an account left every chat photo behind, a reinstall opened with a queue of
 old celebrations, and the last em dashes in user-facing copy are gone.
 
 ### Still open after this phase
+
+- **The cron workers are unauthenticated again.** Anyone holding the anon key
+  from the IPA can invoke them. The guard comes back once it can be proven,
+  most likely by reading the `role` claim off the JWT the platform has already
+  verified rather than comparing key strings, and written inline in each
+  function rather than imported from `_shared` — the two candidate causes of
+  the outage. The deploy now POSTs each worker and fails on a 5xx, so the next
+  attempt cannot fail silently.
 
 - **Founder-side.** `RESEND_API_KEY` and `SUPPORT_INBOX` are still unset, so
   the in-app contact form stores messages and emails nobody while telling the
