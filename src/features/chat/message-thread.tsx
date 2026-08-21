@@ -44,6 +44,22 @@ const UNMEASURED_HEIGHT = 80;
 /** Breathing room between the lifted message and the things around it. */
 const LIFT_GAP = 10;
 
+/**
+ * The menu's own scrim, darker than theme.scrim.
+ *
+ * theme.scrim is tuned for a sheet, which covers most of the screen and is
+ * its own bright surface — a light touch is enough there. Here the dimmed
+ * thing sits directly around the menu, and rgba(6,7,16,0.62) over the dark
+ * theme's #0E1020 lands on #090A16: a real change on paper and no change at
+ * all to look at, so the menu read as a pill floating over a live thread and
+ * the date separator underneath stayed perfectly legible. Screenshot 25 of
+ * E2E run 35 is that, photographed.
+ *
+ * Not a theme token, because every sheet in the app uses that one and none of
+ * them asked for this.
+ */
+const MENU_SCRIM = 'rgba(2,3,9,0.86)';
+
 type Rect = { x: number; y: number; width: number; height: number };
 
 /** A message's box in the thread's own coordinates, plus what it is. */
@@ -289,7 +305,7 @@ function MessageMenu({
       testID="message-menu"
       entering={FadeIn.duration(120)}
       exiting={FadeOut.duration(100)}
-      style={[styles.menuLayer, { backgroundColor: theme.scrim }]}>
+      style={[styles.menuLayer, { backgroundColor: MENU_SCRIM }]}>
       <PressableScale
         accessibilityRole="button"
         accessibilityLabel="Dismiss"
