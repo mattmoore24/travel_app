@@ -150,6 +150,13 @@ device does something else.
   fix in `e2e.yml`: publish, launch once to fetch, poll `expo-v2.db` for the
   published update id at `status = 1`, then reset only the app's own storage
   between flows. Never re-introduce a state clear into a flow.
+- **The updates database is `expo-v11.db` today, and was `expo-v2.db` not
+  long ago.** `UpdatesDatabaseInitialization.swift` bumps the filename with
+  every schema migration. Anything inspecting it must glob `expo-v*.db`;
+  hardcoding the version failed the E2E gate twice on downloads that had
+  actually succeeded. Next to it sits
+  `dev.expo.modules.core.logging.expo-updates.txt`, which says more about a
+  failed check than os_log does.
 - `UpdatesConfigOverride` can only override the update URL and request
   headers at runtime. `launchWaitMs` and `checkOnLaunch` are baked into
   `Expo.plist` at build time, so there is no way to make an existing binary
