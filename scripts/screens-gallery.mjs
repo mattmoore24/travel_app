@@ -51,10 +51,18 @@ const CAPTIONS = {
   '16-pin-posted': ['Posted', 'The card names the plan and who dropped it.'],
   '17-travelers-signed-in': ['Travelers', 'One person at a time, with shared dates marked.'],
   '18-profile-me': ['Your profile', 'Exactly the page a stranger sees, plus edit.'],
+  '20-chat-individual': ['Chat', 'A switch where a page title used to be.'],
+  '21-chat-groups': ['Groups', 'Hostel rooms and your own groups, kept apart.'],
+  '22-new-group': ['Starting a group', 'Name, who can post, how long anyone may stay.'],
+  '23-group-created': ['The group', 'Straight into it, with the details button top right.'],
+  '24-group-message': ['A message', 'Bubble geometry, and the time between clusters.'],
+  '25-reaction-menu': ['Long press', 'The emoji row sits ON the message. This is the shot.'],
+  '26-reacted': ['Reacted', 'One reaction per person; a second choice moves it.'],
+  '27-group-settings': ['Group details', 'Who can post, who is in it, and the invite link.'],
   'zz-final-state': ['Final state', 'Raw capture at the end of the run.'],
 };
 
-/** Two passes through the app; the order is the order a person meets them. */
+/** Three passes through the app; the order is the order a person meets them. */
 const SECTIONS = [
   {
     title: 'First run',
@@ -65,6 +73,11 @@ const SECTIONS = [
     title: 'Signed in',
     note: 'The loop: sign in, drop a pin, read a traveler.',
     match: (n) => /^1/.test(n),
+  },
+  {
+    title: 'Chat',
+    note: 'Starting a group, saying something, and reacting to it.',
+    match: (n) => /^2/.test(n),
   },
   { title: 'Everything else', note: null, match: () => true },
 ];

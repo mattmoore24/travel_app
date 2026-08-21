@@ -108,3 +108,59 @@ appId: com.mattmoore.samewhere
     visible: 'Maestro Test.*'
     timeout: 15000
 - takeScreenshot: 18-profile-me
+
+# CHAT — the founder's top priority, and until now the one part of the app
+# with no picture of it at all. A group is the way in with a single account:
+# anyone can start one, so this reaches the new-group form, the room, the
+# composer and the reaction menu without needing a second person to accept a
+# message request.
+- back
+- tapOn: 'Chat'
+- takeScreenshot: 20-chat-individual
+- tapOn: 'Groups'
+- takeScreenshot: 21-chat-groups
+- tapOn: 'Start a group'
+# Wait on the field, not the title: the screen's heading and the button that
+# opened it are the same words, so a text match would pass before it opened.
+- extendedWaitUntil:
+    visible:
+      id: 'group-name-input'
+    timeout: 10000
+- tapOn:
+    id: 'group-name-input'
+- inputText: 'Maestro crew'
+# Return closes the keyboard, so the rest of the form is reachable. Tapping
+# past a raised keyboard is what left a password box empty on run 25.
+- pressKey: Enter
+- takeScreenshot: 22-new-group
+- tapOn: 'Create group'
+- extendedWaitUntil:
+    visible: 'Maestro crew'
+    timeout: 20000
+- takeScreenshot: 23-group-created
+# A message to react to.
+- tapOn:
+    id: 'room-composer'
+- inputText: 'First one in'
+# The composer is multiline, so Return would add a line rather than send.
+- tapOn: 'Send'
+- extendedWaitUntil:
+    visible: 'First one in'
+    timeout: 15000
+- takeScreenshot: 24-group-message
+# The founder's exact complaint: the picker used to be a slab in the middle
+# of the screen. This shot is the evidence that it now sits on the message.
+- longPressOn: 'First one in'
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 25-reaction-menu
+- tapOn: '❤️'
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 26-reacted
+# The group's own page: who is in it, who may post, and the invite link.
+- tapOn: 'Group details'
+- extendedWaitUntil:
+    visible: 'WHO CAN POST'
+    timeout: 15000
+- takeScreenshot: 27-group-settings

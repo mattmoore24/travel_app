@@ -320,6 +320,7 @@ export default function RoomScreen() {
                   }
                 />
                 <TextInput
+                  testID="room-composer"
                   style={[
                     styles.input,
                     { backgroundColor: theme.surfaceSunken, color: theme.text },
