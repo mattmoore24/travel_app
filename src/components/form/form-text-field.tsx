@@ -1,7 +1,6 @@
-import { StyleSheet, TextInput, type TextInputProps } from 'react-native';
+import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { Fonts, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -27,8 +26,13 @@ export function FormTextField({
 }: FormTextFieldProps) {
   const theme = useTheme();
 
+  // A plain View, so the field paints no ground colour of its own. The
+  // themed wrapper it used to have painted `background` (the page), which
+  // matched the full-screen forms by luck and drew a near-black band behind
+  // every label once these fields went into a sheet, whose ground is
+  // `surface`.
   return (
-    <ThemedView style={styles.container}>
+    <View style={styles.container}>
       {label ? <ThemedText type="smallBold">{label}</ThemedText> : null}
       <TextInput
         ref={inputRef}
@@ -54,7 +58,7 @@ export function FormTextField({
           {hint}
         </ThemedText>
       ) : null}
-    </ThemedView>
+    </View>
   );
 }
 

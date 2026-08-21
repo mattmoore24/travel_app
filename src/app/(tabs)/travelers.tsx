@@ -148,6 +148,7 @@ function TravelerPage({
 }) {
   // Nothing left to open once a message is out or a chat exists.
   const canOpen = chatId == null && !requested;
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { data: profile } = usePublicProfile(candidate.userId);
   const { data: photos = [] } = usePublicPhotos(candidate.userId);
@@ -248,7 +249,10 @@ function TravelerPage({
           haptic="light"
           scaleTo={0.94}
           onPress={onNext}
-          style={styles.nextButton}>
+          style={[
+            styles.nextButton,
+            { backgroundColor: theme.surfaceSunken, borderColor: theme.hairline },
+          ]}>
           <SymbolView
             name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }}
             size={18}
@@ -430,7 +434,9 @@ const styles = StyleSheet.create({
     borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(33,30,26,0.72)',
+    // Themed, not the warm brown it carried over from the pre-Nocturne
+    // palette, which read as a mud-coloured smudge beside the blue button.
+    borderWidth: StyleSheet.hairlineWidth,
   },
   sayHiWrap: {
     flex: 1,
