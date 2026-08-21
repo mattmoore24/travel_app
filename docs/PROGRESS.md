@@ -71,6 +71,32 @@ old celebrations, and the last em dashes in user-facing copy are gone.
   fourteen assertions including the clean-message release, which is the cron
   path still getting through.
 
+- **The reaction menu never opened, and the menu was never the problem.**
+  Two fixes aimed at it (`0a2e28a` moving groups onto the shared thread,
+  `c26bdd4` opening before the measurement lands) missed, because the long
+  press never reached the bubble at all. The thread's `FlatList` was the only
+  scroller in the app without `keyboardShouldPersistTaps`; the default is
+  `'never'`, and React Native implements that by claiming the responder in the
+  CAPTURE phase whenever a field has focus, so `Pressability` never runs
+  `onResponderGrant` and never schedules its long-press timer. On release the
+  list blurs the composer. E2E run 34's failure screenshot is that mechanism
+  photographed: keyboard gone, thread slid down one keyboard height, no scrim,
+  no menu, nothing crashed — and with a real keyboard up, only a list that had
+  become the responder can produce that blur.
+
+  It broke identically for a person: send a message, press and hold your own
+  bubble, and nothing happens but the keyboard closing. The second press
+  works. Same defect swallowed the first tap on a reaction chip, and it was
+  live in one-to-one chats too, since both render `MessageThread`.
+
+  Fixed with `keyboardShouldPersistTaps="handled"` (`64ec1b1`). The six
+  component tests could never have caught it — `fireEvent` calls the handler
+  directly and never enters the responder system — and the file's own comment
+  used to claim Maestro could not drive a Pressable, which is false and is
+  what excused a real failure once. Both are corrected, and the flow now
+  asserts a `message-menu` testID as well as the Dismiss label so the next
+  failure says which half broke. Recorded in the `traps` skill.
+
 - **The contact form now delivers without a key.**
   `20260821150000_support_delivery.sql` adds a second channel: name yourself
   in `app_config.support_notify_recipients` and every incoming message raises
