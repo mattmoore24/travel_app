@@ -3,21 +3,14 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  FlatList,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, FlatList, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { KeyboardFloor } from '@/components/ui/keyboard-floor';
+import { LoadError } from '@/components/ui/load-error';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { PhotoButton } from '@/components/ui/photo-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -150,7 +143,8 @@ export default function RoomScreen() {
   const theme = useTheme();
   const isGuest = useIsGuest();
   const ownId = useOwnUserId();
-  const { data: messages = [] } = useRoomMessages(id ?? null);
+  const messagesQuery = useRoomMessages(id ?? null);
+  const messages = messagesQuery.data ?? [];
   const chatsQuery = useMyChats();
   const join = useJoinRoom(id!);
   const { data: allReactions = [] } = useReactions(id ?? null);
@@ -198,10 +192,7 @@ export default function RoomScreen() {
   return (
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+        <KeyboardFloor>
           <View style={styles.header}>
             <View style={styles.headerRow}>
               <ThemedText type="headline" style={styles.headerTitle} numberOfLines={1}>
@@ -257,6 +248,28 @@ export default function RoomScreen() {
             data={messages}
             keyExtractor={(m) => m.id}
             contentContainerStyle={styles.messages}
+            // An inverted list draws this the right way up, so it does not
+            // need flipping. A brand new group used to be a screen-height of
+            // nothing with a composer under it.
+            ListEmptyComponent={
+              messagesQuery.isError ? (
+                <LoadError
+                  compact
+                  what="this room"
+                  error={messagesQuery.error}
+                  onRetry={() => messagesQuery.refetch()}
+                />
+              ) : messagesQuery.isPending ? null : (
+                <View style={styles.emptyThread}>
+                  <ThemedText type="callout" themeColor="textSecondary">
+                    {isGroup ? 'Nobody has said anything yet.' : 'Nothing here yet.'}
+                  </ThemedText>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    {muted ? 'You will see it here when they do.' : 'Go first. One line is plenty.'}
+                  </ThemedText>
+                </View>
+              )
+            }
             renderItem={({ item }) => (
               <RoomMessage
                 message={item}
@@ -410,7 +423,7 @@ export default function RoomScreen() {
               />
             </View>
           )}
-        </KeyboardAvoidingView>
+        </KeyboardFloor>
       </SafeAreaView>
     </ThemedView>
   );
@@ -515,6 +528,13 @@ const styles = StyleSheet.create({
     padding: Space.md,
     borderRadius: Radius.md,
     borderCurve: 'continuous',
+  },
+  emptyThread: {
+    alignItems: 'center',
+    gap: Space.xs,
+    paddingVertical: Space.xxl,
+    // The list is inverted, so its own children come out mirrored.
+    transform: [{ scaleY: -1 }],
   },
   composerWrap: {
     paddingHorizontal: Space.lg,

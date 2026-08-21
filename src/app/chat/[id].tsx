@@ -5,7 +5,6 @@ import { useState } from 'react';
 import {
   ActionSheetIOS,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
@@ -17,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PhotoButton } from '@/components/ui/photo-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { LoadError } from '@/components/ui/load-error';
 import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import {
@@ -277,10 +277,7 @@ export default function ChatScreen() {
   return (
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+        <KeyboardFloor>
           <ChatHeader chat={chat} />
           {chat.other_user_id ? <SocialsCard userId={chat.other_user_id} /> : null}
           {/* The chat row can be served from cache while the messages call
@@ -385,7 +382,7 @@ export default function ChatScreen() {
               </View>
             </View>
           )}
-        </KeyboardAvoidingView>
+        </KeyboardFloor>
       </SafeAreaView>
     </ThemedView>
   );

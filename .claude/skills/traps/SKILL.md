@@ -34,6 +34,15 @@ device does something else.
   guest sign-up gate rendered in the same sheet — so treat ANY navigation
   inside a `<Sheet>` as this bug until it is wrapped. `Linking.openURL` is
   fine: it leaves the app rather than pushing underneath.
+- **`KeyboardAvoidingView`'s frame is measured against its PARENT, not the
+  window.** So the usual `keyboardVerticalOffset={someHeaderHeight}` recipe is
+  only right when the view is the screen root. Both chat screens passed a
+  hardcoded 90 while sitting below a native header inside a SafeAreaView, and
+  landed the composer about ten points under the keyboard — near enough to
+  look almost right, far enough that you could not see what you were typing,
+  and enough that XCUITest could not type into it at all. Use
+  `components/ui/keyboard-floor`, which asks `useAnimatedKeyboard()` for the
+  real height instead of guessing, the same way `components/ui/sheet` does.
 - **A page inside a flex parent needs `flex: 1` of its own** or it collapses
   to content height and its empty state renders off-screen.
 - **`entering` and an animated style must not both drive `opacity`.** The
