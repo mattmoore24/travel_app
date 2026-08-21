@@ -31,6 +31,7 @@ import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks'
 // take any chat id, so direct chats reuse exactly what rooms use.
 import { useReactions, useToggleReaction, useUnsendMessage } from '@/features/rooms/hooks';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
+import { usesAt } from '@/features/profile/social-handles-editor';
 import { useTheme } from '@/hooks/use-theme';
 import type { ChatListRow } from '@/lib/database.types';
 
@@ -184,7 +185,10 @@ function SocialsCard({ userId }: { userId: string }) {
       />
       <ThemedText type="small" themeColor="textSecondary">
         {socials
-          .map((h) => `${PLATFORM_LABELS[h.platform] ?? h.platform} @${h.handle}`)
+          .map(
+            (h) =>
+              `${PLATFORM_LABELS[h.platform] ?? h.platform} ${usesAt(h.platform) ? '@' : ''}${h.handle}`
+          )
           .join(' · ')}
       </ThemedText>
     </ThemedView>

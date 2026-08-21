@@ -32,7 +32,9 @@ export const PLATFORMS: { value: SocialPlatform; label: string; at: boolean }[] 
 const LABELS: Record<string, string> = Object.fromEntries(PLATFORMS.map((p) => [p.value, p.label]));
 
 /** WhatsApp is a number, Facebook is a name — an @ there would be wrong. */
-function usesAt(platform: SocialPlatform) {
+/** Whether this platform's handles read as @names. Phone numbers and real
+ * names do not, and printing an @ in front of one looks like a bug. */
+export function usesAt(platform: SocialPlatform) {
   return PLATFORMS.find((p) => p.value === platform)?.at ?? false;
 }
 

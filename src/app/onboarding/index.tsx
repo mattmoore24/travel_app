@@ -85,6 +85,20 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
     }
   };
 
+  // Every step gets it, not just the last one. A person who signs up on
+  // hostel wifi that drops gets "Could not save" on step 3 and, before this,
+  // had no back, no sign out and no way to reach the app: an account that
+  // cannot finish was worse off than no account at all.
+  const signOutFooter = (
+    <PrimaryButton
+      variant="ghost"
+      label="Sign out"
+      onPress={() => {
+        signOut().catch(() => {});
+      }}
+    />
+  );
+
   if (step === 3) {
     return (
       <StepShell
@@ -96,6 +110,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         // fields touched, which is what shows the person WHY it will not go
         // through. A disabled button just sits there.
         continueLoading={updateProfile.isPending}
+        footer={signOutFooter}
         onContinue={() => {
           setTouched(true);
           if (!basicsOk) {
@@ -140,6 +155,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         subtitle="Home base, not where you happen to be today."
         continueLoading={updateProfile.isPending}
         note={!homeOk ? 'Add where you are from and at least one language you can chat in.' : null}
+        footer={signOutFooter}
         onBack={() => go(3)}
         onContinue={() =>
           !homeOk
@@ -189,6 +205,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         continueLabel={bio.trim() || occupation.trim() ? 'Continue' : 'Skip for now'}
         continueDisabled={bioError != null}
         continueLoading={updateProfile.isPending}
+        footer={signOutFooter}
         onBack={() => go(4)}
         onContinue={() =>
           saveAndGo({ bio: bio.trim() || null, occupation: occupation.trim() || null }, 6)
@@ -249,15 +266,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
           // Surfaced by the global mutation error alert.
         }
       }}
-      footer={
-        <PrimaryButton
-          variant="ghost"
-          label="Sign out"
-          onPress={() => {
-            signOut().catch(() => {});
-          }}
-        />
-      }>
+      footer={signOutFooter}>
       <PhotoGrid />
     </StepShell>
   );

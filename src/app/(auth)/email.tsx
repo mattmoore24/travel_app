@@ -87,7 +87,7 @@ export default function SignInScreen() {
         error={error}
       />
       <ThemedText type="footnote" themeColor="textSecondary">
-        Forgot it? Make a new account for now — password recovery lands shortly.
+        Forgot it? Make a new account for now. Password recovery lands shortly.
       </ThemedText>
     </StepScreen>
   );

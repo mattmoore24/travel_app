@@ -38,7 +38,11 @@ export function StepScreen({
           <ScrollView
             style={styles.flex}
             contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="always">
+            keyboardShouldPersistTaps="always"
+            // "always" means a tap outside a field does NOT dismiss the
+            // keyboard, which is right for moving between fields and wrong as
+            // the only exit. Dragging closes it, same as the signup shell.
+            keyboardDismissMode="interactive">
             <ThemedText type="subtitle">{title}</ThemedText>
             {subtitle ? <ThemedText themeColor="textSecondary">{subtitle}</ThemedText> : null}
             {children}

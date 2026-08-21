@@ -120,6 +120,10 @@ export default function JoinScreen() {
       continueTestID="create-account"
       continueDisabled={!passwordOk || !matches}
       continueLoading={loading}
+      // Submit-level failures belong here, not on a field. The commonest one
+      // is "that email already has an account", which was turning the
+      // Password again box red on a screen the email is not even on.
+      note={error}
       onContinue={submitPassword}
       onBack={() => {
         setTouched(false);
@@ -162,9 +166,7 @@ export default function JoinScreen() {
           setError(null);
         }}
         onSubmitEditing={submitPassword}
-        error={
-          error ?? (touched && confirm.length > 0 && !matches ? 'These do not match yet.' : null)
-        }
+        error={touched && confirm.length > 0 && !matches ? 'These do not match yet.' : null}
       />
       {matches ? (
         <View style={styles.matchRow}>
