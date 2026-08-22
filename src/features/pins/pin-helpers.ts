@@ -173,11 +173,25 @@ export function minHoursForIntent(intentISO: string, now = new Date()): number {
   return Math.min(Math.max(hoursAway + 1, MIN_PIN_HOURS), MAX_PIN_HOURS);
 }
 
+/**
+ * A plan posted at eleven at night is not a one-hour plan.
+ *
+ * The default is the end of the plan's day, which is right at six in the
+ * evening and absurd at eleven: the pin came off the map before anybody had
+ * left the hostel. A night out does not end at midnight, so the default has a
+ * floor under it. Anyone who genuinely wants an hour can still drag the
+ * slider down to one.
+ */
+const DEFAULT_FLOOR_HOURS = 6;
+
 /** Where the slider sits before anyone touches it: the end of the plan's day. */
 export function defaultHoursForIntent(intentISO: string, now = new Date()): number {
   const endOfDay = expiryForIntentDate(intentISO, now);
   const hours = Math.round((endOfDay.getTime() - now.getTime()) / 3_600_000);
-  return Math.min(Math.max(hours, minHoursForIntent(intentISO, now)), MAX_PIN_HOURS);
+  return Math.min(
+    Math.max(hours, minHoursForIntent(intentISO, now), DEFAULT_FLOOR_HOURS),
+    MAX_PIN_HOURS
+  );
 }
 
 /** "1 hour" / "6 hours" / "2 days" — a duration a person would say out loud. */
@@ -218,4 +232,25 @@ export function intentLabel(intentISO: string, now = new Date()): string {
   return new Intl.DateTimeFormat('en', { weekday: 'long', month: 'short', day: 'numeric' }).format(
     parseISODate(intentISO)
   );
+}
+
+/**
+ * Which `intent_date` strings count as today (or tomorrow) on this phone.
+ *
+ * Two clocks write that column. The app writes the phone's LOCAL calendar day
+ * (features/trips/dates toISODate, which is deliberately local because a trip
+ * is a calendar range, not a timestamp). The curated seed writes Postgres's
+ * `current_date`, which is UTC. An exact string compare therefore hides every
+ * seeded plan from a traveler far enough east or west - and this is a travel
+ * app, so "far enough" is the normal case. A founder at UTC-7 tapping Today at
+ * six in the evening is asking about a day the server rolled past hours ago.
+ *
+ * Matching either date fixes that without ever showing a plan that has already
+ * happened, which is what a looser `<=` comparison would have done.
+ */
+export function filterDates(filter: 'today' | 'tomorrow', now = new Date()): string[] {
+  const offset = filter === 'today' ? 0 : 1;
+  const local = toISODate(addDays(now, offset));
+  const utc = new Date(now.getTime() + offset * 86_400_000).toISOString().slice(0, 10);
+  return local === utc ? [local] : [local, utc];
 }

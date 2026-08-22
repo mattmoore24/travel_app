@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
+import { QUIET_BASEMAP, pointsOfInterest } from '@/features/pins/basemap';
 
 type LocationPickerProps = {
   centerLat: number;
@@ -14,6 +16,7 @@ type LocationPickerProps = {
 
 /** Tap or drag to place the pin at venue level — never tied to GPS. */
 export function LocationPicker({ centerLat, centerLng, lat, lng, onChange }: LocationPickerProps) {
+  const [mapReady, setMapReady] = useState(false);
   return (
     <View style={styles.container}>
       <MapView
@@ -25,7 +28,14 @@ export function LocationPicker({ centerLat, centerLng, lat, lng, onChange }: Loc
           latitudeDelta: 0.06,
           longitudeDelta: 0.06,
         }}
-        showsUserLocation={false}
+        // This one matters more than the big map, not less: it sits at venue
+        // zoom, which is the exact band where Apple draws bright pills for
+        // restaurants and bars - the categories this app's pins are about. A
+        // user dragging their own amber marker was doing it among eight of
+        // Apple's.
+        {...QUIET_BASEMAP}
+        showsPointsOfInterests={pointsOfInterest(mapReady)}
+        onMapReady={() => setMapReady(true)}
         onPress={(event) => {
           const { latitude, longitude } = event.nativeEvent.coordinate;
           onChange(latitude, longitude);

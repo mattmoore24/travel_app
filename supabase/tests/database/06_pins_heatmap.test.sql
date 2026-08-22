@@ -1,7 +1,7 @@
 -- Pins: 72h hard expiry (rule 3), geofenced launch cities, immutability,
 -- k-anonymous heatmap (rule 6), seeded pins, pin-source requests.
 begin;
-select plan(26);
+select plan(29);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -334,6 +334,36 @@ select throws_ok(
   '42501',
   null,
   'anon cannot read heat'
+);
+
+-- The daily curated refresh re-dates a plan instead of letting it rot.
+--
+-- seed_launch_pins() skips a venue that still has a live seeded pin, and a
+-- seeded pin lives 48h against a daily schedule, so on day two every venue
+-- was skipped and the map kept advertising yesterday. Today and Tomorrow
+-- match intent_date exactly, so those chips went empty while the pins were
+-- still on screen.
+reset role;
+delete from public.pins;
+insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date,
+                         expires_at, seeded, seed_note)
+values (null, pg_temp.lisbon(), 'LX Factory night market', 'other', 38.7025, -9.1782,
+        current_date - 1, now() + interval '40 hours', true, 'yesterday');
+
+select ok(
+  public.seed_launch_pins() > 0,
+  'the refresh re-seeds a venue whose only live pin is yesterday''s'
+);
+select is(
+  (select count(*)::int from public.pins where seeded and intent_date < current_date),
+  0,
+  'no curated pin is left advertising a day that has gone'
+);
+select is(
+  (select count(*)::int from public.pins
+   where seeded and venue_name = 'LX Factory night market'),
+  1,
+  'and the sweep leaves one of each venue, not two'
 );
 
 select * from finish();

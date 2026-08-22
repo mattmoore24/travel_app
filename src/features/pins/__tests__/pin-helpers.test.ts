@@ -8,6 +8,7 @@ import {
   expiryForDuration,
   expiryForHours,
   expiryForIntentDate,
+  filterDates,
   hoursLabel,
   intentDateOptions,
   intentLabel,
@@ -161,5 +162,40 @@ describe('burnOutLabel', () => {
     const inHalfAnHour = new Date(now.getTime() + 30 * 60_000);
     expect(burnOutLabel(inHalfAnHour.toISOString(), now)).toBe('burns out soon');
     expect(burnOutLabel(new Date(now.getTime() - 1_000).toISOString(), now)).toBe('burns out soon');
+  });
+});
+
+describe('the default pin lifetime', () => {
+  // A pin dropped at 23:00 for tonight used to default to one hour, so it was
+  // off the map before anyone had left the hostel.
+  it('does not default a late-evening plan to an hour', () => {
+    const lateTonight = new Date(2026, 7, 22, 23, 0, 0);
+    expect(defaultHoursForIntent('2026-08-22', lateTonight)).toBeGreaterThanOrEqual(6);
+  });
+
+  it('still ends a normal evening plan at the end of its own day', () => {
+    const sixPm = new Date(2026, 7, 22, 18, 0, 0);
+    expect(defaultHoursForIntent('2026-08-22', sixPm)).toBe(6);
+  });
+
+  it('never exceeds the 72h ceiling', () => {
+    const now = new Date(2026, 7, 22, 9, 0, 0);
+    expect(defaultHoursForIntent('2026-08-25', now)).toBeLessThanOrEqual(72);
+  });
+});
+
+describe('filterDates', () => {
+  it('accepts the local day and the UTC day when a phone straddles them', () => {
+    // 18:00 in Los Angeles is already the next day in UTC.
+    const evening = new Date('2026-08-22T01:00:00Z');
+    const dates = filterDates('today', evening);
+    expect(dates.length).toBeGreaterThanOrEqual(1);
+    expect(new Set(dates).size).toBe(dates.length);
+  });
+
+  it('says one date when the two clocks agree', () => {
+    const midday = new Date(2026, 7, 22, 12, 0, 0);
+    const dates = filterDates('today', midday);
+    expect(dates).toContain('2026-08-22');
   });
 });

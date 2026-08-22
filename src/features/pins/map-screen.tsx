@@ -14,6 +14,7 @@ import { AvatarButton } from '@/components/ui/avatar-button';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { LoadError } from '@/components/ui/load-error';
+import { QUIET_BASEMAP, pointsOfInterest } from '@/features/pins/basemap';
 import { Sheet, SHEET_SETTLE_MS, leavingSheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
@@ -53,8 +54,7 @@ import { PinFormSheet } from '@/features/pins/pin-form-sheet';
 import { PinSearchField } from '@/features/pins/pin-search-field';
 import type { LocalSearchResult } from '@/modules/local-search';
 import { PlacePinOverlay } from '@/features/pins/place-pin-overlay';
-import { burnOutLabel, intentLabel } from '@/features/pins/pin-helpers';
-import { addDays, toISODate } from '@/features/trips/dates';
+import { burnOutLabel, filterDates, intentLabel } from '@/features/pins/pin-helpers';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
@@ -437,6 +437,9 @@ export default function MapScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
+  // Only so the points of interest can be turned off in a later commit than
+  // the map type. See features/pins/basemap.
+  const [mapReady, setMapReady] = useState(false);
   const launchCitiesQuery = useLaunchCities();
   const launchCities = launchCitiesQuery.data ?? [];
   const [cityId, setCityId] = useState<number | null>(null);
@@ -445,13 +448,16 @@ export default function MapScreen() {
   // The brief's hook is "popular today/tomorrow" — the heat date dimension
   // is filterable, not blended.
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
-  const filterISO =
-    dateFilter === 'all'
-      ? null
-      : dateFilter === 'today'
-        ? toISODate(new Date())
-        : toISODate(addDays(new Date(), 1));
-  const { data: allPins = [], isSuccess: pinsLoaded } = useMapPins(activeCityId);
+  // One date for the heat RPC, which takes a single day, and the set of dates
+  // the pin markers accept. They differ because two clocks write intent_date -
+  // see filterDates.
+  const filterISO = dateFilter === 'all' ? null : filterDates(dateFilter)[0];
+  const filterSet = useMemo(
+    () => (dateFilter === 'all' ? null : new Set(filterDates(dateFilter))),
+    [dateFilter]
+  );
+  const pinsQuery = useMapPins(activeCityId);
+  const { data: allPins = [], isSuccess: pinsLoaded } = pinsQuery;
   const { data: heat = [] } = useMapHeat(activeCityId, filterISO);
   const heatCells = useMemo(() => mergeHeatCells(heat), [heat]);
   const legend = useHeatLegend(heatCells.length > 0);
@@ -479,8 +485,8 @@ export default function MapScreen() {
   const lastRegion = useRef<Region | null>(null);
 
   const pins = useMemo(
-    () => (filterISO ? allPins.filter((p) => p.intent_date === filterISO) : allPins),
-    [allPins, filterISO]
+    () => (filterSet ? allPins.filter((p) => filterSet.has(p.intent_date)) : allPins),
+    [allPins, filterSet]
   );
   const selectedPin = useMemo(
     () => pins.find((p) => p.id === selectedPinId) ?? null,
@@ -599,31 +605,12 @@ export default function MapScreen() {
             latitudeDelta: 0.09,
             longitudeDelta: 0.09,
           }}
-          // The ground is a stage, not a map to read. Apple's standard basemap
-          // ships bright POI pills (restaurants, shops, landmarks), coloured
-          // roads and extruded buildings, all of which compete with the only
-          // thing on this screen that matters - the faces and the plans. The
-          // design brief bans a POI-dense basemap by name, and every one of
-          // these is a plain prop on the existing native view, so it all ships
-          // over the air.
-          //
-          // mutedStandard is MKMapTypeMutedStandard: the same geometry with
-          // the colour taken out, which is what Apple built it for - a map
-          // under someone else's data.
-          mapType="mutedStandard"
-          // Yes, the plural. The prop really is showsPointsOfInterests
-          // (node_modules/react-native-maps/dist/src/MapView.d.ts:479); the
-          // singular spelling silently does nothing.
-          showsPointsOfInterests={false}
-          showsBuildings={false}
-          showsTraffic={false}
-          showsIndoors={false}
-          showsCompass={false}
-          showsScale={false}
-          // Nocturne is dark whatever the phone is set to, and a white map
-          // under a dark app is the loudest thing in it.
-          userInterfaceStyle="dark"
-          showsUserLocation={false}
+          // The ground is a stage, not a map to read. See features/pins/basemap
+          // for what each of these does and why the points of interest need a
+          // render of their own. Yes, the prop is the plural spelling.
+          {...QUIET_BASEMAP}
+          showsPointsOfInterests={pointsOfInterest(mapReady)}
+          onMapReady={() => setMapReady(true)}
           scrollEnabled={mode !== 'detail'}
           onPress={() => {
             if (mode === 'browse') {
@@ -924,6 +911,28 @@ export default function MapScreen() {
             </PressableScale>
           </View>
         </Animated.View>
+      ) : null}
+
+      {/* A failed pin query used to render exactly what an empty city renders:
+          a bare map, and not even the "no pins yet" card, because that card is
+          gated on isSuccess. So "I'm not seeing any pins" could mean the city
+          is quiet OR that the request died, and nothing on the screen told
+          anyone which. Every other query on this map already distinguishes the
+          two - launchCitiesQuery does it fifteen lines up. */}
+      {activeCity && mode === 'browse' && pinsQuery.isError && !selectedPin ? (
+        <View
+          style={[
+            styles.emptyBanner,
+            { bottom: BottomTabInset + insets.bottom + Spacing.five + 64 },
+          ]}>
+          <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
+            <LoadError
+              what="the pins"
+              error={pinsQuery.error}
+              onRetry={() => pinsQuery.refetch()}
+            />
+          </GlassSurface>
+        </View>
       ) : null}
 
       {activeCity && mode === 'browse' && pinsLoaded && pins.length === 0 && !selectedPin ? (

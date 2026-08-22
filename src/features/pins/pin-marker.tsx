@@ -113,7 +113,7 @@ export function PinMarkerView({
             </View>
             {/* Category still readable at a glance, tucked in the corner. */}
             <View style={[styles.categoryDot, { backgroundColor: fill }]}>
-              <SymbolView name={glyph} size={9} tintColor={PIN_GLYPH} />
+              <SymbolView name={glyph} size={8} tintColor={PIN_GLYPH} />
             </View>
           </>
         ) : (
@@ -253,7 +253,9 @@ export function useMarkerTracking(key: string): boolean {
   return tracking;
 }
 
-const BODY = 34;
+// 36, not 34. On a muted basemap the face is the only thing worth looking at,
+// and at 34 with a badge on its corner there was more chrome than person.
+const BODY = 36;
 const TAIL = 11;
 /** How many faces a stack shows before the count takes over. */
 const STACK_FACES = 3;
@@ -271,7 +273,9 @@ const styles = StyleSheet.create({
     height: STACK_FACE,
     borderRadius: STACK_FACE / 2,
     overflow: 'hidden',
-    borderWidth: 2,
+    // Thinner again: three of these overlap, so a heavy ring on each turns a
+    // stack of people into a stack of rings.
+    borderWidth: 1.5,
     borderColor: PIN_RING,
     alignItems: 'center',
     justifyContent: 'center',
@@ -287,7 +291,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     paddingHorizontal: 5,
     marginLeft: -6,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: PIN_RING,
     alignItems: 'center',
     justifyContent: 'center',
@@ -312,7 +316,9 @@ const styles = StyleSheet.create({
     height: BODY,
     borderRadius: BODY / 2,
     overflow: 'visible',
-    borderWidth: 2.5,
+    // 2, not 2.5. A thick white ring on a dark ground reads as a sticker
+    // stuck onto the map; a thin one reads as the edge of a photograph.
+    borderWidth: 2,
     borderColor: PIN_RING,
     alignItems: 'center',
     justifyContent: 'center',
@@ -336,14 +342,23 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  /*
+   * Small, and sitting OUTSIDE the face rather than on it.
+   *
+   * At 16pt with its own 1.5pt ring this was 47% of the marker's diameter and
+   * landed across the chin of every photo — two rings and two discs where the
+   * eye wanted one person. The plan still has to be readable at a glance
+   * (the person is attached to the plan, not the reverse), so the badge
+   * stays; it just stops competing with the face for the same pixels.
+   */
   categoryDot: {
     position: 'absolute',
-    right: -2,
-    bottom: -2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 1.5,
+    right: -3,
+    bottom: -3,
+    width: 13,
+    height: 13,
+    borderRadius: 6.5,
+    borderWidth: 1,
     borderColor: PIN_RING,
     alignItems: 'center',
     justifyContent: 'center',
