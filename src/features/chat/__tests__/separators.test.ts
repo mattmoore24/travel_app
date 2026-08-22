@@ -1,4 +1,4 @@
-import { separatorFor } from '@/features/chat/separators';
+import { rowTimestamp, separatorFor, unreadLabel } from '@/features/chat/separators';
 import type { MessageRow } from '@/lib/database.types';
 
 function at(date: Date): MessageRow {
@@ -42,5 +42,51 @@ describe('separatorFor', () => {
     justAfterMidnight.setHours(0, 5, 0, 0);
     const older = at(new Date(justAfterMidnight.getTime() - 10 * MINUTE));
     expect(separatorFor(at(justAfterMidnight), older)).toMatch(/^Today /);
+  });
+});
+
+describe('rowTimestamp', () => {
+  it('shows the time for something that happened today', () => {
+    const now = new Date();
+    const at = new Date(now.getTime() - 2 * MINUTE);
+    // Not asserting the exact string: the locale decides between "3:04 PM"
+    // and "15:04". What matters is that it is a clock time, not a date.
+    expect(rowTimestamp(at.toISOString(), now)).toMatch(/\d/);
+    expect(rowTimestamp(at.toISOString(), now)).not.toBe('Yesterday');
+  });
+
+  it('names yesterday rather than dating it', () => {
+    const now = new Date();
+    const at = new Date(now.getTime() - 26 * HOUR);
+    expect(rowTimestamp(at.toISOString(), now)).toBe('Yesterday');
+  });
+
+  it('uses the weekday inside the last week', () => {
+    const now = new Date();
+    const at = new Date(now.getTime() - 4 * 24 * HOUR);
+    expect(rowTimestamp(at.toISOString(), now)).toMatch(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/);
+  });
+
+  it('falls back to a date beyond a week', () => {
+    const now = new Date();
+    const at = new Date(now.getTime() - 30 * 24 * HOUR);
+    expect(rowTimestamp(at.toISOString(), now)).toMatch(/^\d{1,2}\/\d{1,2}$/);
+  });
+
+  it('renders nothing at all for a chat with no messages', () => {
+    expect(rowTimestamp(null)).toBe('');
+    expect(rowTimestamp('not a date')).toBe('');
+  });
+});
+
+describe('unreadLabel', () => {
+  it('counts up to 99 exactly', () => {
+    expect(unreadLabel(1)).toBe('1');
+    expect(unreadLabel(99)).toBe('99');
+  });
+
+  it('stops widening past 99', () => {
+    expect(unreadLabel(100)).toBe('99+');
+    expect(unreadLabel(4821)).toBe('99+');
   });
 });

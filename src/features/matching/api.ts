@@ -69,6 +69,18 @@ export async function fetchMyChats(archived = false) {
   return (data ?? []) as ChatListRow[];
 }
 
+/**
+ * Say that this user has now seen everything in this chat. Idempotent, and
+ * the mark never moves backwards, so calling it twice (mount, then a message
+ * arriving) is free.
+ */
+export async function markChatRead(chatId: string) {
+  const { error } = await supabase.rpc('mark_chat_read', { p_chat_id: chatId });
+  if (error) {
+    throw error;
+  }
+}
+
 export async function fetchSocialHandles(userId: string) {
   const { data, error } = await supabase
     .from('social_handles')

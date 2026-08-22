@@ -2,6 +2,7 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useColorScheme } from 'react-native';
 
 import { Colors } from '@/constants/theme';
+import { useWaitingCount } from '@/features/matching/hooks';
 
 // Three tabs, in the order people use them (docs/DESIGN.md). Profile lives
 // behind the avatar in the Map/Travelers headers, which buys the third slot
@@ -12,6 +13,11 @@ import { Colors } from '@/constants/theme';
 export default function AppTabs() {
   const scheme = useColorScheme();
   const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
+  // Conversations with something new plus hellos waiting on an answer. It
+  // never counts anything else: no profile-completion nudges, no marketing,
+  // nothing the app wants. A red dot that has cried wolf once is a red dot
+  // people learn to ignore, and then real messages go unanswered.
+  const waiting = useWaitingCount();
 
   // Untinted system glass — HIG: never paint the tab bar's background; the
   // accent lives only on the selected item.
@@ -38,6 +44,9 @@ export default function AppTabs() {
             selected: 'bubble.left.and.bubble.right.fill',
           }}
         />
+        <NativeTabs.Trigger.Badge hidden={waiting === 0}>
+          {waiting > 99 ? '99+' : String(waiting)}
+        </NativeTabs.Trigger.Badge>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

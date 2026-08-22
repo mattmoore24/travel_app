@@ -24,7 +24,7 @@ export function Segmented<T extends string>({
   onChange,
   accessibilityLabel,
 }: {
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; badge?: number }[];
   value: T;
   onChange: (value: T) => void;
   accessibilityLabel?: string;
@@ -78,7 +78,11 @@ export function Segmented<T extends string>({
           <Pressable
             key={option.value}
             accessibilityRole="tab"
-            accessibilityLabel={option.label}
+            accessibilityLabel={
+              option.badge != null && option.badge > 0
+                ? `${option.label}, ${option.badge} unread`
+                : option.label
+            }
             accessibilityState={{ selected }}
             onPress={() => {
               if (selected) {
@@ -94,6 +98,16 @@ export function Segmented<T extends string>({
               style={[styles.label, { color: selected ? theme.text : theme.textSecondary }]}>
               {option.label}
             </ThemedText>
+            {/* A count on the side you are NOT looking at is the only way to
+                know there is something over there. Announced through the
+                tab's own label so VoiceOver says it once, not twice. */}
+            {option.badge != null && option.badge > 0 ? (
+              <View style={[styles.badge, { backgroundColor: theme.highlight }]}>
+                <ThemedText type="caption" style={[styles.badgeText, { color: theme.background }]}>
+                  {option.badge > 99 ? '99+' : option.badge}
+                </ThemedText>
+              </View>
+            ) : null}
           </Pressable>
         );
       })}
@@ -120,9 +134,22 @@ const styles = StyleSheet.create({
   },
   segment: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Space.xs,
     paddingHorizontal: Space.sm,
+  },
+  badge: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontWeight: '700',
   },
   label: {
     fontWeight: '600',

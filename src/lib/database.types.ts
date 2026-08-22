@@ -249,6 +249,12 @@ export type ChatListRow = {
   created_at: string;
   /** Traveler groups only: 'admin' | 'speaker' | 'member'. Null elsewhere. */
   my_role: GroupRole | null;
+  /**
+   * Messages somebody else sent since this user last opened the chat. Counts
+   * only what a human wrote and what has cleared moderation, so a badge
+   * built on it can only ever mean "somebody is waiting for you".
+   */
+  unread_count: number;
 };
 
 export type GroupRole = 'admin' | 'speaker' | 'member';
@@ -657,6 +663,10 @@ export type Database = {
       my_chats: {
         Args: { p_archived?: boolean };
         Returns: ChatListRow[];
+      };
+      mark_chat_read: {
+        Args: { p_chat_id: string };
+        Returns: string;
       };
       featured_traveler: {
         Args: { p_city_id: number };

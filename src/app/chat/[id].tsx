@@ -27,6 +27,7 @@ import {
   useLeaveChat,
 } from '@/features/chat/hooks';
 import { MessageThread } from '@/features/chat/message-thread';
+import { useMarkReadWhileOpen } from '@/features/chat/use-mark-read';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
 // Reactions are chat-shaped, not room-shaped: the table and the summary RPC
 // take any chat id, so direct chats reuse exactly what rooms use.
@@ -194,6 +195,9 @@ export default function ChatScreen() {
   const { data: reactions = [] } = useReactions(chat?.chat_id ?? null);
   const toggleReaction = useToggleReaction(chat?.chat_id ?? '');
   const unsend = useUnsendMessage(chat?.chat_id ?? '');
+  // Opening a conversation is what "reading" means; so is being in it
+  // when the next message lands.
+  useMarkReadWhileOpen(chat?.chat_id ?? null, messagesQuery.data?.[0]?.created_at ?? null);
   const [draft, setDraft] = useState('');
   // A picked photo waits here until it is actually sent. It used to fly off
   // the moment the picker closed, with no preview and no way to change your

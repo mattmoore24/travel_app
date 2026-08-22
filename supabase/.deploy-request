@@ -21,3 +21,4 @@
 2026-08-21 — deploy: re-sync RESEND_API_KEY after the founder corrected it
 2026-08-21 — deploy: support retry window (next_attempt_at, backoff, higher ceiling)
 2026-08-21 — deploy: SUPPORT_INBOX corrected to the Resend account address
+2026-08-22 — deploy: unread state (chat_prefs.last_read_at, mark_chat_read, my_chats.unread_count)

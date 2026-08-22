@@ -81,6 +81,23 @@ export function subscribeToMessages(
     .subscribe();
 }
 
+/**
+ * Live inserts across every chat this user can see — the chat LIST's nervous
+ * system, as opposed to one open thread's.
+ *
+ * No chat_id filter, and that is safe rather than sloppy: Postgres Changes
+ * are RLS-filtered server-side, so this only ever delivers rows the caller
+ * could have selected, which for `messages` means chats they are actually in.
+ */
+export function subscribeToMyMessages(onInsert: () => void): RealtimeChannel {
+  return supabase
+    .channel('messages:mine')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () =>
+      onInsert()
+    )
+    .subscribe();
+}
+
 export async function leaveChat(chatId: string) {
   const { error } = await supabase.rpc('unmatch_chat', { p_chat_id: chatId });
   if (error) {

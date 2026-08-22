@@ -9,6 +9,7 @@ import {
   sendPhotoMessage,
   signedChatPhotoUrl,
   subscribeToMessages,
+  subscribeToMyMessages,
   leaveChat,
 } from '@/features/chat/api';
 import { useOwnUserId } from '@/features/profile/hooks';
@@ -46,6 +47,42 @@ export function useMessages(chatId: string | null) {
 
   return query;
 }
+
+/**
+ * Keeps the chat LIST live while you are looking at it: a message landing in
+ * any conversation refreshes the rows, so the dot, the preview and the tab
+ * badge appear without a pull-to-refresh.
+ *
+ * Trailing-debounced, because a busy hostel room can insert a dozen rows in a
+ * second and each one would otherwise be its own round trip for a list that
+ * only needs to be right once the burst is over.
+ */
+export function useLiveChatList() {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const channel = subscribeToMyMessages(() => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      timer = setTimeout(() => {
+        timer = null;
+        queryClient.invalidateQueries({ queryKey: ['chats'] });
+      }, LIST_REFRESH_DEBOUNCE_MS);
+    });
+    return () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      channel.unsubscribe();
+    };
+  }, [queryClient]);
+}
+
+const LIST_REFRESH_DEBOUNCE_MS = 600;
 
 export function useSendMessage(chatId: string | null) {
   const userId = useOwnUserId();

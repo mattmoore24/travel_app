@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   Alert,
   Platform,
@@ -20,6 +20,9 @@ import { Segmented } from '@/components/ui/segmented';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
+import { rowTimestamp, unreadLabel } from '@/features/chat/separators';
+import { useLiveChatList } from '@/features/chat/hooks';
+import { waitingInSegment } from '@/features/chat/unread';
 import { useChatPref, useCityRooms } from '@/features/rooms/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
@@ -157,6 +160,8 @@ function ChatRow({ chat }: { chat: ChatListRow }) {
   const theme = useTheme();
   const preview = chat.last_message ?? chat.first_message;
   const isRoom = chat.kind === 'room';
+  const unread = chat.unread_count > 0;
+  const stamp = rowTimestamp(chat.last_message_at ?? chat.created_at);
 
   return (
     <ThemedView type="backgroundElement" style={styles.chatRow}>
@@ -173,7 +178,10 @@ function ChatRow({ chat }: { chat: ChatListRow }) {
       )}
       <View style={styles.chatRowText}>
         <View style={styles.rowTitle}>
-          <ThemedText type="callout" style={styles.strong} numberOfLines={1}>
+          <ThemedText
+            type="callout"
+            style={[styles.strong, styles.rowName, unread && styles.rowNameUnread]}
+            numberOfLines={1}>
             {chat.title ?? 'Traveler'}
           </ThemedText>
           {chat.pinned ? (
@@ -194,12 +202,47 @@ function ChatRow({ chat }: { chat: ChatListRow }) {
               tintColor={theme.textSecondary}
             />
           ) : null}
+          {/* When it happened, where every messaging app puts it. The name
+              takes flexShrink so a long one truncates instead of pushing the
+              time off the row. */}
+          {stamp ? (
+            <ThemedText
+              type="caption"
+              themeColor={unread ? 'highlight' : 'textSecondary'}
+              style={styles.rowStamp}>
+              {stamp}
+            </ThemedText>
+          ) : null}
         </View>
-        {preview ? (
-          <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
-            {preview}
-          </ThemedText>
-        ) : null}
+        <View style={styles.rowPreview}>
+          {preview ? (
+            <ThemedText
+              type="footnote"
+              themeColor={unread ? 'text' : 'textSecondary'}
+              numberOfLines={1}
+              style={styles.rowPreviewText}>
+              {preview}
+            </ThemedText>
+          ) : (
+            <View style={styles.rowPreviewText} />
+          )}
+          {/* One dot for "somebody wrote", a count once there are several.
+              It can only ever mean that: the RPC counts human messages that
+              have cleared moderation and nothing else. */}
+          {unread ? (
+            chat.unread_count > 1 ? (
+              <View style={[styles.unreadPill, { backgroundColor: theme.highlight }]}>
+                <ThemedText
+                  type="caption"
+                  style={[styles.unreadCount, { color: theme.background }]}>
+                  {unreadLabel(chat.unread_count)}
+                </ThemedText>
+              </View>
+            ) : (
+              <View style={[styles.unreadDot, { backgroundColor: theme.highlight }]} />
+            )
+          ) : null}
+        </View>
         {isRoom && chat.member_count != null ? (
           <ThemedText type="footnote" themeColor="textSecondary">
             {chat.member_count} here now
@@ -304,10 +347,24 @@ function ChatRowLink({ chat }: { chat: ChatListRow }) {
 
 type Tab = 'individual' | 'groups';
 
-const TABS: { value: Tab; label: string }[] = [
+const TAB_LABELS: { value: Tab; label: string }[] = [
   { value: 'individual', label: 'Chats' },
   { value: 'groups', label: 'Groups' },
 ];
+
+/**
+ * The segment you are NOT looking at is the only place a waiting group chat
+ * can announce itself.
+ */
+function tabsWithCounts(chats: ChatListRow[], requests: number) {
+  return TAB_LABELS.map((tab) => ({
+    ...tab,
+    badge:
+      tab.value === 'individual'
+        ? waitingInSegment(chats, false) + requests
+        : waitingInSegment(chats, true),
+  }));
+}
 
 /**
  * A samewhere:// link is not tappable in every text message app, so the code
@@ -337,10 +394,20 @@ export default function ChatScreen() {
   const chatsQuery = useMyChats();
   const requests = requestsQuery.data ?? [];
   const chats = chatsQuery.data ?? [];
-  const refresh = () => {
-    chatsQuery.refetch();
-    requestsQuery.refetch();
-  };
+  // Destructured because a query RESULT is a new object every render while
+  // its refetch is stable — which is what lets `refresh` be a stable
+  // dependency instead of re-firing the focus effect on every pass.
+  const { refetch: refetchChats } = chatsQuery;
+  const { refetch: refetchRequests } = requestsQuery;
+  const refresh = useCallback(() => {
+    refetchChats();
+    refetchRequests();
+  }, [refetchChats, refetchRequests]);
+
+  // Unread state changes while this screen is off-stage: you read a thread,
+  // somebody answers, a hello lands. Without this the dots and the tab badge
+  // are whatever they were when the tab was last mounted.
+  useFocusEffect(refresh);
   const { data: launchCities = [] } = useLaunchCities();
   const { data: archived = [] } = useMyChats(true);
   const cityId = launchCities[0]?.city_id ?? null;
@@ -353,6 +420,10 @@ export default function ChatScreen() {
   const inTab = chats.filter((c) => (tab === 'groups' ? c.kind === 'room' : c.kind !== 'room'));
   const pinned = inTab.filter((c) => c.pinned);
   const rest = inTab.filter((c) => !c.pinned);
+  const tabs = tabsWithCounts(chats, requests.length);
+  // A message landing anywhere refreshes the rows while you are looking at
+  // them, so the dot and the badge appear without a pull-to-refresh.
+  useLiveChatList();
 
   if (!isSupabaseConfigured) {
     return (
@@ -377,7 +448,7 @@ export default function ChatScreen() {
           <View style={styles.headerRow}>
             <View style={styles.headerSwitch}>
               <Segmented
-                options={TABS}
+                options={tabs}
                 value={tab}
                 onChange={setTab}
                 accessibilityLabel="Chats or groups"
@@ -423,7 +494,7 @@ export default function ChatScreen() {
         <View style={styles.headerRow}>
           <View style={styles.headerSwitch}>
             <Segmented
-              options={TABS}
+              options={tabs}
               value={tab}
               onChange={setTab}
               accessibilityLabel="Chats or groups"
@@ -607,6 +678,44 @@ const styles = StyleSheet.create({
   },
   strong: {
     fontWeight: '600',
+  },
+  /* The name gives way first, so a long one truncates rather than pushing
+     the timestamp off the end of the row. */
+  rowName: {
+    flexShrink: 1,
+  },
+  rowNameUnread: {
+    fontWeight: '700',
+  },
+  /* marginLeft:auto rather than flex:1 — the pin and mute glyphs sit between
+     the name and the stamp, and flex would stretch the gap around them. */
+  rowStamp: {
+    marginLeft: 'auto',
+    paddingLeft: Spacing.two,
+  },
+  rowPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  rowPreviewText: {
+    flex: 1,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  unreadPill: {
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadCount: {
+    fontWeight: '700',
   },
   requestCard: {
     gap: Spacing.two,

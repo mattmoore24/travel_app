@@ -19,6 +19,7 @@ import { useIsGuest } from '@/features/guest/hooks';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { useGroup } from '@/features/groups/hooks';
 import { useMyChats } from '@/features/matching/hooks';
+import { useMarkReadWhileOpen } from '@/features/chat/use-mark-read';
 import { MessageThread } from '@/features/chat/message-thread';
 import {
   useJoinRoom,
@@ -57,6 +58,9 @@ export default function RoomScreen() {
     [chatsQuery.data, id]
   );
   const isMember = membership != null;
+  // Only a member has anything to mark: a visitor previewing a public room
+  // has no chat_prefs row and the RPC would refuse them.
+  useMarkReadWhileOpen(isMember ? (id ?? null) : null, messages[0]?.created_at ?? null);
   // A traveler group, as opposed to a hostel's room. Null for the latter,
   // which is exactly what tells the two apart on this screen.
   const { data: group } = useGroup(membership?.kind === 'room' ? (id ?? null) : null);

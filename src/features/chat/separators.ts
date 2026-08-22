@@ -6,7 +6,7 @@ const TIMESTAMP_GAP_MS = 60 * 60 * 1000;
 const TIME = new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' });
 const DAY = new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' });
 
-function dayLabel(iso: string) {
+export function dayLabel(iso: string) {
   const date = new Date(iso);
   const today = new Date();
   const yesterday = new Date(today.getTime() - 86400000);
@@ -39,4 +39,42 @@ export function separatorFor(current: MessageRow, older: MessageRow | undefined)
     return TIME.format(at);
   }
   return null;
+}
+
+/**
+ * What a chat LIST row shows on the right: the time if it happened today,
+ * 'Yesterday', the weekday inside the last week, and a date beyond that. The
+ * same vocabulary as the in-thread separators above, compressed to the width
+ * a row can spare.
+ */
+const WEEKDAY = new Intl.DateTimeFormat('en', { weekday: 'short' });
+const SHORT_DATE = new Intl.DateTimeFormat('en', { month: 'numeric', day: 'numeric' });
+
+export function rowTimestamp(iso: string | null, now: Date = new Date()): string {
+  if (!iso) {
+    return '';
+  }
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) {
+    return '';
+  }
+  const label = dayLabel(iso);
+  if (label === 'Today') {
+    return TIME.format(at);
+  }
+  if (label === 'Yesterday') {
+    return 'Yesterday';
+  }
+  // Inside the last week the weekday is more useful than the date, which is
+  // how every messaging app people already use reads.
+  const days = (now.getTime() - at.getTime()) / 86400000;
+  if (days >= 0 && days < 7) {
+    return WEEKDAY.format(at);
+  }
+  return SHORT_DATE.format(at);
+}
+
+/** 12 becomes '12'; anything past 99 becomes '99+' rather than a wide pill. */
+export function unreadLabel(count: number): string {
+  return count > 99 ? '99+' : String(count);
 }

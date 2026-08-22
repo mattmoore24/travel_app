@@ -6,9 +6,11 @@ import {
   fetchMyChats,
   fetchSentRequests,
   fetchSocialHandles,
+  markChatRead,
   respondToRequest,
   sendMessageRequest,
 } from '@/features/matching/api';
+import { waitingTotal } from '@/features/chat/unread';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
 import type { RequestSource } from '@/lib/database.types';
@@ -63,6 +65,13 @@ export function useIncomingRequests() {
   });
 }
 
+/** What the Chat tab's badge counts (see features/chat/unread.ts). */
+export function useWaitingCount() {
+  const { data: chats = [] } = useMyChats();
+  const { data: requests = [] } = useIncomingRequests();
+  return waitingTotal(chats, requests.length);
+}
+
 export function useRespondToRequest() {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
@@ -91,6 +100,24 @@ export function useMyChats(archived = false) {
     queryKey: ['chats', userId, String(archived)],
     queryFn: () => fetchMyChats(archived),
     enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+/**
+ * Mark a chat read, and refresh the list so the dot and the tab badge clear.
+ *
+ * Deliberately silent on failure: this is bookkeeping, and a person who has
+ * just opened a conversation should never be shown an error about it. The
+ * next mount tries again.
+ */
+export function useMarkChatRead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (chatId: string) => markChatRead(chatId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
+    },
+    onError: () => {},
   });
 }
 
