@@ -369,6 +369,42 @@ so the client submits through `submit_support_message()` and gets an id back.
 delivered, attempts — for the author only, and returns neither body nor
 address, so it is not a way to read the inbox.
 
+## The audit build (Phase 11)
+
+Six migrations, in the order they apply. Each is listed with the one thing a
+future reader is most likely to need.
+
+| Migration                               | What it adds                                                                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------- |
+| `..._unread`                            | `chat_prefs.last_read_at`, `mark_chat_read()`, `my_chats.unread_count`                 |
+| `..._first_message_anchor`              | `my_chats.first_message_element` — what the hello answered                             |
+| `..._featured_and_caps`                 | featured traveler needs a face; the daily first-message cap; `preview_first_message()` |
+| `..._profile_prompts`                   | up to three answered prompts per profile, screened like the bio                        |
+| `..._daily_spotlight`                   | the mutual pairing, its symmetric score, and the nightly sweep                         |
+| `..._room_info` / `..._pinned_messages` | the name a non-member sees; three expiring pins per room                               |
+
+Three decisions worth keeping:
+
+**`my_chats()` was dropped and recreated twice.** Postgres will not add an OUT
+column to an existing `RETURNS TABLE` signature, and each drop takes the grants
+with it. Both migrations restate them. This is the trap `AGENTS.md` names, and
+it has now bitten twice; expect a third.
+
+**The spotlight is mutual by first-write, not by matching.** A proper stable
+matching over the whole city is the textbook answer and is far more machinery
+than this needs. Instead the score is _symmetric by construction_ — every term
+is a fact about the pair or a sum over both profiles — so the same pairing is
+the right answer whichever of the two asks first, and the first to ask writes
+the row. Unique indexes on both `(day, user_a)` and `(day, user_b)` make the
+race safe: a concurrent second insert loses and re-reads.
+
+**The first-message cap returns rather than raises, and it is checked before
+anything about the recipient.** Returning keeps it out of the error path,
+because being finished for the day is not an error. Checking it first makes the
+answer identical whoever you aimed at, so a capped sender cannot use the refusal
+as an oracle for who exists, who blocked them, or who is discoverable. It is a
+safety limit and hard rule 1 means it is never sold back.
+
 ## Privacy & secrets model
 
 - `EXPO_PUBLIC_*` env vars ship inside the client bundle. Only the Supabase URL + anon key
