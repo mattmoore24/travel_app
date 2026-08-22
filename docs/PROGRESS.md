@@ -837,6 +837,54 @@ pinned messages; run-final avatars; and skeletons on the two cold lists.
 Database: six migrations, 417 pgTAP assertions (up from 351). Client: 141 unit
 tests (up from 75).
 
+### And then the pictures found the one that mattered
+
+The simulator run after all of that posted a pin and stopped responding.
+
+Three screenshots — the confirmation card, the next tab, and the failure
+shot — came back BYTE-IDENTICAL. Between them the driver tapped Close,
+Travelers, Map and the profile avatar; Maestro found every one of those
+elements in the tree and reported all four taps as successful. Nothing moved.
+The last frame, a minute later, is the same frame with a different clock. The
+run only failed four steps afterwards, on a name that was never going to
+appear.
+
+Posting a pin unmounts the pin form, which is a Sheet and therefore a native
+Modal. In the same tick `useCreatePin.onSuccess` asks the push primer to
+appear, which mounts a second Modal while the first is still dismissing. iOS
+drops that presentation — the trap `traps` already carried, and the map
+already works around for its own card with a 450ms delay. What `traps` did
+NOT say, and now does, is what a dropped presentation costs on Fabric: the
+`ModalHostView` is laid out full screen, mounts its children into the modal's
+own view controller rather than into itself, overrides no `hitTest`, and so
+returns itself for every point on the screen. An invisible, full-screen touch
+sink, permanent, because RN marks itself presented before presenting and only
+retries on a re-parent.
+
+Proven by bisect: the run before the primer existed completed this flow; the
+run after it dies on the first four taps.
+
+**What is NOT proven is that it would have hit the founder's phone.** An
+adversarial pass refuted that half, correctly. The device path serialises a
+real `getNotificationSettingsWithCompletionHandler:` round trip that the
+simulator short-circuits, and that hop is in the one variable a sub-frame
+race turns on — the phone might lose it too, or might simply show the sheet.
+Every artifact here is a simulator. The fix is pure JS with no
+`Device.isDevice` in it, so it behaves the same either way.
+
+The primer is the only thing in the app that presents a sheet on a schedule
+of its own rather than because somebody tapped something, which is why it is
+the only thing that has to ask whether the screen is free. It waits on three
+facts now: the tabs focused, no sheet registered, and a settle delay, because
+unmounted in React and gone from the screen are not the same fact. Six
+component tests; two of them fail against the code they replace.
+
+The suite would have slept through it again, too. A tap that is allowed to do
+nothing is how a frozen app passes as a working one, so the flow now proves
+the first tap out of the pin card landed — by the card's own headline going
+away, not by "Drop a pin" (also the Travelers empty state's button) or
+"Travelers" (the tab's own label), both of which are true either way.
+
 **One audit item does less than it says on the tin, and this is where that is
 written down.** The featured traveler now has to have an approved first photo
 before the server will surface them. The intent was a face on the guest
