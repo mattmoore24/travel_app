@@ -120,22 +120,32 @@ function GuestTravelers() {
               // the tap to go, and the answer is the one action available.
               onPress={() => scrollRef.current?.scrollToEnd({ animated: true })}>
               <ThemedView type="backgroundElement" style={styles.card}>
-                <View style={[styles.cardPhoto, { backgroundColor: theme.accentSoft }]}>
-                  {photoUrl ? (
-                    <Image source={{ uri: photoUrl }} style={styles.cardImage} contentFit="cover" />
-                  ) : (
-                    // A warm monogram, not a grey silhouette. The server now
-                    // refuses to feature anybody without an approved photo, so
-                    // this only shows while the signed URL is still resolving —
-                    // and a placeholder that reads as a person beats one that
-                    // reads as a missing image.
-                    <ThemedText type="display" style={{ color: theme.accent }}>
-                      {(featured.display_name ?? 'T').trim().charAt(0).toUpperCase()}
-                    </ThemedText>
-                  )}
-                </View>
                 <View style={styles.cardBody}>
                   <View style={styles.nameRow}>
+                    {/* A monogram, not a photo well. The photos bucket is
+                        private and its only SELECT policy is `to
+                        authenticated`, so a signed-out device cannot fetch a
+                        face however hard the card asks — featured_traveler
+                        returns the path and the storage layer refuses it.
+                        Rendering a 16:9 frame for an image that can never
+                        arrive gave the one screen asking a guest to sign up a
+                        band of empty colour across its top. Widening the
+                        bucket to anon would hand every primary photo in the
+                        app to anybody holding the public key, which is not a
+                        trade to make for a teaser. */}
+                    <View style={[styles.cardMono, { backgroundColor: theme.accentSoft }]}>
+                      {photoUrl ? (
+                        <Image
+                          source={{ uri: photoUrl }}
+                          style={styles.cardImage}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <ThemedText type="title" style={{ color: theme.accent }}>
+                          {(featured.display_name ?? 'T').trim().charAt(0).toUpperCase()}
+                        </ThemedText>
+                      )}
+                    </View>
                     <ThemedText type="headline" style={styles.nameText}>
                       {featured.display_name ?? 'Traveler'}
                       {featured.age != null ? `, ${featured.age}` : ''}
@@ -149,8 +159,12 @@ function GuestTravelers() {
                     {formatDateRange(featured.their_start, featured.their_end)}
                   </ThemedText>
                   {featured.bio ? <ThemedText type="body">{featured.bio}</ThemedText> : null}
+                  {/* What the tap does. It said "Tap to see their profile"
+                      and then scrolled to the sign-up card, because the
+                      profile route is unreadable signed-out — a label that
+                      promises the one thing the tap cannot do. */}
                   <ThemedText type="footnote" themeColor="accent">
-                    Tap to see their profile
+                    Make a profile to see theirs
                   </ThemedText>
                 </View>
               </ThemedView>
@@ -558,9 +572,7 @@ export default function TravelersScreen() {
       <ProfileCorner />
       <Animated.View entering={FadeIn.duration(200)} style={styles.deck} key={current.userId}>
         <TravelerPage
-          spotlight={
-            current.userId === spotlightId ? `This week in ${current.match.city_name}` : null
-          }
+          spotlight={current.userId === spotlightId ? `Today in ${current.match.city_name}` : null}
           candidate={current}
           width={Math.min(width, MaxContentWidth)}
           chatId={chatId}
@@ -720,11 +732,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...Elevation.raised,
   },
-  cardPhoto: {
-    width: '100%',
-    // Wide rather than tall: a portrait crop here filled the screen and
-    // buried the sign-up card below the fold.
-    aspectRatio: 16 / 9,
+  cardMono: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.pill,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -739,7 +751,7 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.one,
+    gap: Spacing.two,
   },
   nameText: {
     fontSize: 16,

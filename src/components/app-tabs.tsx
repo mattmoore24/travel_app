@@ -44,9 +44,16 @@ export default function AppTabs() {
             selected: 'bubble.left.and.bubble.right.fill',
           }}
         />
-        <NativeTabs.Trigger.Badge hidden={waiting === 0}>
-          {waiting > 99 ? '99+' : String(waiting)}
-        </NativeTabs.Trigger.Badge>
+        {/* Rendered only when there is something to say, NOT hidden with
+            the `hidden` prop. expo-router reads `children` first and only
+            consults `hidden` when there are none, so a Badge with the text
+            "0" is a badge — which is how a red 0 sat on the Chat tab of an
+            app with no chats in it. See NativeTabTrigger.appendBadgeOptions. */}
+        {waiting > 0 ? (
+          <NativeTabs.Trigger.Badge>
+            {waiting > 99 ? '99+' : String(waiting)}
+          </NativeTabs.Trigger.Badge>
+        ) : null}
       </NativeTabs.Trigger>
     </NativeTabs>
   );

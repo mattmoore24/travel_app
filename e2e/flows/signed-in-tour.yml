@@ -23,8 +23,13 @@ appId: com.mattmoore.samewhere
     timeout: 30000
 - tapOn: 'Drop a pin'
 - takeScreenshot: 10-auth-gate
-# The gate opens account creation now (that was the bug: it used to land
-# every new user on the returning-user form). Existing accounts step across.
+# The gate leads with "Make a profile" (that was the bug: it used to land
+# every new user on the returning-user form) and carries the way back in
+# underneath it. Run 40 failed HERE with only the loud half on screen, which
+# is how a returning user found out that signing in was hidden one screen
+# inside signing up. Tapping the quiet half is therefore the case worth
+# testing — the gate is inside a sheet, so this also proves the sheet lets go
+# of the screen before the push.
 - tapOn: 'I already have an account'
 - extendedWaitUntil:
     visible: 'Welcome back'

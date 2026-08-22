@@ -249,7 +249,7 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
   // different things: 'signup' is the tour doing its job, 'browse' is
   // somebody who wants to look first, and 'skip' on page zero is somebody
   // who did not want the tour at all.
-  const finish = (via: 'signup' | 'browse' | 'skip') => {
+  const finish = (via: 'signup' | 'signin' | 'browse' | 'skip') => {
     analytics.capture('intro_completed', { via, page });
     onDone();
   };
@@ -390,6 +390,23 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
                       tone="ghost"
                       onPress={() => finish('browse')}
                     />
+                    {/* The way back in. Both loud options here make a new
+                        account or none at all, so somebody reinstalling —
+                        the person most likely to be looking at this screen
+                        twice — had to guess that signing in lives one screen
+                        inside signing up. Quiet on purpose: it is the rarer
+                        door, not the wrong one. */}
+                    <Pressable
+                      accessibilityRole="button"
+                      hitSlop={12}
+                      onPress={() => {
+                        finish('signin');
+                        router.push('/email');
+                      }}>
+                      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.signInLink}>
+                        I already have an account
+                      </Text>
+                    </Pressable>
                   </View>
                 ) : null}
               </PageLayer>
@@ -520,6 +537,13 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     gap: Space.sm,
     marginTop: Space.md,
+  },
+  signInLink: {
+    color: WHITE_SOFT,
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '600',
+    paddingVertical: Space.sm,
   },
   buttonContainer: {
     alignSelf: 'stretch',

@@ -52,6 +52,19 @@ export function SignUpGate({
             onNavigate(() => router.push('/join'));
           }}
         />
+        {/* The second door. A gate that offers only "make a profile" reads
+            as "you are new", and the person who already has an account —
+            reinstalling, or on somebody else's phone — has to guess that
+            signing in is hidden one screen inside signing up. Both doors,
+            at the moment the question is asked. */}
+        <PrimaryButton
+          variant="ghost"
+          label="I already have an account"
+          onPress={() => {
+            analytics.capture('gate_signin_tapped', { reason });
+            onNavigate(() => router.push('/email'));
+          }}
+        />
       </View>
     </GlassSurface>
   );
