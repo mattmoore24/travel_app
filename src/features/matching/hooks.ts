@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 
 import {
   fetchIncomingRequests,
   fetchMatches,
+  fetchFirstMessageBudget,
   fetchMyChats,
   fetchSentRequests,
   fetchSocialHandles,
   markChatRead,
+  previewFirstMessage,
   respondToRequest,
   sendMessageRequest,
 } from '@/features/matching/api';
@@ -35,6 +38,60 @@ export function useSentRequests() {
   });
 }
 
+/**
+ * Today's hello budget. Read by the composer so a person can see the limit
+ * coming rather than discovering it by being refused.
+ */
+export function useFirstMessageBudget() {
+  const userId = useOwnUserId();
+  return useQuery({
+    queryKey: ['first-message-budget', userId],
+    queryFn: fetchFirstMessageBudget,
+    enabled: isSupabaseConfigured && userId != null,
+    staleTime: 0,
+  });
+}
+
+/**
+ * Ask, quietly, whether a draft is going to be stopped.
+ *
+ * Debounced and fire-and-forget: this is a nudge, not a gate. The send path
+ * still runs the same check server-side, and this only exists so most
+ * would-be rejections turn into a reword before anybody presses send.
+ */
+export function useDraftWarning(draft: string, enabled: boolean) {
+  // What was FLAGGED, not whether something is. Storing the text itself is
+  // what lets the warning be derived during render: editing a character
+  // clears it immediately, and nothing has to be reset in an effect.
+  const [flagged, setFlagged] = useState<string | null>(null);
+  const text = draft.trim();
+  const checkable = enabled && isSupabaseConfigured && text.length >= DRAFT_CHECK_MIN;
+
+  useEffect(() => {
+    if (!checkable) {
+      return;
+    }
+    let active = true;
+    const timer = setTimeout(() => {
+      previewFirstMessage(text).then((wouldBlock) => {
+        if (active && wouldBlock) {
+          setFlagged(text);
+        }
+      });
+    }, DRAFT_CHECK_DEBOUNCE_MS);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [text, checkable]);
+
+  return checkable && flagged === text;
+}
+
+/** Short enough that nobody is warned about "hi". */
+const DRAFT_CHECK_MIN = 12;
+const DRAFT_CHECK_DEBOUNCE_MS = 700;
+
 export function useSendRequest() {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
@@ -53,6 +110,7 @@ export function useSendRequest() {
         blocked: result.blocked,
       });
       queryClient.invalidateQueries({ queryKey: ['sent-requests', userId] });
+      queryClient.invalidateQueries({ queryKey: ['first-message-budget', userId] });
       // The first moment there is an answer worth waiting for. The primer
       // decides for itself whether there is anything left to ask.
       if (result.delivered) {

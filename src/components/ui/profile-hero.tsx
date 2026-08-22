@@ -3,6 +3,7 @@ import { SymbolView } from 'expo-symbols';
 import { StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PhotoScrim } from '@/components/ui/photo-scrim';
 import { Elevation, Radius, Space } from '@/constants/theme';
 import { usePhotoUrl } from '@/features/profile/hooks';
@@ -50,13 +51,7 @@ export function ProfileHero({
             {name}
             {age != null ? `, ${age}` : ''}
           </ThemedText>
-          {verified ? (
-            <SymbolView
-              name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
-              size={20}
-              tintColor="#FFFFFF"
-            />
-          ) : null}
+          {verified ? <VerifiedSeal size={20} name={name} age={age} onPhoto /> : null}
         </View>
         {subtitle ? (
           <ThemedText type="callout" style={styles.onPhotoSecondary} numberOfLines={1}>

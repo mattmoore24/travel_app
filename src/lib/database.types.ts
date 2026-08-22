@@ -321,6 +321,16 @@ export type SendRequestResult = {
    */
   queued: boolean;
   blocked: boolean;
+  /**
+   * You have already sent today's allowance of first messages. Not an error
+   * and not a paywall: a safety limit that paces senders and keeps the
+   * moderation queue readable (hard rule 1 — never sold back).
+   */
+  capped?: boolean;
+  /** How many hellos a day this account gets. */
+  allowed?: number;
+  /** How many of them are spent, including this one. */
+  used?: number;
 };
 
 export type VerificationStatus = 'pending' | 'approved' | 'rejected';
@@ -674,6 +684,14 @@ export type Database = {
       mark_chat_read: {
         Args: { p_chat_id: string };
         Returns: string;
+      };
+      preview_first_message: {
+        Args: { p_text: string };
+        Returns: { would_block: boolean; category: string | null }[];
+      };
+      first_message_budget: {
+        Args: Record<string, never>;
+        Returns: { used: number; allowed: number }[];
       };
       featured_traveler: {
         Args: { p_city_id: number };

@@ -16,6 +16,7 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { LoadError } from '@/components/ui/load-error';
 import { Sheet, leavingSheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
+import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BottomTabInset, HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
@@ -173,11 +174,7 @@ function PinCard({
                     {pin.age != null ? `, ${pin.age}` : ''}
                   </ThemedText>
                   {pin.verified ? (
-                    <SymbolView
-                      name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
-                      size={13}
-                      tintColor={theme.accent}
-                    />
+                    <VerifiedSeal size={13} name={pin.display_name} age={pin.age} />
                   ) : null}
                 </View>
                 <ThemedText type="footnote" themeColor="textSecondary">

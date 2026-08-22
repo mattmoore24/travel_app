@@ -17,6 +17,7 @@ import { PhotoButton } from '@/components/ui/photo-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { KeyboardFloor } from '@/components/ui/keyboard-floor';
+import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { LoadError } from '@/components/ui/load-error';
 import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import {
@@ -34,7 +35,7 @@ import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks'
 // Reactions are chat-shaped, not room-shaped: the table and the summary RPC
 // take any chat id, so direct chats reuse exactly what rooms use.
 import { useReactions, useToggleReaction, useUnsendMessage } from '@/features/rooms/hooks';
-import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
+import { useOwnUserId, usePhotoUrl, usePublicProfile } from '@/features/profile/hooks';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { useTheme } from '@/hooks/use-theme';
 import type { ChatListRow } from '@/lib/database.types';
@@ -42,6 +43,9 @@ import type { ChatListRow } from '@/lib/database.types';
 function ChatHeader({ chat }: { chat: ChatListRow }) {
   const theme = useTheme();
   const { data: photoUrl } = usePhotoUrl(chat.photo_path);
+  // my_chats() carries the name and the photo but not the badge, and this is
+  // one row the client already has cached from the profile screen.
+  const { data: other } = usePublicProfile(chat.other_user_id);
   const block = useBlockUser();
   const leaveChat = useLeaveChat();
 
@@ -138,6 +142,10 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
           )}
         </View>
         <ThemedText type="smallBold">{chat.title ?? 'Traveler'}</ThemedText>
+        {/* The third place trust is spent, after the Travelers hero and the
+            profile: this is the screen where somebody decides whether to
+            actually go and meet a stranger. */}
+        {other?.verified ? <VerifiedSeal size={13} name={chat.title} age={other.age} /> : null}
       </Pressable>
       <Pressable
         accessibilityRole="button"

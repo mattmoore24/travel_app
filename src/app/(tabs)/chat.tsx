@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { AvatarButton } from '@/components/ui/avatar-button';
+import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
@@ -106,11 +107,7 @@ function RequestCard({ request }: { request: IncomingRequestRow }) {
               {request.age != null ? `, ${request.age}` : ''}
             </ThemedText>
             {request.verified ? (
-              <SymbolView
-                name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
-                size={14}
-                tintColor={theme.tint}
-              />
+              <VerifiedSeal name={request.display_name} age={request.age} />
             ) : null}
           </View>
           <ThemedText type="small" themeColor="textSecondary">
@@ -125,6 +122,25 @@ function RequestCard({ request }: { request: IncomingRequestRow }) {
         />
       </Pressable>
       <ThemedText>{request.first_message}</ThemedText>
+      {/* The receiver's half of moderation. This is the one screen in the app
+          where a stranger's words arrive unasked-for, and until now the only
+          answers on it were accept and decline — reporting meant going and
+          finding the profile first. Asking the question out loud is also
+          what makes people answer it (Tinder's version lifted reports 46%). */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Report this message"
+        hitSlop={8}
+        onPress={() =>
+          router.push({
+            pathname: '/report',
+            params: { userId: request.sender_id, context: `request:${request.id}` },
+          })
+        }>
+        <ThemedText type="footnote" themeColor="textSecondary" style={styles.feelsOff}>
+          Does this feel off? Tell us.
+        </ThemedText>
+      </Pressable>
       <View style={styles.requestActions}>
         <View style={styles.actionButton}>
           <PrimaryButton
@@ -844,6 +860,9 @@ const styles = StyleSheet.create({
     gap: 4,
     borderRadius: Radius.md,
     borderCurve: 'continuous',
+  },
+  feelsOff: {
+    textDecorationLine: 'underline',
   },
   sentTag: {
     paddingHorizontal: Spacing.two,

@@ -18,7 +18,7 @@ import Animated, {
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { BrandDeep, Motion, Space, Springs } from '@/constants/theme';
-import { usePhotoUrl } from '@/features/profile/hooks';
+import { useOwnProfile, usePhotoUrl } from '@/features/profile/hooks';
 import type { AcceptedMatch } from '@/features/matching/use-accepted-celebration';
 import { haptics } from '@/lib/haptics';
 
@@ -58,6 +58,7 @@ export function MatchCelebration({
     return () => clearTimeout(timer);
   }, [scale, glow]);
 
+  const { data: profile } = useOwnProfile();
   const photoStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const glowStyle = useAnimatedStyle(() => ({ transform: [{ scale: glow.value }] }));
 
@@ -90,6 +91,15 @@ export function MatchCelebration({
           Connected with {match.name}
         </ThemedText>
         <ThemedText style={styles.body}>Your chat is open.</ThemedText>
+        {/* The moment verification is worth something. This app ends in two
+            strangers meeting in a real city, so the badge is spent exactly
+            here — and asking now, when somebody has just been accepted, is
+            the difference between a chore and an obvious next step. */}
+        {profile && !profile.verified ? (
+          <ThemedText type="footnote" style={styles.body}>
+            Get the verified badge and more people will answer you.
+          </ThemedText>
+        ) : null}
       </Animated.View>
 
       <Animated.View entering={FadeInDown.duration(400).delay(240)} style={styles.actions}>
@@ -100,6 +110,19 @@ export function MatchCelebration({
             router.push(`/chat/${match.chatId}`);
           }}
         />
+        {profile && !profile.verified ? (
+          <Pressable
+            accessibilityRole="button"
+            hitSlop={12}
+            onPress={() => {
+              onDismiss();
+              router.push('/verification');
+            }}>
+            <ThemedText type="callout" style={styles.later}>
+              Get verified
+            </ThemedText>
+          </Pressable>
+        ) : null}
         <Pressable accessibilityRole="button" hitSlop={12} onPress={onDismiss}>
           <ThemedText type="callout" style={styles.later}>
             Later

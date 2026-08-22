@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Platform, StyleSheet, View } from 'react-native';
 
+import { PrimaryButton } from '@/components/form/primary-button';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -127,8 +128,19 @@ export default function VerificationScreen() {
             </ThemedView>
           ) : null}
           {selfieUri ? (
-            <View style={[styles.preview, { backgroundColor: theme.backgroundElement }]}>
-              <Image source={{ uri: selfieUri }} style={styles.previewImage} contentFit="cover" />
+            <View style={styles.previewBlock}>
+              <View style={[styles.preview, { backgroundColor: theme.backgroundElement }]}>
+                <Image source={{ uri: selfieUri }} style={styles.previewImage} contentFit="cover" />
+              </View>
+              {/* A blurry shot could only be submitted or abandoned. Nobody
+                  is going to submit a photo they can see is bad, so the real
+                  behaviour was "close the screen and start again". */}
+              <PrimaryButton
+                variant="ghost"
+                label="Retake"
+                disabled={submit.isPending}
+                onPress={takeSelfie}
+              />
             </View>
           ) : null}
           <ThemedText type="small" themeColor="textSecondary">
@@ -145,6 +157,10 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     padding: Spacing.three,
     borderRadius: Spacing.three,
+  },
+  previewBlock: {
+    alignItems: 'center',
+    gap: Spacing.three,
   },
   preview: {
     width: '60%',

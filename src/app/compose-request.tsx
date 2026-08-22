@@ -10,9 +10,10 @@ import { FormTextField } from '@/components/form/form-text-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { PrimaryButton } from '@/components/form/primary-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Spacing } from '@/constants/theme';
-import { useSendRequest } from '@/features/matching/hooks';
+import { useDraftWarning, useFirstMessageBudget, useSendRequest } from '@/features/matching/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
@@ -54,6 +55,12 @@ export default function ComposeRequestScreen() {
   const [element, setElement] = useState<string>(params.element ?? 'bio');
   const [message, setMessage] = useState(params.draft ?? '');
   const [blockedNotice, setBlockedNotice] = useState(false);
+  const [capped, setCapped] = useState<number | null>(null);
+  const budget = useFirstMessageBudget();
+  // Asked while the sentence is still being written, so a message that would
+  // be stopped becomes a reword rather than a rejection. Advisory only: the
+  // send path runs the same check server-side either way.
+  const risky = useDraftWarning(message, !blockedNotice);
   // The composer's own confirmation. Sending used to dismiss the screen with
   // no acknowledgement at all: the same nothing you get from a failed tap.
   const [sent, setSent] = useState(false);
@@ -75,6 +82,11 @@ export default function ComposeRequestScreen() {
         firstMessage: message.trim(),
         profileElement: element,
       });
+      if (result.capped) {
+        haptics.error();
+        setCapped(result.allowed ?? 8);
+        return;
+      }
       if (result.blocked) {
         haptics.error();
         setBlockedNotice(true);
@@ -93,6 +105,33 @@ export default function ComposeRequestScreen() {
       // Surfaced by the global mutation error alert; stay on the composer.
     }
   };
+
+  // The cap gets its own screen rather than a red line under the box. It is
+  // not a rejection of what was written — the words are fine, there are just
+  // no more hellos today — so it reads as a full stop, not a correction.
+  if (capped != null) {
+    return (
+      <ThemedView style={styles.sentRoot}>
+        <View style={[styles.sentMark, { backgroundColor: theme.surfaceSunken }]}>
+          <SymbolView
+            name={{ ios: 'moon.zzz.fill', android: 'bedtime', web: 'bedtime' }}
+            size={30}
+            tintColor={theme.textSecondary}
+          />
+        </View>
+        <View style={styles.sentText}>
+          <ThemedText type="subtitle" style={styles.centred}>
+            That is your {capped} for today
+          </ThemedText>
+          <ThemedText themeColor="textSecondary" style={styles.centred}>
+            They will hear from you first thing tomorrow. A few good hellos beat a lot of
+            forgettable ones, and the people on the other end will tell you the same.
+          </ThemedText>
+        </View>
+        <PrimaryButton label="Fair enough" onPress={() => router.back()} />
+      </ThemedView>
+    );
+  }
 
   if (sent) {
     return (
@@ -186,9 +225,30 @@ export default function ComposeRequestScreen() {
         value={message}
         onChangeText={setMessage}
       />
-      <ThemedText type="small" themeColor="textSecondary">
-        {message.length}/{MESSAGE_MAX}
-      </ThemedText>
+      <View style={styles.countRow}>
+        <ThemedText type="small" themeColor="textSecondary">
+          {message.length}/{MESSAGE_MAX}
+        </ThemedText>
+        {/* Shown only near the limit. Every hello is capped, but a person on
+            their second of eight does not need to be told about it. */}
+        {budget.data && budget.data.allowed - budget.data.used <= 3 ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            {Math.max(budget.data.allowed - budget.data.used, 0)} hellos left today
+          </ThemedText>
+        ) : null}
+      </View>
+
+      {risky && !blockedNotice ? (
+        <ThemedView type="backgroundElement" style={styles.blockedCard}>
+          <ThemedText type="smallBold" style={{ color: theme.highlight }}>
+            This might land wrong
+          </ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Samewhere is for making friends, not for coming on to people. Reword it and it will go
+            straight through.
+          </ThemedText>
+        </ThemedView>
+      ) : null}
 
       {blockedNotice ? (
         <ThemedView type="backgroundElement" style={styles.blockedCard}>
@@ -227,6 +287,11 @@ const styles = StyleSheet.create({
   },
   centred: {
     textAlign: 'center',
+  },
+  countRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   recipientRow: {
     flexDirection: 'row',

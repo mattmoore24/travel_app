@@ -2,12 +2,13 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AvatarButton } from '@/components/ui/avatar-button';
+import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
@@ -57,6 +58,7 @@ function GuestTravelers() {
   const { data: featured, isPending } = useFeaturedTraveler(cityId);
   const { data: photoUrl } = usePhotoUrl(featured?.photo_path ?? null);
   const theme = useTheme();
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     analytics.capture('travelers_viewed', { guest: true });
@@ -69,6 +71,7 @@ function GuestTravelers() {
   return (
     <ThemedView style={styles.root}>
       <ScrollView
+        ref={scrollRef}
         style={styles.list}
         contentContainerStyle={[
           styles.listContent,
@@ -92,43 +95,67 @@ function GuestTravelers() {
                 the screen is asking them to do. A guest's feed also arrives
                 without photo paths, so the placeholder is the common case
                 here, not the rare one. */}
-            <ThemedView type="backgroundElement" style={styles.card}>
-              <View style={[styles.cardPhoto, { backgroundColor: theme.backgroundSelected }]}>
-                {photoUrl ? (
-                  <Image source={{ uri: photoUrl }} style={styles.cardImage} contentFit="cover" />
-                ) : (
-                  <SymbolView
-                    name={{ ios: 'person.fill', android: 'person', web: 'person' }}
-                    size={34}
-                    tintColor={theme.textSecondary}
-                  />
-                )}
-              </View>
-              <View style={styles.cardBody}>
-                <View style={styles.nameRow}>
-                  <ThemedText type="headline" style={styles.nameText}>
-                    {featured.display_name ?? 'Traveler'}
-                    {featured.age != null ? `, ${featured.age}` : ''}
-                  </ThemedText>
-                  {featured.verified ? (
-                    <SymbolView
-                      name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
-                      size={14}
-                      tintColor={theme.accent}
-                    />
-                  ) : null}
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel={`Say hi to ${featured.display_name ?? 'this traveler'}`}
+              scaleTo={0.98}
+              haptic="soft"
+              // Brings the gate to them rather than pushing the full profile.
+              // The profile route needs an account (its data is not readable
+              // signed-out, and widening that to anon would hand every bio in
+              // the app to anybody with the URL), so a push would be a tap
+              // that silently does nothing. The card already IS the read-only
+              // profile in miniature; what it was missing was somewhere for
+              // the tap to go, and the answer is the one action available.
+              onPress={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+              <ThemedView type="backgroundElement" style={styles.card}>
+                <View style={[styles.cardPhoto, { backgroundColor: theme.accentSoft }]}>
+                  {photoUrl ? (
+                    <Image source={{ uri: photoUrl }} style={styles.cardImage} contentFit="cover" />
+                  ) : (
+                    // A warm monogram, not a grey silhouette. The server now
+                    // refuses to feature anybody without an approved photo, so
+                    // this only shows while the signed URL is still resolving —
+                    // and a placeholder that reads as a person beats one that
+                    // reads as a missing image.
+                    <ThemedText type="display" style={{ color: theme.accent }}>
+                      {(featured.display_name ?? 'T').trim().charAt(0).toUpperCase()}
+                    </ThemedText>
+                  )}
                 </View>
-                <ThemedText type="footnote" themeColor="textSecondary">
-                  {featured.city_name} · {formatDateRange(featured.their_start, featured.their_end)}
-                </ThemedText>
-                {featured.bio ? <ThemedText type="body">{featured.bio}</ThemedText> : null}
-              </View>
-            </ThemedView>
+                <View style={styles.cardBody}>
+                  <View style={styles.nameRow}>
+                    <ThemedText type="headline" style={styles.nameText}>
+                      {featured.display_name ?? 'Traveler'}
+                      {featured.age != null ? `, ${featured.age}` : ''}
+                    </ThemedText>
+                    {featured.verified ? (
+                      <VerifiedSeal name={featured.display_name} age={featured.age} />
+                    ) : null}
+                  </View>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    {featured.city_name} ·{' '}
+                    {formatDateRange(featured.their_start, featured.their_end)}
+                  </ThemedText>
+                  {featured.bio ? <ThemedText type="body">{featured.bio}</ThemedText> : null}
+                  <ThemedText type="footnote" themeColor="accent">
+                    Tap to see their profile
+                  </ThemedText>
+                </View>
+              </ThemedView>
+            </PressableScale>
           </>
         ) : (
           <ThemedText themeColor="textSecondary">No travelers in town this week yet.</ThemedText>
         )}
-        <SignUpGate reason="See everyone else in town" cta="Make a profile" />
+        <SignUpGate
+          reason={
+            featured
+              ? `Make a profile to say hi to ${featured.display_name ?? 'them'}`
+              : 'See everyone else in town'
+          }
+          cta="Make a profile"
+        />
       </ScrollView>
     </ThemedView>
   );

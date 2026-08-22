@@ -53,6 +53,31 @@ export async function respondToRequest(requestId: string, accept: boolean) {
   return data as unknown as { accepted: boolean; chat_id?: string };
 }
 
+/**
+ * Would this draft be stopped? Read-only, so the composer can offer a reword
+ * while the sentence is still being written rather than after it was sent.
+ *
+ * Returns false on any failure. A network blip must never turn into a
+ * warning about somebody's perfectly ordinary message.
+ */
+export async function previewFirstMessage(text: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('preview_first_message', { p_text: text });
+  if (error) {
+    return false;
+  }
+  return (data ?? [])[0]?.would_block === true;
+}
+
+/** How many hellos you have sent today, and how many you get. */
+export async function fetchFirstMessageBudget() {
+  const { data, error } = await supabase.rpc('first_message_budget');
+  if (error) {
+    throw error;
+  }
+  const row = (data ?? [])[0];
+  return { used: row?.used ?? 0, allowed: row?.allowed ?? 8 };
+}
+
 export async function fetchSentRequests() {
   const { data, error } = await supabase.rpc('sent_requests');
   if (error) {

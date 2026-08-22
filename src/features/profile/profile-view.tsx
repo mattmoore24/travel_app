@@ -12,6 +12,7 @@ import {
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
+import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { languageLabel } from '@/constants/languages';
 import { MaxContentWidth, Radius, Space } from '@/constants/theme';
@@ -346,7 +347,6 @@ function Identity({
   onPhoto: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
-  const theme = useTheme();
   return (
     <View style={[styles.identity, style]}>
       <View style={styles.nameRow}>
@@ -364,15 +364,7 @@ function Identity({
           ) : null}
         </ThemedText>
         {profile.verified ? (
-          <SymbolView
-            name={{
-              ios: 'checkmark.seal.fill',
-              android: 'verified',
-              web: 'verified',
-            }}
-            size={20}
-            tintColor={onPhoto ? '#FFFFFF' : theme.accent}
-          />
+          <VerifiedSeal size={20} name={profile.display_name} age={profile.age} onPhoto={onPhoto} />
         ) : null}
       </View>
       {profile.occupation ? (

@@ -1,6 +1,6 @@
 -- Establishment rooms, guest mode, reactions, and the traveler horizon.
 begin;
-select plan(42);
+select plan(44);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -128,10 +128,31 @@ select lives_ok(
 );
 
 -- GUEST MODE: THE FEATURED TRAVELER ------------------------------------------------
+--
+-- This is the ONE person a signed-out visitor sees, and the pitch of the
+-- screen is "here is somebody real, here right now". A faceless card makes
+-- the opposite case, so a face is a requirement rather than a nicety.
+
+select is(
+  (select count(*)::int from public.featured_traveler(pg_temp.lisbon())),
+  0,
+  'nobody is featured while nobody in town has a photo'
+);
+
+select pg_temp.admin();
+insert into public.profile_photos (user_id, storage_path, position, moderation_status)
+values ('00000000-0000-0000-0000-00000000000b', 'photos/bob-0.jpg', 0, 'approved');
+select pg_temp.guest();
+
 select is(
   (select count(*)::int from public.featured_traveler(pg_temp.lisbon())),
   1,
   'guests see exactly one traveler card'
+);
+select is(
+  (select user_id from public.featured_traveler(pg_temp.lisbon())),
+  '00000000-0000-0000-0000-00000000000b'::uuid,
+  'and it is the one with a face'
 );
 select throws_ok(
   $$ select * from public.get_matches() $$,
