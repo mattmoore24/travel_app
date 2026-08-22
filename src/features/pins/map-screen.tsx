@@ -19,7 +19,16 @@ import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Type, BottomTabInset, HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
+import {
+  Type,
+  BottomTabInset,
+  Elevation,
+  HitTarget,
+  Motion,
+  Radius,
+  Space,
+  Spacing,
+} from '@/constants/theme';
 import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
 import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
 import {
@@ -868,23 +877,26 @@ export default function MapScreen() {
               scaleTo={0.9}
               haptic="soft"
               onPress={exitPlaceMode}>
-              {/* `regular`, not `clear`. Clear glass is very nearly nothing:
-                  run 44 caught this X sitting over a traveler's avatar pin
-                  with the lower half of both strokes swallowed by a bright
-                  photograph, on the only control that leaves place mode. The
-                  ring is for the same reason - a dark material still needs an
-                  edge where the thing behind it is brighter than it is. */}
-              <GlassSurface
-                variant="regular"
-                radius={Radius.pill}
+              {/* Opaque, not glass. Run 44 caught this X over a traveler's
+                  avatar pin with the lower half of both strokes swallowed by
+                  a bright photograph; run 45 proved that regular glass is
+                  barely more than clear glass over a map, and only read
+                  because the pin had moved off it. This is the only control
+                  that leaves place mode, and the brief is explicit that glass
+                  is a finish and never the thing carrying contrast. A surface
+                  and a ring carry it on every OS, glass or no glass. */}
+              <View
                 pointerEvents="none"
-                style={[styles.cancelButton, { borderColor: theme.hairline }]}>
+                style={[
+                  styles.cancelButton,
+                  { backgroundColor: theme.surface, borderColor: theme.hairline },
+                ]}>
                 <SymbolView
                   name={{ ios: 'xmark', android: 'close', web: 'close' }}
                   size={16}
                   tintColor={theme.text}
                 />
-              </GlassSurface>
+              </View>
             </PressableScale>
           </View>
         </Animated.View>
@@ -1208,9 +1220,11 @@ const styles = StyleSheet.create({
   cancelButton: {
     width: HitTarget,
     height: HitTarget,
+    borderRadius: HitTarget / 2,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
+    ...Elevation.floating,
   },
   venueHeader: {
     flexDirection: 'row',

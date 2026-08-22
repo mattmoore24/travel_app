@@ -98,12 +98,27 @@ describe('the overlap window', () => {
 
   // Run 44 photographed "Both there Aug 23 - 28" half-dissolved into the
   // gradient under the Say hi bar: the fact that explains why this person is
-  // on your screen, unreadable at rest. The trip card still carries it, but
-  // the hero is the copy that cannot be pushed under anything.
-  it('is said next to the name, not only on the trip card', () => {
+  // on your screen, unreadable at rest. It moved to the hero, where nothing
+  // floats over it, and the trip card stops repeating it.
+  it('is said next to the name instead of on the trip card', () => {
     renderProfile({ trips: [trip] });
     expect(screen.getByText(/^Both in Bangkok/)).toBeTruthy();
-    expect(screen.getByText(/^Both there/)).toBeTruthy();
+    expect(screen.queryByText(/^Both there/)).toBeNull();
+  });
+
+  // The hero can only name one. A second overlapping city still has to say
+  // which window belongs to it.
+  it('still marks a second overlapping trip on its own card', () => {
+    const second = {
+      ...trip,
+      id: 't2',
+      cityLabel: 'Chiang Mai, Thailand',
+      overlap: { start: '2026-09-01', end: '2026-09-03' },
+    };
+    renderProfile({ trips: [trip, second] });
+    expect(screen.getByText(/^Both in Bangkok/)).toBeTruthy();
+    expect(screen.getByText(/^Both there Sep 1/)).toBeTruthy();
+    expect(screen.queryByText(/^Both there Aug/)).toBeNull();
   });
 
   it('says nothing when the trips do not overlap', () => {

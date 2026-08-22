@@ -254,12 +254,15 @@ function WovenPhoto({
 function TripsSection({
   trips,
   owner,
+  heroOverlapTripId,
   onEditTrip,
   onAddTrip,
   onReply,
 }: {
   trips: ProfileTrip[];
   owner: boolean;
+  /** The trip whose overlap window the hero already carries, if any. */
+  heroOverlapTripId?: string;
   onEditTrip: (trip: ProfileTrip) => void;
   onAddTrip: () => void;
   onReply?: () => void;
@@ -295,7 +298,12 @@ function TripsSection({
                   <ThemedText themeColor="textSecondary">
                     {formatDateRange(trip.startDate, trip.endDate)}
                   </ThemedText>
-                  {trip.overlap ? (
+                  {/* Not on the trip the hero is already showing: two
+                      copies of one window is noise, and this is the copy the
+                      floating Say hi bar fades. A second overlapping trip
+                      still says its own, because the hero can only name
+                      one. */}
+                  {trip.overlap && trip.id !== heroOverlapTripId ? (
                     <View style={[styles.overlapPill, { backgroundColor: theme.accent }]}>
                       <ThemedText type="caption" style={{ color: theme.onAccent }}>
                         Both there {formatDateRange(trip.overlap.start, trip.overlap.end)}
@@ -721,6 +729,7 @@ export function ProfileView({
           <TripsSection
             trips={trips}
             owner={owner}
+            heroOverlapTripId={overlapTrip?.id}
             onEditTrip={(trip) =>
               setEditingTrip({
                 id: trip.id,
