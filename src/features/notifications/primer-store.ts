@@ -1,7 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
-import { enablePushNotifications, pushPermissionGranted } from '@/features/notifications/push';
+import {
+  enablePushNotifications,
+  pushPermissionGranted,
+  pushPossible,
+} from '@/features/notifications/push';
 import { analytics } from '@/lib/analytics';
 
 const KEY = 'samewhere.push.primer.v1';
@@ -48,6 +52,16 @@ export const usePushPrimer = create<PrimerState>((set, get) => ({
   busy: false,
 
   ask: async (reason) => {
+    // pushPossible FIRST, and separately from the permission read. This
+    // comment has always promised that a device which cannot receive a
+    // notification is never asked about one, but the check was
+    // `pushPermissionGranted()`, which answers false for "not granted yet"
+    // and false for "there is no way to deliver here" alike — so a simulator,
+    // Expo Go, or a build with no EAS project id got the sheet, and tapping
+    // "Notify me" registered nothing.
+    if (!pushPossible()) {
+      return;
+    }
     if (get().reason != null || (await alreadyOffered()) || (await pushPermissionGranted())) {
       return;
     }

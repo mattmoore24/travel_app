@@ -31,8 +31,12 @@ function projectId(): string | undefined {
 /**
  * Remote push needs a physical device, an EAS project id, and (on iOS) a real
  * build — none of which exist in Expo Go or the simulator.
+ *
+ * Exported because the primer needs to know the difference between "not
+ * granted yet" and "cannot ever work here". Asking on a device that can
+ * never deliver is a question whose only honest answer is nothing.
  */
-function pushPossible(): boolean {
+export function pushPossible(): boolean {
   return isSupabaseConfigured && Platform.OS !== 'web' && Device.isDevice && projectId() != null;
 }
 
