@@ -147,6 +147,20 @@ jobs:
             >> "$GITHUB_ENV"
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
+          # Turn the keyboard's guessing off before anything types into it.
+          # Run 50 died on a details field reading "Meeting by the door around
+          # 7d": the trailing "d" was iOS's inline predictive text, ghosted
+          # after the cursor and sitting in the accessibility value, behind a
+          # first-run "Inline Predictions" tooltip that had popped up over the
+          # sheet and could have eaten the next tap as easily as the
+          # assertion. Nothing to do with the app, and a whole run lost to it.
+          # `|| true` because these keys move between iOS versions and a
+          # missing one must not fail the job.
+          for key in KeyboardPrediction KeyboardInlineCompletion \
+                     KeyboardAutocorrection KeyboardShowPredictiveBar; do
+            xcrun simctl spawn "$UDID" defaults write \
+              com.apple.keyboard.preferences "$key" -bool false || true
+          done
           xcrun simctl install "$UDID" "$APP"
 
       # THE STALE-SCREENSHOT TRAP, and why the next two steps look odd.

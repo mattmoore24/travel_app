@@ -91,7 +91,19 @@ appId: com.mattmoore.samewhere
     id: 'note-input'
 - inputText: 'Meeting by the door around 7'
 # Proves the tap moved focus rather than appending to the previous field.
-- assertVisible: 'Meeting by the door around 7'
+#
+# The trailing .* is for iOS, not for the app. Run 50 failed here on a field
+# reading "Meeting by the door around 7d": the "d" was iOS's own inline
+# predictive text, ghosted after the cursor and offered behind a first-run
+# "Inline Predictions" tooltip that had popped up over the sheet. It is in the
+# accessibility value, so an exact pattern cannot match. The assertion still
+# proves what it was written to prove - an appended value would read "Rooftop
+# hello from MaestroMeeting by..." and a Maestro pattern has to match the
+# whole string, so a prefix still fails.
+#
+# No pressKey: Enter here. note-input is multiline, so Enter is a newline, and
+# a newline is exactly what `.` does not match.
+- assertVisible: 'Meeting by the door around 7.*'
 - takeScreenshot: 15-pin-form-filled
 # 'Drop it' sits outside the form's scroll area and the sheet lifts with the
 # keyboard, so it is reachable with the keyboard still up.
