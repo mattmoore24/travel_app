@@ -53,7 +53,15 @@ export function parseAnchor(element: string): Anchor {
   return { kind: 'bio' };
 }
 
-/** Third person, for the line above an opened chat. */
+/**
+ * Third person, for the line above an opened chat.
+ *
+ * Deliberately never quotes the profile back: a bio can change, a photo can
+ * come down, and a chat is not the place a stale copy of either should live
+ * on. Naming the KIND of thing is enough to make the first message make
+ * sense again. The one exception is a prompt, where the question is the
+ * thing being answered and is not the answer itself.
+ */
 export function anchorStartedFrom(element: string, name: string | null): string {
   const anchor = parseAnchor(element);
   const whose = name ? `${name}'s` : 'their';

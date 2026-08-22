@@ -434,15 +434,6 @@ export default function ChatScreen() {
   );
 }
 
-/**
- * What the hello was answering, in a sentence.
- *
- * Deliberately never quotes the profile back: a bio can change, a photo can
- * come down, and a chat is not the place a stale copy of either should live
- * on. Naming the KIND of thing is enough to make the first message make
- * sense again.
- */
-
 const styles = StyleSheet.create({
   anchorRow: {
     alignItems: 'center',
