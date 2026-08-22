@@ -23,6 +23,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Fonts, Radius, Space, SplashField, Type } from '@/constants/theme';
+import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 
 /**
@@ -31,8 +32,6 @@ import { haptics } from '@/lib/haptics';
  * to first swipe. Colors are deliberately hardcoded to the icon's values.
  */
 const FIELD = SplashField;
-/** The app icon's flame, for the mark and the tagline that sit beside it. */
-const AMBER = '#F0A93C';
 /**
  * The primary action, in the app's own accent. The tour used to answer in
  * amber, which made the first screen a new person ever sees the only screen
@@ -245,6 +244,15 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
   const [page, setPage] = useState(0);
   const pagerRef = useAnimatedRef<Animated.ScrollView>();
   const scrollX = useSharedValue(0);
+
+  // How the tour ended, and how far in. The three answers mean very
+  // different things: 'signup' is the tour doing its job, 'browse' is
+  // somebody who wants to look first, and 'skip' on page zero is somebody
+  // who did not want the tour at all.
+  const finish = (via: 'signup' | 'browse' | 'skip') => {
+    analytics.capture('intro_completed', { via, page });
+    onDone();
+  };
   const settled = useSharedValue(0);
 
   const onPageSettled = (next: number) => {
@@ -306,26 +314,30 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
             style={[styles.welcomeBlock, { top: welcomeTop, bottom: welcomeBottom }]}>
             <View style={styles.welcomeCopy}>
               <Animated.Text
-                entering={FadeInUp.delay(350).duration(500)}
+                entering={FadeInUp.delay(120).duration(420)}
                 maxFontSizeMultiplier={MAX_FONT_SCALE}
                 style={styles.wordmark}>
                 Samewhere
               </Animated.Text>
+              {/* Screen one says what the app IS. It used to open on
+                  "Welcome to the Samewhere community" over an all-caps
+                  CONNECT. PLAN. EXPLORE., which is three words about nothing
+                  and a greeting — a person who closed the app here would not
+                  have been able to say what it does. */}
               <Animated.Text
-                entering={FadeInUp.delay(500).duration(500)}
-                maxFontSizeMultiplier={MAX_FONT_SCALE}
-                style={styles.tagline}>
-                Connect. Plan. Explore.
-              </Animated.Text>
-              <Animated.Text
-                entering={FadeInUp.delay(650).duration(500)}
+                entering={FadeInUp.delay(240).duration(420)}
                 maxFontSizeMultiplier={MAX_FONT_SCALE}
                 style={styles.welcomeLine}>
-                Welcome to the Samewhere community.
+                Make friends in the city you are visiting.
               </Animated.Text>
             </View>
+            {/* The whole stagger is retimed under 400ms on purpose. It used
+                to finish at ~1.3s, and a view at opacity 0 is skipped by hit
+                testing — so the first thing anybody did in this app was tap
+                a button that ignored them (the project's own documented
+                trap). The motion still reads; it just stops being a gate. */}
             <Animated.View
-              entering={FadeInUp.delay(820).duration(500)}
+              entering={FadeInUp.delay(360).duration(360)}
               style={styles.welcomeAction}>
               <TourButton
                 label="Show me around"
@@ -369,11 +381,15 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
                       label="Make my profile"
                       tone="primary"
                       onPress={() => {
-                        onDone();
+                        finish('signup');
                         router.push('/join');
                       }}
                     />
-                    <TourButton label="Just looking for now" tone="ghost" onPress={onDone} />
+                    <TourButton
+                      label="Just looking for now"
+                      tone="ghost"
+                      onPress={() => finish('browse')}
+                    />
                   </View>
                 ) : null}
               </PageLayer>
@@ -387,10 +403,14 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
       {/* Entrance fade and scroll-driven fade on separate views: Reanimated
           rejects an entering animation and an animated style sharing opacity. */}
       <Animated.View
-        entering={FadeIn.delay(900).duration(400)}
+        entering={FadeIn.delay(360).duration(360)}
         style={[styles.skip, { top: insets.top + Space.sm }]}>
         <Animated.View style={skipStyle}>
-          <Pressable hitSlop={12} disabled={last} onPress={onDone} accessibilityRole="button">
+          <Pressable
+            hitSlop={12}
+            disabled={last}
+            onPress={() => finish('skip')}
+            accessibilityRole="button">
             <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.skipLabel}>
               Skip
             </Text>
@@ -399,7 +419,7 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
       </Animated.View>
 
       <Animated.View
-        entering={FadeIn.delay(900).duration(400)}
+        entering={FadeIn.delay(360).duration(360)}
         pointerEvents="none"
         style={[styles.dots, { bottom: insets.bottom + Space.lg }]}>
         {Array.from({ length: PAGE_COUNT }, (_, i) => (
@@ -454,15 +474,6 @@ const styles = StyleSheet.create({
     lineHeight: 46,
     fontWeight: '800',
     color: WHITE,
-    textAlign: 'center',
-  },
-  tagline: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '700',
-    letterSpacing: 3,
-    textTransform: 'uppercase',
-    color: AMBER,
     textAlign: 'center',
   },
   welcomeLine: {

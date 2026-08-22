@@ -1,10 +1,12 @@
 import { router } from 'expo-router';
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { Radius, Space } from '@/constants/theme';
+import { analytics } from '@/lib/analytics';
 
 /**
  * The moment we ask for an account — and the only one. Always states WHY, in
@@ -28,6 +30,13 @@ export function SignUpGate({
    */
   onNavigate?: (go: () => void) => void;
 }) {
+  // Both halves of the only conversion step in the app: how often a gate is
+  // put in front of somebody, and how often they take it. The reason string
+  // is the label, so the numbers say WHICH gate converts.
+  useEffect(() => {
+    analytics.capture('gate_shown', { reason });
+  }, [reason]);
+
   return (
     <GlassSurface radius={Radius.xl} style={compact ? styles.compact : styles.card}>
       <View style={styles.inner}>
@@ -36,7 +45,13 @@ export function SignUpGate({
           Takes about a minute. Looking around is always free. You only need a profile to message
           people, drop pins or join a chat.
         </ThemedText>
-        <PrimaryButton label={cta} onPress={() => onNavigate(() => router.push('/join'))} />
+        <PrimaryButton
+          label={cta}
+          onPress={() => {
+            analytics.capture('gate_tapped', { reason });
+            onNavigate(() => router.push('/join'));
+          }}
+        />
       </View>
     </GlassSurface>
   );

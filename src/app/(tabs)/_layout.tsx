@@ -1,6 +1,7 @@
 import AppTabs from '@/components/app-tabs';
 import { MatchCelebration } from '@/features/matching/match-celebration';
 import { useAcceptedCelebration } from '@/features/matching/use-accepted-celebration';
+import { PushPrimer } from '@/features/notifications/push-primer';
 
 export default function TabsLayout() {
   // Mounted above the tabs so the moment can land wherever you happen to be
@@ -11,6 +12,10 @@ export default function TabsLayout() {
     <>
       <AppTabs />
       {match ? <MatchCelebration match={match} onDismiss={dismiss} /> : null}
+      {/* Mounted above the tabs for the same reason the celebration is: the
+          moment that earns the question can happen on any of them. It renders
+          nothing until something asks it to. */}
+      <PushPrimer />
     </>
   );
 }

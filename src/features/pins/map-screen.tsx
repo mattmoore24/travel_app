@@ -337,6 +337,10 @@ export default function MapScreen() {
   const { data: heat = [] } = useMapHeat(activeCityId, filterISO);
   const isGuest = useIsGuest();
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
+  // Every other gate in the app states its reason before it asks. Dropping a
+  // pin was the one that did not: it teleported a guest to an email form with
+  // no explanation of what had just happened to them.
+  const [pinGate, setPinGate] = useState(false);
 
   // The drop-a-pin flow lives on this map, not a separate screen: browse →
   // place (map pans under a fixed pin) → detail (form sheet over the map).
@@ -398,7 +402,7 @@ export default function MapScreen() {
 
   const enterPlaceMode = () => {
     if (isGuest) {
-      router.push('/join');
+      setPinGate(true);
       return;
     }
     if (!activeCity) {
@@ -755,6 +759,19 @@ export default function MapScreen() {
             setTimeout(() => setSelectedPinId(pinId), 450);
           }}
         />
+      ) : null}
+
+      {pinGate ? (
+        <Sheet onClose={() => setPinGate(false)}>
+          <SignUpGate
+            reason="Dropping a pin needs a profile, so people know who is going"
+            cta="Make a profile"
+            compact
+            // Pushing a route from inside a sheet leaves its scrim over the
+            // map and every later tap lands on nothing. See components/ui/sheet.
+            onNavigate={leavingSheet(() => setPinGate(false))}
+          />
+        </Sheet>
       ) : null}
 
       {mode === 'browse' && selectedPin && activeCityId != null ? (

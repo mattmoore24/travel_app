@@ -8,6 +8,7 @@ import {
   fetchLaunchCities,
 } from '@/features/pins/api';
 import { useOwnUserId } from '@/features/profile/hooks';
+import { usePushPrimer } from '@/features/notifications/primer-store';
 import { analytics } from '@/lib/analytics';
 import type { PinCategory } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -71,6 +72,9 @@ export function useCreatePin() {
       queryClient.invalidateQueries({ queryKey: ['heat-cells', pin.city_id] });
       queryClient.invalidateQueries({ queryKey: ['map-pins', pin.city_id] });
       queryClient.invalidateQueries({ queryKey: ['map-heat', pin.city_id] });
+      // A pin is an invitation, so this is the other moment where being told
+      // somebody answered is obviously worth something.
+      usePushPrimer.getState().ask('pin-posted');
     },
   });
 }

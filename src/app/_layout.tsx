@@ -13,6 +13,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors, Spacing, SplashField } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
+import { ResetPasswordScreen } from '@/features/auth/reset-password-screen';
 import { useAuthListener } from '@/features/auth/use-auth-listener';
 import { useAccountStanding, useOwnProfile } from '@/features/profile/hooks';
 import { queryClient } from '@/lib/query-client';
@@ -89,6 +90,7 @@ function RootNavigator() {
   useAuthListener();
   const session = useAuthStore((s) => s.session);
   const initialized = useAuthStore((s) => s.initialized);
+  const recovery = useAuthStore((s) => s.recovery);
   const intro = useIntroState();
   const profileQuery = useOwnProfile();
   const standingQuery = useAccountStanding();
@@ -121,6 +123,14 @@ function RootNavigator() {
   const standing = standingQuery.data;
   if (signedIn && (standing?.status === 'suspended' || standing?.status === 'banned')) {
     return <AccountGate status={standing.status} suspendedUntil={standing.suspended_until} />;
+  }
+
+  // A recovery link signs you in, so this has to come BEFORE every other
+  // branch: otherwise the guards see an ordinary session and swap into the
+  // app, leaving the old password live on the account after an email round
+  // trip taken specifically to change it.
+  if (recovery != null) {
+    return <ResetPasswordScreen />;
   }
 
   // First launch, no account: explain the three tabs before anything else.

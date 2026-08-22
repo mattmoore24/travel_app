@@ -20,6 +20,7 @@ import {
 } from '@/features/profile/validation';
 import { StepShell } from '@/features/signup/step-shell';
 import { SIGNUP_TOTAL_STEPS } from '@/features/signup/steps';
+import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 import type { Gender, ProfileRow } from '@/lib/database.types';
 
@@ -80,6 +81,10 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   ) => {
     try {
       await updateProfile.mutateAsync(patch);
+      // The funnel that creates users was the only surface in the app with
+      // no instrumentation at all, so nobody could say WHICH step people
+      // stopped on (docs/PRODUCT_BRIEF.md §6 wants day-one metrics).
+      analytics.capture('signup_step_completed', { step: next - 1 });
       go(next);
     } catch {
       // Surfaced by the global mutation error alert; stay on the step.
@@ -264,6 +269,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
       onContinue={async () => {
         try {
           await updateProfile.mutateAsync({ onboarding_completed_at: new Date().toISOString() });
+          analytics.capture('onboarding_completed');
           haptics.success();
           // The root guard swaps to the tabs once the profile is complete.
         } catch {

@@ -11,6 +11,7 @@ import {
   sendMessageRequest,
 } from '@/features/matching/api';
 import { waitingTotal } from '@/features/chat/unread';
+import { usePushPrimer } from '@/features/notifications/primer-store';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
 import type { RequestSource } from '@/lib/database.types';
@@ -52,6 +53,11 @@ export function useSendRequest() {
         blocked: result.blocked,
       });
       queryClient.invalidateQueries({ queryKey: ['sent-requests', userId] });
+      // The first moment there is an answer worth waiting for. The primer
+      // decides for itself whether there is anything left to ask.
+      if (result.delivered) {
+        usePushPrimer.getState().ask('hello-sent');
+      }
     },
   });
 }

@@ -1,7 +1,9 @@
+import * as Linking from 'expo-linking';
 import { useEffect } from 'react';
 
+import { parseRecoveryLink } from '@/features/auth/recovery';
 import { useAuthStore } from '@/features/auth/store';
-import { registerForPushNotifications } from '@/features/notifications/push';
+import { refreshPushToken } from '@/features/notifications/push';
 import { analytics } from '@/lib/analytics';
 import { queryClient } from '@/lib/query-client';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
@@ -14,6 +16,52 @@ import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 export function useAuthListener() {
   const setSession = useAuthStore((s) => s.setSession);
   const setInitialized = useAuthStore((s) => s.setInitialized);
+  const recoveryStarted = useAuthStore((s) => s.recoveryStarted);
+  const recoveryReady = useAuthStore((s) => s.recoveryReady);
+  const recoveryFailed = useAuthStore((s) => s.recoveryFailed);
+
+  // Password-recovery links, which nothing else would pick up: the client
+  // runs with detectSessionInUrl:false (correct for a native app — there is
+  // no browser URL to watch), so the tokens Supabase mails have to be taken
+  // out of the link by hand and turned into a session here.
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      return;
+    }
+    let active = true;
+    const handle = (url: string | null) => {
+      const link = parseRecoveryLink(url);
+      if (!active || link == null) {
+        return;
+      }
+      if (link.kind === 'error') {
+        recoveryFailed(link.message);
+        return;
+      }
+      // The flag goes up BEFORE the session lands, so the guards never get a
+      // frame in which this looks like an ordinary sign-in.
+      recoveryStarted();
+      supabase.auth
+        .setSession({ access_token: link.accessToken, refresh_token: link.refreshToken })
+        .then(({ error }) => {
+          if (!active) {
+            return;
+          }
+          if (error) {
+            recoveryFailed('That link did not work. Ask for a new one.');
+          } else {
+            recoveryReady();
+          }
+        });
+    };
+
+    Linking.getInitialURL().then(handle);
+    const subscription = Linking.addEventListener('url', (event) => handle(event.url));
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, [recoveryStarted, recoveryReady, recoveryFailed]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -41,11 +89,19 @@ export function useAuthListener() {
       if (session?.user.id) {
         analytics.identify(session.user.id);
       }
+      // The PKCE/web path establishes the session itself and announces it
+      // with this event, so there is nothing to wait for.
+      if (event === 'PASSWORD_RECOVERY') {
+        recoveryReady();
+      }
       if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
-        // Fire-and-forget: silently no-ops in Expo Go / simulator / pre-EAS.
-        // The session guard keeps the OS permission prompt from firing for
-        // signed-out users at app launch.
-        registerForPushNotifications();
+        // Refresh, never request. This used to call the requesting version,
+        // so the OS permission dialog fired the instant an account existed —
+        // mid-signup, before the person had sent a single message, with
+        // nothing on screen to say what they would be notified about. Asking
+        // now happens in the primer, at the first moment there is an answer
+        // worth waiting for.
+        refreshPushToken();
       }
       // Drop all cached server state on sign-out so the next account (or a
       // fresh sign-in) never sees the previous user's data or errored queries.
@@ -59,5 +115,5 @@ export function useAuthListener() {
       active = false;
       subscription.subscription.unsubscribe();
     };
-  }, [setSession, setInitialized]);
+  }, [setSession, setInitialized, recoveryReady]);
 }

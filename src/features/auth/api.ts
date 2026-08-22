@@ -18,6 +18,31 @@ export async function signUpWithEmail(email: string, password: string) {
   return data;
 }
 
+/**
+ * Send a "set a new password" link. The link opens the app through the
+ * scheme registered in app.json, which lands on /reset-password with a
+ * recovery session already established by the SDK's deep-link handler.
+ *
+ * Callers must NOT report whether the address had an account: that answer
+ * turns this into an oracle anybody could use to learn who is on here.
+ */
+export async function requestPasswordReset(email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: 'samewhere://reset-password',
+  });
+  if (error) {
+    throw error;
+  }
+}
+
+/** Finish a recovery: only works while the recovery session is live. */
+export async function setNewPassword(password: string) {
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    throw error;
+  }
+}
+
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) {

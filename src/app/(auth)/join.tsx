@@ -7,8 +7,11 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { Space } from '@/constants/theme';
 import { signUpWithEmail } from '@/features/auth/api';
+import { AppleSignInButton } from '@/features/auth/apple-button';
+import { ConsentNote } from '@/features/auth/consent-note';
 import { StepShell } from '@/features/signup/step-shell';
 import { SIGNUP_TOTAL_STEPS } from '@/features/signup/steps';
+import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -24,7 +27,6 @@ export default function JoinScreen() {
   const [step, setStep] = useState<1 | 2>(1);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [taken, setTaken] = useState(false);
@@ -32,7 +34,6 @@ export default function JoinScreen() {
 
   const emailOk = EMAIL_PATTERN.test(email.trim());
   const passwordOk = password.length >= PASSWORD_MIN;
-  const matches = confirm.length > 0 && confirm === password;
 
   const submitEmail = () => {
     setTouched(true);
@@ -41,12 +42,13 @@ export default function JoinScreen() {
     }
     haptics.light();
     setTouched(false);
+    analytics.capture('signup_step_completed', { step: 'email' });
     setStep(2);
   };
 
   const submitPassword = async () => {
     setTouched(true);
-    if (!passwordOk || !matches) {
+    if (!passwordOk) {
       return;
     }
     setError(null);
@@ -55,6 +57,7 @@ export default function JoinScreen() {
     try {
       await signUpWithEmail(email.trim(), password);
       haptics.success();
+      analytics.capture('signup_step_completed', { step: 'password' });
       // The root guard swaps to the profile steps on the auth event.
     } catch (e) {
       const message = (e as Error).message ?? 'Something went wrong.';
@@ -81,12 +84,21 @@ export default function JoinScreen() {
         onContinue={submitEmail}
         onBack={router.canGoBack() ? () => router.back() : undefined}
         footer={
-          <PrimaryButton
-            variant="ghost"
-            label="I already have an account"
-            onPress={() => router.push('/email')}
-          />
+          <View style={styles.footer}>
+            <ConsentNote />
+            <PrimaryButton
+              variant="ghost"
+              label="I already have an account"
+              onPress={() => router.push('/email')}
+            />
+          </View>
         }>
+        {/* Apple first, because it is one tap and no password to invent, and
+            because Apple requires it to be offered wherever a third-party
+            sign-in is. It renders nothing where it is unavailable. */}
+        <View style={styles.appleRow}>
+          <AppleSignInButton label="signup" />
+        </View>
         <FormTextField
           label="Email"
           testID="email-input"
@@ -115,14 +127,14 @@ export default function JoinScreen() {
       step={2}
       total={SIGNUP_TOTAL_STEPS}
       title="Pick a password"
-      subtitle="Twice, so a typo cannot lock you out later."
+      subtitle="Eight characters or more. Tap the eye to check it."
       continueLabel="Create account"
       continueTestID="create-account"
-      continueDisabled={!passwordOk || !matches}
+      continueDisabled={!passwordOk}
       continueLoading={loading}
       // Submit-level failures belong here, not on a field. The commonest one
       // is "that email already has an account", which was turning the
-      // Password again box red on a screen the email is not even on.
+      // password box red on a screen the email is not even on.
       note={error}
       onContinue={submitPassword}
       onBack={() => {
@@ -131,47 +143,43 @@ export default function JoinScreen() {
         setStep(1);
       }}
       footer={
-        taken ? (
-          <PrimaryButton
-            variant="ghost"
-            label="Sign in instead"
-            onPress={() => router.push('/email')}
-          />
-        ) : null
+        <View style={styles.footer}>
+          <ConsentNote />
+          {taken ? (
+            <PrimaryButton
+              variant="ghost"
+              label="Sign in instead"
+              onPress={() => router.push('/email')}
+            />
+          ) : null}
+        </View>
       }>
+      {/* ONE password field, not two. A confirm box asks people to type a
+          string they cannot see, twice, and rejects them for a typo in the
+          copy rather than the original — the eye does the same job by
+          letting them read what they actually wrote. */}
       <FormTextField
         label="Password"
         testID="password-input"
         autoFocus
         secureTextEntry
+        revealToggle
         autoComplete="new-password"
         textContentType="newPassword"
+        returnKeyType="go"
         value={password}
         onChangeText={(text) => {
           setPassword(text);
           setError(null);
         }}
+        onSubmitEditing={submitPassword}
         hint={`At least ${PASSWORD_MIN} characters.`}
         error={touched && !passwordOk ? `At least ${PASSWORD_MIN} characters.` : null}
       />
-      <FormTextField
-        label="Password again"
-        testID="password-confirm-input"
-        secureTextEntry
-        autoComplete="new-password"
-        textContentType="newPassword"
-        value={confirm}
-        onChangeText={(text) => {
-          setConfirm(text);
-          setError(null);
-        }}
-        onSubmitEditing={submitPassword}
-        error={touched && confirm.length > 0 && !matches ? 'These do not match yet.' : null}
-      />
-      {matches ? (
+      {passwordOk ? (
         <View style={styles.matchRow}>
           <ThemedText type="footnote" themeColor="textSecondary">
-            Passwords match. Your profile is next.
+            That will do. Your profile is next.
           </ThemedText>
         </View>
       ) : null}
@@ -182,5 +190,11 @@ export default function JoinScreen() {
 const styles = StyleSheet.create({
   matchRow: {
     paddingTop: Space.xs,
+  },
+  appleRow: {
+    paddingBottom: Space.sm,
+  },
+  footer: {
+    gap: Space.md,
   },
 });
