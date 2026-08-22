@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   FadeInDown,
   useAnimatedStyle,
@@ -126,6 +126,107 @@ export function PinMarkerView({
 }
 
 /**
+ * Several plans at one venue, as one marker.
+ *
+ * Up to three overlapping faces and a count, because "who is going" is the
+ * reason to tap and a number alone answers none of it. Three separate
+ * markers on the same building put two of them permanently under the third,
+ * where nobody could reach them.
+ */
+export function PinStackView({
+  faces,
+  count,
+  category,
+  selected = false,
+}: {
+  /** Photo URLs, already resolved. Nulls become the anonymous silhouette. */
+  faces: (string | null)[];
+  count: number;
+  category: PinCategory;
+  selected?: boolean;
+}) {
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    scale.value = withSpring(selected ? 1.12 : 1, Springs.snap);
+  }, [selected, scale]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const shown = faces.slice(0, STACK_FACES);
+
+  return (
+    <Animated.View
+      entering={FadeInDown.springify().mass(1).damping(14).stiffness(260)}
+      style={[styles.wrap, animatedStyle]}>
+      <View style={styles.stackRow}>
+        {shown.map((uri, index) => (
+          <View
+            key={index}
+            style={[
+              styles.stackFace,
+              { backgroundColor: PIN_AMBER, marginLeft: index === 0 ? 0 : -STACK_OVERLAP },
+              // Later faces paint over earlier ones, which is what makes the
+              // overlap read as a stack rather than as a smudge.
+              { zIndex: STACK_FACES - index },
+            ]}>
+            {uri ? (
+              <Image source={{ uri }} style={styles.face} contentFit="cover" />
+            ) : (
+              <SymbolView name={CATEGORY_GLYPHS[category]} size={13} tintColor={PIN_GLYPH} />
+            )}
+          </View>
+        ))}
+        <View style={[styles.stackCount, { backgroundColor: PIN_AMBER }]}>
+          <Text style={styles.stackCountText}>{count > 99 ? '99+' : count}</Text>
+        </View>
+      </View>
+      <View style={[styles.tail, { backgroundColor: PIN_AMBER }]} />
+    </Animated.View>
+  );
+}
+
+/**
+ * The marker's face, off the map: the same amber disc and the same category
+ * glyph, at a size a card can carry.
+ *
+ * Cards and forms used to label a plan with the category EMOJI, which broke
+ * the line from marker to card twice over — a sticker where the map has
+ * cartography, and (for the catch-all category) a red pushpin, the one hue
+ * this palette does not use anywhere else.
+ */
+export function PinGlyph({
+  category,
+  seeded = false,
+  size = 30,
+}: {
+  category: PinCategory;
+  seeded?: boolean;
+  size?: number;
+}) {
+  return (
+    <View
+      style={[
+        styles.glyphDisc,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: seeded ? PIN_GOLD : PIN_AMBER,
+        },
+      ]}>
+      <SymbolView
+        name={seeded ? SEEDED_GLYPH : CATEGORY_GLYPHS[category]}
+        size={Math.round(size * 0.46)}
+        tintColor={PIN_GLYPH}
+      />
+    </View>
+  );
+}
+
+/**
  * Marker rasterization control: track view changes briefly on mount (so the
  * glyph is in the bitmap) and around every selected-state change (so the
  * spring actually paints), then freeze for map-pan performance.
@@ -154,8 +255,53 @@ export function useMarkerTracking(key: string): boolean {
 
 const BODY = 34;
 const TAIL = 11;
+/** How many faces a stack shows before the count takes over. */
+const STACK_FACES = 3;
+const STACK_FACE = 28;
+const STACK_OVERLAP = 10;
 
 const styles = StyleSheet.create({
+  stackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 2,
+  },
+  stackFace: {
+    width: STACK_FACE,
+    height: STACK_FACE,
+    borderRadius: STACK_FACE / 2,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: PIN_RING,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  stackCount: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 5,
+    marginLeft: -6,
+    borderWidth: 2,
+    borderColor: PIN_RING,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stackCountText: {
+    color: PIN_GLYPH,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '800',
+  },
+  glyphDisc: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   wrap: {
     alignItems: 'center',
     // Room for the spring overshoot so nothing clips at the bitmap edge.

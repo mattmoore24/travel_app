@@ -14,6 +14,7 @@ import {
 import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
 import { HoursSlider } from '@/components/form/hours-slider';
+import { PinGlyph } from '@/features/pins/pin-marker';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { Sheet } from '@/components/ui/sheet';
 import { ThemedText } from '@/components/themed-text';
@@ -21,7 +22,6 @@ import { Radius, Space } from '@/constants/theme';
 import { useCreatePin } from '@/features/pins/hooks';
 import {
   MAX_PIN_HOURS,
-  categoryEmoji,
   categoryForPoi,
   defaultHoursForIntent,
   expiryForHours,
@@ -163,7 +163,9 @@ export function PinFormSheet({
           Location
         </ThemedText>
         <View style={[styles.placeCard, { backgroundColor: theme.surfaceSunken }]}>
-          <ThemedText style={styles.placeEmoji}>{categoryEmoji(category, false)}</ThemedText>
+          {/* The marker's own face, so choosing a category previews the pin
+              you are about to drop rather than showing an emoji sticker. */}
+          <PinGlyph category={category} />
           <View style={styles.placeText}>
             <ThemedText type="callout" numberOfLines={1}>
               {initialPlace?.name ?? placeLabel ?? `Where you dropped it in ${cityName}`}
@@ -300,9 +302,6 @@ const styles = StyleSheet.create({
     padding: Space.md,
     borderRadius: Radius.md,
     borderCurve: 'continuous',
-  },
-  placeEmoji: {
-    fontSize: 22,
   },
   placeText: {
     flex: 1,

@@ -3,8 +3,9 @@ import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Circle, Marker, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
-import Animated, { FadeInDown, FadeInUp, FadeOut } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeInUp, FadeOut, ZoomIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
@@ -21,9 +22,20 @@ import { BottomTabInset, HitTarget, Motion, Radius, Space, Spacing } from '@/con
 import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
 import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
 import {
+  CITY_ZOOM_DELTA,
+  clusterPins,
+  clusterTitle,
+  metersBetween,
+  type PinCluster,
+} from '@/features/pins/cluster';
+import { heatRings, mergeHeatCells } from '@/features/pins/heat';
+import { useHeatLegend } from '@/features/pins/heat-legend';
+import {
   MARKER_ANCHOR,
   MARKER_CENTER_OFFSET,
+  PinGlyph,
   PinMarkerView,
+  PinStackView,
   useMarkerTracking,
 } from '@/features/pins/pin-marker';
 import { openInMaps } from '@/features/pins/open-in-maps';
@@ -31,7 +43,7 @@ import { PinFormSheet } from '@/features/pins/pin-form-sheet';
 import { PinSearchField } from '@/features/pins/pin-search-field';
 import type { LocalSearchResult } from '@/modules/local-search';
 import { PlacePinOverlay } from '@/features/pins/place-pin-overlay';
-import { burnOutLabel, categoryEmoji, intentLabel } from '@/features/pins/pin-helpers';
+import { burnOutLabel, intentLabel } from '@/features/pins/pin-helpers';
 import { addDays, toISODate } from '@/features/trips/dates';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
@@ -39,8 +51,6 @@ import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 import type { CityPinRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
-
-const HEAT_CELL_RADIUS_M = 275;
 
 function PinCard({
   pin,
@@ -64,7 +74,14 @@ function PinCard({
   return (
     <ThemedView style={styles.pinCard}>
       <View style={styles.pinCardHeader}>
-        <Text style={styles.pinCardEmoji}>{categoryEmoji(pin.category, pin.seeded)}</Text>
+        {/* The same disc and glyph as the marker you just tapped, so the
+            card reads as that pin opening rather than a new object. Your own
+            pin gets the celebration spring: dropping one is the affirming
+            act on this screen and it deserves a beat. */}
+        <Animated.View
+          entering={isOwn ? ZoomIn.springify().duration(550).dampingRatio(0.75) : undefined}>
+          <PinGlyph category={pin.category} seeded={pin.seeded} />
+        </Animated.View>
         <View style={styles.pinCardTitle}>
           <ThemedText type="headline" numberOfLines={1}>
             {pin.venue_name}
@@ -176,23 +193,38 @@ function PinCard({
           </PressableScale>
 
           {isOwn ? (
-            <PrimaryButton
-              variant="danger"
-              label="Take this pin down"
-              onPress={() =>
-                Alert.alert('Take this pin down?', undefined, [
-                  { text: 'Keep it', style: 'cancel' },
-                  {
-                    text: 'Take it down',
-                    style: 'destructive',
-                    onPress: () => {
-                      deletePin.mutate(pin.id);
-                      onClose();
+            // Your own pin, which is a thing you just DID, not a thing to
+            // undo. It used to climax in a red delete button: the one
+            // affirming act on the map ended on the most alarming control in
+            // the app. Now the pin says what it is and when it burns out,
+            // Done is the action, and taking it down is a quiet footnote.
+            <>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                Your pin · {burnOutLabel(pin.expires_at)}
+              </ThemedText>
+              <PrimaryButton label="Done" onPress={onClose} />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Take this pin down"
+                hitSlop={10}
+                onPress={() =>
+                  Alert.alert('Take this pin down?', undefined, [
+                    { text: 'Keep it', style: 'cancel' },
+                    {
+                      text: 'Take it down',
+                      style: 'destructive',
+                      onPress: () => {
+                        deletePin.mutate(pin.id);
+                        onClose();
+                      },
                     },
-                  },
-                ])
-              }
-            />
+                  ])
+                }>
+                <ThemedText type="footnote" themeColor="textSecondary" style={styles.takeDown}>
+                  Take it down early
+                </ThemedText>
+              </Pressable>
+            </>
           ) : (
             <>
               <PrimaryButton
@@ -238,24 +270,6 @@ const SEEDED_LABEL = 'One of our picks. Just show up.';
  * stops being about that place. Roughly a venue's own footprint.
  */
 const PLACE_DRIFT_M = 40;
-
-/** Amber at one pin, ember by five, and never opaque enough to hide a street. */
-function heatFill(count: number): string {
-  const t = Math.min(Math.max((count - 1) / 4, 0), 1);
-  const r = 255;
-  const g = Math.round(154 + (107 - 154) * t);
-  const b = Math.round(90 + (84 - 90) * t);
-  return `rgba(${r}, ${g}, ${b}, ${Math.min(0.1 + count * 0.05, 0.34)})`;
-}
-
-function metersBetween(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const rad = Math.PI / 180;
-  const dLat = (bLat - aLat) * rad;
-  const dLng = (bLng - aLng) * rad;
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLng / 2) ** 2;
-  return 2 * 6_371_000 * Math.asin(Math.sqrt(h));
-}
 
 const DATE_FILTERS = [
   { value: 'all', label: 'All' },
@@ -313,6 +327,54 @@ function CityPinMarker({
   );
 }
 
+/**
+ * Several plans at one venue, as one marker. Three faces at most, then a
+ * count — the faces are the reason to tap, and a bare number is not.
+ *
+ * Exactly three photo lookups every render, whatever the cluster holds, so
+ * the hook count cannot change under React.
+ */
+function ClusterMarker({
+  cluster,
+  selected,
+  onPress,
+}: {
+  cluster: PinCluster;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const first = usePhotoUrl(cluster.pins[0]?.photo_path ?? null);
+  const second = usePhotoUrl(cluster.pins[1]?.photo_path ?? null);
+  const third = usePhotoUrl(cluster.pins[2]?.photo_path ?? null);
+  const faces = [first.data ?? null, second.data ?? null, third.data ?? null].slice(
+    0,
+    Math.min(3, cluster.pins.length)
+  );
+  const tracking = useMarkerTracking(`${selected}:${faces.join('|')}`);
+  return (
+    <Marker
+      coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
+      anchor={MARKER_ANCHOR}
+      centerOffset={MARKER_CENTER_OFFSET}
+      displayPriority="required"
+      zIndex={selected ? 10 : 2}
+      tracksViewChanges={tracking}
+      accessibilityRole="button"
+      accessibilityLabel={`${clusterTitle(cluster)}, ${cluster.pins.length} plans`}
+      onPress={(event) => {
+        event.stopPropagation();
+        onPress();
+      }}>
+      <PinStackView
+        faces={faces}
+        count={cluster.pins.length}
+        category={cluster.pins[0].category}
+        selected={selected}
+      />
+    </Marker>
+  );
+}
+
 type MapMode = 'browse' | 'place' | 'detail';
 
 export default function MapScreen() {
@@ -335,12 +397,22 @@ export default function MapScreen() {
         : toISODate(addDays(new Date(), 1));
   const { data: allPins = [], isSuccess: pinsLoaded } = useMapPins(activeCityId);
   const { data: heat = [] } = useMapHeat(activeCityId, filterISO);
+  const heatCells = useMemo(() => mergeHeatCells(heat), [heat]);
+  const legend = useHeatLegend(heatCells.length > 0);
   const isGuest = useIsGuest();
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
   // Every other gate in the app states its reason before it asks. Dropping a
   // pin was the one that did not: it teleported a guest to an email form with
   // no explanation of what had just happened to them.
   const [pinGate, setPinGate] = useState(false);
+  // Which stack of plans is open, if any. Separate from selectedPinId: a
+  // stack is a list of plans, and picking one out of it opens the pin card.
+  const [venueKey, setVenueKey] = useState<string | null>(null);
+  // Past city scale, individual venues are smaller than a fingertip, so the
+  // whole city becomes one marker with a count. Held as state rather than in
+  // the region ref because it has to repaint — but it only ever changes when
+  // the threshold is crossed, not on every frame of a pinch.
+  const [cityScale, setCityScale] = useState(false);
 
   // The drop-a-pin flow lives on this map, not a separate screen: browse →
   // place (map pans under a fixed pin) → detail (form sheet over the map).
@@ -357,6 +429,14 @@ export default function MapScreen() {
   const selectedPin = useMemo(
     () => pins.find((p) => p.id === selectedPinId) ?? null,
     [pins, selectedPinId]
+  );
+  // Plans at one venue become one marker. At launch density — everybody
+  // pinning the same handful of bars — three markers on one building meant
+  // two of them were literally under the third and could not be tapped.
+  const clusters = useMemo(() => clusterPins(pins), [pins]);
+  const openVenue = useMemo(
+    () => clusters.find((cluster) => cluster.key === venueKey) ?? null,
+    [clusters, venueKey]
   );
 
   // §6 metrics: map DAU (every city view, including the initial one) and
@@ -468,6 +548,7 @@ export default function MapScreen() {
           onPress={() => {
             if (mode === 'browse') {
               setSelectedPinId(null);
+              setVenueKey(null);
             }
           }}
           onRegionChange={() => {
@@ -477,6 +558,8 @@ export default function MapScreen() {
           }}
           onRegionChangeComplete={(region) => {
             lastRegion.current = region;
+            // Only flips at the threshold, so this is not a per-frame render.
+            setCityScale(region.latitudeDelta > CITY_ZOOM_DELTA);
             if (mode === 'place') {
               setLifted(false);
               setPlaceCoords({ lat: region.latitude, lng: region.longitude });
@@ -493,44 +576,97 @@ export default function MapScreen() {
               );
             }
           }}>
-          {heat.map((cell) => (
-            <Circle
-              key={`${cell.cell_lat}:${cell.cell_lng}:${cell.category}`}
-              center={{ latitude: cell.cell_lat, longitude: cell.cell_lng }}
-              radius={HEAT_CELL_RADIUS_M}
-              strokeColor="transparent"
-              // One light source intensifying, amber toward ember, never a
-              // hue swap: the heat scale has to read on a dark basemap.
-              fillColor={heatFill(cell.pin_count)}
-            />
-          ))}
-          {pins.map((pin) => (
-            <CityPinMarker
-              key={pin.id}
-              pin={pin}
-              selected={pin.id === selectedPinId}
-              onPress={() => {
-                // Guard doubles: marker onPress can fire twice on iOS.
-                if (placing || pin.id === selectedPinId) {
-                  return;
-                }
+          {/* Merged across categories, then drawn as three concentric rings
+              per cell so the glow falls off instead of ending at a hard
+              boundary. See features/pins/heat.ts for both. */}
+          {heatCells.map((cell) =>
+            heatRings(cell).map((ring) => (
+              <Circle
+                key={ring.key}
+                center={{ latitude: cell.lat, longitude: cell.lng }}
+                radius={ring.radius}
+                strokeColor="transparent"
+                fillColor={ring.fill}
+              />
+            ))
+          )}
+          {/* One marker per city once the map is zoomed past street scale:
+              at that size every venue is smaller than a fingertip, and a
+              hundred overlapping pins say less than one number does. */}
+          {cityScale && activeCity && pins.length > 0 ? (
+            <Marker
+              coordinate={{ latitude: activeCity.cities.lat, longitude: activeCity.cities.lng }}
+              anchor={MARKER_ANCHOR}
+              centerOffset={MARKER_CENTER_OFFSET}
+              accessibilityRole="button"
+              accessibilityLabel={`${pins.length} plans in ${activeCity.cities.name}`}
+              onPress={(event) => {
+                event.stopPropagation();
                 haptics.light();
-                setSelectedPinId(pin.id);
-                // Nudge the camera so the pin stays visible above the sheet.
-                const delta = lastRegion.current?.latitudeDelta ?? 0.05;
                 mapRef.current?.animateToRegion(
                   {
-                    latitude: pin.lat - delta * 0.12,
-                    longitude: pin.lng,
-                    latitudeDelta: delta,
-                    longitudeDelta: lastRegion.current?.longitudeDelta ?? delta,
+                    latitude: activeCity.cities.lat,
+                    longitude: activeCity.cities.lng,
+                    latitudeDelta: 0.09,
+                    longitudeDelta: 0.09,
                   },
-                  300
+                  350
                 );
-                analytics.capture('pin_tapped', { seeded: pin.seeded, category: pin.category });
-              }}
-            />
-          ))}
+              }}>
+              <PinStackView faces={[null]} count={pins.length} category={pins[0].category} />
+            </Marker>
+          ) : null}
+
+          {!cityScale &&
+            clusters
+              .filter((cluster) => cluster.pins.length > 1)
+              .map((cluster) => (
+                <ClusterMarker
+                  key={cluster.key}
+                  cluster={cluster}
+                  selected={cluster.key === venueKey}
+                  onPress={() => {
+                    if (placing || cluster.key === venueKey) {
+                      return;
+                    }
+                    haptics.light();
+                    setSelectedPinId(null);
+                    setVenueKey(cluster.key);
+                  }}
+                />
+              ))}
+
+          {!cityScale &&
+            clusters
+              .filter((cluster) => cluster.pins.length === 1)
+              .map(({ pins: [pin] }) => (
+                <CityPinMarker
+                  key={pin.id}
+                  pin={pin}
+                  selected={pin.id === selectedPinId}
+                  onPress={() => {
+                    // Guard doubles: marker onPress can fire twice on iOS.
+                    if (placing || pin.id === selectedPinId) {
+                      return;
+                    }
+                    haptics.light();
+                    setVenueKey(null);
+                    setSelectedPinId(pin.id);
+                    // Nudge the camera so the pin stays visible above the sheet.
+                    const delta = lastRegion.current?.latitudeDelta ?? 0.05;
+                    mapRef.current?.animateToRegion(
+                      {
+                        latitude: pin.lat - delta * 0.12,
+                        longitude: pin.lng,
+                        latitudeDelta: delta,
+                        longitudeDelta: lastRegion.current?.longitudeDelta ?? delta,
+                      },
+                      300
+                    );
+                    analytics.capture('pin_tapped', { seeded: pin.seeded, category: pin.category });
+                  }}
+                />
+              ))}
         </MapView>
       ) : (
         <ThemedView style={StyleSheet.absoluteFill}>
@@ -553,6 +689,17 @@ export default function MapScreen() {
           ) : null}
         </ThemedView>
       )}
+
+      {/* A ground for the status bar. Apple's basemap draws street and
+          district labels right to the top edge, so the clock, the carrier
+          and the battery sat in a field of small type they collided with.
+          Inert to touch, and it stops well before the chips. */}
+      <LinearGradient
+        colors={[theme.background, 'transparent']}
+        locations={[0, 0.55]}
+        style={[styles.statusScrim, { height: insets.top + Spacing.six }]}
+        pointerEvents="none"
+      />
 
       {/* Fixed centre pin the map pans underneath while placing. */}
       {placing ? <PlacePinOverlay lifted={lifted} /> : null}
@@ -590,9 +737,13 @@ export default function MapScreen() {
                           borderColor: selected ? 'transparent' : theme.hairline,
                         },
                       ]}>
+                      {/* One size, whichever is selected. 'smallBold' is a
+                          bigger role (15pt) as well as a heavier one, so
+                          tapping a chip used to reflow the whole rail and
+                          shove its neighbours sideways under your thumb. */}
                       <ThemedText
-                        type={selected ? 'smallBold' : 'small'}
-                        style={selected ? { color: theme.onAccent } : undefined}>
+                        type="small"
+                        style={selected ? { color: theme.onAccent, fontWeight: '700' } : undefined}>
                         {city.cities.name}
                       </ThemedText>
                     </View>
@@ -600,6 +751,17 @@ export default function MapScreen() {
                 );
               })}
             </ScrollView>
+            {/* The rail runs under the avatar button, so the last chip used
+                to be cut in half by it: "Mexico City" read as "Me…". The
+                padding gives the rail somewhere to end and the fade says
+                "there is more this way" instead of "this word is broken". */}
+            <LinearGradient
+              colors={['transparent', theme.background]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={styles.railFade}
+              pointerEvents="none"
+            />
             <AvatarButton />
           </View>
           <View style={styles.dateRow}>
@@ -617,15 +779,22 @@ export default function MapScreen() {
                   haptic="selection"
                   scaleTo={0.94}
                   onPress={() => setDateFilter(filter.value)}>
+                  {/* Selection means the same thing on both rails: accent
+                      fill, ink on top. The date chips used to say it in a
+                      third language (soft fill, accent border), so two rows
+                      eight points apart disagreed about what "on" looks
+                      like. */}
                   <View
                     style={[
                       styles.dateChip,
                       {
-                        backgroundColor: selected ? theme.accentSoft : theme.surface,
-                        borderColor: selected ? theme.accent : theme.hairline,
+                        backgroundColor: selected ? theme.accent : theme.surface,
+                        borderColor: selected ? 'transparent' : theme.hairline,
                       },
                     ]}>
-                    <ThemedText type="footnote" style={selected ? styles.chipSelected : undefined}>
+                    <ThemedText
+                      type="footnote"
+                      style={selected ? { color: theme.onAccent, fontWeight: '700' } : undefined}>
                       {filter.label}
                     </ThemedText>
                   </View>
@@ -761,6 +930,41 @@ export default function MapScreen() {
         />
       ) : null}
 
+      {/* The heat layer is the only thing on this map with no label, no
+          marker and nothing to tap, so the first time somebody sees it they
+          have to guess. One sentence, once. */}
+      {legend.visible && mode === 'browse' ? (
+        <Animated.View
+          entering={FadeInUp.duration(Motion.standard)}
+          exiting={FadeOut.duration(Motion.quick)}
+          style={[
+            styles.legend,
+            { bottom: BottomTabInset + insets.bottom + Space.xxxl + Space.xl },
+          ]}
+          pointerEvents="box-none">
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Glowing spots are plans nearby. Tap to dismiss."
+            scaleTo={0.96}
+            haptic="light"
+            onPress={legend.dismiss}>
+            <View
+              style={[
+                styles.legendChip,
+                { backgroundColor: theme.surface, borderColor: theme.hairline },
+              ]}>
+              <View style={[styles.legendDot, { backgroundColor: 'rgba(255, 154, 90, 0.85)' }]} />
+              <ThemedText type="footnote">Glowing spots are plans nearby</ThemedText>
+              <SymbolView
+                name={{ ios: 'xmark', android: 'close', web: 'close' }}
+                size={11}
+                tintColor={theme.textSecondary}
+              />
+            </View>
+          </PressableScale>
+        </Animated.View>
+      ) : null}
+
       {pinGate ? (
         <Sheet onClose={() => setPinGate(false)}>
           <SignUpGate
@@ -774,8 +978,78 @@ export default function MapScreen() {
         </Sheet>
       ) : null}
 
+      {/* A stack of plans, opened. Same non-modal treatment as the pin card
+          below: the map stays live, so tapping a different venue swaps this
+          for that one. */}
+      {mode === 'browse' && openVenue && activeCityId != null ? (
+        <Sheet inline dimmed={false} onClose={() => setVenueKey(null)}>
+          <View style={styles.venueHeader}>
+            <PinGlyph category={openVenue.pins[0].category} seeded={openVenue.pins[0].seeded} />
+            <View style={styles.venueTitle}>
+              <ThemedText type="headline" numberOfLines={1}>
+                {clusterTitle(openVenue)}
+              </ThemedText>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                {openVenue.pins.length} plans here
+              </ThemedText>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              onPress={() => setVenueKey(null)}
+              hitSlop={8}>
+              <SymbolView
+                name={{ ios: 'xmark.circle.fill', android: 'close', web: 'close' }}
+                size={22}
+                tintColor={theme.textSecondary}
+              />
+            </Pressable>
+          </View>
+          <ScrollView style={styles.venueList} contentContainerStyle={styles.venueListContent}>
+            {openVenue.pins.map((pin) => (
+              <PressableScale
+                key={pin.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${pin.venue_name}, ${pin.display_name ?? 'a traveler'}`}
+                scaleTo={0.98}
+                haptic="soft"
+                onPress={() => {
+                  setVenueKey(null);
+                  setSelectedPinId(pin.id);
+                  analytics.capture('pin_tapped', {
+                    seeded: pin.seeded,
+                    category: pin.category,
+                    from: 'venue',
+                  });
+                }}>
+                <ThemedView type="surfaceSunken" style={styles.venueRow}>
+                  <View style={styles.venueRowText}>
+                    <ThemedText type="callout" numberOfLines={1}>
+                      {pin.note?.trim() || pin.venue_name}
+                    </ThemedText>
+                    <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+                      {[pin.display_name, intentLabel(pin.intent_date)].filter(Boolean).join(' · ')}
+                    </ThemedText>
+                  </View>
+                  <SymbolView
+                    name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+                    size={14}
+                    tintColor={theme.textSecondary}
+                  />
+                </ThemedView>
+              </PressableScale>
+            ))}
+          </ScrollView>
+        </Sheet>
+      ) : null}
+
+      {/* Non-modal on purpose. A pin card is a card ABOUT the map, so the
+          map has to stay alive underneath it: pannable, and tapping another
+          marker swaps the card in place instead of making you dismiss this
+          one first. That needs both halves — no scrim to catch the touch,
+          and no native Modal window to swallow it. */}
       {mode === 'browse' && selectedPin && activeCityId != null ? (
-        <Sheet onClose={() => setSelectedPinId(null)}>
+        <Sheet inline dimmed={false} onClose={() => setSelectedPinId(null)}>
           {isGuest && !selectedPin.seeded ? (
             // Same trap as the card below it: this gate pushes to sign-up, and
             // pushing from inside the sheet left the map dead to touch when
@@ -813,10 +1087,48 @@ const styles = StyleSheet.create({
   },
   cityChips: {
     gap: Spacing.two,
-    paddingHorizontal: Spacing.three,
+    paddingLeft: Spacing.three,
+    // Clearance for the avatar button the rail scrolls underneath, plus the
+    // fade over it, so the last chip can always come fully into view.
+    paddingRight: HitTarget + Spacing.four,
   },
-  chipSelected: {
-    fontWeight: '600',
+  legend: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  legendChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.sm,
+    borderRadius: Radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  statusScrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+  },
+  railFade: {
+    position: 'absolute',
+    right: HitTarget,
+    top: 0,
+    bottom: 0,
+    width: 24,
   },
   cityChip: {
     paddingHorizontal: Space.lg,
@@ -850,6 +1162,38 @@ const styles = StyleSheet.create({
     height: HitTarget,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  venueHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+  },
+  venueTitle: {
+    flex: 1,
+    gap: 2,
+  },
+  venueList: {
+    // Capped so a very popular corner scrolls instead of filling the screen.
+    maxHeight: 260,
+  },
+  venueListContent: {
+    gap: Space.sm,
+    paddingBottom: Space.xs,
+  },
+  venueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    padding: Space.md,
+    borderRadius: Radius.md,
+  },
+  venueRowText: {
+    flex: 1,
+    gap: 2,
+  },
+  takeDown: {
+    textAlign: 'center',
+    textDecorationLine: 'underline',
   },
   pinnerCard: {
     flexDirection: 'row',
