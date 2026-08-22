@@ -49,7 +49,7 @@ function placeholderFor(platform: SocialPlatform) {
     case 'whatsapp':
       return 'Phone number';
     case 'facebook':
-      return 'Your name or profile link';
+      return 'Name or link';
     case 'other':
       return 'Wherever people find you';
     default:

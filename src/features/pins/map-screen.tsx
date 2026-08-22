@@ -223,10 +223,10 @@ function PinCard({
               <PrimaryButton label="Done" onPress={onClose} />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Take this pin down"
+                accessibilityLabel="Take it down early"
                 hitSlop={10}
                 onPress={() =>
-                  Alert.alert('Take this pin down?', undefined, [
+                  Alert.alert('Take it down?', undefined, [
                     { text: 'Keep it', style: 'cancel' },
                     {
                       text: 'Take it down',
@@ -246,7 +246,7 @@ function PinCard({
           ) : (
             <>
               <PrimaryButton
-                label="Ask about this plan"
+                label="Say hi"
                 onPress={() =>
                   leaveThen(() =>
                     router.push({
@@ -259,9 +259,10 @@ function PinCard({
                         element: `pin:${pin.venue_name.slice(0, 50)}`,
                         // Opens with the question already written, because
                         // "what do I even say" is what stops most people.
-                        draft: `Hey! I would like more details on your plans at ${
-                          pin.place_label ?? pin.venue_name
-                        }.`,
+                        // Never place_label: that is the reverse-geocoded
+                        // ADDRESS, so the draft came out as "your plans at
+                        // Somdet Phra Pokklao Bridge, Wang Burapha Phirom".
+                        draft: `Hey! What time are you heading to ${pin.venue_name}?`,
                       },
                     })
                   )
@@ -275,7 +276,7 @@ function PinCard({
   );
 }
 
-const SEEDED_LABEL = 'One of our picks. Just show up.';
+const SEEDED_LABEL = 'One of our picks. Show up.';
 
 /**
  * How far the map centre can drift from a searched place before the pin
@@ -771,9 +772,8 @@ export default function MapScreen() {
           ) : launchCitiesQuery.isSuccess ? (
             <PlaceholderScreen
               icon={{ ios: 'map.fill', android: 'map', web: 'map' }}
-              title="The Map"
-              phase="no launch cities yet"
-              description="Launch cities appear here once they're switched on."
+              title="No cities yet"
+              description="We're opening more soon. Check back."
             />
           ) : null}
         </ThemedView>
@@ -911,7 +911,7 @@ export default function MapScreen() {
             </View>
             <PressableScale
               accessibilityRole="button"
-              accessibilityLabel="Cancel pin placement"
+              accessibilityLabel="Cancel"
               hitSlop={8}
               scaleTo={0.9}
               haptic="soft"
@@ -979,7 +979,7 @@ export default function MapScreen() {
                 : `Nothing pinned for ${dateFilter} yet`}
             </ThemedText>
             <ThemedText type="footnote" themeColor="textSecondary">
-              Be the first. Drop a pin for what you are up to and people here will see it.
+              Be the first.
             </ThemedText>
           </GlassSurface>
         </Pressable>
@@ -1064,7 +1064,8 @@ export default function MapScreen() {
           pointerEvents="box-none">
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel="Glowing spots are plans nearby. Tap to dismiss."
+            accessibilityLabel="Glowing spots are plans nearby"
+            accessibilityHint="Dismisses this"
             scaleTo={0.96}
             haptic="light"
             onPress={legend.dismiss}>
@@ -1088,7 +1089,7 @@ export default function MapScreen() {
       {pinGate ? (
         <Sheet onClose={() => setPinGate(false)}>
           <SignUpGate
-            reason="Dropping a pin needs a profile, so people know who is going"
+            reason="Pins come with your name on them"
             where="drop-pin"
             cta="Make a profile"
             compact

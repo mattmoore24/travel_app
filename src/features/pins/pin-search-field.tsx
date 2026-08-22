@@ -133,7 +133,7 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
       } catch {
         if (mine === seq.current) {
           setHits([]);
-          setMessage('Search is unavailable right now. Drag the map to the spot instead.');
+          setMessage('Search is down. Drag the map to the spot.');
         }
       } finally {
         if (mine === seq.current) {
@@ -206,7 +206,7 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
           autoCorrect={false}
           autoCapitalize="words"
           clearButtonMode="never"
-          accessibilityLabel={`Search for a place in ${cityName}`}
+          accessibilityLabel={`Search ${cityName}`}
           testID="pin-search-input"
           style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
         />

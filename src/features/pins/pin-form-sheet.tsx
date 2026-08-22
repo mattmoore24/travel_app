@@ -212,9 +212,6 @@ export function PinFormSheet({
           </Pressable>
         </View>
 
-        <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
-          Plans
-        </ThemedText>
         {/* BRING THE FOCUSED FIELD INTO VIEW. With the keyboard up the sheet
             reserves a keyboard's worth of floor and this scroller is what
             gives way — it ends up about two rows tall. Without this the plan
@@ -226,9 +223,9 @@ export function PinFormSheet({
             fieldY.current.venue = event.nativeEvent.layout.y;
           }}>
           <FormTextField
-            label="What is the plan?"
+            label="What's the plan?"
             testID="venue-input"
-            placeholder="Sunset drinks, night market crawl, morning surf"
+            placeholder="Sunset drinks, morning surf"
             value={venue}
             onChangeText={setVenue}
             onFocus={() => {
@@ -253,7 +250,7 @@ export function PinFormSheet({
             // Not a tram: this app opens on Bangkok, which has no tram
             // network, and an example that names transport the city does not
             // have is the opposite of written by somebody who has been there.
-            placeholder="By the door around 7, I will be the one in the red cap"
+            placeholder="By the door at 7, I'm in a red cap"
             value={note}
             onChangeText={setNote}
             onFocus={() => {
@@ -274,7 +271,7 @@ export function PinFormSheet({
           onSelect={setIntentDate}
         />
         <View style={styles.sliderBlock}>
-          <ThemedText type="smallBold">Pin disappears after</ThemedText>
+          <ThemedText type="smallBold">Disappears after</ThemedText>
           <HoursSlider
             value={effectiveHours}
             min={minHours}
@@ -295,7 +292,7 @@ export function PinFormSheet({
         onPress={submit}
       />
       <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
-        Expires on its own (72h max) and never shows where you are.
+        Gone in 72h max. Never shows where you are.
       </ThemedText>
 
       {Platform.OS === 'ios' ? (

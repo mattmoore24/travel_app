@@ -246,7 +246,7 @@ appId: com.mattmoore.samewhere
     timeout: 10000
 - assertVisible: 'Dismiss'
 - takeScreenshot: 25-reaction-menu
-- tapOn: '❤️'
+- tapOn: '👍'
 - waitForAnimationToEnd:
     timeout: 2000
 - takeScreenshot: 26-reacted

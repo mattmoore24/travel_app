@@ -105,7 +105,7 @@ export default function RoomScreen() {
 
   const submitJoin = (departure: Date) => {
     join.mutate(toISODate(departure), {
-      onError: () => Alert.alert('Could not join', 'Please try again.'),
+      onError: () => Alert.alert('Could not join', 'Try again.'),
     });
   };
 

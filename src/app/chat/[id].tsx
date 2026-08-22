@@ -53,7 +53,7 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
   const confirmBlock = () => {
     Alert.alert(
       `Block ${chat.title ?? 'this traveler'}?`,
-      'They disappear from the map and from Travelers, can never message you, and this conversation freezes. They are not told.',
+      "They're gone from the map and Travelers, can't message you, and this chat freezes. They're not told.",
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -170,7 +170,7 @@ function SocialsCard({ userId }: { userId: string }) {
     return (
       <ThemedView type="backgroundElement" style={styles.socialsCard}>
         <ThemedText type="small" themeColor="textSecondary">
-          Could not load their socials just now.
+          Socials didn&apos;t load.
         </ThemedText>
       </ThemedView>
     );

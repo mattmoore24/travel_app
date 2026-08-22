@@ -199,7 +199,7 @@ function PromptCard({
           </PressableScale>
         ) : onRespondTo ? (
           <ReplyButton
-            label="Reply to this"
+            label={`Reply to "${promptLabelInline(prompt.prompt_key)}"`}
             onPress={() =>
               onRespondTo({
                 key: `prompt:${prompt.prompt_key}`,
@@ -279,9 +279,7 @@ function TripsSection({
       {trips.length === 0 ? (
         <View style={[styles.emptyTrips, { backgroundColor: theme.surfaceSunken }]}>
           <ThemedText themeColor="textSecondary">
-            {owner
-              ? 'Add where you are going and you will start seeing people who will be there too.'
-              : 'Nothing planned right now.'}
+            {owner ? "Add a trip and you'll see who else is there." : 'No trips yet.'}
           </ThemedText>
         </View>
       ) : (
@@ -383,7 +381,7 @@ function SocialsSection({
           icon={{ ios: 'at', android: 'alternate_email', web: 'alternate_email' }}
         />
         <ThemedText type="footnote" themeColor="textSecondary">
-          Shared once you two are chatting.
+          Shared once you&apos;re chatting.
         </ThemedText>
       </View>
     );
@@ -401,12 +399,12 @@ function SocialsSection({
       />
       {owner ? (
         <ThemedText type="footnote" themeColor="textSecondary">
-          Only people you are chatting with can see these.
+          Only people you&apos;re chatting with see these.
         </ThemedText>
       ) : null}
       {handles.length === 0 ? (
         <ThemedText type="footnote" themeColor="textSecondary">
-          You have not added any yet.
+          None yet.
         </ThemedText>
       ) : (
         <View style={styles.socialList}>
@@ -769,9 +767,7 @@ export function ProfileView({
               {profile.bio ? (
                 <ThemedText>{profile.bio}</ThemedText>
               ) : (
-                <ThemedText themeColor="textSecondary">
-                  Say what you are up for and people will have something to open with.
-                </ThemedText>
+                <ThemedText themeColor="textSecondary">Say what you&apos;re up for.</ThemedText>
               )}
             </View>
           ) : null}
@@ -854,8 +850,7 @@ export function ProfileView({
                     {prompts.length === 0 ? 'Answer a prompt' : 'Answer another'}
                   </ThemedText>
                   <ThemedText type="footnote" themeColor="textSecondary">
-                    A question with an answer is a thing people can reply to. Profiles with them get
-                    more messages.
+                    Gives people something to reply to.
                   </ThemedText>
                 </View>
               </View>

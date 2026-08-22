@@ -71,7 +71,7 @@ const PAGES: Page[] = [
   {
     icon: { ios: 'map.fill', android: 'map', web: 'map' },
     title: 'See what people are up to',
-    body: "The map shows plans people have dropped in your city. Dinner, a hike, a night out. Tap one to see who's going.",
+    body: "Dinner, a hike, a night out. Tap a pin to see who's going.",
   },
   {
     icon: { ios: 'person.2.fill', android: 'group', web: 'group' },
@@ -81,13 +81,13 @@ const PAGES: Page[] = [
     // grey. The one rule that decides more design questions here than any
     // other is that this must never read like a dating app, and page three
     // of the first thing anybody sees was breaking it.
-    title: 'Who else is in town while you are',
-    body: "Add your trips and you'll see who overlaps with you. Same dates, same city, that's the whole idea.",
+    title: 'Who else is in town',
+    body: "Add your trips and you'll see who overlaps.",
   },
   {
     icon: { ios: 'bubble.left.and.bubble.right.fill', android: 'chat', web: 'chat' },
     title: 'Say hi, then make plans',
-    body: 'Send someone a first message. If they accept, we let you know and your chat opens up.',
+    body: 'Send a first message. If they accept, your chat opens.',
   },
 ];
 

@@ -50,7 +50,7 @@ export function LocationPicker({ centerLat, centerLng, lat, lng, onChange }: Loc
         />
       </MapView>
       <ThemedText type="small" themeColor="textSecondary">
-        Tap or drag the marker to the place you mean.
+        Drag it to the spot.
       </ThemedText>
     </View>
   );

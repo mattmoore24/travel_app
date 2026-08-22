@@ -25,8 +25,7 @@ export default function MapScreenWeb() {
       <PlaceholderScreen
         icon={{ ios: 'map.fill', android: 'map', web: 'map' }}
         title="The Map"
-        phase="native map on iOS"
-        description="The interactive map renders on the phone. On web (dev), pins show as a list once Supabase keys exist."
+        description="The map is iOS only. On web you get a list."
       />
     );
   }

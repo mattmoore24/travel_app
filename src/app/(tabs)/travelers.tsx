@@ -81,6 +81,10 @@ function GuestTravelers() {
 
   return (
     <ThemedView style={styles.root}>
+      {/* A guest had the profile entry on Map and Chat and not here, which is
+          the exact inconsistency the "reachable from every tab" item exists
+          to remove. */}
+      <ProfileCorner />
       <ScrollView
         ref={scrollRef}
         style={styles.list}
@@ -171,7 +175,7 @@ function GuestTravelers() {
             </PressableScale>
           </>
         ) : (
-          <ThemedText themeColor="textSecondary">No travelers in town this week yet.</ThemedText>
+          <ThemedText themeColor="textSecondary">Nobody in town this week.</ThemedText>
         )}
         <SignUpGate
           reason={
@@ -304,7 +308,7 @@ function TravelerPage({
               </ThemedText>
             </View>
             <ThemedText type="footnote" themeColor="textSecondary" style={styles.spotlightNote}>
-              You are at the top of their list today too.
+              You&apos;re top of their list too.
             </ThemedText>
           </View>
         ) : null}
@@ -501,6 +505,7 @@ export default function TravelersScreen() {
   if (tripsQuery.isPending || matchesQuery.isPending) {
     return (
       <ThemedView style={styles.root}>
+        <ProfileCorner />
         <View style={[styles.loading, { paddingTop: insets.top + Space.sm }]}>
           <Skeleton width="100%" height={Math.min(width, MaxContentWidth) * 1.15} radius={16} />
           <Skeleton width="60%" height={16} />
@@ -517,6 +522,8 @@ export default function TravelersScreen() {
   if (tripsQuery.isError || matchesQuery.isError) {
     return (
       <ThemedView style={styles.root}>
+        {/* This one can sit on screen for as long as the phone is offline. */}
+        <ProfileCorner />
         <LoadError
           what="your travelers"
           error={tripsQuery.error ?? matchesQuery.error}
@@ -538,7 +545,7 @@ export default function TravelersScreen() {
             Add a trip first
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-            Travelers here are the people who will be in the same city as you, on the same dates.
+            You&apos;ll see who&apos;s in town on your dates.
           </ThemedText>
           {/* Straight to the fix. Sending someone to their profile to hunt
               for the button is one hop of homework between a person and the
@@ -568,7 +575,7 @@ export default function TravelersScreen() {
             {headline}
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-            More people add trips every day. In the meantime, these all work.
+            More show up every day.
           </ThemedText>
           {/* navigate, not push: pushing '/(tabs)' from inside the tabs
               stacks a SECOND copy of the whole tab navigator on the root
@@ -577,15 +584,11 @@ export default function TravelersScreen() {
           <PrimaryButton label="Drop a pin" onPress={() => router.navigate('/(tabs)')} />
           <PrimaryButton
             variant="ghost"
-            label="Add or widen a trip"
+            label="Add another trip"
             onPress={() => router.push('/add-trip')}
           />
           {passed.count > 0 ? (
-            <PrimaryButton
-              variant="ghost"
-              label="Look through them again"
-              onPress={() => passed.reset()}
-            />
+            <PrimaryButton variant="ghost" label="See them again" onPress={() => passed.reset()} />
           ) : null}
         </View>
       </ThemedView>

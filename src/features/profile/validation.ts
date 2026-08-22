@@ -30,7 +30,7 @@ export function validateDisplayName(value: string): string | null {
 
 export function validateAge(value: string): string | null {
   if (!/^\d+$/.test(value.trim())) {
-    return 'Enter your age as a number.';
+    return 'Numbers only.';
   }
   const age = Number(value.trim());
   if (age < AGE_MIN) {
@@ -91,10 +91,10 @@ export function validateHandle(value: string, usesAt = true): string | null {
     return 'Enter a handle.';
   }
   if (normalized.length > 80) {
-    return 'Handles are capped at 80 characters.';
+    return 'Max 80 characters.';
   }
   if (usesAt && /\s/.test(normalized)) {
-    return 'A username cannot contain spaces.';
+    return 'No spaces.';
   }
   return null;
 }

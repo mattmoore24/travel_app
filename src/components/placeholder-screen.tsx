@@ -11,7 +11,14 @@ import { useTheme } from '@/hooks/use-theme';
 type PlaceholderScreenProps = {
   icon: SymbolViewProps['name'];
   title: string;
-  phase: string;
+  /**
+   * Dev-phase badge. Optional, because the two states a REAL user can reach -
+   * a city list that came back empty, and the web fallback - were showing
+   * them an internal note in a code font. Only the "waiting on backend keys"
+   * screens still carry one, and those only render with no Supabase keys,
+   * which never happens in a shipped bundle.
+   */
+  phase?: string;
   description: string;
   children?: ReactNode;
 };
@@ -40,9 +47,11 @@ export function PlaceholderScreen({
         <ThemedText themeColor="textSecondary" style={styles.centerText}>
           {description}
         </ThemedText>
-        <ThemedView type="backgroundElement" style={styles.phaseBadge}>
-          <ThemedText type="code">{phase}</ThemedText>
-        </ThemedView>
+        {phase ? (
+          <ThemedView type="backgroundElement" style={styles.phaseBadge}>
+            <ThemedText type="code">{phase}</ThemedText>
+          </ThemedView>
+        ) : null}
         {children}
       </SafeAreaView>
     </ThemedView>

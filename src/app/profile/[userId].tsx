@@ -91,7 +91,7 @@ export default function PublicProfileScreen() {
               {connected && handlesQuery.isError ? (
                 <PrimaryButton
                   variant="ghost"
-                  label="Could not load their socials. Retry"
+                  label="Socials didn't load. Retry"
                   onPress={() => handlesQuery.refetch()}
                 />
               ) : null}
@@ -108,7 +108,7 @@ export default function PublicProfileScreen() {
                 onPress={() =>
                   Alert.alert(
                     `Block ${profile.display_name ?? 'this traveler'}?`,
-                    'They disappear from the map and from Travelers, and can never message you. They are not told.',
+                    "They're gone from the map and Travelers, and can't message you. They're not told.",
                     [
                       { text: 'Cancel', style: 'cancel' },
                       {

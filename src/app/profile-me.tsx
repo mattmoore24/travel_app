@@ -43,11 +43,10 @@ function GuestProfile() {
           </View>
         </View>
         <ThemedText type="title" style={styles.guestText}>
-          You&apos;re browsing as a guest
+          Browsing as a guest
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.guestText}>
-          Make a profile and you can say hi to people, drop pins where you&apos;re headed, and join
-          the hostel chats. Takes about a minute.
+          Say hi, drop pins, join the hostel chats. Takes a minute.
         </ThemedText>
         <PrimaryButton label="Make my profile" onPress={() => router.push('/join')} />
         <PrimaryButton
@@ -151,9 +150,7 @@ export default function ProfileScreen() {
               {!profile.verified ? (
                 <PrimaryButton
                   variant="ghost"
-                  label={
-                    verification?.status === 'pending' ? 'Verification in review' : 'Get verified'
-                  }
+                  label={verification?.status === 'pending' ? 'In review' : 'Get verified'}
                   onPress={() => router.push('/verification')}
                 />
               ) : null}
@@ -166,7 +163,7 @@ export default function ProfileScreen() {
                 variant="ghost"
                 label="Sign out"
                 onPress={() => {
-                  signOut().catch(() => Alert.alert('Sign out failed', 'Please try again.'));
+                  signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
                 }}
               />
               {/* App Review 5.1.1(v): account deletion must be available in-app. */}
@@ -176,7 +173,7 @@ export default function ProfileScreen() {
                 onPress={() => {
                   Alert.alert(
                     'Delete your account?',
-                    'This permanently removes your profile, photos, trips, pins, and chats (for both sides). It cannot be undone.',
+                    "Deletes your profile, photos, trips, pins and chats, for both sides. Can't be undone.",
                     [
                       { text: 'Cancel', style: 'cancel' },
                       {
