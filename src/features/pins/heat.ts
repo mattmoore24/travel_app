@@ -12,15 +12,15 @@ export type MergedHeatCell = {
 };
 
 /**
- * heat_cells() returns one row per (cell, category), each already past the
- * k-threshold on its own. Drawn as-is, a corner with a bar cluster AND a food
- * cluster stacked two identical translucent discs on exactly the same spot —
- * which reads as one slightly darker disc, not as "twice as much going on".
+ * heat_cells() returns one row per cell, already past the k-threshold.
  *
- * Summing them here is the fix, and it stays inside rule 6: every row the
- * server sent was already thresholded, so adding two of them can only ever
- * make a number larger. Nothing is revealed that was not already public, and
- * a cell still never resolves to a pin or a person.
+ * It used to return one row per (cell, CATEGORY), which is why heat never
+ * appeared anywhere: three different people had to be planning the same KIND
+ * of thing inside the same 550m square. The threshold moved to the cell in
+ * 20260823010000, so this is now a sort with a guard on it rather than the
+ * fix it was written as. Summing stays correct either way and stays inside
+ * rule 6 — every row the server sent was already thresholded, so adding two
+ * can only make a number larger, and a cell still never resolves to a person.
  */
 export function mergeHeatCells(cells: HeatCellRow[]): MergedHeatCell[] {
   const merged = new Map<string, MergedHeatCell>();

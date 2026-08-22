@@ -9,15 +9,14 @@ import {
 import type { HeatCellRow } from '@/lib/database.types';
 
 function cell(over: Partial<HeatCellRow>): HeatCellRow {
-  return { cell_lat: 1, cell_lng: 2, category: 'bar', pin_count: 3, ...over };
+  return { cell_lat: 1, cell_lng: 2, pin_count: 3, ...over };
 }
 
 describe('mergeHeatCells', () => {
-  it('adds the categories on one spot together instead of stacking discs', () => {
-    const merged = mergeHeatCells([
-      cell({ category: 'bar', pin_count: 3 }),
-      cell({ category: 'restaurant', pin_count: 4 }),
-    ]);
+  // The server counts a cell across every category now, so it sends one row
+  // per spot. This stays as the guard for the day it sends two.
+  it('adds two rows on one spot together instead of stacking discs', () => {
+    const merged = mergeHeatCells([cell({ pin_count: 3 }), cell({ pin_count: 4 })]);
     expect(merged).toHaveLength(1);
     expect(merged[0].count).toBe(7);
   });

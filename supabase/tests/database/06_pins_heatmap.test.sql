@@ -1,7 +1,7 @@
 -- Pins: 72h hard expiry (rule 3), geofenced launch cities, immutability,
 -- k-anonymous heatmap (rule 6), seeded pins, pin-source requests.
 begin;
-select plan(25);
+select plan(26);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -158,7 +158,7 @@ from generate_series(1, 3) i;
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select is(
   (select count(*)::int from public.heat_cells(pg_temp.lisbon())
-   where category = 'club'),
+   where cell_lat between 38.730 and 38.735),
   0,
   'k counts DISTINCT pinners, not pins'
 );
@@ -179,9 +179,13 @@ select is(
   2,
   'seeded pins are visible to everyone'
 );
+-- Five, not four: the three pinners, the seeded pub crawl AND the seeded
+-- walking tour. The tour is a monument, and under the old per-category
+-- threshold it sat in a bucket of one and never appeared at all.
 select is(
-  (select pin_count from public.heat_cells(pg_temp.lisbon()) where category = 'bar'),
-  4,
+  (select pin_count from public.heat_cells(pg_temp.lisbon())
+   where cell_lat between 38.710 and 38.715),
+  5,
   'seeded pins count toward heat (cold-start strategy)'
 );
 select throws_ok(
@@ -194,6 +198,34 @@ select throws_ok(
   'clients cannot create seeded pins'
 );
 
+-- The threshold is per CELL, not per (cell, category).
+--
+-- Three people planning three different things on the same corner is exactly
+-- what "this corner is busy tonight" means, and it is the common case. Under
+-- the old grouping each of them sat alone in a bucket of one and the corner
+-- stayed dark, which is why no run in this project's history has ever
+-- photographed heat. This assertion fails against the pre-20260823010000
+-- functions.
+reset role;
+insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
+values
+  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Mixed A', 'bar',
+   38.7601, -9.1601, current_date, now() + interval '24 hours'),
+  ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), 'Mixed B', 'museum',
+   38.7602, -9.1602, current_date, now() + interval '24 hours'),
+  ('00000000-0000-0000-0000-00000000000d', pg_temp.lisbon(), 'Mixed C', 'hike',
+   38.7603, -9.1603, current_date, now() + interval '24 hours');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select is(
+  (select pin_count from public.heat_cells(pg_temp.lisbon())
+   where cell_lat between 38.758 and 38.763),
+  3,
+  'three people, three different plans, one corner: that corner is busy'
+);
+reset role;
+delete from public.pins where venue_name like 'Mixed %';
+
 -- DIFFERENCING REGRESSION (Phase 3 adversarial review): heat is computed
 -- under the caller's own pin RLS, so it can never contain more than the pins
 -- the caller could already see — a blocked pinner drops out of the other
@@ -203,9 +235,11 @@ insert into public.blocks (blocker_id, blocked_id)
   values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000c');
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+-- Four: alice, cara and the two seeded pins. Bob is blocked and drops out.
 select is(
-  (select pin_count from public.heat_cells(pg_temp.lisbon()) where category = 'bar'),
-  3,
+  (select pin_count from public.heat_cells(pg_temp.lisbon())
+   where cell_lat between 38.710 and 38.715),
+  4,
   'blocked-pair pins never count toward the other party''s heat'
 );
 
@@ -222,13 +256,15 @@ values
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select is(
-  (select count(*)::int from public.heat_cells(pg_temp.lisbon()) where category = 'restaurant'),
+  (select count(*)::int from public.heat_cells(pg_temp.lisbon())
+   where cell_lat between 38.750 and 38.755),
   0,
   'cell stays dark for a viewer who cannot see one of its k pinners'
 );
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select is(
-  (select pin_count from public.heat_cells(pg_temp.lisbon()) where category = 'restaurant'),
+  (select pin_count from public.heat_cells(pg_temp.lisbon())
+   where cell_lat between 38.750 and 38.755),
   3,
   'the same cell renders for a viewer who sees all its pinners'
 );

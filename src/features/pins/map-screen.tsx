@@ -599,6 +599,30 @@ export default function MapScreen() {
             latitudeDelta: 0.09,
             longitudeDelta: 0.09,
           }}
+          // The ground is a stage, not a map to read. Apple's standard basemap
+          // ships bright POI pills (restaurants, shops, landmarks), coloured
+          // roads and extruded buildings, all of which compete with the only
+          // thing on this screen that matters - the faces and the plans. The
+          // design brief bans a POI-dense basemap by name, and every one of
+          // these is a plain prop on the existing native view, so it all ships
+          // over the air.
+          //
+          // mutedStandard is MKMapTypeMutedStandard: the same geometry with
+          // the colour taken out, which is what Apple built it for - a map
+          // under someone else's data.
+          mapType="mutedStandard"
+          // Yes, the plural. The prop really is showsPointsOfInterests
+          // (node_modules/react-native-maps/dist/src/MapView.d.ts:479); the
+          // singular spelling silently does nothing.
+          showsPointsOfInterests={false}
+          showsBuildings={false}
+          showsTraffic={false}
+          showsIndoors={false}
+          showsCompass={false}
+          showsScale={false}
+          // Nocturne is dark whatever the phone is set to, and a white map
+          // under a dark app is the loudest thing in it.
+          userInterfaceStyle="dark"
           showsUserLocation={false}
           scrollEnabled={mode !== 'detail'}
           onPress={() => {

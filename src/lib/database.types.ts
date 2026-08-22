@@ -439,7 +439,12 @@ export type RoomInfoRow = {
 export type HeatCellRow = {
   cell_lat: number;
   cell_lng: number;
-  category: PinCategory;
+  /**
+   * People planning something in this ~550m square, counted across every
+   * category. It used to be counted per category, which is why heat has
+   * never appeared: three people had to be planning the same KIND of thing
+   * on the same corner before the k-threshold let the cell through.
+   */
   pin_count: number;
 };
 
