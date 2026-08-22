@@ -411,7 +411,15 @@ function ChatRowLink({ chat }: { chat: ChatListRow }) {
   const theme = useTheme();
   const pref = useChatPref();
   const swipe = useRef<SwipeableMethods>(null);
-  const state = [chat.pinned ? 'pinned' : null, chat.muted ? 'muted' : null].filter(Boolean);
+  // Unread first, because it is the one state that decides whether somebody
+  // opens the row. The dot and the pill say it in pixels and say it to
+  // nobody using VoiceOver, which is exactly who has the most to lose from a
+  // list that will not tell them which conversation is waiting.
+  const state = [
+    chat.unread_count > 0 ? countOf(chat.unread_count, 'new message') : null,
+    chat.pinned ? 'pinned' : null,
+    chat.muted ? 'muted' : null,
+  ].filter(Boolean);
 
   const act = (patch: { pinned?: boolean; muted?: boolean; archived?: boolean }) => {
     swipe.current?.close();
@@ -424,7 +432,7 @@ function ChatRowLink({ chat }: { chat: ChatListRow }) {
       accessibilityRole="button"
       accessibilityLabel={
         state.length > 0
-          ? `${chat.title ?? 'Conversation'}, ${state.join(' and ')}`
+          ? `${chat.title ?? 'Conversation'}, ${state.join(', ')}`
           : (chat.title ?? 'Conversation')
       }
       // Pin, mute and archive live behind a long press, which announces
