@@ -821,8 +821,8 @@ back with 43 findings: a top ten, 21 quick wins and 12 bigger bets. All 43 are i
 the Travelers hero repaired (the photo was being SHRUNK by the name under it);
 the say-hi loop closed (confirmation, queue advances, a "You said hi" section);
 Apple Sign-In and the consent line rescued from an orphaned welcome screen;
-push-permission priming instead of an ambush at signup; a featured traveler who
-always has a face; password recovery that recovers; a heat layer that merges,
+push-permission priming instead of an ambush at signup; a featured traveler with
+a profile worth teasing; password recovery that recovers; a heat layer that merges,
 glows and explains itself; a non-modal pin card over a live map; and your own
 profile reachable from every tab.
 
@@ -836,6 +836,20 @@ pinned messages; run-final avatars; and skeletons on the two cold lists.
 
 Database: six migrations, 417 pgTAP assertions (up from 351). Client: 141 unit
 tests (up from 75).
+
+**One audit item does less than it says on the tin, and this is where that is
+written down.** The featured traveler now has to have an approved first photo
+before the server will surface them. The intent was a face on the guest
+teaser; the face cannot arrive. The photos bucket is private and its only
+SELECT policy is `to authenticated`, so a signed-out device is refused the
+image whatever the card asks, and `featured_traveler` has no signed-in caller
+to pay the requirement off elsewhere. Widening the bucket to `anon` would hand
+every primary photo in the app to anybody holding the public key, which is not
+a trade to make for a teaser — so the requirement stays (it still selects
+somebody who bothered to add a photo, which is a decent proxy for a profile
+worth showing) and the card leads with a monogram instead of an empty frame.
+Revisit only if the founder decides a stranger's face may be seen without an
+account.
 
 **Deferred, and the only thing that is.** BB11's "Copy" in the message
 long-press menu needs `expo-clipboard`, which is a native module and therefore
@@ -890,5 +904,5 @@ screen; "1 hellos left today"; and a red **0** on the Chat tab, permanently,
 for every account with nothing waiting — expo-router's `Badge` reads
 `children` before it consults `hidden`.
 
-Database after the fixes: **428** pgTAP assertions. Client: **160** unit
+Database after the fixes: **428** pgTAP assertions. Client: **162** unit
 tests.
