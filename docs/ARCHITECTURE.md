@@ -382,6 +382,7 @@ future reader is most likely to need.
 | `..._profile_prompts`                   | up to three answered prompts per profile, screened like the bio                        |
 | `..._daily_spotlight`                   | the mutual pairing, its symmetric score, and the nightly sweep                         |
 | `..._room_info` / `..._pinned_messages` | the name a non-member sees; three expiring pins per room                               |
+| `..._review_fixes`                      | four guards the above had walked around — see below                                    |
 
 Three decisions worth keeping:
 
@@ -395,8 +396,26 @@ matching over the whole city is the textbook answer and is far more machinery
 than this needs. Instead the score is _symmetric by construction_ — every term
 is a fact about the pair or a sum over both profiles — so the same pairing is
 the right answer whichever of the two asks first, and the first to ask writes
-the row. Unique indexes on both `(day, user_a)` and `(day, user_b)` make the
-race safe: a concurrent second insert loses and re-reads.
+the row.
+
+The race is closed by a **per-day advisory lock**, not by the unique indexes.
+That was the original claim and it was wrong: `(day, user_a)` and
+`(day, user_b)` bound a user to one row per SIDE, and because the insert
+canonicalises with `least`/`greatest`, which side you land on depends on UUID
+ordering — so anybody with one partner above them and one below can occupy
+both, and the `unique_violation` handler never fires. A pairing is a decision
+about two people, so a per-user lock is not enough either; the lock is on the
+day, taken before the candidate scan, with a re-read under it.
+
+**A SECURITY DEFINER function that calls `get_matches()` must restate the
+policy.** `get_matches()` is SECURITY INVOKER and does none of its own
+filtering: `is_discoverable_owner`, `not is_blocked_pair`, the trip status and
+the account status all live in the `trips_select_overlap` POLICY, and policies
+do not run for a definer. `daily_spotlight()` is the only definer caller in the
+schema and it originally restated none of them, which handed a blocked person's
+profile to the person who blocked them. If a future function calls
+`get_matches()` as the owner, it owes the same four clauses — in the read-back
+as well as the scan.
 
 **The first-message cap returns rather than raises, and it is checked before
 anything about the recipient.** Returning keeps it out of the error path,
@@ -404,6 +423,28 @@ because being finished for the day is not an error. Checking it first makes the
 answer identical whoever you aimed at, so a capped sender cannot use the refusal
 as an oracle for who exists, who blocked them, or who is discoverable. It is a
 safety limit and hard rule 1 means it is never sold back.
+
+It is also **serialised per sender** with
+`pg_advisory_xact_lock(hashtext('first_messages:' || sender))`, the same shape
+every other counted cap in this schema uses (trips, pins, photos, strikes,
+verification, group creation). Without it the count and the insert are two
+statements with a network round trip's worth of daylight between them, and
+twenty parallel hellos to twenty different travelers all read zero — the unique
+`(sender_id, recipient_id)` constraint does not help, because they aim at
+different people.
+
+**Every branch of `send_message_request` returns the same keys.** The client
+has one result type for it, so a branch that omits a key types it as present
+and hands back `undefined`. The capped branch returned four of seven, including
+dropping `used` — on precisely the branch where the composer wants to say
+"8 of 8".
+
+**A refusal must not be an oracle.** `pin_message` and `unpin_message` each had
+two distinguishable outcomes that let anybody holding a message id learn
+whether it exists, and whether it is pinned, in a room they cannot read. Both
+now answer a member honestly (they can already see the message) and answer
+everybody else the same way whatever the truth is — the rule
+`send_message_request` already followed.
 
 ## Privacy & secrets model
 

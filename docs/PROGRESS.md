@@ -850,3 +850,45 @@ component tests landed, on three undeclared dependencies
 the lint step was `npx expo lint -- --max-warnings 0`, which exits 2 with
 "Value for 'max-warnings' of type 'Int' required" — a step that could only ever
 fail, hidden behind a typecheck that was already failing.
+
+### Then the build was reviewed against itself
+
+Six review dimensions over the whole diff, every finding handed to a verifier
+told to refute it and to default to "not real". Twenty survived. The four that
+matter, all reproduced on a real Postgres before they were believed:
+
+- **The spotlight reached past a block.** `daily_spotlight()` is SECURITY
+  DEFINER and calls `get_matches()`, which is SECURITY INVOKER and does none of
+  its own filtering — the account status, the onboarding check, the block check
+  and the trip status all live in the `trips_select_overlap` POLICY, and a
+  definer does not run policies. It handed a blocked person's name, age, bio,
+  occupation, languages and photo to the person they blocked. Every filter is
+  restated inside the function now, in both the scan and the read-back.
+- **The pairing could be raced.** Two unique indexes cannot express "one
+  spotlight per person per day": a user may be `user_a` in one row and `user_b`
+  in another, so the `unique_violation` the function catches is never raised.
+  A per-day advisory lock, and a re-read under it.
+- **The daily cap counted and then inserted**, while every other counted cap in
+  the schema takes `pg_advisory_xact_lock` first.
+- **A dead pin held its slot.** `pin_message` counted the table; `room_pins`
+  reads the join. Unsending a pinned message left a slot nothing could free.
+
+And on the client, the one worth naming: a failed send lives only in the query
+cache, and the thread refetches on every realtime insert — so the greyed "Not
+sent" bubble, and the sentence inside it, were deleted by the next message
+anybody else posted. Failed rows survive a refetch now.
+
+The rest: two divergent implementations of "what this hello was a reply to",
+neither knowing about the prompts added in the same build; an anti-flirting
+lecture the project's own design brief bans by name; a verified badge dead to
+touch on every profile with a photo; a reaction grid positioned as though it
+were the row it replaces, growing 152pt down over the Report button; a
+confirmation timer that popped the screen underneath; the push primer
+presented from beneath a modal iOS had not dismissed, which iOS silently
+drops; a real traveler's display name shipped to analytics from a signed-out
+screen; "1 hellos left today"; and a red **0** on the Chat tab, permanently,
+for every account with nothing waiting — expo-router's `Badge` reads
+`children` before it consults `hidden`.
+
+Database after the fixes: **428** pgTAP assertions. Client: **160** unit
+tests.
