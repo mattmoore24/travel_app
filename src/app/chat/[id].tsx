@@ -22,11 +22,13 @@ import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import {
   useBlockUser,
   useMessages,
+  useDiscardFailed,
   useSendMessage,
   useSendPhoto,
   useLeaveChat,
 } from '@/features/chat/hooks';
 import { MessageThread } from '@/features/chat/message-thread';
+import type { ThreadMessage } from '@/features/chat/outgoing';
 import { useMarkReadWhileOpen } from '@/features/chat/use-mark-read';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
 // Reactions are chat-shaped, not room-shaped: the table and the summary RPC
@@ -191,6 +193,7 @@ export default function ChatScreen() {
   const chat = (chatsQuery.data ?? []).find((c) => c.chat_id === id);
   const messagesQuery = useMessages(chat?.chat_id ?? null);
   const sendMessage = useSendMessage(chat?.chat_id ?? null);
+  const discardFailed = useDiscardFailed(chat?.chat_id ?? null);
   const sendPhoto = useSendPhoto(chat?.chat_id ?? '');
   const { data: reactions = [] } = useReactions(chat?.chat_id ?? null);
   const toggleReaction = useToggleReaction(chat?.chat_id ?? '');
@@ -263,11 +266,26 @@ export default function ChatScreen() {
         setAttachment(null);
       }
       if (body.length > 0) {
-        await sendMessage.mutateAsync(body);
+        // Cleared BEFORE the round trip, not after. The bubble is already on
+        // screen (optimistically), so leaving the words in the box as well
+        // shows the same sentence twice and makes send feel like it did not
+        // take. A failure keeps them in the failed bubble, not in the field.
         setDraft('');
+        await sendMessage.mutateAsync(body);
       }
     } catch {
-      // Surfaced by the global mutation error alert; keep what was typed.
+      // Surfaced by the failed bubble in the thread, which keeps the words
+      // and offers a retry — a modal alert on top of that is noise.
+    }
+  };
+
+  // Retry: drop the failed bubble and send the same words again, which
+  // produces a fresh "Sending" bubble in its place.
+  const retry = (message: ThreadMessage) => {
+    const body = message.body ?? '';
+    discardFailed(message.id);
+    if (body.length > 0) {
+      sendMessage.mutate(body);
     }
   };
 
@@ -299,6 +317,21 @@ export default function ChatScreen() {
             messages={thread}
             ownUserId={ownUserId}
             otherName={chat.title}
+            onRetry={retry}
+            // Above the oldest bubble (the list is inverted, so a footer is
+            // the top). The chat opens on the same context the recipient had
+            // when they decided to accept, instead of on a reply to nothing.
+            footer={
+              chat.first_message_element ? (
+                <View style={styles.anchorRow}>
+                  <ThemedView type="backgroundElement" style={styles.anchorCard}>
+                    <ThemedText type="caption" themeColor="textSecondary">
+                      {anchorLabel(chat.first_message_element, chat.title)}
+                    </ThemedText>
+                  </ThemedView>
+                </View>
+              ) : null
+            }
             reactions={reactions}
             onToggleReaction={(messageId, emoji, on) =>
               toggleReaction.mutate({ messageId, emoji, on })
@@ -392,7 +425,46 @@ export default function ChatScreen() {
   );
 }
 
+/**
+ * What the hello was answering, in a sentence.
+ *
+ * Deliberately never quotes the profile back: a bio can change, a photo can
+ * come down, and a chat is not the place a stale copy of either should live
+ * on. Naming the KIND of thing is enough to make the first message make
+ * sense again.
+ */
+function anchorLabel(element: string, name: string | null): string {
+  const who = name ? `${name}'s` : 'their';
+  if (element === 'trip') {
+    return 'Started from the dates you share';
+  }
+  if (element.startsWith('photo')) {
+    return `Started from ${who} photo`;
+  }
+  if (element === 'languages') {
+    return `Started from ${who} languages`;
+  }
+  if (element === 'home') {
+    return `Started from where ${name ?? 'they'} ${name ? 'is' : 'are'} from`;
+  }
+  if (element.startsWith('pin:')) {
+    const venue = element.slice(4).trim();
+    return venue ? `Started from a pin at ${venue}` : 'Started from a pin';
+  }
+  return `Started from ${who} bio`;
+}
+
 const styles = StyleSheet.create({
+  anchorRow: {
+    alignItems: 'center',
+    paddingTop: Spacing.four,
+    paddingBottom: Spacing.two,
+  },
+  anchorCard: {
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Spacing.four,
+  },
   root: {
     flex: 1,
     flexDirection: 'row',

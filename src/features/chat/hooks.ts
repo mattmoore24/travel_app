@@ -12,6 +12,15 @@ import {
   subscribeToMyMessages,
   leaveChat,
 } from '@/features/chat/api';
+import {
+  dropOptimistic,
+  failOptimistic,
+  optimisticMessage,
+  optimisticRoomMessage,
+  settleOptimistic,
+  withOptimistic,
+  type ThreadMessage,
+} from '@/features/chat/outgoing';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
 import type { MessageRow, ReportReason } from '@/lib/database.types';
@@ -84,26 +93,87 @@ export function useLiveChatList() {
 
 const LIST_REFRESH_DEBOUNCE_MS = 600;
 
-export function useSendMessage(chatId: string | null) {
+/**
+ * Send a message, and put it on screen before the server has heard of it.
+ *
+ * The bubble appears the instant you hit send, greyed and marked "Sending",
+ * and settles into an ordinary one when the row comes back. That is not only
+ * polish: the FIRST message between two people goes through moderation, so a
+ * pause is the normal case here, and without a placeholder the composer looks
+ * like it swallowed the sentence. A send that fails leaves the bubble in
+ * place, greyed, tappable — deleting it would take the person's words with
+ * it and leave nothing to retry.
+ *
+ * `kind` exists because rooms read a different cache key AND a different row
+ * shape (room_messages joins the sender), so the placeholder has to be built
+ * to match whichever thread is on screen.
+ */
+export function useSendMessage(chatId: string | null, kind: 'direct' | 'room' = 'direct') {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
+  const key = kind === 'room' ? ['room-messages', chatId] : ['messages', chatId];
+
   return useMutation({
     mutationFn: (body: string) => sendMessage(chatId!, userId!, body),
-    onSuccess: (message) => {
-      analytics.capture('message_sent', { chat_id: message.chat_id });
-      // Realtime doesn't echo our own insert reliably before the ack; merge it.
-      queryClient.setQueryData<MessageRow[]>(['messages', chatId], (current = []) =>
-        current.some((m) => m.id === message.id) ? current : [message, ...current]
+
+    onMutate: (body: string) => {
+      if (chatId == null || userId == null) {
+        return undefined;
+      }
+      const optimistic =
+        kind === 'room'
+          ? optimisticRoomMessage({ senderId: userId, body })
+          : optimisticMessage({ chatId, senderId: userId, body });
+      queryClient.setQueryData<{ id: string }[]>(key, (current = []) =>
+        withOptimistic(current, optimistic)
       );
-      // This same hook sends into rooms and groups, which read a DIFFERENT
-      // key and a different row shape (room_messages joins the sender), so
-      // the merge above cannot serve them and they have to refetch. Without
-      // this, posting in a group looked like nothing happened at all until
-      // you left the screen and came back. useSendPhoto already did it.
-      queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
+      return { localMessageId: optimistic.id };
+    },
+
+    onSuccess: (message, _body, context) => {
+      analytics.capture('message_sent', { chat_id: message.chat_id });
+      if (context?.localMessageId == null) {
+        return;
+      }
+      if (kind === 'room') {
+        // No row to swap in: room_messages is a joined view this client
+        // cannot synthesise. Drop the placeholder and let the refetch (and
+        // the realtime subscription) bring back the real thing.
+        queryClient.setQueryData<{ id: string }[]>(key, (current = []) =>
+          dropOptimistic(current, context.localMessageId)
+        );
+        queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
+      } else {
+        queryClient.setQueryData<ThreadMessage[]>(key, (current = []) =>
+          settleOptimistic(current, context.localMessageId, message)
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ['chats', userId] });
     },
+
+    onError: (_error, _body, context) => {
+      if (context?.localMessageId == null) {
+        return;
+      }
+      queryClient.setQueryData<ThreadMessage[]>(key, (current = []) =>
+        failOptimistic(current, context.localMessageId)
+      );
+    },
   });
+}
+
+/**
+ * Take a failed message out of the thread — for a retry, which re-sends the
+ * same words as a fresh optimistic bubble.
+ */
+export function useDiscardFailed(chatId: string | null, kind: 'direct' | 'room' = 'direct') {
+  const queryClient = useQueryClient();
+  const key = kind === 'room' ? ['room-messages', chatId] : ['messages', chatId];
+  return (localMessageId: string) => {
+    queryClient.setQueryData<{ id: string }[]>(key, (current = []) =>
+      dropOptimistic(current, localMessageId)
+    );
+  };
 }
 
 /** Send a photo into a chat or room. */

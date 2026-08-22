@@ -14,7 +14,7 @@ import { PhotoButton } from '@/components/ui/photo-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { MaxContentWidth, Radius, Space } from '@/constants/theme';
-import { useSendMessage, useSendPhoto } from '@/features/chat/hooks';
+import { useDiscardFailed, useSendMessage, useSendPhoto } from '@/features/chat/hooks';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { useGroup } from '@/features/groups/hooks';
@@ -46,7 +46,8 @@ export default function RoomScreen() {
   const [departure, setDeparture] = useState(addDays(new Date(), 3));
   const [pickingDeparture, setPickingDeparture] = useState(false);
   const leave = useLeaveRoom(id!);
-  const send = useSendMessage(id!);
+  const send = useSendMessage(id!, 'room');
+  const discardFailed = useDiscardFailed(id!, 'room');
   const sendPhoto = useSendPhoto(id!);
   const toggle = useToggleReaction(id!);
   const unsend = useUnsendMessage(id!);
@@ -84,6 +85,9 @@ export default function RoomScreen() {
         body: m.body,
         image_path: m.image_path,
         created_at: m.created_at,
+        // Carried through, or a message that has not left the device yet
+        // would look exactly like one that had.
+        local: (m as { local?: 'sending' | 'failed' }).local,
       })),
     [messages, id]
   );
@@ -169,6 +173,13 @@ export default function RoomScreen() {
             ownUserId={ownId}
             reactions={allReactions}
             canReact={isMember}
+            onRetry={(message) => {
+              const body = message.body ?? '';
+              discardFailed(message.id);
+              if (body.length > 0) {
+                send.mutate(body);
+              }
+            }}
             authorFor={(m) => byId.get(m.id)?.display_name ?? 'Someone'}
             noteFor={(m) => (byId.get(m.id)?.removed ? 'Message removed by the host' : null)}
             onToggleReaction={(messageId, emoji, on) => toggle.mutate({ messageId, emoji, on })}
@@ -277,7 +288,10 @@ export default function RoomScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Send"
-                  disabled={draft.trim().length === 0 || send.isPending}
+                  // Not disabled while a send is in flight any more: the
+                  // bubble is already on screen, so the composer's job is
+                  // done and locking it just stops the next sentence.
+                  disabled={draft.trim().length === 0}
                   onPress={() => {
                     send.mutate(draft.trim());
                     setDraft('');

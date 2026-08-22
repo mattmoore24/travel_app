@@ -21,6 +21,7 @@ function chat(over: Partial<ChatListRow>): ChatListRow {
     created_at: new Date().toISOString(),
     my_role: null,
     unread_count: 0,
+    first_message_element: null,
     ...over,
   };
 }

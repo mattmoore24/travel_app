@@ -1,3 +1,4 @@
+import { SymbolView } from 'expo-symbols';
 import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
 import { FlatList, Keyboard, Modal, StyleSheet, View, useWindowDimensions } from 'react-native';
@@ -8,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
+import { isLocalId, type ThreadMessage } from '@/features/chat/outgoing';
 import { separatorFor } from '@/features/chat/separators';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
@@ -15,6 +17,37 @@ import type { MessageRow, ReactionSummaryRow } from '@/lib/database.types';
 
 /** The six people actually use, in the order the muscle memory expects. */
 export const QUICK_REACTIONS = ['❤️', '😂', '👍', '🔥', '😮', '🙏'];
+
+/**
+ * What the six do not cover, chosen for this app rather than in general:
+ * people arranging to meet in a city want to answer with a beer, a plane, a
+ * plate, a time, and a yes. Curated and static on purpose — a full system
+ * picker is a native dependency, and a search field in a reaction menu is a
+ * different app's problem.
+ */
+export const MORE_REACTIONS = [
+  '❤️',
+  '😂',
+  '👍',
+  '🔥',
+  '😮',
+  '🙏',
+  '👀',
+  '🍺',
+  '☕️',
+  '🍜',
+  '✈️',
+  '🎒',
+  '🏖️',
+  '🥾',
+  '🎉',
+  '💯',
+  '👋',
+  '🙌',
+  '😅',
+  '🤝',
+  '⏰',
+];
 
 /** Messages from the same person within this window read as one turn. */
 const GROUP_WINDOW_MS = 5 * 60 * 1000;
@@ -90,6 +123,9 @@ function Reactions({
           accessibilityLabel={`${row.emoji} ${row.count}`}
           haptic="light"
           scaleTo={0.9}
+          // The chip is drawn at ~22pt because a taller one would crowd the
+          // bubble it hangs off. The TARGET is 44, which is what this buys.
+          hitSlop={{ top: 11, bottom: 11, left: 6, right: 6 }}
           onPress={() => onToggle(row.emoji, !row.reacted_by_me)}
           style={[
             styles.reactionChip,
@@ -121,7 +157,7 @@ function BubbleBody({
   mine,
   tailed,
 }: {
-  message: MessageRow;
+  message: ThreadMessage;
   mine: boolean;
   /** Last of its group: the corner that gets the tail. */
   tailed: boolean;
@@ -139,6 +175,9 @@ function BubbleBody({
           borderBottomRightRadius: mine ? tail : Radius.bubble,
           borderBottomLeftRadius: mine ? Radius.bubble : tail,
         },
+        // Reduced, not hidden: the words are there, they just have not landed.
+        message.local === 'sending' && styles.bubbleSending,
+        message.local === 'failed' && { borderWidth: 1, borderColor: theme.danger },
       ]}>
       {message.image_path ? (
         imageUrl ? (
@@ -168,8 +207,9 @@ function Bubble({
   reactions,
   onToggleReaction,
   onOpenMenu,
+  onRetry,
 }: {
-  message: MessageRow;
+  message: ThreadMessage;
   mine: boolean;
   /** Same sender as the message before it, close in time. */
   grouped: boolean;
@@ -178,6 +218,8 @@ function Bubble({
   reactions: ReactionSummaryRow[];
   onToggleReaction: (emoji: string, on: boolean) => void;
   onOpenMenu?: (rect: Rect | null) => void;
+  /** Re-send a message that failed. Absent for anything already delivered. */
+  onRetry?: () => void;
 }) {
   const anchor = useRef<View>(null);
 
@@ -263,6 +305,26 @@ function Bubble({
             <BubbleBody message={message} mine={mine} tailed={last} />
           </PressableScale>
         </View>
+        {/* The delivery ladder. "Sending" is honest about the pause the
+            first-message moderation check creates; a failure keeps the words
+            and offers the way out rather than deleting the sentence. */}
+        {message.local ? (
+          <PressableScale
+            accessibilityRole={message.local === 'failed' ? 'button' : 'text'}
+            accessibilityLabel={
+              message.local === 'failed' ? 'Not sent. Tap to try again.' : 'Sending'
+            }
+            haptic="none"
+            scaleTo={message.local === 'failed' ? 0.96 : 1}
+            onPress={message.local === 'failed' ? onRetry : undefined}
+            style={styles.statusRow}>
+            <ThemedText
+              type="caption"
+              themeColor={message.local === 'failed' ? 'danger' : 'textSecondary'}>
+              {message.local === 'failed' ? 'Not sent. Tap to try again.' : 'Sending…'}
+            </ThemedText>
+          </PressableScale>
+        ) : null}
         <Reactions rows={reactions} onToggle={onToggleReaction} />
       </View>
     </View>
@@ -308,6 +370,11 @@ function MessageMenu({
 }) {
   const theme = useTheme();
   const mine = target.mine;
+  // Six quick reactions cover most of what people say back, and the seventh
+  // slot is the honest admission that they do not cover a beer, a flag, or a
+  // plane. Opening the grid replaces the row in place rather than stacking
+  // another layer over an already-layered menu.
+  const [grid, setGrid] = useState(false);
 
   const actions: { label: string; run: () => void }[] = [];
   if (onUnsend) {
@@ -373,8 +440,12 @@ function MessageMenu({
         pointerEvents="box-none">
         <Animated.View
           entering={FadeIn.duration(140)}
-          style={[styles.pill, Elevation.floating, { backgroundColor: theme.surface }]}>
-          {QUICK_REACTIONS.map((emoji) => (
+          style={[
+            grid ? styles.pillGrid : styles.pill,
+            Elevation.floating,
+            { backgroundColor: theme.surface },
+          ]}>
+          {(grid ? MORE_REACTIONS : QUICK_REACTIONS).map((emoji) => (
             <PressableScale
               key={emoji}
               accessibilityRole="button"
@@ -389,6 +460,21 @@ function MessageMenu({
               <ThemedText type="title">{emoji}</ThemedText>
             </PressableScale>
           ))}
+          {grid ? null : (
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="More reactions"
+              haptic="light"
+              scaleTo={0.85}
+              onPress={() => setGrid(true)}
+              style={[styles.pillItem, { backgroundColor: theme.surfaceSunken }]}>
+              <SymbolView
+                name={{ ios: 'plus', android: 'add', web: 'add' }}
+                size={17}
+                tintColor={theme.textSecondary}
+              />
+            </PressableScale>
+          )}
         </Animated.View>
       </View>
 
@@ -459,8 +545,9 @@ export function MessageThread({
   canReact = true,
   emptyState,
   footer,
+  onRetry,
 }: {
-  messages: MessageRow[];
+  messages: ThreadMessage[];
   ownUserId: string | null;
   /** Whose name goes on "X unsent a message". */
   otherName?: string | null;
@@ -480,19 +567,21 @@ export function MessageThread({
    * two people and needs no labels; a group has to say. Returns the name to
    * print above the first bubble of somebody's run, or null for no label.
    */
-  authorFor?: (message: MessageRow) => string | null;
+  authorFor?: (message: ThreadMessage) => string | null;
   /**
    * A line to print in place of the bubble — "Message removed by the host".
    * Unsending already works this way internally; this opens the same slot to
    * a caller whose messages can be taken down by somebody else.
    */
-  noteFor?: (message: MessageRow) => string | null;
+  noteFor?: (message: ThreadMessage) => string | null;
   /** False for somebody reading a room they have not joined. */
   canReact?: boolean;
   /** Shown when there are no messages at all. */
   emptyState?: React.ReactElement | null;
   /** Rendered above the oldest message (inverted list ⇒ list footer). */
   footer?: React.ReactElement | null;
+  /** Re-send a message that failed to leave the device. */
+  onRetry?: (message: ThreadMessage) => void;
 }) {
   const [menu, setMenu] = useState<MenuTarget | null>(null);
   const { height: windowHeight } = useWindowDimensions();
@@ -556,7 +645,14 @@ export function MessageThread({
           // The opening message is carried on the chat row, not the messages
           // table, so there is no id for a reaction to hang off.
           const note = noteFor?.(item) ?? null;
-          const reactable = canReact && !item.id.startsWith('first:') && !unsent && note == null;
+          // A message the server has never seen has no id to hang a reaction
+          // or a report off, so the menu stays shut until it lands.
+          const reactable =
+            canReact &&
+            !item.id.startsWith('first:') &&
+            !isLocalId(item.id) &&
+            !unsent &&
+            note == null;
           const separator = separatorFor(item, older);
           // Only above the first bubble of a run, and never above your own:
           // repeating a name on every bubble is what makes a group thread
@@ -597,6 +693,7 @@ export function MessageThread({
                   last={last}
                   reactions={byMessage.get(item.id) ?? []}
                   onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
+                  onRetry={item.local === 'failed' && onRetry ? () => onRetry(item) : undefined}
                   onOpenMenu={
                     reactable
                       ? (rect) =>
@@ -688,6 +785,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.md,
     paddingVertical: Space.md,
   },
+  bubbleSending: {
+    opacity: 0.55,
+  },
+  statusRow: {
+    alignSelf: 'flex-end',
+    paddingTop: 2,
+    paddingHorizontal: Space.xs,
+  },
   bubbleRow: {
     flexDirection: 'row',
   },
@@ -761,6 +866,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.sm,
     paddingVertical: Space.xs,
     borderRadius: Radius.pill,
+  },
+  pillGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    // Seven across on any phone this ships to, which keeps the grid the
+    // same shape as the row it replaced.
+    maxWidth: HitTarget * 7 + Space.xs * 8,
+    gap: Space.xs,
+    padding: Space.sm,
+    borderRadius: Radius.lg,
+    borderCurve: 'continuous',
   },
   pillItem: {
     width: HitTarget,

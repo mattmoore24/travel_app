@@ -368,7 +368,15 @@ export default function TravelersScreen() {
     byUser.set(match.user_id, entry);
   }
   const queue = [...byUser.values()].filter(
-    (candidate) => !passed.has(candidate.userId) && !chatByUser.has(candidate.userId)
+    (candidate) =>
+      !passed.has(candidate.userId) &&
+      !chatByUser.has(candidate.userId) &&
+      // Somebody you have already said hi to is not a decision you still
+      // have to make. Leaving them at the front of the queue behind a
+      // greyed-out "Message sent" turned the send into a dead end: the one
+      // moment the app should hand you the next person, it handed you a
+      // disabled button. The hello lives in Chat under "You said hi".
+      !sentByRecipient.has(candidate.userId)
   );
   // No cursor: passing someone removes them from the queue, so the next
   // person slides into the same slot. Advancing an index as well is what
@@ -480,14 +488,28 @@ export default function TravelersScreen() {
               router.push(`/chat/${chatId}`);
               return;
             }
-            router.push({
-              pathname: '/compose-request',
-              params: {
-                userId: current.userId,
-                name: current.match.display_name ?? 'Traveler',
-                photoPath: current.match.photo_path ?? '',
-                source: 'trip_match',
-              },
+            // Anchored even on the lazy path. Every hello now opens pointed
+            // at something specific, and when nothing on the profile has been
+            // tapped the something is the fact that put these two people in
+            // front of each other: the dates they share. A first message
+            // with an anchor is easier to write, easier for the recipient to
+            // answer, and easier for moderation to read in context.
+            const overlap = [...current.overlaps.values()][0];
+            openReply({
+              userId: current.userId,
+              name: current.match.display_name ?? 'Traveler',
+              photoPath: current.match.photo_path ?? null,
+              source: 'trip_match',
+              target: overlap
+                ? {
+                    key: 'trip',
+                    label: 'your dates together',
+                    quote: `Both in ${current.match.city_name} ${formatDateRange(
+                      overlap.start,
+                      overlap.end
+                    )}`,
+                  }
+                : { key: 'bio', label: 'their bio' },
             });
           }}
         />

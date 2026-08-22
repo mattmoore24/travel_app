@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
-import { useCallback, useState } from 'react';
+import { SymbolView, type SymbolViewProps } from 'expo-symbols';
+import { useCallback, useRef, useState } from 'react';
 import {
   Alert,
   Platform,
@@ -11,6 +11,9 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import ReanimatedSwipeable, {
+  type SwipeableMethods,
+} from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
@@ -29,11 +32,16 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
 import { BottomTabInset, HitTarget, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useIncomingRequests, useMyChats, useRespondToRequest } from '@/features/matching/hooks';
-import { usePhotoUrl } from '@/features/profile/hooks';
+import {
+  useIncomingRequests,
+  useMyChats,
+  useRespondToRequest,
+  useSentRequests,
+} from '@/features/matching/hooks';
+import { usePhotoUrl, usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
-import type { ChatListRow, IncomingRequestRow } from '@/lib/database.types';
+import type { ChatListRow, IncomingRequestRow, SentRequestRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 function Avatar({ path, size = 48 }: { path: string | null; size?: number }) {
@@ -154,6 +162,51 @@ function describeElement(element: string): string {
     return 'your travel plans';
   }
   return 'your bio';
+}
+
+/**
+ * A hello you sent that has not turned into a chat yet.
+ *
+ * The sender's half of the loop, and the only reason it exists: before this
+ * a first message left no trace anywhere in the app. You wrote something,
+ * the screen closed, and there was nowhere to check what you had said or
+ * even to whom.
+ *
+ * What it must NEVER show is whether the other person declined, read it, or
+ * had it stopped by moderation. The RPC already collapses all three into a
+ * flat 'sent' (rules 4 and 5), and this row keeps that promise: one label,
+ * unchanging, until it becomes a real conversation.
+ */
+function SentHelloRow({ request }: { request: SentRequestRow }) {
+  const theme = useTheme();
+  const { data: profile } = usePublicProfile(request.recipient_id);
+  const { data: photos = [] } = usePublicPhotos(request.recipient_id);
+  const photoPath = photos.find((p) => p.position === 0)?.storage_path ?? null;
+
+  return (
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={`You said hi to ${profile?.display_name ?? 'a traveler'}`}
+      scaleTo={0.98}
+      onPress={() => router.push(`/profile/${request.recipient_id}`)}>
+      <ThemedView type="backgroundElement" style={styles.chatRow}>
+        <Avatar path={photoPath} />
+        <View style={styles.chatRowText}>
+          <ThemedText type="callout" style={styles.strong} numberOfLines={1}>
+            {profile?.display_name ?? 'Traveler'}
+          </ThemedText>
+          <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+            {request.first_message}
+          </ThemedText>
+        </View>
+        <View style={[styles.sentTag, { backgroundColor: theme.surfaceSunken }]}>
+          <ThemedText type="caption" themeColor="textSecondary">
+            Sent
+          </ThemedText>
+        </View>
+      </ThemedView>
+    </PressableScale>
+  );
 }
 
 function ChatRow({ chat }: { chat: ChatListRow }) {
@@ -305,10 +358,50 @@ function RoomDiscovery({ cityId }: { cityId: number | null }) {
 }
 
 /** A row plus its long-press actions — pin, mute, archive (docs/DESIGN.md). */
-function ChatRowLink({ chat }: { chat: ChatListRow }) {
-  const pref = useChatPref();
-  const state = [chat.pinned ? 'pinned' : null, chat.muted ? 'muted' : null].filter(Boolean);
+/** One button behind a swiped row. */
+function SwipeAction({
+  label,
+  icon,
+  tint,
+  onPress,
+}: {
+  label: string;
+  icon: SymbolViewProps['name'];
+  tint: string;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
   return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.swipeAction,
+        { backgroundColor: tint },
+        pressed && styles.pressed,
+      ]}>
+      <SymbolView name={icon} size={18} tintColor={theme.onAccent} />
+      <ThemedText type="caption" style={{ color: theme.onAccent }}>
+        {label}
+      </ThemedText>
+    </Pressable>
+  );
+}
+
+function ChatRowLink({ chat }: { chat: ChatListRow }) {
+  const theme = useTheme();
+  const pref = useChatPref();
+  const swipe = useRef<SwipeableMethods>(null);
+  const state = [chat.pinned ? 'pinned' : null, chat.muted ? 'muted' : null].filter(Boolean);
+
+  const act = (patch: { pinned?: boolean; muted?: boolean; archived?: boolean }) => {
+    swipe.current?.close();
+    haptics.light();
+    pref.mutate({ chatId: chat.chat_id, ...patch });
+  };
+
+  const row = (
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={
@@ -342,6 +435,45 @@ function ChatRowLink({ chat }: { chat: ChatListRow }) {
       }>
       <ChatRow chat={chat} />
     </PressableScale>
+  );
+
+  return (
+    // Swipe is how every messaging app people already use exposes these, and
+    // it is a hint rather than a replacement: the long press stays, because a
+    // swipe announces itself to VoiceOver even less than a long press does.
+    <ReanimatedSwipeable
+      ref={swipe}
+      friction={2}
+      rightThreshold={40}
+      overshootRight={false}
+      renderRightActions={() => (
+        <View style={styles.swipeActions}>
+          <SwipeAction
+            label={chat.pinned ? 'Unpin' : 'Pin'}
+            icon={{ ios: 'pin.fill', android: 'push_pin', web: 'push_pin' }}
+            tint={theme.accent}
+            onPress={() => act({ pinned: !chat.pinned })}
+          />
+          <SwipeAction
+            label={chat.muted ? 'Unmute' : 'Mute'}
+            icon={
+              chat.muted
+                ? { ios: 'bell.fill', android: 'notifications', web: 'notifications' }
+                : { ios: 'bell.slash.fill', android: 'notifications_off', web: 'notifications_off' }
+            }
+            tint={theme.textSecondary}
+            onPress={() => act({ muted: !chat.muted })}
+          />
+          <SwipeAction
+            label="Archive"
+            icon={{ ios: 'archivebox.fill', android: 'archive', web: 'archive' }}
+            tint={theme.danger}
+            onPress={() => act({ archived: true })}
+          />
+        </View>
+      )}>
+      {row}
+    </ReanimatedSwipeable>
   );
 }
 
@@ -394,15 +526,19 @@ export default function ChatScreen() {
   const chatsQuery = useMyChats();
   const requests = requestsQuery.data ?? [];
   const chats = chatsQuery.data ?? [];
+  const sentRequestsQuery = useSentRequests();
+  const sentRequests = sentRequestsQuery.data ?? [];
   // Destructured because a query RESULT is a new object every render while
   // its refetch is stable — which is what lets `refresh` be a stable
   // dependency instead of re-firing the focus effect on every pass.
   const { refetch: refetchChats } = chatsQuery;
   const { refetch: refetchRequests } = requestsQuery;
+  const { refetch: refetchSent } = sentRequestsQuery;
   const refresh = useCallback(() => {
     refetchChats();
     refetchRequests();
-  }, [refetchChats, refetchRequests]);
+    refetchSent();
+  }, [refetchChats, refetchRequests, refetchSent]);
 
   // Unread state changes while this screen is off-stage: you read a thread,
   // somebody answers, a hello lands. Without this the dots and the tab badge
@@ -421,6 +557,9 @@ export default function ChatScreen() {
   const pinned = inTab.filter((c) => c.pinned);
   const rest = inTab.filter((c) => !c.pinned);
   const tabs = tabsWithCounts(chats, requests.length);
+  // 'sent' only. An accepted request already has a chat row of its own, and
+  // 'blocked' is the sender's own doing — neither belongs in a waiting list.
+  const waitingOnThem = sentRequests.filter((request) => request.state === 'sent');
   // A message landing anywhere refreshes the rows while you are looking at
   // them, so the dot and the badge appear without a pull-to-refresh.
   useLiveChatList();
@@ -526,6 +665,19 @@ export default function ChatScreen() {
             </ThemedText>
             {requests.map((request) => (
               <RequestCard key={request.id} request={request} />
+            ))}
+          </>
+        ) : null}
+
+        {/* Your side of the loop. Only the ones still waiting: once somebody
+            answers, the hello IS the chat and lives in the list below. */}
+        {tab === 'individual' && waitingOnThem.length > 0 ? (
+          <>
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              You said hi
+            </ThemedText>
+            {waitingOnThem.map((request) => (
+              <SentHelloRow key={request.id} request={request} />
             ))}
           </>
         ) : null}
@@ -678,6 +830,25 @@ const styles = StyleSheet.create({
   },
   strong: {
     fontWeight: '600',
+  },
+  swipeActions: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 2,
+    paddingLeft: 2,
+  },
+  swipeAction: {
+    width: 68,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
+  sentTag: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 2,
+    borderRadius: Radius.pill,
   },
   /* The name gives way first, so a long one truncates rather than pushing
      the timestamp off the end of the row. */

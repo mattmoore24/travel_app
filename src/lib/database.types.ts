@@ -255,6 +255,13 @@ export type ChatListRow = {
    * built on it can only ever mean "somebody is waiting for you".
    */
   unread_count: number;
+  /**
+   * What the first message was a reply TO — 'trip', 'bio', 'photo:0',
+   * 'languages', 'home', or 'pin:<venue>'. The context the recipient had
+   * when they decided to accept, so the chat does not open on a sentence
+   * with no subject.
+   */
+  first_message_element: string | null;
 };
 
 export type GroupRole = 'admin' | 'speaker' | 'member';

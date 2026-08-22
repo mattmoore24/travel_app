@@ -5,7 +5,7 @@
 -- cleared moderation". Everything below is one of the ways that could
 -- quietly stop being true.
 begin;
-select plan(19);
+select plan(21);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -75,6 +75,22 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 -- A brand new chat has nothing unread: the one message in it is the request
 -- the recipient just read in order to accept it.
 select is(pg_temp.unread(pg_temp.chat()), 0, 'a freshly accepted chat is not unread');
+
+-- THE ANCHOR ---------------------------------------------------------------
+--
+-- The first message is a reply to something specific on the profile, and the
+-- accepted chat has to be able to say what.
+
+select is(
+  (select first_message_element from public.my_chats() where chat_id = pg_temp.chat()),
+  'bio',
+  'the accepted chat remembers what the hello answered'
+);
+select is(
+  (select first_message from public.my_chats() where chat_id = pg_temp.chat()),
+  'Your bio mentions street food, best pastel de nata in Lisbon?',
+  'along with the hello itself'
+);
 
 -- COUNTING -----------------------------------------------------------------
 
