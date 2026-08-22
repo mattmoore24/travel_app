@@ -67,3 +67,39 @@ export const QUIET_BASEMAP = {
 export function pointsOfInterest(mapReady: boolean) {
   return !mapReady;
 }
+
+/**
+ * The ink wash that turns a dark map into a stage.
+ *
+ * `mutedStandard` desaturates Apple's tiles but leaves park green, water blue
+ * and roughly thirty district, road and water labels at full contrast, and
+ * there is no prop for any of it - the point-of-interest filter covers
+ * business categories only. An overlay is the last lever, and it is the right
+ * one: MapKit draws every overlay beneath every annotation, so this dims the
+ * cartography and leaves the faces, the heat and the curated stars exactly as
+ * bright as they were.
+ *
+ * The colour is the app's own canvas (#0E1020). A third of it takes the
+ * district labels from roughly 7:1 against the ground to roughly 3:1 - still
+ * legible when looked for, no longer the first thing the eye lands on.
+ */
+export const MAP_WASH = 'rgba(14, 16, 32, 0.34)';
+
+/**
+ * A box big enough to cover any zoom this screen allows, centred on the city.
+ *
+ * Deliberately not a world polygon: one of those has to be reasoned about at
+ * the antimeridian, and no launch city is near it. Twenty degrees is about
+ * 2,200km each way; the map caps out far inside that.
+ */
+export function washBox(lat: number, lng: number) {
+  const pad = 20;
+  const north = Math.min(lat + pad, 85);
+  const south = Math.max(lat - pad, -85);
+  return [
+    { latitude: north, longitude: lng - pad },
+    { latitude: north, longitude: lng + pad },
+    { latitude: south, longitude: lng + pad },
+    { latitude: south, longitude: lng - pad },
+  ];
+}

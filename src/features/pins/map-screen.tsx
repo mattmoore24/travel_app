@@ -4,7 +4,7 @@ import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Circle, Marker, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
+import MapView, { Circle, Marker, Polygon, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import Animated, { FadeInDown, FadeInUp, FadeOut, ZoomIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,7 +14,7 @@ import { AvatarButton } from '@/components/ui/avatar-button';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { LoadError } from '@/components/ui/load-error';
-import { QUIET_BASEMAP, pointsOfInterest } from '@/features/pins/basemap';
+import { MAP_WASH, QUIET_BASEMAP, pointsOfInterest, washBox } from '@/features/pins/basemap';
 import { Sheet, SHEET_SETTLE_MS, leavingSheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
@@ -643,6 +643,33 @@ export default function MapScreen() {
               );
             }
           }}>
+          {/* An ink wash over the cartography, under everything of ours.
+              mutedStandard takes the colour out of Apple's tiles but leaves
+              the park green, the water blue and about thirty district and
+              road labels at full contrast - which is the difference between
+              "a dark map" and a dark field with faces on it. There is no prop
+              for any of that: MKPointOfInterestFilter covers business
+              categories only, and nothing exposes labels, roads or water.
+              An overlay is the one remaining lever, and MapKit draws every
+              overlay BENEATH every annotation, so the wash dims the ground
+              without touching a single pin. Added first so the heat rings
+              composite over it.
+
+              The box is generous rather than global on purpose: a polygon
+              spanning the whole earth has to be reasoned about at the
+              antimeridian, and none of the launch cities is anywhere near
+              it. Twenty degrees is roughly 2,200km, far past any zoom this
+              screen allows. */}
+          {activeCity ? (
+            <Polygon
+              coordinates={washBox(activeCity.cities.lat, activeCity.cities.lng)}
+              fillColor={MAP_WASH}
+              strokeColor="transparent"
+              strokeWidth={0}
+              tappable={false}
+            />
+          ) : null}
+
           {/* Merged across categories, then drawn as three concentric rings
               per cell so the glow falls off instead of ending at a hard
               boundary. See features/pins/heat.ts for both. */}
@@ -813,19 +840,20 @@ export default function MapScreen() {
                 );
               })}
             </ScrollView>
-            {/* Over the rail, not beside it. As a flex sibling the ScrollView
-                ended two-thirds of the way across the screen and guillotined
-                whatever chip was there — a pill with its rounded cap sliced
-                off mid-word, which reads as a layout bug rather than as
-                "scroll for more". Floating it lets the rail run to the screen
-                edge, where a chip running off IS the affordance; the trailing
-                padding in cityChips is what guarantees the last one can still
-                be brought out from under this. */}
+          </View>
+          <View style={styles.dateRow}>
+            {/* Down here, not over the city rail.
+                As a flex sibling of the rail it guillotined whichever chip
+                was two-thirds across; floating it over the rail instead left
+                the fourth city permanently half-covered at rest, which reads
+                the same way. There are four launch cities and they do not fit
+                beside a 44pt button, so the button moves. This row is three
+                short chips and then nothing, which is exactly the dead space
+                a floating control wants, and the rail now runs the full width
+                of the screen with nothing on top of it. */}
             <View style={styles.avatarDock} pointerEvents="box-none">
               <AvatarButton />
             </View>
-          </View>
-          <View style={styles.dateRow}>
             {DATE_FILTERS.map((filter) => {
               const selected = filter.value === dateFilter;
               return (
@@ -1181,16 +1209,7 @@ const styles = StyleSheet.create({
   },
   cityChips: {
     gap: Spacing.two,
-    paddingLeft: Spacing.three,
-    // Clearance for the avatar the rail scrolls UNDER, so the last chip can
-    // still be brought fully into view. The rail itself now runs to the edge
-    // of the screen: a pill sliced flat by an invisible line two-thirds of
-    // the way across reads as a layout bug, while one running off the screen
-    // edge reads as "scroll for more" — which is what it is. The gradient
-    // that used to sit over the cut faded to `background`, an opaque colour
-    // that is not what is behind it on a map, so it painted a dark
-    // square-cornered rectangle across the chip and the streets.
-    paddingRight: HitTarget + Spacing.four,
+    paddingHorizontal: Spacing.three,
   },
   legend: {
     position: 'absolute',
@@ -1311,8 +1330,12 @@ const styles = StyleSheet.create({
   avatarDock: {
     position: 'absolute',
     right: Spacing.three,
-    top: 0,
-    bottom: 0,
+    // Anchored to the date row and allowed to stand proud of it: the button
+    // is taller than a date chip, and centring it on the row is what keeps it
+    // reading as one piece of chrome with the rail above rather than as a
+    // third row.
+    top: -6,
+    bottom: -6,
     justifyContent: 'center',
   },
   cityScroll: {
