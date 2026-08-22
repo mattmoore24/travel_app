@@ -21,8 +21,14 @@ import { platformLabel, usesAt } from '@/features/profile/social-handles-editor'
 import { SocialLogo } from '@/features/profile/social-logo';
 import { formatDateRange } from '@/features/trips/dates';
 import { TripEditor, type EditableTrip } from '@/features/trips/trip-editor';
+import { MAX_PROMPTS, promptLabel } from '@/features/profile/prompts';
 import { useTheme } from '@/hooks/use-theme';
-import type { ProfilePhotoRow, ProfileRow, SocialHandleRow } from '@/lib/database.types';
+import type {
+  ProfilePromptRow,
+  ProfilePhotoRow,
+  ProfileRow,
+  SocialHandleRow,
+} from '@/lib/database.types';
 
 export type ProfileTrip = {
   id: string;
@@ -146,6 +152,98 @@ function SectionHeader({
           // as things in some cases and not others, so they are mapped.
           label={REPLY_LABELS[title] ?? `Reply to ${title.toLowerCase()}`}
           onPress={onReply}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * One answered prompt: the question, the answer, and a way to reply to it.
+ *
+ * The reply chip is the point. A bio gives somebody one thing to open with
+ * and a paragraph is hard to answer; a prompt is a question with a shape, so
+ * the answer is a specific thing that can be replied TO — which is what turns
+ * a profile somebody likes into a profile somebody messages.
+ */
+function PromptCard({
+  prompt,
+  owner,
+  onEdit,
+  onRespondTo,
+}: {
+  prompt: ProfilePromptRow;
+  owner: boolean;
+  onEdit?: () => void;
+  onRespondTo?: (target: RespondTarget) => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.promptCard, { backgroundColor: theme.surfaceSunken }]}>
+      <View style={styles.sectionHeader}>
+        <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionTitle}>
+          {promptLabel(prompt.prompt_key)}
+        </ThemedText>
+        {owner && onEdit ? (
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${promptLabel(prompt.prompt_key).toLowerCase()}`}
+            haptic="light"
+            scaleTo={0.9}
+            hitSlop={{ top: 9, bottom: 9, left: 6, right: 6 }}
+            onPress={onEdit}
+            style={styles.editButton}>
+            <ThemedText type="footnote" themeColor="accent">
+              Edit
+            </ThemedText>
+          </PressableScale>
+        ) : onRespondTo ? (
+          <ReplyButton
+            label="Reply to this"
+            onPress={() =>
+              onRespondTo({
+                key: `prompt:${prompt.prompt_key}`,
+                label: `"${promptLabel(prompt.prompt_key).toLowerCase()}"`,
+                quote: prompt.answer,
+              })
+            }
+          />
+        ) : null}
+      </View>
+      <ThemedText type="headline">{prompt.answer}</ThemedText>
+    </View>
+  );
+}
+
+/**
+ * One gallery photo with its reply chip, wherever it lands on the page.
+ *
+ * `index` is only the label ("photo 2"), so a photo reads the same whether
+ * it was woven between two sections or fell to the bottom.
+ */
+function WovenPhoto({
+  photo,
+  index,
+  onRespondTo,
+}: {
+  photo: ProfilePhotoRow;
+  index: number;
+  onRespondTo?: (target: RespondTarget) => void;
+}) {
+  return (
+    <View>
+      <Photo path={photo.storage_path} style={styles.galleryPhoto} />
+      {onRespondTo ? (
+        <ReplyButton
+          onPhoto
+          label={`Reply to photo ${index + 2}`}
+          onPress={() =>
+            onRespondTo({
+              key: `photo:${photo.position}`,
+              label: `photo ${index + 2}`,
+              photoPath: photo.storage_path,
+            })
+          }
         />
       ) : null}
     </View>
@@ -394,6 +492,7 @@ function Identity({
 export function ProfileView({
   profile,
   photos,
+  prompts = [],
   trips,
   handles,
   photosPending = false,
@@ -401,10 +500,13 @@ export function ProfileView({
   connected = false,
   actions,
   onEditSection,
+  onEditPrompt,
   onRespondTo,
 }: {
   profile: ProfileRow;
   photos: ProfilePhotoRow[];
+  /** Answered travel prompts, lowest slot first. */
+  prompts?: ProfilePromptRow[];
   /**
    * The photo query has not answered yet.
    *
@@ -425,6 +527,8 @@ export function ProfileView({
   /** Screen-supplied buttons (say hi, report, sign out…). */
   actions?: ReactNode;
   onEditSection?: (section: 'photos' | 'about' | 'details' | 'socials') => void;
+  /** Owner only: open the editor for one prompt slot, or the next free one. */
+  onEditPrompt?: (slot: number | null) => void;
   /**
    * Supplied when the viewer could still open a conversation. Every photo
    * and every written block then carries a reply bubble, so the first
@@ -439,6 +543,13 @@ export function ProfileView({
 
   const main = photos.find((p) => p.position === 0) ?? photos[0] ?? null;
   const gallery = photos.filter((p) => p.id !== main?.id);
+  // The page reads as a story rather than a form followed by a contact
+  // sheet: something to READ, then a face, then something to read. Photos
+  // are handed out one at a time between the written blocks, and whatever is
+  // left over falls to the bottom in the old order.
+  const INTERLEAVED = 3;
+  const woven = gallery.slice(0, INTERLEAVED);
+  const remaining = gallery.slice(INTERLEAVED);
   const home = [profile.home_city, profile.home_country].filter(Boolean).join(', ');
   const heroWidth = Math.min(width, MaxContentWidth);
   const edit = (section: 'photos' | 'about' | 'details' | 'socials') =>
@@ -593,6 +704,8 @@ export function ProfileView({
             }
           />
 
+          {woven[0] ? <WovenPhoto photo={woven[0]} index={0} onRespondTo={onRespondTo} /> : null}
+
           {profile.bio || owner ? (
             <View style={styles.section}>
               <SectionHeader
@@ -614,6 +727,17 @@ export function ProfileView({
               )}
             </View>
           ) : null}
+
+          {prompts[0] ? (
+            <PromptCard
+              prompt={prompts[0]}
+              owner={owner}
+              onEdit={onEditPrompt ? () => onEditPrompt(prompts[0].slot) : undefined}
+              onRespondTo={onRespondTo}
+            />
+          ) : null}
+
+          {woven[1] ? <WovenPhoto photo={woven[1]} index={1} onRespondTo={onRespondTo} /> : null}
 
           {profile.languages.length > 0 || owner ? (
             <View style={styles.section}>
@@ -642,6 +766,54 @@ export function ProfileView({
             </View>
           ) : null}
 
+          {prompts[1] ? (
+            <PromptCard
+              prompt={prompts[1]}
+              owner={owner}
+              onEdit={onEditPrompt ? () => onEditPrompt(prompts[1].slot) : undefined}
+              onRespondTo={onRespondTo}
+            />
+          ) : null}
+
+          {woven[2] ? <WovenPhoto photo={woven[2]} index={2} onRespondTo={onRespondTo} /> : null}
+
+          {prompts[2] ? (
+            <PromptCard
+              prompt={prompts[2]}
+              owner={owner}
+              onEdit={onEditPrompt ? () => onEditPrompt(prompts[2].slot) : undefined}
+              onRespondTo={onRespondTo}
+            />
+          ) : null}
+
+          {/* The nudge, and the whole reason prompts exist: a profile with
+              none of them gives a stranger nothing specific to answer. */}
+          {owner && onEditPrompt && prompts.length < MAX_PROMPTS ? (
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Answer a prompt"
+              haptic="light"
+              scaleTo={0.98}
+              onPress={() => onEditPrompt(null)}>
+              <View style={[styles.promptEmpty, { borderColor: theme.hairline }]}>
+                <SymbolView
+                  name={{ ios: 'plus.bubble', android: 'add_comment', web: 'add_comment' }}
+                  size={18}
+                  tintColor={theme.accent}
+                />
+                <View style={styles.promptEmptyText}>
+                  <ThemedText type="callout">
+                    {prompts.length === 0 ? 'Answer a prompt' : 'Answer another'}
+                  </ThemedText>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    A question with an answer is a thing people can reply to. Profiles with them get
+                    more messages.
+                  </ThemedText>
+                </View>
+              </View>
+            </PressableScale>
+          ) : null}
+
           <SocialsSection
             handles={handles}
             owner={owner}
@@ -653,25 +825,15 @@ export function ProfileView({
               photos — the founder's order. One per row rather than a grid:
               a thumbnail two fingers wide is a contact-sheet entry, and the
               point of these is to be looked at. */}
-          {gallery.length > 0 ? (
+          {remaining.length > 0 ? (
             <Animated.View entering={FadeIn.duration(240)} style={styles.gallery}>
-              {gallery.map((photo, index) => (
-                <View key={photo.id}>
-                  <Photo path={photo.storage_path} style={styles.galleryPhoto} />
-                  {onRespondTo ? (
-                    <ReplyButton
-                      onPhoto
-                      label={`Reply to photo ${index + 2}`}
-                      onPress={() =>
-                        onRespondTo({
-                          key: `photo:${photo.position}`,
-                          label: `photo ${index + 2}`,
-                          photoPath: photo.storage_path,
-                        })
-                      }
-                    />
-                  ) : null}
-                </View>
+              {remaining.map((photo, index) => (
+                <WovenPhoto
+                  key={photo.id}
+                  photo={photo}
+                  index={INTERLEAVED + index}
+                  onRespondTo={onRespondTo}
+                />
               ))}
             </Animated.View>
           ) : null}
@@ -801,6 +963,26 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Space.sm,
+  },
+  promptEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    padding: Space.lg,
+    borderRadius: Radius.lg,
+    borderCurve: 'continuous',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  promptEmptyText: {
+    flex: 1,
+    gap: 2,
+  },
+  promptCard: {
+    gap: Space.sm,
+    padding: Space.lg,
+    borderRadius: Radius.lg,
+    borderCurve: 'continuous',
   },
   sectionHeader: {
     flexDirection: 'row',

@@ -26,9 +26,19 @@ import {
   Space,
   Spacing,
 } from '@/constants/theme';
-import { useMatches, useMyChats, useSentRequests } from '@/features/matching/hooks';
+import {
+  useDailySpotlight,
+  useMatches,
+  useMyChats,
+  useSentRequests,
+} from '@/features/matching/hooks';
 import { usePassedTravelers } from '@/features/matching/passed';
-import { usePhotoUrl, usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
+import {
+  useProfilePrompts,
+  usePhotoUrl,
+  usePublicPhotos,
+  usePublicProfile,
+} from '@/features/profile/hooks';
 import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { formatDate, formatDateRange, toISODate } from '@/features/trips/dates';
@@ -174,9 +184,12 @@ function TravelerPage({
   onNext,
   chatId,
   requested,
+  spotlight,
 }: {
   candidate: Candidate;
   width: number;
+  /** Ribbon copy when this is today's mutual spotlight; null otherwise. */
+  spotlight?: string | null;
   onSayHi: () => void;
   onNext: () => void;
   chatId: string | undefined;
@@ -189,6 +202,7 @@ function TravelerPage({
   const { data: profile } = usePublicProfile(candidate.userId);
   const { data: photos = [] } = usePublicPhotos(candidate.userId);
   const { data: trips = [] } = useTravelerTrips(candidate.userId);
+  const { data: prompts = [] } = useProfilePrompts(candidate.userId);
 
   // Fall back to what the match row already carries, so the page has a name
   // and a photo before the profile query lands.
@@ -260,9 +274,27 @@ function TravelerPage({
           paddingBottom: BottomTabInset + ACTION_BAR_CLEARANCE,
         }}
         showsVerticalScrollIndicator={false}>
+        {spotlight ? (
+          <View style={styles.spotlightRow}>
+            <View style={[styles.spotlightChip, { backgroundColor: theme.accentSoft }]}>
+              <SymbolView
+                name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
+                size={13}
+                tintColor={theme.accent}
+              />
+              <ThemedText type="caption" themeColor="accent">
+                {spotlight}
+              </ThemedText>
+            </View>
+            <ThemedText type="footnote" themeColor="textSecondary" style={styles.spotlightNote}>
+              You are at the top of their list today too.
+            </ThemedText>
+          </View>
+        ) : null}
         <ProfileView
           profile={shown}
           photos={shownPhotos}
+          prompts={prompts}
           trips={profileTrips}
           handles={[]}
           owner={false}
@@ -358,6 +390,7 @@ export default function TravelersScreen() {
   const { data: sentRequests = [] } = useSentRequests();
   const { data: chats = [] } = useMyChats();
   const passed = usePassedTravelers();
+  const { data: spotlight } = useDailySpotlight();
 
   useEffect(() => {
     analytics.capture('travelers_viewed');
@@ -394,6 +427,7 @@ export default function TravelersScreen() {
     });
     byUser.set(match.user_id, entry);
   }
+  const spotlightId = spotlight?.user_id ?? null;
   const queue = [...byUser.values()].filter(
     (candidate) =>
       !passed.has(candidate.userId) &&
@@ -405,6 +439,16 @@ export default function TravelersScreen() {
       // disabled button. The hello lives in Chat under "You said hi".
       !sentByRecipient.has(candidate.userId)
   );
+  // Today's spotlight goes to the front, if they are still in the queue.
+  // The point of it is that the SAME pairing is shown to both people on the
+  // same day: a recommendation only one side can see is one nobody acts on,
+  // because the person acting has no reason to expect a warmer reception.
+  if (spotlightId) {
+    const at = queue.findIndex((candidate) => candidate.userId === spotlightId);
+    if (at > 0) {
+      queue.unshift(...queue.splice(at, 1));
+    }
+  }
   // No cursor: passing someone removes them from the queue, so the next
   // person slides into the same slot. Advancing an index as well is what
   // would skip every second traveler.
@@ -502,6 +546,9 @@ export default function TravelersScreen() {
       <ProfileCorner />
       <Animated.View entering={FadeIn.duration(200)} style={styles.deck} key={current.userId}>
         <TravelerPage
+          spotlight={
+            current.userId === spotlightId ? `This week in ${current.match.city_name}` : null
+          }
           candidate={current}
           width={Math.min(width, MaxContentWidth)}
           chatId={chatId}
@@ -558,6 +605,22 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: Space.lg,
     zIndex: 5,
+  },
+  spotlightRow: {
+    alignItems: 'center',
+    gap: Space.xs,
+    paddingBottom: Space.md,
+  },
+  spotlightChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+    paddingHorizontal: Space.md,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+  },
+  spotlightNote: {
+    textAlign: 'center',
   },
   actionBackdrop: {
     position: 'absolute',

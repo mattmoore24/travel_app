@@ -1,6 +1,7 @@
 import {
   PROFILE_COLUMNS,
   VERIFICATION_REQUEST_COLUMNS,
+  type ProfilePromptRow,
   type ProfileUpdate,
   type SocialPlatform,
   type VerificationRequestRow,
@@ -26,6 +27,49 @@ export async function fetchPublicProfile(userId: string) {
     throw error;
   }
   return data;
+}
+
+export async function fetchProfilePrompts(userId: string) {
+  const { data, error } = await supabase
+    .from('profile_prompts')
+    .select('*')
+    .eq('user_id', userId)
+    .order('slot');
+  if (error) {
+    throw error;
+  }
+  return (data ?? []) as ProfilePromptRow[];
+}
+
+export async function saveProfilePrompt(input: {
+  userId: string;
+  slot: number;
+  promptKey: string;
+  answer: string;
+}) {
+  const { error } = await supabase.from('profile_prompts').upsert(
+    {
+      user_id: input.userId,
+      slot: input.slot,
+      prompt_key: input.promptKey,
+      answer: input.answer,
+    },
+    { onConflict: 'user_id,slot' }
+  );
+  if (error) {
+    throw error;
+  }
+}
+
+export async function deleteProfilePrompt(userId: string, slot: number) {
+  const { error } = await supabase
+    .from('profile_prompts')
+    .delete()
+    .eq('user_id', userId)
+    .eq('slot', slot);
+  if (error) {
+    throw error;
+  }
 }
 
 export async function fetchOwnProfile(userId: string) {

@@ -12,6 +12,8 @@ import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
 import { deleteAccount } from '@/features/profile/api';
 import {
+  useOwnUserId,
+  useProfilePrompts,
   useLatestVerification,
   useOwnPhotos,
   useOwnProfile,
@@ -77,6 +79,7 @@ export default function ProfileScreen() {
   const rejected = photos.some((photo) => photo.moderation_status === 'rejected');
   const { data: handles = [] } = useOwnSocialHandles();
   const { data: verification } = useLatestVerification();
+  const { data: prompts = [] } = useProfilePrompts(useOwnUserId());
   const { data: trips = [] } = useMyTrips();
 
   if (!isSupabaseConfigured) {
@@ -129,11 +132,18 @@ export default function ProfileScreen() {
           photosPending={ownPhotos.data === undefined}
           profile={profile}
           photos={visiblePhotos}
+          prompts={prompts}
           trips={profileTrips}
           handles={handles}
           owner
           onEditSection={(section) =>
             router.push({ pathname: '/edit-profile', params: { section } })
+          }
+          onEditPrompt={(slot) =>
+            router.push({
+              pathname: '/edit-prompt',
+              params: slot == null ? {} : { slot: String(slot) },
+            })
           }
           actions={
             <>

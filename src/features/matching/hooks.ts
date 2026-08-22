@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   fetchIncomingRequests,
   fetchMatches,
+  fetchDailySpotlight,
   fetchFirstMessageBudget,
   fetchMyChats,
   fetchSentRequests,
@@ -35,6 +36,23 @@ export function useSentRequests() {
     queryKey: ['sent-requests', userId],
     queryFn: fetchSentRequests,
     enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+/**
+ * Today's spotlight. One fetch per day per device is plenty: the pairing
+ * cannot change once it is written, so a long staleTime keeps a tab switch
+ * from re-asking a volatile RPC.
+ */
+export function useDailySpotlight() {
+  const userId = useOwnUserId();
+  return useQuery({
+    queryKey: ['daily-spotlight', userId],
+    queryFn: fetchDailySpotlight,
+    enabled: isSupabaseConfigured && userId != null,
+    staleTime: 60 * 60 * 1000,
+    gcTime: 2 * 60 * 60 * 1000,
+    retry: false,
   });
 }
 

@@ -68,6 +68,22 @@ export async function previewFirstMessage(text: string): Promise<boolean> {
   return (data ?? [])[0]?.would_block === true;
 }
 
+/**
+ * Today's spotlight — the one traveler surfaced to both of you.
+ *
+ * The RPC creates the pairing on first read, so the FIRST of the two to open
+ * the tab is what fixes it for the day; the other inherits the same answer.
+ * Null when there is nobody left to pair with, which is an ordinary outcome
+ * rather than an error.
+ */
+export async function fetchDailySpotlight() {
+  const { data, error } = await supabase.rpc('daily_spotlight');
+  if (error) {
+    throw error;
+  }
+  return (data ?? [])[0] ?? null;
+}
+
 /** How many hellos you have sent today, and how many you get. */
 export async function fetchFirstMessageBudget() {
   const { data, error } = await supabase.rpc('first_message_budget');

@@ -3,13 +3,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/features/auth/store';
 import {
   deletePhoto,
+  deleteProfilePrompt,
   deleteSocialHandle,
   fetchAccountStanding,
   fetchLatestVerification,
   fetchOwnProfile,
   fetchOwnSocialHandles,
   fetchPhotos,
+  fetchProfilePrompts,
   fetchPublicProfile,
+  saveProfilePrompt,
   signedPhotoUrl,
   submitVerificationSelfie,
   updateOwnProfile,
@@ -17,6 +20,7 @@ import {
   upsertSocialHandle,
 } from '@/features/profile/api';
 import type { ProfilePhotoRow, ProfileUpdate, SocialPlatform } from '@/lib/database.types';
+import { analytics } from '@/lib/analytics';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export function useOwnUserId() {
@@ -43,6 +47,43 @@ export function usePublicProfile(userId: string | null) {
     queryKey: ['public-profile', userId],
     queryFn: () => fetchPublicProfile(userId!),
     enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+/**
+ * The prompts on a profile. Same query for your own and somebody else's —
+ * RLS decides what comes back, and the profile page renders both the same
+ * way so you always see yours as others see it.
+ */
+export function useProfilePrompts(userId: string | null) {
+  return useQuery({
+    queryKey: ['profile-prompts', userId],
+    queryFn: () => fetchProfilePrompts(userId!),
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+export function useSaveProfilePrompt() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { slot: number; promptKey: string; answer: string }) =>
+      saveProfilePrompt({ userId: userId!, ...input }),
+    onSuccess: () => {
+      analytics.capture('profile_prompt_saved');
+      queryClient.invalidateQueries({ queryKey: ['profile-prompts', userId] });
+    },
+  });
+}
+
+export function useDeleteProfilePrompt() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slot: number) => deleteProfilePrompt(userId!, slot),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile-prompts', userId] });
+    },
   });
 }
 

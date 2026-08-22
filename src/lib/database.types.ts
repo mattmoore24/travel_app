@@ -264,6 +264,15 @@ export type ChatListRow = {
   first_message_element: string | null;
 };
 
+/** One answered prompt on a profile (features/profile/prompts.ts). */
+export type ProfilePromptRow = {
+  user_id: string;
+  slot: number;
+  prompt_key: string;
+  answer: string;
+  updated_at: string;
+};
+
 export type GroupRole = 'admin' | 'speaker' | 'member';
 
 export type GroupSpeaking = 'everyone' | 'granted';
@@ -383,6 +392,24 @@ export type CityPinRow = {
   expires_at: string;
 };
 
+/**
+ * Row shape returned by daily_spotlight() — the one traveler surfaced to
+ * BOTH of you today. Empty when there is nobody left to pair with.
+ */
+export type SpotlightRow = {
+  user_id: string;
+  display_name: string | null;
+  age: number | null;
+  verified: boolean;
+  languages: string[];
+  bio: string | null;
+  occupation: string | null;
+  city_name: string;
+  overlap_start: string;
+  overlap_end: string;
+  photo_path: string | null;
+};
+
 /** Row shape returned by heat_cells() — deliberately identifier-free. */
 export type HeatCellRow = {
   cell_lat: number;
@@ -410,6 +437,17 @@ export type Database = {
         Row: ProfileRow;
         Insert: never;
         Update: ProfileUpdate;
+        Relationships: [];
+      };
+      profile_prompts: {
+        Row: ProfilePromptRow;
+        Insert: {
+          user_id: string;
+          slot: number;
+          prompt_key: string;
+          answer: string;
+        };
+        Update: Pick<ProfilePromptRow, 'prompt_key' | 'answer'>;
         Relationships: [];
       };
       profile_photos: {
@@ -692,6 +730,10 @@ export type Database = {
       first_message_budget: {
         Args: Record<string, never>;
         Returns: { used: number; allowed: number }[];
+      };
+      daily_spotlight: {
+        Args: Record<string, never>;
+        Returns: SpotlightRow[];
       };
       featured_traveler: {
         Args: { p_city_id: number };

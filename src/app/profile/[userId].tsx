@@ -9,7 +9,7 @@ import { useBlockUser } from '@/features/chat/hooks';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
 import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
-import { usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
+import { useProfilePrompts, usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
 import { useTravelerTrips } from '@/features/trips/hooks';
 
 /**
@@ -23,6 +23,7 @@ export default function PublicProfileScreen() {
   const { userId, from } = useLocalSearchParams<{ userId: string; from?: string }>();
   const profileQuery = usePublicProfile(userId ?? null);
   const photosQuery = usePublicPhotos(userId ?? null);
+  const { data: prompts = [] } = useProfilePrompts(userId);
   const photos = photosQuery.data ?? [];
   const { data: trips = [] } = useTravelerTrips(userId ?? null);
   const handlesQuery = useUnlockedSocialHandles(userId ?? null);
@@ -60,6 +61,7 @@ export default function PublicProfileScreen() {
           photosPending={photosQuery.data === undefined}
           profile={profile}
           photos={photos}
+          prompts={prompts}
           trips={profileTrips}
           // An error must never look like "they added none": show nothing
           // rather than a wrong absence, and let the retry below speak.

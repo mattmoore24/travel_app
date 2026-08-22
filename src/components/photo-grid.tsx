@@ -19,6 +19,13 @@ import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import type { ProfilePhotoRow } from '@/lib/database.types';
 
+/**
+ * How many photos a profile should be nudged toward. Not a limit — the cap
+ * is PHOTOS_MAX — just the number of dashed tiles that stay on screen so the
+ * page keeps looking like it has room.
+ */
+const GALLERY_TARGET = 6;
+
 const EXTRA_COLUMNS = 3;
 const GAP = Space.sm;
 /** Portrait, like every photo people already have of themselves. */
@@ -158,6 +165,12 @@ export function PhotoGrid() {
 
   const main = photos.find((p) => p.position === 0) ?? null;
   const extras = photos.filter((p) => p.position !== 0);
+  // Enough tiles to reach a profile that looks looked-after, plus one spare
+  // beyond whatever is already there, capped at what the schema allows.
+  const emptySlots = Math.max(
+    0,
+    Math.min(Math.max(GALLERY_TARGET - 1, extras.length + 1), PHOTOS_MAX - 1) - extras.length
+  );
 
   const mainWidth = width > 0 ? Math.min(width, 220) : 0;
   const extraWidth =
@@ -254,15 +267,21 @@ export function PhotoGrid() {
                   main={false}
                 />
               ))}
-              {extras.length < PHOTOS_MAX - 1 ? (
+              {/* Dashed tiles all the way to a full-looking profile, not the
+                  single one this used to show. The nudge to add photos used
+                  to stop dead after the first, so a profile with two photos
+                  looked finished — and a profile that looks finished at two
+                  photos is one nobody adds a third to. */}
+              {Array.from({ length: emptySlots }, (_, index) => (
                 <EmptySlot
+                  key={`empty-${index}`}
                   width={extraWidth}
                   height={extraWidth * RATIO}
                   main={false}
                   busy={uploadPhoto.isPending}
                   onPress={() => pickAndUpload(null, 1)}
                 />
-              ) : null}
+              ))}
             </View>
           </View>
         </>
