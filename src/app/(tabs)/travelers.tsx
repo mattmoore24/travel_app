@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef } from 'react';
-import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -26,6 +26,7 @@ import {
   Radius,
   Space,
   Spacing,
+  Type,
 } from '@/constants/theme';
 import {
   useDailySpotlight,
@@ -143,38 +144,66 @@ function GuestTravelers() {
               // the tap to go, and the answer is the one action available.
               onPress={() => scrollRef.current?.scrollToEnd({ animated: true })}>
               <ThemedView type="backgroundElement" style={styles.card}>
+                {/* A hero when there is a face, a monogram row when there is
+                    not. The photo is signed for the guest by the
+                    featured-photo function rather than by the device: the
+                    bucket is private and its only SELECT policy is `to
+                    authenticated`, so this is one URL, for the one person the
+                    server itself picked, valid five minutes. Widening the
+                    bucket to anon would have handed every primary photo in
+                    the app to anybody holding the public key, which is why it
+                    took a function.
+
+                    It used to be a 48pt circle, and the reason was honest at
+                    the time: no face could ever arrive, so a full-height
+                    frame was a band of empty colour pushing the sign-up card
+                    off the bottom of the screen. Now that a face does arrive,
+                    the whole pitch of this screen is that it is a real
+                    person, and 3:2 leaves the card comfortably above the tab
+                    bar. */}
+                {photoUrl ? (
+                  <View style={styles.cardHero}>
+                    <Image
+                      source={{ uri: photoUrl }}
+                      style={StyleSheet.absoluteFill}
+                      contentFit="cover"
+                    />
+                    <LinearGradient
+                      colors={['transparent', 'rgba(2,3,9,0.85)']}
+                      locations={[0.4, 1]}
+                      style={StyleSheet.absoluteFill}
+                      pointerEvents="none"
+                    />
+                    <View style={styles.cardHeroText} pointerEvents="none">
+                      <View style={styles.nameRow}>
+                        <Text style={styles.cardHeroName} numberOfLines={1}>
+                          {featured.display_name ?? 'Traveler'}
+                          {featured.age != null ? `, ${featured.age}` : ''}
+                        </Text>
+                        {featured.verified ? (
+                          <VerifiedSeal name={featured.display_name} age={featured.age} onPhoto />
+                        ) : null}
+                      </View>
+                    </View>
+                  </View>
+                ) : null}
                 <View style={styles.cardBody}>
-                  <View style={styles.nameRow}>
-                    {/* A face when one can be had, a monogram when it
-                        cannot. The bucket is private and its only SELECT
-                        policy is `to authenticated`, so this photo is signed
-                        for the guest by the featured-photo function rather
-                        than by the device - one URL, for the one person the
-                        server itself picked, valid five minutes. Widening the
-                        bucket to anon would have handed every primary photo
-                        in the app to anybody holding the public key, which is
-                        why it took a function instead. */}
-                    <View style={[styles.cardMono, { backgroundColor: theme.accentSoft }]}>
-                      {photoUrl ? (
-                        <Image
-                          source={{ uri: photoUrl }}
-                          style={styles.cardImage}
-                          contentFit="cover"
-                        />
-                      ) : (
+                  {photoUrl ? null : (
+                    <View style={styles.nameRow}>
+                      <View style={[styles.cardMono, { backgroundColor: theme.accentSoft }]}>
                         <ThemedText type="title" style={{ color: theme.accent }}>
                           {(featured.display_name ?? 'T').trim().charAt(0).toUpperCase()}
                         </ThemedText>
-                      )}
+                      </View>
+                      <ThemedText type="headline" numberOfLines={1} style={styles.nameText}>
+                        {featured.display_name ?? 'Traveler'}
+                        {featured.age != null ? `, ${featured.age}` : ''}
+                      </ThemedText>
+                      {featured.verified ? (
+                        <VerifiedSeal name={featured.display_name} age={featured.age} />
+                      ) : null}
                     </View>
-                    <ThemedText type="headline" numberOfLines={1} style={styles.nameText}>
-                      {featured.display_name ?? 'Traveler'}
-                      {featured.age != null ? `, ${featured.age}` : ''}
-                    </ThemedText>
-                    {featured.verified ? (
-                      <VerifiedSeal name={featured.display_name} age={featured.age} />
-                    ) : null}
-                  </View>
+                  )}
                   <ThemedText type="footnote" themeColor="textSecondary">
                     {featured.city_name} ·{' '}
                     {formatDateRange(featured.their_start, featured.their_end)}
@@ -795,9 +824,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardImage: {
-    width: '100%',
-    height: '100%',
+  cardHero: {
+    aspectRatio: 3 / 2,
+    justifyContent: 'flex-end',
+  },
+  cardHeroText: {
+    padding: Space.lg,
+  },
+  cardHeroName: {
+    ...Type.headline,
+    color: '#FFFFFF',
   },
   cardBody: {
     padding: Space.lg,
