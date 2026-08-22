@@ -119,8 +119,11 @@ function SectionHeader({
   return (
     <View style={styles.sectionHeader}>
       <SymbolView name={icon} size={15} tintColor={theme.textSecondary} />
+      {/* Title Case, not shouted. The craft pass retired all-caps
+          everywhere else in the app; these headers were the last holdouts,
+          and uppercase costs word-shape — the thing a reader scans by. */}
       <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionTitle}>
-        {title.toUpperCase()}
+        {title}
       </ThemedText>
       {onEdit ? (
         <PressableScale
@@ -196,7 +199,7 @@ function TripsSection({
                   {trip.overlap ? (
                     <View style={[styles.overlapPill, { backgroundColor: theme.accent }]}>
                       <ThemedText type="caption" style={{ color: theme.onAccent }}>
-                        BOTH THERE {formatDateRange(trip.overlap.start, trip.overlap.end)}
+                        Both there {formatDateRange(trip.overlap.start, trip.overlap.end)}
                       </ThemedText>
                     </View>
                   ) : null}
@@ -453,25 +456,35 @@ export function ProfileView({
     <>
       <View style={styles.page}>
         {main || photosPending ? (
-          /* Photo first, name over it — the shape every profile people
+          /* Photo first, name OVER it — the shape every profile people
              already use has settled on.
 
-             The height here is NOT a tweakable detail. Every other child of
-             this frame is either absolutely positioned (the scrim, the two
-             buttons) or sized by percentage (`styles.fill`), so none of them
-             can give the frame a height — and a percentage does not mean
-             "as tall as my parent's content": Yoga resolves it against the
-             available height handed down, which inside a ScrollView is about
-             a screen. Dropping this height therefore does not collapse the
-             frame to its text (edcd8d7 tried exactly that); it hands the
-             fill a screen-tall box and pushes the name below the fold, which
-             is what E2E run 33 photographed and 612bb5c reverted. A profile
-             with no photo gets the separate branch below instead. */
+             The photo is absolutely positioned, which is load-bearing twice
+             over. It makes heroText the only in-flow child, so the name
+             lands on the gradient exactly as DESIGN.md specifies instead of
+             on bare canvas below the image. And it stops the photo being
+             SHRUNK by that text: two in-flow children in a fixed-height box
+             means flexbox takes the difference out of the one that can give
+             (height:'100%' still shrinks — flexShrink defaults to 1), which
+             cost the image ~90pt of face and left the scrim darkening a
+             region no text was sitting on.
+
+             The height stays a fixed ratio and is NOT a tweakable detail.
+             Every child of this frame is now absolutely positioned or
+             intrinsically sized, so none of them can give the frame a
+             height — and a percentage does not mean "as tall as my parent's
+             content": Yoga resolves it against the available height handed
+             down, which inside a ScrollView is about a screen. Dropping the
+             height therefore does not collapse the frame to its text
+             (edcd8d7 tried exactly that); it hands the fill a screen-tall
+             box and pushes the name below the fold, which is what E2E run 33
+             photographed and 612bb5c reverted. A profile with no photo gets
+             the separate branch below instead. */
           <View style={[styles.hero, { width: heroWidth, height: heroWidth * 1.15 }]}>
             {main ? (
-              <Photo path={main.storage_path} style={styles.fill} />
+              <Photo path={main.storage_path} style={StyleSheet.absoluteFill} />
             ) : (
-              <View style={[styles.fill, { backgroundColor: theme.surfaceSunken }]} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.surfaceSunken }]} />
             )}
             <LinearGradient
               colors={['transparent', 'rgba(14,16,32,0.05)', 'rgba(14,16,32,0.82)']}
@@ -499,7 +512,12 @@ export function ProfileView({
                 />
               </PressableScale>
             ) : null}
-            {onRespondTo ? (
+            {/* `main` is only nullable while photos are still loading (the
+                photosPending branch above renders this frame early so the
+                page does not jump ~280pt when they land). TypeScript reads
+                `photos[0]` as non-optional and so cannot see it; there is
+                nothing to reply TO until the photo exists. */}
+            {onRespondTo && main ? (
               <ReplyButton
                 onPhoto
                 label="Reply to this photo"

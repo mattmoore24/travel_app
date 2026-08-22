@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
+import { AvatarButton } from '@/components/ui/avatar-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
@@ -304,7 +305,7 @@ function ChatRowLink({ chat }: { chat: ChatListRow }) {
 type Tab = 'individual' | 'groups';
 
 const TABS: { value: Tab; label: string }[] = [
-  { value: 'individual', label: 'Individual' },
+  { value: 'individual', label: 'Chats' },
   { value: 'groups', label: 'Groups' },
 ];
 
@@ -373,12 +374,17 @@ export default function ChatScreen() {
             styles.content,
             { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
           ]}>
-          <Segmented
-            options={TABS}
-            value={tab}
-            onChange={setTab}
-            accessibilityLabel="Individual or group chats"
-          />
+          <View style={styles.headerRow}>
+            <View style={styles.headerSwitch}>
+              <Segmented
+                options={TABS}
+                value={tab}
+                onChange={setTab}
+                accessibilityLabel="Chats or groups"
+              />
+            </View>
+            <AvatarButton />
+          </View>
           {tab === 'groups' ? (
             <>
               <ThemedText type="footnote" themeColor="textSecondary">
@@ -420,16 +426,18 @@ export default function ChatScreen() {
               options={TABS}
               value={tab}
               onChange={setTab}
-              accessibilityLabel="Individual or group chats"
+              accessibilityLabel="Chats or groups"
             />
           </View>
-          {/* Anyone can start a group; this is where. */}
+          {/* The '+' means "one more of whatever you are looking at": a new
+              group on Groups, and on Chats the only way a one-to-one chat
+              ever starts, which is saying hi to somebody. */}
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel="Start a group"
+            accessibilityLabel={tab === 'groups' ? 'Start a group' : 'Find someone to say hi to'}
             haptic="light"
             scaleTo={0.92}
-            onPress={() => router.push('/new-group')}
+            onPress={() => router.push(tab === 'groups' ? '/new-group' : '/travelers')}
             style={[styles.headerAction, { backgroundColor: theme.surface }]}>
             <SymbolView
               name={{ ios: 'plus', android: 'add', web: 'add' }}
@@ -437,6 +445,7 @@ export default function ChatScreen() {
               tintColor={theme.accent}
             />
           </PressableScale>
+          <AvatarButton />
         </View>
 
         {requests.length > 0 && tab === 'individual' ? (
@@ -463,9 +472,14 @@ export default function ChatScreen() {
 
         {rest.length > 0 ? (
           <>
-            <ThemedText type="smallBold" themeColor="textSecondary">
-              {tab === 'groups' ? 'Groups' : 'Chats'}
-            </ThemedText>
+            {/* Only a heading when there is something above it to be
+                separated from. The segment already says "Chats"; repeating
+                it directly underneath is a label labelling itself. */}
+            {requests.length > 0 || pinned.length > 0 ? (
+              <ThemedText type="smallBold" themeColor="textSecondary">
+                {tab === 'groups' ? 'Groups' : 'Chats'}
+              </ThemedText>
+            ) : null}
             {rest.map((chat) => (
               <ChatRowLink key={chat.chat_id} chat={chat} />
             ))}

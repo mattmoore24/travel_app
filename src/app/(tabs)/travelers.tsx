@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect } from 'react';
@@ -6,6 +7,7 @@ import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native'
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AvatarButton } from '@/components/ui/avatar-button';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
@@ -224,7 +226,11 @@ function TravelerPage({
         // traveler's face is clipped by the status bar.
         contentContainerStyle={{
           paddingTop: insets.top + Space.sm,
-          paddingBottom: BottomTabInset + 120,
+          // Clearance for the floating Say hi bar AND the tab bar under it.
+          // 120 was measured against neither: the last lines of a bio ran
+          // straight through the buttons, which is the one place in the app
+          // where text and a primary action share pixels.
+          paddingBottom: BottomTabInset + ACTION_BAR_CLEARANCE,
         }}
         showsVerticalScrollIndicator={false}>
         <ProfileView
@@ -250,6 +256,16 @@ function TravelerPage({
         />
       </ScrollView>
 
+      {/* The bar floats over a scrolling photo-and-text page, so it needs a
+          ground of its own or the words behind it compete with the words on
+          it. Transparent to canvas, tall enough to cover the bar and the tab
+          bar below it, and inert to touch. */}
+      <LinearGradient
+        colors={['transparent', theme.background]}
+        locations={[0, 0.55]}
+        style={[styles.actionBackdrop, { height: BottomTabInset + ACTION_BAR_CLEARANCE }]}
+        pointerEvents="none"
+      />
       <View
         style={[styles.actionBar, { paddingBottom: BottomTabInset + insets.bottom / 2 + Space.sm }]}
         pointerEvents="box-none">
@@ -266,7 +282,7 @@ function TravelerPage({
           <SymbolView
             name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }}
             size={18}
-            tintColor="#FFFFFF"
+            tintColor={theme.text}
           />
         </PressableScale>
         <View style={styles.sayHiWrap}>
@@ -277,6 +293,29 @@ function TravelerPage({
           />
         </View>
       </View>
+    </View>
+  );
+}
+
+/**
+ * Room under the scroll for the floating Say hi bar and the tab bar beneath
+ * it. One constant so the backdrop and the padding can never drift apart.
+ */
+const ACTION_BAR_CLEARANCE = 148;
+
+/**
+ * The way to your own profile, on this tab too.
+ *
+ * It used to exist only on the Map, which made Edit profile, Get verified,
+ * House rules, Sign out and Delete account reachable from exactly one of
+ * three tabs — and this screen's own empty state said "your trips live on
+ * your profile" while offering no way to get there.
+ */
+function ProfileCorner() {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.profileCorner, { top: insets.top + Space.sm }]} pointerEvents="box-none">
+      <AvatarButton />
     </View>
   );
 }
@@ -362,30 +401,50 @@ export default function TravelersScreen() {
   if (trips.length === 0) {
     return (
       <ThemedView style={styles.root}>
+        <ProfileCorner />
         <View style={[styles.empty, { paddingTop: insets.top + Space.xxl }]}>
           <ThemedText type="title" style={styles.emptyText}>
             Add a trip first
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.emptyText}>
             Travelers here are the people who will be in the same city as you, on the same dates.
-            Your trips live on your profile.
           </ThemedText>
-          <PrimaryButton label="Go to my profile" onPress={() => router.push('/profile-me')} />
+          {/* Straight to the fix. Sending someone to their profile to hunt
+              for the button is one hop of homework between a person and the
+              thing this screen just told them they need. */}
+          <PrimaryButton label="Add a trip" onPress={() => router.push('/add-trip')} />
         </View>
       </ThemedView>
     );
   }
 
   if (queue.length === 0 || !current) {
+    // An exhausted queue is a supply problem, so this screen offers the
+    // three things that actually create supply rather than apologising and
+    // stopping. Naming the city and the window also makes the emptiness
+    // legible: "nobody, ever" and "nobody whose Bangkok dates cross mine
+    // this week" are very different messages, and only one of them is true.
+    const cityNames = Array.from(new Set(trips.map((trip) => trip.cities.name)));
+    const headline =
+      cityNames.length === 1
+        ? `That is everyone whose ${cityNames[0]} dates cross yours`
+        : 'That is everyone whose dates cross yours';
     return (
       <ThemedView style={styles.root}>
+        <ProfileCorner />
         <View style={[styles.empty, { paddingTop: insets.top + Space.xxl }]}>
           <ThemedText type="title" style={styles.emptyText}>
-            That is everyone for now
+            {headline}
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-            More people add trips every day. Check back, or add another city to your plans.
+            More people add trips every day. In the meantime, these all work.
           </ThemedText>
+          <PrimaryButton label="Drop a pin" onPress={() => router.push('/(tabs)')} />
+          <PrimaryButton
+            variant="ghost"
+            label="Add or widen a trip"
+            onPress={() => router.push('/add-trip')}
+          />
           {passed.count > 0 ? (
             <PrimaryButton
               variant="ghost"
@@ -405,6 +464,7 @@ export default function TravelersScreen() {
 
   return (
     <ThemedView style={styles.root}>
+      <ProfileCorner />
       <Animated.View entering={FadeIn.duration(200)} style={styles.deck} key={current.userId}>
         <TravelerPage
           candidate={current}
@@ -444,6 +504,17 @@ const styles = StyleSheet.create({
   },
   page: {
     flex: 1,
+  },
+  profileCorner: {
+    position: 'absolute',
+    right: Space.lg,
+    zIndex: 5,
+  },
+  actionBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   actionBar: {
     position: 'absolute',

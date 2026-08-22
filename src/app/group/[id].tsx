@@ -250,7 +250,7 @@ export default function GroupScreen() {
 
           <View style={styles.section}>
             <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
-              WHO CAN POST
+              Who can post
             </ThemedText>
             {isAdmin ? (
               <Segmented
@@ -269,7 +269,7 @@ export default function GroupScreen() {
 
           <View style={styles.section}>
             <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
-              PEOPLE CAN STAY UNTIL
+              People can stay until
             </ThemedText>
             {isAdmin ? (
               Platform.OS === 'ios' ? (
@@ -318,7 +318,7 @@ export default function GroupScreen() {
           {isAdmin ? (
             <View style={styles.section}>
               <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
-                INVITE
+                Invite
               </ThemedText>
               <PrimaryButton label="Share an invite" disabled={!inviteToken} onPress={share} />
               <PrimaryButton
@@ -344,7 +344,7 @@ export default function GroupScreen() {
 
           <View style={styles.section}>
             <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
-              {members.length} {members.length === 1 ? 'PERSON' : 'PEOPLE'}
+              {members.length} {members.length === 1 ? 'person' : 'people'}
             </ThemedText>
             {members.map((member) => (
               <MemberRow
@@ -398,7 +398,9 @@ const styles = StyleSheet.create({
     gap: Space.sm,
   },
   sectionLabel: {
-    letterSpacing: 0.8,
+    // Sentence case, so the all-caps letter-spacing that used to hold
+    // these apart is no longer doing a job (docs/DESIGN.md).
+    letterSpacing: 0.2,
   },
   memberRow: {
     flexDirection: 'row',

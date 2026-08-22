@@ -160,7 +160,7 @@ export function PinFormSheet({
         showsVerticalScrollIndicator
         indicatorStyle="white">
         <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
-          LOCATION
+          Location
         </ThemedText>
         <View style={[styles.placeCard, { backgroundColor: theme.surfaceSunken }]}>
           <ThemedText style={styles.placeEmoji}>{categoryEmoji(category, false)}</ThemedText>
@@ -198,7 +198,7 @@ export function PinFormSheet({
         </View>
 
         <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
-          PLANS
+          Plans
         </ThemedText>
         <FormTextField
           label="What is the plan?"
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     gap: Space.md,
   },
   sectionLabel: {
-    letterSpacing: 0.8,
+    letterSpacing: 0.2,
   },
   placeCard: {
     flexDirection: 'row',

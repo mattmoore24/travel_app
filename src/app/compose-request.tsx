@@ -112,7 +112,7 @@ export default function ComposeRequestScreen() {
           ) : null}
           <View style={styles.targetText}>
             <ThemedText type="caption" themeColor="textSecondary">
-              REPLYING TO {(params.targetLabel ?? '').toUpperCase()}
+              Replying to {params.targetLabel ?? ''}
             </ThemedText>
             {params.targetQuote ? (
               <ThemedText type="small" numberOfLines={3}>
