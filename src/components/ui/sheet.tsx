@@ -69,9 +69,28 @@ function setPresentedSheets(next: number): void {
   }
 }
 
-/** How many native-modal Sheets are mounted. Inline sheets do not count. */
+/** How many native modals are mounted. Inline sheets do not count. */
 export function usePresentedSheetCount(): number {
   return useSyncExternalStore(subscribeToSheets, readPresentedSheets, readPresentedSheets);
+}
+
+/**
+ * Declare that this component has a native `<Modal>` on screen.
+ *
+ * Sheet calls it for itself. Anything else rendering a raw `<Modal>` should
+ * call it too, or the count is a lie and whatever is waiting on it presents
+ * into a collision anyway.
+ */
+export function useRegisterNativeModal(active: boolean): void {
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+    setPresentedSheets(presentedSheets + 1);
+    return () => {
+      setPresentedSheets(presentedSheets - 1);
+    };
+  }, [active]);
 }
 /** Or how fast, for a flick that never travels that far. */
 const DISMISS_VELOCITY = 900;
@@ -136,15 +155,7 @@ export function Sheet({
   // Register while this sheet owns the screen, so anything that would
   // present a modal of its own can wait its turn. Inline sheets are not
   // modals and take no turn.
-  useEffect(() => {
-    if (inline) {
-      return;
-    }
-    setPresentedSheets(presentedSheets + 1);
-    return () => {
-      setPresentedSheets(presentedSheets - 1);
-    };
-  }, [inline]);
+  useRegisterNativeModal(!inline);
 
   // Down only: dragging up would let a sheet leave its own bottom edge, and
   // the rubber-band there reads as a bug rather than as resistance.

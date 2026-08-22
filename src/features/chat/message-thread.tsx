@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { useRegisterNativeModal } from '@/components/ui/sheet';
 import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
@@ -684,6 +685,10 @@ export function MessageThread({
 }) {
   const [menu, setMenu] = useState<MenuTarget | null>(null);
   const { height: windowHeight } = useWindowDimensions();
+  // This one is a raw <Modal> rather than a Sheet, so it has to declare
+  // itself. A count that only knows about Sheets is a count that lies, and
+  // the thing waiting on it presents into the collision anyway.
+  useRegisterNativeModal(menu != null);
 
   const byMessage = new Map<string, ReactionSummaryRow[]>();
   for (const row of reactions) {

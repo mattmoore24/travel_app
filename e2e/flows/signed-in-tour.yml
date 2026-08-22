@@ -102,10 +102,29 @@ appId: com.mattmoore.samewhere
     visible: 'Rooftop hello from Maestro'
     timeout: 20000
 - takeScreenshot: 16-pin-posted
+# ASSERT THE APP STILL RESPONDS. Run 42 posted a pin and then went deaf:
+# Close, Travelers, Map and the avatar were all "tapped" — Maestro found every
+# one of them in the tree and reported success — while the screen did not
+# change by a single pixel for the next minute. Three screenshots came back
+# byte-identical and the run only failed four steps later, on a name that was
+# never going to appear. A tap that is allowed to do nothing is how a frozen
+# app passes as a working one, so from here on every tap out of this card has
+# to prove it landed.
 - tapOn: 'Close'
+# The card's own headline going away is the proof, and it has to be this
+# rather than something about the Map tab: "Drop a pin" is ALSO the label on
+# the Travelers empty state, and "Travelers" is the tab's own label whichever
+# tab you are on. An assertion that is true either way is exactly the kind
+# that let a dead app through.
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertNotVisible: 'Rooftop hello from Maestro'
 - tapOn: 'Travelers'
 - takeScreenshot: 17-travelers-signed-in
 - tapOn: 'Map'
+- extendedWaitUntil:
+    visible: 'Drop a pin'
+    timeout: 15000
 # The avatar's first tap is the regression under test here; the name is
 # the above-the-fold proof the profile actually opened.
 - tapOn: 'Your profile'

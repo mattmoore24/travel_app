@@ -21,8 +21,34 @@ device does something else.
   form's box. Present it through `<Modal>` (see `components/ui/sheet.tsx`)
   or it will appear halfway down a scroll view.
 - **iOS silently drops a modal presentation that starts while another modal
-  is dismissing.** Nothing throws; the second screen just never appears.
-  Delay the second presentation (~450ms) or wait for the first to finish.
+  is dismissing — and on Fabric that does not lose a sheet, it kills touch
+  for the whole app.** This entry used to say "the second screen just never
+  appears". That is the smaller half. `<Modal>` renders a `ModalHostView`
+  whose descriptor lays it out full screen and absolutely positioned
+  (`ModalHostViewComponentDescriptor.h`), while its children are mounted into
+  the modal's own view controller, never into it
+  (`RCTModalHostViewComponentView.mm`). So the host view is empty, paints
+  nothing, overrides no `hitTest`, and `RCTViewComponentView`'s hit test
+  returns _itself_ for every point on screen. A dropped presentation leaves
+  that invisible full-screen view sitting in the tree. Worse, RN sets
+  `_isPresented = YES` before calling `presentViewController:` and only
+  retries from `didMoveToWindow`/`updateProps`, so it never recovers: the app
+  is dead to touch until relaunch.
+  It reached a simulator run as three byte-identical screenshots and four
+  taps the driver reported as successful. Delay the second presentation by
+  `SHEET_SETTLE_MS` (`components/ui/sheet.tsx`) or wait for the first to
+  finish — and note that "unmounted in React" is not "gone from the screen",
+  so a mount counter alone is not enough.
+  Anything presenting a modal on a DATA event rather than a tap is the
+  dangerous case, because it cannot know what is on screen: the push primer
+  is the only one, and it waits on three facts (the tabs focused, no native
+  modal registered, and the settle delay). If you add another, register it
+  with `useRegisterNativeModal` — a count that only knows about `Sheet` is a
+  count that lies. There is a cheaper escape for anything rendered as a
+  direct child of a full-screen root: `<Sheet inline>` has no `<Modal>` at
+  all, so there is no presentation to drop. It was not taken for the primer
+  only because its layering against the native tab bar could not be verified
+  without a device.
 - **Navigating out from under a presented modal freezes the screen behind
   it.** `router.push` from inside a Sheet pushes the route into the stack
   below, but the Sheet's full-screen scrim survives — so when the user comes
