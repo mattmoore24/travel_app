@@ -13,12 +13,16 @@ on:
       build:
         description: >-
           Build a fresh simulator app, so the binary EMBEDS the code under
-          test. Leave this on. The over-the-air path is cheaper and does not
-          work here: the simulator on GitHub's macOS runners cannot complete a
-          TLS handshake with u.expo.dev, so expo-updates never fetches
-          anything and the run would picture the previous build's JS.
+          test. Leave this OFF for a JavaScript-only change. This used to say
+          the over-the-air path did not work here, on the evidence of a step
+          that failed 0.1s after launching the app — before it had waited for
+          anything — because `DB=$(ls ... | tail -1)` under `bash -e` with
+          pipefail takes the whole step down the first time the file is
+          missing, which is the case the loop exists to wait out. With that
+          fixed, run 43 fetched the update and drove the flows against it. A
+          build costs real EAS credit; only native changes need one.
         type: boolean
-        default: true
+        default: false
 
 jobs:
   app:

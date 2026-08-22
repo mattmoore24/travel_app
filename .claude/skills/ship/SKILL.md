@@ -77,6 +77,14 @@ to the working branch, then:
 changed — a false run reuses the last binary and pushes current JS to it over
 the `e2e` channel, which costs nothing.
 
+The workflow's own input description used to contradict this, claiming the
+simulator could not reach `u.expo.dev`. It was wrong, and the evidence for it
+was a step that died 0.1s after launching the app because of an errexit bug,
+before it had waited for anything. Run 43 fetched the update and drove the
+whole suite against it. If a future run cannot fetch, read the log — the step
+prints the updates table and expo-updates' own log now — rather than
+concluding the path is broken and spending a build.
+
 **Never promise a build number before a build starts.** The remote
 `buildNumber` increments when the build is requested, including for attempts
 that are then refused or that fail — several numbers were burned that way on
