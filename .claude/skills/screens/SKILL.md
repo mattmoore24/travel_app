@@ -69,6 +69,31 @@ reviewing. Look for:
 - an empty state rendered where data should have loaded;
 - a screen that is simply blank because a modal never presented.
 
+**Look for what is illegible, not only for what is missing.** Run 44 was
+fully green and every element it asserted on was present and correct. Four
+things on it could not be read by a human: a menu that dimmed nothing behind
+it, a "Pin to the top" in destructive red, an overlap window half dissolved
+into the gradient under a floating bar, and a close button in clear glass
+over a bright photograph. A test asserts a node exists. It cannot see
+contrast, and it cannot see one thing on top of another.
+
+**Crop and zoom before you conclude.** Three of those four were invisible at
+thumbnail size and obvious at full resolution. The `results/` shots are
+@3x — open them, crop the band you doubt, and read the pixels if you are
+still unsure:
+
+```bash
+python3 -c "
+from PIL import Image
+im = Image.open('/tmp/shots/results/17-travelers-signed-in.png')
+w, h = im.size
+im.crop((0, int(h*0.76), w, int(h*0.90))).save('/tmp/crop.png')"
+```
+
+**Where things go wrong is where a floating thing meets a scrolling thing.**
+Docked action bars, glass controls over maps and photos, avatars over rails,
+menus over threads. Check every one of those seams on every run.
+
 Report what you saw, naming screens. If something is wrong, fix it and run
 again — do not describe a defect and ship anyway.
 

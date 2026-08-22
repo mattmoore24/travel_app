@@ -954,3 +954,37 @@ for every account with nothing waiting — expo-router's `Badge` reads
 
 Database after the fixes: **428** pgTAP assertions. Client: **162** unit
 tests.
+
+### Then the build was reviewed as pictures
+
+Run 44 was the first fully green simulator run: 27 screenshots, all distinct,
+and `16-pin-posted` finally different from `17-travelers-signed-in`, which is
+the proof that the post-pin freeze is gone. Every screen was then opened as an
+image rather than read as an exit code, and four things that no test could see
+turned up. All four are the same failure — a control or a sentence that a
+human eye cannot read, on a screen the checks call passing.
+
+- **The reaction menu did not dim anything.** The scrim was painted only when
+  liquid glass was unavailable, so on any OS that has it the menu floated over
+  a thread at full brightness — the composer legible right beside it. Glass
+  alone over a dark ground dims nothing. And every action label took
+  `theme.danger`, so "Pin to the top" was the same destructive red as
+  "Unsend". This is the founder's #1 complaint area and it had regressed
+  behind a passing test.
+- **"Both there Aug 23 - 28" was half dissolved.** The fade under the Say hi
+  bar was given `ACTION_BAR_CLEARANCE`, 30pt taller than the bar it protects,
+  so it began a line and a half above the buttons and ate whatever was there.
+  On a one-trip traveler that is exactly the overlap window: the one fact that
+  explains why this person is on your screen. Scrolling recovered it and
+  nothing said to scroll. The band is now the bar's own height plus a ramp,
+  and the window is also said in the hero beside the name, where no screen
+  size and no text size can push it under anything.
+- **The X that leaves place mode was invisible.** `variant="clear"` glass over
+  a traveler's avatar pin: both strokes cut off halfway down, on the only
+  control that leaves the mode. Regular glass with a hairline ring.
+
+The general lesson, and it is now in the `screens` skill: a green E2E run
+means the flow completed, not that a person could have completed it. Three of
+these four shipped under a full green gate.
+
+Client after the fixes: **172** unit tests.
