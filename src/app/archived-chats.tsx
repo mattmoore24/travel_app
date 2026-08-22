@@ -23,7 +23,7 @@ export default function ArchivedChatsScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
         <ThemedText type="title">Archived</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
-          Still readable. A new message brings a conversation back to the top of your list.
+          Still readable. A new message brings one back to the top.
         </ThemedText>
         {chats.map((chat) => (
           <ThemedView key={chat.chat_id} type="backgroundElement" style={styles.row}>

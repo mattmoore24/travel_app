@@ -86,7 +86,7 @@ export default function SignInScreen() {
     return (
       <StepScreen
         title="Check your email"
-        subtitle={`If ${email.trim()} has an account, a link to set a new password is on its way. It expires in an hour.`}
+        subtitle={`If ${email.trim()} has an account, a reset link is on its way. It expires in an hour.`}
         continueLabel="Back to sign in"
         onContinue={() => setResetSent(false)}
         footer={
@@ -98,8 +98,7 @@ export default function SignInScreen() {
           />
         }>
         <ThemedText type="footnote" themeColor="textSecondary">
-          Nothing arrived? Check the spam folder, and make sure the address above is the one you
-          signed up with.
+          Nothing yet? Check your spam, and check the address above.
         </ThemedText>
       </StepScreen>
     );

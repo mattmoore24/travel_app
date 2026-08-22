@@ -70,25 +70,21 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
   };
 
   const confirmLeaveChat = () => {
-    Alert.alert(
-      'Leave this chat?',
-      'This deletes the conversation for both of you. It cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Leave chat',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await leaveChat.mutateAsync(chat.chat_id);
-              router.back();
-            } catch {
-              // Surfaced by the global mutation error alert.
-            }
-          },
+    Alert.alert('Leave this chat?', "Deletes it for both of you. Can't be undone.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Leave chat',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await leaveChat.mutateAsync(chat.chat_id);
+            router.back();
+          } catch {
+            // Surfaced by the global mutation error alert.
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const openMenu = () => {
@@ -199,7 +195,14 @@ export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const ownUserId = useOwnUserId();
   const chatsQuery = useMyChats();
-  const chat = (chatsQuery.data ?? []).find((c) => c.chat_id === id);
+  // Both lists. Archiving a conversation used to make it unreadable: the
+  // Archived screen still linked to it, and the thread it opened said "Chat
+  // not found." because the chat is, by definition, not in the un-archived
+  // list this screen was asking for.
+  const archivedQuery = useMyChats(true);
+  const chat = [...(chatsQuery.data ?? []), ...(archivedQuery.data ?? [])].find(
+    (c) => c.chat_id === id
+  );
   const messagesQuery = useMessages(chat?.chat_id ?? null);
   const sendMessage = useSendMessage(chat?.chat_id ?? null);
   const discardFailed = useDiscardFailed(chat?.chat_id ?? null);
@@ -229,7 +232,7 @@ export default function ChatScreen() {
               error={chatsQuery.error}
               onRetry={() => chatsQuery.refetch()}
             />
-          ) : chatsQuery.isSuccess ? (
+          ) : chatsQuery.isSuccess && archivedQuery.isSuccess ? (
             <ThemedText themeColor="textSecondary" style={styles.centerText}>
               Chat not found.
             </ThemedText>
@@ -359,7 +362,7 @@ export default function ChatScreen() {
           {closed ? (
             <ThemedView type="backgroundElement" style={styles.closedNotice}>
               <ThemedText type="small" themeColor="textSecondary">
-                This chat is closed, so you can&apos;t reply.
+                This chat is closed.
               </ThemedText>
             </ThemedView>
           ) : (

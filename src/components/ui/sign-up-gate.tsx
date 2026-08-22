@@ -53,8 +53,7 @@ export function SignUpGate({
       <View style={styles.inner}>
         <ThemedText type="headline">{reason}</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
-          Takes about a minute. Looking around is always free. You only need a profile to message
-          people, drop pins or join a chat.
+          Takes a minute. Always free.
         </ThemedText>
         <PrimaryButton
           label={cta}

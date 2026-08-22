@@ -23,7 +23,7 @@ import { useTheme } from '@/hooks/use-theme';
 const COPY: Record<PrimerReason, { title: string; body: string }> = {
   'hello-sent': {
     title: 'Want to know when they answer?',
-    body: 'We will ping you when somebody replies or says hi, and if anything happens to your account. Nothing else, ever.',
+    body: 'Replies, hellos, and anything about your account. Nothing else, ever.',
   },
   'pin-posted': {
     title: 'Want to know if somebody is in?',

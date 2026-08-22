@@ -64,7 +64,7 @@ export default function ReportScreen() {
     <StepScreen
       title="Report someone"
       subtitle="A real person reads every report."
-      continueLabel="Submit report"
+      continueLabel="Send report"
       continueDisabled={reason == null}
       continueLoading={report.isPending}
       note={reason == null ? 'Pick what happened first.' : null}

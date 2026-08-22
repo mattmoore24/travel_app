@@ -72,7 +72,7 @@ function AccountGate({
             ? `Your account is suspended${
                 until ? ` until ${until.toLocaleDateString()}` : ''
               } for breaking our community guidelines.`
-            : 'Your account has been closed for repeated breaches of our community guidelines.'}
+            : 'Your account is closed for repeatedly breaking our community guidelines.'}
         </ThemedText>
         <PrimaryButton
           variant="ghost"

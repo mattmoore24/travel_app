@@ -521,7 +521,7 @@ function promptForInvite() {
     }
   };
   if (Platform.OS === 'ios' && Alert.prompt) {
-    Alert.prompt('Invite code', 'Paste the code from the invite.', [
+    Alert.prompt('Invite code', 'Open the invite link you were sent.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Join', onPress: open },
     ]);
@@ -616,7 +616,7 @@ export default function ChatScreen() {
           {tab === 'groups' ? (
             <>
               <ThemedText type="footnote" themeColor="textSecondary">
-                Hostels run open chats for their guests. Have a look before you join one.
+                Hostels run open chats. Have a look before you join.
               </ThemedText>
               <RoomDiscovery cityId={cityId} />
               <SignUpGate reason="Want to join in?" where="chat-tab" cta="Make a profile" />
@@ -665,7 +665,7 @@ export default function ChatScreen() {
               ever starts, which is saying hi to somebody. */}
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel={tab === 'groups' ? 'Start a group' : 'Find someone to say hi to'}
+            accessibilityLabel={tab === 'groups' ? 'Start a group' : 'Say hi to someone'}
             haptic="light"
             scaleTo={0.92}
             onPress={() => router.push(tab === 'groups' ? '/new-group' : '/travelers')}
@@ -747,19 +747,39 @@ export default function ChatScreen() {
         {chatsQuery.isError ? (
           <LoadError compact what="your chats" error={chatsQuery.error} onRetry={refresh} />
         ) : null}
+        {/* Same for the hellos waiting on you: silence here used to let "No
+            chats yet" render over people who were actually waiting. */}
+        {requestsQuery.isError && !chatsQuery.isError ? (
+          <LoadError
+            compact
+            what="the hellos waiting on you"
+            error={requestsQuery.error}
+            onRetry={refresh}
+          />
+        ) : null}
 
-        {/* Empty states are invitations: name the one next action. */}
+        {/* Empty states are invitations: name the one next action.
+            Three things had to be true before this card could tell the truth,
+            and none of them were. It painted UNDER the three loading
+            skeletons on a cold start, so the first thing a returning user
+            saw was "No chats yet" over their own chats arriving. It painted
+            under "You said hi - Sent", so the screen said both at once,
+            seconds after somebody's first hello. And a failed
+            incoming-requests fetch could put it over hellos that were
+            waiting. */}
         {!chatsQuery.isError &&
+        !requestsQuery.isError &&
+        chatsQuery.isSuccess &&
         inTab.length === 0 &&
-        (tab === 'groups' || requests.length === 0) ? (
+        (tab === 'groups' || (requests.length === 0 && waitingOnThem.length === 0)) ? (
           <ThemedView type="backgroundElement" style={styles.emptyCard}>
             <ThemedText type="callout">
               {tab === 'groups' ? 'No groups yet' : 'No chats yet'}
             </ThemedText>
             <ThemedText type="footnote" themeColor="textSecondary">
               {tab === 'groups'
-                ? 'Join a hostel chat below, or start a group with people you have met.'
-                : 'Find someone going where you are going and say hi. The chat opens once they answer.'}
+                ? 'Join a hostel chat below, or start your own.'
+                : 'Say hi to someone going your way. The chat opens when they answer.'}
             </ThemedText>
             {tab === 'individual' ? (
               <PrimaryButton label="Find travelers" onPress={() => router.push('/travelers')} />

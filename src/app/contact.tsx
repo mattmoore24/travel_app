@@ -91,8 +91,7 @@ export default function ContactScreen() {
         testID="contact-message"
       />
       <ThemedText type="footnote" themeColor="textSecondary">
-        If you are reporting someone in particular, use Report from their profile or the
-        conversation instead. That carries the context with it.
+        Reporting someone? Use Report on their profile or in the chat. It carries the context.
       </ThemedText>
     </StepScreen>
   );

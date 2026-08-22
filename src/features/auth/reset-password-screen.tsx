@@ -93,7 +93,7 @@ export function ResetPasswordScreen() {
   return (
     <StepScreen
       title="Set a new password"
-      subtitle="Eight characters or more. Tap the eye to check it."
+      subtitle="Eight characters or more."
       continueLabel="Save and sign in"
       continueDisabled={!ok}
       continueLoading={saving}

@@ -73,10 +73,7 @@ export default function VerificationScreen() {
     }
     try {
       await submit.mutateAsync(selfieUri);
-      Alert.alert(
-        'Selfie submitted',
-        'We check it against your profile photos. Your badge shows up once it clears.'
-      );
+      Alert.alert('Selfie submitted', 'Your badge shows up once it clears.');
       router.back();
     } catch {
       // Surfaced by the global mutation error alert; stay on the screen.
@@ -94,7 +91,7 @@ export default function VerificationScreen() {
   return (
     <StepScreen
       title="Get your badge"
-      subtitle="The badge tells people your photos are really you. Take a quick selfie: nobody else ever sees it, and we delete it after the check. No ID needed."
+      subtitle="Proves your photos are you. Nobody sees the selfie. We delete it after the check. No ID needed."
       continueLabel={continueLabel}
       continueLoading={submit.isPending}
       onContinue={onSubmit}>
@@ -111,8 +108,7 @@ export default function VerificationScreen() {
         <ThemedView type="backgroundElement" style={styles.card}>
           <ThemedText type="smallBold">Selfie in review</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            We&apos;re comparing your selfie with your profile photos. This usually takes a few
-            minutes.
+            Usually takes a few minutes.
           </ThemedText>
         </ThemedView>
       ) : (
@@ -144,7 +140,7 @@ export default function VerificationScreen() {
             </View>
           ) : null}
           <ThemedText type="small" themeColor="textSecondary">
-            Good light, face the camera, lose the sunglasses. Same vibe as your profile photos.
+            Good light, face the camera, lose the sunglasses.
           </ThemedText>
         </>
       )}

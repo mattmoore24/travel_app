@@ -78,7 +78,7 @@ export default function EditPromptScreen() {
     return (
       <StepScreen
         title="Your prompts are full"
-        subtitle="Three is the limit, and the limit is the point. Edit one of the answers you already have."
+        subtitle="Three is the limit. Edit one you already have."
         continueLabel="Back"
         onContinue={() => router.back()}>
         <View />

@@ -140,8 +140,7 @@ export default function ComposeRequestScreen() {
             That is your {capped} for today
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centred}>
-            They will hear from you first thing tomorrow. A few good hellos beat a lot of
-            forgettable ones, and the people on the other end will tell you the same.
+            More tomorrow. A few good hellos beat a pile of forgettable ones.
           </ThemedText>
         </View>
         <PrimaryButton label="Fair enough" onPress={() => router.back()} />
@@ -166,7 +165,7 @@ export default function ComposeRequestScreen() {
             Sent to {params.name ?? 'them'}
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centred}>
-            You will hear from them in Chat if they answer.
+            You&apos;ll hear back in Chat if they answer.
           </ThemedText>
         </Animated.View>
       </ThemedView>

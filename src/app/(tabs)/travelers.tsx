@@ -59,9 +59,11 @@ type Candidate = {
  */
 function GuestTravelers() {
   const insets = useSafeAreaInsets();
-  const { data: launchCities = [] } = useLaunchCities();
+  const launchCitiesQuery = useLaunchCities();
+  const launchCities = launchCitiesQuery.data ?? [];
   const cityId = launchCities[0]?.city_id ?? null;
-  const { data: featured, isPending } = useFeaturedTraveler(cityId);
+  const featuredQuery = useFeaturedTraveler(cityId);
+  const { data: featured, isPending } = featuredQuery;
   // Not usePhotoUrl: that signs the path with the caller's own credentials,
   // and a guest has none the storage layer will accept. See useFeaturedPhoto.
   const { data: photoUrl } = useFeaturedPhoto(cityId, featured?.photo_path != null);
@@ -72,7 +74,27 @@ function GuestTravelers() {
     analytics.capture('travelers_viewed', { guest: true });
   }, []);
 
-  if (isPending) {
+  // A blank screen, forever, whenever the city list did not load: cityId
+  // stayed null, so the featured query never enabled, so isPending never
+  // cleared. The one screen a first-time visitor is most likely to open, and
+  // it had nothing on it and nothing to say.
+  if (launchCitiesQuery.isError || featuredQuery.isError) {
+    return (
+      <ThemedView style={styles.root}>
+        <ProfileCorner />
+        <LoadError
+          what="travelers"
+          error={launchCitiesQuery.error ?? featuredQuery.error}
+          onRetry={() => {
+            launchCitiesQuery.refetch();
+            featuredQuery.refetch();
+          }}
+        />
+      </ThemedView>
+    );
+  }
+
+  if (isPending || launchCitiesQuery.isPending) {
     return <ThemedView style={styles.root} />;
   }
 

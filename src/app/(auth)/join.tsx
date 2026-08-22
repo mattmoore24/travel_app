@@ -78,7 +78,7 @@ export default function JoinScreen() {
         step={1}
         total={SIGNUP_TOTAL_STEPS}
         title="What is your email?"
-        subtitle="Used to sign in and nothing else. No newsletters."
+        subtitle="Only for signing in. No newsletters."
         continueLabel="Continue"
         continueDisabled={!emailOk}
         onContinue={submitEmail}
@@ -127,7 +127,7 @@ export default function JoinScreen() {
       step={2}
       total={SIGNUP_TOTAL_STEPS}
       title="Pick a password"
-      subtitle="Eight characters or more. Tap the eye to check it."
+      subtitle="Eight characters or more."
       continueLabel="Create account"
       continueTestID="create-account"
       continueDisabled={!passwordOk}

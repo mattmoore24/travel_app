@@ -62,9 +62,15 @@ export default function RoomScreen() {
   const unpin = useUnpinMessage(id!);
   const [draft, setDraft] = useState('');
 
+  // Archived rooms too: the Archived screen links straight here, and a room
+  // that had been archived resolved to no membership at all - so it offered
+  // to let you JOIN a room you are already in.
+  const archivedQuery = useMyChats(true);
   const membership = useMemo(
-    () => chatsQuery.data?.find((c) => c.chat_id === id) ?? null,
-    [chatsQuery.data, id]
+    () =>
+      [...(chatsQuery.data ?? []), ...(archivedQuery.data ?? [])].find((c) => c.chat_id === id) ??
+      null,
+    [chatsQuery.data, archivedQuery.data, id]
   );
   const isMember = membership != null;
   // Only asked when you are NOT already a member: my_chats already answers
@@ -328,7 +334,12 @@ export default function RoomScreen() {
             }
           />
 
-          {chatsQuery.isPending ? null : isGuest ? (
+          {/* isGuest FIRST. useMyChats is disabled without a user id, so for a
+              signed-out visitor the query never leaves isPending - and this
+              footer, the only thing on the screen offering an account, never
+              rendered at all. A guest could read a hostel room forever with
+              no way in. */}
+          {isGuest ? (
             <View style={styles.footer}>
               <SignUpGate
                 reason="Join this room to post"
@@ -337,12 +348,11 @@ export default function RoomScreen() {
                 compact
               />
             </View>
-          ) : muted ? (
+          ) : chatsQuery.isPending ? null : muted ? (
             <View style={styles.footer}>
               <ThemedView type="backgroundElement" style={styles.mutedNotice}>
                 <ThemedText type="small" themeColor="textSecondary">
-                  Only the admin and the people they pick can post here right now. You can read
-                  everything and react.
+                  Only the admin and who they pick can post. You can read and react.
                 </ThemedText>
               </ThemedView>
             </View>
@@ -399,7 +409,7 @@ export default function RoomScreen() {
           ) : (
             <View style={styles.footer}>
               <ThemedText type="footnote" themeColor="textSecondary">
-                When are you checking out? You leave the room a week after that.
+                When do you check out? You leave a week later.
               </ThemedText>
               {/* The real date, not three guesses at it: people know their
                   checkout day, and picking "7 days" when you mean Thursday

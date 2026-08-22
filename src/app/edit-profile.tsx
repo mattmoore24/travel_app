@@ -97,7 +97,7 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
       router.back();
       return;
     }
-    Alert.alert('Discard your changes?', 'What you have written here will not be saved.', [
+    Alert.alert('Discard your changes?', "You'll lose what you wrote.", [
       { text: 'Keep editing', style: 'cancel' },
       { text: 'Discard', style: 'destructive', onPress: () => router.back() },
     ]);
@@ -181,7 +181,7 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
         Socials
       </ThemedText>
       <ThemedText type="small" themeColor="textSecondary">
-        Only shared with people you are chatting with.
+        Only shown to people you&apos;re chatting with.
       </ThemedText>
       <SocialHandlesEditor />
     </StepScreen>

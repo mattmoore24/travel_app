@@ -14,11 +14,11 @@ export const ZERO_TOLERANCE =
 export const GUIDELINE_SECTIONS = [
   {
     title: 'Respect and kindness',
-    body: 'Treat everyone here the way you would someone you had a good chat with at your hostel. That is the whole rule.',
+    body: "Treat people like someone you'd had a good chat with at the hostel. That's the whole rule.",
   },
   {
     title: 'Moderation',
-    body: 'First messages and photos are checked before they land, so explicit or abusive content never reaches anyone. Repeat problems mean losing access to the app.',
+    body: 'First messages and photos are checked before they land. Repeat problems mean losing your account.',
   },
   {
     title: 'Also not allowed',
@@ -26,6 +26,6 @@ export const GUIDELINE_SECTIONS = [
   },
   {
     title: 'Your privacy',
-    body: 'We never collect your device location. Pins are plans you type in yourself, and they vanish within 72 hours. Your socials are only shared once you and someone else are chatting. You can delete your account, and everything in it, from your profile whenever you like.',
+    body: 'We never collect your location. Pins are plans you type, and they vanish within 72 hours. Your socials only show once you are both chatting. Delete your account, and everything in it, any time from your profile.',
   },
 ] as const;

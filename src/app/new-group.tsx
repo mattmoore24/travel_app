@@ -80,7 +80,7 @@ export default function NewGroupScreen() {
   return (
     <StepScreen
       title="Start a group"
-      subtitle="For the people you have actually met, or the ones you are about to."
+      subtitle="For people you've met, or are about to."
       continueLabel="Create group"
       continueDisabled={!ready}
       continueLoading={busy || createGroup.isPending}
@@ -111,7 +111,7 @@ export default function NewGroupScreen() {
         <View style={styles.photoText}>
           <ThemedText type="smallBold">Group photo</ThemedText>
           <ThemedText type="footnote" themeColor="textSecondary">
-            Optional. It shows up in everyone&apos;s chat list.
+            Optional.
           </ThemedText>
           {photoUri ? (
             <Pressable
@@ -148,15 +148,14 @@ export default function NewGroupScreen() {
         <ThemedText type="footnote" themeColor="textSecondary">
           {speaking === 'everyone'
             ? 'Anyone in the group can post.'
-            : 'You post, plus anyone you give the microphone to. Everyone else can read.'}
+            : 'You, plus anyone you pick. Everyone else reads.'}
         </ThemedText>
       </View>
 
       <View style={styles.block}>
         <ThemedText type="smallBold">People can stay until</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
-          The furthest out anyone can pick when they join. They choose their own date up to this,
-          and drop out on their own afterwards.
+          The latest anyone can pick. They drop out after their own date.
         </ThemedText>
         {Platform.OS === 'ios' ? (
           <DateTimePicker

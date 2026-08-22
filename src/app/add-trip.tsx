@@ -67,7 +67,7 @@ export default function AddTripScreen() {
   return (
     <StepScreen
       title="Where are you off to?"
-      subtitle="Just the city and your dates. We never track where you actually are."
+      subtitle="City and dates only. We never track where you are."
       continueLabel="Post trip"
       continueDisabled={!city || rangeError != null}
       continueLoading={createTrip.isPending}
