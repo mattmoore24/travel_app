@@ -172,3 +172,34 @@ describe('the keyboard gets out of the way first', () => {
     }
   });
 });
+
+describe('the action card colours only what destroys', () => {
+  it('does not paint "Pin to the top" in the destructive colour', () => {
+    render(
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <MessageThread
+          messages={[message({ sender_id: 'me' })]}
+          ownUserId="me"
+          reactions={[]}
+          onToggleReaction={() => {}}
+          onPin={() => {}}
+          onUnsend={() => {}}
+        />
+      </SafeAreaProvider>
+    );
+    fireEvent(screen.getByText('First one in'), 'longPress');
+
+    // Red is the app's "this takes something away". Every row used to get it,
+    // which made the one affirming thing a host can do to a message look like
+    // a warning — and a red that means everything means nothing.
+    const pin = screen.getByText('Pin to the top');
+    const unsend = screen.getByText('Unsend');
+    expect(colorOf(pin)).not.toBe(colorOf(unsend));
+  });
+});
+
+function colorOf(node: ReturnType<typeof screen.getByText>): unknown {
+  const style = node.props.style;
+  const flat = Array.isArray(style) ? Object.assign({}, ...style.flat(Infinity)) : style;
+  return flat?.color;
+}

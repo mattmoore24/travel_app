@@ -129,8 +129,17 @@ const LIFT_GAP = 10;
  * this menu has already been fixed for once.
  */
 const RUN_AVATAR = 26;
-const MENU_SCRIM = 'rgba(2,3,9,0.95)';
-const MENU_GLASS_TINT = 'rgba(2,3,9,0.62)';
+/**
+ * The dim behind a lifted message. Opaque enough that the thread, the header
+ * and the composer all read as BEHIND the menu rather than beside it.
+ */
+const MENU_SCRIM = 'rgba(2,3,9,0.88)';
+/**
+ * The glass laid over that scrim where the platform has it. Much lighter
+ * than the scrim it used to replace, because it is now an enhancement on top
+ * rather than the only thing doing the work.
+ */
+const MENU_GLASS_OVER_SCRIM = 'rgba(2,3,9,0.18)';
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -445,15 +454,20 @@ function MessageMenu({
   // another layer over an already-layered menu.
   const [grid, setGrid] = useState(false);
 
-  const actions: { label: string; run: () => void }[] = [];
+  // `destructive` decides the colour. Every row used to be painted
+  // theme.danger, so "Pin to the top" — an act of curation, the one
+  // affirming thing a host can do to a message — arrived in the same red as
+  // Unsend. Red means "this takes something away"; if it means everything it
+  // means nothing.
+  const actions: { label: string; run: () => void; destructive: boolean }[] = [];
   if (onPin) {
-    actions.push({ label: 'Pin to the top', run: onPin });
+    actions.push({ label: 'Pin to the top', run: onPin, destructive: false });
   }
   if (onUnsend) {
-    actions.push({ label: 'Unsend', run: onUnsend });
+    actions.push({ label: 'Unsend', run: onUnsend, destructive: true });
   }
   if (onReport) {
-    actions.push({ label: reportLabel, run: onReport });
+    actions.push({ label: reportLabel, run: onReport, destructive: true });
   }
 
   const { fontScale, height: windowHeight } = useWindowDimensions();
@@ -497,15 +511,21 @@ function MessageMenu({
       entering={FadeIn.duration(120)}
       // No exiting animation: the modal below unmounts this subtree the
       // instant `visible` flips, so an exit would have nothing to play on.
-      style={[
-        styles.menuLayer,
-        isLiquidGlassAvailable() ? undefined : { backgroundColor: MENU_SCRIM },
-      ]}>
+      // ALWAYS the scrim, with the glass over it rather than instead of it.
+      // This used to hand the whole job to GlassView wherever Liquid Glass
+      // was available — and on iOS 26.2 it IS available and rendered nothing
+      // anybody could see: a simulator run photographed the menu open with
+      // the composer at full brightness beside it, which is the founder's
+      // original complaint arriving back by a different route. A dim that
+      // depends on a GPU effect being both present and effective is not a
+      // dim. The tint drops now that it is layered, so the two together land
+      // where the scrim alone used to.
+      style={[styles.menuLayer, { backgroundColor: MENU_SCRIM }]}>
       {isLiquidGlassAvailable() ? (
         <GlassView
           glassEffectStyle="regular"
           colorScheme="dark"
-          tintColor={MENU_GLASS_TINT}
+          tintColor={MENU_GLASS_OVER_SCRIM}
           pointerEvents="none"
           style={StyleSheet.absoluteFill}
         />
@@ -594,7 +614,7 @@ function MessageMenu({
                 ]}>
                 <ThemedText
                   maxFontSizeMultiplier={ACTION_SCALE_CAP}
-                  style={{ color: theme.danger }}>
+                  style={{ color: action.destructive ? theme.danger : theme.text }}>
                   {action.label}
                 </ThemedText>
               </PressableScale>
