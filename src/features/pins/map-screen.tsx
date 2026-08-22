@@ -276,7 +276,6 @@ const DATE_FILTERS = [
 ] as const;
 type DateFilter = (typeof DATE_FILTERS)[number]['value'];
 
-/** One marker, so each pin manages its own rasterization window. */
 /**
  * One marker for the whole city, once the map is zoomed past street scale:
  * at that size every venue is smaller than a fingertip, and a hundred
@@ -321,6 +320,7 @@ function CityScaleMarker({
   );
 }
 
+/** One marker, so each pin manages its own rasterization window. */
 function CityPinMarker({
   pin,
   selected,
@@ -632,9 +632,6 @@ export default function MapScreen() {
               />
             ))
           )}
-          {/* One marker per city once the map is zoomed past street scale:
-              at that size every venue is smaller than a fingertip, and a
-              hundred overlapping pins say less than one number does. */}
           {cityScale && activeCity && pins.length > 0 ? (
             <CityScaleMarker
               lat={activeCity.cities.lat}

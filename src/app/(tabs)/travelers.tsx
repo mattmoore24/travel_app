@@ -146,7 +146,7 @@ function GuestTravelers() {
                         </ThemedText>
                       )}
                     </View>
-                    <ThemedText type="headline" style={styles.nameText}>
+                    <ThemedText type="headline" numberOfLines={1} style={styles.nameText}>
                       {featured.display_name ?? 'Traveler'}
                       {featured.age != null ? `, ${featured.age}` : ''}
                     </ThemedText>
@@ -766,5 +766,8 @@ const styles = StyleSheet.create({
   },
   nameText: {
     fontSize: 16,
+    // Shrinks rather than pushing the verified seal off the row, now that a
+    // 48pt monogram shares the line with it.
+    flexShrink: 1,
   },
 });
