@@ -161,7 +161,14 @@ jobs:
             # bumps it per schema migration); hardcoding the version made this
             # gate fail two runs in a row on downloads that had actually
             # succeeded.
-            DB=$(ls "$INTERNAL"/expo-v*.db 2>/dev/null | tail -1)
+            # `|| true` is load-bearing. This step runs under `bash -e` with
+            # pipefail, so on the very first pass — before expo-updates has
+            # written anything — `ls` exits non-zero, the pipeline inherits
+            # it, and the assignment kills the whole step. The loop that is
+            # supposed to WAIT for this file could therefore never wait for
+            # it, and every diagnostic below never printed: run 41 died 0.1s
+            # after `simctl launch` finally returned, reporting only "exit 1".
+            DB=$(ls "$INTERNAL"/expo-v*.db 2>/dev/null | tail -1 || true)
             # status 1 is StatusReady: manifest AND every asset downloaded.
             # A row can exist as StatusPending with the bundle still missing.
             if [ -n "$DB" ] && [ -f "$DB" ]; then
