@@ -1,3 +1,4 @@
+import { useIsFocused } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { StyleSheet, View } from 'react-native';
 
@@ -35,8 +36,19 @@ export function PushPrimer() {
   const busy = usePushPrimer((s) => s.busy);
   const accept = usePushPrimer((s) => s.accept);
   const decline = usePushPrimer((s) => s.decline);
+  // Only while the tabs are the thing on screen.
+  //
+  // The moment that earns the question — a hello delivered — happens while
+  // /compose-request is still up, and that route is presented as a modal.
+  // This sheet is a React Native Modal hosted from the tabs layout
+  // UNDERNEATH it, and iOS silently drops a modal presented from a view
+  // controller that is already presenting one: the ask simply never
+  // appeared, which is worse than a badly timed one because nothing says so.
+  // The reason is held in the store until the composer leaves, and the
+  // question arrives on the screen the person lands back on.
+  const focused = useIsFocused();
 
-  if (reason == null) {
+  if (reason == null || !focused) {
     return null;
   }
   const copy = COPY[reason];

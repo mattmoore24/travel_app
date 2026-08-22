@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
+import { carryFailed, type RoomThreadMessage } from '@/features/chat/outgoing';
 import { useOwnUserId } from '@/features/profile/hooks';
 import {
   setReaction,
@@ -74,7 +75,14 @@ export function useRoomMessages(chatId: string | null) {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ['room-messages', chatId],
-    queryFn: () => fetchRoomMessages(chatId!),
+    // Failed sends survive the refetch. A room refetches on every realtime
+    // insert, so without this the next thing anybody else posted deleted the
+    // greyed "Not sent" bubble and the sentence inside it.
+    queryFn: async () =>
+      carryFailed<RoomThreadMessage>(
+        queryClient.getQueryData<RoomThreadMessage[]>(['room-messages', chatId]),
+        await fetchRoomMessages(chatId!)
+      ),
     enabled: isSupabaseConfigured && chatId != null,
     // Same reasoning as direct chats: realtime can land between renders, so
     // never serve a stale first paint.

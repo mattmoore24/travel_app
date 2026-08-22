@@ -30,6 +30,7 @@ import {
 } from '@/features/chat/hooks';
 import { MessageThread } from '@/features/chat/message-thread';
 import type { ThreadMessage } from '@/features/chat/outgoing';
+import { anchorStartedFrom } from '@/features/chat/anchors';
 import { useMarkReadWhileOpen } from '@/features/chat/use-mark-read';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
 // Reactions are chat-shaped, not room-shaped: the table and the summary RPC
@@ -334,7 +335,7 @@ export default function ChatScreen() {
                 <View style={styles.anchorRow}>
                   <ThemedView type="backgroundElement" style={styles.anchorCard}>
                     <ThemedText type="caption" themeColor="textSecondary">
-                      {anchorLabel(chat.first_message_element, chat.title)}
+                      {anchorStartedFrom(chat.first_message_element, chat.title)}
                     </ThemedText>
                   </ThemedView>
                 </View>
@@ -441,26 +442,6 @@ export default function ChatScreen() {
  * on. Naming the KIND of thing is enough to make the first message make
  * sense again.
  */
-function anchorLabel(element: string, name: string | null): string {
-  const who = name ? `${name}'s` : 'their';
-  if (element === 'trip') {
-    return 'Started from the dates you share';
-  }
-  if (element.startsWith('photo')) {
-    return `Started from ${who} photo`;
-  }
-  if (element === 'languages') {
-    return `Started from ${who} languages`;
-  }
-  if (element === 'home') {
-    return `Started from where ${name ?? 'they'} ${name ? 'is' : 'are'} from`;
-  }
-  if (element.startsWith('pin:')) {
-    const venue = element.slice(4).trim();
-    return venue ? `Started from a pin at ${venue}` : 'Started from a pin';
-  }
-  return `Started from ${who} bio`;
-}
 
 const styles = StyleSheet.create({
   anchorRow: {

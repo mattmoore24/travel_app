@@ -330,7 +330,12 @@ export default function RoomScreen() {
 
           {chatsQuery.isPending ? null : isGuest ? (
             <View style={styles.footer}>
-              <SignUpGate reason="Join this room to post" cta="Create an account" compact />
+              <SignUpGate
+                reason="Join this room to post"
+                where="room"
+                cta="Create an account"
+                compact
+              />
             </View>
           ) : muted ? (
             <View style={styles.footer}>

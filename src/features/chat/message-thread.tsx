@@ -57,6 +57,21 @@ const GROUP_WINDOW_MS = 5 * 60 * 1000;
 /** Height of the emoji row, so it can be positioned before it lays out. */
 const PILL_HEIGHT = 52;
 
+/**
+ * The "more reactions" grid, measured rather than assumed.
+ *
+ * The block is positioned from its TOP, before it lays out, so whatever is
+ * used for its height has to be the real one. It was PILL_HEIGHT for both
+ * shapes, which is fine for the six-emoji row and 152pt short for the grid:
+ * the extra grew downward over the lifted bubble and the Unsend/Report card,
+ * both of which are painted after it, so the bottom two rows were invisible
+ * and a tap aimed at one of them landed on Report.
+ */
+const GRID_COLUMNS = 6;
+const GRID_ROWS = Math.ceil(MORE_REACTIONS.length / GRID_COLUMNS);
+const GRID_WIDTH = HitTarget * GRID_COLUMNS + Space.xs * (GRID_COLUMNS - 1) + Space.sm * 2;
+const GRID_HEIGHT = HitTarget * GRID_ROWS + Space.xs * (GRID_ROWS - 1) + Space.sm * 2;
+
 /** Smallest height of one row in the action card below a lifted message. */
 const ACTION_HEIGHT = 44;
 
@@ -360,6 +375,12 @@ function Bubble({
             }
             haptic="none"
             scaleTo={message.local === 'failed' ? 0.96 : 1}
+            // The only route back from a failed send, and it was a 16pt
+            // strip of caption wedged between the bubble and the reaction
+            // row: a miss landed on the bubble and opened the long-press
+            // menu instead. The line stays small because it is a status, not
+            // a button — the target around it does not.
+            hitSlop={message.local === 'failed' ? { top: 8, bottom: 14, left: 16, right: 8 } : 0}
             onPress={message.local === 'failed' ? onRetry : undefined}
             style={styles.statusRow}>
             <ThemedText
@@ -452,7 +473,9 @@ function MessageMenu({
   // the home indicator eat.
   const ceiling = insets.top + Space.md;
   const floor = windowHeight - Math.max(insets.bottom, Space.md);
-  const wantedTop = top - LIFT_GAP - PILL_HEIGHT - Space.md;
+  // Whichever shape the emoji block is currently in.
+  const pillBlock = grid ? GRID_HEIGHT : PILL_HEIGHT;
+  const wantedTop = top - LIFT_GAP - pillBlock - Space.md;
   const wantedBottom = top + target.height + LIFT_GAP + actionsHeight + Space.md;
   let shift = 0;
   if (wantedBottom > floor) {
@@ -498,7 +521,7 @@ function MessageMenu({
 
       {/* The emoji row, directly above the message. */}
       <View
-        style={[styles.menuSide, { top: top + shift - LIFT_GAP - PILL_HEIGHT }, sideOf(mine)]}
+        style={[styles.menuSide, { top: top + shift - LIFT_GAP - pillBlock }, sideOf(mine)]}
         pointerEvents="box-none">
         <Animated.View
           entering={FadeIn.duration(140)}
@@ -977,9 +1000,9 @@ const styles = StyleSheet.create({
   pillGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    // Seven across on any phone this ships to, which keeps the grid the
-    // same shape as the row it replaced.
-    maxWidth: HitTarget * 7 + Space.xs * 8,
+    // Six across on any phone this ships to, and the SAME arithmetic the
+    // height above is derived from, so the two cannot drift apart.
+    maxWidth: GRID_WIDTH,
     gap: Space.xs,
     padding: Space.sm,
     borderRadius: Radius.lg,

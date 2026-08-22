@@ -382,9 +382,16 @@ begin
     raise exception 'not authenticated' using errcode = '42501';
   end if;
 
+  -- ORACLE-PROOF, the same way send_message_request is. Two distinguishable
+  -- refusals — 'message not found' when the definer lookup finds nothing,
+  -- 'only a host can pin' when it does — let anybody holding a message id
+  -- test whether it exists in a room they cannot read. Somebody who IS in
+  -- the room can already see the message, so they keep the honest reason;
+  -- everybody else gets the one answer.
   select chat_id into v_chat from public.messages
   where id = p_message_id and removed_at is null and unsent_at is null;
-  if v_chat is null then
+  if v_chat is null
+     or not (public.is_room_member(v_chat) or public.is_room_moderator(v_chat)) then
     raise exception 'message not found';
   end if;
   if not public.is_room_moderator(v_chat) then
@@ -444,3 +451,34 @@ as $$
 $$;
 
 revoke execute on function public.expire_pinned_messages() from public, anon, authenticated;
+
+-- unpin_message had the mirror image of the same leak: silence when no pin
+-- row exists, 'only a host can unpin' when one does, which told any
+-- authenticated caller whether a given message is pinned in a room they
+-- cannot read. Same rule — a member gets the honest reason, an outsider gets
+-- the same nothing either way.
+create or replace function public.unpin_message(p_message_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_chat uuid;
+begin
+  select chat_id into v_chat from public.pinned_messages where message_id = p_message_id;
+  if v_chat is null then
+    return;
+  end if;
+  if not (public.is_room_member(v_chat) or public.is_room_moderator(v_chat)) then
+    return;
+  end if;
+  if not public.is_room_moderator(v_chat) then
+    raise exception 'only a host can unpin';
+  end if;
+  delete from public.pinned_messages where message_id = p_message_id;
+end;
+$$;
+
+revoke execute on function public.unpin_message(uuid) from public, anon;
+grant execute on function public.unpin_message(uuid) to authenticated;

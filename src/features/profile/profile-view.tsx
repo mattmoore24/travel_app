@@ -21,7 +21,7 @@ import { platformLabel, usesAt } from '@/features/profile/social-handles-editor'
 import { SocialLogo } from '@/features/profile/social-logo';
 import { formatDateRange } from '@/features/trips/dates';
 import { TripEditor, type EditableTrip } from '@/features/trips/trip-editor';
-import { MAX_PROMPTS, promptLabel } from '@/features/profile/prompts';
+import { MAX_PROMPTS, promptLabel, promptLabelInline } from '@/features/profile/prompts';
 import { useTheme } from '@/hooks/use-theme';
 import type {
   ProfilePromptRow,
@@ -187,7 +187,7 @@ function PromptCard({
         {owner && onEdit ? (
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel={`Edit ${promptLabel(prompt.prompt_key).toLowerCase()}`}
+            accessibilityLabel={`Edit ${promptLabelInline(prompt.prompt_key)}`}
             haptic="light"
             scaleTo={0.9}
             hitSlop={{ top: 9, bottom: 9, left: 6, right: 6 }}
@@ -203,7 +203,7 @@ function PromptCard({
             onPress={() =>
               onRespondTo({
                 key: `prompt:${prompt.prompt_key}`,
-                label: `"${promptLabel(prompt.prompt_key).toLowerCase()}"`,
+                label: `"${promptLabelInline(prompt.prompt_key)}"`,
                 quote: prompt.answer,
               })
             }
@@ -595,7 +595,14 @@ export function ProfileView({
               style={styles.heroScrim}
               pointerEvents="none"
             />
-            <View style={styles.heroText} pointerEvents="none">
+            {/* box-none, not none. Identity carries the VerifiedSeal, which
+                is a real button that opens "what verified means" — and a
+                pointerEvents:none subtree returns nil from hitTest, so on
+                every profile that HAS a photo the badge was dead to touch
+                while working fine on the photo-less branch below and in the
+                chat header. VoiceOver announced a button that could not be
+                activated. The wrapper itself still takes no touches. */}
+            <View style={styles.heroText} pointerEvents="box-none">
               <Identity profile={profile} home={home} onPhoto />
             </View>
             {owner && onEditSection ? (

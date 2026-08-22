@@ -179,6 +179,8 @@ function GuestTravelers() {
               ? `Make a profile to say hi to ${featured.display_name ?? 'them'}`
               : 'See everyone else in town'
           }
+          // Not the reason: that sentence carries a real traveler's name.
+          where="travelers-tab"
           cta="Make a profile"
         />
       </ScrollView>
@@ -544,7 +546,11 @@ export default function TravelersScreen() {
           <ThemedText themeColor="textSecondary" style={styles.emptyText}>
             More people add trips every day. In the meantime, these all work.
           </ThemedText>
-          <PrimaryButton label="Drop a pin" onPress={() => router.push('/(tabs)')} />
+          {/* navigate, not push: pushing '/(tabs)' from inside the tabs
+              stacks a SECOND copy of the whole tab navigator on the root
+              stack rather than switching to Map, so the way back was a
+              gesture nobody would guess at. */}
+          <PrimaryButton label="Drop a pin" onPress={() => router.navigate('/(tabs)')} />
           <PrimaryButton
             variant="ghost"
             label="Add or widen a trip"
@@ -648,7 +654,12 @@ const styles = StyleSheet.create({
   },
   loading: {
     flex: 1,
-    alignSelf: 'center',
+    // NOT alignSelf: 'center'. The root is flexDirection: 'row', so the cross
+    // axis is vertical — centring on it gave the skeleton column content
+    // height, floated it down the middle of the screen, and made its
+    // paddingTop (the notch clearance) do nothing. The real list stretches;
+    // its placeholder has to stretch the same way or the shimmer appears
+    // somewhere the content never does.
     width: '100%',
     maxWidth: MaxContentWidth,
     gap: Space.md,

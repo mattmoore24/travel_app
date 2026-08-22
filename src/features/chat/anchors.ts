@@ -1,0 +1,97 @@
+import { promptLabelInline } from '@/features/profile/prompts';
+
+/**
+ * What a first message was a reply TO, and the two ways the app says it.
+ *
+ * The vocabulary lived twice — `anchorLabel` in the chat thread and
+ * `describeElement` in the Chat tab — and the two had already drifted: the
+ * second knew nothing about pins, and neither knew about the profile prompts
+ * added in the same build that added them, so a hello started from "I always
+ * pack" was announced as having come from the recipient's bio. Both of those
+ * are the same class of bug: a screen quietly attributing somebody's opening
+ * line to the wrong thing.
+ *
+ * One parser, two renderers, because the grammar genuinely differs. In an
+ * opened chat the anchor is narrated in the third person about the other
+ * person's profile ("Started from Theo's photo"); on an incoming hello it is
+ * addressed to the person reading it, about their own ("about your photo").
+ */
+export type Anchor =
+  | { kind: 'trip' }
+  | { kind: 'photo' }
+  | { kind: 'languages' }
+  | { kind: 'home' }
+  | { kind: 'bio' }
+  | { kind: 'prompt'; promptKey: string }
+  | { kind: 'pin'; venue: string | null };
+
+/**
+ * Element strings are written by the sender's client and read back much
+ * later, so anything unrecognised — a retired anchor, a future one arriving
+ * on an older build — falls back to the bio rather than rendering a key.
+ */
+export function parseAnchor(element: string): Anchor {
+  if (element === 'trip') {
+    return { kind: 'trip' };
+  }
+  if (element.startsWith('photo')) {
+    return { kind: 'photo' };
+  }
+  if (element === 'languages') {
+    return { kind: 'languages' };
+  }
+  if (element === 'home') {
+    return { kind: 'home' };
+  }
+  if (element.startsWith('prompt:')) {
+    return { kind: 'prompt', promptKey: element.slice('prompt:'.length).trim() };
+  }
+  if (element.startsWith('pin:')) {
+    const venue = element.slice('pin:'.length).trim();
+    return { kind: 'pin', venue: venue.length > 0 ? venue : null };
+  }
+  return { kind: 'bio' };
+}
+
+/** Third person, for the line above an opened chat. */
+export function anchorStartedFrom(element: string, name: string | null): string {
+  const anchor = parseAnchor(element);
+  const whose = name ? `${name}'s` : 'their';
+  switch (anchor.kind) {
+    case 'trip':
+      return 'Started from the dates you share';
+    case 'photo':
+      return `Started from ${whose} photo`;
+    case 'languages':
+      return `Started from ${whose} languages`;
+    case 'home':
+      return `Started from where ${name ?? 'they'} ${name ? 'is' : 'are'} from`;
+    case 'prompt':
+      return `Started from ${whose} answer to "${promptLabelInline(anchor.promptKey)}"`;
+    case 'pin':
+      return anchor.venue ? `Started from a pin at ${anchor.venue}` : 'Started from a pin';
+    default:
+      return `Started from ${whose} bio`;
+  }
+}
+
+/** Second person, for a hello that has just arrived. */
+export function anchorAboutYours(element: string): string {
+  const anchor = parseAnchor(element);
+  switch (anchor.kind) {
+    case 'trip':
+      return 'your travel plans';
+    case 'photo':
+      return 'your photo';
+    case 'languages':
+      return 'your languages';
+    case 'home':
+      return 'where you are from';
+    case 'prompt':
+      return `your answer to "${promptLabelInline(anchor.promptKey)}"`;
+    case 'pin':
+      return anchor.venue ? `your pin at ${anchor.venue}` : 'your pin';
+    default:
+      return 'your bio';
+  }
+}

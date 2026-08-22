@@ -82,7 +82,7 @@ export default function JoinGroupScreen() {
             {countOf(group.member_count, 'person', 'people')} {isAre(group.member_count)} in this
             group. You need a profile to join in.
           </ThemedText>
-          <SignUpGate reason="Join the group" cta="Make a profile" />
+          <SignUpGate reason="Join the group" where="group-invite" cta="Make a profile" />
         </View>
       </ThemedView>
     );

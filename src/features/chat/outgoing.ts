@@ -113,3 +113,25 @@ export function dropOptimistic<T extends { id: string }>(
 ): T[] {
   return current.filter((message) => message.id !== localMessageId);
 }
+
+/**
+ * Keep failed sends across a refetch.
+ *
+ * The thread query refetches on every mount and every realtime insert, and a
+ * refetch replaces the array wholesale — so the greyed "Not sent" bubble, and
+ * the sentence inside it, were deleted by the next message anybody else
+ * posted, or simply by backing out and coming back. A row still IN FLIGHT can
+ * be dropped safely, because settleOptimistic puts the real one back when the
+ * send lands. A failed one is the only copy of what somebody wrote, and the
+ * whole reason failOptimistic greys the bubble instead of deleting it.
+ *
+ * Newest first, matching withOptimistic: what you just tried to send belongs
+ * at the near end of the thread, not buried in it.
+ */
+export function carryFailed<T extends { id: string; local?: 'sending' | 'failed' }>(
+  previous: T[] | undefined,
+  fetched: T[]
+): T[] {
+  const failed = (previous ?? []).filter((message) => message.local === 'failed');
+  return failed.length === 0 ? fetched : [...failed, ...fetched];
+}

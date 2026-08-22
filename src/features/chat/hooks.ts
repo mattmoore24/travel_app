@@ -13,6 +13,7 @@ import {
   leaveChat,
 } from '@/features/chat/api';
 import {
+  carryFailed,
   dropOptimistic,
   failOptimistic,
   optimisticMessage,
@@ -31,7 +32,11 @@ export function useMessages(chatId: string | null) {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ['messages', chatId],
-    queryFn: () => fetchMessages(chatId!),
+    queryFn: async () =>
+      carryFailed<ThreadMessage>(
+        queryClient.getQueryData<ThreadMessage[]>(['messages', chatId]),
+        await fetchMessages(chatId!)
+      ),
     enabled: isSupabaseConfigured && chatId != null,
     // The subscription only covers inserts while THIS screen is mounted —
     // always refetch on mount/focus so messages that arrived while away (or

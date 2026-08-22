@@ -1,11 +1,13 @@
 -- Pinned messages: capped, expiring, moderator-only, and never outliving the
 -- message they point at.
 begin;
-select plan(13);
+select plan(15);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
-  ('00000000-0000-0000-0000-00000000000b', 'bob@example.com');
+  ('00000000-0000-0000-0000-00000000000b', 'bob@example.com'),
+  -- Cara is in no room at all: the outsider the refusals must not talk to.
+  ('00000000-0000-0000-0000-00000000000c', 'cara@example.com');
 
 update public.profiles set
   display_name = 'traveler', age = 25, home_country = 'US',
@@ -152,6 +154,32 @@ select throws_ok(
   format($$ select public.unpin_message(%L) $$, pg_temp.msg('Second thing')),
   'only a host can unpin',
   'and a member cannot take one down either'
+);
+
+-- WHAT A REFUSAL IS ALLOWED TO SAY ----------------------------------------
+--
+-- Two distinguishable refusals are a message-existence oracle: hand somebody
+-- a message id and the wording tells them whether it is real, and whether it
+-- is pinned, in a room they cannot read. A member of the room can already
+-- see both of those facts, so they keep the honest reason; everybody else
+-- gets the one answer. Same rule send_message_request follows.
+
+-- Resolved as admin and carried across. Looked up AS Cara it comes back
+-- null, and pin_message(null) refuses for the boring reason — an assertion
+-- that would pass whether or not the leak is closed.
+select pg_temp.admin();
+create temp table t_pinned as select pg_temp.msg('Second thing') as id;
+grant select on pg_temp.t_pinned to public;
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select throws_ok(
+  format($$ select public.pin_message(%L) $$, (select id from pg_temp.t_pinned)),
+  'message not found',
+  'somebody outside the room is told nothing about whether the message is real'
+);
+select lives_ok(
+  format($$ select public.unpin_message(%L) $$, (select id from pg_temp.t_pinned)),
+  'and nothing about whether it is pinned'
 );
 
 select * from finish();

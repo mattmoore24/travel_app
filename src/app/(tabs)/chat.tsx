@@ -27,6 +27,7 @@ import { useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
 import { rowTimestamp, unreadLabel } from '@/features/chat/separators';
 import { useLiveChatList } from '@/features/chat/hooks';
+import { anchorAboutYours } from '@/features/chat/anchors';
 import { waitingInSegment } from '@/features/chat/unread';
 import { useChatPref, useCityRooms } from '@/features/rooms/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -113,7 +114,7 @@ function RequestCard({ request }: { request: IncomingRequestRow }) {
             ) : null}
           </View>
           <ThemedText type="small" themeColor="textSecondary">
-            {request.profile_element ? `about ${describeElement(request.profile_element)} · ` : ''}
+            {request.profile_element ? `about ${anchorAboutYours(request.profile_element)} · ` : ''}
             view full profile
           </ThemedText>
         </View>
@@ -164,22 +165,6 @@ function RequestCard({ request }: { request: IncomingRequestRow }) {
       </View>
     </ThemedView>
   );
-}
-
-function describeElement(element: string): string {
-  if (element.startsWith('photo')) {
-    return 'your photo';
-  }
-  if (element === 'languages') {
-    return 'your languages';
-  }
-  if (element === 'home') {
-    return 'where you are from';
-  }
-  if (element === 'trip') {
-    return 'your travel plans';
-  }
-  return 'your bio';
 }
 
 /**
@@ -633,7 +618,7 @@ export default function ChatScreen() {
               One-to-one chats start when you say hi to someone and they answer.
             </ThemedText>
           )}
-          <SignUpGate reason="Want to join in?" cta="Make a profile" />
+          <SignUpGate reason="Want to join in?" where="chat-tab" cta="Make a profile" />
         </ScrollView>
       </ThemedView>
     );

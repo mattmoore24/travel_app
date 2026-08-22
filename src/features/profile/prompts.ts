@@ -69,6 +69,20 @@ export function promptLabel(key: string): string {
   return TRAVEL_PROMPTS.find((prompt) => prompt.key === key)?.label ?? 'About me';
 }
 
+/**
+ * The prompt's question, set to sit inside a sentence.
+ *
+ * Only the FIRST letter comes down, and not even that when the first word is
+ * the pronoun "I". A blanket toLowerCase broke four of the eight questions —
+ * the composer offered `Replying to "i am looking for someone to"` — and a
+ * misspelt pronoun in the one sentence somebody is about to send a stranger
+ * reads as carelessness about everything under it.
+ */
+export function promptLabelInline(key: string): string {
+  const label = promptLabel(key);
+  return /^I\b/.test(label) ? label : label.charAt(0).toLowerCase() + label.slice(1);
+}
+
 export function promptPlaceholder(key: string): string {
   return TRAVEL_PROMPTS.find((prompt) => prompt.key === key)?.placeholder ?? '';
 }

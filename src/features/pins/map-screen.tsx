@@ -50,7 +50,8 @@ import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
-import type { CityPinRow } from '@/lib/database.types';
+import { countOf } from '@/lib/plural';
+import type { CityPinRow, PinCategory } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 function PinCard({
@@ -276,6 +277,50 @@ const DATE_FILTERS = [
 type DateFilter = (typeof DATE_FILTERS)[number]['value'];
 
 /** One marker, so each pin manages its own rasterization window. */
+/**
+ * One marker for the whole city, once the map is zoomed past street scale:
+ * at that size every venue is smaller than a fingertip, and a hundred
+ * overlapping pins say less than one number does.
+ *
+ * Its own component so it can hold the tracking timer every other marker on
+ * this map already holds. react-native-maps defaults tracksViewChanges to
+ * true, which re-rasterises the React child into a native image on EVERY
+ * frame of a pan or a pinch — for the one marker that is on screen during
+ * exactly the gesture people use most.
+ */
+function CityScaleMarker({
+  lat,
+  lng,
+  name,
+  count,
+  category,
+  onPress,
+}: {
+  lat: number;
+  lng: number;
+  name: string;
+  count: number;
+  category: PinCategory;
+  onPress: () => void;
+}) {
+  const tracking = useMarkerTracking(`${count}:${category}`);
+  return (
+    <Marker
+      coordinate={{ latitude: lat, longitude: lng }}
+      anchor={MARKER_ANCHOR}
+      centerOffset={MARKER_CENTER_OFFSET}
+      tracksViewChanges={tracking}
+      accessibilityRole="button"
+      accessibilityLabel={`${countOf(count, 'plan')} in ${name}`}
+      onPress={(event) => {
+        event.stopPropagation();
+        onPress();
+      }}>
+      <PinStackView faces={[null]} count={count} category={category} />
+    </Marker>
+  );
+}
+
 function CityPinMarker({
   pin,
   selected,
@@ -591,14 +636,13 @@ export default function MapScreen() {
               at that size every venue is smaller than a fingertip, and a
               hundred overlapping pins say less than one number does. */}
           {cityScale && activeCity && pins.length > 0 ? (
-            <Marker
-              coordinate={{ latitude: activeCity.cities.lat, longitude: activeCity.cities.lng }}
-              anchor={MARKER_ANCHOR}
-              centerOffset={MARKER_CENTER_OFFSET}
-              accessibilityRole="button"
-              accessibilityLabel={`${pins.length} plans in ${activeCity.cities.name}`}
-              onPress={(event) => {
-                event.stopPropagation();
+            <CityScaleMarker
+              lat={activeCity.cities.lat}
+              lng={activeCity.cities.lng}
+              name={activeCity.cities.name}
+              count={pins.length}
+              category={pins[0].category}
+              onPress={() => {
                 haptics.light();
                 mapRef.current?.animateToRegion(
                   {
@@ -609,9 +653,8 @@ export default function MapScreen() {
                   },
                   350
                 );
-              }}>
-              <PinStackView faces={[null]} count={pins.length} category={pins[0].category} />
-            </Marker>
+              }}
+            />
           ) : null}
 
           {!cityScale &&
@@ -966,6 +1009,7 @@ export default function MapScreen() {
         <Sheet onClose={() => setPinGate(false)}>
           <SignUpGate
             reason="Dropping a pin needs a profile, so people know who is going"
+            where="drop-pin"
             cta="Make a profile"
             compact
             // Pushing a route from inside a sheet leaves its scrim over the
@@ -1053,6 +1097,7 @@ export default function MapScreen() {
             // the guest came back.
             <SignUpGate
               reason="See who's going and say hi"
+              where="pin-card"
               cta="Create an account"
               compact
               onNavigate={leavingSheet(() => setSelectedPinId(null))}

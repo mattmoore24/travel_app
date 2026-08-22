@@ -16,11 +16,21 @@ import { analytics } from '@/lib/analytics';
  */
 export function SignUpGate({
   reason,
+  where,
   cta = 'Create an account',
   compact = false,
   onNavigate = (go) => go(),
 }: {
   reason: string;
+  /**
+   * A short, stable name for THIS gate, and the only thing analytics ever
+   * sees. `reason` is a human sentence and one of them interpolates another
+   * traveler's display name, so sending it would have exported a real
+   * person's name to a third-party vendor from a signed-out screen. It also
+   * makes the funnel legible: a reason edited for tone would otherwise split
+   * one gate into two lines on the chart.
+   */
+  where: string;
   cta?: string;
   compact?: boolean;
   /**
@@ -31,11 +41,12 @@ export function SignUpGate({
   onNavigate?: (go: () => void) => void;
 }) {
   // Both halves of the only conversion step in the app: how often a gate is
-  // put in front of somebody, and how often they take it. The reason string
-  // is the label, so the numbers say WHICH gate converts.
+  // put in front of somebody, and how often they take it. `where` is the
+  // label, so the numbers say WHICH gate converts — never `reason`, which is
+  // prose and sometimes carries somebody's name.
   useEffect(() => {
-    analytics.capture('gate_shown', { reason });
-  }, [reason]);
+    analytics.capture('gate_shown', { where });
+  }, [where]);
 
   return (
     <GlassSurface radius={Radius.xl} style={compact ? styles.compact : styles.card}>
@@ -48,7 +59,7 @@ export function SignUpGate({
         <PrimaryButton
           label={cta}
           onPress={() => {
-            analytics.capture('gate_tapped', { reason });
+            analytics.capture('gate_tapped', { where });
             onNavigate(() => router.push('/join'));
           }}
         />
@@ -61,7 +72,7 @@ export function SignUpGate({
           variant="ghost"
           label="I already have an account"
           onPress={() => {
-            analytics.capture('gate_signin_tapped', { reason });
+            analytics.capture('gate_signin_tapped', { where });
             onNavigate(() => router.push('/email'));
           }}
         />

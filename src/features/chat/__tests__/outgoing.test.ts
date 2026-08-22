@@ -1,4 +1,5 @@
 import {
+  carryFailed,
   dropOptimistic,
   failOptimistic,
   isLocalId,
@@ -91,5 +92,33 @@ describe('dropOptimistic', () => {
   it('removes just that one, for a retry that replaces it', () => {
     const pending = optimisticMessage({ chatId: 'c', senderId: 's', body: 'hi', at: AT });
     expect(dropOptimistic(withOptimistic([real('older')], pending), pending.id)).toHaveLength(1);
+  });
+});
+
+describe('carryFailed', () => {
+  const sending = optimisticMessage({ chatId: 'c', senderId: 's', body: 'see you at 8', at: AT });
+  const failed = { ...sending, local: 'failed' as const };
+
+  it('keeps a failed send across a refetch that knows nothing about it', () => {
+    const refetched = [real('server-1'), real('server-2')];
+    expect(carryFailed([failed, real('server-1')], refetched)).toEqual([failed, ...refetched]);
+  });
+
+  it('puts it at the near end, where the person just tried to send it', () => {
+    expect(carryFailed([failed], [real('older')])[0]).toBe(failed);
+  });
+
+  it('drops a send still in flight, because settling puts the real row back', () => {
+    expect(carryFailed([sending], [real('server-1')])).toEqual([real('server-1')]);
+  });
+
+  it('returns the fetched array untouched when nothing failed', () => {
+    const refetched = [real('server-1')];
+    expect(carryFailed([real('server-1')], refetched)).toBe(refetched);
+  });
+
+  it('survives a first fetch with no cache at all', () => {
+    const refetched = [real('server-1')];
+    expect(carryFailed(undefined, refetched)).toBe(refetched);
   });
 });

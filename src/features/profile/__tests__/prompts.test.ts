@@ -3,6 +3,7 @@ import {
   TRAVEL_PROMPTS,
   nextFreeSlot,
   promptLabel,
+  promptLabelInline,
   promptPlaceholder,
   unusedPrompts,
 } from '@/features/profile/prompts';
@@ -58,5 +59,24 @@ describe('nextFreeSlot', () => {
 
   it('says no when the profile is full', () => {
     expect(nextFreeSlot([0, 1, 2])).toBeNull();
+  });
+});
+
+describe('promptLabelInline', () => {
+  it('leaves the pronoun alone when the question opens with it', () => {
+    expect(promptLabelInline('looking_for')).toBe('I am looking for someone to');
+    expect(promptLabelInline('always_pack')).toBe('I always pack');
+  });
+
+  it('drops the first letter into a sentence otherwise', () => {
+    expect(promptLabelInline('this_trip')).toBe('this trip I really want to');
+  });
+
+  it('leaves a pronoun in the middle of the question alone', () => {
+    expect(promptLabelInline('best_meal')).toBe('best thing I have eaten on the road');
+  });
+
+  it('falls back for a question that has been retired', () => {
+    expect(promptLabelInline('gone_forever')).toBe('about me');
   });
 });

@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 
@@ -13,6 +13,7 @@ import { ThemedView } from '@/components/themed-view';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Radius, Spacing } from '@/constants/theme';
+import { countOf } from '@/lib/plural';
 import { useDraftWarning, useFirstMessageBudget, useSendRequest } from '@/features/matching/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
@@ -65,6 +66,16 @@ export default function ComposeRequestScreen() {
   // no acknowledgement at all: the same nothing you get from a failed tap.
   const [sent, setSent] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  // The pop-after-confirmation timer, so leaving early cancels it.
+  const backTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (backTimer.current) {
+        clearTimeout(backTimer.current);
+      }
+    },
+    []
+  );
   // Arriving from a reply bubble on the profile, the thing being answered is
   // already decided and shown. The old chip row stays as the fallback for
   // anyone who got here from the Say hi button instead.
@@ -100,7 +111,12 @@ export default function ComposeRequestScreen() {
       setSent(true);
       // Long enough to read, short enough not to be a wall. Travelers has
       // already moved on to the next person underneath.
-      setTimeout(() => router.back(), CONFIRM_MS);
+      //
+      // Held so it can be cancelled. Swiping this modal down inside the
+      // window used to leave the timer running, and it then popped the
+      // screen UNDERNEATH — somebody who dismissed the confirmation early
+      // was thrown off the profile they were reading back to the tabs.
+      backTimer.current = setTimeout(() => router.back(), CONFIRM_MS);
     } catch {
       // Surfaced by the global mutation error alert; stay on the composer.
     }
@@ -233,7 +249,7 @@ export default function ComposeRequestScreen() {
             their second of eight does not need to be told about it. */}
         {budget.data && budget.data.allowed - budget.data.used <= 3 ? (
           <ThemedText type="small" themeColor="textSecondary">
-            {Math.max(budget.data.allowed - budget.data.used, 0)} hellos left today
+            {countOf(Math.max(budget.data.allowed - budget.data.used, 0), 'hello')} left today
           </ThemedText>
         ) : null}
       </View>
@@ -241,11 +257,10 @@ export default function ComposeRequestScreen() {
       {risky && !blockedNotice ? (
         <ThemedView type="backgroundElement" style={styles.blockedCard}>
           <ThemedText type="smallBold" style={{ color: theme.highlight }}>
-            This might land wrong
+            This might not go through
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            Samewhere is for making friends, not for coming on to people. Reword it and it will go
-            straight through.
+            Explicit messages are not delivered. Reword it and it goes straight out.
           </ThemedText>
         </ThemedView>
       ) : null}

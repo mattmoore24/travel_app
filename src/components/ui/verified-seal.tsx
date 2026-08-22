@@ -1,6 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { Alert, Pressable, StyleSheet } from 'react-native';
 
+import { HitTarget } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -37,7 +38,12 @@ export function VerifiedSeal({
       accessibilityRole="button"
       accessibilityLabel={who ? `${who}, verified` : 'Verified'}
       accessibilityHint="What the verified badge means"
-      hitSlop={10}
+      // Sized from the glyph, not guessed. A flat 10 gave a 34pt target on
+      // the 14pt seal and 40pt on the 20pt one, both under the 44 every
+      // other small control in this app buys itself — and this is a control
+      // people reach for exactly once, on somebody else's face, to find out
+      // whether the badge means anything.
+      hitSlop={Math.max(0, Math.ceil((HitTarget - size) / 2))}
       onPress={() =>
         Alert.alert(
           'Verified',
