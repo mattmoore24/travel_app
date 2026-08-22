@@ -80,10 +80,19 @@ the `e2e` channel, which costs nothing.
 The workflow's own input description used to contradict this, claiming the
 simulator could not reach `u.expo.dev`. It was wrong, and the evidence for it
 was a step that died 0.1s after launching the app because of an errexit bug,
-before it had waited for anything. Run 43 fetched the update and drove the
-whole suite against it. If a future run cannot fetch, read the log — the step
-prints the updates table and expo-updates' own log now — rather than
-concluding the path is broken and spending a build.
+before it had waited for anything. Run 43 fetched the update and launched it.
+If a future run cannot fetch, read the log — the step prints the updates
+table and expo-updates' own log now — rather than concluding the path is
+broken and spending a build.
+
+**`EXPO_PUBLIC_*` is inlined at BUNDLE time.** So `eas update` needs the
+Supabase secrets in its own job, not just in the job that drives the
+simulator. Run 43 shipped a perfectly good update of an app that could not
+reach its backend: empty map, "waiting on backend keys", and a flow that
+died on a button a keyless app never renders. A BUILD hides this, because
+EAS reads the same secrets from the project — so it is a failure mode only
+the over-the-air path has, and the step now refuses to publish without
+them.
 
 **Never promise a build number before a build starts.** The remote
 `buildNumber` increments when the build is requested, including for attempts

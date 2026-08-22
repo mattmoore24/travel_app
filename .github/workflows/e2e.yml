@@ -76,8 +76,24 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_NO_TELEMETRY: '1'
+          # INLINED AT BUNDLE TIME, so they have to be here and not only in
+          # the job that drives the simulator. Without them the update
+          # published fine, downloaded fine, launched fine — and the app came
+          # up on "waiting on backend keys", because isSupabaseConfigured was
+          # false in the bundle. Run 43 photographed an empty map and died on
+          # a Drop a pin button that a keyless app never renders. A build does
+          # not show this: the EAS build reads the same secrets from the
+          # project, so the embedded JS is always configured.
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
         run: |
           set -o pipefail
+          if [ -z "${EXPO_PUBLIC_SUPABASE_URL:-}" ] || [ -z "${EXPO_PUBLIC_SUPABASE_ANON_KEY:-}" ]; then
+            echo "::error::Supabase env vars are not set for this job. The"
+            echo "::error::bundle would ship unconfigured and every screenshot"
+            echo "::error::would be of an app that cannot reach its backend."
+            exit 1
+          fi
           npx --yes eas-cli@latest update --branch e2e \
             --message "e2e ${{ github.sha }}" --non-interactive --json > update.json
           ID=$(node -p "
