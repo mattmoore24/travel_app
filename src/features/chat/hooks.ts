@@ -136,12 +136,11 @@ export function useSendMessage(chatId: string | null, kind: 'direct' | 'room' = 
         return;
       }
       if (kind === 'room') {
-        // No row to swap in: room_messages is a joined view this client
-        // cannot synthesise. Drop the placeholder and let the refetch (and
-        // the realtime subscription) bring back the real thing.
-        queryClient.setQueryData<{ id: string }[]>(key, (current = []) =>
-          dropOptimistic(current, context.localMessageId)
-        );
+        // Refetch and let the new array replace the placeholder, rather than
+        // deleting it here. room_messages is a joined view this client cannot
+        // synthesise, so there is no row to swap in — and dropping the
+        // placeholder before the refetch lands leaves a window with neither,
+        // where the message the person just sent blinks out of the thread.
         queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
       } else {
         queryClient.setQueryData<ThreadMessage[]>(key, (current = []) =>
