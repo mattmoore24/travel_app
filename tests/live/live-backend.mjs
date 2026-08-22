@@ -278,6 +278,45 @@ try {
 
   const { data: supportRows } = await brit.client.from('support_messages').select('*').limit(1);
   check('the support inbox itself stays unreadable', (supportRows ?? []).length === 0);
+
+  // --- the spotlight cannot reach past a block ----------------------------
+  //
+  // Worth doing HERE rather than only in pgTAP. daily_spotlight() is SECURITY
+  // DEFINER and calls get_matches(), which is SECURITY INVOKER and does none
+  // of its own filtering: every check lives in the trips_select_overlap
+  // policy, and policies do not run for a definer. The local test cluster
+  // owns its tables with a nosuperuser, nobypassrls role; hosted Supabase's
+  // `postgres` additionally has BYPASSRLS, which is the very condition that
+  // makes the bypass total. So this is the one place the fix can actually be
+  // proven under the roles it will run under.
+  //
+  // Casey blocks Alex, and Alex is the one asking. Casey and Alex overlap in
+  // Lisbon, so without the restated filters Casey is a legitimate candidate.
+  const { error: blockErr } = await creep.client
+    .from('blocks')
+    .insert({ blocker_id: creep.userId, blocked_id: alex.userId });
+  check('a block is written', !blockErr, blockErr?.message);
+
+  const { data: spotlight, error: spotErr } = await alex.client.rpc('daily_spotlight');
+  const spotlightedByBlocker = (spotlight ?? []).some((r) => r.user_id === creep.userId);
+  check(
+    'the daily spotlight never surfaces somebody who blocked you (live)',
+    !spotErr && !spotlightedByBlocker,
+    spotErr?.message
+  );
+
+  // --- a capped answer is shaped like every other answer ------------------
+  //
+  // The client has ONE result type for send_message_request, so a branch that
+  // omits a key types it as present and hands back undefined.
+  const { data: capShape, error: capErr } = await alex.client.rpc('first_message_budget');
+  check(
+    'the hello budget reads back with both halves',
+    !capErr &&
+      typeof capShape?.[0]?.used === 'number' &&
+      typeof capShape?.[0]?.allowed === 'number',
+    capErr?.message
+  );
 } catch (e) {
   failed += 1;
   console.log(`FAIL (fatal) ${e.message}`);
