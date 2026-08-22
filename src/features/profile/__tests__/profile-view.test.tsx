@@ -85,3 +85,35 @@ describe('ProfileView with a photo', () => {
     expect(screen.getByLabelText('Reply to this photo')).toBeTruthy();
   });
 });
+
+describe('the overlap window', () => {
+  const trip = {
+    id: 't1',
+    cityId: 1,
+    cityLabel: 'Bangkok, Thailand',
+    startDate: '2026-08-17',
+    endDate: '2026-09-13',
+    overlap: { start: '2026-08-23', end: '2026-08-28' },
+  };
+
+  // Run 44 photographed "Both there Aug 23 - 28" half-dissolved into the
+  // gradient under the Say hi bar: the fact that explains why this person is
+  // on your screen, unreadable at rest. The trip card still carries it, but
+  // the hero is the copy that cannot be pushed under anything.
+  it('is said next to the name, not only on the trip card', () => {
+    renderProfile({ trips: [trip] });
+    expect(screen.getByText(/^Both in Bangkok/)).toBeTruthy();
+    expect(screen.getByText(/^Both there/)).toBeTruthy();
+  });
+
+  it('says nothing when the trips do not overlap', () => {
+    renderProfile({ trips: [{ ...trip, overlap: null }] });
+    expect(screen.queryByText(/^Both in/)).toBeNull();
+  });
+
+  // Your own profile has no viewer to overlap with.
+  it('is not shown to the owner', () => {
+    renderProfile({ trips: [trip], owner: true });
+    expect(screen.queryByText(/^Both in/)).toBeNull();
+  });
+});

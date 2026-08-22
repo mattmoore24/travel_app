@@ -437,14 +437,23 @@ function SocialsSection({
 function Identity({
   profile,
   home,
+  overlap,
   onPhoto,
   style,
 }: {
   profile: ProfileRow;
   home: string;
+  /**
+   * "Both in Bangkok Aug 23 - 28", when the viewer's own trip overlaps this
+   * one. Said here rather than only on the trip card because it is the one
+   * fact that explains why this person is on your screen, and the card is
+   * far enough down the page to land under the floating Say hi bar at rest.
+   */
+  overlap?: string | null;
   onPhoto: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
+  const theme = useTheme();
   return (
     <View style={[styles.identity, style]}>
       <View style={styles.nameRow}>
@@ -478,6 +487,14 @@ function Identity({
           style={onPhoto ? styles.onPhotoSoft : undefined}>
           From {home}
         </ThemedText>
+      ) : null}
+      {overlap ? (
+        <View
+          style={[styles.overlapPill, styles.identityOverlap, { backgroundColor: theme.accent }]}>
+          <ThemedText type="caption" style={{ color: theme.onAccent }}>
+            {overlap}
+          </ThemedText>
+        </View>
       ) : null}
     </View>
   );
@@ -551,6 +568,15 @@ export function ProfileView({
   const woven = gallery.slice(0, INTERLEAVED);
   const remaining = gallery.slice(INTERLEAVED);
   const home = [profile.home_city, profile.home_country].filter(Boolean).join(', ');
+  // Just the city: cityLabel is "Bangkok, Thailand", and "Both in Bangkok,
+  // Thailand Aug 23 - 28" wraps to two lines on a phone.
+  const overlapTrip = owner ? undefined : trips.find((trip) => trip.overlap);
+  const overlap = overlapTrip?.overlap
+    ? `Both in ${overlapTrip.cityLabel.split(',')[0]} ${formatDateRange(
+        overlapTrip.overlap.start,
+        overlapTrip.overlap.end
+      )}`
+    : null;
   const heroWidth = Math.min(width, MaxContentWidth);
   const edit = (section: 'photos' | 'about' | 'details' | 'socials') =>
     onEditSection ? () => onEditSection(section) : undefined;
@@ -603,7 +629,7 @@ export function ProfileView({
                 chat header. VoiceOver announced a button that could not be
                 activated. The wrapper itself still takes no touches. */}
             <View style={styles.heroText} pointerEvents="box-none">
-              <Identity profile={profile} home={home} onPhoto />
+              <Identity profile={profile} home={home} overlap={overlap} onPhoto />
             </View>
             {owner && onEditSection ? (
               <PressableScale
@@ -661,7 +687,13 @@ export function ProfileView({
                   tintColor={theme.textSecondary}
                 />
               </View>
-              <Identity profile={profile} home={home} onPhoto={false} style={styles.flex} />
+              <Identity
+                profile={profile}
+                home={home}
+                overlap={overlap}
+                onPhoto={false}
+                style={styles.flex}
+              />
             </View>
             {owner && onEditSection ? (
               <PressableScale
@@ -1024,6 +1056,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.sm,
     paddingVertical: 3,
     borderRadius: Radius.pill,
+  },
+  /* On the hero it sits under two lines set with `gap: 2`, which is too
+     tight for a pill against the line above it. */
+  identityOverlap: {
+    marginTop: Space.sm,
   },
   emptyTrips: {
     padding: Space.lg,

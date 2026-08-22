@@ -339,7 +339,10 @@ function TravelerPage({
       <LinearGradient
         colors={['transparent', theme.background]}
         locations={[0, 0.55]}
-        style={[styles.actionBackdrop, { height: BottomTabInset + ACTION_BAR_CLEARANCE }]}
+        style={[
+          styles.actionBackdrop,
+          { height: actionBarHeight(insets.bottom) + ACTION_BAR_RAMP },
+        ]}
         pointerEvents="none"
       />
       <View
@@ -375,9 +378,30 @@ function TravelerPage({
 
 /**
  * Room under the scroll for the floating Say hi bar and the tab bar beneath
- * it. One constant so the backdrop and the padding can never drift apart.
+ * it, so anything at the very bottom of a profile can still be scrolled into
+ * the clear.
  */
 const ACTION_BAR_CLEARANCE = 148;
+
+/** The Say hi button's diameter, and the Next circle's. */
+const ACTION_BUTTON = 52;
+
+/**
+ * How tall the bar actually is. The backdrop used to be given
+ * ACTION_BAR_CLEARANCE instead, which is 30pt taller — so the fade started
+ * a line and a half ABOVE the bar and dissolved whatever was there. On a
+ * traveler with one trip that is exactly where "Both there Aug 23 - 28"
+ * lands: the one fact that explains why this person is on your screen,
+ * sliced in half at rest (run 44). Scrolling recovered it; nothing told you
+ * to scroll.
+ */
+function actionBarHeight(bottomInset: number) {
+  return Space.sm + ACTION_BUTTON + Space.sm + BottomTabInset + bottomInset / 2;
+}
+
+/** Ramp above the bar. Long enough to read as a fade, short enough that it
+ *  starts at the bar rather than over the content. */
+const ACTION_BAR_RAMP = Space.xxl;
 
 /**
  * The way to your own profile, on this tab too.

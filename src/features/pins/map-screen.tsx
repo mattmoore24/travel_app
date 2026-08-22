@@ -868,11 +868,17 @@ export default function MapScreen() {
               scaleTo={0.9}
               haptic="soft"
               onPress={exitPlaceMode}>
+              {/* `regular`, not `clear`. Clear glass is very nearly nothing:
+                  run 44 caught this X sitting over a traveler's avatar pin
+                  with the lower half of both strokes swallowed by a bright
+                  photograph, on the only control that leaves place mode. The
+                  ring is for the same reason - a dark material still needs an
+                  edge where the thing behind it is brighter than it is. */}
               <GlassSurface
-                variant="clear"
+                variant="regular"
                 radius={Radius.pill}
                 pointerEvents="none"
-                style={styles.cancelButton}>
+                style={[styles.cancelButton, { borderColor: theme.hairline }]}>
                 <SymbolView
                   name={{ ios: 'xmark', android: 'close', web: 'close' }}
                   size={16}
@@ -1204,6 +1210,7 @@ const styles = StyleSheet.create({
     height: HitTarget,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
   },
   venueHeader: {
     flexDirection: 'row',
