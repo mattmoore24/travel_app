@@ -75,8 +75,14 @@ const PAGES: Page[] = [
   },
   {
     icon: { ios: 'person.2.fill', android: 'group', web: 'group' },
-    title: 'Find people on your dates',
-    body: "Add your trips and you'll see who else is in town while you are. Same dates, same city, that is the whole idea.",
+    // NOT "Find people on your dates". It was the largest type on the page,
+    // six words, two of which were "find people" and "dates" — and the only
+    // thing making "dates" mean the calendar arrived three lines down in
+    // grey. The one rule that decides more design questions here than any
+    // other is that this must never read like a dating app, and page three
+    // of the first thing anybody sees was breaking it.
+    title: 'Who else is in town while you are',
+    body: "Add your trips and you'll see who overlaps with you. Same dates, same city, that's the whole idea.",
   },
   {
     icon: { ios: 'bubble.left.and.bubble.right.fill', android: 'chat', web: 'chat' },
@@ -328,7 +334,7 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
                 entering={FadeInUp.delay(240).duration(420)}
                 maxFontSizeMultiplier={MAX_FONT_SCALE}
                 style={styles.welcomeLine}>
-                Make friends in the city you are visiting.
+                Make friends in the city you&apos;re visiting.
               </Animated.Text>
             </View>
             {/* The whole stagger is retimed under 400ms on purpose. It used
@@ -539,11 +545,15 @@ const styles = StyleSheet.create({
     marginTop: Space.md,
   },
   signInLink: {
-    color: WHITE_SOFT,
+    // ACCENT, not WHITE_SOFT. Everything else on this screen carries its
+    // interactivity in a shape — a filled pill, an outlined pill — so a bare
+    // body-coloured line was the one control that looked like a caption, on
+    // the only sign-in path a returning user gets here.
+    color: ACCENT,
     textAlign: 'center',
     fontSize: 15,
     fontWeight: '600',
-    paddingVertical: Space.sm,
+    paddingVertical: Space.md,
   },
   buttonContainer: {
     alignSelf: 'stretch',
@@ -574,7 +584,9 @@ const styles = StyleSheet.create({
   },
   skip: {
     position: 'absolute',
-    right: Space.lg,
+    // The page's margin, not one 8pt tighter. Skip is the only control on
+    // every page and it was the one element missing the grid.
+    right: Space.xl,
   },
   skipLabel: {
     ...Type.callout,

@@ -140,55 +140,62 @@ function PinCard({
         </>
       ) : (
         <>
-          {/* Tap the person to read them properly before deciding. */}
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel={`View ${pin.display_name ?? 'traveler'}'s profile`}
-            scaleTo={0.98}
-            haptic="soft"
-            onPress={() =>
-              leaveThen(() =>
-                router.push({
-                  pathname: '/profile/[userId]',
-                  // Carried so a reply started from this profile is sent as a
-                  // pin request. A pinner does not have to share your dates.
-                  params: { userId: pin.user_id!, from: 'pin' },
-                })
-              )
-            }>
-            <ThemedView type="surfaceSunken" style={styles.pinnerCard}>
-              <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
-                {photoUrl ? (
-                  <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
-                ) : (
-                  <SymbolView
-                    name={{ ios: 'person.fill', android: 'person', web: 'person' }}
-                    size={20}
-                    tintColor={theme.textSecondary}
-                  />
-                )}
-              </View>
-              <View style={styles.pinnerText}>
-                <View style={styles.nameRow}>
-                  <ThemedText type="callout" style={styles.strong}>
-                    {pin.display_name ?? 'Traveler'}
-                    {pin.age != null ? `, ${pin.age}` : ''}
-                  </ThemedText>
-                  {pin.verified ? (
-                    <VerifiedSeal size={13} name={pin.display_name} age={pin.age} />
-                  ) : null}
+          {/* Tap the person to read them properly before deciding — unless
+              the person is you. On your own pin this row read "Maestro Test,
+              27 / Tap to see their profile" directly above "Your pin", so the
+              same card called you a stranger and then called the pin yours,
+              a centimetre apart. You already know who you are, and your own
+              profile is one tap away in the header. */}
+          {!isOwn ? (
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel={`View ${pin.display_name ?? 'traveler'}'s profile`}
+              scaleTo={0.98}
+              haptic="soft"
+              onPress={() =>
+                leaveThen(() =>
+                  router.push({
+                    pathname: '/profile/[userId]',
+                    // Carried so a reply started from this profile is sent as a
+                    // pin request. A pinner does not have to share your dates.
+                    params: { userId: pin.user_id!, from: 'pin' },
+                  })
+                )
+              }>
+              <ThemedView type="surfaceSunken" style={styles.pinnerCard}>
+                <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
+                  {photoUrl ? (
+                    <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
+                  ) : (
+                    <SymbolView
+                      name={{ ios: 'person.fill', android: 'person', web: 'person' }}
+                      size={20}
+                      tintColor={theme.textSecondary}
+                    />
+                  )}
                 </View>
-                <ThemedText type="footnote" themeColor="textSecondary">
-                  Tap to see their profile
-                </ThemedText>
-              </View>
-              <SymbolView
-                name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-                size={14}
-                tintColor={theme.textSecondary}
-              />
-            </ThemedView>
-          </PressableScale>
+                <View style={styles.pinnerText}>
+                  <View style={styles.nameRow}>
+                    <ThemedText type="callout" style={styles.strong}>
+                      {pin.display_name ?? 'Traveler'}
+                      {pin.age != null ? `, ${pin.age}` : ''}
+                    </ThemedText>
+                    {pin.verified ? (
+                      <VerifiedSeal size={13} name={pin.display_name} age={pin.age} />
+                    ) : null}
+                  </View>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    Tap to see their profile
+                  </ThemedText>
+                </View>
+                <SymbolView
+                  name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+                  size={14}
+                  tintColor={theme.textSecondary}
+                />
+              </ThemedView>
+            </PressableScale>
+          ) : null}
 
           {isOwn ? (
             // Your own pin, which is a thing you just DID, not a thing to
@@ -197,8 +204,12 @@ function PinCard({
             // the app. Now the pin says what it is and when it burns out,
             // Done is the action, and taking it down is a quiet footnote.
             <>
+              {/* Just "Your pin". The header two lines up already says
+                  "Today · burns out in 14h", and printing the same countdown
+                  twice in one short sheet reads as a duplicated component
+                  rather than a reminder. */}
               <ThemedText type="footnote" themeColor="textSecondary">
-                Your pin · {burnOutLabel(pin.expires_at)}
+                Your pin
               </ThemedText>
               <PrimaryButton label="Done" onPress={onClose} />
               <Pressable
@@ -782,18 +793,17 @@ export default function MapScreen() {
                 );
               })}
             </ScrollView>
-            {/* The rail runs under the avatar button, so the last chip used
-                to be cut in half by it: "Mexico City" read as "Me…". The
-                padding gives the rail somewhere to end and the fade says
-                "there is more this way" instead of "this word is broken". */}
-            <LinearGradient
-              colors={['transparent', theme.background]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={styles.railFade}
-              pointerEvents="none"
-            />
-            <AvatarButton />
+            {/* Over the rail, not beside it. As a flex sibling the ScrollView
+                ended two-thirds of the way across the screen and guillotined
+                whatever chip was there — a pill with its rounded cap sliced
+                off mid-word, which reads as a layout bug rather than as
+                "scroll for more". Floating it lets the rail run to the screen
+                edge, where a chip running off IS the affordance; the trailing
+                padding in cityChips is what guarantees the last one can still
+                be brought out from under this. */}
+            <View style={styles.avatarDock} pointerEvents="box-none">
+              <AvatarButton />
+            </View>
           </View>
           <View style={styles.dateRow}>
             {DATE_FILTERS.map((filter) => {
@@ -1121,8 +1131,14 @@ const styles = StyleSheet.create({
   cityChips: {
     gap: Spacing.two,
     paddingLeft: Spacing.three,
-    // Clearance for the avatar button the rail scrolls underneath, plus the
-    // fade over it, so the last chip can always come fully into view.
+    // Clearance for the avatar the rail scrolls UNDER, so the last chip can
+    // still be brought fully into view. The rail itself now runs to the edge
+    // of the screen: a pill sliced flat by an invisible line two-thirds of
+    // the way across reads as a layout bug, while one running off the screen
+    // edge reads as "scroll for more" — which is what it is. The gradient
+    // that used to sit over the cut faded to `background`, an opaque colour
+    // that is not what is behind it on a map, so it painted a dark
+    // square-cornered rectangle across the chip and the streets.
     paddingRight: HitTarget + Spacing.four,
   },
   legend: {
@@ -1155,13 +1171,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-  },
-  railFade: {
-    position: 'absolute',
-    right: HitTarget,
-    top: 0,
-    bottom: 0,
-    width: 24,
   },
   cityChip: {
     paddingHorizontal: Space.lg,
@@ -1244,8 +1253,13 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
-    paddingRight: Spacing.three,
+  },
+  avatarDock: {
+    position: 'absolute',
+    right: Spacing.three,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
   },
   cityScroll: {
     flex: 1,

@@ -1,6 +1,6 @@
 import * as Location from 'expo-location';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   InputAccessoryView,
   Keyboard,
@@ -78,6 +78,14 @@ export function PinFormSheet({
   const [hours, setHours] = useState(() => defaultHoursForIntent(toISODate(new Date())));
   const [hoursTouched, setHoursTouched] = useState(false);
 
+  // Where each text field sits in the scroller, and the scroller itself, so
+  // focusing one can bring it above the fold. Written from onLayout and read
+  // from onFocus — both events, never during render, which is also why the
+  // handlers are inline rather than made by a factory the compiler would see
+  // being called while rendering.
+  const scrollRef = useRef<ScrollView>(null);
+  const fieldY = useRef<Record<string, number>>({});
+
   const category = categoryForPoi(initialPlace?.category);
 
   // Where the map says this spot is, so the card can show a street instead
@@ -142,6 +150,7 @@ export function PinFormSheet({
   return (
     <Sheet onClose={onClose} avoidKeyboard>
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.form}
         // "always", not "handled": with the keyboard up, the scroll view's
@@ -202,25 +211,56 @@ export function PinFormSheet({
         <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
           Plans
         </ThemedText>
-        <FormTextField
-          label="What is the plan?"
-          testID="venue-input"
-          placeholder="Sunset drinks, night market crawl, morning surf"
-          value={venue}
-          onChangeText={setVenue}
-          returnKeyType="done"
-        />
-        <FormTextField
-          label="Details"
-          testID="note-input"
-          multiline
-          numberOfLines={2}
-          style={styles.noteInput}
-          placeholder="Meeting at the tram stop around 7"
-          value={note}
-          onChangeText={setNote}
-          inputAccessoryViewID={Platform.OS === 'ios' ? ACCESSORY_ID : undefined}
-        />
+        {/* BRING THE FOCUSED FIELD INTO VIEW. With the keyboard up the sheet
+            reserves a keyboard's worth of floor and this scroller is what
+            gives way — it ends up about two rows tall. Without this the plan
+            field stays where it was, below the fold, and a simulator run
+            photographed the result: the sentence being typed sliced clean
+            through the middle of its own letters by the Drop it button. */}
+        <View
+          onLayout={(event) => {
+            fieldY.current.venue = event.nativeEvent.layout.y;
+          }}>
+          <FormTextField
+            label="What is the plan?"
+            testID="venue-input"
+            placeholder="Sunset drinks, night market crawl, morning surf"
+            value={venue}
+            onChangeText={setVenue}
+            onFocus={() => {
+              scrollRef.current?.scrollTo({
+                y: Math.max(0, (fieldY.current.venue ?? 0) - Space.sm),
+                animated: true,
+              });
+            }}
+            returnKeyType="done"
+          />
+        </View>
+        <View
+          onLayout={(event) => {
+            fieldY.current.note = event.nativeEvent.layout.y;
+          }}>
+          <FormTextField
+            label="Details"
+            testID="note-input"
+            multiline
+            numberOfLines={2}
+            style={styles.noteInput}
+            // Not a tram: this app opens on Bangkok, which has no tram
+            // network, and an example that names transport the city does not
+            // have is the opposite of written by somebody who has been there.
+            placeholder="By the door around 7, I will be the one in the red cap"
+            value={note}
+            onChangeText={setNote}
+            onFocus={() => {
+              scrollRef.current?.scrollTo({
+                y: Math.max(0, (fieldY.current.note ?? 0) - Space.sm),
+                animated: true,
+              });
+            }}
+            inputAccessoryViewID={Platform.OS === 'ios' ? ACCESSORY_ID : undefined}
+          />
+        </View>
         {/* A single scrolling line, not a wrapped grid: with a keyboard up
             the sheet has room for about a screen and a half of form. */}
         <ChipRail

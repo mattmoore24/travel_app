@@ -185,7 +185,12 @@ export function Sheet({
   const keyboardStyle = useAnimatedStyle(() => {
     const lift = avoidKeyboard ? keyboard.height.value : 0;
     return {
-      paddingBottom: insets.bottom + Space.lg + lift,
+      // max, not a sum. The keyboard is measured from the bottom of the
+      // SCREEN, so its height already spans the home indicator — adding the
+      // safe-area inset on top reserved that strip twice and left a band of
+      // dead sheet between the last control and the keyboard, on the one
+      // screen whose scroll area is being starved to make room for it.
+      paddingBottom: Math.max(insets.bottom, lift) + Space.lg,
       transform: [{ translateY: drag.value }],
     };
   });
