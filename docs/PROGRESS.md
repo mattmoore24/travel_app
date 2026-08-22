@@ -988,3 +988,108 @@ means the flow completed, not that a person could have completed it. Three of
 these four shipped under a full green gate.
 
 Client after the fixes: **172** unit tests.
+
+## Phase 10 — the founder's audit: an empty map, Raya, and fewer words
+
+Three asks: audit everything against the research, make the map look like
+Raya's, and cut the words back everywhere. A twelve-agent fan-out read the
+map end to end, re-verified all 43 findings against the code, swept every
+user-facing string and walked every empty/loading/error state; 203 findings,
+each survivor put to an adversarial refuter told to default to "not real".
+Forty-two were rejected because they had already been fixed hours earlier in
+the same session.
+
+### The map was empty, and nothing was broken
+
+`seed_launch_pins()` puts twenty curated pins across the four launch cities,
+and its own header says "Re-run every couple of days during launch". Nobody
+did. Seeded pins expire in 48h because rule 3 caps every pin at 72h, so two
+days after that migration deployed the map went back to "be the first to drop
+a pin" and stayed there. A comment asking a human to remember something every
+48 hours is not a mechanism; it is on pg_cron now, beside the four workers
+that already run that way.
+
+Then the same function was letting its plans rot: the guard skips any venue
+that still has a LIVE seeded pin, so on day two every venue is skipped and
+yesterday's `intent_date` survives. The pins stayed on the map and the Today
+and Tomorrow chips — the brief's own hook — went empty, because they match
+that column exactly. And the client compared it against the phone's LOCAL
+calendar day while the seed writes Postgres's UTC `current_date`, which for a
+travel app means the normal case is comparing one clock against another.
+
+**Heat had never rendered once, in any run, and the reason was in the SQL.**
+The k-threshold was applied per (cell, CATEGORY): three people had to be
+planning the same KIND of thing inside the same 550m square. Three people
+planning three different things IS a busy corner. Grouping by cell alone is
+also the safer version — the bucket gets larger and the row carries one fewer
+attribute about the people in it, which moves away from rule 6, not toward
+it.
+
+### The Raya look was three props and an overlay
+
+`mapType="mutedStandard"` is MapKit's own "somebody else's data on top" style.
+`showsPointsOfInterests={false}` — the plural; the singular is not a prop —
+kills the venue pills. Both were nearly wasted: on iOS 16+ the POI prop writes
+a `pointOfInterestFilter` onto `preferredConfiguration`, and `mapType` is
+written to the same state twenty-five lines LATER in the same props pass and
+installs a fresh default configuration, discarding the filter. Both change
+together on mount, neither changes again, and the native remap is guarded on
+old != new, so nothing re-applies it. It flips on `onMapReady` now, one commit
+later. The drop-a-pin picker had no treatment at all, which matters more than
+the main map rather than less: it sits at venue zoom, exactly where Apple
+draws bright pills for restaurants and bars.
+
+What no prop can remove is labels, roads and water. An overlay can, and it is
+the right lever: MapKit draws every overlay BENEATH every annotation, so a
+polygon wash dims the cartography and leaves the faces, the heat and the
+curated stars exactly as bright as they were.
+
+### Two rules the app had quietly broken
+
+The **match ceremony** had crept in — it is on three of the four do-not-copy
+lists. A full-screen takeover over every tab: the brand field, a 168pt photo
+springing in behind an amber ring, a glow breathing on an infinite repeat with
+no reduce-motion check, and a verification upsell riding along. The words were
+always right ("Connected with {name}", "Go to chat"); the presentation was the
+banned thing. It is a card at the bottom of the current screen now.
+
+And the **heart** led the reaction row, against "no hearts" in DESIGN.md
+principle 5 and in the design brief in as many words. On a dimmed thread it
+was the brightest, most saturated element on screen. A wave replaces it; it
+stays in the expanded grid. Flagged to the founder as reversible in one line,
+since a heart tapback is also ordinary iMessage grammar.
+
+### The faceless featured traveler was not unfixable
+
+Top 6 is "never ship a faceless featured traveler", and the previous session
+recorded it as impossible: the photos bucket is private, its only SELECT
+policy is `to authenticated`, and widening it to anon would hand every primary
+photo in the app to anybody holding the public key. The way through is an
+Edge Function that takes a CITY — not a path, not a user id — picks the person
+by calling the same function the card calls, and signs that one photo for five
+minutes. Nothing to walk, no policy widened. The card leads with a 3:2 hero
+now, verified against the live backend.
+
+### Five screens that could not say what was happening
+
+A signed-out visitor could read a hostel room forever with no way to join one
+(`useMyChats` is disabled without a user id, so the guest branch sat behind a
+query that never leaves `isPending`). Archiving a conversation made it
+unreadable, and an archived room offered to let you join a room you are
+already in. The guest Travelers tab was permanently blank whenever the city
+list failed. And the Chat tab painted "No chats yet" under its own loading
+skeletons and under "You said hi — Sent".
+
+Plus roughly a hundred strings shortened, and two dev-phase badges that were
+being shown to real users in a code font.
+
+Database: **429** pgTAP assertions. Client: **178** unit tests. Run 51 green
+end to end, 32 screenshots, all distinct.
+
+### Still open, honestly
+
+`bb2` (anchored opener as the DEFAULT path), `bb4` (owner-mode completeness
+dashboard), `bb7`/`bb9`/`bb10`, per-pin audience, a tap target on the heat
+layer, timestamps-on-demand and a typing indicator all remain partial — they
+were confirmed by the refuters and are not done. `bb11`'s Copy action still
+needs `expo-clipboard`, which is a native build.

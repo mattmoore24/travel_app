@@ -265,3 +265,51 @@ failed"` on every check, while the same simulator talks to Supabase over
   run go green on a screen where two form fields had been concatenated into
   one. Assert the exact text a human would read.
 - Screenshots are the evidence, not the exit code. See the `screens` skill.
+
+## Apple Maps props: two that silently do nothing, and one ordering hazard
+
+`showsPointsOfInterests` is the plural. The singular spelling is not a prop in
+react-native-maps 1.27.2 and is dropped without a word.
+
+`showsIndoors` is declared in the Apple codegen props and read by nothing in
+`ios/AirMaps` — dead on MapKit. Meanwhile `showsBuildings`, `rotateEnabled`
+and `pitchEnabled` are all documented in the .d.ts as unsupported or
+Google-only on iOS and all three ARE honoured: `RNMapsMapView.mm` remaps each
+straight onto AIRMap, which is an MKMapView subclass overriding none of their
+setters. Read the native file, not the doc comment.
+
+**The ordering hazard is the one that costs a release.** On iOS 16+ the POI
+prop is implemented by copying `MKMapView.preferredConfiguration` and writing
+a `pointOfInterestFilter` onto it. `mapType` is written straight to
+`MKMapView.mapType` — the same underlying state — twenty-five lines LATER in
+the same `updateProps` pass, and setting it installs a fresh default
+configuration for that type, discarding the filter. On mount both change
+together, so the map type wins and the POI icons stay. Neither prop ever
+changes again and the native remap is guarded on `old != new`, so nothing
+re-applies it. Hold the POI value in state and flip it on `onMapReady`: that
+puts the write in a later commit where `mapType` is unchanged. Costs one frame
+of pills.
+
+`pointsOfInterestFilter` (the array) IS applied after `mapType`, but the
+native side only ever builds `initIncludingCategories` and bails on an empty
+array, so it cannot express "none of them".
+
+Nothing removes labels, roads or water — MKPointOfInterestFilter covers
+business categories only. The only remaining lever is an overlay, and it is a
+good one: MapKit draws every overlay BENEATH every annotation, so a polygon
+wash dims the cartography without touching a single marker.
+
+## The simulator keyboard guesses, and it will break a run
+
+Run 50 died asserting text it had just typed, on a field reading "Meeting by
+the door around 7d". The trailing "d" was iOS's inline predictive text —
+ghosted after the cursor, present in the accessibility value, offered behind a
+first-run "Inline Predictions" tooltip that had popped up over the sheet and
+could have eaten the next tap as easily as it broke the assertion.
+
+The E2E workflow now turns `KeyboardPrediction`, `KeyboardInlineCompletion`,
+`KeyboardAutocorrection` and `KeyboardShowPredictiveBar` off via
+`simctl spawn defaults write com.apple.keyboard.preferences` before anything
+types. Do not "fix" this class of failure with `pressKey: Enter` on a
+multiline field — Enter is a newline there, and a newline is exactly what `.`
+does not match in a Maestro pattern.
