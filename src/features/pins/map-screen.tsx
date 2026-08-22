@@ -42,6 +42,7 @@ import {
 import { heatRings, mergeHeatCells } from '@/features/pins/heat';
 import { useHeatLegend } from '@/features/pins/heat-legend';
 import {
+  CityCountView,
   MARKER_ANCHOR,
   MARKER_CENTER_OFFSET,
   PinGlyph,
@@ -82,21 +83,78 @@ function PinCard({
   // has to leave the sheet first. See components/ui/sheet for why.
   const leaveThen = leavingSheet(onClose);
 
+  // Media first, the way the research asked for it: the plan set over a
+  // picture, the metadata quiet under it, one action. Only when there is
+  // actually a face to lead with - your own pin does not need your own
+  // photograph, a curated pin has nobody, and a guest's feed is stripped of
+  // photo_path server-side, so all three fall through to the old header.
+  const hero = !pin.seeded && !isOwn && photoUrl != null;
+
   return (
     <ThemedView style={styles.pinCard}>
+      {hero ? (
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`${pin.display_name ?? 'this traveler'}'s profile`}
+          scaleTo={0.99}
+          haptic="soft"
+          onPress={() =>
+            leaveThen(() =>
+              router.push({
+                pathname: '/profile/[userId]',
+                // Carried so a reply started from this profile is sent as a
+                // pin request. A pinner does not have to share your dates.
+                params: { userId: pin.user_id!, from: 'pin' },
+              })
+            )
+          }>
+          <View style={styles.hero}>
+            <Image source={{ uri: photoUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
+            <LinearGradient
+              colors={['transparent', 'rgba(2,3,9,0.85)']}
+              locations={[0.35, 1]}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            <View style={styles.heroText} pointerEvents="none">
+              <Text style={styles.heroTitle} numberOfLines={2}>
+                {pin.note?.trim() || pin.venue_name}
+              </Text>
+              <View style={styles.nameRow}>
+                <Text style={styles.heroName}>
+                  {pin.display_name ?? 'Traveler'}
+                  {pin.age != null ? `, ${pin.age}` : ''}
+                </Text>
+                {pin.verified ? (
+                  <VerifiedSeal size={13} name={pin.display_name} age={pin.age} onPhoto />
+                ) : null}
+              </View>
+            </View>
+          </View>
+        </PressableScale>
+      ) : null}
       <View style={styles.pinCardHeader}>
         {/* The same disc and glyph as the marker you just tapped, so the
             card reads as that pin opening rather than a new object. Your own
             pin gets the celebration spring: dropping one is the affirming
             act on this screen and it deserves a beat. */}
-        <Animated.View
-          entering={isOwn ? ZoomIn.springify().duration(550).dampingRatio(0.75) : undefined}>
-          <PinGlyph category={pin.category} seeded={pin.seeded} />
-        </Animated.View>
+        {hero ? null : (
+          <Animated.View
+            entering={isOwn ? ZoomIn.springify().duration(550).dampingRatio(0.75) : undefined}>
+            <PinGlyph category={pin.category} seeded={pin.seeded} />
+          </Animated.View>
+        )}
         <View style={styles.pinCardTitle}>
-          <ThemedText type="headline" numberOfLines={1}>
-            {pin.venue_name}
-          </ThemedText>
+          {hero ? null : (
+            <ThemedText type="headline" numberOfLines={1}>
+              {pin.venue_name}
+            </ThemedText>
+          )}
+          {hero ? (
+            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+              {pin.venue_name}
+            </ThemedText>
+          ) : null}
           <ThemedText type="footnote" themeColor="textSecondary">
             {intentLabel(pin.intent_date)} · {burnOutLabel(pin.expires_at)}
           </ThemedText>
@@ -138,7 +196,7 @@ function PinCard({
         </Pressable>
       </View>
 
-      {pin.note ? <ThemedText type="body">{pin.note}</ThemedText> : null}
+      {pin.note && !hero ? <ThemedText type="body">{pin.note}</ThemedText> : null}
 
       {pin.seeded ? (
         <>
@@ -155,10 +213,10 @@ function PinCard({
               same card called you a stranger and then called the pin yours,
               a centimetre apart. You already know who you are, and your own
               profile is one tap away in the header. */}
-          {!isOwn ? (
+          {!isOwn && !hero ? (
             <PressableScale
               accessibilityRole="button"
-              accessibilityLabel={`View ${pin.display_name ?? 'traveler'}'s profile`}
+              accessibilityLabel={`${pin.display_name ?? 'this traveler'}'s profile`}
               scaleTo={0.98}
               haptic="soft"
               onPress={() =>
@@ -171,7 +229,7 @@ function PinCard({
                   })
                 )
               }>
-              <ThemedView type="surfaceSunken" style={styles.pinnerCard}>
+              <View style={styles.pinnerCard}>
                 <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
                   {photoUrl ? (
                     <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
@@ -193,16 +251,13 @@ function PinCard({
                       <VerifiedSeal size={13} name={pin.display_name} age={pin.age} />
                     ) : null}
                   </View>
-                  <ThemedText type="footnote" themeColor="textSecondary">
-                    Tap to see their profile
-                  </ThemedText>
                 </View>
                 <SymbolView
                   name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
                   size={14}
                   tintColor={theme.textSecondary}
                 />
-              </ThemedView>
+              </View>
             </PressableScale>
           ) : null}
 
@@ -317,7 +372,7 @@ function CityScaleMarker({
   category: PinCategory;
   onPress: () => void;
 }) {
-  const tracking = useMarkerTracking(`${count}:${category}`);
+  const tracking = useMarkerTracking(`${count}:${name}`);
   return (
     <Marker
       coordinate={{ latitude: lat, longitude: lng }}
@@ -330,7 +385,7 @@ function CityScaleMarker({
         event.stopPropagation();
         onPress();
       }}>
-      <PinStackView faces={[null]} count={count} category={category} />
+      <CityCountView name={name} count={count} />
     </Marker>
   );
 }
@@ -1311,12 +1366,32 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     textDecorationLine: 'underline',
   },
+  /* A row, not a card. It used to be a sunken surface inside the sheet's own
+     surface - card-on-card, which DESIGN.md bans over the map - and it said
+     "Tap to see their profile" under a name that is obviously tappable. */
   pinnerCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.md,
-    padding: Space.md,
-    borderRadius: Radius.md,
+    paddingVertical: Space.xs,
+  },
+  hero: {
+    aspectRatio: 3 / 2,
+    borderRadius: Radius.lg,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+  },
+  heroText: {
+    padding: Space.lg,
+    gap: 2,
+  },
+  heroTitle: {
+    ...Type.headline,
+    color: '#FFFFFF',
+  },
+  heroName: {
+    ...Type.footnote,
+    color: 'rgba(255,255,255,0.88)',
   },
   strong: {
     fontWeight: '600',

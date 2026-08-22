@@ -9,7 +9,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
-import { Springs } from '@/constants/theme';
+import { Radius, Springs } from '@/constants/theme';
 import type { PinCategory } from '@/lib/database.types';
 
 /**
@@ -189,6 +189,31 @@ export function PinStackView({
 }
 
 /**
+ * The whole city as one marker, once the map is zoomed past street scale.
+ *
+ * It used to borrow PinStackView with a single anonymous silhouette, which
+ * said "somebody, and a number" - and the number was the only true part. The
+ * research asked for the city NAMED with its count ("Bangkok · 12 plans"),
+ * because at that zoom the question is which city has anything going on, not
+ * who is in this one. A pill rather than a teardrop for the same reason: it
+ * is a label, not a place.
+ */
+export function CityCountView({ name, count }: { name: string; count: number }) {
+  return (
+    <Animated.View
+      entering={FadeInDown.springify().mass(1).damping(14).stiffness(260)}
+      style={styles.wrap}>
+      <View style={styles.cityPill}>
+        <Text style={styles.cityName}>{name}</Text>
+        <View style={styles.cityDot} />
+        <Text style={styles.cityCount}>{count}</Text>
+      </View>
+      <View style={[styles.tail, { backgroundColor: PIN_AMBER }]} />
+    </Animated.View>
+  );
+}
+
+/**
  * The marker's face, off the map: the same amber disc and the same category
  * glyph, at a size a card can carry.
  *
@@ -301,6 +326,41 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     fontWeight: '800',
+  },
+  cityPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+    backgroundColor: PIN_AMBER,
+    borderWidth: 2,
+    borderColor: PIN_RING,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  cityName: {
+    color: PIN_GLYPH,
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  cityDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: PIN_GLYPH,
+    opacity: 0.5,
+  },
+  cityCount: {
+    color: PIN_GLYPH,
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '700',
   },
   glyphDisc: {
     alignItems: 'center',
