@@ -82,11 +82,14 @@ export function SignUpGate({
 }
 
 const styles = StyleSheet.create({
-  card: {
-    marginHorizontal: Space.lg,
-  },
+  // No horizontal margin of its own. Every caller already pads its own
+  // column, so the gate's 16pt landed ON TOP of that and put its edges 16pt
+  // inside the block directly above it — measurably, 40pt against 24pt on
+  // Travelers and Chat, 32pt against 16pt inside the map's sheet. Two edges
+  // that close together in one column read as a misplaced element rather
+  // than as hierarchy.
+  card: {},
   compact: {
-    marginHorizontal: Space.lg,
     marginTop: Space.sm,
   },
   inner: {

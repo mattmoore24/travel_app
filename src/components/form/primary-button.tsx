@@ -23,10 +23,30 @@ export function PrimaryButton({
   const theme = useTheme();
   const inactive = disabled || loading;
 
+  // A filled button that is not AVAILABLE changes colour rather than fading.
+  // opacity: 0.4 dims the fill and the label together, which on a dark ground
+  // measured 2.35:1 — under the 3:1 floor for a control, on a pill that still
+  // looked completely tappable. The first thing a first-time pinner sees is
+  // this button disabled, so it has to say so and still be readable.
+  //
+  // Loading is deliberately NOT that state. A button that goes grey the
+  // instant you press it reads as having broken rather than as working.
+  const unavailable = Boolean(disabled) && !loading;
   const background =
-    variant === 'filled' ? theme.accent : variant === 'tonal' ? theme.accentSoft : 'transparent';
-  const labelColor =
-    variant === 'filled' ? theme.onAccent : variant === 'danger' ? theme.danger : theme.accent;
+    unavailable && (variant === 'filled' || variant === 'tonal')
+      ? theme.surfaceSunken
+      : variant === 'filled'
+        ? theme.accent
+        : variant === 'tonal'
+          ? theme.accentSoft
+          : 'transparent';
+  const labelColor = unavailable
+    ? theme.textSecondary
+    : variant === 'filled'
+      ? theme.onAccent
+      : variant === 'danger'
+        ? theme.danger
+        : theme.accent;
 
   return (
     <PressableScale
@@ -39,9 +59,11 @@ export function PrimaryButton({
       style={[
         styles.button,
         { backgroundColor: background },
-        variant === 'filled' && Elevation.raised,
+        // No lift on a control you cannot press.
+        variant === 'filled' && !unavailable && Elevation.raised,
         variant !== 'filled' && variant !== 'tonal' && styles.quiet,
-        inactive && styles.disabled,
+        // Only the shapeless variants still fade: there is no fill to swap.
+        inactive && variant !== 'filled' && variant !== 'tonal' && styles.disabled,
       ]}
       {...rest}>
       {loading ? (

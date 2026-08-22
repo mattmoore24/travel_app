@@ -381,6 +381,24 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
                 <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.pageBody}>
                   {item.body}
                 </Text>
+                {/* KEEP THE WAY FORWARD ON SCREEN. Page one teaches a
+                    full-width pill and then pages two and three took it away,
+                    leaving Skip in the corner and four dots as the only
+                    visible controls — with a quarter of the screen empty
+                    exactly where the button had been. Somebody who tapped
+                    once and expects to tap again finds nothing, and the only
+                    thing left to press is the one that leaves. */}
+                {choice ? null : (
+                  <View style={styles.choice}>
+                    <TourButton
+                      label="Next"
+                      tone="primary"
+                      onPress={() =>
+                        pagerRef.current?.scrollTo({ x: width * (index + 1), animated: true })
+                      }
+                    />
+                  </View>
+                )}
                 {choice ? (
                   <View style={styles.choice}>
                     <TourButton

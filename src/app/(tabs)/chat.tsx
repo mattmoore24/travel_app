@@ -593,6 +593,13 @@ export default function ChatScreen() {
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
+            // Grow to fill on the Chats side. A guest has no one-to-one chats
+            // by definition, so that tab is one sentence and a card — and
+            // top-aligned they ended at the halfway line with 350pt of empty
+            // canvas under them, which reads as a list that failed to load
+            // rather than as an invitation. Groups stays top-aligned: it has
+            // the room list in it and that scrolls.
+            tab === 'groups' ? null : styles.guestFill,
             { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
           ]}>
           <View style={styles.headerRow}>
@@ -612,13 +619,16 @@ export default function ChatScreen() {
                 Hostels run open chats for their guests. Have a look before you join one.
               </ThemedText>
               <RoomDiscovery cityId={cityId} />
+              <SignUpGate reason="Want to join in?" where="chat-tab" cta="Make a profile" />
             </>
           ) : (
-            <ThemedText type="footnote" themeColor="textSecondary">
-              One-to-one chats start when you say hi to someone and they answer.
-            </ThemedText>
+            <View style={styles.guestCentre}>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                One-to-one chats start when you say hi to someone and they answer.
+              </ThemedText>
+              <SignUpGate reason="Want to join in?" where="chat-tab" cta="Make a profile" />
+            </View>
           )}
-          <SignUpGate reason="Want to join in?" where="chat-tab" cta="Make a profile" />
         </ScrollView>
       </ThemedView>
     );
@@ -801,6 +811,14 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
+  guestFill: {
+    flexGrow: 1,
+  },
+  guestCentre: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: Spacing.three,
+  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
