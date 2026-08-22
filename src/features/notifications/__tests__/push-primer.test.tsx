@@ -25,10 +25,14 @@ const METRICS = {
   insets: { top: 47, left: 0, right: 0, bottom: 34 },
 };
 
-function Host({ sheetUp }: { sheetUp: boolean }) {
+function Host({ sheetUp, inline = false }: { sheetUp: boolean; inline?: boolean }) {
   return (
     <SafeAreaProvider initialMetrics={METRICS}>
-      {sheetUp ? <Sheet onClose={() => {}}>{null}</Sheet> : null}
+      {sheetUp ? (
+        <Sheet inline={inline} onClose={() => {}}>
+          {null}
+        </Sheet>
+      ) : null}
       <PushPrimer />
     </SafeAreaProvider>
   );
@@ -75,6 +79,18 @@ describe('the push primer waits for the screen', () => {
     view.rerender(<Host sheetUp={false} />);
     settle();
     expect(screen.getByText('Want to know if somebody is in?')).toBeTruthy();
+  });
+
+  it('waits behind an inline sheet too, which it cannot collide with', () => {
+    // The pin confirmation card is inline: no Modal, so no presentation to
+    // drop. It is still the thing somebody is reading, and dimming it to ask
+    // about notifications is a fair question at the worst possible moment.
+    render(<Host sheetUp inline />);
+    act(() => {
+      usePushPrimer.setState({ reason: 'pin-posted' });
+    });
+    settle();
+    expect(screen.queryByText('Want to know if somebody is in?')).toBeNull();
   });
 
   it('asks straight away when nothing was in the way', () => {

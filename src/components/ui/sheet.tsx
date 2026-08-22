@@ -75,7 +75,8 @@ export function usePresentedSheetCount(): number {
 }
 
 /**
- * Declare that this component has a native `<Modal>` on screen.
+ * Declare that this component owns the screen — a `<Sheet>`, or a raw
+ * `<Modal>` standing in for one.
  *
  * Sheet calls it for itself. Anything else rendering a raw `<Modal>` should
  * call it too, or the count is a lie and whatever is waiting on it presents
@@ -152,10 +153,12 @@ export function Sheet({
   const keyboard = useAnimatedKeyboard();
   const drag = useSharedValue(0);
 
-  // Register while this sheet owns the screen, so anything that would
-  // present a modal of its own can wait its turn. Inline sheets are not
-  // modals and take no turn.
-  useRegisterNativeModal(!inline);
+  // Register while this sheet owns the screen, so anything that would present
+  // one of its own waits its turn. Inline sheets count too: nothing can
+  // collide with them, but they are still what somebody is looking at, and
+  // the primer arriving over the confirmation card for the pin you just
+  // dropped is a fair question asked at the worst moment.
+  useRegisterNativeModal(true);
 
   // Down only: dragging up would let a sheet leave its own bottom edge, and
   // the rubber-band there reads as a bug rather than as resistance.

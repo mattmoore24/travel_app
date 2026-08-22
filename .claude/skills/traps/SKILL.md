@@ -35,7 +35,12 @@ device does something else.
   retries from `didMoveToWindow`/`updateProps`, so it never recovers: the app
   is dead to touch until relaunch.
   It reached a simulator run as three byte-identical screenshots and four
-  taps the driver reported as successful. Delay the second presentation by
+  taps the driver reported as successful. Whether the same race is lost on a
+  real phone is NOT established, and do not let anyone tell you it is: the
+  device path serialises an extra `getNotificationSettingsWithCompletionHandler:`
+  hop that the simulator short-circuits, and that hop is in the one variable
+  the race turns on. All the evidence is from a simulator. Fix it anyway —
+  the cost of losing is a dead app and the cost of the guard is a timer. Delay the second presentation by
   `SHEET_SETTLE_MS` (`components/ui/sheet.tsx`) or wait for the first to
   finish — and note that "unmounted in React" is not "gone from the screen",
   so a mount counter alone is not enough.
