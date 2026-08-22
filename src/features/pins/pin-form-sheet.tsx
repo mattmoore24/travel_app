@@ -176,7 +176,11 @@ export function PinFormSheet({
               you are about to drop rather than showing an emoji sticker. */}
           <PinGlyph category={category} />
           <View style={styles.placeText}>
-            <ThemedText type="callout" numberOfLines={1}>
+            {/* Two lines. A one-line cap was set without checking it against
+                real place names and truncated the very thing the person is
+                being asked to confirm — "Somdet Phra Pokklao Bri…" — while
+                the line under it held only the word "Bangkok". */}
+            <ThemedText type="callout" numberOfLines={2}>
               {initialPlace?.name ?? placeLabel ?? `Where you dropped it in ${cityName}`}
             </ThemedText>
             <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
