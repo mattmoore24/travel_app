@@ -26,3 +26,4 @@
 2026-08-22 — deploy: featured traveler needs a face, daily first-message cap, reword preview
 2026-08-22 — deploy: travel prompts, daily mutual spotlight
 2026-08-22 — deploy: room_info (the name a non-member sees), pinned messages
+2026-08-22 — deploy: review fixes (spotlight restates the policy filters and takes a day lock, first-message cap serialised, pin slots freed with their message, pin refusals stop being an existence oracle)
