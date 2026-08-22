@@ -1,9 +1,55 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
-import type { CityRoomRow, ReactionSummaryRow, RoomMessageRow } from '@/lib/database.types';
+import type {
+  PinnedMessageRow,
+  CityRoomRow,
+  ReactionSummaryRow,
+  RoomMessageRow,
+} from '@/lib/database.types';
 import { supabase } from '@/lib/supabase';
 
 /** Establishment rooms in a city. Readable signed-out. */
+/**
+ * What a room is called, for the header somebody sees before they join.
+ *
+ * my_chats() carries the name but only for members, which is exactly the
+ * people who did not need it — a visitor reading a hostel's public preview
+ * used to get the literal words "Guest room".
+ */
+/** What a host has kept at the top of this room. */
+export async function fetchRoomPins(chatId: string) {
+  const { data, error } = await supabase.rpc('room_pins', { p_chat_id: chatId });
+  if (error) {
+    throw error;
+  }
+  return (data ?? []) as PinnedMessageRow[];
+}
+
+export async function pinMessage(messageId: string, hours = 24) {
+  const { error } = await supabase.rpc('pin_message', {
+    p_message_id: messageId,
+    p_hours: hours,
+  });
+  if (error) {
+    throw error;
+  }
+}
+
+export async function unpinMessage(messageId: string) {
+  const { error } = await supabase.rpc('unpin_message', { p_message_id: messageId });
+  if (error) {
+    throw error;
+  }
+}
+
+export async function fetchRoomInfo(chatId: string) {
+  const { data, error } = await supabase.rpc('room_info', { p_chat_id: chatId });
+  if (error) {
+    throw error;
+  }
+  return (data ?? [])[0] ?? null;
+}
+
 export async function fetchCityRooms(cityId: number) {
   const { data, error } = await supabase.rpc('city_rooms', { p_city_id: cityId });
   if (error) {

@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Radius, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type PlaceholderScreenProps = {
@@ -70,6 +70,6 @@ const styles = StyleSheet.create({
   phaseBadge: {
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
+    borderRadius: Radius.pill,
   },
 });

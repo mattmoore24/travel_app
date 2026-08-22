@@ -25,3 +25,4 @@
 2026-08-22 — deploy: my_chats.first_message_element (the anchor an accepted chat opened on)
 2026-08-22 — deploy: featured traveler needs a face, daily first-message cap, reword preview
 2026-08-22 — deploy: travel prompts, daily mutual spotlight
+2026-08-22 — deploy: room_info (the name a non-member sees), pinned messages

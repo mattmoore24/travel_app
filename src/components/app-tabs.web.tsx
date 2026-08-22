@@ -11,7 +11,7 @@ import { Pressable, View, StyleSheet } from 'react-native';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { Radius, MaxContentWidth, Spacing } from '@/constants/theme';
 
 // Web is a dev convenience only (the product is iOS-first); keep it in sync
 // with the native tabs in app-tabs.tsx.
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
   innerContainer: {
     paddingVertical: Spacing.two,
     paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.five,
+    borderRadius: Radius.pill,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
@@ -91,6 +91,6 @@ const styles = StyleSheet.create({
   tabButtonView: {
     paddingVertical: Spacing.one,
     paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
 });

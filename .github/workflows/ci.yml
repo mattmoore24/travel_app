@@ -28,7 +28,11 @@ jobs:
         run: npm run typecheck
 
       - name: Lint
-        run: npx expo lint -- --max-warnings 0
+        # No `--` separator, and `=` rather than a space: expo's wrapper hands
+        # the flag through in a way that eats a detached value, so
+        # `-- --max-warnings 0` exits 2 with "Value for 'max-warnings' of type
+        # 'Int' required" — a lint step that could only ever fail.
+        run: npx expo lint --max-warnings=0
 
       - name: Format check
         run: npm run format:check

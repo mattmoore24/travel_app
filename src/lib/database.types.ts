@@ -410,6 +410,26 @@ export type SpotlightRow = {
   photo_path: string | null;
 };
 
+/** Row shape returned by room_pins(): what a host has kept at the top. */
+export type PinnedMessageRow = {
+  message_id: string;
+  body: string | null;
+  image_path: string | null;
+  sender_id: string;
+  display_name: string | null;
+  expires_at: string;
+};
+
+/** Row shape returned by room_info(): what a room is called, before you join. */
+export type RoomInfoRow = {
+  chat_id: string;
+  name: string | null;
+  kind: string;
+  member_count: number;
+  public_preview: boolean;
+  is_group: boolean;
+};
+
 /** Row shape returned by heat_cells() — deliberately identifier-free. */
 export type HeatCellRow = {
   cell_lat: number;
@@ -730,6 +750,22 @@ export type Database = {
       first_message_budget: {
         Args: Record<string, never>;
         Returns: { used: number; allowed: number }[];
+      };
+      room_pins: {
+        Args: { p_chat_id: string };
+        Returns: PinnedMessageRow[];
+      };
+      pin_message: {
+        Args: { p_message_id: string; p_hours?: number };
+        Returns: undefined;
+      };
+      unpin_message: {
+        Args: { p_message_id: string };
+        Returns: undefined;
+      };
+      room_info: {
+        Args: { p_chat_id: string };
+        Returns: RoomInfoRow[];
       };
       daily_spotlight: {
         Args: Record<string, never>;

@@ -1,6 +1,6 @@
 -- Establishment rooms, guest mode, reactions, and the traveler horizon.
 begin;
-select plan(44);
+select plan(48);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -244,6 +244,23 @@ select is(
   1,
   'guests can read a public-preview room'
 );
+
+-- WHAT THE ROOM IS CALLED --------------------------------------------------
+--
+-- The header on a public preview used to read the literal words "Guest room"
+-- to everybody who was not already a member — which is exactly the people it
+-- was supposed to be selling the place to.
+
+select isnt(
+  (select name from public.room_info('bbbbbbbb-0000-4000-8000-000000000001')),
+  null,
+  'a visitor can find out what the room is actually called'
+);
+select is(
+  (select is_group from public.room_info('bbbbbbbb-0000-4000-8000-000000000001')),
+  false,
+  'and whether it is a venue or a traveler group'
+);
 select throws_ok(
   $$ insert into public.messages (chat_id, sender_id, body) values
      ('bbbbbbbb-0000-4000-8000-000000000001',
@@ -261,9 +278,23 @@ select is(
   0,
   'an establishment can switch the public preview off'
 );
+-- And that closes the name with it: room_info adds no visibility of its own.
+select is(
+  (select count(*)::int from public.room_info('bbbbbbbb-0000-4000-8000-000000000001')),
+  0,
+  'switching the preview off hides the name from strangers too'
+);
 select pg_temp.admin();
 update public.establishments set public_preview = true
   where id = 'cccccccc-0000-4000-8000-000000000001';
+
+-- A member still sees the name whatever the preview flag says.
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select is(
+  (select count(*)::int from public.room_info('bbbbbbbb-0000-4000-8000-000000000001')),
+  1,
+  'a member can always read the name of a room they are in'
+);
 
 -- Moderator tools.
 select pg_temp.login('00000000-0000-0000-0000-0000000000ff');

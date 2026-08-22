@@ -1,4 +1,5 @@
 import { SymbolView } from 'expo-symbols';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
 import { FlatList, Keyboard, Modal, StyleSheet, View, useWindowDimensions } from 'react-native';
@@ -9,6 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
+import { usePhotoUrl } from '@/features/profile/hooks';
 import { isLocalId, type ThreadMessage } from '@/features/chat/outgoing';
 import { separatorFor } from '@/features/chat/separators';
 import { useTheme } from '@/hooks/use-theme';
@@ -93,7 +95,26 @@ const LIFT_GAP = 10;
  * Not a theme token, because every sheet in the app uses that one and none of
  * them asked for this.
  */
+/**
+ * The backdrop behind a lifted message.
+ *
+ * Blurred where iOS can blur, which is what Messages does and what makes the
+ * lifted bubble read as ABOVE the thread rather than pasted over a black
+ * rectangle. The tint is on the glass rather than instead of it: a blur
+ * alone does not dim, and this menu's whole job is to say "only this
+ * message matters right now".
+ *
+ * No new native module — expo-glass-effect already ships in the binary
+ * (docs/DESIGN.md), so this reaches the founder's phone over the air rather
+ * than costing an EAS build.
+ *
+ * The flat value is the fallback and is deliberately near-opaque: a
+ * translucent scrim over a dark thread did not read at all, which is the bug
+ * this menu has already been fixed for once.
+ */
+const RUN_AVATAR = 26;
 const MENU_SCRIM = 'rgba(2,3,9,0.95)';
+const MENU_GLASS_TINT = 'rgba(2,3,9,0.62)';
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -152,6 +173,25 @@ function Reactions({
  * so the lifted message is the same object the user pressed rather than an
  * approximation of it.
  */
+/**
+ * The face at the foot of somebody's run in a group thread.
+ *
+ * Always occupies its space, even when there is no photo and even on the
+ * bubbles that do not carry it — otherwise every bubble in a run would sit
+ * at a different indent and the column would zig-zag.
+ */
+function RunAvatar({ path }: { path: string | null }) {
+  const theme = useTheme();
+  const { data: url } = usePhotoUrl(path);
+  return (
+    <View style={[styles.runAvatar, path ? { backgroundColor: theme.surfaceSunken } : undefined]}>
+      {url ? (
+        <Image source={{ uri: url }} style={styles.runAvatarImage} contentFit="cover" />
+      ) : null}
+    </View>
+  );
+}
+
 function BubbleBody({
   message,
   mine,
@@ -208,6 +248,7 @@ function Bubble({
   onToggleReaction,
   onOpenMenu,
   onRetry,
+  avatarPath,
 }: {
   message: ThreadMessage;
   mine: boolean;
@@ -220,6 +261,8 @@ function Bubble({
   onOpenMenu?: (rect: Rect | null) => void;
   /** Re-send a message that failed. Absent for anything already delivered. */
   onRetry?: () => void;
+  /** Group threads only: the sender's face, at the foot of their run. */
+  avatarPath?: string | null;
 }) {
   const anchor = useRef<View>(null);
 
@@ -230,6 +273,7 @@ function Bubble({
         mine ? styles.rowMine : styles.rowTheirs,
         { marginTop: grouped ? 2 : Space.sm },
       ]}>
+      {avatarPath !== undefined && !mine ? <RunAvatar path={avatarPath} /> : null}
       <View style={styles.bubbleColumn}>
         {/* A plain view around the pressable, because the menu needs to know
             where on screen this bubble actually is and PressableScale keeps
@@ -355,6 +399,7 @@ function MessageMenu({
   target,
   existingEmoji,
   onPick,
+  onPin,
   onUnsend,
   onReport,
   reportLabel,
@@ -363,6 +408,8 @@ function MessageMenu({
   target: MenuTarget;
   existingEmoji: string | null;
   onPick: (emoji: string) => void;
+  /** Room hosts only: keep this message at the top of the room. */
+  onPin?: () => void;
   onUnsend?: () => void;
   onReport?: () => void;
   reportLabel: string;
@@ -377,6 +424,9 @@ function MessageMenu({
   const [grid, setGrid] = useState(false);
 
   const actions: { label: string; run: () => void }[] = [];
+  if (onPin) {
+    actions.push({ label: 'Pin to the top', run: onPin });
+  }
   if (onUnsend) {
     actions.push({ label: 'Unsend', run: onUnsend });
   }
@@ -423,7 +473,19 @@ function MessageMenu({
       entering={FadeIn.duration(120)}
       // No exiting animation: the modal below unmounts this subtree the
       // instant `visible` flips, so an exit would have nothing to play on.
-      style={[styles.menuLayer, { backgroundColor: MENU_SCRIM }]}>
+      style={[
+        styles.menuLayer,
+        isLiquidGlassAvailable() ? undefined : { backgroundColor: MENU_SCRIM },
+      ]}>
+      {isLiquidGlassAvailable() ? (
+        <GlassView
+          glassEffectStyle="regular"
+          colorScheme="dark"
+          tintColor={MENU_GLASS_TINT}
+          pointerEvents="none"
+          style={StyleSheet.absoluteFill}
+        />
+      ) : null}
       <PressableScale
         accessibilityRole="button"
         accessibilityLabel="Dismiss"
@@ -537,10 +599,12 @@ export function MessageThread({
   otherName,
   reactions,
   onToggleReaction,
+  onPin,
   onUnsend,
   onReport,
   reportLabel = 'Report',
   authorFor,
+  avatarFor,
   noteFor,
   canReact = true,
   emptyState,
@@ -553,6 +617,12 @@ export function MessageThread({
   otherName?: string | null;
   reactions: ReactionSummaryRow[];
   onToggleReaction: (messageId: string, emoji: string, on: boolean) => void;
+  /**
+   * Room hosts only: keep this message at the top of the room. Absent
+   * everywhere else, which is what keeps the action out of the menu for
+   * anybody who could not carry it out.
+   */
+  onPin?: (messageId: string) => void;
   onUnsend?: (messageId: string) => void;
   onReport?: (messageId: string) => void;
   /**
@@ -568,6 +638,12 @@ export function MessageThread({
    * print above the first bubble of somebody's run, or null for no label.
    */
   authorFor?: (message: ThreadMessage) => string | null;
+  /**
+   * The sender's photo, for a group thread's run-final avatar. Same
+   * question as authorFor, answered with a picture; null where there is no
+   * photo, and absent entirely in a one-to-one chat, which needs neither.
+   */
+  avatarFor?: (message: ThreadMessage) => string | null;
   /**
    * A line to print in place of the bubble — "Message removed by the host".
    * Unsending already works this way internally; this opens the same slot to
@@ -691,6 +767,15 @@ export function MessageThread({
                   mine={mine}
                   grouped={grouped && separator == null}
                   last={last}
+                  // Beside the last bubble of a run, not every bubble: a
+                  // column of the same face down the side of a thread is
+                  // noise, and the run's foot is where the eye already is.
+                  //
+                  // undefined vs null is load-bearing. undefined means "this
+                  // thread has no avatars at all" (a one-to-one chat) and no
+                  // column is reserved; null means "a group, but not this
+                  // bubble" and the space is held so a run does not zig-zag.
+                  avatarPath={avatarFor ? (!mine && last ? avatarFor(item) : null) : undefined}
                   reactions={byMessage.get(item.id) ?? []}
                   onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
                   onRetry={item.local === 'failed' && onRetry ? () => onRetry(item) : undefined}
@@ -747,6 +832,15 @@ export function MessageThread({
               onToggleReaction(menu.message.id, emoji, current !== emoji);
               setMenu(null);
             }}
+            onPin={
+              onPin
+                ? () => {
+                    const id = menu.message.id;
+                    setMenu(null);
+                    onPin(id);
+                  }
+                : undefined
+            }
             onUnsend={
               menu.mine && onUnsend
                 ? () => {
@@ -784,6 +878,19 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: Space.md,
     paddingVertical: Space.md,
+  },
+  runAvatar: {
+    width: RUN_AVATAR,
+    height: RUN_AVATAR,
+    borderRadius: RUN_AVATAR / 2,
+    overflow: 'hidden',
+    alignSelf: 'flex-end',
+    marginRight: Space.xs,
+    marginBottom: 2,
+  },
+  runAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   bubbleSending: {
     opacity: 0.55,

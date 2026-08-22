@@ -13,7 +13,7 @@ import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet } from '@/components/ui/sheet';
 import { LANGUAGES, languageLabel, matchesLanguage } from '@/constants/languages';
-import { Fonts, HitTarget, Radius, Space } from '@/constants/theme';
+import { Type, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: Type.body.fontSize,
     paddingVertical: 0,
   },
   row: {

@@ -11,6 +11,7 @@ import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
 import { MaxContentWidth, Radius, Space } from '@/constants/theme';
@@ -25,11 +26,17 @@ import {
   useUpdateGroup,
 } from '@/features/groups/hooks';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
+import { InviteQr } from '@/features/groups/invite-qr';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { pickImage } from '@/lib/pick-image';
 import type { GroupMemberRow, GroupSpeaking } from '@/lib/database.types';
+
+/** One link, whether it is being scanned, shared or pasted. */
+function inviteUrl(token: string): string {
+  return Linking.createURL(`/join-group/${token}`);
+}
 
 const SPEAKING_OPTIONS: { value: GroupSpeaking; label: string }[] = [
   { value: 'everyone', label: 'Everyone' },
@@ -153,7 +160,8 @@ export default function GroupScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
   const ownUserId = useOwnUserId();
-  const { data: group } = useGroup(id ?? null);
+  const groupQuery = useGroup(id ?? null);
+  const group = groupQuery.data;
   const { data: members = [] } = useGroupMembers(id ?? null);
   const update = useUpdateGroup(id!);
   const revokeInvites = useRevokeGroupInvites(id!);
@@ -169,7 +177,25 @@ export default function GroupScreen() {
   const [editingDate, setEditingDate] = useState(false);
 
   if (!group) {
-    return <ThemedView style={styles.root} />;
+    // A failed fetch is not an empty group. This used to render a blank
+    // screen either way, so somebody on hostel wifi got a dark rectangle
+    // with no message and no way forward — the same trap the chat list and
+    // the map both had, and the same LoadError fixes it.
+    return (
+      <ThemedView style={styles.root}>
+        <ScrollView contentContainerStyle={styles.content}>
+          {groupQuery.isError ? (
+            <LoadError
+              what="this group"
+              error={groupQuery.error}
+              onRetry={() => groupQuery.refetch()}
+            />
+          ) : groupQuery.isSuccess ? (
+            <ThemedText themeColor="textSecondary">This group is no longer around.</ThemedText>
+          ) : null}
+        </ScrollView>
+      </ThemedView>
+    );
   }
 
   const shownName = name ?? group.name;
@@ -186,7 +212,7 @@ export default function GroupScreen() {
     if (!inviteToken) {
       return;
     }
-    const url = Linking.createURL(`/join-group/${inviteToken}`);
+    const url = inviteUrl(inviteToken);
     try {
       await Share.share({
         // One string, so it lands intact in a text message, an email or the
@@ -320,6 +346,11 @@ export default function GroupScreen() {
               <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
                 Invite
               </ThemedText>
+              {/* A square somebody can point a phone at. The hostel lobby is
+                  literally this use case: you are standing in front of four
+                  people, and "let me get your number so I can send you a
+                  link" is three steps where holding up a screen is none. */}
+              {inviteToken ? <InviteQr url={inviteUrl(inviteToken)} /> : null}
               <PrimaryButton label="Share an invite" disabled={!inviteToken} onPress={share} />
               <PrimaryButton
                 variant="ghost"

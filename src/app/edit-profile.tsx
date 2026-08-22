@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
 import { LanguageField } from '@/components/form/language-field';
 import { FormTextField } from '@/components/form/form-text-field';
@@ -75,6 +75,34 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
   const [bio, setBio] = useState(profile.bio ?? '');
   const [occupation, setOccupation] = useState(profile.occupation ?? '');
 
+  // Whether anything has actually changed. Compared against the profile as
+  // it was loaded, not against a snapshot taken on mount, so a value typed
+  // and then typed back does not count as dirty.
+  const dirty =
+    name !== (profile.display_name ?? '') ||
+    age !== (profile.age != null ? String(profile.age) : '') ||
+    gender !== profile.gender ||
+    city !== (profile.home_city ?? '') ||
+    country !== (profile.home_country ?? '') ||
+    bio !== (profile.bio ?? '') ||
+    occupation !== (profile.occupation ?? '') ||
+    languages.length !== profile.languages.length ||
+    languages.some((code, index) => code !== profile.languages[index]);
+
+  // A swipe down used to eat a whole bio rewrite in silence. The Close
+  // button asks; the swipe is still there for anybody who prefers it, and
+  // this at least means there is a way out that does not gamble.
+  const close = () => {
+    if (!dirty) {
+      router.back();
+      return;
+    }
+    Alert.alert('Discard your changes?', 'What you have written here will not be saved.', [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+    ]);
+  };
+
   const nameError = validateDisplayName(name);
   const ageError = validateAge(age);
   const bioError = validateBio(bio);
@@ -113,6 +141,7 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
       }
       continueLoading={updateProfile.isPending}
       onContinue={save}
+      onClose={close}
       scrollRef={scroller}>
       <FormTextField label="Name" value={name} onChangeText={setName} error={nameError} />
       <FormTextField

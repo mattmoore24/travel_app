@@ -19,7 +19,7 @@ import { ThemedView } from '@/components/themed-view';
 import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { LoadError } from '@/components/ui/load-error';
-import { Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Radius, Fonts, MaxContentWidth, Spacing } from '@/constants/theme';
 import {
   useBlockUser,
   useMessages,
@@ -471,7 +471,7 @@ const styles = StyleSheet.create({
   anchorCard: {
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    borderRadius: Spacing.four,
+    borderRadius: Radius.xl,
   },
   root: {
     flex: 1,
@@ -524,7 +524,7 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.four,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
   messages: {
     padding: Spacing.four,
@@ -544,7 +544,7 @@ const styles = StyleSheet.create({
     maxWidth: '80%',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
   bubbleMine: {
     alignSelf: 'flex-end',
@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
   closedNotice: {
     margin: Spacing.four,
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
     alignItems: 'center',
   },
   attachmentRow: {
@@ -589,7 +589,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 40,
     maxHeight: 120,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 15,

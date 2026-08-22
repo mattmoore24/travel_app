@@ -21,6 +21,7 @@ import { AvatarButton } from '@/components/ui/avatar-button';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
+import { ChatRowSkeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
@@ -42,6 +43,7 @@ import {
 import { usePhotoUrl, usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
+import { countOf } from '@/lib/plural';
 import type { ChatListRow, IncomingRequestRow, SentRequestRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -314,7 +316,7 @@ function ChatRow({ chat }: { chat: ChatListRow }) {
         </View>
         {isRoom && chat.member_count != null ? (
           <ThemedText type="footnote" themeColor="textSecondary">
-            {chat.member_count} here now
+            {countOf(chat.member_count, 'person', 'people')} here now
             {chat.expires_at
               ? ` · you leave ${new Date(chat.expires_at).toLocaleDateString(undefined, {
                   day: 'numeric',
@@ -363,7 +365,7 @@ function RoomDiscovery({ cityId }: { cityId: number | null }) {
                 {room.name}
               </ThemedText>
               <ThemedText type="footnote" themeColor="textSecondary">
-                {room.member_count} guests here now
+                {countOf(room.member_count, 'guest')} here now
               </ThemedText>
             </View>
           </ThemedView>
@@ -685,6 +687,18 @@ export default function ChatScreen() {
           </>
         ) : null}
 
+        {/* The shape of the list, while the list is on its way. Only on a
+            genuinely cold start: once there are cached rows they are shown
+            instead, because real slightly-stale content beats a placeholder
+            every time. */}
+        {chatsQuery.isPending && chats.length === 0 ? (
+          <>
+            <ChatRowSkeleton />
+            <ChatRowSkeleton />
+            <ChatRowSkeleton />
+          </>
+        ) : null}
+
         {/* Your side of the loop. Only the ones still waiting: once somebody
             answers, the hello IS the chat and lives in the list below. */}
         {tab === 'individual' && waitingOnThem.length > 0 ? (
@@ -813,7 +827,7 @@ const styles = StyleSheet.create({
   emptyCard: {
     gap: Spacing.three,
     padding: Spacing.four,
-    borderRadius: Spacing.four,
+    borderRadius: Radius.xl,
   },
   root: {
     flex: 1,
@@ -910,7 +924,7 @@ const styles = StyleSheet.create({
   requestCard: {
     gap: Spacing.two,
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
   requestHeader: {
     flexDirection: 'row',
@@ -938,7 +952,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
   chatRowText: {
     flex: 1,

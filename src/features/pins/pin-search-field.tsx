@@ -6,7 +6,7 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Elevation, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
+import { Type, Elevation, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import { searchPlaces, venueSearchAvailable, type LocalSearchResult } from '@/modules/local-search';
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: Type.body.fontSize,
     paddingVertical: 0,
   },
   message: {

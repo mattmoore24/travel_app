@@ -1,12 +1,15 @@
+import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { KeyboardFloor } from '@/components/ui/keyboard-floor';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { HitTarget, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 
 type StepScreenProps = {
   title: string;
@@ -22,6 +25,16 @@ type StepScreenProps = {
   /** The scroller itself, for a caller that needs to jump to one block. */
   scrollRef?: React.Ref<ScrollView>;
   footer?: ReactNode;
+  /**
+   * A visible way out.
+   *
+   * Most of these screens are modals, so the only exit was a swipe down —
+   * which is a gesture nothing on the screen mentions, and one that ate a
+   * whole bio rewrite without asking. A caller that supplies this gets a
+   * real 44pt Close, and is the right place to put a "you have unsaved
+   * changes" question, because only the caller knows whether there are any.
+   */
+  onClose?: () => void;
 };
 
 /**
@@ -46,7 +59,9 @@ export function StepScreen({
   note,
   scrollRef,
   footer,
+  onClose,
 }: StepScreenProps) {
+  const theme = useTheme();
   return (
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
@@ -60,7 +75,27 @@ export function StepScreen({
             // keyboard, which is right for moving between fields and wrong as
             // the only exit. Dragging closes it, same as the signup shell.
             keyboardDismissMode="interactive">
-            <ThemedText type="subtitle">{title}</ThemedText>
+            <View style={styles.titleRow}>
+              <ThemedText type="subtitle" style={styles.title}>
+                {title}
+              </ThemedText>
+              {onClose ? (
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  haptic="light"
+                  scaleTo={0.9}
+                  hitSlop={6}
+                  onPress={onClose}
+                  style={styles.close}>
+                  <SymbolView
+                    name={{ ios: 'xmark', android: 'close', web: 'close' }}
+                    size={16}
+                    tintColor={theme.textSecondary}
+                  />
+                </PressableScale>
+              ) : null}
+            </View>
             {subtitle ? <ThemedText themeColor="textSecondary">{subtitle}</ThemedText> : null}
             {children}
           </ScrollView>
@@ -85,6 +120,22 @@ export function StepScreen({
 }
 
 const styles = StyleSheet.create({
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.two,
+  },
+  title: {
+    flex: 1,
+  },
+  close: {
+    width: HitTarget,
+    height: HitTarget,
+    marginTop: -Spacing.two,
+    marginRight: -Spacing.two,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   note: {
     textAlign: 'center',
   },

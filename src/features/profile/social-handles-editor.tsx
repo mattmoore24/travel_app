@@ -5,7 +5,7 @@ import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanim
 
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Fonts, HitTarget, Radius, Space } from '@/constants/theme';
+import { Type, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
 import {
   useDeleteSocialHandle,
   useOwnSocialHandles,
@@ -279,11 +279,11 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
   },
   at: {
-    fontSize: 16,
+    fontSize: Type.body.fontSize,
   },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: Type.body.fontSize,
     paddingVertical: 0,
   },
   save: {

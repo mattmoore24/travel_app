@@ -17,12 +17,17 @@ import Animated, {
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
-import { BrandDeep, Motion, Space, Springs } from '@/constants/theme';
+import { Colors, SplashField, BrandDeep, Motion, Space, Springs } from '@/constants/theme';
 import { useOwnProfile, usePhotoUrl } from '@/features/profile/hooks';
 import type { AcceptedMatch } from '@/features/matching/use-accepted-celebration';
 import { haptics } from '@/lib/haptics';
 
-const AMBER = '#F0A93C';
+/**
+ * The warm ring, matched to the map's markers rather than to a value the
+ * palette retired. Fixed rather than themed for the same reason the field
+ * below is: this is a brand moment and it should look identical everywhere.
+ */
+const RING = Colors.dark.highlight;
 
 /**
  * The one properly celebratory moment in the app: someone you messaged said
@@ -139,8 +144,9 @@ const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFill,
     // Fixed indigo, not a theme surface: this is a brand moment and it should
-    // look identical in light and dark.
-    backgroundColor: '#1B2E5E',
+    // look identical in light and dark. Same value the splash and the intro
+    // tour use, so the three brand screens cannot drift apart.
+    backgroundColor: SplashField,
     alignItems: 'center',
     justifyContent: 'center',
     gap: Space.xl,
@@ -162,7 +168,7 @@ const styles = StyleSheet.create({
     height: PHOTO,
     borderRadius: PHOTO / 2,
     borderWidth: 4,
-    borderColor: AMBER,
+    borderColor: RING,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOpacity: 0.35,

@@ -12,7 +12,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useDraftWarning, useFirstMessageBudget, useSendRequest } from '@/features/matching/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.three,
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
   targetPhoto: {
     width: 52,
@@ -331,6 +331,6 @@ const styles = StyleSheet.create({
   blockedCard: {
     gap: Spacing.one,
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
 });

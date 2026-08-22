@@ -19,7 +19,7 @@ import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
+import { Type, BottomTabInset, HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
 import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
 import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
 import {
@@ -1243,7 +1243,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   dockLabel: {
-    fontSize: 15,
+    fontSize: Type.callout.fontSize,
     fontWeight: '600',
   },
   confirmBar: {
@@ -1258,9 +1258,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-  },
-  pinCardEmoji: {
-    fontSize: 22,
   },
   mapsLink: {
     flexDirection: 'row',

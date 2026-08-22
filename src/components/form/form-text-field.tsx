@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Fonts, HitTarget, Spacing } from '@/constants/theme';
+import { Type, Radius, Fonts, HitTarget, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type FormTextFieldProps = TextInputProps & {
@@ -104,10 +104,10 @@ const styles = StyleSheet.create({
   },
   input: {
     minHeight: 48,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    fontSize: 16,
+    fontSize: Type.body.fontSize,
   },
   inputWithToggle: {
     paddingRight: HitTarget,

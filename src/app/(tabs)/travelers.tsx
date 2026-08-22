@@ -11,6 +11,7 @@ import { AvatarButton } from '@/components/ui/avatar-button';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { Skeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useFeaturedTraveler, useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
@@ -454,9 +455,20 @@ export default function TravelersScreen() {
   // would skip every second traveler.
   const current = queue[0];
 
-  // Blank frame rather than "add a trip first" while we are still asking.
+  // The shape of a traveler, rather than a blank frame. It was already
+  // right not to say "add a trip first" while still asking; this at least
+  // says something is coming.
   if (tripsQuery.isPending || matchesQuery.isPending) {
-    return <ThemedView style={styles.root} />;
+    return (
+      <ThemedView style={styles.root}>
+        <View style={[styles.loading, { paddingTop: insets.top + Space.sm }]}>
+          <Skeleton width="100%" height={Math.min(width, MaxContentWidth) * 1.15} radius={16} />
+          <Skeleton width="60%" height={16} />
+          <Skeleton width="85%" height={12} />
+          <Skeleton width="70%" height={12} />
+        </View>
+      </ThemedView>
+    );
   }
 
   // And never "add a trip first" when the question failed. Somebody with a
@@ -622,6 +634,14 @@ const styles = StyleSheet.create({
   spotlightNote: {
     textAlign: 'center',
   },
+  loading: {
+    flex: 1,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: MaxContentWidth,
+    gap: Space.md,
+    paddingHorizontal: Space.lg,
+  },
   actionBackdrop: {
     position: 'absolute',
     left: 0,
@@ -688,7 +708,7 @@ const styles = StyleSheet.create({
   tripChip: {
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
     alignItems: 'center',
     gap: 2,
   },

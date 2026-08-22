@@ -8,7 +8,7 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import {
   useLatestVerification,
   useOwnProfile,
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   card: {
     gap: Spacing.one,
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
   previewBlock: {
     alignItems: 'center',
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
     width: '60%',
     aspectRatio: 4 / 5,
     alignSelf: 'center',
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
     overflow: 'hidden',
   },
   previewImage: {

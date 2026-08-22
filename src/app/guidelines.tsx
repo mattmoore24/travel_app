@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { Radius, MaxContentWidth, Spacing } from '@/constants/theme';
 import { GUIDELINE_SECTIONS, ZERO_TOLERANCE } from '@/constants/policies';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
   },
   card: {
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
   section: {
     gap: Spacing.one,

@@ -6,7 +6,7 @@ import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Radius, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useCityPins, useLaunchCities } from '@/features/pins/hooks';
 import { categoryEmoji, intentLabel } from '@/features/pins/pin-helpers';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
     padding: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
   emoji: {
     fontSize: 20,

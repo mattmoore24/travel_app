@@ -13,6 +13,10 @@ import {
   unsendMessage,
   removeRoomMessage,
   setChatPref,
+  fetchRoomInfo,
+  fetchRoomPins,
+  pinMessage,
+  unpinMessage,
   subscribeToRoomMessages,
 } from '@/features/rooms/api';
 import { analytics } from '@/lib/analytics';
@@ -23,6 +27,46 @@ export function useCityRooms(cityId: number | null) {
     queryKey: ['city-rooms', cityId],
     queryFn: () => fetchCityRooms(cityId!),
     enabled: isSupabaseConfigured && cityId != null,
+  });
+}
+
+/** What this room is called, whether or not you are in it. */
+export function useRoomInfo(chatId: string | null) {
+  return useQuery({
+    queryKey: ['room-info', chatId],
+    queryFn: () => fetchRoomInfo(chatId!),
+    enabled: isSupabaseConfigured && chatId != null,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** What a host has kept at the top of this room. */
+export function useRoomPins(chatId: string | null) {
+  return useQuery({
+    queryKey: ['room-pins', chatId],
+    queryFn: () => fetchRoomPins(chatId!),
+    enabled: isSupabaseConfigured && chatId != null,
+  });
+}
+
+export function usePinMessage(chatId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { messageId: string; hours?: number }) =>
+      pinMessage(input.messageId, input.hours),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['room-pins', chatId] });
+    },
+  });
+}
+
+export function useUnpinMessage(chatId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (messageId: string) => unpinMessage(messageId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['room-pins', chatId] });
+    },
   });
 }
 

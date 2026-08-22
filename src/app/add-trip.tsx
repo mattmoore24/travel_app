@@ -7,7 +7,7 @@ import { FormTextField } from '@/components/form/form-text-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import {
   addDays,
   formatDateRange,
@@ -191,12 +191,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
   suggestion: {
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    borderRadius: Spacing.two,
+    borderRadius: Radius.sm,
   },
   datesBlock: {
     gap: Spacing.two,
@@ -210,6 +210,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.three,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
   },
 });

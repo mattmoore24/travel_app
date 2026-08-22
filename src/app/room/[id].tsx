@@ -26,12 +26,17 @@ import {
   useLeaveRoom,
   useReactions,
   useRemoveRoomMessage,
+  usePinMessage,
+  useRoomInfo,
+  useRoomPins,
+  useUnpinMessage,
   useRoomMessages,
   useToggleReaction,
   useUnsendMessage,
 } from '@/features/rooms/hooks';
 import { addDays, formatDateRange, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
+import { countOf } from '@/lib/plural';
 
 export default function RoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -52,6 +57,9 @@ export default function RoomScreen() {
   const toggle = useToggleReaction(id!);
   const unsend = useUnsendMessage(id!);
   const removeMessage = useRemoveRoomMessage(id!);
+  const { data: pins = [] } = useRoomPins(id ?? null);
+  const pin = usePinMessage(id!);
+  const unpin = useUnpinMessage(id!);
   const [draft, setDraft] = useState('');
 
   const membership = useMemo(
@@ -59,6 +67,9 @@ export default function RoomScreen() {
     [chatsQuery.data, id]
   );
   const isMember = membership != null;
+  // Only asked when you are NOT already a member: my_chats already answers
+  // for everybody else, and a second round trip for a name you have is waste.
+  const { data: info } = useRoomInfo(isMember ? null : (id ?? null));
   // Only a member has anything to mark: a visitor previewing a public room
   // has no chat_prefs row and the RPC would refuse them.
   useMarkReadWhileOpen(isMember ? (id ?? null) : null, messages[0]?.created_at ?? null);
@@ -117,8 +128,13 @@ export default function RoomScreen() {
         <KeyboardFloor>
           <View style={styles.header}>
             <View style={styles.headerRow}>
+              {/* my_chats() carries the name, but only for members — which
+                  is exactly the people who did not need it. A visitor
+                  reading a hostel's public preview used to get the literal
+                  words "Guest room" on the screen whose whole job is to make
+                  the place feel like somewhere you might walk into. */}
               <ThemedText type="headline" style={styles.headerTitle} numberOfLines={1}>
-                {membership?.title ?? 'Guest room'}
+                {membership?.title ?? info?.name ?? 'Guest room'}
               </ThemedText>
               {/* Leaving lives up here, not under the composer — a destructive
                   action one thumb-width from Send is an accident waiting. */}
@@ -148,7 +164,7 @@ export default function RoomScreen() {
                 both wrong and alarming for a private group. */}
             {chatsQuery.isPending ? null : isMember && membership?.expires_at ? (
               <ThemedText type="footnote" themeColor="textSecondary">
-                {membership.member_count} here
+                {countOf(membership.member_count ?? 0, 'person', 'people')} here
                 {/* A private group is not readable by passers-by, and saying
                     it is would be worse than saying nothing. */}
                 {isGroup ? '' : ' · anyone can read'} · you leave{' '}
@@ -159,10 +175,50 @@ export default function RoomScreen() {
               </ThemedText>
             ) : (
               <ThemedText type="footnote" themeColor="textSecondary">
+                {info ? `${countOf(info.member_count, 'guest')} here. ` : ''}
                 Anyone can read this chat. Join in to post.
               </ThemedText>
             )}
           </View>
+
+          {/* What the host has kept at the top. A hostel room is a river:
+              the address of tonight's dinner scrolls out of reach in twenty
+              minutes and gets asked for four more times. Capped at three and
+              always expiring, because the failure mode of pinned content is
+              a stale one nobody remembers to take down. */}
+          {pins.length > 0 ? (
+            <View style={[styles.pinStrip, { borderBottomColor: theme.hairline }]}>
+              {pins.map((pinned) => (
+                <Pressable
+                  key={pinned.message_id}
+                  accessibilityRole={isModerator ? 'button' : 'text'}
+                  accessibilityLabel={`Pinned: ${pinned.body ?? 'a photo'}`}
+                  accessibilityHint={isModerator ? 'Press and hold to unpin' : undefined}
+                  onLongPress={
+                    isModerator
+                      ? () =>
+                          Alert.alert('Unpin this?', undefined, [
+                            { text: 'Keep it', style: 'cancel' },
+                            {
+                              text: 'Unpin',
+                              onPress: () => unpin.mutate(pinned.message_id),
+                            },
+                          ])
+                      : undefined
+                  }
+                  style={styles.pinRow}>
+                  <SymbolView
+                    name={{ ios: 'pin.fill', android: 'push_pin', web: 'push_pin' }}
+                    size={12}
+                    tintColor={theme.highlight}
+                  />
+                  <ThemedText type="footnote" numberOfLines={2} style={styles.pinText}>
+                    {pinned.body ?? 'Photo'}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
 
           {/* The same thread a one-to-one chat uses, so a group gets the
               anchored long-press menu rather than the slab this screen used
@@ -181,6 +237,9 @@ export default function RoomScreen() {
               }
             }}
             authorFor={(m) => byId.get(m.id)?.display_name ?? 'Someone'}
+            // A group is where you meet strangers, so knowing WHO said a
+            // thing matters more here than anywhere else in the app.
+            avatarFor={(m) => byId.get(m.id)?.photo_path ?? null}
             noteFor={(m) => (byId.get(m.id)?.removed ? 'Message removed by the host' : null)}
             onToggleReaction={(messageId, emoji, on) => toggle.mutate({ messageId, emoji, on })}
             onUnsend={(messageId) =>
@@ -200,6 +259,27 @@ export default function RoomScreen() {
             // is where you meet strangers, so it is exactly where reporting
             // has to work. From a profile still works too; this is the one
             // that carries the message with it.
+            // Hosts only, and the menu simply does not carry the action for
+            // anybody else — an action you can see and cannot perform is
+            // worse than one that was never offered.
+            onPin={
+              isModerator
+                ? (messageId) => {
+                    pin.mutate(
+                      { messageId },
+                      {
+                        onError: (error) =>
+                          Alert.alert(
+                            'Could not pin that',
+                            /three pins/i.test((error as Error).message ?? '')
+                              ? 'Three is the limit. Unpin one first.'
+                              : 'Try that again in a moment.'
+                          ),
+                      }
+                    );
+                  }
+                : undefined
+            }
             reportLabel={isModerator ? 'Remove' : 'Report'}
             onReport={
               isModerator
@@ -387,6 +467,20 @@ const styles = StyleSheet.create({
     gap: Space.xs,
     paddingHorizontal: Space.lg,
     paddingBottom: Space.md,
+  },
+  pinStrip: {
+    gap: Space.xs,
+    paddingHorizontal: Space.lg,
+    paddingBottom: Space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  pinRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Space.sm,
+  },
+  pinText: {
+    flex: 1,
   },
   headerRow: {
     flexDirection: 'row',

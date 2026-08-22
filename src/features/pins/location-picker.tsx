@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 
 type LocationPickerProps = {
   centerLat: number;
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
   },
   map: {
     height: 220,
-    borderRadius: Spacing.three,
+    borderRadius: Radius.lg,
     overflow: 'hidden',
   },
 });

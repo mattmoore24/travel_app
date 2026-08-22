@@ -17,6 +17,7 @@ import { useGroupInvitePreview, useJoinGroup } from '@/features/groups/hooks';
 import { useIsGuest } from '@/features/guest/hooks';
 import { formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
+import { countOf, isAre } from '@/lib/plural';
 
 /**
  * The far end of an invite link.
@@ -78,7 +79,7 @@ export default function JoinGroupScreen() {
         <View style={styles.centered}>
           <ThemedText type="headline">{group.name}</ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
-            {group.member_count} {group.member_count === 1 ? 'person is' : 'people are'} in this
+            {countOf(group.member_count, 'person', 'people')} {isAre(group.member_count)} in this
             group. You need a profile to join in.
           </ThemedText>
           <SignUpGate reason="Join the group" cta="Make a profile" />
@@ -119,7 +120,7 @@ export default function JoinGroupScreen() {
   return (
     <StepScreen
       title={group.name}
-      subtitle={`${group.member_count} ${group.member_count === 1 ? 'person' : 'people'} in the group`}
+      subtitle={`${countOf(group.member_count, 'person', 'people')} in the group`}
       continueLabel="Join the group"
       continueDisabled={chosen == null}
       continueLoading={join.isPending}
