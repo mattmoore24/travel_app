@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
@@ -24,8 +24,55 @@ import { useTheme } from '@/hooks/use-theme';
  */
 export const SHEET_EXIT_MS = 320;
 
+/**
+ * How long to leave between one native modal going and the next arriving.
+ *
+ * iOS presents one modal at a time and silently DROPS a presentation that
+ * begins while another is still dismissing. Unmounting in React is not the
+ * same as dismissed on screen, so a counter alone is not enough — anything
+ * presenting on its own schedule has to wait out the teardown as well. The
+ * map has used this number since a freshly dropped pin came back with no
+ * confirmation card at all; it lives here now so there is one of it.
+ */
+export const SHEET_SETTLE_MS = 450;
+
 /** How far down you have to pull before letting go dismisses. */
 const DISMISS_DISTANCE = 90;
+
+/**
+ * How many native-modal Sheets are mounted right now, and a way to watch it.
+ *
+ * Only the push primer needs this: it is the one thing in the app that
+ * presents a sheet on a schedule of its own — the moment a hello is
+ * delivered or a pin is posted — rather than because somebody tapped
+ * something. Both of those moments happen while another sheet is on its way
+ * out, which is exactly the presentation iOS drops.
+ */
+let presentedSheets = 0;
+const sheetListeners = new Set<() => void>();
+
+function readPresentedSheets(): number {
+  return presentedSheets;
+}
+
+function subscribeToSheets(listener: () => void): () => void {
+  sheetListeners.add(listener);
+  return () => {
+    sheetListeners.delete(listener);
+  };
+}
+
+function setPresentedSheets(next: number): void {
+  presentedSheets = Math.max(0, next);
+  for (const listener of sheetListeners) {
+    listener();
+  }
+}
+
+/** How many native-modal Sheets are mounted. Inline sheets do not count. */
+export function usePresentedSheetCount(): number {
+  return useSyncExternalStore(subscribeToSheets, readPresentedSheets, readPresentedSheets);
+}
 /** Or how fast, for a flick that never travels that far. */
 const DISMISS_VELOCITY = 900;
 
@@ -85,6 +132,19 @@ export function Sheet({
   const sheetWidth = Math.min(width, MaxContentWidth);
   const keyboard = useAnimatedKeyboard();
   const drag = useSharedValue(0);
+
+  // Register while this sheet owns the screen, so anything that would
+  // present a modal of its own can wait its turn. Inline sheets are not
+  // modals and take no turn.
+  useEffect(() => {
+    if (inline) {
+      return;
+    }
+    setPresentedSheets(presentedSheets + 1);
+    return () => {
+      setPresentedSheets(presentedSheets - 1);
+    };
+  }, [inline]);
 
   // Down only: dragging up would let a sheet leave its own bottom edge, and
   // the rubber-band there reads as a bug rather than as resistance.

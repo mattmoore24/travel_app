@@ -14,7 +14,7 @@ import { AvatarButton } from '@/components/ui/avatar-button';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { LoadError } from '@/components/ui/load-error';
-import { Sheet, leavingSheet } from '@/components/ui/sheet';
+import { Sheet, SHEET_SETTLE_MS, leavingSheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { ThemedText } from '@/components/themed-text';
@@ -254,12 +254,6 @@ function PinCard({
     </ThemedView>
   );
 }
-
-/**
- * How long to let a Sheet finish leaving before navigating out from under it.
- * The exit animation is 200ms (components/ui/sheet.tsx); the margin covers a
- * busy frame, and the cost of being generous is imperceptible.
- */
 
 const SEEDED_LABEL = 'One of our picks. Just show up.';
 
@@ -962,7 +956,7 @@ export default function MapScreen() {
             // dismissing — which left a freshly dropped pin with no
             // confirmation card at all. Wait for the form to finish leaving,
             // then select it (the card also needs the refetched row).
-            setTimeout(() => setSelectedPinId(pinId), 450);
+            setTimeout(() => setSelectedPinId(pinId), SHEET_SETTLE_MS);
           }}
         />
       ) : null}

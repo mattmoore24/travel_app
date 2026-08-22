@@ -1,10 +1,11 @@
 import { useIsFocused } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
-import { Sheet } from '@/components/ui/sheet';
+import { Sheet, SHEET_SETTLE_MS, usePresentedSheetCount } from '@/components/ui/sheet';
 import { Radius, Space } from '@/constants/theme';
 import { usePushPrimer, type PrimerReason } from '@/features/notifications/primer-store';
 import { useTheme } from '@/hooks/use-theme';
@@ -36,19 +37,52 @@ export function PushPrimer() {
   const busy = usePushPrimer((s) => s.busy);
   const accept = usePushPrimer((s) => s.accept);
   const decline = usePushPrimer((s) => s.decline);
-  // Only while the tabs are the thing on screen.
-  //
-  // The moment that earns the question — a hello delivered — happens while
-  // /compose-request is still up, and that route is presented as a modal.
-  // This sheet is a React Native Modal hosted from the tabs layout
-  // UNDERNEATH it, and iOS silently drops a modal presented from a view
-  // controller that is already presenting one: the ask simply never
-  // appeared, which is worse than a badly timed one because nothing says so.
-  // The reason is held in the store until the composer leaves, and the
-  // question arrives on the screen the person lands back on.
-  const focused = useIsFocused();
 
-  if (reason == null || !focused) {
+  // WAIT FOR THE SCREEN TO BE FREE. This is the only thing in the app that
+  // presents a sheet on a schedule of its own, and both of the moments that
+  // earn it — a hello delivered, a pin posted — happen while another modal
+  // is on its way out.
+  //
+  // A simulator run caught what that costs. The pin form is a Sheet, so a
+  // Modal; posting a pin unmounts it and, in the same tick,
+  // useCreatePin.onSuccess asks this question. The Modal that mounts on top
+  // of a dismissal iOS has not finished is one iOS drops — and the run
+  // photographed the result: the confirmation card on screen, four taps
+  // registered on it by the driver, and not one pixel changed in the minute
+  // that followed. Not a missing question. A dead app, on the one flow the
+  // founder uses most.
+  //
+  // Two gates, because they catch different things. `focused` covers a route
+  // presented over the tabs (/compose-request, after a hello). The sheet
+  // count covers an in-screen Sheet that no router knows about (the pin
+  // form). And the settle delay covers the gap between the two facts that
+  // are not the same fact: unmounted in React, and gone from the screen.
+  const focused = useIsFocused();
+  const sheets = usePresentedSheetCount();
+  const [presenting, setPresenting] = useState(false);
+
+  // Reset during render when the question is withdrawn, which is the
+  // sanctioned way to store information from a previous render — the same
+  // pattern the map markers use to re-arm their rasterisation window.
+  const [armedFor, setArmedFor] = useState(reason);
+  if (armedFor !== reason) {
+    setArmedFor(reason);
+    if (presenting) {
+      setPresenting(false);
+    }
+  }
+
+  useEffect(() => {
+    // Once it is up it stays up: this sheet is itself a modal, so it counts
+    // itself, and re-reading the gate would tear it straight back down.
+    if (reason == null || presenting || !focused || sheets > 0) {
+      return;
+    }
+    const timer = setTimeout(() => setPresenting(true), SHEET_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [reason, focused, sheets, presenting]);
+
+  if (reason == null || !presenting) {
     return null;
   }
   const copy = COPY[reason];

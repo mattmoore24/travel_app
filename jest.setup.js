@@ -71,3 +71,36 @@ jest.mock('react-native-reanimated', () => {
     runOnJS: (fn) => fn,
   };
 });
+
+// Gesture handler, stubbed to the surface the app uses: a builder chain that
+// records nothing, a detector that renders its child, and a root view that is
+// a view. The package ships its own jestSetup, and it is not enough here — it
+// installs the native shims and then GestureDetector reaches into Reanimated's
+// useEvent, which the stub above deliberately does not implement. Following
+// this file's own rule is both smaller and less of a lie: nothing under test
+// asserts on a gesture, only that a sheet containing one renders at all.
+jest.mock('react-native-gesture-handler', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  const builder = () => {
+    const chain = {};
+    for (const key of ['onUpdate', 'onEnd', 'onBegin', 'onStart', 'onFinalize', 'enabled']) {
+      chain[key] = () => chain;
+    }
+    return chain;
+  };
+
+  const GestureDetector = ({ children }) => children;
+  const GestureHandlerRootView = ({ children, ...rest }) =>
+    React.createElement(View, rest, children);
+
+  return {
+    __esModule: true,
+    Gesture: { Pan: builder, Tap: builder, LongPress: builder, Simultaneous: builder },
+    GestureDetector,
+    GestureHandlerRootView,
+    State: {},
+    Directions: {},
+  };
+});
