@@ -99,3 +99,38 @@ export function useFeaturedTraveler(cityId: number | null) {
     enabled: isSupabaseConfigured && cityId != null,
   });
 }
+
+/**
+ * The featured traveler's face, for a device with no account.
+ *
+ * featured_traveler() returns a storage path, and a signed-out device cannot
+ * turn a path into an image: the profile-photos bucket is private and its
+ * only SELECT policy is `to authenticated`. So the card has been rendering a
+ * monogram for somebody the server had already confirmed HAS an approved
+ * photo - the audit's Top 6 asks for a face here, and the face could not
+ * arrive.
+ *
+ * The featured-photo function mints one short-lived signed URL with the
+ * service role. It takes a CITY, not a path and not a user: the server picks
+ * the person exactly as this card does, so there is no parameter to walk and
+ * no bucket to widen. Null is a normal answer (nobody featured, or nobody
+ * with a face) and the monogram stays as the failure path.
+ */
+export function useFeaturedPhoto(cityId: number | null, hasPhoto: boolean) {
+  return useQuery({
+    queryKey: ['featured-photo', cityId],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke<{ url: string | null }>(
+        'featured-photo',
+        { body: { city_id: cityId } }
+      );
+      if (error) {
+        throw error;
+      }
+      return data?.url ?? null;
+    },
+    // The URL is minted for five minutes; refetch before it dies.
+    staleTime: 4 * 60_000,
+    enabled: isSupabaseConfigured && cityId != null && hasPhoto,
+  });
+}

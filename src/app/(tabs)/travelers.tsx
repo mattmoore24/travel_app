@@ -13,7 +13,7 @@ import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
-import { useFeaturedTraveler, useIsGuest } from '@/features/guest/hooks';
+import { useFeaturedPhoto, useFeaturedTraveler, useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
@@ -34,12 +34,7 @@ import {
   useSentRequests,
 } from '@/features/matching/hooks';
 import { usePassedTravelers } from '@/features/matching/passed';
-import {
-  useProfilePrompts,
-  usePhotoUrl,
-  usePublicPhotos,
-  usePublicProfile,
-} from '@/features/profile/hooks';
+import { useProfilePrompts, usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
 import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { formatDate, formatDateRange, toISODate } from '@/features/trips/dates';
@@ -67,7 +62,9 @@ function GuestTravelers() {
   const { data: launchCities = [] } = useLaunchCities();
   const cityId = launchCities[0]?.city_id ?? null;
   const { data: featured, isPending } = useFeaturedTraveler(cityId);
-  const { data: photoUrl } = usePhotoUrl(featured?.photo_path ?? null);
+  // Not usePhotoUrl: that signs the path with the caller's own credentials,
+  // and a guest has none the storage layer will accept. See useFeaturedPhoto.
+  const { data: photoUrl } = useFeaturedPhoto(cityId, featured?.photo_path != null);
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
 
@@ -126,17 +123,15 @@ function GuestTravelers() {
               <ThemedView type="backgroundElement" style={styles.card}>
                 <View style={styles.cardBody}>
                   <View style={styles.nameRow}>
-                    {/* A monogram, not a photo well. The photos bucket is
-                        private and its only SELECT policy is `to
-                        authenticated`, so a signed-out device cannot fetch a
-                        face however hard the card asks — featured_traveler
-                        returns the path and the storage layer refuses it.
-                        Rendering a 16:9 frame for an image that can never
-                        arrive gave the one screen asking a guest to sign up a
-                        band of empty colour across its top. Widening the
-                        bucket to anon would hand every primary photo in the
-                        app to anybody holding the public key, which is not a
-                        trade to make for a teaser. */}
+                    {/* A face when one can be had, a monogram when it
+                        cannot. The bucket is private and its only SELECT
+                        policy is `to authenticated`, so this photo is signed
+                        for the guest by the featured-photo function rather
+                        than by the device - one URL, for the one person the
+                        server itself picked, valid five minutes. Widening the
+                        bucket to anon would have handed every primary photo
+                        in the app to anybody holding the public key, which is
+                        why it took a function instead. */}
                     <View style={[styles.cardMono, { backgroundColor: theme.accentSoft }]}>
                       {photoUrl ? (
                         <Image
