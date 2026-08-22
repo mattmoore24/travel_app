@@ -1,7 +1,7 @@
 -- Pinned messages: capped, expiring, moderator-only, and never outliving the
 -- message they point at.
 begin;
-select plan(10);
+select plan(13);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -44,7 +44,8 @@ insert into public.messages (chat_id, sender_id, body) values
   ((select id from pg_temp.t_chat), '00000000-0000-0000-0000-00000000000a', 'Dinner at 8, Rua Nova 12'),
   ((select id from pg_temp.t_chat), '00000000-0000-0000-0000-00000000000a', 'Second thing'),
   ((select id from pg_temp.t_chat), '00000000-0000-0000-0000-00000000000a', 'Third thing'),
-  ((select id from pg_temp.t_chat), '00000000-0000-0000-0000-00000000000a', 'Fourth thing');
+  ((select id from pg_temp.t_chat), '00000000-0000-0000-0000-00000000000a', 'Fourth thing'),
+  ((select id from pg_temp.t_chat), '00000000-0000-0000-0000-00000000000a', 'Fifth thing');
 
 create function pg_temp.msg(p_body text) returns uuid language sql as
   $$ select id from public.messages where body = p_body limit 1 $$;
@@ -114,6 +115,34 @@ select is(
     where message_id = pg_temp.msg('Dinner at 8, Rua Nova 12')),
   0,
   'unsending a pinned message takes the pin down with it'
+);
+
+-- AND ITS SLOT. This is the half that was missing, and it is the half a
+-- host would actually hit: pin_message counted the TABLE while room_pins
+-- reads the JOIN, so a pin whose message had been unsent went on holding a
+-- slot that nothing rendered and nothing could unpin — there is no row to
+-- long-press, and re-pinning the same message raises 'message not found'.
+select lives_ok(
+  format($$ select public.pin_message(%L) $$, pg_temp.msg('Fifth thing')),
+  'and gives its slot back, the same as an expired one'
+);
+
+-- The hourly sweep collects the row itself, so the table does not fill up
+-- with pins pointing at messages that no longer say anything.
+select pg_temp.admin();
+select ok(
+  (select count(*)::int from public.pinned_messages pm
+    join public.messages m on m.id = pm.message_id
+    where m.unsent_at is not null or m.removed_at is not null) > 0,
+  'the dead pin is still a row until something sweeps it'
+);
+select public.expire_pinned_messages();
+select is(
+  (select count(*)::int from public.pinned_messages pm
+    join public.messages m on m.id = pm.message_id
+    where m.unsent_at is not null or m.removed_at is not null),
+  0,
+  'and the hourly sweep collects it'
 );
 
 -- UNPINNING ----------------------------------------------------------------

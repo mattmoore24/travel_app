@@ -5,7 +5,7 @@
 -- moderation queue readable. Hard rule 1 means it must never be sold back,
 -- so the tests care that it is a plain limit with a plain, warm refusal.
 begin;
-select plan(11);
+select plan(13);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -81,6 +81,26 @@ select is(
   'true',
   'the third is capped rather than refused with an error'
 );
+-- THE SAME KEYS ON EVERY BRANCH. The client has one result type for this
+-- function, so a branch that omits a key types it as present and hands back
+-- undefined. The capped branch is exactly the one where the composer wants
+-- to say "8 of 8", and `used` was the key it dropped.
+select is(
+  (select array_agg(k order by k) from jsonb_object_keys(
+     public.send_message_request(
+       '00000000-0000-0000-0000-00000000000d', 'trip_match',
+       'Another one over the line', 'trip')) k),
+  array['allowed','blocked','capped','delivered','queued','request_id','used'],
+  'a capped answer carries every key the other answers carry'
+);
+select is(
+  (public.send_message_request(
+     '00000000-0000-0000-0000-00000000000d', 'trip_match',
+     'And another', 'trip')) ->> 'used',
+  '2',
+  'including how many have gone today, which is what the composer shows'
+);
+
 -- Counted with RLS out of the way: a sender deliberately has no direct row
 -- visibility into message_requests (invariant 4), which is why the budget is
 -- a definer function rather than a query the client could run itself.

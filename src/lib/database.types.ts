@@ -321,7 +321,12 @@ export type ReportReason =
   'flirtation_or_sexual' | 'harassment' | 'spam' | 'fake_profile' | 'safety_concern' | 'other';
 
 export type SendRequestResult = {
-  request_id: string;
+  /**
+   * Null on the capped branch, where nothing was written. Every branch of
+   * send_message_request returns the same KEYS so this one type is true of
+   * all of them; what varies is the values.
+   */
+  request_id: string | null;
   delivered: boolean;
   /**
    * True when the message cleared the pre-filter but is held for LLM
@@ -335,11 +340,11 @@ export type SendRequestResult = {
    * and not a paywall: a safety limit that paces senders and keeps the
    * moderation queue readable (hard rule 1 — never sold back).
    */
-  capped?: boolean;
+  capped: boolean;
   /** How many hellos a day this account gets. */
-  allowed?: number;
+  allowed: number;
   /** How many of them are spent, including this one. */
-  used?: number;
+  used: number;
 };
 
 export type VerificationStatus = 'pending' | 'approved' | 'rejected';

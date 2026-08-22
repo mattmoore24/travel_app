@@ -1,6 +1,6 @@
 -- The daily spotlight: mutual, stable for the day, and blind to appearance.
 begin;
-select plan(9);
+select plan(13);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -95,6 +95,73 @@ select is(
   '00000000-0000-0000-0000-00000000000c'::uuid,
   'somebody you already wrote to is not spotlighted at you again'
 );
+
+-- WHAT SECURITY DEFINER STOPPED FILTERING ----------------------------------
+--
+-- daily_spotlight() is SECURITY DEFINER and calls get_matches(), which is
+-- SECURITY INVOKER and does none of this itself: for every other caller the
+-- trips_select_overlap POLICY supplies it, and a definer does not run
+-- policies. So the spotlight reached straight past blocks, suspensions and
+-- cancelled trips, and handed a blocked person's bio to the person they
+-- blocked. Four assertions, one per filter, because they fail separately.
+
+select pg_temp.admin();
+delete from public.daily_spotlights;
+delete from public.message_requests;
+
+-- Blocked, from the side that did NOT do the blocking: Bob blocks Alice, and
+-- Alice is the one asking.
+insert into public.blocks (blocker_id, blocked_id) values
+  ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000a');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select isnt(
+  (select user_id from public.daily_spotlight()),
+  '00000000-0000-0000-0000-00000000000b'::uuid,
+  'somebody who blocked you is never your spotlight'
+);
+
+select pg_temp.admin();
+delete from public.blocks;
+delete from public.daily_spotlights;
+update public.users set status = 'suspended'
+  where id = '00000000-0000-0000-0000-00000000000b';
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select isnt(
+  (select user_id from public.daily_spotlight()),
+  '00000000-0000-0000-0000-00000000000b'::uuid,
+  'a suspended account is never spotlighted'
+);
+
+select pg_temp.admin();
+update public.users set status = 'active'
+  where id = '00000000-0000-0000-0000-00000000000b';
+delete from public.daily_spotlights;
+update public.profiles set onboarding_completed_at = null
+  where user_id = '00000000-0000-0000-0000-00000000000b';
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select isnt(
+  (select user_id from public.daily_spotlight()),
+  '00000000-0000-0000-0000-00000000000b'::uuid,
+  'somebody who never finished a profile is never spotlighted'
+);
+
+select pg_temp.admin();
+update public.profiles set onboarding_completed_at = now()
+  where user_id = '00000000-0000-0000-0000-00000000000b';
+delete from public.daily_spotlights;
+update public.trips set status = 'cancelled'
+  where user_id = '00000000-0000-0000-0000-00000000000b';
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select isnt(
+  (select user_id from public.daily_spotlight()),
+  '00000000-0000-0000-0000-00000000000b'::uuid,
+  'a cancelled trip takes its owner out of the spotlight with it'
+);
+
+select pg_temp.admin();
+update public.trips set status = 'active'
+  where user_id = '00000000-0000-0000-0000-00000000000b';
+delete from public.daily_spotlights;
 
 -- THE SCORE ----------------------------------------------------------------
 
