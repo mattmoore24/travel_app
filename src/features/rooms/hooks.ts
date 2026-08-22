@@ -174,6 +174,11 @@ export function useUnsendMessage(chatId: string) {
       queryClient.invalidateQueries({ queryKey: ['messages', chatId] });
       queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
       queryClient.invalidateQueries({ queryKey: ['reactions', chatId] });
+      // A pin never outlives its message. room_pins() already refuses to
+      // return one whose message was taken back, but the strip is a separate
+      // query: without this the person who just unsent something keeps
+      // reading it at the top of the room, alone.
+      queryClient.invalidateQueries({ queryKey: ['room-pins', chatId] });
       queryClient.invalidateQueries({ queryKey: ['chats'] });
     },
   });
@@ -185,6 +190,9 @@ export function useRemoveRoomMessage(chatId: string) {
     mutationFn: (messageId: string) => removeRoomMessage(messageId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
+      // Same reason as unsend: a host who takes a pinned message down must
+      // not be left looking at its headline.
+      queryClient.invalidateQueries({ queryKey: ['room-pins', chatId] });
     },
   });
 }
