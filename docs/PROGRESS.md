@@ -25,6 +25,13 @@ Updated at every phase boundary (and mid-phase when something changes).
   staggering the later windows gives at least three matches in any city for any trip
   in the next four months. The old single 27-day window was why the tab said nobody
   matched.
+- **The map was too dark to read**, and the cause was two treatments doing the same
+  job. `mutedStandard` drops label contrast as well as saturation, and the ink wash
+  over it took another third, which put a street name at roughly 2:1 against the
+  ground. Now `standard` in a dark interface style (Apple's own night map: legible,
+  already navy) with the wash cut from 0.34 to 0.14, doing only the job an overlay is
+  good at. The pin picker also draws the wash now: the shared constant covers props,
+  the wash is an overlay, and only the map tab had ever drawn one.
 - **Who can see you.** Verified-only / verified-men / verified-women / verified-non-binary
   audiences for the map and Travelers, gated on holding the badge, enforced in the
   database. See

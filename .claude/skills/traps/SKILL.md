@@ -299,6 +299,22 @@ business categories only. The only remaining lever is an overlay, and it is a
 good one: MapKit draws every overlay BENEATH every annotation, so a polygon
 wash dims the cartography without touching a single marker.
 
+**Do not stack that wash on `mutedStandard`.** They are not complementary.
+mutedStandard drops label CONTRAST as well as saturation, so a wash over it
+darkens something already flattened, and the founder's map came back on
+2026-08-23 as too dark to read — a street name at roughly 2:1 against the
+ground. `standard` with `userInterfaceStyle: 'dark'` is the map Apple shows
+at night: legible, and already navy enough for a dark theme. Let the map type
+carry contrast and let the wash carry saturation, at about 0.14 rather than
+0.34. One knob each, and tune the wash first.
+
+**A shared props constant does not cover overlays.** Both MapViews spread
+`QUIET_BASEMAP`, which is why the props cannot drift; the wash is a `Polygon`
+each screen draws for itself, and the picker had silently never drawn one.
+Invisible while both maps used the same type, and a visible split the moment
+one value changed. When a treatment is half prop and half overlay, check both
+halves on both screens.
+
 ## The simulator keyboard guesses, and it will break a run
 
 Run 50 died asserting text it had just typed, on a field reading "Meeting by
