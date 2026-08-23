@@ -10,7 +10,7 @@ import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
-import { Radius, Space } from '@/constants/theme';
+import { NativeAppearance, Radius, Space } from '@/constants/theme';
 import { uploadGroupPhoto } from '@/features/groups/api';
 import { useCreateGroup } from '@/features/groups/hooks';
 import { useOwnUserId } from '@/features/profile/hooks';
@@ -163,7 +163,7 @@ export default function NewGroupScreen() {
             mode="date"
             display="compact"
             minimumDate={new Date()}
-            themeVariant="dark"
+            themeVariant={NativeAppearance}
             onChange={(_, date) => {
               if (date) {
                 setMaxStay(date);

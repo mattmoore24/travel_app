@@ -62,26 +62,26 @@ describe('the reaction menu', () => {
     fireEvent(screen.getByLabelText('First one in'), 'longPress');
     // The scrim is the menu: it only exists while the menu is open.
     expect(screen.getByLabelText('Dismiss')).toBeTruthy();
-    expect(screen.getByLabelText('👍')).toBeTruthy();
+    expect(screen.getByLabelText('❤️')).toBeTruthy();
   });
 
   it('reports the emoji the person picked', () => {
     const onToggleReaction = jest.fn();
     renderThread({ onToggleReaction });
     fireEvent(screen.getByLabelText('First one in'), 'longPress');
-    fireEvent.press(screen.getByLabelText('👍'));
-    expect(onToggleReaction).toHaveBeenCalledWith('m1', '👍', true);
+    fireEvent.press(screen.getByLabelText('❤️'));
+    expect(onToggleReaction).toHaveBeenCalledWith('m1', '❤️', true);
   });
 
   it('takes a reaction back when the same emoji is picked again', () => {
     const onToggleReaction = jest.fn();
     renderThread({
       onToggleReaction,
-      reactions: [{ message_id: 'm1', emoji: '👍', count: 1, reacted_by_me: true }],
+      reactions: [{ message_id: 'm1', emoji: '❤️', count: 1, reacted_by_me: true }],
     });
     fireEvent(screen.getByLabelText('First one in'), 'longPress');
-    fireEvent.press(screen.getByLabelText('👍'));
-    expect(onToggleReaction).toHaveBeenCalledWith('m1', '👍', false);
+    fireEvent.press(screen.getByLabelText('❤️'));
+    expect(onToggleReaction).toHaveBeenCalledWith('m1', '❤️', false);
   });
 
   it('does not open for somebody who cannot react', () => {

@@ -14,7 +14,7 @@ import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
-import { MaxContentWidth, Radius, Space } from '@/constants/theme';
+import { MaxContentWidth, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { uploadGroupPhoto } from '@/features/groups/api';
 import {
   useGroup,
@@ -304,7 +304,7 @@ export default function GroupScreen() {
                   mode="date"
                   display="compact"
                   minimumDate={new Date()}
-                  themeVariant="dark"
+                  themeVariant={NativeAppearance}
                   onChange={(_, date) => {
                     if (date) {
                       update.mutate({ maxStayUntil: toISODate(date) });

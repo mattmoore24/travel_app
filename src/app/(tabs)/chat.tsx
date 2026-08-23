@@ -185,29 +185,37 @@ function SentHelloRow({ request }: { request: SentRequestRow }) {
   const { data: profile } = usePublicProfile(request.recipient_id);
   const { data: photos = [] } = usePublicPhotos(request.recipient_id);
   const photoPath = photos.find((p) => p.position === 0)?.storage_path ?? null;
+  const name = profile?.display_name ?? 'Traveler';
 
+  // Deliberately NOT the chat row. It used to borrow styles.chatRow whole -
+  // same filled card, same 48pt avatar, same name-over-preview - so it read
+  // as a conversation, and tapping it opened a profile instead of a thread.
+  // A hello with no reply is not a chat yet, so it does not get to look like
+  // one: outline instead of fill, smaller avatar, your own words quoted back
+  // to you, and a chevron that says where the tap actually goes.
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={`You said hi to ${profile?.display_name ?? 'a traveler'}`}
+      accessibilityLabel={`You said hi to ${name}`}
+      accessibilityHint="Opens their profile"
       scaleTo={0.98}
       onPress={() => router.push(`/profile/${request.recipient_id}`)}>
-      <ThemedView type="backgroundElement" style={styles.chatRow}>
-        <Avatar path={photoPath} />
+      <View style={[styles.sentRow, { borderColor: theme.hairline }]}>
+        <Avatar path={photoPath} size={36} />
         <View style={styles.chatRowText}>
-          <ThemedText type="callout" style={styles.strong} numberOfLines={1}>
-            {profile?.display_name ?? 'Traveler'}
+          <ThemedText type="footnote" style={styles.strong} numberOfLines={1}>
+            {name}
           </ThemedText>
           <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
-            {request.first_message}
+            You: {request.first_message}
           </ThemedText>
         </View>
-        <View style={[styles.sentTag, { backgroundColor: theme.surfaceSunken }]}>
-          <ThemedText type="caption" themeColor="textSecondary">
-            Sent
-          </ThemedText>
-        </View>
-      </ThemedView>
+        <SymbolView
+          name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+          size={12}
+          tintColor={theme.textSecondary}
+        />
+      </View>
     </PressableScale>
   );
 }
@@ -909,10 +917,18 @@ const styles = StyleSheet.create({
   feelsOff: {
     textDecorationLine: 'underline',
   },
-  sentTag: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: 2,
-    borderRadius: Radius.pill,
+  /* Outlined, not filled, and shorter than a chat row - the whole point is
+     that it does not pass for a conversation at a glance. */
+  sentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderRadius: Radius.lg,
+    borderCurve: 'continuous',
+    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'transparent',
   },
   /* The name gives way first, so a long one truncates rather than pushing
      the timestamp off the end of the row. */

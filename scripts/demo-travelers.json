@@ -6,18 +6,44 @@
     "the runbook requires purging them before real users arrive.",
     "photoUrl values are time-limited generation links. They only matter at",
     "seed time: once uploaded the photos live in Supabase Storage. If a link",
-    "has expired, ask Claude to regenerate the portraits before re-seeding."
+    "has expired, ask Claude to regenerate the portraits before re-seeding.",
+    "",
+    "ORDER MATTERS. The seed script derives each trip schedule from the index:",
+    "rotation = index % 4 picks which launch city they are in TODAY (Lisbon,",
+    "Bangkok, Mexico City, Denpasar, then repeat), and index / 4 picks how far",
+    "their later trips are pushed out. cities[] is one trip per city in window",
+    "order, four in all, which is the active-trip cap minus one. The result:",
+    "three travelers live in every city right now (so every city has avatar",
+    "pins), and at least three matches in any city for any trip in the next",
+    "four months. Reordering or dropping people breaks that, so re-check the",
+    "coverage if you edit this list."
   ],
   "people": [
     {
       "slug": "maya",
       "name": "Maya",
       "age": 28,
+      "gender": "woman",
+      "occupation": "Barista, on a long break",
       "homeCity": "Melbourne",
       "homeCountry": "AU",
       "languages": ["en", "es"],
       "bio": "Coffee first, plans later. Currently chasing good pastries and cheap flights. Always up for a walk with no destination. [demo]",
-      "city": "Lisbon",
+      "prompts": [
+        {
+          "key": "this_trip",
+          "answer": "find the pastry that ruins every other pastry"
+        },
+        {
+          "key": "perfect_day",
+          "answer": "coffee, no map, and whatever street looks best"
+        },
+        {
+          "key": "convince_me",
+          "answer": "I will do the ordering and you can just show up"
+        }
+      ],
+      "cities": ["Lisbon", "Bangkok", "Mexico City", "Denpasar"],
       "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/4cf0e11c-7342-4b64-bda7-3f760d7be3b8/Candid_travel_photo_of_a_woman_in_her_late_twenties_with_cur.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiN2Q2NTQ2ZTg3NWQ4NmIyZSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzMwNjA4OH0.X4pfxqW5V4-_x1M_-H43bPh49WIYO5X5vP6tBnENCZs",
       "pin": {
         "venue": "Pastelaria near the miradouro",
@@ -31,11 +57,27 @@
       "slug": "dev",
       "name": "Dev",
       "age": 31,
+      "gender": "man",
+      "occupation": "Product designer",
       "homeCity": "Toronto",
       "homeCountry": "CA",
       "languages": ["en", "hi"],
       "bio": "Six months into a very slow trip around Asia. I will absolutely talk your ear off about street food. Looking for people to explore with. [demo]",
-      "city": "Bangkok",
+      "prompts": [
+        {
+          "key": "best_meal",
+          "answer": "a bowl of boat noodles from a stall with four stools"
+        },
+        {
+          "key": "looking_for",
+          "answer": "eat at a place I would never walk into alone"
+        },
+        {
+          "key": "always_pack",
+          "answer": "one shirt too few and a lot of hot sauce"
+        }
+      ],
+      "cities": ["Bangkok", "Mexico City", "Denpasar", "Lisbon"],
       "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/f41649e7-07c0-4987-b0d5-69c3df99200c/Candid_travel_photo_of_a_man_in_his_early_thirties_with_shor.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiOGVjMmM1MzUxNTM0YmJlOCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzMwNTE0MX0.jB4Ly8fOgPokF_PLDLpumZKZZfKhVyovDvI3PbF1saE",
       "pin": {
         "venue": "Rooftop for sunset drinks",
@@ -46,50 +88,98 @@
       "pingMessage": "Hey, looks like we overlap. I am eating my way through the night markets this week if you want in."
     },
     {
-      "slug": "freja",
-      "name": "Freja",
-      "age": 26,
-      "homeCity": "Copenhagen",
-      "homeCountry": "DK",
-      "languages": ["en", "de"],
-      "bio": "Hiker, swimmer, terrible at sitting still. If there is a trail nearby I have probably already looked it up. [demo]",
-      "city": "Lisbon",
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/0032238c-cab5-4f45-8120-cf02c83a4620/Candid_travel_photo_of_a_young_woman_with_blonde_hair_in_a_p.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNGRmNzUxYWY4ODhhNGQ5MyIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzMxNDczNX0.7Z2TFADwdLMDkBy3TakxP7xlM_Zu4jCwlWVzeo9hTE0",
+      "slug": "sofia",
+      "name": "Sofia",
+      "age": 27,
+      "gender": "woman",
+      "occupation": "Architect",
+      "homeCity": "Bogota",
+      "homeCountry": "CO",
+      "languages": ["es", "en"],
+      "bio": "Architect, so I will make you look at a building. Here for the food mostly. Say hi if you are around. [demo]",
+      "prompts": [
+        {
+          "key": "perfect_day",
+          "answer": "a market, a long lunch, then a building I came to see"
+        },
+        {
+          "key": "this_trip",
+          "answer": "eat at a different taqueria every single night"
+        },
+        {
+          "key": "convince_me",
+          "answer": "I already know where we are going. Just say yes"
+        }
+      ],
+      "cities": ["Mexico City", "Denpasar", "Lisbon", "Bangkok"],
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/8a07de82-6fc9-4936-bc68-ab937550cce9/Candid_travel_photo_of_a_woman_in_her_late_twenties_with_str.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiOWEyOTU2OGIwNmI2ZjkwYyIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzYzMjM5NX0.k8rJdF8pAW6eobKsj5ZOxXY6Xe0iTWO9qWRPYq4XG3I",
       "pin": {
-        "venue": "Coast walk, meeting at the tram stop",
-        "category": "hike",
-        "offset": [0.015, 0.006]
+        "venue": "Taqueria in Roma Norte",
+        "category": "restaurant",
+        "offset": [0.006, 0.009]
       },
-      "replyOpener": "Nice, I was hoping someone would say yes. I am walking the coast path this week, easy pace, good swim halfway.",
-      "pingMessage": "Hi! Saw we are around at the same time. I am doing a coast walk with a swim stop, tell me if that is your kind of thing."
+      "replyOpener": "Oh good, someone else who eats dinner at ten. I am free most evenings this week.",
+      "pingMessage": "Hey, looks like we overlap. I am doing a taco crawl through Roma this week, come along."
     },
     {
-      "slug": "theo",
-      "name": "Theo",
+      "slug": "priya",
+      "name": "Priya",
       "age": 29,
-      "homeCity": "Berlin",
-      "homeCountry": "DE",
-      "languages": ["en", "de", "fr"],
-      "bio": "Here for the night markets and the questionable karaoke. I take photos of everything, sorry in advance. [demo]",
-      "city": "Bangkok",
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/9ac93791-7d76-44a2-a2e7-b5acb8dfa596/Candid_travel_photo_of_a_man_in_his_late_twenties_with_glass.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiY2YyNjhjMWFhNWQwOGU0NSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzI0MDM0Nn0.NNNmgUrggCMp4QhWIYk3EexMBkf9OLVK3vRlHe9QaKE",
+      "gender": "woman",
+      "occupation": "Nurse, six months off",
+      "homeCity": "London",
+      "homeCountry": "GB",
+      "languages": ["en", "hi"],
+      "bio": "Nurse on a very long break. Learning to surf badly and loving it. Around most mornings. [demo]",
+      "prompts": [
+        {
+          "key": "this_trip",
+          "answer": "learn to actually surf instead of falling off"
+        },
+        {
+          "key": "perfect_day",
+          "answer": "in the water early, doing nothing by four"
+        },
+        {
+          "key": "best_meal",
+          "answer": "a warung lunch that cost about two pounds"
+        }
+      ],
+      "cities": ["Denpasar", "Lisbon", "Bangkok", "Mexico City"],
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/90f2f424-69e4-4673-ab87-4a7ddb2dfb1d/Candid_travel_photo_of_a_woman_around_thirty_with_long_dark_.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNmY4NWJhOTlhMWYzOGZlNiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzU3MjYzM30.6NNQdsun6cYzct_SGKJgtTFUJSK_IA626fIvJinJNeE",
       "pin": {
-        "venue": "Night market crawl",
-        "category": "other",
-        "offset": [0.006, 0.011]
+        "venue": "Morning surf at Batu Bolong",
+        "category": "beach",
+        "offset": [0.003, -0.011]
       },
-      "replyOpener": "Great, I need someone to keep me from taking 400 photos of the same noodle stall. When are you free?",
-      "pingMessage": "Hey, we seem to be here the same week. Night market and questionable karaoke is the plan, you are very welcome to join."
+      "replyOpener": "Yes please. I am out there most mornings around seven, come find me.",
+      "pingMessage": "Hey, we are here the same days. I surf badly at Batu Bolong most mornings if you fancy it."
     },
     {
       "slug": "nora",
       "name": "Nora",
       "age": 30,
+      "gender": "woman",
+      "occupation": "Freelance writer",
       "homeCity": "Dublin",
       "homeCountry": "IE",
       "languages": ["en"],
       "bio": "Taking a proper break from work for once. Museums in the morning, long dinners at night. Say hi if you like either. [demo]",
-      "city": "Lisbon",
+      "prompts": [
+        {
+          "key": "always_pack",
+          "answer": "far too many books and one pair of socks"
+        },
+        {
+          "key": "perfect_day",
+          "answer": "a long breakfast, then get properly lost"
+        },
+        {
+          "key": "convince_me",
+          "answer": "I know where the good bookshop is. All of them"
+        }
+      ],
+      "cities": ["Lisbon", "Bangkok", "Mexico City", "Denpasar"],
       "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/3dda46f2-2ba7-4515-b269-12a74e073db9/Candid_travel_photo_of_a_woman_in_her_early_thirties_with_sh.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiM2E5YWUwYmY3ZWY4ZjRkZCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzI2NzAwN30.tMoqmE0MsApBRwhDxTHGqwkMnGxICUIzpnGiJ1aOgtE",
       "pin": {
         "venue": "Tile museum, then lunch",
@@ -100,19 +190,239 @@
       "pingMessage": "Hi there, looks like our dates line up. I am doing museums then a long dinner this week if you fancy either one."
     },
     {
+      "slug": "theo",
+      "name": "Theo",
+      "age": 29,
+      "gender": "man",
+      "occupation": "Cook",
+      "homeCity": "Berlin",
+      "homeCountry": "DE",
+      "languages": ["en", "de", "fr"],
+      "bio": "Here for the night markets and the questionable karaoke. I take photos of everything, sorry in advance. [demo]",
+      "prompts": [
+        {
+          "key": "best_meal",
+          "answer": "som tam so spicy I could not speak for ten minutes"
+        },
+        {
+          "key": "looking_for",
+          "answer": "go to the market at 6am and cook the results"
+        },
+        {
+          "key": "unpopular_opinion",
+          "answer": "the famous restaurant is almost never the best one"
+        }
+      ],
+      "cities": ["Bangkok", "Mexico City", "Denpasar", "Lisbon"],
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/9ac93791-7d76-44a2-a2e7-b5acb8dfa596/Candid_travel_photo_of_a_man_in_his_late_twenties_with_glass.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiY2YyNjhjMWFhNWQwOGU0NSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzI0MDM0Nn0.NNNmgUrggCMp4QhWIYk3EexMBkf9OLVK3vRlHe9QaKE",
+      "pin": {
+        "venue": "Night market crawl",
+        "category": "other",
+        "offset": [0.006, 0.011]
+      },
+      "replyOpener": "Great, I need someone to keep me from taking 400 photos of the same noodle stall. When are you free?",
+      "pingMessage": "Hey, we seem to be here the same week. Night market and questionable karaoke is the plan, you are very welcome to join."
+    },
+    {
+      "slug": "marcus",
+      "name": "Marcus",
+      "age": 33,
+      "gender": "man",
+      "occupation": "Teacher, off for the summer",
+      "homeCity": "Chicago",
+      "homeCountry": "US",
+      "languages": ["en", "es"],
+      "bio": "Teacher with a summer to fill. Will happily watch any sport in any language. Bad at sitting still. [demo]",
+      "prompts": [
+        {
+          "key": "looking_for",
+          "answer": "go to the football and shout about it"
+        },
+        {
+          "key": "always_pack",
+          "answer": "running shoes I will use exactly once"
+        },
+        {
+          "key": "wont_do",
+          "answer": "a 5am sunrise hike. I have seen the sun"
+        }
+      ],
+      "cities": ["Mexico City", "Denpasar", "Lisbon", "Bangkok"],
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/b484fcd1-c11e-4489-b87c-033f971d18aa/Candid_travel_photo_of_a_man_in_his_early_thirties_with_a_sh.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiYzgyYTk2OGIyYjdkNWU1NiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzU2ODY1MX0.nFPO6MEBrQEFsC3Uf5QIDB51YcDy7BrVkpLcMhU_o_0",
+      "pin": {
+        "venue": "Lucha libre at Arena Mexico",
+        "category": "other",
+        "offset": [-0.004, -0.017]
+      },
+      "replyOpener": "Ha, yes. I have two tickets and nobody to shout next to. You are in.",
+      "pingMessage": "Hey! Same dates it looks like. I am going to the lucha on Friday if you want a ticket."
+    },
+    {
+      "slug": "tomas",
+      "name": "Tomas",
+      "age": 28,
+      "gender": "man",
+      "occupation": "Carpenter",
+      "homeCity": "Lisbon",
+      "homeCountry": "PT",
+      "languages": ["pt", "en"],
+      "bio": "Carpenter. Came for two weeks in 2023 and keep coming back. Will drive to the quiet break. [demo]",
+      "prompts": [
+        {
+          "key": "looking_for",
+          "answer": "ride out to a break nobody else is at"
+        },
+        {
+          "key": "unpopular_opinion",
+          "answer": "the beach everyone rates is always too busy"
+        },
+        {
+          "key": "always_pack",
+          "answer": "one board bag and almost nothing else"
+        }
+      ],
+      "cities": ["Denpasar", "Lisbon", "Bangkok", "Mexico City"],
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/a58f0642-59b6-4178-925b-0f201ec577b2/Candid_travel_photo_of_a_man_in_his_late_twenties_with_sun_b.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiMzU4N2RmMGE1MTIzZTEyNiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzU4NDkwNn0.y7724li5B1sxz369B5YkM5-nTHaJsyfgD6DFhORJEJ4",
+      "pin": {
+        "venue": "Sanur sunrise ride",
+        "category": "beach",
+        "offset": [-0.008, 0.013]
+      },
+      "replyOpener": "Nice. I have a scooter and a spare board, so you have no excuse now.",
+      "pingMessage": "Hey, our dates line up. Heading somewhere quieter than Canggu on Thursday, room for one."
+    },
+    {
+      "slug": "ines",
+      "name": "Ines",
+      "age": 31,
+      "gender": "woman",
+      "occupation": "Works in film, mostly nights",
+      "homeCity": "Porto",
+      "homeCountry": "PT",
+      "languages": ["pt", "en", "fr"],
+      "bio": "Work in film so my hours are strange. Best conversations happen after midnight. Very slow mornings. [demo]",
+      "prompts": [
+        {
+          "key": "perfect_day",
+          "answer": "a very slow morning, then walking until dark"
+        },
+        {
+          "key": "wont_do",
+          "answer": "a rooftop bar with a queue"
+        },
+        {
+          "key": "convince_me",
+          "answer": "I know the tiny cinema that shows the good stuff"
+        }
+      ],
+      "cities": ["Lisbon", "Bangkok", "Mexico City", "Denpasar"],
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/ef6cf790-62e4-4c12-9248-c3b787946e2c/Candid_travel_photo_of_a_woman_in_her_early_thirties_with_sh.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiY2Q1Mzg0NGNiYmVkODY1ZCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzY1MDYzNn0.R8kH83zsbXnZwoZ1NGrrInJVNEOX--jzUjK0jAantbI",
+      "pin": {
+        "venue": "Late film at the little cinema",
+        "category": "other",
+        "offset": [-0.006, 0.004]
+      },
+      "replyOpener": "Finally, someone who is also awake. There is a late screening on Wednesday if you want.",
+      "pingMessage": "Hey, we overlap. There is a tiny cinema near me showing something odd on Wednesday, come."
+    },
+    {
+      "slug": "kai",
+      "name": "Kai",
+      "age": 24,
+      "gender": "nonbinary",
+      "occupation": "Grad student, avoiding the thesis",
+      "homeCity": "Seoul",
+      "homeCountry": "KR",
+      "languages": ["ko", "en"],
+      "bio": "Meant to be writing a thesis. Am instead eating my way across the night markets. Happy to share a table. [demo]",
+      "prompts": [
+        {
+          "key": "this_trip",
+          "answer": "eat something at every night market I pass"
+        },
+        {
+          "key": "looking_for",
+          "answer": "talk nonsense over cheap beer until late"
+        },
+        {
+          "key": "best_meal",
+          "answer": "grilled pork and sticky rice at 1am for almost nothing"
+        }
+      ],
+      "cities": ["Bangkok", "Mexico City", "Denpasar", "Lisbon"],
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/7ddd6590-d983-4b8b-81f6-4533de39edcd/Candid_travel_photo_of_a_young_man_in_his_mid_twenties_with_.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNmEwN2Y4OGVhZmY3OWE5ZCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzYzMzY3OH0.Jwr2bPWyuuV--HlxzLdrq086aHSZ-V4tfhG3iP7ujt8",
+      "pin": {
+        "venue": "Night market by the river",
+        "category": "restaurant",
+        "offset": [0.011, -0.006]
+      },
+      "replyOpener": "Great. I have a list and it is far too long for one person. Pick a night.",
+      "pingMessage": "Hey, same dates. I am doing the night markets all week and eating far too much, join me."
+    },
+    {
+      "slug": "freja",
+      "name": "Freja",
+      "age": 26,
+      "gender": "woman",
+      "occupation": "Physio",
+      "homeCity": "Copenhagen",
+      "homeCountry": "DK",
+      "languages": ["en", "de"],
+      "bio": "Hiker, swimmer, terrible at sitting still. If there is a trail nearby I have probably already looked it up. [demo]",
+      "prompts": [
+        {
+          "key": "this_trip",
+          "answer": "swim somewhere that is a bit too cold"
+        },
+        {
+          "key": "wont_do",
+          "answer": "sit by a pool all day. I will lose my mind"
+        },
+        {
+          "key": "perfect_day",
+          "answer": "walk up something, eat everything on the way down"
+        }
+      ],
+      "cities": ["Mexico City", "Denpasar", "Lisbon", "Bangkok"],
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/0032238c-cab5-4f45-8120-cf02c83a4620/Candid_travel_photo_of_a_young_woman_with_blonde_hair_in_a_p.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNGRmNzUxYWY4ODhhNGQ5MyIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzMxNDczNX0.7Z2TFADwdLMDkBy3TakxP7xlM_Zu4jCwlWVzeo9hTE0",
+      "pin": {
+        "venue": "Chapultepec walk, then tacos",
+        "category": "hike",
+        "offset": [0.012, -0.007]
+      },
+      "replyOpener": "Nice, I was hoping someone would say yes. I am walking the coast path this week, easy pace, good swim halfway.",
+      "pingMessage": "Hi! Saw we are around at the same time. I am doing a coast walk with a swim stop, tell me if that is your kind of thing."
+    },
+    {
       "slug": "luca",
       "name": "Luca",
       "age": 25,
+      "gender": "man",
+      "occupation": "Sound engineer",
       "homeCity": "Milan",
       "homeCountry": "IT",
       "languages": ["en", "it"],
       "bio": "First big trip and loving it. Staying in hostels, saying yes to most things. Teach me a card game. [demo]",
-      "city": "Bangkok",
+      "prompts": [
+        {
+          "key": "this_trip",
+          "answer": "find one bar with a band nobody has heard of"
+        },
+        {
+          "key": "looking_for",
+          "answer": "stay out slightly too late on a weeknight"
+        },
+        {
+          "key": "unpopular_opinion",
+          "answer": "the second best city is always better than the best one"
+        }
+      ],
+      "cities": ["Denpasar", "Lisbon", "Bangkok", "Mexico City"],
       "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/bcd5356f-4471-4b81-a07a-0c8a8fdc3dae/Candid_travel_photo_of_a_man_in_his_mid_twenties_with_tousle.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNzFlZWQ0MWE5MTE0NTU2MiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzMyMDQ3NH0.5P0BnTfoQtACmi8z5lUkM7J6s77VQGFzCNqjhmJYsm0",
       "pin": {
-        "venue": "Hostel rooftop hang",
+        "venue": "Beach bar with an actual band",
         "category": "bar",
-        "offset": [0.004, -0.008]
+        "offset": [0.005, -0.014]
       },
       "replyOpener": "Yes! First big trip and I am saying yes to everything, so tell me what you are doing and I am in.",
       "pingMessage": "Hey! We are in town at the same time. I am staying at a hostel with a decent rooftop, come hang out if you are free."

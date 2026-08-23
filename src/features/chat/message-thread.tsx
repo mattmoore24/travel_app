@@ -19,22 +19,17 @@ import { haptics } from '@/lib/haptics';
 import type { MessageRow, ReactionSummaryRow } from '@/lib/database.types';
 
 /**
- * The six on the row, in the order the muscle memory expects - minus the one
- * the brief bans.
+ * The six on the row, in the order the muscle memory expects.
  *
- * docs/DESIGN.md principle 5 and the design-review skill both say "no hearts"
- * in as many words, and the chat do-not-copy list adds "hearts anywhere near
- * chat". A heart tapback is also perfectly ordinary iMessage grammar, which
- * is why this sat here unnoticed - but on a dimmed thread it was the single
- * brightest, most saturated thing on the screen, which is exactly what the
- * rule is about. A wave says the same thing without the romance.
- *
- * It is still reachable in the expanded grid for anyone who wants it. If the
- * founder would rather have it back on the row, that is a one-line change and
- * the exception belongs next to the "no hearts" line in the design brief, so
- * the rule and the app stop disagreeing.
+ * The heart is here by an explicit founder exception to "no hearts"
+ * (docs/DESIGN.md principle 5, and the design-review skill). The rule is
+ * about the ROMANTIC vocabulary - a like button, a heart you spend on a
+ * person, a match ceremony - and a tapback is none of those: it is the
+ * iMessage grammar everyone already has in their thumbs, and the thing it
+ * marks is a message, not a person. Recorded in both places too, so the rule
+ * and the app agree rather than quietly contradicting each other.
  */
-export const QUICK_REACTIONS = ['👍', '😂', '🔥', '😮', '🙏', '👋'];
+export const QUICK_REACTIONS = ['❤️', '😂', '👍', '🔥', '😮', '🙏'];
 
 /**
  * What the six do not cover, chosen for this app rather than in general:

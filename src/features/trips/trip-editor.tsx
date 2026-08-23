@@ -1,23 +1,16 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Alert, Platform, StyleSheet, View } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import { Alert, StyleSheet, View } from 'react-native';
 
 import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet } from '@/components/ui/sheet';
-import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
-import {
-  addDays,
-  formatDateRange,
-  parseISODate,
-  toISODate,
-  validateTripRange,
-} from '@/features/trips/dates';
+import { HitTarget, Radius, Space } from '@/constants/theme';
+import { addDays, formatDateRange, toISODate, validateTripRange } from '@/features/trips/dates';
 import { useCitySearch, useCreateTrip, useDeleteTrip, useUpdateTrip } from '@/features/trips/hooks';
+import { TripCalendar, defaultEndFor } from '@/features/trips/trip-calendar';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import type { CityRow } from '@/lib/database.types';
@@ -52,18 +45,19 @@ export function TripEditor({
   const [city, setCity] = useState<{ id: number; label: string } | null>(
     trip ? { id: trip.cityId, label: trip.cityLabel } : null
   );
-  const [start, setStart] = useState(trip ? parseISODate(trip.startDate) : addDays(new Date(), 7));
-  const [end, setEnd] = useState(trip ? parseISODate(trip.endDate) : addDays(new Date(), 12));
-  const [picking, setPicking] = useState<'start' | 'end' | null>(null);
+  const [start, setStart] = useState(trip ? trip.startDate : toISODate(addDays(new Date(), 7)));
+  const [end, setEnd] = useState<string | null>(
+    trip ? trip.endDate : defaultEndFor(toISODate(addDays(new Date(), 7)))
+  );
 
   const search = useCitySearch(city ? '' : query);
   const suggestions = search.data ?? [];
-  const rangeError = validateTripRange(toISODate(start), toISODate(end));
+  // Half a range is not an error, it is a range still being picked.
+  const rangeError = end ? validateTripRange(start, end) : null;
   // A trip you are already on started in the past; the picker must not
   // forbid its own current value.
-  const todayStart = parseISODate(toISODate(new Date()));
-  const tripStart = trip ? parseISODate(trip.startDate) : todayStart;
-  const minDate = tripStart < todayStart ? tripStart : todayStart;
+  const todayISO = toISODate(new Date());
+  const minISO = trip && trip.startDate < todayISO ? trip.startDate : todayISO;
   const busy = createTrip.isPending || updateTrip.isPending || deleteTrip.isPending;
 
   const pickCity = (row: CityRow) => {
@@ -81,15 +75,15 @@ export function TripEditor({
         await updateTrip.mutateAsync({
           tripId: trip.id,
           cityId: city.id,
-          startDate: toISODate(start),
-          endDate: toISODate(end),
+          startDate: start,
+          endDate: end!,
         });
       } else {
         await createTrip.mutateAsync({
           cityId: city.id,
           cityName: city.label,
-          startDate: toISODate(start),
-          endDate: toISODate(end),
+          startDate: start,
+          endDate: end!,
         });
       }
       haptics.success();
@@ -187,63 +181,27 @@ export function TripEditor({
         </View>
       )}
 
+      {/* One calendar, one gesture: tap the day you arrive, then the day you
+          leave, and everything between fills in. Two separate single-date
+          pickers could not draw the days in between at all - the part of a
+          trip a person is actually picturing. */}
       <View style={styles.dates}>
-        {(['start', 'end'] as const).map((which) => {
-          const value = which === 'start' ? start : end;
-          const open = picking === which;
-          return (
-            <PressableScale
-              key={which}
-              accessibilityRole="button"
-              accessibilityLabel={which === 'start' ? 'Arrival date' : 'Departure date'}
-              haptic="light"
-              scaleTo={0.97}
-              onPress={() => setPicking(open ? null : which)}
-              containerStyle={styles.dateHalf}
-              style={[
-                styles.date,
-                { backgroundColor: open ? theme.accentSoft : theme.surfaceSunken },
-              ]}>
-              <ThemedText type="caption" themeColor="textSecondary">
-                {which === 'start' ? 'ARRIVING' : 'LEAVING'}
-              </ThemedText>
-              <ThemedText type="callout">
-                {formatDateRange(toISODate(value), toISODate(value))}
-              </ThemedText>
-            </PressableScale>
-          );
-        })}
+        <ThemedText type="smallBold">
+          {end ? formatDateRange(start, end) : 'Pick the day you arrive'}
+        </ThemedText>
+        <ThemedText type="footnote" themeColor="textSecondary">
+          {end ? 'Tap any day to start again.' : 'Now tap the day you leave.'}
+        </ThemedText>
+        <TripCalendar
+          start={start}
+          end={end}
+          minISO={minISO}
+          onChange={(nextStart, nextEnd) => {
+            setStart(nextStart);
+            setEnd(nextEnd);
+          }}
+        />
       </View>
-
-      {picking ? (
-        <Animated.View entering={FadeIn.duration(160)} style={styles.pickerWrap}>
-          <DateTimePicker
-            value={picking === 'start' ? start : end}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'inline' : 'default'}
-            minimumDate={minDate}
-            accentColor={theme.accent}
-            themeVariant={NativeAppearance}
-            onChange={(_event, selected) => {
-              if (!selected) {
-                return;
-              }
-              if (picking === 'start') {
-                setStart(selected);
-                // Keep the range sane without making the user fix it.
-                if (selected > end) {
-                  setEnd(addDays(selected, 5));
-                }
-              } else {
-                setEnd(selected);
-              }
-              if (Platform.OS !== 'ios') {
-                setPicking(null);
-              }
-            }}
-          />
-        </Animated.View>
-      ) : null}
 
       {rangeError ? (
         <ThemedText type="footnote" style={{ color: theme.danger }}>
@@ -280,20 +238,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dates: {
-    flexDirection: 'row',
-    gap: Space.sm,
-  },
-  dateHalf: {
-    flex: 1,
-  },
-  date: {
-    gap: 2,
-    paddingHorizontal: Space.md,
-    paddingVertical: Space.sm,
-    borderRadius: Radius.md,
-    borderCurve: 'continuous',
-  },
-  pickerWrap: {
-    alignItems: 'center',
+    gap: Space.xs,
   },
 });

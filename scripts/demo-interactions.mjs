@@ -213,7 +213,7 @@ async function ping(crew, founderId, skipSlug) {
     );
     return false;
   }
-  console.log(`\nok   ${sender.name} (${sender.city}) sent a request via ${result.source}`);
+  console.log(`\nok   ${sender.name} (${sender.cities[0]}) sent a request via ${result.source}`);
   console.log(`     "${message}"`);
   console.log(
     result.queued

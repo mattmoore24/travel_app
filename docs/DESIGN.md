@@ -47,6 +47,9 @@ that. Sources for each research claim are at the bottom.
    gratuitous borders, no card-in-card.
 5. **Warm, not romantic.** This is not a dating app and it must not look like
    one. No red/pink/purple gradients, no hearts. Indigo + amber on warm bone.
+   The single exception is the ❤️ tapback on a message (founder, 2026-08-22):
+   it marks a message, not a person, and it is the grammar every phone user
+   already has. Nothing else earns a heart.
 6. **Legible above all.** 4.5:1 minimum on text, 44pt minimum touch targets,
    Dynamic Type respected, and every glass surface has a solid fallback.
 

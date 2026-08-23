@@ -22,6 +22,7 @@ import { LoadError } from '@/components/ui/load-error';
 import {
   BottomTabInset,
   Elevation,
+  HitTarget,
   MaxContentWidth,
   Radius,
   Space,
@@ -611,12 +612,15 @@ export default function TravelersScreen() {
     const cityNames = Array.from(new Set(trips.map((trip) => trip.cities.name)));
     const headline =
       cityNames.length === 1
-        ? `That is everyone whose ${cityNames[0]} dates cross yours`
-        : 'That is everyone whose dates cross yours';
+        ? `That's everyone in ${cityNames[0]} with travel plans matching yours`
+        : "That's everyone with travel plans matching yours";
     return (
       <ThemedView style={styles.root}>
         <ProfileCorner />
-        <View style={[styles.empty, { paddingTop: insets.top + Space.xxl }]}>
+        {/* Clear of the avatar, not level with it. ProfileCorner sits at
+            insets.top + Space.sm and is a 44pt button, so Space.xxl put the
+            headline's first line straight through its lower half. */}
+        <View style={[styles.empty, { paddingTop: insets.top + Space.sm + HitTarget + Space.lg }]}>
           <ThemedText type="title" style={styles.emptyText}>
             {headline}
           </ThemedText>

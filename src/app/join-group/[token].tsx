@@ -11,7 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
-import { Radius, Space } from '@/constants/theme';
+import { NativeAppearance, Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { useGroupInvitePreview, useJoinGroup } from '@/features/groups/hooks';
 import { useIsGuest } from '@/features/guest/hooks';
@@ -158,7 +158,7 @@ export default function JoinGroupScreen() {
             display="compact"
             minimumDate={new Date()}
             maximumDate={maxDate ?? undefined}
-            themeVariant="dark"
+            themeVariant={NativeAppearance}
             onChange={(_, date) => {
               if (date) {
                 setStayUntil(date);

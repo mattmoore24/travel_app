@@ -19,6 +19,13 @@ That single fact decides more design questions than anything else:
 
 - No swipe deck, no cards to flick, no "likes", no match ceremony, no hearts,
   no red/pink/magenta anywhere.
+  - **One exception, founder-granted 2026-08-22: the ❤️ tapback on the
+    message reaction row.** The rule is about romantic vocabulary — a like
+    button, a heart you spend on a PERSON, a ceremony when two of them meet.
+    A tapback is none of those: it is iMessage grammar everyone already has
+    in their thumbs, and what it marks is a message. It stays confined to the
+    reaction row and the expanded grid; a heart anywhere else, and red as a
+    UI colour anywhere at all, is still banned.
 - Travelers are reviewed one person at a time and that is a _reading_ screen,
   not a _judging_ screen — the framing is "here is a person who will be in
   Lisbon when you are", not "yes or no".

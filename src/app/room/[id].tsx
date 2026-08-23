@@ -13,7 +13,7 @@ import { LoadError } from '@/components/ui/load-error';
 import { PhotoButton } from '@/components/ui/photo-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
-import { MaxContentWidth, Radius, Space } from '@/constants/theme';
+import { MaxContentWidth, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { useDiscardFailed, useSendMessage, useSendPhoto } from '@/features/chat/hooks';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useOwnUserId } from '@/features/profile/hooks';
@@ -435,6 +435,7 @@ export default function RoomScreen() {
                   display={Platform.OS === 'ios' ? 'inline' : 'default'}
                   minimumDate={new Date()}
                   accentColor={theme.accent}
+                  themeVariant={NativeAppearance}
                   onChange={(_event, selected) => {
                     if (selected) {
                       setDeparture(selected);

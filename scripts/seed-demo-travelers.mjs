@@ -84,8 +84,35 @@ async function ensureAccount(slug) {
 
 const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
 
+// Four trips each, one per launch city. Window 0 is live today for EVERY
+// demo traveler, so whichever city the founder opens has people in it now
+// and the map has avatar pins; the later three are staggered by person so a
+// trip booked two months out still finds somebody instead of the empty
+// state. Windows never overlap within one person - a traveler cannot be in
+// Lisbon and Bangkok in the same week, and their profile lists all four.
+// The active-trip cap is 5, so four is the ceiling.
+const WINDOWS = [
+  [-3, 30],
+  [33, 66],
+  [72, 104],
+  [110, 148],
+];
+// cities[] rotates by index (person 0 starts in Lisbon, 1 in Bangkok, 2 in
+// Mexico City, 3 in Denpasar, 4 back to Lisbon), so each city is somebody's
+// window-0 city three times over. The three people who share a rotation are
+// then pushed 0, 12 and 24 days apart in the later windows, which turns
+// three separate month-long stays into one continuous run of coverage per
+// city instead of three clumps with holes between them.
+const windowFor = (index, w) => {
+  const [from, to] = WINDOWS[w];
+  const phase = (Math.floor(index / 4) - 1) * 12;
+  // Window 0 always STARTS today, whatever the phase, so nobody is missing
+  // from the city they are supposed to be in right now; only its end moves.
+  return w === 0 ? [from, to + phase] : [from + phase, to + phase];
+};
+
 async function seed() {
-  for (const person of people) {
+  for (const [index, person] of people.entries()) {
     const { session, created } = await ensureAccount(person.slug);
     const token = session.access_token;
     const userId = session.user.id;
@@ -97,6 +124,8 @@ async function seed() {
       body: JSON.stringify({
         display_name: person.name,
         age: person.age,
+        gender: person.gender,
+        occupation: person.occupation,
         home_city: person.homeCity,
         home_country: person.homeCountry,
         languages: person.languages,
@@ -105,28 +134,55 @@ async function seed() {
       }),
     });
 
-    const cities = await api('/rest/v1/rpc/search_cities', {
-      method: 'POST',
-      token,
-      body: JSON.stringify({ p_query: person.city }),
-    });
-    const city = (cities ?? []).find((c) => c.name === person.city);
-    if (!city) throw new Error(`city ${person.city} not found`);
+    // Prompts, because a card with three answers on it is the thing the
+    // Travelers tab is actually built to show. Upsert on (user_id, slot) so
+    // re-running rewrites rather than colliding on the primary key.
+    if (person.prompts?.length) {
+      await api('/rest/v1/profile_prompts', {
+        method: 'POST',
+        token,
+        headers: { Prefer: 'return=minimal,resolution=merge-duplicates' },
+        body: JSON.stringify(
+          person.prompts.map((prompt, slot) => ({
+            user_id: userId,
+            slot,
+            prompt_key: prompt.key,
+            answer: prompt.answer,
+          }))
+        ),
+      });
+    }
 
-    // A wide window so a founder testing on any date sees an overlap. Trips
-    // are replaced rather than stacked so re-running stays idempotent.
+    const cityRows = [];
+    for (const name of person.cities) {
+      const found = await api('/rest/v1/rpc/search_cities', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ p_query: name }),
+      });
+      const row = (found ?? []).find((c) => c.name === name);
+      if (!row) throw new Error(`city ${name} not found`);
+      cityRows.push(row);
+    }
+    // The city they are in TODAY, and so the one their pin belongs to.
+    const city = cityRows[0];
+
+    // Trips are replaced rather than stacked, so re-running stays idempotent.
     await api(`/rest/v1/trips?user_id=eq.${userId}`, { method: 'DELETE', token });
-    await api('/rest/v1/trips', {
-      method: 'POST',
-      token,
-      headers: { Prefer: 'return=minimal' },
-      body: JSON.stringify({
-        user_id: userId,
-        city_id: city.id,
-        start_date: day(-2),
-        end_date: day(25),
-      }),
-    });
+    for (const [w, row] of cityRows.entries()) {
+      const [from, to] = windowFor(index, w);
+      await api('/rest/v1/trips', {
+        method: 'POST',
+        token,
+        headers: { Prefer: 'return=minimal' },
+        body: JSON.stringify({
+          user_id: userId,
+          city_id: row.id,
+          start_date: day(from),
+          end_date: day(to),
+        }),
+      });
+    }
 
     // One photo, uploaded through the same storage path the app uses, so it
     // goes through the real moderation queue like any user's photo.
@@ -178,7 +234,10 @@ async function seed() {
       });
     }
 
-    console.log(`ok   ${person.name} (${person.city}) ${created ? 'created' : 'refreshed'}`);
+    console.log(
+      `ok   ${person.name} in ${person.cities[0]} now, then ${person.cities.slice(1).join(', ')} ` +
+        `(${created ? 'created' : 'refreshed'})`
+    );
   }
   console.log(`\n${people.length} demo travelers ready. Purge with: seed-demo-travelers.mjs purge`);
 }
