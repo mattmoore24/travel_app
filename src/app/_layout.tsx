@@ -174,6 +174,7 @@ function RootNavigator() {
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
         <Stack.Screen name="edit-prompt" options={{ presentation: 'modal' }} />
         <Stack.Screen name="verification" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="visibility" options={{ presentation: 'modal' }} />
         <Stack.Screen name="add-trip" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compose-request" options={{ presentation: 'modal' }} />
         <Stack.Screen name="drop-pin" options={{ presentation: 'modal' }} />

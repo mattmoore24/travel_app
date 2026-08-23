@@ -3,6 +3,44 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current status: **Phase 12 — the founder's second review batch** (2026-08-23)
+
+### Phase 12 — what the founder asked for after testing on the phone
+
+- **Heart back on the reaction row.** The "no hearts" rule is about the romantic
+  vocabulary this app avoids; a tapback is none of those. Both rule docs now carry
+  that exception explicitly, scoped to the reaction row and expanded grid.
+- **Trip dates are one range calendar.** Tap the day you arrive, tap the day you
+  leave, everything between fills in. `src/features/trips/trip-calendar.tsx`, used by
+  add-trip and the trip editor. This also retired the picker that rendered near-black
+  on near-black; the three remaining native pickers are told `themeVariant` explicitly.
+- **The "Sent" row stopped impersonating a chat.** It borrowed the chat row's card,
+  avatar and preview whole, so tapping one and landing on a profile read as a bug.
+  Outlined instead of filled, smaller, quotes your own words back, has a chevron.
+- **Travelers' exhausted state** reads "that's everyone with travel plans matching
+  yours" and sits clear of the profile avatar.
+- **Demo travelers: 6 → 12, 2 cities → 4.** Each carries a gender, an occupation and
+  three prompt answers, and holds four trips instead of one. Rotation by index puts
+  three of them in every launch city today (so every city has avatar pins) and
+  staggering the later windows gives at least three matches in any city for any trip
+  in the next four months. The old single 27-day window was why the tab said nobody
+  matched.
+- **Who can see you.** Verified-only / verified-men / verified-women audiences for the
+  map and Travelers, gated on holding the badge, enforced in the database. See
+  ARCHITECTURE "Who can see you" for the three boundaries it respects and why the
+  heatmap is deliberately outside them.
+
+### Phase 12 — founder questions
+
+- **Verifying demo travelers.** Testing the new audiences end to end needs a verified
+  demo traveler, and the seed script is anon-key-only on purpose. The SQL to flip a
+  few by hand is in ARCHITECTURE under "Who can see you".
+- **Gendered audiences and nonbinary travelers.** `verified_men` and `verified_women`
+  match `profiles.gender`, so a nonbinary traveler is in neither audience. That is
+  what was asked for and it is what shipped; the picker says so out loud rather than
+  leaving people to work it out. Worth a decision before launch whether nonbinary
+  travelers should get an audience of their own.
+
 ## Current status: **Phase 11 — the unaudited-areas sweep** (2026-08-21)
 
 ### Phase 11 — what nobody had looked at yet

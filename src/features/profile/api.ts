@@ -1,6 +1,7 @@
 import {
   PROFILE_COLUMNS,
   VERIFICATION_REQUEST_COLUMNS,
+  type ProfileAudience,
   type ProfilePromptRow,
   type ProfileUpdate,
   type SocialPlatform,
@@ -199,6 +200,29 @@ export async function submitVerificationSelfie(userId: string, localUri: string)
     throw error;
   }
   return data;
+}
+
+/**
+ * Who can see you on the map and in Travelers. The column behind these has
+ * no client grant in either direction: reading it directly would leak one
+ * traveler's setting to another, and writing it directly would route around
+ * the rule that narrowing your audience costs a verified badge. Both go
+ * through RPCs that own that rule.
+ */
+export async function fetchOwnVisibility() {
+  const { data, error } = await supabase.rpc('my_visibility');
+  if (error) {
+    throw error;
+  }
+  return (data ?? 'everyone') as ProfileAudience;
+}
+
+export async function setOwnVisibility(audience: ProfileAudience) {
+  const { data, error } = await supabase.rpc('set_visibility', { p_audience: audience });
+  if (error) {
+    throw error;
+  }
+  return (data ?? audience) as ProfileAudience;
 }
 
 /**

@@ -7,6 +7,14 @@
 # These are not real people: AI-generated portraits, [demo] marked bios.
 # LAUNCH_RUNBOOK step 4 requires purging before real users arrive.
 #
+# Seeding cannot mark anybody verified: this runs on the anon key on purpose,
+# and profiles.verified has no client grant. To test the "who can see you"
+# audiences, flip a few by hand in the Supabase SQL editor:
+#
+#   update public.profiles set verified = true
+#   where user_id in (
+#     select user_id from public.profiles where bio like '%[demo]%' limit 4);
+#
 # Secrets: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY, DEMO_PASSWORD
 name: Demo travelers
 

@@ -273,6 +273,50 @@ moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structure
   action that can't apply to the account's current status (e.g. suspending a banned user)
   raises instead of resolving the report and logging a phantom audit event.
 
+## Who can see you (Phase 12)
+
+A traveler can narrow the audience for their profile and their pins:
+`everyone` (default), `verified`, `verified_men`, `verified_women`. Stored as
+`profiles.visible_to public.profile_audience`, a column with **no client grant in
+either direction** — reading it would leak one traveler's setting to another, and
+writing it would route around the rule below. Both go through `my_visibility()` and
+`set_visibility()`, and the "narrowing your audience costs a verified badge" rule
+lives in the latter, not in the app.
+
+Three deliberate boundaries, all proved in `17_profile_visibility.test.sql`:
+
+- **It cuts both ways.** `discovery_pair_ok(viewer, subject)` is symmetric: the
+  subject's audience must admit the viewer _and_ the viewer's own audience must admit
+  the subject. Choosing an audience chooses who you see as well as who sees you, which
+  is what makes it a preference rather than a cloak. Self is always admitted, so your
+  own pin never vanishes from your own map.
+- **It stops at the two discovery surfaces.** Wired into `get_matches()` (Travelers),
+  `city_pins()` (map) and `featured_traveler()` (guest-visible slot, so a narrowed
+  audience is never eligible). Deliberately NOT wired into `send_message_request`,
+  `traveler_trips`, rooms, groups or any profile read: anyone can still message anyone,
+  and a profile reached from a chat still opens.
+- **It stops before the heatmap.** Heat cells are an aggregate behind a k-threshold.
+  Re-filtering them per viewer would push counts _down_ for some viewers, which is the
+  direction that breaks hard rule 6. A hidden traveler still adds anonymous weight to a
+  cell and still never appears as a pin.
+
+`profiles_reset_visibility` drops the setting back to `everyone` if the badge is ever
+taken away, so the rule is not enforced only at write time.
+
+Honest consequence, stated in the picker as well as here: the two gendered options match
+`profiles.gender`, so travelers who are nonbinary or who have not set a gender are in
+neither of them.
+
+**Testing it against demo travelers** needs at least one of them verified, and the seed
+script is anon-key-only by design (it can do nothing a real user could not, and
+`profiles.verified` has no client grant). Flip a couple by hand in the Supabase SQL
+editor:
+
+```sql
+update public.profiles set verified = true
+where user_id in (select user_id from public.profiles where bio like '%[demo]%' limit 4);
+```
+
 ## Launch hardening (Phase 6)
 
 - **Velocity caps** complement the Phase 2–5 _standing_ caps (5 active trips,

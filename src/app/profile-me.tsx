@@ -156,6 +156,11 @@ export default function ProfileScreen() {
               ) : null}
               <PrimaryButton
                 variant="ghost"
+                label="Who can see you"
+                onPress={() => router.push('/visibility')}
+              />
+              <PrimaryButton
+                variant="ghost"
                 label="House rules and help"
                 onPress={() => router.push('/guidelines')}
               />

@@ -9,17 +9,24 @@ import {
   fetchLatestVerification,
   fetchOwnProfile,
   fetchOwnSocialHandles,
+  fetchOwnVisibility,
   fetchPhotos,
   fetchProfilePrompts,
   fetchPublicProfile,
   saveProfilePrompt,
+  setOwnVisibility,
   signedPhotoUrl,
   submitVerificationSelfie,
   updateOwnProfile,
   uploadPhoto,
   upsertSocialHandle,
 } from '@/features/profile/api';
-import type { ProfilePhotoRow, ProfileUpdate, SocialPlatform } from '@/lib/database.types';
+import type {
+  ProfileAudience,
+  ProfilePhotoRow,
+  ProfileUpdate,
+  SocialPlatform,
+} from '@/lib/database.types';
 import { analytics } from '@/lib/analytics';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -175,6 +182,35 @@ export function useSubmitVerification() {
     mutationFn: (localUri: string) => submitVerificationSelfie(userId!, localUri),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['verification', userId] });
+    },
+  });
+}
+
+/**
+ * Who can see you on the map and in Travelers. Not part of useOwnProfile:
+ * the column has no client SELECT grant precisely so one traveler's setting
+ * is not readable by another, so it comes back through its own RPC.
+ */
+export function useOwnVisibility() {
+  const userId = useOwnUserId();
+  return useQuery({
+    queryKey: ['visibility', userId],
+    queryFn: fetchOwnVisibility,
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+export function useSetVisibility() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (audience: ProfileAudience) => setOwnVisibility(audience),
+    onSuccess: (audience) => {
+      queryClient.setQueryData(['visibility', userId], audience);
+      // The setting cuts both ways, so the two discovery surfaces are now
+      // showing a queue and a map built for the old audience.
+      queryClient.invalidateQueries({ queryKey: ['matches'] });
+      queryClient.invalidateQueries({ queryKey: ['city-pins'] });
     },
   });
 }

@@ -5,6 +5,8 @@
 
 export type UserStatus = 'active' | 'suspended' | 'banned' | 'shadowbanned';
 export type Gender = 'woman' | 'man' | 'nonbinary' | 'unspecified';
+/** Who a traveler is shown to on the map and in Travelers. Chat ignores it. */
+export type ProfileAudience = 'everyone' | 'verified' | 'verified_men' | 'verified_women';
 export type ModerationStatus = 'pending' | 'approved' | 'rejected';
 export type SocialPlatform =
   'instagram' | 'tiktok' | 'snapchat' | 'x' | 'facebook' | 'whatsapp' | 'telegram' | 'other';
@@ -910,6 +912,14 @@ export type Database = {
         Args: { p_storage_path: string };
         Returns: { request_id: string; status: 'pending' };
       };
+      my_visibility: {
+        Args: Record<string, never>;
+        Returns: ProfileAudience;
+      };
+      set_visibility: {
+        Args: { p_audience: ProfileAudience };
+        Returns: ProfileAudience;
+      };
     };
     Enums: {
       user_status: UserStatus;
@@ -921,6 +931,7 @@ export type Database = {
       request_source: RequestSource;
       verification_status: VerificationStatus;
       chat_kind: ChatKind;
+      profile_audience: ProfileAudience;
     };
     CompositeTypes: Record<string, never>;
   };
