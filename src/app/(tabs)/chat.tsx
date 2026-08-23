@@ -573,6 +573,9 @@ export default function ChatScreen() {
   // look for at different moments, so they get a switch rather than one
   // scroll that mixes them.
   const inTab = chats.filter((c) => (tab === 'groups' ? c.kind === 'room' : c.kind !== 'room'));
+  // A guest's whole chat life: the groups they were invited to. They cannot
+  // have a one-to-one chat at all, since saying hi to a stranger is refused.
+  const myGroups = chats.filter((c) => c.kind === 'room');
   const pinned = inTab.filter((c) => c.pinned);
   const rest = inTab.filter((c) => !c.pinned);
   const tabs = tabsWithCounts(chats, requests.length);
@@ -623,11 +626,34 @@ export default function ChatScreen() {
           </View>
           {tab === 'groups' ? (
             <>
+              {/* A guest who accepted an invite is a member of that group,
+                  and this tab is the only way back to it. Without this the
+                  room was reachable exactly once, from the link, and then
+                  gone. A signed-out visitor has no chats, so for them this
+                  simply does not render. */}
+              {myGroups.length > 0 ? (
+                <>
+                  <ThemedText type="smallBold" themeColor="textSecondary">
+                    Your groups
+                  </ThemedText>
+                  {myGroups.map((chat) => (
+                    <ChatRowLink key={chat.chat_id} chat={chat} />
+                  ))}
+                </>
+              ) : null}
               <ThemedText type="footnote" themeColor="textSecondary">
                 Places you stay run open chats. Have a look before you join.
               </ThemedText>
               <RoomDiscovery cityId={cityId} />
-              <SignUpGate reason="Want to join in?" where="chat-tab" cta="Make a profile" />
+              <SignUpGate
+                reason={
+                  myGroups.length > 0
+                    ? 'Pins, trips and meeting travelers need a profile'
+                    : 'Want to join in?'
+                }
+                where="chat-tab"
+                cta="Make a profile"
+              />
             </>
           ) : (
             <View style={styles.guestCentre}>
