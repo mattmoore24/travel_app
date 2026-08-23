@@ -306,10 +306,23 @@ missing client grant:
 (`guest_membership_cap`), 200 messages a day (under the existing 30-a-minute throttle,
 which catches the slow flood it lets through), and no photos at all.
 
-**The janitor**: `purge_stale_guests()` runs daily at 04:30 UTC and deletes anonymous
-accounts idle 30 days with no live membership. It cascades to their messages, which is
-the point — a throwaway identity is not a place to keep somebody's words forever. A
-member who wants persistence has the account that makes that true.
+**The janitor**, split in two: `stale_guest_ids()` names anonymous accounts idle 30 days
+with no live membership; the `guest-janitor` Edge Function deletes them through the
+admin API, on a daily pg_cron invoke at 04:30 UTC. The split is not decoration — SQL
+cannot be trusted to delete an `auth.users` row (the migration role's rights over that
+schema are not ours to assume), and `delete-account` already goes through the admin API
+for the same reason. A nightly job that silently cannot do its job is worse than none.
+Deleting a guest cascades to their messages, which is the point — a throwaway identity
+is not a place to keep somebody's words forever. A member who wants persistence has the
+account that makes that true.
+
+`is_guest_account()` reads `auth.users.is_anonymous` directly from a SECURITY DEFINER
+function rather than mirroring it into a column. There is no stored copy, so no sync
+trigger, no drift, and conversion is instant: clearing the flag converts them in the
+same statement. The first cut had a `public.users.is_guest` column kept in step by two
+triggers on `auth.users`, and opened by ALTERing that table for local-shim parity —
+which the hosted project refuses outright, and which passed the local suite only because
+the throwaway cluster has one owner for everything.
 
 Venue rooms stay **read-only** for guests: a room is a public front door, and a
 free-to-mint identity posting through one is a different risk from answering a link

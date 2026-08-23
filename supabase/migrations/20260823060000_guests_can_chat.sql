@@ -32,61 +32,23 @@
 -- anonymous identity is free to mint. Everything on the CAN side happens
 -- inside a room somebody was already invited into.
 
--- Local shim parity. Real Supabase has carried this column since anonymous
--- sign-in shipped; the throwaway cluster the pgTAP suite runs against does
--- not, and every guard below reads it.
-alter table auth.users
-  add column if not exists is_anonymous boolean not null default false;
-
-alter table public.users
-  add column is_guest boolean not null default false;
-
-comment on column public.users.is_guest is
-  'Mirror of auth.users.is_anonymous, maintained by trigger. Never written '
-  'by a client: public.users has no client write grant at all, so the only '
-  'way in is the auth event itself.';
-
-create index users_guest_idx on public.users (is_guest) where is_guest;
-
-
--- Where guest-ness comes from, and where it goes ------------------------------
-
--- Carried across at creation. The client cannot forge this: it is read off
--- the auth.users row GoTrue just wrote, inside a trigger it does not control.
-create or replace function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  insert into public.users (id, is_guest) values (new.id, coalesce(new.is_anonymous, false));
-  insert into public.profiles (user_id) values (new.id);
-  return new;
-end
-$$;
-
--- The conversion, and the whole reason for choosing anonymous auth. Adding an
--- email to an anonymous account clears is_anonymous on the same row, so this
--- is the single statement that turns a guest into a member. Their chats do
--- not move because they were never anywhere else.
-create function public.sync_guest_flag()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if coalesce(old.is_anonymous, false) and not coalesce(new.is_anonymous, false) then
-    update public.users set is_guest = false where id = new.id;
-  end if;
-  return new;
-end
-$$;
-
-create trigger on_auth_user_upgraded
-  after update of is_anonymous on auth.users
-  for each row execute function public.sync_guest_flag();
+-- Nothing in this file touches auth.users, and that is the whole lesson from
+-- the first attempt. It opened with `alter table auth.users add column
+-- is_anonymous` for local-shim parity, which the hosted project refuses
+-- outright: the migration role does not own that schema. It passed the pgTAP
+-- run because the throwaway cluster has one owner for everything. The column
+-- now lives in supabase/shim/, which never runs against production, and real
+-- Supabase has had it since anonymous sign-in shipped.
+--
+-- The same reasoning killed the stored mirror that came with it. There was a
+-- public.users.is_guest column kept in step by two triggers on auth.users -
+-- one at creation, one at conversion - and every one of those was a thing
+-- that could be refused or drift. Reading auth.users.is_anonymous directly
+-- from a SECURITY DEFINER function needs none of them: SELECT on auth.users
+-- from a definer function is already proven here (see the support inbox
+-- resolving addresses in 20260821150000), conversion becomes instant because
+-- there is no copy to update, and there is no second source of truth to go
+-- stale. It costs one indexed primary-key lookup per guarded write.
 
 create function public.is_guest_account(p_user_id uuid default auth.uid())
 returns boolean
@@ -95,7 +57,9 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce((select is_guest from public.users where id = p_user_id), false)
+  select coalesce(
+    (select u.is_anonymous from auth.users u where u.id = p_user_id),
+    false)
 $$;
 
 revoke execute on function public.is_guest_account(uuid) from public, anon;
@@ -319,62 +283,65 @@ grant execute on function public.set_guest_name(text) to authenticated;
 -- The janitor ------------------------------------------------------------------
 --
 -- Guests are free to mint, so they have to be free to remove, or the table
--- only grows. Deleting the auth.users row cascades the whole way down:
--- public.users, the profile, memberships, and their messages.
+-- only grows.
 --
--- Their messages going with them is a real cost and it is the right one.
+-- Split in two on purpose. This half only NAMES them; the deleting is done by
+-- the guest-janitor Edge Function through the admin API, exactly as
+-- delete-account already does it. The first version of this file ran
+-- `delete from auth.users` straight out of a pg_cron job, which is the same
+-- mistake as the ALTER above wearing different clothes: it may or may not be
+-- permitted, and it would have failed at four in the morning inside a cron
+-- job where nobody was looking. Every other privileged thing in this project
+-- goes through a worker, and so does this.
+--
+-- Deleting a guest takes their messages with them, and that is the point.
 -- Data minimisation says an abandoned throwaway identity should not be kept
 -- indefinitely, and 30 days past their last word, with no live membership
 -- left, is well past the point where anyone is still reading the thread. A
 -- member who wants their words to persist has the account that makes that
 -- true.
 
-create function public.purge_stale_guests()
-returns int
-language plpgsql
+create function public.stale_guest_ids(p_limit int default 200)
+returns table (user_id uuid)
+language sql
+stable
 security definer
 set search_path = public
 as $$
-declare
-  v_gone int;
-begin
-  with stale as (
-    select u.id
-    from public.users u
-    where u.is_guest
-      and u.created_at < now() - interval '30 days'
-      and not exists (
-        select 1 from public.room_members rm
-        where rm.user_id = u.id and rm.expires_at > now()
-      )
-      and not exists (
-        select 1 from public.messages m
-        where m.sender_id = u.id and m.created_at > now() - interval '30 days'
-      )
-  )
-  delete from auth.users a using stale s where a.id = s.id;
-  get diagnostics v_gone = row_count;
-  return v_gone;
-end
+  select u.id
+  from public.users u
+  join auth.users a on a.id = u.id
+  where a.is_anonymous
+    and u.created_at < now() - interval '30 days'
+    and not exists (
+      select 1 from public.room_members rm
+      where rm.user_id = u.id and rm.expires_at > now()
+    )
+    and not exists (
+      select 1 from public.messages m
+      where m.sender_id = u.id and m.created_at > now() - interval '30 days'
+    )
+  order by u.created_at
+  limit p_limit
 $$;
 
-revoke execute on function public.purge_stale_guests() from public, anon, authenticated;
+revoke execute on function public.stale_guest_ids(int) from public, anon, authenticated;
 
-comment on function public.purge_stale_guests() is
-  'Deletes anonymous accounts idle for 30 days with no live membership. '
-  'Cascades to their messages, which is the point: a throwaway identity is '
-  'not a place to keep somebody''s words forever.';
+comment on function public.stale_guest_ids(int) is
+  'Anonymous accounts idle for 30 days with no live membership. Named here, '
+  'deleted by the guest-janitor worker through the admin API - the same door '
+  'delete-account uses, because SQL cannot be trusted to delete an auth row.';
 
--- Same guard the other four workers use: pg_cron only exists on a real
--- deployment, so a keyless dev box and the pgTAP cluster skip scheduling
--- without failing the migration.
+-- Same guard the other workers use: pg_cron only exists on a real deployment,
+-- so a keyless dev box and the pgTAP cluster skip scheduling without failing
+-- the migration.
 do $$
 begin
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
     perform cron.schedule(
-      'purge-stale-guests',
+      'guest-janitor',
       '30 4 * * *',
-      $cron$select public.purge_stale_guests()$cron$
+      $cron$select public.invoke_edge_worker('guest-janitor')$cron$
     );
   end if;
 end

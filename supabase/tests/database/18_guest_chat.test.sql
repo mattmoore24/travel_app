@@ -5,7 +5,7 @@
 -- them by default, so every boundary has to be a deliberate one that is
 -- proved here rather than assumed.
 begin;
-select plan(35);
+select plan(34);
 
 insert into auth.users (id, email, is_anonymous) values
   -- A member, who runs a group and invites people to it.
@@ -49,10 +49,10 @@ create function pg_temp.lisbon() returns int language sql as
 
 select pg_temp.admin();
 select ok(
-  (select is_guest from public.users where id = pg_temp.gus()),
+  public.is_guest_account(pg_temp.gus()),
   'an anonymous sign-in lands as a guest');
 select ok(
-  not (select is_guest from public.users where id = pg_temp.ana()),
+  not public.is_guest_account(pg_temp.ana()),
   'and an ordinary one does not');
 
 
@@ -241,8 +241,11 @@ select pg_temp.admin();
 update auth.users set is_anonymous = false, email = 'sam@example.com'
 where id = pg_temp.gus();
 
+-- No trigger, no stored copy, no window where the two disagree: the flag IS
+-- auth.users.is_anonymous, so clearing it converts them in the same
+-- statement.
 select ok(
-  not (select is_guest from public.users where id = pg_temp.gus()),
+  not public.is_guest_account(pg_temp.gus()),
   'adding an email turns a guest into a member');
 select ok(
   exists (select 1 from public.room_members
@@ -273,14 +276,25 @@ select pg_temp.admin();
 update public.users set created_at = now() - interval '365 days'
 where id = '00000000-0000-0000-0000-00000000ee02';
 
-select is(public.purge_stale_guests(), 1, 'a guest idle for a month is cleared out');
-select ok(
-  not exists (select 1 from auth.users where id = '00000000-0000-0000-0000-00000000ee02'),
-  'all the way down to the auth row, so nothing is left behind');
-select ok(
-  exists (select 1 from auth.users where id = pg_temp.gus()),
-  'and somebody who made an account is never touched by it');
-select is(public.purge_stale_guests(), 0, 'and a second sweep finds nothing to do');
+-- The SQL half only NAMES them. Deleting is the guest-janitor worker's job,
+-- through the admin API, because SQL cannot be trusted to remove an auth row
+-- (see the migration header).
+select bag_eq(
+  $$ select user_id from public.stale_guest_ids() $$,
+  $$ values ('00000000-0000-0000-0000-00000000ee02'::uuid) $$,
+  'a guest idle for a month is named for removal, and only them');
+
+-- What the worker then does, and the reason the window is 30 days: it takes
+-- their messages with it.
+delete from auth.users where id = '00000000-0000-0000-0000-00000000ee02';
+select is(
+  (select count(*)::int from public.users where id = '00000000-0000-0000-0000-00000000ee02'),
+  0,
+  'and removing them cascades the whole way down');
+select is(
+  (select count(*)::int from public.stale_guest_ids()),
+  0,
+  'after which a second sweep finds nothing to do');
 
 select * from finish();
 rollback;

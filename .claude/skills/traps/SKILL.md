@@ -315,6 +315,31 @@ Invisible while both maps used the same type, and a visible split the moment
 one value changed. When a treatment is half prop and half overlay, check both
 halves on both screens.
 
+## The local Postgres shim owns `auth`. The hosted project does not.
+
+`scripts/db-test.sh` builds a throwaway cluster where one role owns
+everything, so anything you write against the `auth` schema passes. The
+hosted project locks that schema down and the migration role does not own it.
+The gap is silent until deploy.
+
+`alter table auth.users ...` is refused outright — that is what broke the
+guests-can-chat deploy on 2026-08-23. If a migration needs a column the local
+cluster lacks but real Supabase already has, put it in
+`supabase/shim/local_supabase_shim.sql`, which never runs against production.
+
+What IS permitted, on the evidence of this repo running it: `create trigger`
+on `auth.users` (`on_auth_user_created`, since the first migration) and
+`select` from it inside a SECURITY DEFINER function (the support inbox
+resolving addresses). Prefer reading over mirroring — a definer function
+reading `auth.users.is_anonymous` needs no column, no sync trigger and has no
+drift, which is how the same feature ended up smaller on the second attempt.
+
+**`delete from auth.users` is not in that list.** The one place this project
+removes a user, `delete-account`, goes through `admin.auth.admin.deleteUser`
+in an Edge Function. Anything scheduled that needs to delete an auth row does
+the same and is invoked by `invoke_edge_worker`, because a pg_cron job that
+silently cannot do its job is worse than no job.
+
 ## The simulator keyboard guesses, and it will break a run
 
 Run 50 died asserting text it had just typed, on a field reading "Meeting by

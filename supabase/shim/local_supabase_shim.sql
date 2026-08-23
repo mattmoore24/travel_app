@@ -32,6 +32,11 @@ create schema if not exists auth;
 create table if not exists auth.users (
   id uuid primary key,
   email text unique,
+  -- Real Supabase has carried this since anonymous sign-in shipped. It lives
+  -- HERE and not in a migration because the hosted project does not let the
+  -- migration role alter auth.users at all - trying it is what broke the
+  -- deploy on 2026-08-23.
+  is_anonymous boolean not null default false,
   raw_app_meta_data jsonb not null default '{}'::jsonb,
   raw_user_meta_data jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()

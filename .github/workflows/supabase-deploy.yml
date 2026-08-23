@@ -103,7 +103,7 @@ jobs:
         if: ${{ inputs.dry_run != true && env.ANON_KEY != '' && env.PROJECT_URL != '' }}
         run: |
           fail=0
-          for fn in moderation-worker push-worker support-mailer; do
+          for fn in moderation-worker push-worker support-mailer guest-janitor; do
             body=$(mktemp)
             code=$(curl -sS -o "$body" -w '%{http_code}' -X POST \
               -H "Authorization: Bearer $ANON_KEY" \
