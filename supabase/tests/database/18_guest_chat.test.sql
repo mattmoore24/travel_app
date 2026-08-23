@@ -5,7 +5,7 @@
 -- them by default, so every boundary has to be a deliberate one that is
 -- proved here rather than assumed.
 begin;
-select plan(34);
+select plan(36);
 
 insert into auth.users (id, email, is_anonymous) values
   -- A member, who runs a group and invites people to it.
@@ -211,6 +211,35 @@ select throws_ok(
             values (%L, %L, 'look', 'x/y.jpg') $$, pg_temp.crew(), pg_temp.gus()),
   '23514', null,
   'a guest sends no photos, so a free identity never reaches the classifier');
+
+-- A venue's open room and a traveler group are the same shape and differ by
+-- one row: the group has a `groups` row, the venue room does not. Reading a
+-- venue room is what it is for; posting into it is the part that needs a name
+-- somebody can be held to, and until 20260823120000 only the client said so.
+-- A third guest, because gus is about to be walked up to the ten-room cap
+-- and another membership here would move that goalpost.
+select pg_temp.admin();
+insert into auth.users (id, email, is_anonymous)
+values ('00000000-0000-0000-0000-00000000ee03', null, true);
+insert into public.chats (id, kind, status)
+values ('00000000-0000-0000-0000-0000000000f1', 'room', 'active');
+insert into public.room_members (chat_id, user_id, departure_date, expires_at)
+values ('00000000-0000-0000-0000-0000000000f1',
+        '00000000-0000-0000-0000-00000000ee03',
+        current_date + 5, now() + interval '5 days');
+select pg_temp.login('00000000-0000-0000-0000-00000000ee03');
+select throws_ok(
+  $$ insert into public.messages (chat_id, sender_id, body)
+     values ('00000000-0000-0000-0000-0000000000f1',
+             '00000000-0000-0000-0000-00000000ee03', 'hello room') $$,
+  '23514', null,
+  'and posts nothing in a venue room, which is a public front door');
+
+select pg_temp.login(pg_temp.gus());
+select lives_ok(
+  format($$ insert into public.messages (chat_id, sender_id, body)
+            values (%L, %L, 'still fine in here') $$, pg_temp.crew(), pg_temp.gus()),
+  'while the group they hold a link for is still theirs to answer');
 
 -- Ten rooms is generous for one person and cheap to paper if it were not
 -- capped. The eleventh is the assertion.
