@@ -354,3 +354,37 @@ The E2E workflow now turns `KeyboardPrediction`, `KeyboardInlineCompletion`,
 types. Do not "fix" this class of failure with `pressKey: Enter` on a
 multiline field — Enter is a newline there, and a newline is exactly what `.`
 does not match in a Maestro pattern.
+
+## expo-router: a guard swap unmounts the stack, and takes navigation with it
+
+Two separate hazards in the root layout, both of which shipped, both of which
+every test in the repo passed straight through.
+
+**A `Stack.Protected` predicate written for the common case traps the
+uncommon one.** The tabs were gated on `!signedIn || onboarded`, which reads
+correctly until a third kind of person exists. A guest (anonymous sign-in) is
+signed in and can never be onboarded — the database refuses that stamp on
+purpose — so the moment one signed in, the tabs unmounted and the onboarding
+stack took over, asking for a profile behind a finish button the server would
+refuse forever. Write the predicate as the question you are actually asking
+("does this person still owe us a profile?"), give it a name, and give it a
+test naming the case that does not fit.
+
+Check the same thing for every `Stack.Screen` inside a guarded block. The
+guest-naming screen sat inside `signedIn && onboarded`, which is the one pair
+of states it is never used in — signed out, becoming a guest, and a guest
+account, renaming. `router.push` to an unregistered route does not throw. It
+does nothing, silently, which looks exactly like a dead button.
+
+**A root-level loading hold discards in-flight navigation.** The hold renders
+_instead of_ the navigator, so while it is up there is no stack, and anything
+that called `router.replace` a tick earlier is gone; when the hold drops, the
+stack remounts at its anchor route. Signing in flips `signedIn` true while the
+profile query is still pending, so a screen that signs somebody in and then
+navigates is racing its own layout. Either exempt that path from the hold
+(best — if the routing decision does not need the query, do not wait for it),
+or hold the destination somewhere outside the stack and navigate after remount.
+
+Both are invisible to unit tests, to pgTAP, and to a signed-in E2E flow. The
+thing that caught them was walking the screens in the order a real person
+would.
