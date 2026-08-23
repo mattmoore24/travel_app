@@ -61,7 +61,7 @@ const CAPTIONS = {
     'Send lifts clear of the keyboard as soon as there is a message.',
   ],
   '20-chat-individual': ['Chat', 'A switch where a page title used to be.'],
-  '21-chat-groups': ['Groups', 'Hostel rooms and your own groups, kept apart.'],
+  '21-chat-groups': ['Groups', 'Venue rooms and your own groups, kept apart.'],
   '22-new-group': ['Starting a group', 'Name, who can post, how long anyone may stay.'],
   '23-group-created': ['The group', 'Straight into it, with the details button top right.'],
   '24-group-message': ['A message', 'Bubble geometry, and the time between clusters.'],

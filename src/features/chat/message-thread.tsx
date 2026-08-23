@@ -215,13 +215,27 @@ function Reactions({
  * bubbles that do not carry it — otherwise every bubble in a run would sit
  * at a different indent and the column would zig-zag.
  */
-function RunAvatar({ path }: { path: string | null }) {
+function RunAvatar({ path, name }: { path: string | null; name: string | null }) {
   const theme = useTheme();
   const { data: url } = usePhotoUrl(path);
+  // name is what separates the two kinds of empty. A bubble that is not the
+  // foot of a run passes null for both and stays a pure spacer; the foot of
+  // a run always carries a name, so somebody with no photo gets a monogram
+  // rather than the hole that used to sit there.
+  const filled = name != null;
+  const initial = name?.trim()?.[0]?.toUpperCase() ?? null;
   return (
-    <View style={[styles.runAvatar, path ? { backgroundColor: theme.surfaceSunken } : undefined]}>
+    <View
+      style={[
+        styles.runAvatar,
+        path || filled ? { backgroundColor: theme.surfaceSunken } : undefined,
+      ]}>
       {url ? (
         <Image source={{ uri: url }} style={styles.runAvatarImage} contentFit="cover" />
+      ) : initial ? (
+        <ThemedText type="caption" themeColor="textSecondary" style={styles.runAvatarInitial}>
+          {initial}
+        </ThemedText>
       ) : null}
     </View>
   );
@@ -284,6 +298,7 @@ function Bubble({
   onOpenMenu,
   onRetry,
   avatarPath,
+  avatarName,
 }: {
   message: ThreadMessage;
   mine: boolean;
@@ -298,6 +313,8 @@ function Bubble({
   onRetry?: () => void;
   /** Group threads only: the sender's face, at the foot of their run. */
   avatarPath?: string | null;
+  /** The name behind that face, for the monogram when there is no photo. */
+  avatarName?: string | null;
 }) {
   const anchor = useRef<View>(null);
 
@@ -308,7 +325,9 @@ function Bubble({
         mine ? styles.rowMine : styles.rowTheirs,
         { marginTop: grouped ? 2 : Space.sm },
       ]}>
-      {avatarPath !== undefined && !mine ? <RunAvatar path={avatarPath} /> : null}
+      {avatarPath !== undefined && !mine ? (
+        <RunAvatar path={avatarPath} name={avatarName ?? null} />
+      ) : null}
       <View style={styles.bubbleColumn}>
         {/* A plain view around the pressable, because the menu needs to know
             where on screen this bubble actually is and PressableScale keeps
@@ -834,6 +853,9 @@ export function MessageThread({
                   // column is reserved; null means "a group, but not this
                   // bubble" and the space is held so a run does not zig-zag.
                   avatarPath={avatarFor ? (!mine && last ? avatarFor(item) : null) : undefined}
+                  // Same slot, same condition: whoever owns the face owns the
+                  // letter that stands in for it.
+                  avatarName={avatarFor && !mine && last ? (authorFor?.(item) ?? null) : null}
                   reactions={byMessage.get(item.id) ?? []}
                   onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
                   onRetry={item.local === 'failed' && onRetry ? () => onRetry(item) : undefined}
@@ -937,11 +959,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.md,
     paddingVertical: Space.md,
   },
+  runAvatarInitial: {
+    fontWeight: '600',
+  },
   runAvatar: {
     width: RUN_AVATAR,
     height: RUN_AVATAR,
     borderRadius: RUN_AVATAR / 2,
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
     alignSelf: 'flex-end',
     marginRight: Space.xs,
     marginBottom: 2,

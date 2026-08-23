@@ -130,7 +130,7 @@ export default function NewGroupScreen() {
       <FormTextField
         label="Name"
         testID="group-name-input"
-        placeholder="Hostel crew, Sunday hike, Lisbon dinner"
+        placeholder="Dorm 4 crew, Sunday hike, Lisbon dinner"
         value={name}
         onChangeText={setName}
         maxLength={NAME_MAX}

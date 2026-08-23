@@ -73,14 +73,18 @@ export default function JoinGroupScreen() {
     );
   }
 
+  // Reachable as of 20260823050000. Before that grant, the preview threw
+  // 42501 for a signed-out caller and the error branch above caught it, so
+  // an invited friend was told the link was broken instead of being shown
+  // what they had been invited to.
   if (isGuest) {
     return (
       <ThemedView style={styles.root}>
         <View style={styles.centered}>
-          <ThemedText type="headline">{group.name}</ThemedText>
+          <ThemedText type="headline">You are invited to {group.name}</ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
-            {countOf(group.member_count, 'person', 'people')} {isAre(group.member_count)} in this
-            group. You need a profile to join in.
+            {countOf(group.member_count, 'person', 'people')} {isAre(group.member_count)} in it.
+            Make a profile and you are in.
           </ThemedText>
           <SignUpGate reason="Join the group" where="group-invite" cta="Make a profile" />
         </View>

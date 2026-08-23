@@ -5,7 +5,7 @@
 -- who can read an invite token, and whether a shared group counts as a
 -- connection for the social-handle gate (hard rule 4 — it must not).
 begin;
-select plan(73);
+select plan(77);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -137,6 +137,51 @@ select ok(
   not (select (public.group_invite_preview((select token from pg_temp.invite))).already_member),
   'and knows you are not in it yet'
 );
+
+-- SIGNED OUT, HOLDING THE LINK --------------------------------------------------
+--
+-- The founder sent a friend a link on 2026-08-23 and the friend got "could
+-- not load this invite". group_invite_preview was authenticated-only, so a
+-- signed-out tap came back 42501 and the client turned a permission error
+-- into a retry prompt for a link that could never work. These four keep the
+-- door open, and keep it a door rather than a hole.
+
+-- The token travels through a session setting rather than the temp table:
+-- anon cannot read pg_temp, and an existing assertion above proves it cannot
+-- read public.group_invites either. Holding the string is exactly the
+-- situation being tested.
+select set_config('test.invite_token', (select token from pg_temp.invite), false);
+
+select pg_temp.guest();
+select is(
+  (select (public.group_invite_preview(current_setting('test.invite_token'))).name),
+  'Hostel crew',
+  'somebody signed out can see what they were invited to'
+);
+select is(
+  (select (public.group_invite_preview(current_setting('test.invite_token'))).member_count),
+  1,
+  'and how many people are in it, so the invitation means something'
+);
+-- The two fields that could leak are both keyed on auth.uid(), which is null
+-- here. The photo especially: the bucket would refuse a stranger the image,
+-- so handing over the path would only ever draw a broken picture.
+select ok(
+  (select (public.group_invite_preview(current_setting('test.invite_token'))).photo_path) is null,
+  'without being handed a photo path they could not load anyway'
+);
+-- Reading the invitation and accepting it are different privileges.
+select throws_ok(
+  format(
+    $$select public.join_group_with_invite(%L, (current_date + 1)::date)$$,
+    current_setting('test.invite_token')
+  ),
+  '42501',
+  null,
+  'but joining still needs an account'
+);
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 
 -- The clamp is the point: a joiner asking for a year gets the admin's ceiling.
 select lives_ok(

@@ -46,7 +46,7 @@ function GuestProfile() {
           Browsing as a guest
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.guestText}>
-          Say hi, drop pins, join the hostel chats. Takes a minute.
+          Say hi, drop pins, join the open chats. Takes a minute.
         </ThemedText>
         <PrimaryButton label="Make my profile" onPress={() => router.push('/join')} />
         <PrimaryButton

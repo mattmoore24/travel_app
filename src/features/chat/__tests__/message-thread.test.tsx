@@ -24,6 +24,12 @@ jest.mock('@/features/chat/hooks', () => ({
   useChatPhotoUrl: () => ({ data: null }),
 }));
 
+// The run avatar signs a URL for the private bucket. Nothing here has a photo
+// to sign, and the monogram is the case being tested.
+jest.mock('@/features/profile/hooks', () => ({
+  usePhotoUrl: () => ({ data: null }),
+}));
+
 const message = (over: Partial<MessageRow> = {}): MessageRow => ({
   id: 'm1',
   chat_id: 'c1',
@@ -106,6 +112,32 @@ describe('what a group needs and a one-to-one chat does not', () => {
     );
     expect(screen.getByText('Priya')).toBeTruthy();
     expect(screen.queryAllByText('Priya')).toHaveLength(1);
+  });
+
+  // A face is how you tell two strangers apart in a room chat, and somebody
+  // with no photo yet used to get an empty circle - present, sized, holding
+  // the indent, saying nothing. Founder, 2026-08-23.
+  it('stands a letter in for a sender who has no photo', () => {
+    renderThread({ authorFor: () => 'priya', avatarFor: () => null });
+    // Upper-cased from a lower-case name, so the monogram does not inherit
+    // however somebody happened to type themselves in.
+    expect(screen.getByText('P')).toBeTruthy();
+  });
+
+  // The same component holds the indent on every bubble that is NOT the foot
+  // of a run. Those must stay empty, or a run of three messages grows three
+  // stacked copies of the same letter down its side.
+  it('but leaves the spacer bubbles blank', () => {
+    renderThread({
+      messages: [
+        message({ id: 'm3', body: 'third' }),
+        message({ id: 'm2', body: 'second' }),
+        message({ id: 'm1', body: 'first' }),
+      ],
+      authorFor: () => 'Priya',
+      avatarFor: () => null,
+    });
+    expect(screen.queryAllByText('P')).toHaveLength(1);
   });
 
   it('prints a note in place of a message a host took down', () => {

@@ -624,7 +624,7 @@ export default function ChatScreen() {
           {tab === 'groups' ? (
             <>
               <ThemedText type="footnote" themeColor="textSecondary">
-                Hostels run open chats. Have a look before you join.
+                Places you stay run open chats. Have a look before you join.
               </ThemedText>
               <RoomDiscovery cityId={cityId} />
               <SignUpGate reason="Want to join in?" where="chat-tab" cta="Make a profile" />
@@ -786,7 +786,7 @@ export default function ChatScreen() {
             </ThemedText>
             <ThemedText type="footnote" themeColor="textSecondary">
               {tab === 'groups'
-                ? 'Join a hostel chat below, or start your own.'
+                ? 'Join an open chat below, or start your own.'
                 : 'Say hi to someone going your way. The chat opens when they answer.'}
             </ThemedText>
             {tab === 'individual' ? (
