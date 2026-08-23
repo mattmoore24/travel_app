@@ -27,3 +27,40 @@ export function owesOnboarding(session: Session | null, onboardedAt: string | nu
   }
   return onboardedAt == null;
 }
+
+/**
+ * Whether the root can commit to a stack yet.
+ *
+ * Routing has to hold on a cold start until the persisted session is back
+ * and, for a member, until their profile and standing have settled —
+ * otherwise people flash through the wrong stack. The hold renders instead
+ * of the navigator, so while it is up the whole stack is unmounted and any
+ * navigation in flight is lost.
+ *
+ * That is exactly what it cost a guest. Signing in flipped `signedIn` true
+ * with both queries still pending, so the hold went up in the same tick that
+ * guest-name called `router.replace(next)` — and when the stack came back it
+ * came back at its anchor route. Somebody typed a name to open an invite and
+ * landed on the map.
+ *
+ * A guest needs no lookup: owesOnboarding answers from the session alone, so
+ * there is nothing to wait for and nothing gained by waiting.
+ */
+export function rootIsReady(opts: {
+  initialized: boolean;
+  session: Session | null;
+  supabaseConfigured: boolean;
+  profileSettled: boolean;
+  standingSettled: boolean;
+}) {
+  if (!opts.initialized) {
+    return false;
+  }
+  if (opts.session == null || !opts.supabaseConfigured) {
+    return true;
+  }
+  if (opts.session.user.is_anonymous === true) {
+    return true;
+  }
+  return opts.profileSettled && opts.standingSettled;
+}

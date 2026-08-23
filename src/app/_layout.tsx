@@ -14,7 +14,7 @@ import { Colors, Spacing, SplashField } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
 import { ResetPasswordScreen } from '@/features/auth/reset-password-screen';
-import { owesOnboarding } from '@/features/auth/routing';
+import { owesOnboarding, rootIsReady } from '@/features/auth/routing';
 import { useAuthListener } from '@/features/auth/use-auth-listener';
 import { useAccountStanding, useOwnProfile } from '@/features/profile/hooks';
 import { queryClient } from '@/lib/query-client';
@@ -103,13 +103,15 @@ function RootNavigator() {
   const needsProfile = owesOnboarding(session, profileQuery.data?.onboarding_completed_at);
   // Hold routing until the persisted session is restored and (when signed in)
   // the first profile + standing fetches settle — otherwise users flash
-  // through the wrong stack on cold start.
-  const ready =
-    initialized &&
-    (!signedIn ||
-      !isSupabaseConfigured ||
-      ((profileQuery.isSuccess || profileQuery.isError) &&
-        (standingQuery.isSuccess || standingQuery.isError)));
+  // through the wrong stack on cold start. The hold unmounts the navigator,
+  // which is why a guest is exempt; see features/auth/routing.
+  const ready = rootIsReady({
+    initialized,
+    session,
+    supabaseConfigured: isSupabaseConfigured,
+    profileSettled: profileQuery.isSuccess || profileQuery.isError,
+    standingSettled: standingQuery.isSuccess || standingQuery.isError,
+  });
 
   if (!ready || intro.seen === null) {
     // Splash-colored hold, not null: the splash overlay fades out on its own
