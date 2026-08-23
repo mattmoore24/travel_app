@@ -699,17 +699,18 @@ export default function MapScreen() {
               );
             }
           }}>
-          {/* An ink wash over the cartography, under everything of ours.
-              mutedStandard takes the colour out of Apple's tiles but leaves
-              the park green, the water blue and about thirty district and
-              road labels at full contrast - which is the difference between
-              "a dark map" and a dark field with faces on it. There is no prop
-              for any of that: MKPointOfInterestFilter covers business
-              categories only, and nothing exposes labels, roads or water.
-              An overlay is the one remaining lever, and MapKit draws every
-              overlay BENEATH every annotation, so the wash dims the ground
-              without touching a single pin. Added first so the heat rings
-              composite over it.
+          {/* A light ink wash over the cartography, under everything of
+              ours. There is no prop for Apple's park green, water blue or
+              label treatment: MKPointOfInterestFilter covers business
+              categories only. An overlay is the one remaining lever, and
+              MapKit draws every overlay BENEATH every annotation, so it
+              pulls the ground toward the app's navy without touching a
+              single pin. Added first so the heat rings composite over it.
+
+              Deliberately light. It used to be nearly two and a half times
+              this over mutedStandard, which was two darkeners doing one job
+              and left street names at about 2:1 - see basemap.ts. Tune the
+              constant there before reaching for the map type.
 
               The box is generous rather than global on purpose: a polygon
               spanning the whole earth has to be reasoned about at the
