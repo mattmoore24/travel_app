@@ -52,6 +52,11 @@ onboarded`, and a guest is signed in and can never be onboarded — the database
   the client refused the one thing the feature exists for. `isGuest && !isMember` now:
   a venue room stays a read-only public front door, a chat somebody was handed a link
   to is theirs to answer.
+- **A guest could reach their group exactly once.** Joining took them into the room;
+  after that the Chat tab showed the guest view — a line about venue rooms and a
+  discovery list — with no chat list in it at all, so the group they had just been
+  invited to was unreachable from anywhere in the app. The Groups tab lists their own
+  rooms now.
 - **And that line is in the database now**, not only in the footer. The anon key ships
   inside the app, so an anonymous sign-in could insert straight into a venue's room. A
   venue room and a traveler group are the same shape and differ by one row — the group
