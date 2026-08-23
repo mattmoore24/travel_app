@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Marker, Polygon, PROVIDER_DEFAULT } from 'react-native-maps';
 
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
-import { QUIET_BASEMAP, pointsOfInterest } from '@/features/pins/basemap';
+import { MAP_WASH, QUIET_BASEMAP, pointsOfInterest, washBox } from '@/features/pins/basemap';
 
 type LocationPickerProps = {
   centerLat: number;
@@ -40,6 +40,19 @@ export function LocationPicker({ centerLat, centerLng, lat, lng, onChange }: Loc
           const { latitude, longitude } = event.nativeEvent.coordinate;
           onChange(latitude, longitude);
         }}>
+        {/* The same wash the map tab draws. It was missing here, which is
+            the drift basemap.ts exists to stop: the shared constant covers
+            props, and the wash is an overlay, so only the screen that
+            remembered to draw it got one. Harmless while both maps were
+            mutedStandard; visible the moment the map type changed, because
+            this one would have jumped further than the other. */}
+        <Polygon
+          coordinates={washBox(centerLat, centerLng)}
+          fillColor={MAP_WASH}
+          strokeColor="transparent"
+          strokeWidth={0}
+          tappable={false}
+        />
         <Marker
           coordinate={{ latitude: lat, longitude: lng }}
           draggable
