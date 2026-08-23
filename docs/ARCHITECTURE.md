@@ -276,7 +276,7 @@ moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structure
 ## Who can see you (Phase 12)
 
 A traveler can narrow the audience for their profile and their pins:
-`everyone` (default), `verified`, `verified_men`, `verified_women`. Stored as
+`everyone` (default), `verified`, `verified_men`, `verified_women`, `verified_nonbinary`. Stored as
 `profiles.visible_to public.profile_audience`, a column with **no client grant in
 either direction** — reading it would leak one traveler's setting to another, and
 writing it would route around the rule below. Both go through `my_visibility()` and
@@ -303,9 +303,12 @@ Three deliberate boundaries, all proved in `17_profile_visibility.test.sql`:
 `profiles_reset_visibility` drops the setting back to `everyone` if the badge is ever
 taken away, so the rule is not enforced only at write time.
 
-Honest consequence, stated in the picker as well as here: the two gendered options match
-`profiles.gender`, so travelers who are nonbinary or who have not set a gender are in
-neither of them.
+Honest consequence, stated in the picker as well as here: the three gendered options
+match `profiles.gender`, so a traveler who has not set a gender ("Rather not say") is in
+none of them. `verified_nonbinary` was added a revision after the rest (founder,
+2026-08-23) because without it nonbinary travelers were the only group that could be
+asked for and never ask. The three are siblings, not a hierarchy: asking for one gendered
+audience does not put you in another.
 
 **Testing it against demo travelers** needs at least one of them verified, and the seed
 script is anon-key-only by design (it can do nothing a real user could not, and

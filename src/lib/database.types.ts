@@ -6,7 +6,8 @@
 export type UserStatus = 'active' | 'suspended' | 'banned' | 'shadowbanned';
 export type Gender = 'woman' | 'man' | 'nonbinary' | 'unspecified';
 /** Who a traveler is shown to on the map and in Travelers. Chat ignores it. */
-export type ProfileAudience = 'everyone' | 'verified' | 'verified_men' | 'verified_women';
+export type ProfileAudience =
+  'everyone' | 'verified' | 'verified_men' | 'verified_women' | 'verified_nonbinary';
 export type ModerationStatus = 'pending' | 'approved' | 'rejected';
 export type SocialPlatform =
   'instagram' | 'tiktok' | 'snapchat' | 'x' | 'facebook' | 'whatsapp' | 'telegram' | 'other';

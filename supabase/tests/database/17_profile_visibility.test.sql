@@ -4,7 +4,7 @@
 -- that it hides in BOTH directions, that it hides on BOTH surfaces, and that
 -- it leaves chat completely alone.
 begin;
-select plan(22);
+select plan(28);
 
 insert into auth.users (id, email) values
   -- ann: verified woman, wants verified men only
@@ -16,7 +16,9 @@ insert into auth.users (id, email) values
   -- dot: verified woman, open to everyone
   ('00000000-0000-0000-0000-0000000000d1', 'dot@example.com'),
   -- eli: verified, nonbinary, open to everyone
-  ('00000000-0000-0000-0000-0000000000e1', 'eli@example.com');
+  ('00000000-0000-0000-0000-0000000000e1', 'eli@example.com'),
+  -- fay: verified, nonbinary, wants verified nonbinary only
+  ('00000000-0000-0000-0000-0000000000f1', 'fay@example.com');
 
 update public.profiles set
   display_name = 'traveler', age = 30, home_country = 'US',
@@ -30,7 +32,8 @@ update public.profiles set verified = true, gender = 'man'
 update public.profiles set verified = false, gender = 'man'
   where user_id = '00000000-0000-0000-0000-0000000000c1';
 update public.profiles set verified = true, gender = 'nonbinary'
-  where user_id = '00000000-0000-0000-0000-0000000000e1';
+  where user_id in ('00000000-0000-0000-0000-0000000000e1',
+                    '00000000-0000-0000-0000-0000000000f1');
 
 create function pg_temp.login(uid uuid) returns void language plpgsql as $$
 begin
@@ -132,8 +135,51 @@ select bag_eq(
   $$ select user_id from public.get_matches() $$,
   $$ values ('00000000-0000-0000-0000-0000000000b1'::uuid),
             ('00000000-0000-0000-0000-0000000000d1'::uuid),
-            ('00000000-0000-0000-0000-0000000000e1'::uuid) $$,
+            ('00000000-0000-0000-0000-0000000000e1'::uuid),
+            ('00000000-0000-0000-0000-0000000000f1'::uuid) $$,
   'and everybody open to everyone still sees everybody else');
+
+
+-- 2b. The nonbinary audience -------------------------------------------------
+--
+-- Shipped one revision after the rest (founder, 2026-08-23): without it,
+-- verified nonbinary travelers were the only group that could be asked for
+-- and never ask.
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000f1');
+select lives_ok(
+  $$ select public.set_visibility('verified_nonbinary') $$,
+  'a verified nonbinary traveler can ask for their own audience');
+select bag_eq(
+  $$ select user_id from public.get_matches() $$,
+  $$ values ('00000000-0000-0000-0000-0000000000e1'::uuid) $$,
+  'and is shown the other verified nonbinary traveler, and nobody else');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000e1');
+select ok(
+  '00000000-0000-0000-0000-0000000000f1' in (select user_id from public.get_matches()),
+  'who sees them back');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+select ok(
+  '00000000-0000-0000-0000-0000000000f1' not in (select user_id from public.get_matches()),
+  'a verified man does not');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000d1');
+select ok(
+  '00000000-0000-0000-0000-0000000000f1' not in (select user_id from public.get_matches()),
+  'nor does a verified woman');
+
+-- The three gendered audiences are siblings, not a hierarchy: asking for
+-- nonbinary travelers does not make you one.
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select ok(
+  '00000000-0000-0000-0000-0000000000f1' not in (select user_id from public.get_matches()),
+  'and neither does somebody who asked for a different gendered audience');
+
+-- Fay steps back out, so the map section below sees the roster it expects.
+select pg_temp.login('00000000-0000-0000-0000-0000000000f1');
+select public.set_visibility('everyone');
 
 
 -- 3. The map, same rule ----------------------------------------------------------
@@ -174,7 +220,7 @@ select ok(
 
 -- 4. The heatmap is aggregate and deliberately untouched ---------------------------
 
--- All five travelers dropped a pin in the same 0.005 degree cell, and
+-- All six travelers dropped a pin in the same 0.005 degree cell, and
 -- heat_k is 3, so the cell clears the threshold. Dot cannot see Ann's PIN,
 -- but Ann still counts toward the cell: filtering the aggregate per viewer
 -- would push counts DOWN, which is the direction that breaks rule 6.
@@ -182,7 +228,7 @@ select pg_temp.login('00000000-0000-0000-0000-0000000000d1');
 select is(
   (select pin_count from public.heat_cells(pg_temp.lisbon())
     where cell_lat between 38.71 and 38.73),
-  5,
+  6,
   'a hidden traveler still counts toward the anonymous heat, so the k-threshold does not weaken');
 
 

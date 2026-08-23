@@ -25,8 +25,9 @@ Updated at every phase boundary (and mid-phase when something changes).
   staggering the later windows gives at least three matches in any city for any trip
   in the next four months. The old single 27-day window was why the tab said nobody
   matched.
-- **Who can see you.** Verified-only / verified-men / verified-women audiences for the
-  map and Travelers, gated on holding the badge, enforced in the database. See
+- **Who can see you.** Verified-only / verified-men / verified-women / verified-non-binary
+  audiences for the map and Travelers, gated on holding the badge, enforced in the
+  database. See
   ARCHITECTURE "Who can see you" for the three boundaries it respects and why the
   heatmap is deliberately outside them.
 
@@ -35,11 +36,12 @@ Updated at every phase boundary (and mid-phase when something changes).
 - **Verifying demo travelers.** Testing the new audiences end to end needs a verified
   demo traveler, and the seed script is anon-key-only on purpose. The SQL to flip a
   few by hand is in ARCHITECTURE under "Who can see you".
-- **Gendered audiences and nonbinary travelers.** `verified_men` and `verified_women`
-  match `profiles.gender`, so a nonbinary traveler is in neither audience. That is
-  what was asked for and it is what shipped; the picker says so out loud rather than
-  leaving people to work it out. Worth a decision before launch whether nonbinary
-  travelers should get an audience of their own.
+- **Gendered audiences and nonbinary travelers — ANSWERED.** The first cut had only
+  `verified_men` and `verified_women`, which left nonbinary travelers as the only group
+  that could be asked for and never ask. Founder called it: `verified_nonbinary` shipped
+  the same day. Non-binary was already a gender option in onboarding and profile
+  editing, so nothing was needed there. Anyone on "Rather not say" is still in none of
+  the three gendered audiences, and the picker says so.
 
 ## Current status: **Phase 11 — the unaudited-areas sweep** (2026-08-21)
 

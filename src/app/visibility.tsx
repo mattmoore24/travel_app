@@ -17,16 +17,21 @@ const OPTIONS: { value: ProfileAudience; label: string; detail: string }[] = [
   { value: 'verified', label: 'Verified only', detail: 'People who passed the selfie check' },
   { value: 'verified_men', label: 'Verified men', detail: 'Verified, and men' },
   { value: 'verified_women', label: 'Verified women', detail: 'Verified, and women' },
+  {
+    value: 'verified_nonbinary',
+    label: 'Verified non-binary',
+    detail: 'Verified, and non-binary',
+  },
 ];
 
 /**
  * Who can see you, on the map and in Travelers.
  *
  * Three things this screen says out loud, because all three surprise people
- * who are not told: it cuts both ways, it does nothing to chat, and the two
- * gendered options really are gendered, so travelers who are nonbinary or
- * who have not set a gender are in neither. Said once here beats being found
- * out later as a bug report.
+ * who are not told: it cuts both ways, it does nothing to chat, and the
+ * gendered options match the gender on a profile, so anyone who has not set
+ * one is in none of them. Said once here beats being found out later as a
+ * bug report.
  */
 export default function VisibilityScreen() {
   const theme = useTheme();
@@ -88,8 +93,9 @@ export default function VisibilityScreen() {
 
       {verified ? (
         <ThemedText type="footnote" themeColor="textSecondary">
-          It works both ways. Pick verified women and that is who sees you, and who you see. Men and
-          women mean the gender on a profile, so anyone who has not set one is in neither.
+          It works both ways. Pick verified women and that is who sees you, and who you see. The
+          gendered ones match the gender on a profile, so anyone who has not set one is in none of
+          them.
         </ThemedText>
       ) : (
         <>

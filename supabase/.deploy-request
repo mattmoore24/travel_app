@@ -30,3 +30,4 @@
 2026-08-23 — deploy: keep the map alive (daily curated-pin refresh, heat cells grouped by cell)
 2026-08-23 — deploy: curated pins stay current (stale seeds cleared, city_pins grants restated)
 2026-08-23 — deploy: who can see you (profile_audience, discovery_pair_ok, gated on the badge)
+2026-08-23 — deploy: verified_nonbinary audience (enum rebuilt, predicates restated)
