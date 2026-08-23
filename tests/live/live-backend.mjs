@@ -8,6 +8,13 @@
 // destroyed via the delete-account Edge Function, which conveniently also
 // exercises the App Review 5.1.1(v) deletion path for real.
 //
+// "Guest" means two different people in here, and the sections say which:
+// a signed-out reader holding nothing but the anon key, and a guest ACCOUNT
+// — an anonymous sign-in, which is a real authenticated user with
+// is_anonymous set. The second one is the only part of this project that
+// depends on a setting no migration can carry, so it is asserted rather than
+// assumed.
+//
 // Env: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY
 
 import { createClient } from '@supabase/supabase-js';
@@ -231,6 +238,152 @@ try {
   }
   const { data: guestProfiles } = await guest.from('profiles').select('*').limit(1);
   check('guest CANNOT read profiles table', (guestProfiles ?? []).length === 0);
+
+  // --- guest ACCOUNTS: the anonymous sign-in path -------------------------
+  //
+  // Distinct from the signed-out reads above: this is somebody who was handed
+  // a link in a lobby, typed a name, and is now a real `authenticated` user
+  // with is_anonymous set. Worth testing HERE and not only in pgTAP for one
+  // reason the pgTAP cluster structurally cannot cover — anonymous sign-in is
+  // GoTrue configuration, not schema. It is a dashboard switch, it is not in
+  // any migration, and nothing else in this repository would notice it being
+  // off. The whole feature is a dead button until it is on, so the first
+  // assertion below is the one that matters.
+  const sam = newClient();
+  const { data: anon, error: anonErr } = await sam.auth.signInAnonymously();
+  const samIsGuest = anon?.user?.is_anonymous === true;
+  check(
+    'anonymous sign-in is ENABLED on the project',
+    !anonErr && Boolean(anon?.session) && samIsGuest,
+    anonErr?.message ??
+      'no anonymous session. Authentication -> Sign In / Providers -> Anonymous sign-ins'
+  );
+
+  if (samIsGuest) {
+    const samId = anon.user.id;
+    // Registered for teardown immediately, before anything can throw: an
+    // abandoned anonymous account would otherwise sit in the project until
+    // the janitor's 30-day sweep.
+    users.push({ client: sam, tag: 'sam(guest)', userId: samId, email: null });
+
+    const { data: samName, error: nameErr } = await sam.rpc('set_guest_name', {
+      p_name: `Sam Live ${RUN}`,
+    });
+    check('a guest names themselves', !nameErr && Boolean(samName), nameErr?.message);
+
+    // The load-bearing refusal. onboarding_completed_at sits inside the
+    // client's own UPDATE grant and every discovery surface keys on it, so
+    // without the trigger a guest could type a name and make themselves
+    // browsable to strangers.
+    const { error: stampErr } = await sam
+      .from('profiles')
+      .update({ onboarding_completed_at: new Date().toISOString(), age: 30 })
+      .eq('user_id', samId);
+    check(
+      'a guest CANNOT stamp themselves onboarded (live trigger)',
+      Boolean(stampErr),
+      'IT WAS ACCEPTED — a nameless account can reach the Travelers queue'
+    );
+
+    if (guestLisbon) {
+      const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+      const { error: tripErr } = await sam
+        .from('trips')
+        .insert({ user_id: samId, city_id: guestLisbon.id, start_date: day(2), end_date: day(6) });
+      check('and posts no trips, which is what would match them', Boolean(tripErr));
+    }
+
+    // The bug the founder actually hit: a friend tapped an invite link while
+    // signed out and was told it could not load. The preview was
+    // authenticated-only, so the signed-out branch behind it was unreachable
+    // code. `guest` here is the SIGNED-OUT client, deliberately.
+    const { data: groupId, error: groupErr } = await alex.client.rpc('create_group', {
+      p_name: `Live crew ${RUN}`,
+      p_max_stay_until: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+    });
+    check('a member starts a group', !groupErr && Boolean(groupId), groupErr?.message);
+
+    if (groupId) {
+      const { data: token, error: tokErr } = await alex.client.rpc('group_invite_token', {
+        p_chat_id: groupId,
+      });
+      check('and gets a link for it', !tokErr && Boolean(token), tokErr?.message);
+
+      if (token) {
+        const { data: signedOutPreview, error: soErr } = await guest.rpc('group_invite_preview', {
+          p_token: token,
+        });
+        check(
+          'an invite link opens while SIGNED OUT',
+          !soErr && (signedOutPreview ?? []).length === 1,
+          soErr?.message ?? 'the preview is empty — this is the "invite could not load" bug'
+        );
+        check(
+          'and shows no photo path to somebody outside the group',
+          (signedOutPreview ?? [])[0]?.photo_path == null
+        );
+
+        const { data: joined, error: joinErr } = await sam.rpc('join_group_with_invite', {
+          p_token: token,
+          p_stay_until: new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10),
+        });
+        check(
+          'a guest holding the link joins the group',
+          !joinErr && Boolean(joined?.chat_id),
+          joinErr?.message
+        );
+
+        if (joined?.chat_id) {
+          const { error: sayErr } = await sam
+            .from('messages')
+            .insert({ chat_id: joined.chat_id, sender_id: samId, body: 'just checked in, hi all' });
+          check('and can answer the room', !sayErr, sayErr?.message);
+
+          const { error: photoErr } = await sam.from('messages').insert({
+            chat_id: joined.chat_id,
+            sender_id: samId,
+            body: 'look',
+            image_path: `${samId}/x.jpg`,
+          });
+          check(
+            'but sends no photos, so a free identity never reaches the classifier',
+            Boolean(photoErr)
+          );
+
+          // The promise the whole mechanism was chosen for. GoTrue clears
+          // is_anonymous on the SAME auth row when an email is added, so
+          // there is no data move: the room and the words are already theirs.
+          const samEmail = `${EMAIL_USER}+sw-live-${RUN}-sam@${EMAIL_DOMAIN}`;
+          const { data: upgraded, error: upErr } = await sam.auth.updateUser({
+            email: samEmail,
+            password: `Test-${RUN}-sam-pw1`,
+          });
+          const converted = !upErr && upgraded?.user?.is_anonymous === false;
+          check('a guest becomes a member on the same auth row', converted, upErr?.message);
+
+          if (converted) {
+            users[users.length - 1].email = samEmail;
+            const { data: stillIn } = await sam
+              .from('messages')
+              .select('id')
+              .eq('chat_id', joined.chat_id)
+              .eq('sender_id', samId);
+            check(
+              'keeping the chat they joined and what they said in it',
+              (stillIn ?? []).length === 1
+            );
+
+            // And the refusals lift in the same statement that converted them.
+            const { error: nowErr } = await sam
+              .from('profiles')
+              .update({ onboarding_completed_at: new Date().toISOString(), age: 28 })
+              .eq('user_id', samId);
+            check('and can now finish a real profile', !nowErr, nowErr?.message);
+          }
+        }
+      }
+    }
+  }
 
   // --- the contact form ---------------------------------------------------
   // The app's only published way to reach a human, and App Review exercises
