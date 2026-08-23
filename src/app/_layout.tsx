@@ -193,7 +193,6 @@ function RootNavigator() {
           name="profile/[userId]"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
-        <Stack.Screen name="report" options={{ presentation: 'modal' }} />
         <Stack.Screen name="new-group" options={{ presentation: 'modal' }} />
         <Stack.Screen
           name="group/[id]"
@@ -212,6 +211,14 @@ function RootNavigator() {
       {/* Unguarded for the same reason, and one more: somebody who cannot
           sign in is the person most likely to need to write in. */}
       <Stack.Screen name="contact" options={{ presentation: 'modal' }} />
+      {/* Reporting needs a session, not a profile. A guest in a group is in
+          a chat with strangers like anyone else, and this sat inside the
+          member-only block, so the Report action in their message menu
+          pushed a route that was not registered and did nothing. Safety
+          actions do not get to be the ones that quietly fail. */}
+      <Stack.Protected guard={signedIn}>
+        <Stack.Screen name="report" options={{ presentation: 'modal' }} />
+      </Stack.Protected>
       {/* Typing a name is how somebody with no account BECOMES a guest, so
           it has to mount before there is a session, and again afterwards so
           they can change it. It sat behind `signedIn && onboarded`, which is
