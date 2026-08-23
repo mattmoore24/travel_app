@@ -14,6 +14,7 @@ import { Colors, Spacing, SplashField } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
 import { ResetPasswordScreen } from '@/features/auth/reset-password-screen';
+import { owesOnboarding } from '@/features/auth/routing';
 import { useAuthListener } from '@/features/auth/use-auth-listener';
 import { useAccountStanding, useOwnProfile } from '@/features/profile/hooks';
 import { queryClient } from '@/lib/query-client';
@@ -97,6 +98,9 @@ function RootNavigator() {
 
   const signedIn = session != null;
   const onboarded = profileQuery.data?.onboarding_completed_at != null;
+  // Not `signedIn && !onboarded`: a guest is signed in and can never be
+  // onboarded, so that expression traps them. See features/auth/routing.
+  const needsProfile = owesOnboarding(session, profileQuery.data?.onboarding_completed_at);
   // Hold routing until the persisted session is restored and (when signed in)
   // the first profile + standing fetches settle — otherwise users flash
   // through the wrong stack on cold start.
@@ -146,12 +150,13 @@ function RootNavigator() {
       {/* GUEST MODE: the tabs are the app's front door for everyone. A visitor
           with no account browses the map, reads an establishment room and sees
           one traveler; the account is asked for at the moment of action, not
-          at the door (docs/DESIGN.md). Signed-in-but-unfinished accounts are
-          the one exception — they finish onboarding first. */}
-      <Stack.Protected guard={!signedIn || onboarded}>
+          at the door (docs/DESIGN.md). A half-finished ACCOUNT is the one
+          exception — it finishes onboarding first. A guest is not one of
+          those: they declined the account, so there is nothing to finish. */}
+      <Stack.Protected guard={!needsProfile}>
         <Stack.Screen name="(tabs)" />
       </Stack.Protected>
-      <Stack.Protected guard={signedIn && !onboarded}>
+      <Stack.Protected guard={needsProfile}>
         <Stack.Screen name="onboarding" />
       </Stack.Protected>
       {/* Reachable from every sign-up gate, signed in or not. */}
@@ -175,7 +180,6 @@ function RootNavigator() {
         <Stack.Screen name="edit-prompt" options={{ presentation: 'modal' }} />
         <Stack.Screen name="verification" options={{ presentation: 'modal' }} />
         <Stack.Screen name="visibility" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="guest-name" options={{ presentation: 'modal' }} />
         <Stack.Screen name="add-trip" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compose-request" options={{ presentation: 'modal' }} />
         <Stack.Screen name="drop-pin" options={{ presentation: 'modal' }} />
@@ -206,6 +210,12 @@ function RootNavigator() {
       {/* Unguarded for the same reason, and one more: somebody who cannot
           sign in is the person most likely to need to write in. */}
       <Stack.Screen name="contact" options={{ presentation: 'modal' }} />
+      {/* Typing a name is how somebody with no account BECOMES a guest, so
+          it has to mount before there is a session, and again afterwards so
+          they can change it. It sat behind `signedIn && onboarded`, which is
+          the one pair of states it is never in: "Join with a name" pushed a
+          route that was not registered and nothing happened. */}
+      <Stack.Screen name="guest-name" options={{ presentation: 'modal' }} />
       {/* An invite link can arrive before a person has an account. The screen
           shows what the group is and offers to make one, rather than bouncing
           them to a welcome page that says nothing about why they tapped. */}
