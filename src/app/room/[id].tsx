@@ -15,7 +15,7 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { MaxContentWidth, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { useDiscardFailed, useSendMessage, useSendPhoto } from '@/features/chat/hooks';
-import { useIsGuest } from '@/features/guest/hooks';
+import { useIsGuest, useIsGuestAccount } from '@/features/guest/hooks';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { useGroup } from '@/features/groups/hooks';
 import { useMyChats } from '@/features/matching/hooks';
@@ -42,6 +42,7 @@ export default function RoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
   const isGuest = useIsGuest();
+  const isGuestAccount = useIsGuestAccount();
   const ownId = useOwnUserId();
   const messagesQuery = useRoomMessages(id ?? null);
   const messages = useMemo(() => messagesQuery.data ?? [], [messagesQuery.data]);
@@ -334,18 +335,26 @@ export default function RoomScreen() {
             }
           />
 
-          {/* isGuest FIRST. useMyChats is disabled without a user id, so for a
-              signed-out visitor the query never leaves isPending - and this
-              footer, the only thing on the screen offering an account, never
-              rendered at all. A guest could read a hostel room forever with
-              no way in. */}
-          {isGuest ? (
+          {/* This branch FIRST. useMyChats is disabled without a user id, so
+              for a signed-out visitor the query never leaves isPending - and
+              this footer, the only thing on the screen offering an account,
+              never rendered at all. A visitor could read a venue room
+              forever with no way in.
+
+              `&& !isMember` is what lets a guest use the thing they were
+              invited to. `isGuest` alone answers true for a named guest as
+              well, so somebody who opened a link, typed a name and joined a
+              group was shown "create an account to post" in the group they
+              had just joined - the whole feature, refused by the client in
+              the one place the database allows it. */}
+          {isGuest && !isMember ? (
             <View style={styles.footer}>
-              {/* Deliberately an account and not a name. A guest identity is
-                  scoped to a chat somebody handed them a link to; a venue
-                  room is a public front door, and a free-to-mint identity
-                  posting through it is a different risk. Reading stays open
-                  to everyone, which is what the room is for. */}
+              {/* Deliberately an account and not a name, and this is the
+                  line between the two. A guest identity is scoped to a chat
+                  somebody handed them a link to; a venue room is a public
+                  front door, and a free-to-mint identity posting through it
+                  is a different risk. Reading stays open to everyone, which
+                  is what the room is for. */}
               <SignUpGate
                 reason="Join this room to post"
                 where="room"
@@ -364,15 +373,21 @@ export default function RoomScreen() {
           ) : isMember ? (
             <View style={styles.composerWrap}>
               <View style={styles.composer}>
-                <PhotoButton
-                  busy={sendPhoto.isPending}
-                  onPick={(uri) =>
-                    sendPhoto.mutate(uri, {
-                      onError: () =>
-                        Alert.alert('Could not send', 'Check your connection and try again.'),
-                    })
-                  }
-                />
+                {/* Not for a guest: messages_guest_limits refuses an
+                    image_path outright, so the button could only ever fail.
+                    Photos cost storage and a vision call apiece and a free
+                    identity is the wrong thing to spend them on. */}
+                {isGuestAccount ? null : (
+                  <PhotoButton
+                    busy={sendPhoto.isPending}
+                    onPick={(uri) =>
+                      sendPhoto.mutate(uri, {
+                        onError: () =>
+                          Alert.alert('Could not send', 'Check your connection and try again.'),
+                      })
+                    }
+                  />
+                )}
                 <TextInput
                   testID="room-composer"
                   style={[
