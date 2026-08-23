@@ -913,6 +913,10 @@ export type Database = {
         Args: { p_storage_path: string };
         Returns: { request_id: string; status: 'pending' };
       };
+      set_guest_name: {
+        Args: { p_name: string };
+        Returns: string;
+      };
       my_visibility: {
         Args: Record<string, never>;
         Returns: ProfileAudience;

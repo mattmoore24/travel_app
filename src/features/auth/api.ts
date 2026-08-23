@@ -10,6 +10,55 @@ export async function signInWithEmail(email: string, password: string) {
   }
 }
 
+/**
+ * Become a guest: a real auth user with no email, so a session exists and
+ * everything downstream (RLS, chat membership, message authorship) works
+ * with no second identity system behind it.
+ *
+ * The name is a separate call on purpose. signInAnonymously has to land
+ * first, because set_guest_name writes to the profile row the auth trigger
+ * creates in response to it.
+ */
+export async function signInAsGuest(name: string) {
+  const { error } = await supabase.auth.signInAnonymously();
+  if (error) {
+    throw error;
+  }
+  const { data, error: nameError } = await supabase.rpc('set_guest_name', { p_name: name });
+  if (nameError) {
+    // A guest with no name is worse than no guest: they would show up in a
+    // room as nobody. Undo the half-made identity rather than leave it.
+    await supabase.auth.signOut().catch(() => {});
+    throw nameError;
+  }
+  return data as string;
+}
+
+export async function renameGuest(name: string) {
+  const { data, error } = await supabase.rpc('set_guest_name', { p_name: name });
+  if (error) {
+    throw error;
+  }
+  return data as string;
+}
+
+/**
+ * Turn a guest into a member WITHOUT losing anything they have done.
+ *
+ * updateUser on an anonymous session adds the email to the SAME auth row, so
+ * the user id never changes and every chat, membership and message they
+ * already have simply belongs to a member now. A fresh signUp would mint a
+ * second id and strand all of it, which is the whole reason the guest is an
+ * auth user rather than a row in a table of our own.
+ */
+export async function upgradeGuestToAccount(email: string, password: string) {
+  const { data, error } = await supabase.auth.updateUser({ email, password });
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
 export async function signUpWithEmail(email: string, password: string) {
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) {

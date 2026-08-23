@@ -6,9 +6,10 @@ import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { Space } from '@/constants/theme';
-import { signUpWithEmail } from '@/features/auth/api';
+import { signUpWithEmail, upgradeGuestToAccount } from '@/features/auth/api';
 import { AppleSignInButton } from '@/features/auth/apple-button';
 import { ConsentNote } from '@/features/auth/consent-note';
+import { useIsGuestAccount } from '@/features/guest/hooks';
 import { StepShell } from '@/features/signup/step-shell';
 import { SIGNUP_TOTAL_STEPS } from '@/features/signup/steps';
 import { analytics } from '@/lib/analytics';
@@ -24,6 +25,7 @@ const PASSWORD_MIN = 8;
  * of it (that is what swaps the app from the auth stack to onboarding).
  */
 export default function JoinScreen() {
+  const isGuestAccount = useIsGuestAccount();
   const [step, setStep] = useState<1 | 2>(1);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -55,7 +57,15 @@ export default function JoinScreen() {
     setTaken(false);
     setLoading(true);
     try {
-      await signUpWithEmail(email.trim(), password);
+      // A guest is already an auth user. Adding the email to THAT row keeps
+      // the id, and with it every chat, membership and message they made
+      // while they were a guest. signUpWithEmail would mint a second id and
+      // strand all of it behind an account they can no longer reach.
+      if (isGuestAccount) {
+        await upgradeGuestToAccount(email.trim(), password);
+      } else {
+        await signUpWithEmail(email.trim(), password);
+      }
       haptics.success();
       analytics.capture('signup_step_completed', { step: 'password' });
       // The root guard swaps to the profile steps on the auth event.

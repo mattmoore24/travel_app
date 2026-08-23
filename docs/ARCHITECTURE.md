@@ -273,6 +273,53 @@ moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structure
   action that can't apply to the account's current status (e.g. suspending a banned user)
   raises instead of resolving the report and logging a phantom audit event.
 
+## Guests can chat (Phase 12)
+
+Anonymous sign-in makes a guest a **real auth user** with a normal session. That one
+choice is why the rest is small: a guest is `authenticated`, so RLS, chat membership
+and message authorship need no new paths, and the conversion is free — adding an email
+clears `is_anonymous` on the **same row**, so every chat, membership and message follows
+them. A second identity table would have needed a parallel permission system and a
+hand-written data move.
+
+`public.users.is_guest` mirrors `auth.users.is_anonymous`, maintained by two triggers
+(`handle_new_user` at creation, `sync_guest_flag` at conversion). It has no client write
+grant in any direction, so the only way in is the auth event itself.
+
+**What a guest can do**: read a venue room, join a group they hold a link for, post text
+in a chat they belong to, set and change their own name (`set_guest_name`).
+
+**What a guest cannot do**, each guarded at the _table_ rather than in the RPC above it,
+because the tables that matter all have a SECURITY DEFINER path that sails past a
+missing client grant:
+
+| Refused                         | Where                        | Why                                                                                                             |
+| ------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Stamp `onboarding_completed_at` | `profiles_guest_minimal`     | The single fact keeping guests off every discovery surface — and the column is in the client's own UPDATE grant |
+| A bio, an age, a gender         | same trigger                 | Nothing to leak, and age/gender are what the visibility audiences filter on                                     |
+| Trips, pins                     | `guests_do_not_broadcast`    | The two things that put you in front of strangers                                                               |
+| Say hi to a stranger            | `message_requests_no_guests` | The one chat action that is not "answer the room you were invited to"                                           |
+| Profile photos, verification    | `guests_do_not_upload`       | Storage and a vision call apiece, for a profile that does not exist                                             |
+| Photos in chat                  | `guest_message_limits`       | Keeps a free identity away from the classifier entirely                                                         |
+
+**Abuse ceilings**, three because they fail differently: 10 concurrent chats
+(`guest_membership_cap`), 200 messages a day (under the existing 30-a-minute throttle,
+which catches the slow flood it lets through), and no photos at all.
+
+**The janitor**: `purge_stale_guests()` runs daily at 04:30 UTC and deletes anonymous
+accounts idle 30 days with no live membership. It cascades to their messages, which is
+the point — a throwaway identity is not a place to keep somebody's words forever. A
+member who wants persistence has the account that makes that true.
+
+Venue rooms stay **read-only** for guests: a room is a public front door, and a
+free-to-mint identity posting through one is a different risk from answering a link
+somebody handed you. Reading stays open to everyone, which is what the room is for.
+
+**Founder action required**: anonymous sign-ins must be enabled in the Supabase
+dashboard (Authentication → Sign In / Providers → Anonymous sign-ins), and its rate
+limit set there. Until that is on, "Join with a name" fails and the account path still
+works.
+
 ## Who can see you (Phase 12)
 
 A traveler can narrow the audience for their profile and their pins:

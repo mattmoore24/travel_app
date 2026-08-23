@@ -341,6 +341,11 @@ export default function RoomScreen() {
               no way in. */}
           {isGuest ? (
             <View style={styles.footer}>
+              {/* Deliberately an account and not a name. A guest identity is
+                  scoped to a chat somebody handed them a link to; a venue
+                  room is a public front door, and a free-to-mint identity
+                  posting through it is a different risk. Reading stays open
+                  to everyone, which is what the room is for. */}
               <SignUpGate
                 reason="Join this room to post"
                 where="room"

@@ -14,9 +14,33 @@ import { isSupabaseConfigured, supabase } from '@/lib/supabase';
  * layer and one traveler; the account is only asked for at the moment of
  * action. The split lives here so screens stay declarative — they render
  * whatever the hook returns and show a gate when `isGuest`.
+ *
+ * There are now TWO ways to not be a member, and this hook deliberately
+ * answers true for both. A named guest (anonymous sign-in, 20260823060000)
+ * has a session, so `session == null` alone would have quietly handed them
+ * the whole member app: pins, Travelers, say-hi. Every one of those is
+ * refused by the database, so the only thing that change would have bought
+ * is a screen full of buttons that fail. "Not a member" is the question
+ * every caller is actually asking.
  */
 export function useIsGuest() {
+  return useAuthStore((s) => s.session == null || s.session.user.is_anonymous === true);
+}
+
+/**
+ * No session at all, as opposed to a guest who has one.
+ *
+ * Only for the few places where the difference is the point: whether to
+ * offer "join as a guest" (nothing to join as, yet) versus "make an account"
+ * (they already have a name and a history to carry over).
+ */
+export function useIsSignedOut() {
   return useAuthStore((s) => s.session == null);
+}
+
+/** A guest specifically: named, session-carrying, not a member. */
+export function useIsGuestAccount() {
+  return useAuthStore((s) => s.session?.user.is_anonymous === true);
 }
 
 /**

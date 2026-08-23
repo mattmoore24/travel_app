@@ -14,7 +14,7 @@ import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { NativeAppearance, Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { useGroupInvitePreview, useJoinGroup } from '@/features/groups/hooks';
-import { useIsGuest } from '@/features/guest/hooks';
+import { useIsSignedOut } from '@/features/guest/hooks';
 import { formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { countOf, isAre } from '@/lib/plural';
@@ -30,7 +30,7 @@ import { countOf, isAre } from '@/lib/plural';
 export default function JoinGroupScreen() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const theme = useTheme();
-  const isGuest = useIsGuest();
+  const isSignedOut = useIsSignedOut();
   const preview = useGroupInvitePreview(token ?? null);
   const join = useJoinGroup();
   const group = preview.data ?? null;
@@ -77,16 +77,29 @@ export default function JoinGroupScreen() {
   // 42501 for a signed-out caller and the error branch above caught it, so
   // an invited friend was told the link was broken instead of being shown
   // what they had been invited to.
-  if (isGuest) {
+  //
+  // A name is the whole ask now. The account is offered second because it is
+  // the bigger one, and taking it later costs nothing: the same auth row
+  // gains an email, so this chat comes with them.
+  if (isSignedOut) {
     return (
       <ThemedView style={styles.root}>
         <View style={styles.centered}>
           <ThemedText type="headline">You are invited to {group.name}</ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
             {countOf(group.member_count, 'person', 'people')} {isAre(group.member_count)} in it.
-            Make a profile and you are in.
+            Type a name and you are in.
           </ThemedText>
-          <SignUpGate reason="Join the group" where="group-invite" cta="Make a profile" />
+          <PrimaryButton
+            label="Join with a name"
+            onPress={() =>
+              router.push({
+                pathname: '/guest-name',
+                params: { next: `/join-group/${token}` },
+              })
+            }
+          />
+          <SignUpGate reason="Or make a profile" where="group-invite" cta="Make a profile" />
         </View>
       </ThemedView>
     );

@@ -25,6 +25,18 @@ Updated at every phase boundary (and mid-phase when something changes).
   staggering the later windows gives at least three matches in any city for any trip
   in the next four months. The old single 27-day window was why the tab said nobody
   matched.
+- **An invite link opened for nobody.** `group_invite_preview` was granted to signed-in
+  users only, so a signed-out tap got 42501 and the client turned a permission error
+  into "could not load this invite, try again". The screen already had a branch that
+  shows the group and offers an account; it was unreachable behind that one grant.
+- **Guests can chat.** Anonymous sign-in, a name, and a long list of refusals. See
+  ARCHITECTURE "Guests can chat" for the table of what is blocked where and why, the
+  three abuse ceilings, and the daily janitor. **Needs anonymous sign-ins enabled in the
+  Supabase dashboard before it works.**
+- **Group threads name their senders**, and somebody with no photo gets their initial
+  instead of an empty circle.
+- **Nothing user-facing says "hostel"** any more; hostels stay in the App Store keywords
+  because they are the expected primary users.
 - **The map was too dark to read**, and the cause was two treatments doing the same
   job. `mutedStandard` drops label contrast as well as saturation, and the ink wash
   over it took another third, which put a street name at roughly 2:1 against the

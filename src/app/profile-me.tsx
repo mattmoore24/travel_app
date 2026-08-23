@@ -9,7 +9,6 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BrandDeep, MaxContentWidth, Space } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
-import { useAuthStore } from '@/features/auth/store';
 import { deleteAccount } from '@/features/profile/api';
 import {
   useOwnUserId,
@@ -20,11 +19,19 @@ import {
   useOwnSocialHandles,
 } from '@/features/profile/hooks';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
+import { useIsGuest, useIsGuestAccount } from '@/features/guest/hooks';
 import { useMyTrips } from '@/features/trips/hooks';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
-/** What a signed-out visitor sees when they tap the header avatar. */
-function GuestProfile() {
+/**
+ * What somebody without a profile sees when they tap the header avatar.
+ *
+ * Two people land here now: a visitor with no session at all, and a named
+ * guest who joined a chat from a link. The difference is one string and one
+ * button, so it is one component - a second would be the same scroll view
+ * twice with a different noun in it.
+ */
+function GuestProfile({ guestName }: { guestName: string | null }) {
   return (
     <ThemedView style={styles.root}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.guestContent}>
@@ -43,17 +50,30 @@ function GuestProfile() {
           </View>
         </View>
         <ThemedText type="title" style={styles.guestText}>
-          Browsing as a guest
+          {guestName ? `You are ${guestName} in here` : 'Browsing as a guest'}
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.guestText}>
-          Say hi, drop pins, join the open chats. Takes a minute.
+          {guestName
+            ? 'Chats only for now. A profile adds pins, trips and meeting people, and your chats come with you.'
+            : 'Say hi, drop pins, join the open chats. Takes a minute.'}
         </ThemedText>
+        {/* The founder's "click your own icon to change your name": the
+            avatar in every header lands here, so this is that icon. */}
+        {guestName ? (
+          <PrimaryButton
+            variant="ghost"
+            label="Change my name"
+            onPress={() => router.push('/guest-name')}
+          />
+        ) : null}
         <PrimaryButton label="Make my profile" onPress={() => router.push('/join')} />
-        <PrimaryButton
-          variant="ghost"
-          label="I already have an account"
-          onPress={() => router.push('/email')}
-        />
+        {guestName ? null : (
+          <PrimaryButton
+            variant="ghost"
+            label="I already have an account"
+            onPress={() => router.push('/email')}
+          />
+        )}
         <PrimaryButton
           variant="ghost"
           label="House rules"
@@ -65,7 +85,11 @@ function GuestProfile() {
 }
 
 export default function ProfileScreen() {
-  const signedIn = useAuthStore((s) => s.session) != null;
+  // Not "has a session": a guest has one. The member page below reads
+  // photos, trips, prompts and handles, none of which a guest can have, so
+  // the question is membership.
+  const isGuest = useIsGuest();
+  const isGuestAccount = useIsGuestAccount();
   const { data: profile } = useOwnProfile();
   const ownPhotos = useOwnPhotos();
   const photos = ownPhotos.data ?? [];
@@ -92,9 +116,10 @@ export default function ProfileScreen() {
     );
   }
 
-  if (!signedIn) {
-    return <GuestProfile />;
+  if (isGuest) {
+    return <GuestProfile guestName={isGuestAccount ? (profile?.display_name ?? null) : null} />;
   }
+
   if (!profile) {
     return <ThemedView style={styles.root} />;
   }

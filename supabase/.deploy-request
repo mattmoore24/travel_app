@@ -32,3 +32,4 @@
 2026-08-23 — deploy: who can see you (profile_audience, discovery_pair_ok, gated on the badge)
 2026-08-23 — deploy: verified_nonbinary audience (enum rebuilt, predicates restated)
 2026-08-23 — deploy: an invite link opens for the person it was sent to (anon preview grant)
+2026-08-23 — deploy: guests can chat (is_guest, the refusals, the ceilings, the janitor)
