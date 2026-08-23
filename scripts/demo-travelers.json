@@ -16,7 +16,10 @@
     "three travelers live in every city right now (so every city has avatar",
     "pins), and at least three matches in any city for any trip in the next",
     "four months. Reordering or dropping people breaks that, so re-check the",
-    "coverage if you edit this list."
+    "coverage if you edit this list.",
+    "",
+    "slug is the ACCOUNT identity: it makes the plus-addressed email and it is what purge iterates. Never change a slug without purging first, or the old account survives the purge with nothing pointing at it. Names and genders are free to change; they are just profile fields the seed rewrites.",
+    "Genders are spread so every filter in \"who can see you\" has somebody to find: men in Bangkok, Mexico City and Denpasar; women in all four; non-binary in Lisbon, Bangkok and Denpasar."
   ],
   "people": [
     {
@@ -295,7 +298,7 @@
       "slug": "ines",
       "name": "Ines",
       "age": 31,
-      "gender": "woman",
+      "gender": "nonbinary",
       "occupation": "Works in film, mostly nights",
       "homeCity": "Porto",
       "homeCountry": "PT",
@@ -397,7 +400,7 @@
       "slug": "luca",
       "name": "Luca",
       "age": 25,
-      "gender": "man",
+      "gender": "nonbinary",
       "occupation": "Sound engineer",
       "homeCity": "Milan",
       "homeCountry": "IT",
