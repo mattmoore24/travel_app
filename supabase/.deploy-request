@@ -33,3 +33,4 @@
 2026-08-23 — deploy: verified_nonbinary audience (enum rebuilt, predicates restated)
 2026-08-23 — deploy: an invite link opens for the person it was sent to (anon preview grant)
 2026-08-23 — deploy: guests can chat (is_guest, the refusals, the ceilings, the janitor)
+2026-08-23 — deploy: retry guests-can-chat, without touching auth.users
