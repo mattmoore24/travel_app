@@ -31,8 +31,31 @@ Updated at every phase boundary (and mid-phase when something changes).
   shows the group and offers an account; it was unreachable behind that one grant.
 - **Guests can chat.** Anonymous sign-in, a name, and a long list of refusals. See
   ARCHITECTURE "Guests can chat" for the table of what is blocked where and why, the
-  three abuse ceilings, and the daily janitor. **Needs anonymous sign-ins enabled in the
-  Supabase dashboard before it works.**
+  three abuse ceilings, and the daily janitor. Anonymous sign-ins were enabled in the
+  dashboard on 2026-08-23 (rate limit 150/hour) and live-backend run 11 proves it:
+  40 assertions, 0 failed, including the sign-in itself, the onboarding-stamp refusal,
+  the signed-out invite preview, join-and-post, and conversion keeping the room and the
+  messages on the same auth row.
+- **Three client bugs that no test could have seen.** Every migration assertion and all
+  196 unit tests passed while the feature was unusable end to end, because all three
+  were in routing rather than in logic. The root gated the tabs on `!signedIn ||
+onboarded`, and a guest is signed in and can never be onboarded — the database
+  refuses that stamp on purpose — so typing a name unmounted the tabs and dropped
+  somebody into an onboarding flow whose last step the server would refuse forever.
+  `guest-name` sat inside `signedIn && onboarded`, the one pair of states it is never
+  used in, so "Join with a name" pushed a route that was not registered. And the boot
+  hold, which unmounts the navigator, went up in the same tick `guest-name` called
+  `router.replace(next)`, so a new guest landed on the map instead of the invite. Both
+  root decisions are named, tested functions now (`src/features/auth/routing.ts`).
+- **A guest could not post in the group they had joined.** The room footer branched on
+  `isGuest`, which answers true for a named guest as well as a signed-out visitor, so
+  the client refused the one thing the feature exists for. `isGuest && !isMember` now:
+  a venue room stays a read-only public front door, a chat somebody was handed a link
+  to is theirs to answer.
+- **And that line is in the database now**, not only in the footer. The anon key ships
+  inside the app, so an anonymous sign-in could insert straight into a venue's room. A
+  venue room and a traveler group are the same shape and differ by one row — the group
+  has a `groups` row — so that is the check.
 - **Group threads name their senders**, and somebody with no photo gets their initial
   instead of an empty circle.
 - **Nothing user-facing says "hostel"** any more; hostels stay in the App Store keywords

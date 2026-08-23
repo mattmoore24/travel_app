@@ -282,12 +282,21 @@ clears `is_anonymous` on the **same row**, so every chat, membership and message
 them. A second identity table would have needed a parallel permission system and a
 hand-written data move.
 
-`public.users.is_guest` mirrors `auth.users.is_anonymous`, maintained by two triggers
-(`handle_new_user` at creation, `sync_guest_flag` at conversion). It has no client write
-grant in any direction, so the only way in is the auth event itself.
+There is **no mirrored flag**. `is_guest_account()` reads `auth.users.is_anonymous`
+directly from a SECURITY DEFINER function, costing one primary-key lookup per guarded
+write. The first cut kept a `public.users.is_guest` column in step with two triggers on
+`auth.users`, and every one of those was something that could be refused or drift — the
+migration role does not own that schema on the hosted project, which is how the first
+deploy of this migration failed. Reading the source of truth needs no triggers, makes
+conversion instant because there is no copy to update, and cannot go stale.
 
 **What a guest can do**: read a venue room, join a group they hold a link for, post text
 in a chat they belong to, set and change their own name (`set_guest_name`).
+
+A venue room and a traveler group are the same shape — chats of kind `room` with
+`room_members` — and differ by a single row: the group has a `groups` row naming it.
+That row is what tells "a chat somebody handed you a link to" from "a public front
+door", and it is the check both the room footer and `guest_message_limits` make.
 
 **What a guest cannot do**, each guarded at the _table_ rather than in the RPC above it,
 because the tables that matter all have a SECURITY DEFINER path that sails past a
@@ -301,6 +310,7 @@ missing client grant:
 | Say hi to a stranger            | `message_requests_no_guests` | The one chat action that is not "answer the room you were invited to"                                           |
 | Profile photos, verification    | `guests_do_not_upload`       | Storage and a vision call apiece, for a profile that does not exist                                             |
 | Photos in chat                  | `guest_message_limits`       | Keeps a free identity away from the classifier entirely                                                         |
+| Posting in a venue room         | `guest_message_limits`       | A venue's open room is a public front door; a group they hold a link for is not                                 |
 
 **Abuse ceilings**, three because they fail differently: 10 concurrent chats
 (`guest_membership_cap`), 200 messages a day (under the existing 30-a-minute throttle,
@@ -316,17 +326,11 @@ Deleting a guest cascades to their messages, which is the point — a throwaway 
 is not a place to keep somebody's words forever. A member who wants persistence has the
 account that makes that true.
 
-`is_guest_account()` reads `auth.users.is_anonymous` directly from a SECURITY DEFINER
-function rather than mirroring it into a column. There is no stored copy, so no sync
-trigger, no drift, and conversion is instant: clearing the flag converts them in the
-same statement. The first cut had a `public.users.is_guest` column kept in step by two
-triggers on `auth.users`, and opened by ALTERing that table for local-shim parity —
-which the hosted project refuses outright, and which passed the local suite only because
-the throwaway cluster has one owner for everything.
-
 Venue rooms stay **read-only** for guests: a room is a public front door, and a
 free-to-mint identity posting through one is a different risk from answering a link
 somebody handed you. Reading stays open to everyone, which is what the room is for.
+Enforced in `guest_message_limits` as well as in the room footer — the anon key ships
+inside the app, so a rule that lives only in the client is not a rule.
 
 **Founder action required**: anonymous sign-ins must be enabled in the Supabase
 dashboard (Authentication → Sign In / Providers → Anonymous sign-ins), and its rate
