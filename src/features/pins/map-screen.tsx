@@ -32,6 +32,7 @@ import {
 } from '@/constants/theme';
 import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
 import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
+import { AudienceChip } from '@/features/pins/audience-chip';
 import { audienceInSentence } from '@/features/profile/audience';
 import {
   CITY_ZOOM_DELTA,
@@ -902,54 +903,72 @@ export default function MapScreen() {
             </ScrollView>
           </View>
           <View style={styles.dateRow}>
-            {/* Down here, not over the city rail.
-                As a flex sibling of the rail it guillotined whichever chip
-                was two-thirds across; floating it over the rail instead left
-                the fourth city permanently half-covered at rest, which reads
-                the same way. There are four launch cities and they do not fit
-                beside a 44pt button, so the button moves. This row is three
-                short chips and then nothing, which is exactly the dead space
-                a floating control wants, and the rail now runs the full width
-                of the screen with nothing on top of it. */}
-            <View style={styles.avatarDock} pointerEvents="box-none">
-              <AvatarButton />
-            </View>
-            {DATE_FILTERS.map((filter) => {
-              const selected = filter.value === dateFilter;
-              return (
-                <PressableScale
-                  key={filter.value}
-                  accessibilityRole="button"
-                  accessibilityLabel={filter.label}
-                  accessibilityState={{ selected }}
-                  // The chip is drawn at 30pt on purpose, over a map that
-                  // needs the room. The target is 44.
-                  hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
-                  haptic="selection"
-                  scaleTo={0.94}
-                  onPress={() => setDateFilter(filter.value)}>
-                  {/* Selection means the same thing on both rails: accent
+            {/* The row scrolls now, and the avatar is a real sibling at the
+                end of it rather than a floating overlay.
+
+                It used to be absolutely positioned, on the reasoning that
+                this row is "three short chips and then nothing" - true while
+                the row only ever held three short chips. The audience chip
+                below is a fourth and it can read "Verified non-binary": three
+                date chips leave about 90pt clear of the avatar on a 375pt
+                screen and that label needs about 165, so a fourth chip would
+                have run underneath it.
+
+                A scrolling box that ENDS where the avatar begins fixes it for
+                any label at any width, and it does not repeat the mistake the
+                city rail already paid for: content clips at the avatar's edge
+                instead of sliding under it, so nothing is ever half-covered
+                at rest. */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.dateChips}
+              style={styles.dateScroll}>
+              {DATE_FILTERS.map((filter) => {
+                const selected = filter.value === dateFilter;
+                return (
+                  <PressableScale
+                    key={filter.value}
+                    accessibilityRole="button"
+                    accessibilityLabel={filter.label}
+                    accessibilityState={{ selected }}
+                    // The chip is drawn at 30pt on purpose, over a map that
+                    // needs the room. The target is 44.
+                    hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
+                    haptic="selection"
+                    scaleTo={0.94}
+                    onPress={() => setDateFilter(filter.value)}>
+                    {/* Selection means the same thing on both rails: accent
                       fill, ink on top. The date chips used to say it in a
                       third language (soft fill, accent border), so two rows
                       eight points apart disagreed about what "on" looks
                       like. */}
-                  <View
-                    style={[
-                      styles.dateChip,
-                      {
-                        backgroundColor: selected ? theme.accent : theme.surface,
-                        borderColor: selected ? 'transparent' : theme.hairline,
-                      },
-                    ]}>
-                    <ThemedText
-                      type="footnote"
-                      style={selected ? { color: theme.onAccent, fontWeight: '700' } : undefined}>
-                      {filter.label}
-                    </ThemedText>
-                  </View>
-                </PressableScale>
-              );
-            })}
+                    <View
+                      style={[
+                        styles.dateChip,
+                        {
+                          backgroundColor: selected ? theme.accent : theme.surface,
+                          borderColor: selected ? 'transparent' : theme.hairline,
+                        },
+                      ]}>
+                      <ThemedText
+                        type="footnote"
+                        style={selected ? { color: theme.onAccent, fontWeight: '700' } : undefined}>
+                        {filter.label}
+                      </ThemedText>
+                    </View>
+                  </PressableScale>
+                );
+              })}
+
+              {/* Renders nothing while the audience is open, so the common
+                  case is the same three chips it has always been. */}
+              <AudienceChip audience={audience} />
+            </ScrollView>
+            <View style={styles.avatarDock}>
+              <AvatarButton />
+            </View>
           </View>
         </View>
       ) : null}
@@ -1322,8 +1341,10 @@ const styles = StyleSheet.create({
   },
   dateRow: {
     flexDirection: 'row',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.three,
+    alignItems: 'center',
+    // The horizontal padding moved into the scroll view's content, so the
+    // first chip still starts where it always did while the scrollable area
+    // itself runs to the avatar.
     marginTop: Spacing.two,
   },
   dateChip: {
@@ -1415,15 +1436,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarDock: {
-    position: 'absolute',
-    right: Spacing.three,
-    // Anchored to the date row and allowed to stand proud of it: the button
-    // is taller than a date chip, and centring it on the row is what keeps it
-    // reading as one piece of chrome with the rail above rather than as a
-    // third row.
-    top: -6,
-    bottom: -6,
+    // A flex sibling at the end of the row, not an overlay. The button is
+    // taller than a date chip, so it stands proud of the row by the same 6pt
+    // it used to, which is what keeps it reading as one piece of chrome with
+    // the rail above rather than as a third row.
+    marginVertical: -6,
+    marginRight: Spacing.three,
     justifyContent: 'center',
+  },
+  dateScroll: {
+    flex: 1,
+  },
+  dateChips: {
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    alignItems: 'center',
   },
   cityScroll: {
     flex: 1,
