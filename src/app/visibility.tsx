@@ -105,14 +105,6 @@ export default function VisibilityScreen() {
         );
       })}
 
-      {/* Unconditional. The both-ways rule used to live in here inside the
-          `verified` branch, which hid it from exactly the person deciding
-          whether the badge is worth a selfie. */}
-      <ThemedText type="footnote" themeColor="textSecondary">
-        Verified means they passed the selfie check. The three gendered options go by the gender on
-        a profile, so anyone who has not set one is in none of them.
-      </ThemedText>
-
       {/* The consequence, said before it is discovered. A narrowed audience
           empties the Travelers queue and thins the map, and being told that
           here is the difference between a working filter and a broken app. */}
@@ -122,6 +114,10 @@ export default function VisibilityScreen() {
         </ThemedText>
       ) : null}
 
+      {/* Directly under the rows, ABOVE the explanation below it. The
+          explanation went in first and pushed this off the bottom of a 6.1"
+          screen, which buried the one button that does anything for the
+          person reading it. E2E run 55 photographed that. */}
       {verified ? null : (
         <>
           <ThemedText type="footnote" themeColor="textSecondary">
@@ -134,6 +130,15 @@ export default function VisibilityScreen() {
           />
         </>
       )}
+
+      {/* Unconditional, and last: it explains rather than acts. The both-ways
+          rule used to live in here inside the `verified` branch, which hid it
+          from exactly the person deciding whether the badge is worth a
+          selfie. */}
+      <ThemedText type="footnote" themeColor="textSecondary">
+        Verified means they passed the selfie check. The three gendered options go by the gender on
+        a profile, so anyone who has not set one is in none of them.
+      </ThemedText>
     </StepScreen>
   );
 }
