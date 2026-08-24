@@ -179,9 +179,12 @@ export default function ProfileScreen() {
                   onPress={() => router.push('/verification')}
                 />
               ) : null}
+              {/* Named for what it does in both directions, like the screen
+                  it opens. "Who can see you" described half of it, and half
+                  is what got tested and reported as broken. */}
               <PrimaryButton
                 variant="ghost"
-                label="Who can see you"
+                label="Who you see, and who sees you"
                 onPress={() => router.push('/visibility')}
               />
               <PrimaryButton

@@ -145,6 +145,29 @@ appId: com.mattmoore.samewhere
     timeout: 15000
 - takeScreenshot: 18-profile-me
 
+# WHO YOU SEE, AND WHO SEES YOU
+#
+# The founder set this to verified only, read the screen, and still expected a
+# one-way filter, so every string on it was rewritten to name both directions.
+# Only a picture shows whether the hierarchy actually carries that now: the
+# sentence was always there, it was just the smallest thing on the screen.
+#
+# This account is not verified, so the rows below Everyone are inert here.
+# That is the state worth photographing anyway: it is what somebody deciding
+# whether the badge is worth a selfie sees, and it is exactly who the
+# both-ways note used to be hidden from.
+- scrollUntilVisible:
+    element:
+      text: 'Who you see, and who sees you'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Who you see, and who sees you'
+- extendedWaitUntil:
+    visible: 'Verified non-binary.*'
+    timeout: 15000
+- takeScreenshot: 18b-who-can-see-you
+- tapOn: 'Done'
+
 # HOUSE RULES AND THE CONTACT FORM
 #
 # App Review 1.2 wants both reachable from inside the app, and this form is
