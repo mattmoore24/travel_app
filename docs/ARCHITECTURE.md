@@ -374,15 +374,40 @@ none of them. `verified_nonbinary` was added a revision after the rest (founder,
 asked for and never ask. The three are siblings, not a hierarchy: asking for one gendered
 audience does not put you in another.
 
-**Testing it against demo travelers** needs at least one of them verified, and the seed
-script is anon-key-only by design (it can do nothing a real user could not, and
-`profiles.verified` has no client grant). Flip a couple by hand in the Supabase SQL
-editor:
+**Testing it against demo travelers** needs them verified, and the seed script is
+anon-key-only by design (it can do nothing a real user could not, and `profiles.verified`
+has no client grant, so only `apply_verification_verdict` behind the service role ever
+sets it). Flip them by hand in the Supabase SQL editor:
 
 ```sql
-update public.profiles set verified = true
-where user_id in (select user_id from public.profiles where bio like '%[demo]%' limit 4);
+-- How many hold the badge right now.
+select count(*) filter (where verified) as verified, count(*) as demo_total
+from public.profiles where bio like '%[demo]%';
+
+-- All twelve. Undo with `false`.
+update public.profiles set verified = true where bio like '%[demo]%';
 ```
+
+**All twelve, not a sample.** An earlier version of this said `limit 4`, with no
+`order by` and no city or gender filter, which picks an arbitrary four of twelve spread
+over four cities and four staggered trip windows. Expected yield is one verified traveler
+per city, with a real chance of zero in the city you happen to be testing from, and the
+gendered audiences fare worse. That produced a correctly-empty queue that read as a
+broken filter (founder, 2026-08-23).
+
+Even with all twelve verified the gendered audiences are thin today, because window-0
+membership is fixed by index in `scripts/demo-travelers.json`:
+
+| city today  | men | women | non-binary |
+| ----------- | --- | ----- | ---------- |
+| Lisbon      | 0   | 2     | 1          |
+| Bangkok     | 2   | 0     | 1          |
+| Mexico City | 1   | 2     | 0          |
+| Denpasar    | 1   | 1     | 1          |
+
+**Denpasar is the only city where all three gendered audiences have somebody today**, so
+test those from a Denpasar trip. This is a property of the demo roster, not of the
+feature.
 
 ## Launch hardening (Phase 6)
 

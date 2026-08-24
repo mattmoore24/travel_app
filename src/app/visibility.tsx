@@ -7,20 +7,34 @@ import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { HitTarget, Radius, Space } from '@/constants/theme';
+import { AUDIENCE_LABEL } from '@/features/profile/audience';
 import { useOwnProfile, useOwnVisibility, useSetVisibility } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import type { ProfileAudience } from '@/lib/database.types';
 
-const OPTIONS: { value: ProfileAudience; label: string; detail: string }[] = [
-  { value: 'everyone', label: 'Everyone', detail: 'Anyone travelling where you are' },
-  { value: 'verified', label: 'Verified only', detail: 'People who passed the selfie check' },
-  { value: 'verified_men', label: 'Verified men', detail: 'Verified, and men' },
-  { value: 'verified_women', label: 'Verified women', detail: 'Verified, and women' },
+// Every detail line names BOTH directions. They used to describe a set
+// ("People who passed the selfie check"), which reads as a one-way filter on
+// what you are shown, and the founder tested it believing exactly that. The
+// detail is also the VoiceOver label for the row, so a one-way description
+// was the only thing a VoiceOver user got.
+const OPTIONS: { value: ProfileAudience; detail: string }[] = [
+  { value: 'everyone', detail: 'No filter, either way' },
+  {
+    value: 'verified',
+    detail: 'Only verified travelers see you, and they are the only ones you see',
+  },
+  {
+    value: 'verified_men',
+    detail: 'Only verified men see you, and they are the only ones you see',
+  },
+  {
+    value: 'verified_women',
+    detail: 'Only verified women see you, and they are the only ones you see',
+  },
   {
     value: 'verified_nonbinary',
-    label: 'Verified non-binary',
-    detail: 'Verified, and non-binary',
+    detail: 'Only verified non-binary travelers see you, and they are the only ones you see',
   },
 ];
 
@@ -52,8 +66,8 @@ export default function VisibilityScreen() {
 
   return (
     <StepScreen
-      title="Who can see you"
-      subtitle="Your profile and your pins, on the map and in Travelers. Chat is not affected: anyone can still message you."
+      title="Who you see, and who sees you"
+      subtitle="One setting, both ways. Only the people you pick can see you, and they are the only people you see on the map and in Travelers. Chat is separate: anyone can still message you."
       continueLabel="Done"
       onContinue={() => router.back()}>
       {OPTIONS.map((option) => {
@@ -64,7 +78,7 @@ export default function VisibilityScreen() {
             key={option.value}
             accessibilityRole="radio"
             accessibilityState={{ selected: active, disabled: locked }}
-            accessibilityLabel={`${option.label}. ${option.detail}`}
+            accessibilityLabel={`${AUDIENCE_LABEL[option.value]}. ${option.detail}`}
             scaleTo={locked ? 1 : 0.985}
             onPress={() => pick(option.value)}
             style={[
@@ -75,7 +89,7 @@ export default function VisibilityScreen() {
               },
             ]}>
             <View style={styles.rowText}>
-              <ThemedText type="callout">{option.label}</ThemedText>
+              <ThemedText type="callout">{AUDIENCE_LABEL[option.value]}</ThemedText>
               <ThemedText type="footnote" themeColor="textSecondary">
                 {option.detail}
               </ThemedText>
@@ -91,13 +105,24 @@ export default function VisibilityScreen() {
         );
       })}
 
-      {verified ? (
+      {/* Unconditional. The both-ways rule used to live in here inside the
+          `verified` branch, which hid it from exactly the person deciding
+          whether the badge is worth a selfie. */}
+      <ThemedText type="footnote" themeColor="textSecondary">
+        Verified means they passed the selfie check. The three gendered options go by the gender on
+        a profile, so anyone who has not set one is in none of them.
+      </ThemedText>
+
+      {/* The consequence, said before it is discovered. A narrowed audience
+          empties the Travelers queue and thins the map, and being told that
+          here is the difference between a working filter and a broken app. */}
+      {audience !== 'everyone' ? (
         <ThemedText type="footnote" themeColor="textSecondary">
-          It works both ways. Pick verified women and that is who sees you, and who you see. The
-          gendered ones match the gender on a profile, so anyone who has not set one is in none of
-          them.
+          While this is on, expect fewer travelers in Travelers and fewer pins on the map.
         </ThemedText>
-      ) : (
+      ) : null}
+
+      {verified ? null : (
         <>
           <ThemedText type="footnote" themeColor="textSecondary">
             You need the badge before you can ask other people for one.

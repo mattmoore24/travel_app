@@ -4,7 +4,7 @@
 -- that it hides in BOTH directions, that it hides on BOTH surfaces, and that
 -- it leaves chat completely alone.
 begin;
-select plan(28);
+select plan(31);
 
 insert into auth.users (id, email) values
   -- ann: verified woman, wants verified men only
@@ -216,6 +216,36 @@ select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
 select ok(
   exists (select 1 from public.city_pins(pg_temp.lisbon()) where seeded),
   'curated pins are nobody''s audience and stay on the map');
+
+-- And the map a SIGNED-OUT visitor sees, which is a different function.
+--
+-- This was the half the first cut missed (20260823140000). The migration
+-- reasoned about the guest case for featured_traveler and not for
+-- public_city_pins, so somebody who narrowed to verified was correctly gone
+-- from the queue and from the signed-in map, and their pin stayed on the map
+-- of every logged-out visitor - the one direction the setting exists to
+-- control. Ann is narrowed here; Bea is not.
+-- The two pin ids are carried in settings rather than joined back to
+-- public.pins: the caller below is anon, and anon cannot read that table.
+select set_config('test.ann_pin',
+  (select id::text from public.pins
+    where user_id = '00000000-0000-0000-0000-0000000000a1' limit 1), false);
+select set_config('test.bea_pin',
+  (select id::text from public.pins
+    where user_id = '00000000-0000-0000-0000-0000000000b1' limit 1), false);
+
+select pg_temp.guest();
+select ok(
+  current_setting('test.bea_pin')::uuid in
+    (select id from public.public_city_pins(pg_temp.lisbon())),
+  'an open traveler is still on the signed-out map');
+select ok(
+  current_setting('test.ann_pin')::uuid not in
+    (select id from public.public_city_pins(pg_temp.lisbon())),
+  'and a narrowed one is not, because a guest is in nobody''s narrowed audience');
+select ok(
+  exists (select 1 from public.public_city_pins(pg_temp.lisbon()) where seeded),
+  'while the curated pin, which has no owner to have a setting, stays');
 
 
 -- 4. The heatmap is aggregate and deliberately untouched ---------------------------

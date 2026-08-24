@@ -107,8 +107,57 @@ describe('a verified traveler', () => {
     expect(mockMutate).not.toHaveBeenCalled();
   });
 
-  it('is told the setting cuts both ways', () => {
+  // The warning that explains an empty Travelers queue before somebody
+  // reports it as a broken filter. Only while a narrowing is actually on.
+  it('is warned that a narrowed audience thins both surfaces', () => {
+    mockState.audience = 'verified';
     show();
-    expect(screen.getByText(/works both ways/i)).toBeTruthy();
+    expect(screen.getByText(/fewer travelers/i)).toBeTruthy();
+  });
+
+  it('and is not warned when no narrowing is on', () => {
+    show();
+    expect(screen.queryByText(/fewer travelers/i)).toBeNull();
+  });
+});
+
+// The founder set this to verified only, read the screen, and still expected
+// a one-way filter. The both-ways rule was on the screen but it was the
+// smallest thing on it AND it was inside the `verified` branch, so the person
+// deciding whether the badge is worth a selfie never saw it at all.
+describe('the both-ways rule', () => {
+  it('is in the title, where it cannot be missed', () => {
+    show();
+    expect(screen.getByText(/who you see, and who sees you/i)).toBeTruthy();
+  });
+
+  it('is in the subtitle in both directions', () => {
+    show();
+    expect(screen.getByText(/can see you, and they are the only people you see/i)).toBeTruthy();
+  });
+
+  it.each([
+    ['unverified', false],
+    ['verified', true],
+  ])('reaches a %s traveler, since both are choosing', (_name, verified) => {
+    mockState.verified = verified;
+    show();
+    expect(screen.getByText(/passed the selfie check/i)).toBeTruthy();
+  });
+
+  // These are the VoiceOver labels too, so a one-way description was the
+  // whole of what a VoiceOver user was told.
+  it('is in every option that narrows, not only in the prose', () => {
+    show();
+    for (const label of [
+      'Verified only',
+      'Verified men',
+      'Verified women',
+      'Verified non-binary',
+    ]) {
+      expect(row(label).props.accessibilityLabel).toMatch(
+        /see you, and they are the only ones you see/i
+      );
+    }
   });
 });

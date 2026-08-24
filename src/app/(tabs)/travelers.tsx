@@ -36,7 +36,13 @@ import {
   useSentRequests,
 } from '@/features/matching/hooks';
 import { usePassedTravelers } from '@/features/matching/passed';
-import { useProfilePrompts, usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
+import { AUDIENCE_LABEL, audienceInSentence } from '@/features/profile/audience';
+import {
+  useOwnVisibility,
+  useProfilePrompts,
+  usePublicPhotos,
+  usePublicProfile,
+} from '@/features/profile/hooks';
 import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { formatDate, formatDateRange, toISODate } from '@/features/trips/dates';
@@ -483,6 +489,10 @@ export default function TravelersScreen() {
   const { data: chats = [] } = useMyChats();
   const passed = usePassedTravelers();
   const { data: spotlight } = useDailySpotlight();
+  // Above every early return, so hook order stays stable. This screen used
+  // to have no idea the setting existed, which is why an empty queue said
+  // "that's everyone" whatever the reason.
+  const { data: audience = 'everyone' } = useOwnVisibility();
 
   useEffect(() => {
     analytics.capture('travelers_viewed');
@@ -610,10 +620,23 @@ export default function TravelersScreen() {
     // legible: "nobody, ever" and "nobody whose Bangkok dates cross mine
     // this week" are very different messages, and only one of them is true.
     const cityNames = Array.from(new Set(trips.map((trip) => trip.cities.name)));
-    const headline =
-      cityNames.length === 1
+    // The third reason a queue can be empty, and the one this screen used to
+    // state the opposite of. "That's everyone" is a claim about supply; when
+    // the viewer's own audience is what removed people, it is simply false,
+    // and the founder read it and reported the filter as broken. Nothing on
+    // the screen led back to the setting either: all three buttons were
+    // supply actions.
+    const filtered = audience !== 'everyone';
+    const headline = filtered
+      ? cityNames.length === 1
+        ? `Nobody in ${cityNames[0]} fits who you asked to see`
+        : 'Nobody on your dates fits who you asked to see'
+      : cityNames.length === 1
         ? `That's everyone in ${cityNames[0]} with travel plans matching yours`
         : "That's everyone with travel plans matching yours";
+    const body = filtered
+      ? `You are set to ${audienceInSentence(audience)}. It works both ways, so this hides you from everyone else too.`
+      : 'More show up every day.';
     return (
       <ThemedView style={styles.root}>
         <ProfileCorner />
@@ -625,13 +648,23 @@ export default function TravelersScreen() {
             {headline}
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-            More show up every day.
+            {body}
           </ThemedText>
           {/* navigate, not push: pushing '/(tabs)' from inside the tabs
               stacks a SECOND copy of the whole tab navigator on the root
               stack rather than switching to Map, so the way back was a
               gesture nobody would guess at. */}
-          <PrimaryButton label="Drop a pin" onPress={() => router.navigate('/(tabs)')} />
+          {filtered ? (
+            <PrimaryButton
+              label={`Change who you see (${AUDIENCE_LABEL[audience]})`}
+              onPress={() => router.push('/visibility')}
+            />
+          ) : null}
+          <PrimaryButton
+            variant={filtered ? 'ghost' : undefined}
+            label="Drop a pin"
+            onPress={() => router.navigate('/(tabs)')}
+          />
           <PrimaryButton
             variant="ghost"
             label="Add another trip"

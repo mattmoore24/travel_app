@@ -28,6 +28,7 @@ import type {
   SocialPlatform,
 } from '@/lib/database.types';
 import { analytics } from '@/lib/analytics';
+import { invalidateDiscoverySurfaces } from '@/features/profile/discovery-cache';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export function useOwnUserId() {
@@ -207,10 +208,13 @@ export function useSetVisibility() {
     mutationFn: (audience: ProfileAudience) => setOwnVisibility(audience),
     onSuccess: (audience) => {
       queryClient.setQueryData(['visibility', userId], audience);
-      // The setting cuts both ways, so the two discovery surfaces are now
-      // showing a queue and a map built for the old audience.
-      queryClient.invalidateQueries({ queryKey: ['matches'] });
-      queryClient.invalidateQueries({ queryKey: ['city-pins'] });
+      // The setting cuts both ways, so every discovery surface is now showing
+      // a queue and a map built for the old audience. The list of them lives
+      // in discovery-cache because this call site got it wrong once: it named
+      // the web list's key and not the native map's, so on a phone it
+      // invalidated nothing and the map sat on the old audience for up to a
+      // minute. That was the "takes a while to update".
+      invalidateDiscoverySurfaces(queryClient);
     },
   });
 }

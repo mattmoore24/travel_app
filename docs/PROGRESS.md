@@ -78,6 +78,40 @@ onboarded`, and a guest is signed in and can never be onboarded — the database
   ARCHITECTURE "Who can see you" for the three boundaries it respects and why the
   heatmap is deliberately outside them.
 
+### Phase 12 — the filter, after the founder tested it
+
+Three complaints, one real code defect between them, and a lot of copy that made a
+working feature read as a broken one.
+
+- **The map lagged the setting by up to a minute.** `useSetVisibility` invalidated
+  `['city-pins']`, which is the WEB pin list; the native map reads
+  `['map-pins', cityId, isGuest]`. On a phone the invalidation matched nothing, so the
+  map sat on the old audience until its 60-second poll. `useCreatePin` had already paid
+  for this exact trap and invalidates both families with a comment saying why. The key
+  list now lives in `src/features/profile/discovery-cache.ts` with its own test, because
+  the call site is where it went wrong.
+- **"Verified only" emptied the Travelers queue, and the screen said "that's everyone".**
+  The SQL is correct: nothing in the app can set `profiles.verified` (only
+  `apply_verification_verdict`, behind the service role), so an audience is only as
+  populated as the by-hand flip makes it. The defect was the empty state asserting a
+  supply problem it had not checked. It names the audience now, says the setting cuts
+  both ways, and leads with a button back to the picker. The map's empty banner does the
+  same.
+- **The picker framed the setting one way five times and corrected itself once**, in
+  13pt secondary text, last on the screen, inside a `verified` branch that hid it from
+  the person deciding whether the badge is worth a selfie. Title, subtitle and all five
+  option details now name both directions, and the both-ways note is unconditional.
+- **The audience did not reach the signed-out map.** 20260823030000 reasoned about the
+  guest case for `featured_traveler` and not for `public_city_pins`, the other function
+  granted to `anon`, so a traveler who narrowed to verified was hidden from the queue and
+  the signed-in map and still pinned on every logged-out visitor's. That is the one
+  direction the setting exists to control. Fixed in 20260823140000.
+- **The documented verification SQL was non-deterministic.** `limit 4` with no
+  `order by`, over twelve travelers in four cities on four staggered windows, yields
+  about one verified traveler per city and a real chance of zero in the city you are
+  testing from. It flips all twelve now, and ARCHITECTURE carries the per-city gender
+  spread so the gendered audiences are tested where they can pass.
+
 ### Phase 12 — founder questions
 
 - **Verifying demo travelers.** Testing the new audiences end to end needs a verified

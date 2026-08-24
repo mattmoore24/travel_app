@@ -9,11 +9,14 @@
 #
 # Seeding cannot mark anybody verified: this runs on the anon key on purpose,
 # and profiles.verified has no client grant. To test the "who can see you"
-# audiences, flip a few by hand in the Supabase SQL editor:
+# audiences, flip them by hand in the Supabase SQL editor:
 #
-#   update public.profiles set verified = true
-#   where user_id in (
-#     select user_id from public.profiles where bio like '%[demo]%' limit 4);
+#   update public.profiles set verified = true where bio like '%[demo]%';
+#
+# ALL of them, not a sample. This used to say `limit 4`, with no order by, so
+# it picked an arbitrary four across four cities and four staggered trip
+# windows and usually left the city you were testing from with nobody. See
+# docs/ARCHITECTURE.md "Who can see you" for the per-city gender spread.
 #
 # Secrets: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY, DEMO_PASSWORD
 name: Demo travelers

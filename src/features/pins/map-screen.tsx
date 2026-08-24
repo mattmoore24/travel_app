@@ -32,6 +32,7 @@ import {
 } from '@/constants/theme';
 import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
 import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
+import { audienceInSentence } from '@/features/profile/audience';
 import {
   CITY_ZOOM_DELTA,
   clusterPins,
@@ -56,7 +57,7 @@ import { PinSearchField } from '@/features/pins/pin-search-field';
 import type { LocalSearchResult } from '@/modules/local-search';
 import { PlacePinOverlay } from '@/features/pins/place-pin-overlay';
 import { burnOutLabel, filterDates, intentLabel } from '@/features/pins/pin-helpers';
-import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
+import { useOwnUserId, useOwnVisibility, usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
@@ -518,6 +519,9 @@ export default function MapScreen() {
   const heatCells = useMemo(() => mergeHeatCells(heat), [heat]);
   const legend = useHeatLegend(heatCells.length > 0);
   const isGuest = useIsGuest();
+  // A guest has no setting of their own, and the hook is disabled without a
+  // user id, so this falls back to 'everyone' for them.
+  const { data: audience = 'everyone' } = useOwnVisibility();
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
   // Every other gate in the app states its reason before it asks. Dropping a
   // pin was the one that did not: it teleported a guest to an email form with
@@ -1029,10 +1033,16 @@ export default function MapScreen() {
             { bottom: BottomTabInset + insets.bottom + Spacing.five + 64 },
           ]}>
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
+            {/* The audience wins over the date, because it is the filter
+                with nothing on screen to show it is on. The date filter has
+                three chips saying so; a narrowed audience removed pins and
+                said nothing at all, which reads as an empty city. */}
             <ThemedText type="smallBold">
-              {dateFilter === 'all'
-                ? `No pins in ${activeCity.cities.name} yet`
-                : `Nothing pinned for ${dateFilter} yet`}
+              {audience !== 'everyone'
+                ? `Nothing pinned for ${audienceInSentence(audience)} yet`
+                : dateFilter === 'all'
+                  ? `No pins in ${activeCity.cities.name} yet`
+                  : `Nothing pinned for ${dateFilter} yet`}
             </ThemedText>
             <ThemedText type="footnote" themeColor="textSecondary">
               Be the first.

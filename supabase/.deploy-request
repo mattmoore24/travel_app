@@ -35,3 +35,4 @@
 2026-08-23 — deploy: guests can chat (is_guest, the refusals, the ceilings, the janitor)
 2026-08-23 — deploy: retry guests-can-chat, without touching auth.users
 2026-08-23 — deploy: venue rooms stay read-only for a guest, in the database and not just the client
+2026-08-23 — deploy: the audience setting reaches the signed-out map too (public_city_pins)
