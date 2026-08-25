@@ -14,7 +14,7 @@ import { AvatarButton } from '@/components/ui/avatar-button';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { LoadError } from '@/components/ui/load-error';
-import { MAP_WASH, QUIET_BASEMAP, pointsOfInterest, washBox } from '@/features/pins/basemap';
+import { MAP_WASH, QUIET_BASEMAP, SHOW_POINTS_OF_INTEREST, washBox } from '@/features/pins/basemap';
 import { Sheet, SHEET_SETTLE_MS, leavingSheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
@@ -497,7 +497,6 @@ export default function MapScreen() {
   const mapRef = useRef<MapView>(null);
   // Only so the points of interest can be turned off in a later commit than
   // the map type. See features/pins/basemap.
-  const [mapReady, setMapReady] = useState(false);
   const launchCitiesQuery = useLaunchCities();
   const launchCities = launchCitiesQuery.data ?? [];
   const [cityId, setCityId] = useState<number | null>(null);
@@ -666,12 +665,10 @@ export default function MapScreen() {
             latitudeDelta: 0.09,
             longitudeDelta: 0.09,
           }}
-          // The ground is a stage, not a map to read. See features/pins/basemap
-          // for what each of these does and why the points of interest need a
-          // render of their own. Yes, the prop is the plural spelling.
+          // See features/pins/basemap for what each of these does. Yes, the
+          // POI prop is the plural spelling.
           {...QUIET_BASEMAP}
-          showsPointsOfInterests={pointsOfInterest(mapReady)}
-          onMapReady={() => setMapReady(true)}
+          showsPointsOfInterests={SHOW_POINTS_OF_INTEREST}
           scrollEnabled={mode !== 'detail'}
           onPress={() => {
             if (mode === 'browse') {

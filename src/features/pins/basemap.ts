@@ -27,10 +27,8 @@
  * comes back with it - park green, water blue - which is what the wash is
  * still here for, at a third of its old strength.
  *
- * It does NOT remove labels and does NOT remove POI icons - see
- * POINTS_OF_INTEREST below for that half. Switching the value does not
- * change the write-ordering trap documented there: mapType is still written
- * once, on mount, whichever type it is.
+ * It does NOT remove labels, and as of 2026-08-24 it does not remove the
+ * points of interest either - see SHOW_POINTS_OF_INTEREST below.
  *
  * rotate and pitch are off because the compass on iOS is adaptive: it appears
  * the moment the map is rotated off north, so refusing the rotation retires
@@ -58,30 +56,39 @@ export const QUIET_BASEMAP = {
 } as const;
 
 /**
- * Why turning the points of interest off needs a second render.
+ * The places stay on the map. Founder, 2026-08-24:
  *
- * On iOS 16+ the POI prop is implemented by copying MKMapView's
+ *   "I liked when you could see all of the names of places/restaurants/other
+ *    that are usually visible in the map alongside people's pins."
+ *
+ * They had been turned off, on the reasoning that Apple's bright pills for
+ * restaurants and bars compete with our amber pins in exactly the categories
+ * this app is about. That reasoning was about the pins winning the eye. It is
+ * not worth what it cost: a plan to meet at a bar is only useful if you can
+ * see which bar, and a map with no names on it is a map you cannot navigate
+ * by. The wash (MAP_WASH) is what keeps our pins the brightest thing, and it
+ * still does that job with the POIs on.
+ *
+ * A constant rather than an inline `true` so both MapViews keep answering the
+ * same way. They have drifted apart once already.
+ *
+ * Kept for whoever turns them off again, because it took a day to find:
+ * on iOS 16+ this prop is implemented by copying MKMapView's
  * preferredConfiguration and writing a pointOfInterestFilter onto it
- * (AIRMap.mm setShowsPointsOfInterests). `mapType` is written straight to
- * MKMapView.mapType, which is the same underlying state and installs a fresh
- * default configuration for that type - discarding the filter. In one
+ * (AIRMap.mm setShowsPointsOfInterests), while `mapType` is written straight
+ * to MKMapView.mapType - the same underlying state, and setting it installs a
+ * fresh default configuration for that type, discarding the filter. In one
  * updateProps pass RNMapsMapView.mm applies the POI prop first and mapType
  * twenty-five lines later, so on mount, when both change together, the map
- * type wins and the POI icons stay.
- *
- * Neither prop ever changes again, and the native remap is guarded on
- * old != new, so nothing re-applies it. Holding the value in state and
- * flipping it once the map is up puts the POI write in a LATER commit, where
- * mapType is unchanged and the filter survives. Costs one frame of pills.
- *
- * The array form (`pointsOfInterestFilter`) IS applied after mapType, but it
- * can only ever include categories - the native side builds
- * initIncludingCategories and bails on an empty array - so it cannot say
- * "none of them".
+ * type wins and the icons stay. Turning them OFF therefore needs the write
+ * deferred to a later commit (that is what the old onMapReady flag was for).
+ * Turning them ON needs none of that, because the map type's own default is
+ * to show them: the prop and the default agree, so whichever write lands last
+ * gives the same answer. The array form (`pointsOfInterestFilter`) IS applied
+ * after mapType but can only ever INCLUDE categories, so it cannot say "none
+ * of them".
  */
-export function pointsOfInterest(mapReady: boolean) {
-  return !mapReady;
-}
+export const SHOW_POINTS_OF_INTEREST = true;
 
 /**
  * The ink wash that keeps our pins the brightest thing, and nothing more.
@@ -91,6 +98,10 @@ export function pointsOfInterest(mapReady: boolean) {
  * is the last lever, and it is the right one: MapKit draws every overlay
  * beneath every annotation, so this touches the cartography and leaves the
  * faces, the heat and the curated stars exactly as bright as they were.
+ *
+ * That ordering is why the points of interest could come back on. Apple's
+ * pills sit under this wash with the rest of the cartography; our pins sit
+ * over it. The names are readable and still lose to an amber marker.
  *
  * The colour is the app's own canvas (#0E1020), and the number is the whole
  * lesson from 2026-08-23. At 0.34, on top of mutedStandard, it was the
