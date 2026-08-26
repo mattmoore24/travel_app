@@ -174,6 +174,7 @@ export default function GroupScreen() {
   const { data: inviteToken } = useGroupInviteToken(id ?? null, isAdmin);
 
   const [name, setName] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [editingDate, setEditingDate] = useState(false);
 
   if (!group) {
@@ -200,10 +201,19 @@ export default function GroupScreen() {
 
   const shownName = name ?? group.name;
 
+  // Refusing a name used to be the same statement as throwing it away:
+  // setName(null) ran before the length guard, so renaming a group to one
+  // letter reverted the field to the old name and said nothing. The one
+  // action that put the keyboard away was also the one that ate the input.
   const saveName = () => {
     const next = shownName.trim();
+    if (next.length < 2) {
+      setNameError('Give it at least two characters.');
+      return;
+    }
+    setNameError(null);
     setName(null);
-    if (next.length >= 2 && next !== group.name) {
+    if (next !== group.name) {
       update.mutate({ name: next });
     }
   };
@@ -263,11 +273,17 @@ export default function GroupScreen() {
               <FormTextField
                 label="Name"
                 value={shownName}
-                onChangeText={setName}
+                onChangeText={(next) => {
+                  setName(next);
+                  if (nameError) {
+                    setNameError(null);
+                  }
+                }}
                 onBlur={saveName}
                 onSubmitEditing={saveName}
                 returnKeyType="done"
                 maxLength={60}
+                error={nameError}
               />
             ) : (
               <ThemedText type="title">{group.name}</ThemedText>

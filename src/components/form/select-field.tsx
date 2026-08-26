@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Keyboard, StyleSheet, View } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -52,7 +52,14 @@ export function SelectField<T extends string>({
         accessibilityValue={{ text: selected?.label ?? placeholder }}
         haptic="soft"
         scaleTo={0.985}
-        onPress={() => setOpen(true)}
+        // Put the keyboard away FIRST. A sheet is a native <Modal>, and
+        // presenting one does not resign the first responder: with the Age
+        // field's number pad still up, this sheet's options rendered
+        // underneath it and the person saw a header, a scrim and no rows.
+        onPress={() => {
+          Keyboard.dismiss();
+          setOpen(true);
+        }}
         containerStyle={styles.fieldContainer}
         style={[styles.field, { backgroundColor: theme.surfaceSunken }]}>
         <ThemedText themeColor={selected ? 'text' : 'textSecondary'} style={styles.value}>

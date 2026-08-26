@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Circle, Marker, Polygon, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import Animated, { FadeInDown, FadeInUp, FadeOut, ZoomIn } from 'react-native-reanimated';
@@ -32,6 +32,7 @@ import {
 } from '@/constants/theme';
 import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
 import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
+import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { AudienceChip } from '@/features/pins/audience-chip';
 import { audienceInSentence } from '@/features/profile/audience';
 import {
@@ -679,6 +680,12 @@ export default function MapScreen() {
           onRegionChange={() => {
             if (mode === 'place') {
               setLifted(true);
+              // Dragging the map is the instruction the search field gives
+              // when nothing matched ("try the street, or drag the map to
+              // the spot"), and the keyboard used to stay up through the
+              // whole drag, covering the bottom third of the map and the
+              // "Pin here" button underneath it.
+              Keyboard.dismiss();
             }
           }}
           onRegionChangeComplete={(region) => {
@@ -1274,6 +1281,11 @@ export default function MapScreen() {
           )}
         </Sheet>
       ) : null}
+
+      {/* The map is not a StepScreen, so it mounts its own. The pin search
+          field is the one place on this screen somebody types, and "Pin
+          here" sits under the keyboard while they do. */}
+      <KeyboardDoneBar />
     </View>
   );
 }

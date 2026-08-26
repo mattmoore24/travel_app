@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Alert } from 'react-native';
 
 import { FormTextField } from '@/components/form/form-text-field';
+import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { useSendSupportMessage } from '@/features/support/hooks';
@@ -89,6 +90,7 @@ export default function ContactScreen() {
         maxLength={MAX_BODY}
         style={{ minHeight: 140, textAlignVertical: 'top' }}
         testID="contact-message"
+        {...keyboardDoneProps}
       />
       <ThemedText type="footnote" themeColor="textSecondary">
         Reporting someone? Use Report on their profile or in the chat. It carries the context.

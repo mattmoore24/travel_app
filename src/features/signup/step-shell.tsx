@@ -12,6 +12,7 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect } from 'react';
 
+import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -134,6 +135,10 @@ export function StepShell({
             {footer}
           </ThemedView>
         </KeyboardAvoidingView>
+        {/* Outside the scroller and outside the avoider: iOS hosts this in
+            the keyboard's own window, so where it sits in the tree only
+            decides which fields can reach it by id. */}
+        <KeyboardDoneBar />
       </SafeAreaView>
     </ThemedView>
   );

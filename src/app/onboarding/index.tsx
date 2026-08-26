@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { LanguageField } from '@/components/form/language-field';
 import { FormTextField } from '@/components/form/form-text-field';
+import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { SelectField } from '@/components/form/select-field';
 import { PhotoGrid } from '@/components/photo-grid';
@@ -133,6 +134,9 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
           onChangeText={setName}
           error={nameError}
         />
+        {/* A number pad draws no return key at all, so before the Done
+            bar the only way out of this field was Continue, which commits
+            and advances rather than putting the keyboard away. */}
         <FormTextField
           label="Age"
           testID="age-input"
@@ -140,6 +144,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
           value={age}
           onChangeText={setAge}
           error={ageError}
+          {...keyboardDoneProps}
         />
         <SelectField
           label="Gender"
@@ -238,6 +243,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
             onChangeText={setBio}
             error={bioError}
             hint={`${bio.length}/${BIO_MAX}`}
+            {...keyboardDoneProps}
           />
         </View>
         <View style={styles.block}>

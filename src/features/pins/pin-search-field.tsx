@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
+import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Type, Elevation, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
@@ -206,6 +207,11 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
           autoCorrect={false}
           autoCapitalize="words"
           clearButtonMode="never"
+          // The Search key blurs, but nothing on screen said so, and "Pin
+          // here" sits underneath the keyboard the whole time somebody is
+          // typing. A labelled Done is the same affordance the pin form one
+          // step later already uses.
+          {...keyboardDoneProps}
           accessibilityLabel={`Search ${cityName}`}
           testID="pin-search-input"
           style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
@@ -216,8 +222,12 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
             accessibilityRole="button"
             accessibilityLabel="Clear search"
             hitSlop={10}
+            // Through onChangeText, not setQuery: onChangeText is the only
+            // thing that also clears the hits and the "nothing by that name"
+            // line, so clearing by hand used to leave a stale dropdown over
+            // the map above an empty field claiming nothing was searched.
             onPress={() => {
-              setQuery('');
+              onChangeText('');
               inputRef.current?.focus();
             }}>
             <SymbolView

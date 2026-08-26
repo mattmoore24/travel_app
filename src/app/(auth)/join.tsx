@@ -120,6 +120,12 @@ export default function JoinScreen() {
           keyboardType="email-address"
           textContentType="emailAddress"
           returnKeyType="next"
+          // Without this the single-line default blurAndSubmit tears the
+          // keyboard down before submitEmail runs: on a good address it drops
+          // and springs straight back for step 2's autofocused password, and
+          // on a bad one it leaves the person reading "Check that address"
+          // with no keyboard and a tap needed to get back into the field.
+          submitBehavior="submit"
           value={email}
           onChangeText={(text) => {
             setEmail(text);

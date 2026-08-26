@@ -4,6 +4,7 @@ import { Alert, ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'rea
 
 import { LanguageField } from '@/components/form/language-field';
 import { FormTextField } from '@/components/form/form-text-field';
+import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { SelectField } from '@/components/form/select-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { PhotoGrid } from '@/components/photo-grid';
@@ -48,6 +49,7 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
   // just tapped.
   const { section } = useLocalSearchParams<{ section?: Section }>();
   const scroller = useRef<ScrollView>(null);
+  const socialsY = useRef(0);
   const [targetY, setTargetY] = useState<number | null>(null);
 
   // Only the block that was asked for reports its position, and the scroll
@@ -144,12 +146,14 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
       onClose={close}
       scrollRef={scroller}>
       <FormTextField label="Name" value={name} onChangeText={setName} error={nameError} />
+      {/* Same number pad as onboarding, same reason. */}
       <FormTextField
         label="Age"
         keyboardType="number-pad"
         value={age}
         onChangeText={setAge}
         error={ageError}
+        {...keyboardDoneProps}
       />
       <View onLayout={measure('details')} />
       <SelectField label="Gender" options={GENDER_OPTIONS} value={gender} onChange={setGender} />
@@ -172,18 +176,30 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
         value={bio}
         onChangeText={setBio}
         error={bioError}
+        {...keyboardDoneProps}
       />
       <ThemedText type="smallBold" onLayout={measure('photos')}>
         Photos
       </ThemedText>
       <PhotoGrid />
-      <ThemedText type="smallBold" onLayout={measure('socials')}>
-        Socials
-      </ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
-        Only shown to people you&apos;re chatting with.
-      </ThemedText>
-      <SocialHandlesEditor />
+      <View onLayout={(event) => (socialsY.current = event.nativeEvent.layout.y)}>
+        <ThemedText type="smallBold" onLayout={measure('socials')}>
+          Socials
+        </ThemedText>
+        <ThemedText type="small" themeColor="textSecondary">
+          Only shown to people you&apos;re chatting with.
+        </ThemedText>
+        {/* Last block in the scroller, so its field is under the keyboard the
+            moment it takes focus unless something scrolls to it. */}
+        <SocialHandlesEditor
+          onFocusScroll={(y) =>
+            scroller.current?.scrollTo({
+              y: Math.max(0, socialsY.current + y - Space.md),
+              animated: true,
+            })
+          }
+        />
+      </View>
     </StepScreen>
   );
 }

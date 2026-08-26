@@ -1,8 +1,9 @@
 import { SymbolView } from 'expo-symbols';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
+import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Type, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
@@ -62,13 +63,29 @@ function placeholderFor(platform: SocialPlatform) {
  * line of text. Handles are stored bare and only ever revealed through an
  * accepted chat, which the database enforces rather than this screen.
  */
-export function SocialHandlesEditor() {
+type SocialHandlesEditorProps = {
+  /**
+   * Put the add card in view when its field takes focus.
+   *
+   * This block is the last thing in the edit-profile scroller, so it already
+   * sits at the bottom of the viewport when you tap a logo. The keyboard then
+   * comes up, the scroller shrinks from the bottom by the keyboard's height,
+   * and nothing moves the newly focused field: contentOffset does not change
+   * and the maximum only grows, so UIScrollView has nothing to clamp. You end
+   * up typing a handle into a box you cannot see. pin-form-sheet solves the
+   * same thing the same way, after a simulator run photographed it.
+   */
+  onFocusScroll?: (y: number) => void;
+};
+
+export function SocialHandlesEditor({ onFocusScroll }: SocialHandlesEditorProps = {}) {
   const theme = useTheme();
   const { data: handles = [] } = useOwnSocialHandles();
   const upsert = useUpsertSocialHandle();
   const remove = useDeleteSocialHandle();
 
   const [adding, setAdding] = useState<SocialPlatform | null>(null);
+  const cardY = useRef(0);
   const [value, setValue] = useState('');
   const [touched, setTouched] = useState(false);
 
@@ -132,6 +149,11 @@ export function SocialHandlesEditor() {
       {adding ? (
         <Animated.View
           entering={FadeIn.duration(200)}
+          // y is relative to this block; the parent adds the block's own
+          // offset before it scrolls.
+          onLayout={(event) => {
+            cardY.current = event.nativeEvent.layout.y;
+          }}
           style={[styles.addCard, { backgroundColor: theme.surfaceSunken }]}>
           <View style={styles.addHeader}>
             <SocialLogo platform={adding} size={34} />
@@ -173,8 +195,13 @@ export function SocialHandlesEditor() {
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType={adding === 'whatsapp' ? 'phone-pad' : 'default'}
+              // returnKeyType is a no-op on a phone pad: iOS draws no return
+              // key on one at all. WhatsApp numbers therefore had no exit but
+              // the Save tick, so the shared Done bar covers this field too.
               returnKeyType="done"
+              {...keyboardDoneProps}
               onSubmitEditing={() => save(adding)}
+              onFocus={() => onFocusScroll?.(cardY.current)}
               style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
             />
             <PressableScale

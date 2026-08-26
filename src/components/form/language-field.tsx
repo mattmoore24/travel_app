@@ -2,6 +2,7 @@ import { SymbolView } from 'expo-symbols';
 import { useMemo, useRef, useState } from 'react';
 import {
   FlatList,
+  Keyboard,
   Pressable,
   StyleSheet,
   TextInput,
@@ -80,7 +81,11 @@ export function LanguageField({
         accessibilityHint="Opens a searchable list"
         haptic="selection"
         scaleTo={0.99}
+        // Same reason as select-field: onboarding reaches this with City or
+        // Country focused, and a sheet presented over a live keyboard has
+        // the bottom of its list behind it.
         onPress={() => {
+          Keyboard.dismiss();
           setQuery('');
           setOpen(true);
         }}

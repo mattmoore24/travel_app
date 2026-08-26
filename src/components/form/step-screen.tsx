@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -113,6 +114,10 @@ export function StepScreen({
             />
             {footer}
           </ThemedView>
+          {/* A sibling of the scroller, never inside it: iOS hosts the bar in
+              the keyboard's own window. One instance serves every field on
+              the screen that asks for it by id. */}
+          <KeyboardDoneBar />
         </KeyboardFloor>
       </SafeAreaView>
     </ThemedView>

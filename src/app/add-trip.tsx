@@ -67,6 +67,10 @@ export default function AddTripScreen() {
             label="City"
             placeholder="Start typing: Lisbon, Bangkok, Mexico City"
             autoCorrect={false}
+            // The key said "return", which reads as newline on a field that
+            // searches. Post trip stays grey until a city is picked, so while
+            // you type there is no enabled control anywhere on screen.
+            returnKeyType="search"
             value={query}
             onChangeText={setQuery}
           />
