@@ -53,3 +53,6 @@
 2026-08-27 — deploy: sync MODERATION_PROMPTS_BUSINESS to the moderation-worker. The
              founder added the secret; the storefront and impersonation queues stay
              paused until the function actually holds it. No migration in this run.
+2026-08-27 — deploy: delete-account now takes a place's listing with the account.
+             businesses.owner_user_id is ON DELETE SET NULL, so the listing used to
+             outlive the account that made it. No migration; the Edge Function alone.
