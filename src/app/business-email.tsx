@@ -45,6 +45,13 @@ export default function BusinessEmailScreen() {
   const [code, setCode] = useState('');
   const [sentAgain, setSentAgain] = useState(false);
   const [remembered, setRemembered] = useState<string | null>(null);
+  const [alreadyUsed, setAlreadyUsed] = useState(false);
+  // The address is editable from here, always. It is the only recovery there
+  // is: nothing on the server will tell this screen where the mail went, so a
+  // typed address that never receives anything is otherwise the end of the
+  // journey with the listing left dark.
+  const [changing, setChanging] = useState(false);
+  const [draft, setDraft] = useState('');
   // Whoever routed here knows the address; storage is only the fallback for a
   // second visit, so the handed value always wins rather than being copied
   // into state and then argued with.
@@ -78,9 +85,15 @@ export default function BusinessEmailScreen() {
       return;
     }
     try {
-      await confirm.mutateAsync(code);
-      analytics.capture('business_email_confirmed');
+      const result = await confirm.mutateAsync(code);
+      analytics.capture('business_email_confirmed', { first_time: result.first_time });
       haptics.success();
+      if (!result.first_time) {
+        // The same code, used twice. It still relists — a rename is what sends
+        // a confirmed place back here, and the address on file is unchanged —
+        // but saying nothing would leave somebody wondering whether it took.
+        setAlreadyUsed(true);
+      }
       // No congratulations dialog. The button said what would happen and the
       // next screen is it. An alert fired at the same moment this modal starts
       // dismissing is also the presentation iOS quietly drops, and on Fabric a
@@ -95,14 +108,17 @@ export default function BusinessEmailScreen() {
     }
   };
 
-  const sendAgain = async () => {
-    if (address == null) {
+  const sendAgain = async (to?: string) => {
+    const target = (to ?? address ?? '').trim();
+    if (target === '') {
       return;
     }
     try {
-      await resend.mutateAsync(address);
+      await resend.mutateAsync(target);
       haptics.success();
       setSentAgain(true);
+      setChanging(false);
+      setRemembered(target);
       setCode('');
     } catch {
       // Surfaced by the global mutation error alert. The refusal that matters
@@ -122,26 +138,74 @@ export default function BusinessEmailScreen() {
       continueDisabled={code.length !== CODE_LENGTH}
       continueLoading={confirm.isPending}
       note={code.length === CODE_LENGTH ? null : 'Six digits, from the email.'}
+      // Somewhere to go. Without this the modal's only exit is a swipe down,
+      // which nothing on the screen mentions, and this screen is reached by
+      // `replace` so there is no back chevron underneath it either.
+      onClose={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
       onContinue={submit}
       footer={
-        // Hidden rather than dead when the address is unknown: sending a code
-        // needs an address, and this screen has no honest way to guess one.
-        address ? (
+        changing ? (
           <>
+            <FormTextField
+              label="Where should we send it?"
+              accessibilityLabel="Business email address"
+              autoFocus
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              textContentType="emailAddress"
+              placeholder="hello@yourplace.com"
+              value={draft}
+              onChangeText={setDraft}
+              onSubmitEditing={() => sendAgain(draft)}
+              returnKeyType="send"
+            />
             <PrimaryButton
               variant="ghost"
-              label="Send it again"
-              accessibilityLabel="Send the code again"
+              label="Send me a code"
+              accessibilityLabel="Send a code to this address"
+              disabled={!draft.includes('@')}
               loading={resend.isPending}
-              onPress={sendAgain}
+              onPress={() => sendAgain(draft)}
+            />
+          </>
+        ) : (
+          <>
+            {/* Only when we know where it went. Resending needs an address
+                and this screen has no honest way to guess one. */}
+            {address ? (
+              <PrimaryButton
+                variant="ghost"
+                label="Send it again"
+                accessibilityLabel="Send the code again"
+                loading={resend.isPending}
+                onPress={() => sendAgain()}
+              />
+            ) : null}
+            {/* Always. A typo at signup, or a work address nobody reads, is
+                the common way this screen becomes a dead end, and typing a
+                different one is the only fix that does not need a person. */}
+            <PrimaryButton
+              variant="ghost"
+              label={address ? 'Use a different address' : 'Send me a code'}
+              accessibilityLabel="Send the code to a different address"
+              onPress={() => {
+                setDraft(address ?? '');
+                setChanging(true);
+              }}
             />
             {sentAgain ? (
               <ThemedText type="footnote" themeColor="textSecondary" style={styles.echo}>
                 Sent. Give it a minute to turn up.
               </ThemedText>
             ) : null}
+            {alreadyUsed ? (
+              <ThemedText type="footnote" themeColor="textSecondary" style={styles.echo}>
+                That code had already been used. You&apos;re on the map either way.
+              </ThemedText>
+            ) : null}
           </>
-        ) : null
+        )
       }>
       <FormTextField
         label="Code"

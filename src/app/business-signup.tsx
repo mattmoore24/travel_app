@@ -106,7 +106,13 @@ export default function BusinessSignupScreen() {
       haptics.success();
       // Replace rather than push: the form has been submitted, and a back
       // swipe onto it would offer to submit it a second time.
-      router.replace('/business-email');
+      //
+      // The address travels WITH the route. Without it the code screen cannot
+      // name where the mail went and cannot offer to send it again, so a typo
+      // or a code lost to a spam folder ended the whole journey: the listing
+      // sits unconfirmed, which means dark, with no way forward from inside
+      // the app.
+      router.replace({ pathname: '/business-email', params: { email: email.trim() } });
     } catch {
       // Surfaced by the global mutation error alert (lib/query-client). Both
       // refusals that matter arrive this way: a marker outside the city's

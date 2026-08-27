@@ -278,6 +278,14 @@ export type BusinessDetailRow = {
   lat: number;
   lng: number;
   verified: boolean;
+  /**
+   * Whether anybody runs this place here.
+   *
+   * False for the launch venues nobody has claimed yet. `message_business`
+   * refuses those outright, so a screen that offers Message without checking
+   * this sends somebody to type five hundred characters into a refusal.
+   */
+  claimed: boolean;
   member_count: number;
   photos: BusinessPhotoJson[];
   links: BusinessLinkJson[];

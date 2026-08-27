@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useMemo } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
@@ -10,8 +10,9 @@ import { LoadError } from '@/components/ui/load-error';
 import { Sheet, leavingSheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { Skeleton } from '@/components/ui/skeleton';
-import { HitTarget, Radius, Space } from '@/constants/theme';
+import { Motion, Radius, Space } from '@/constants/theme';
 import { PlaceGlyph } from '@/features/business/business-marker';
+import { PlaceSeal } from '@/features/business/place-seal';
 import { useBusinessDetail, useRatingSummary } from '@/features/business/hooks';
 import { CATEGORY_LABEL, openLine, weekdayLabel } from '@/features/business/vocabulary';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
@@ -120,13 +121,24 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
   const address = place.place_label?.trim() || null;
 
   return (
-    <View style={styles.card}>
+    // A ScrollView, not a View. Everything this card can hold at once —
+    // cover, name, address, Maps link, tonight's post, the score, two
+    // buttons and the page link — adds up to more than the sheet's own
+    // ceiling (screen height minus the top inset) on a small phone, and at
+    // large Dynamic Type on any phone. Overflowing a sheet does not scroll
+    // by itself: the Message button is simply below the edge with nothing to
+    // pull. `flexShrink` is what lets the sheet's maxHeight bound it.
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.card}
+      showsVerticalScrollIndicator={false}>
       {cover.data ? (
         <Image
           source={{ uri: cover.data }}
           style={styles.cover}
           contentFit="cover"
-          transition={200}
+          transition={Motion.standard}
+          accessibilityLabel={`Photo of ${place.name}`}
         />
       ) : null}
 
@@ -157,7 +169,8 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
           <Pressable
             accessibilityRole="link"
             accessibilityLabel={`View ${place.name} in Maps`}
-            hitSlop={8}
+            // 18pt row: 13 a side is the 44 every small control here buys.
+            hitSlop={13}
             onPress={() =>
               openInMaps({ lat: place.lat, lng: place.lng, label: address ?? place.name })
             }
@@ -237,28 +250,40 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
               }
             />
           ) : null}
-          {/* Second on every surface, and always available: a place with no
-              chat yet is still somewhere you can write to. */}
-          <PrimaryButton
-            label="Message"
-            variant={place.chat_id ? 'tonal' : 'filled'}
-            accessibilityLabel={`Message ${place.name}`}
-            onPress={() =>
-              leaveThen(() =>
-                router.push({
-                  pathname: '/message-place',
-                  params: { businessId: place.id, name: place.name },
-                })
-              )
-            }
-          />
+          {/* Second on every surface. Offered only where somebody is
+              actually on the other end: `message_business` refuses an
+              unclaimed venue outright, and it does it AFTER five hundred
+              characters have been typed and Send has been pressed. The
+              launch venues are all unclaimed on day one, so this is the
+              first tap somebody makes. */}
+          {place.claimed ? (
+            <PrimaryButton
+              label="Message"
+              variant={place.chat_id ? 'tonal' : 'filled'}
+              accessibilityLabel={`Message ${place.name}`}
+              onPress={() =>
+                leaveThen(() =>
+                  router.push({
+                    pathname: '/message-place',
+                    params: { businessId: place.id, name: place.name },
+                  })
+                )
+              }
+            />
+          ) : (
+            <ThemedText type="footnote" themeColor="textSecondary" style={styles.unclaimed}>
+              Nobody runs this place on Samewhere yet. The chat is open to anyone passing through.
+            </ThemedText>
+          )}
         </View>
       )}
 
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="See the whole page"
-        hitSlop={10}
+        // 18pt row plus 13 either side is 44. The close button next to it
+        // computes the same number a different way; both have to clear it.
+        hitSlop={13}
         onPress={() =>
           leaveThen(() => router.push({ pathname: '/place/[id]', params: { id: place.id } }))
         }
@@ -272,7 +297,7 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
           tintColor={theme.accent}
         />
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -305,44 +330,6 @@ function RatingLine({ average, raters }: { average: number | null; raters: numbe
     </View>
   );
 }
-
-/**
- * The check beside a place's name.
- *
- * Its own control rather than `VerifiedSeal`, which explains a live SELFIE
- * checked against a profile: true of a traveler, false of a bar, and a badge
- * that explains itself wrongly is worse than one that says nothing. The
- * spoken label is "Verified place" and never "verified business", because
- * that word is back-office vocabulary a traveler never meets.
- *
- * Exported so the place page shows the same check with the same sentence
- * behind it. Two badges explaining themselves differently is how a signal
- * stops being one.
- */
-export function PlaceSeal() {
-  const theme = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Verified place"
-      accessibilityHint="What the verified check means"
-      hitSlop={Math.ceil((HitTarget - SEAL) / 2)}
-      onPress={() =>
-        Alert.alert(
-          'Verified place',
-          'Somebody stood outside and sent us live photos of the front, and we checked the sign against this listing.'
-        )
-      }>
-      <SymbolView
-        name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
-        size={SEAL}
-        tintColor={theme.accent}
-      />
-    </Pressable>
-  );
-}
-
-const SEAL = 14;
 
 /**
  * What is on, if anything: the first post that has not finished yet.
@@ -388,6 +375,9 @@ function calendarDaysApart(from: Date, to: Date): number {
 }
 
 const styles = StyleSheet.create({
+  scroll: {
+    flexShrink: 1,
+  },
   card: {
     gap: Space.md,
   },
@@ -403,7 +393,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    gap: 1,
+    gap: Space.xs / 2,
   },
   nameRow: {
     flexDirection: 'row',
@@ -420,10 +410,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.xs,
-    paddingTop: 2,
+    paddingTop: Space.xs / 2,
   },
   post: {
-    gap: 2,
+    gap: Space.xs / 2,
   },
   rating: {
     flexDirection: 'row',
@@ -432,6 +422,9 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: Space.sm,
+  },
+  unclaimed: {
+    textAlign: 'center',
   },
   pageLink: {
     flexDirection: 'row',

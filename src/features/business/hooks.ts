@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuthStore } from '@/features/auth/store';
 import {
+  archiveBusinessPost,
   confirmBusinessEmail,
   fetchBusinessDetail,
   fetchCityBusinesses,
@@ -63,6 +64,27 @@ export function useUpdateOwnBusiness(businessId: string | null) {
       updateOwnBusiness(businessId!, patch),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-business', userId] });
+      // This mutation owns name, description, place_label, hours_note and
+      // website_url — every text field a traveler reads. Without these the
+      // owner's dashboard showed the new words and their own "See it as a
+      // traveler" page showed the old ones, on the same field, one tap apart.
+      queryClient.invalidateQueries({ queryKey: ['business-detail', businessId] });
+      queryClient.invalidateQueries({ queryKey: ['city-businesses'] });
+    },
+  });
+}
+
+/** Take a live post down, which is what frees a slot under the cap. */
+export function useArchiveBusinessPost(businessId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: archiveBusinessPost,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['business-detail', businessId] });
+      queryClient.invalidateQueries({ queryKey: ['business-posts', businessId] });
+      // The marker's "something on" flag is derived from live posts, so the
+      // map is wrong the moment the last one comes down.
+      queryClient.invalidateQueries({ queryKey: ['city-businesses'] });
     },
   });
 }

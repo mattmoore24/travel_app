@@ -7,7 +7,7 @@
 -- somebody can replace. So every assertion below acts AS the business and
 -- expects to be refused.
 begin;
-select plan(33);
+select plan(34);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a1', 'traveler@example.com'),
@@ -65,6 +65,12 @@ select is(
   null,
   'and registering never finishes a traveler profile'
 );
+-- Through the admin, because a CLIENT may not ask this question at all any
+-- more: the answer is exactly what the column-scoped grant hiding
+-- businesses.owner_user_id exists to withhold, and PostgREST would have
+-- served it for any user id lifted off a profile page. The two assertions
+-- below are the property, and the third is the door being shut.
+select pg_temp.admin();
 select ok(
   public.is_business_account('00000000-0000-0000-0000-0000000000b1'),
   'is_business_account knows who it is'
@@ -73,6 +79,14 @@ select ok(
   not public.is_business_account('00000000-0000-0000-0000-0000000000a1'),
   'and a traveler is not one'
 );
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select throws_ok(
+  $$ select public.is_business_account('00000000-0000-0000-0000-0000000000b1') $$,
+  '42501',
+  null,
+  'and no client can ask it about somebody else'
+);
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
 
 select throws_ok(
   $$ select public.register_business('Second Place', 'bar',

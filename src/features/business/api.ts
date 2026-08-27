@@ -109,8 +109,45 @@ export async function requestBusinessEmailCode(email: string) {
   }
 }
 
+/**
+ * `first_time` false means the code had already been used.
+ *
+ * Worth carrying to the client rather than swallowing: a rename sends a
+ * listed place back to `unconfirmed`, and the obvious move is to retype the
+ * code still sitting in the inbox. That path now relists (the server does it
+ * on both branches), so the screen can say which of the two just happened
+ * instead of firing the same success haptic for both.
+ */
 export async function confirmBusinessEmail(code: string) {
-  const { error } = await supabase.rpc('confirm_business_email', { p_code: code });
+  const { data, error } = await supabase.rpc('confirm_business_email', { p_code: code });
+  if (error) {
+    throw error;
+  }
+  return (data ?? { confirmed: true, first_time: true }) as {
+    confirmed: boolean;
+    first_time: boolean;
+  };
+}
+
+/**
+ * Take a post down.
+ *
+ * An archive rather than a delete, matching `archive_expired_posts()`: the
+ * row is the record of what a place said it was doing, and moderation reads
+ * it. Travelers stop seeing it either way — `business_detail` and
+ * `city_businesses` both filter on `archived_at is null`.
+ *
+ * This exists because the composer had no counterpart. The cap is three live
+ * posts unverified and ten verified, enforced by a trigger, and the third
+ * shape a post can take is "keep it up until I take it down" — so a new place
+ * could put up three standing notices and permanently lock itself out of its
+ * own composer, which then told it to "take one down" with nowhere to do it.
+ */
+export async function archiveBusinessPost(postId: string) {
+  const { error } = await supabase
+    .from('business_posts')
+    .update({ archived_at: new Date().toISOString() })
+    .eq('id', postId);
   if (error) {
     throw error;
   }

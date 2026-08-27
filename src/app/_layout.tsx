@@ -195,6 +195,24 @@ function RootNavigator() {
         name="profile-me"
         options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
       />
+      {/* Screens any REGISTERED account needs, traveler or place.
+          `onboarded` is permanently false for a business account by design
+          (routing.ts: they never do traveler onboarding), so anything a
+          business also has to reach cannot sit behind that half of the
+          guard. Chat was the one that mattered: a traveler messages a bar,
+          my_chats puts the thread in the bar's Chat tab, the bar taps it,
+          and the route was not in the tree — so the whole inbound-message
+          feature was dead on the receiving end, silently. */}
+      <Stack.Protected guard={signedIn}>
+        <Stack.Screen
+          name="chat/[id]"
+          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        />
+        <Stack.Screen
+          name="archived-chats"
+          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        />
+      </Stack.Protected>
       <Stack.Protected guard={signedIn && onboarded}>
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
         <Stack.Screen name="edit-prompt" options={{ presentation: 'modal' }} />
@@ -204,9 +222,12 @@ function RootNavigator() {
         <Stack.Screen name="join-place" options={{ presentation: 'modal' }} />
         <Stack.Screen name="message-place" options={{ presentation: 'modal' }} />
         <Stack.Screen name="rate-place" options={{ presentation: 'modal' }} />
-        {/* Reporting needs a session and not a profile, like the traveler
-            report screen below, but a business account must not be able to
-            report a rival, and the DB refuses that rather than this guard. */}
+        {/* Reporting a place stays behind the traveler guard. A business
+            account must not be able to report a rival — one report emails
+            support and queues a Claude impersonation scan, which is one
+            verdict away from darkening a competitor — and report_business
+            now refuses a business caller outright, so this guard and the
+            database agree instead of one of them carrying it alone. */}
         <Stack.Screen name="report-place" options={{ presentation: 'modal' }} />
         <Stack.Screen name="verification" options={{ presentation: 'modal' }} />
         <Stack.Screen name="visibility" options={{ presentation: 'modal' }} />
@@ -214,20 +235,12 @@ function RootNavigator() {
         <Stack.Screen name="compose-request" options={{ presentation: 'modal' }} />
         <Stack.Screen name="drop-pin" options={{ presentation: 'modal' }} />
         <Stack.Screen
-          name="chat/[id]"
-          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
-        />
-        <Stack.Screen
           name="profile/[userId]"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
         <Stack.Screen name="new-group" options={{ presentation: 'modal' }} />
         <Stack.Screen
           name="group/[id]"
-          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
-        />
-        <Stack.Screen
-          name="archived-chats"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
       </Stack.Protected>

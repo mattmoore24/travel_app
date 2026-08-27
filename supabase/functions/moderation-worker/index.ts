@@ -626,7 +626,7 @@ Deno.serve(async (req) => {
   // cannot judge an appeal against a photo that no longer exists.
   const storefrontPrompt = optionalPrompt('storefront');
   if (!storefrontPrompt) {
-    report.notes.push('storefront: no prompt in MODERATION_PROMPTS, queue paused');
+    report.notes.push('storefront: no prompt in MODERATION_PROMPTS_BUSINESS, queue paused');
   } else {
     const { data: storefronts } = await supabase
       .from('business_verifications')
@@ -746,7 +746,7 @@ Deno.serve(async (req) => {
   // one spare account from being able to take a rival down.
   const impersonationPrompt = optionalPrompt('impersonation');
   if (!impersonationPrompt) {
-    report.notes.push('impersonation: no prompt in MODERATION_PROMPTS, queue paused');
+    report.notes.push('impersonation: no prompt in MODERATION_PROMPTS_BUSINESS, queue paused');
   } else {
     const { data: scans } = await supabase
       .from('business_scans')

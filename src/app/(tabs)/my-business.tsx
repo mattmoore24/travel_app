@@ -12,6 +12,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import type { Section as EditSection } from '@/app/business-edit';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   BottomTabInset,
@@ -21,7 +22,13 @@ import {
   Space,
   type ThemeColor,
 } from '@/constants/theme';
-import { useBusinessDetail, useOwnBusiness, useRatingSummary } from '@/features/business/hooks';
+import {
+  useArchiveBusinessPost,
+  useBusinessDetail,
+  useLatestStorefrontCheck,
+  useOwnBusiness,
+  useRatingSummary,
+} from '@/features/business/hooks';
 import { CATEGORY_ICON, CATEGORY_LABEL, TAG_LABEL, openLine } from '@/features/business/vocabulary';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { dayLabel } from '@/features/chat/separators';
@@ -42,13 +49,16 @@ const DOCK_CLEARANCE = 120;
 const DOCK_BUTTON = 52;
 
 /**
- * Where the listing stands, in three words a person already understands.
+ * Where the listing stands, in a few words a person already understands.
  *
- * `flagged` and `removed` both read "Paused" rather than earning a chip of
- * their own: the chip says whether travelers can find you, and in both of
- * those the answer is no. What is different about them is WHY, and that
- * belongs in the row underneath, where there is room for a sentence and a
- * way to answer back.
+ * `flagged` and `removed` share one chip rather than earning their own: it
+ * says whether travelers can find you, and in both of those the answer is no.
+ * What differs is WHY, and that belongs in the row underneath, where there is
+ * room for a sentence and a way to answer back.
+ *
+ * NOT "Paused". There is no pause control anywhere in the app, so the neutral
+ * word told an owner they had turned their own listing off when in fact
+ * moderation had taken it down.
  */
 function statusOf(business: MyBusinessRow): { label: string; tone: ThemeColor } {
   if (business.state === 'unconfirmed') {
@@ -57,7 +67,7 @@ function statusOf(business: MyBusinessRow): { label: string; tone: ThemeColor } 
   if (business.state === 'listed' && business.active) {
     return { label: 'Live on the map', tone: 'success' };
   }
-  return { label: 'Paused', tone: 'textSecondary' };
+  return { label: 'Off the map', tone: 'warning' };
 }
 
 /**
@@ -114,35 +124,53 @@ function Section({
 }
 
 /**
- * One live post, as the owner sees it.
+ * One live post, as the owner sees it. Tap it to take it down.
  *
- * Deliberately not tappable. Editing or taking a post down needs a route
- * that carries the post id, and inventing one would mean a tap that opens an
- * empty composer, which is worse than a card that plainly does nothing.
+ * The tap is not a nicety. The cap is three live posts unverified and ten
+ * verified, and one of the three shapes a post can take is "keep it up until
+ * I take it down" — so without a way down, a new place could put up three
+ * standing notices and permanently brick its own composer, which then told
+ * it to "take one down" with nowhere in the app to do it.
+ *
+ * An alert rather than a route: there is one thing to do to a post, and a
+ * whole screen to host one destructive button is more ceremony than the
+ * decision deserves.
  */
-function PostCard({ post }: { post: BusinessPostJson }) {
+function PostCard({ post, onTakeDown }: { post: BusinessPostJson; onTakeDown: () => void }) {
   const at = post.happens_at ? new Date(post.happens_at) : null;
   const today = at != null && at.toDateString() === new Date().toDateString();
   const theme = useTheme();
 
   return (
-    <View style={[styles.card, { backgroundColor: theme.surface }]}>
-      <View style={styles.cardBody}>
-        {at && post.happens_at ? (
-          // Warm light is this app's "happening now", the same signal the map
-          // puts on a place with something on tonight.
-          <ThemedText type="caption" themeColor={today ? 'highlight' : 'textSecondary'}>
-            {`${dayLabel(post.happens_at)} · ${TIME.format(at)}`}
-          </ThemedText>
-        ) : null}
-        <ThemedText type="callout">{post.title}</ThemedText>
-        {post.body ? (
-          <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={3}>
-            {post.body}
-          </ThemedText>
-        ) : null}
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={`${post.title}. Take it down.`}
+      scaleTo={0.99}
+      haptic="soft"
+      onPress={() =>
+        Alert.alert('Take this down?', post.title, [
+          { text: 'Keep it up', style: 'cancel' },
+          { text: 'Take it down', style: 'destructive', onPress: onTakeDown },
+        ])
+      }>
+      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+        <View style={styles.cardBody}>
+          {at && post.happens_at ? (
+            // Warm light is this app's "happening now", the same signal the map
+            // puts on a place with something on tonight.
+            <ThemedText type="caption" themeColor={today ? 'highlight' : 'textSecondary'}>
+              {`${dayLabel(post.happens_at)} · ${TIME.format(at)}`}
+            </ThemedText>
+          ) : null}
+          <ThemedText type="callout">{post.title}</ThemedText>
+          {post.body ? (
+            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={3}>
+              {post.body}
+            </ThemedText>
+          ) : null}
+        </View>
       </View>
-    </View>
+    </PressableScale>
   );
 }
 
@@ -152,21 +180,27 @@ function DetailRow({
   value,
   icon,
   section,
+  onPress,
 }: {
   label: string;
   value: string;
   icon: SymbolViewProps['name'];
-  section: string;
+  /** The editor section this row jumps to. Omit and pass `onPress` instead. */
+  section?: EditSection;
+  onPress?: () => void;
 }) {
   const theme = useTheme();
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={`Edit ${label.toLowerCase()}`}
+      accessibilityLabel={onPress ? label : `Edit ${label.toLowerCase()}`}
       accessibilityHint={value}
       haptic="light"
       scaleTo={0.98}
-      onPress={() => router.push({ pathname: '/business-edit', params: { section } })}
+      onPress={
+        onPress ??
+        (() => router.push({ pathname: '/business-edit', params: { section: section! } }))
+      }
       style={[styles.row, { backgroundColor: theme.surface }]}>
       <SymbolView name={icon} size={16} tintColor={theme.textSecondary} />
       <View style={styles.rowText}>
@@ -199,6 +233,10 @@ export default function MyBusinessScreen() {
   const ownQuery = useOwnBusiness();
   const business = ownQuery.data ?? null;
   const detailQuery = useBusinessDetail(business?.id ?? null);
+  // What the storefront check is doing right now, so this screen stops asking
+  // for photos that are already in the queue.
+  const storefront = useLatestStorefrontCheck(business?.id ?? null).data?.status ?? null;
+  const archivePost = useArchiveBusinessPost(business?.id ?? null);
   const detail = detailQuery.data ?? null;
   const ratingQuery = useRatingSummary(business?.id ?? null);
   const rating = ratingQuery.data ?? null;
@@ -369,15 +407,30 @@ export default function MyBusinessScreen() {
               </View>
             ) : !business.verified ? (
               <View style={[styles.notice, { backgroundColor: theme.surface }]}>
+                {/* The dashboard is where an owner comes back to, so it has
+                    to know a check is already in flight. Without this it
+                    kept asking for photos that had already been sent, for as
+                    long as the verdict took. */}
                 <ThemedText type="footnote" themeColor="textSecondary">
-                  Send two photos of the front and the check goes beside your name.
+                  {storefront === 'pending'
+                    ? "We're having a look at your photos. This usually takes a minute."
+                    : storefront === 'uncertain'
+                      ? "Someone is checking your photos by hand. We'll email you when they have."
+                      : storefront === 'rejected'
+                        ? "Those photos didn't pass. Have another go, with the sign in frame."
+                        : 'Send two photos of the front and the check goes beside your name.'}
                 </ThemedText>
-                <PrimaryButton
-                  variant="tonal"
-                  label="Get verified"
-                  accessibilityLabel="Get verified with two photos of the front"
-                  onPress={() => router.push('/business-storefront')}
-                />
+                {storefront === 'pending' || storefront === 'uncertain' ? null : (
+                  <PrimaryButton
+                    variant="tonal"
+                    // The label the destination wears. Three names for one
+                    // action across two screens is how a person loses track
+                    // of what they already did.
+                    label="Show us the front"
+                    accessibilityLabel="Show us the front with two photos"
+                    onPress={() => router.push('/business-storefront')}
+                  />
+                )}
               </View>
             ) : null}
 
@@ -405,7 +458,15 @@ export default function MyBusinessScreen() {
                   title="What's on"
                   icon={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}>
                   {posts.length > 0 ? (
-                    posts.map((post) => <PostCard key={post.id} post={post} />)
+                    posts.map((post) => (
+                      <PostCard
+                        key={post.id}
+                        post={post}
+                        onTakeDown={() => {
+                          archivePost.mutate(post.id);
+                        }}
+                      />
+                    ))
                   ) : (
                     <ThemedText type="footnote" themeColor="textSecondary">
                       {
@@ -432,7 +493,11 @@ export default function MyBusinessScreen() {
                   />
                   <DetailRow
                     label="Description"
-                    section="description"
+                    // 'details', not 'description': business-edit's Section
+                    // union has no such member, and measure() compares by
+                    // equality, so the editor opened at the top instead of
+                    // scrolling to the field the row named.
+                    section="details"
                     icon={{ ios: 'text.alignleft', android: 'notes', web: 'notes' }}
                     value={business.description ?? 'Nothing yet'}
                   />
@@ -447,6 +512,26 @@ export default function MyBusinessScreen() {
                     value={photos.length > 0 ? countOf(photos.length, 'photo') : 'Nothing yet'}
                   />
                 </Section>
+
+                {/* The way into their own room. It appears in the Chat tab
+                    too, but this is the screen an owner opens, and nothing
+                    here pointed at the one place travelers gather. */}
+                {business.chat_id ? (
+                  <Section
+                    title="Your chat"
+                    icon={{ ios: 'bubble.left.and.bubble.right', android: 'forum', web: 'forum' }}>
+                    <DetailRow
+                      label="Open your chat"
+                      icon={{ ios: 'bubble.left', android: 'chat', web: 'chat' }}
+                      value={
+                        detail && detail.member_count > 0
+                          ? `${countOf(detail.member_count, 'person', 'people')} here`
+                          : 'Nobody in yet'
+                      }
+                      onPress={() => router.push(`/room/${business.chat_id}`)}
+                    />
+                  </Section>
+                ) : null}
 
                 <Section
                   title="Your rating"

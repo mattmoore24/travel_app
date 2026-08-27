@@ -32,7 +32,7 @@ import {
 } from '@/constants/theme';
 import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
 import { BusinessMarker } from '@/features/business/business-marker';
-import { useCityBusinesses } from '@/features/business/hooks';
+import { useCityBusinesses, useOwnBusiness } from '@/features/business/hooks';
 import { PlaceSheet } from '@/features/business/place-sheet';
 import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
 import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
@@ -530,6 +530,10 @@ export default function MapScreen() {
   // Places are the third marker family, and they are quiet on purpose:
   // people stack on top of places, which is the right sentence for this app.
   const { data: places = [] } = useCityBusinesses(activeCityId);
+  // A place is not a traveler and may not drop a 72-hour pin (§7 rule 8, six
+  // BEFORE INSERT triggers). Without this the owner filled in the whole pin
+  // form and was refused by a raw database alert at the end of it.
+  const isBusiness = useOwnBusiness().data != null;
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   // Every other gate in the app states its reason before it asks. Dropping a
   // pin was the one that did not: it teleported a guest to an email form with
@@ -611,6 +615,9 @@ export default function MapScreen() {
   };
 
   const enterPlaceMode = () => {
+    if (isBusiness) {
+      return;
+    }
     if (isGuest) {
       setPinGate(true);
       return;
@@ -1080,7 +1087,12 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      {activeCity && mode === 'browse' && pinsLoaded && pins.length === 0 && !selectedPin ? (
+      {activeCity &&
+      mode === 'browse' &&
+      !isBusiness &&
+      pinsLoaded &&
+      pins.length === 0 &&
+      !selectedPin ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Be the first to drop a pin"
@@ -1108,7 +1120,7 @@ export default function MapScreen() {
         </Pressable>
       ) : null}
 
-      {activeCity && mode === 'browse' && !selectedPin ? (
+      {activeCity && mode === 'browse' && !isBusiness && !selectedPin ? (
         <Animated.View
           entering={FadeInUp.duration(Motion.standard)}
           exiting={FadeOut.duration(Motion.quick)}

@@ -71,7 +71,7 @@ export default function MessagePlaceScreen() {
     <StepScreen
       scrollRef={scrollRef}
       title={name ?? 'This place'}
-      subtitle="Goes to the people who run it. You'll find it in Chats."
+      subtitle="Goes to the people who run it. You'll find it on the Chat tab."
       continueLabel="Send"
       continueDisabled={!businessId || message.trim().length === 0 || message.length > MESSAGE_MAX}
       continueLoading={messagePlace.isPending}

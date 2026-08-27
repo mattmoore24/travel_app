@@ -20,6 +20,7 @@ import {
   useOwnSocialHandles,
 } from '@/features/profile/hooks';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
+import { useOwnBusiness } from '@/features/business/hooks';
 import { useIsGuest, useIsGuestAccount } from '@/features/guest/hooks';
 import { useMyTrips } from '@/features/trips/hooks';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -85,12 +86,77 @@ function GuestProfile({ guestName }: { guestName: string | null }) {
   );
 }
 
+/**
+ * The account page a PLACE gets when it taps the header avatar.
+ *
+ * Not the traveler profile. That page offers Edit profile, Get verified (the
+ * selfie flow), and Who you see and who sees you — three routes registered
+ * only under the onboarded guard, which a business account never satisfies,
+ * so all three did nothing at all. It also offered "Run a business?" to
+ * somebody who runs one.
+ *
+ * Everything a place actually manages lives on the My business tab, so this
+ * page is deliberately short: the way there, the way to a human, and the two
+ * account controls App Review requires to be reachable from inside the app.
+ */
+function BusinessAccount({ name }: { name: string | null }) {
+  return (
+    <ThemedView style={styles.root}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.guestContent}>
+        <ThemedText type="title" style={styles.guestText}>
+          {name ?? 'Your account'}
+        </ThemedText>
+        <ThemedText themeColor="textSecondary" style={styles.guestText}>
+          Everything about your place lives on the My business tab.
+        </ThemedText>
+        <PrimaryButton label="Manage your place" onPress={() => router.replace('/(tabs)')} />
+        <PrimaryButton
+          variant="ghost"
+          label="House rules and help"
+          onPress={() => router.push('/guidelines')}
+        />
+        <PrimaryButton
+          variant="ghost"
+          label="Sign out"
+          onPress={() => {
+            signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
+          }}
+        />
+        <PrimaryButton
+          variant="ghost"
+          label="Delete account"
+          onPress={() =>
+            Alert.alert(
+              'Delete this account?',
+              'Your place comes off the map and everything on it goes: photos, posts, hours, links, ratings and its chat. This cannot be undone.',
+              [
+                { text: 'Keep it', style: 'cancel' },
+                {
+                  text: 'Delete',
+                  style: 'destructive',
+                  onPress: () => {
+                    deleteAccount().catch(() =>
+                      Alert.alert('Could not delete that', 'Try again in a minute.')
+                    );
+                  },
+                },
+              ]
+            )
+          }
+        />
+        <BuildStamp />
+      </ScrollView>
+    </ThemedView>
+  );
+}
+
 export default function ProfileScreen() {
   // Not "has a session": a guest has one. The member page below reads
   // photos, trips, prompts and handles, none of which a guest can have, so
   // the question is membership.
   const isGuest = useIsGuest();
   const isGuestAccount = useIsGuestAccount();
+  const ownBusiness = useOwnBusiness();
   const { data: profile } = useOwnProfile();
   const ownPhotos = useOwnPhotos();
   const photos = ownPhotos.data ?? [];
@@ -120,6 +186,13 @@ export default function ProfileScreen() {
 
   if (isGuest) {
     return <GuestProfile guestName={isGuestAccount ? (profile?.display_name ?? null) : null} />;
+  }
+
+  // Before the `!profile` bail below, because a business account HAS a
+  // profile row (display_name is its name) and would otherwise fall through
+  // to the traveler page.
+  if (ownBusiness.data != null) {
+    return <BusinessAccount name={ownBusiness.data.name} />;
   }
 
   if (!profile) {

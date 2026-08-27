@@ -41,7 +41,13 @@ type LinkRow = Database['public']['Tables']['business_links']['Row'];
 type PhotoRow = Database['public']['Tables']['business_photos']['Row'];
 
 /** Which block the caller's Edit affordance was pointing at. */
-type Section = 'details' | 'hours' | 'links' | 'photos';
+/**
+ * Exported so the dashboard's rows are typed against it. They were `string`,
+ * and a row asking for `"description"` — a member that has never existed —
+ * compiled, shipped, and opened the editor at the top instead of at the
+ * field the row named.
+ */
+export type Section = 'details' | 'hours' | 'links' | 'photos';
 
 const NAME_MIN = 2;
 const NAME_MAX = 80;

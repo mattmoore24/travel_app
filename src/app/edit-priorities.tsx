@@ -21,6 +21,7 @@ import {
   priorityPlaceholder,
   validatePriority,
 } from '@/features/profile/priorities';
+import { nextFreeSlot } from '@/features/profile/slots';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 
@@ -60,21 +61,37 @@ export default function EditPrioritiesScreen() {
   const rowRefs = useRef<Record<number, TextInput | null>>({});
 
   const full = priorities.length >= MAX_PRIORITIES;
-  const nextSlot = priorities.length;
+  // The lowest slot nobody holds, not `priorities.length`. Two entries typed
+  // faster than the refetch both read length 0 and the upsert on
+  // (user_id, slot) meant the second silently replaced the first. `justWrote`
+  // covers the same gap from the other side: the query has not come back yet,
+  // so the slot we wrote a moment ago is not in `priorities`.
+  const justWrote = useRef<number[]>([]);
+  // Null only when all six are taken, which is exactly when `full` is true
+  // and the empty field is not rendered at all.
+  const nextSlot =
+    nextFreeSlot([...priorities.map((p) => p.slot), ...justWrote.current], MAX_PRIORITIES) ??
+    MAX_PRIORITIES - 1;
 
   // Arriving from a chip on the profile: put the cursor in that row, or in
   // the empty field when the section header sent us here with nothing.
   const focusSlot = params.slot != null ? Number(params.slot) : null;
   const focused = useRef(false);
   useEffect(() => {
-    if (focused.current || priorities.length === 0) {
+    if (focused.current) {
       return;
     }
     focused.current = true;
     if (focusSlot != null) {
       rowRefs.current[focusSlot]?.focus();
+    } else {
+      // The header sent us here with nothing to edit, which means "I want to
+      // add one". The comment claimed this happened; the early return on an
+      // empty list meant it never did, so the screen opened with no keyboard
+      // and somebody had to find the field and tap it.
+      pendingRef.current?.focus();
     }
-  }, [focusSlot, priorities.length]);
+  }, [focusSlot]);
 
   const textOf = (slot: number, stored: string) => drafts[slot] ?? stored;
 
@@ -111,6 +128,14 @@ export default function EditPrioritiesScreen() {
     for (const priority of priorities) {
       await commitRow(priority.slot, priority.text);
     }
+    // The rows as they now stand, NOT `priorities`, which is the render-time
+    // snapshot the writes above have not reached yet — the invalidation's
+    // refetch cannot land inside this handler. Renumbering from the snapshot
+    // wrote the pre-edit text back over the edit that had just been saved.
+    return priorities.map((priority) => ({
+      ...priority,
+      text: textOf(priority.slot, priority.text).trim() || priority.text,
+    }));
   };
 
   const commitPending = async ({ keepGoing }: { keepGoing: boolean }) => {
@@ -125,6 +150,7 @@ export default function EditPrioritiesScreen() {
     }
     try {
       await save.mutateAsync({ slot: nextSlot, text: value });
+      justWrote.current = [...justWrote.current, nextSlot];
       haptics.light();
       setPending('');
       setPendingError(null);
@@ -141,7 +167,7 @@ export default function EditPrioritiesScreen() {
   return (
     <StepScreen
       title="Top priorities"
-      subtitle="The stuff you actually want to do out there. Places, food, a night out, a hike, whatever it is. Keep them short. Someone who wants the same thing can say they're in."
+      subtitle="Places, food, a night out, the one thing you'd hate to miss. Someone who wants the same thing can say they're in."
       continueLabel="Done"
       onContinue={async () => {
         await commitPending({ keepGoing: false });
@@ -180,12 +206,13 @@ export default function EditPrioritiesScreen() {
               scaleTo={0.9}
               hitSlop={12}
               onPress={async () => {
-                await commitDirtyRows();
+                const committed = await commitDirtyRows();
                 setDrafts({});
                 setErrors({});
+                justWrote.current = [];
                 remove.mutate({
                   slot: priority.slot,
-                  rows: priorities.map((row) => ({ slot: row.slot, text: row.text })),
+                  rows: committed.map((row) => ({ slot: row.slot, text: row.text })),
                 });
               }}>
               <SymbolView
@@ -236,9 +263,21 @@ export default function EditPrioritiesScreen() {
   );
 }
 
-/** The DB speaks in sentences meant for a person; anything else is generic. */
+/**
+ * The DB speaks in sentences meant for a person; anything else is generic.
+ *
+ * Duck-typed, NOT `instanceof Error`. supabase-js returns a plain parsed
+ * object on the non-throwing path — `PostgrestError` is only constructed
+ * under `shouldThrowOnError` — so the instanceof check was always false and
+ * this always said "Couldn't save that", underneath a global alert that was
+ * simultaneously showing the real sentence. Two explanations at once, one of
+ * them wrong.
+ */
 function messageFor(error: unknown): string {
-  const message = error instanceof Error ? error.message : '';
+  const message =
+    typeof (error as { message?: unknown } | null)?.message === 'string'
+      ? (error as { message: string }).message
+      : '';
   return message.includes('community guidelines')
     ? 'That one breaks our community guidelines.'
     : "Couldn't save that. Try again.";

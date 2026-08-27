@@ -22,7 +22,8 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HitTarget, MaxContentWidth, Radius, Space } from '@/constants/theme';
-import { useBusinessDetail, useRatingSummary } from '@/features/business/hooks';
+import { useBusinessDetail, useOwnBusiness, useRatingSummary } from '@/features/business/hooks';
+import { PlaceSeal } from '@/features/business/place-seal';
 import {
   CATEGORY_ICON,
   CATEGORY_LABEL,
@@ -67,42 +68,6 @@ function PlaceImage({
         fallback
       )}
     </View>
-  );
-}
-
-/**
- * The check beside a verified name.
- *
- * Not `VerifiedSeal`: that one explains a live selfie compared against a
- * person's photos, which is the wrong thing to tell somebody about a bar.
- * What a place earned is two camera shots of its own front door, so that is
- * what the tap says. And there is deliberately no counterpart for a place
- * without one - an "unverified" chip would be a mark against every honest
- * place that has not got round to it yet.
- */
-function VerifiedCheck() {
-  const theme = useTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      // "Verified place", not "verified business": travelers never see that
-      // second word, and the place sheet already says it this way.
-      accessibilityLabel="Verified place"
-      accessibilityHint="What the check means"
-      // 14 + 15 + 15 = 44 on a glyph that draws at 14.
-      hitSlop={Math.ceil((HitTarget - 14) / 2)}
-      onPress={() =>
-        Alert.alert(
-          'Verified',
-          'Somebody stood outside and sent us two photos of the front. We checked them against the spot on the map.'
-        )
-      }>
-      <SymbolView
-        name={{ ios: 'checkmark.seal.fill', android: 'verified', web: 'verified' }}
-        size={14}
-        tintColor={theme.accent}
-      />
-    </Pressable>
   );
 }
 
@@ -281,9 +246,15 @@ export default function PlaceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
   const isGuest = useIsGuest();
+  // A business account reaches this page through its own "See it as a
+  // traveler" button, and every traveler action on it is a route registered
+  // only under the onboarded guard.
+  const ownBusiness = useOwnBusiness();
   const detailQuery = useBusinessDetail(id ?? null);
   const place = detailQuery.data ?? null;
-  const { data: summary } = useRatingSummary(id ?? null);
+  const isOwner = place != null && ownBusiness.data?.id === place.id;
+  const ratingQuery = useRatingSummary(id ?? null);
+  const summary = ratingQuery.data;
   const chatsQuery = useMyChats();
 
   // The PLACE's clock, not the reader's: somebody in Lisbon reading a Bangkok
@@ -380,7 +351,7 @@ export default function PlaceScreen() {
                 <ThemedText type="title" style={styles.name}>
                   {place.name}
                 </ThemedText>
-                {place.verified ? <VerifiedCheck /> : null}
+                {place.verified ? <PlaceSeal /> : null}
               </View>
 
               <View style={styles.metaRow}>
@@ -405,7 +376,12 @@ export default function PlaceScreen() {
                 ) : null}
               </View>
 
-              {summary == null || summary.average == null ? (
+              {/* Held back until the answer is in, the same as the sheet.
+                  `summary == null` is also true while the query is in
+                  flight, so without the gate the page says "Not rated yet"
+                  for a beat and then says 8.4 — the app contradicting itself
+                  on the one number a place is judged by. */}
+              {!ratingQuery.isSuccess ? null : summary == null || summary.average == null ? (
                 <ThemedText type="callout" themeColor="textSecondary">
                   Not rated yet
                 </ThemedText>
@@ -495,11 +471,51 @@ export default function PlaceScreen() {
               </Section>
             ) : null}
 
-            {isGuest ? (
+            {isOwner ? (
+              // The owner reached this page through their own "See it as a
+              // traveler" button. Every control below is a route registered
+              // only for a traveler account, so they all did nothing at all
+              // when a business pressed them. One honest row instead of four
+              // dead buttons.
+              <View style={styles.actions}>
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  This is your listing, as a traveler sees it.
+                </ThemedText>
+                <PrimaryButton
+                  variant="ghost"
+                  label="Back to My business"
+                  accessibilityLabel="Back to My business"
+                  onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+                />
+              </View>
+            ) : isGuest ? (
               // A guest lands here from the map, and every action below is
               // behind an account at the router. Buttons that silently do
               // nothing are worse than the ask, so this is the ask.
-              <SignUpGate reason="Join the chat, or send them a message" where="place" />
+              <View style={styles.actions}>
+                <SignUpGate reason="Join the chat, rate it, or send them a message" where="place" />
+                {/* Outside the gate on purpose. A guest browsing the map is
+                    exactly the person most likely to spot a listing that
+                    should not be there, and the ask below names reporting
+                    rather than the chat. */}
+                <View style={styles.quietRow}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Report ${place.name}`}
+                    hitSlop={12}
+                    onPress={() =>
+                      Alert.alert(
+                        'Report this place',
+                        'Make an account first, so we can come back to you about it.'
+                      )
+                    }
+                    style={styles.quietAction}>
+                    <ThemedText type="footnote" themeColor="textSecondary">
+                      Report this place
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              </View>
             ) : (
               <View style={styles.actions}>
                 {place.chat_id ? (
@@ -519,17 +535,51 @@ export default function PlaceScreen() {
                       onPress={() =>
                         inTheChat
                           ? router.push(`/room/${place.chat_id}`)
-                          : router.push({ pathname: '/join-place', params: { id: place.id } })
+                          : router.push({
+                              pathname: '/join-place',
+                              params: {
+                                id: place.id,
+                                chatId: place.chat_id!,
+                                name: place.name,
+                              },
+                            })
                       }
                     />
                   </>
                 ) : null}
+                {/* Only where somebody is on the other end. message_business
+                    refuses an unclaimed venue, and it does it after five
+                    hundred characters have been typed and Send pressed. */}
+                {place.claimed ? (
+                  <PrimaryButton
+                    variant="tonal"
+                    label="Message"
+                    accessibilityLabel={`Message ${place.name}`}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/message-place',
+                        params: { id: place.id, name: place.name },
+                      })
+                    }
+                  />
+                ) : (
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    Nobody runs this place on Samewhere yet. The chat is open to anyone passing
+                    through.
+                  </ThemedText>
+                )}
+                {/* Its own button, not a footnote beside Report. Rating is
+                    the feature; reporting is the safety valve. They were the
+                    same size, in the same row, below the fold. */}
                 <PrimaryButton
-                  variant="tonal"
-                  label="Message"
-                  accessibilityLabel={`Message ${place.name}`}
+                  variant="ghost"
+                  label="Rate this place"
+                  accessibilityLabel={`Rate ${place.name}`}
                   onPress={() =>
-                    router.push({ pathname: '/message-place', params: { id: place.id } })
+                    router.push({
+                      pathname: '/rate-place',
+                      params: { id: place.id, name: place.name, category: place.category },
+                    })
                   }
                 />
                 <View style={styles.quietRow}>
@@ -538,23 +588,14 @@ export default function PlaceScreen() {
                     accessibilityLabel={`Report ${place.name}`}
                     hitSlop={12}
                     onPress={() =>
-                      router.push({ pathname: '/report-place', params: { id: place.id } })
+                      router.push({
+                        pathname: '/report-place',
+                        params: { id: place.id, name: place.name },
+                      })
                     }
                     style={styles.quietAction}>
                     <ThemedText type="footnote" themeColor="textSecondary">
                       Report this place
-                    </ThemedText>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Rate ${place.name}`}
-                    hitSlop={12}
-                    onPress={() =>
-                      router.push({ pathname: '/rate-place', params: { id: place.id } })
-                    }
-                    style={styles.quietAction}>
-                    <ThemedText type="footnote" style={{ color: theme.accent }}>
-                      Rate it
                     </ThemedText>
                   </Pressable>
                 </View>

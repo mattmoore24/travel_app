@@ -345,12 +345,17 @@ select pg_temp.admin();
 update public.businesses set state = 'listed', listed_at = now() where name = 'Marriott Lisbon';
 
 select pg_temp.login('00000000-0000-0000-0000-0000000000b2');
+-- The business-account guard fires ahead of the self-report one, which is
+-- the right order: a report emails support and queues an impersonation scan
+-- on the FIRST one, so a business account may not file any report, on a
+-- rival or on itself. The owns_business check underneath still earns its
+-- place — a STAFF member is a traveler account and reaches it.
 select throws_ok(
   $$ select public.report_business(
        (select id from public.businesses where name = 'Marriott Lisbon'),
        'not_this_business') $$,
-  'that is your own listing',
-  'nobody reports themselves'
+  'a business account cannot do that',
+  'nobody reports themselves, and no place reports anybody'
 );
 
 select pg_temp.login('00000000-0000-0000-0000-0000000000a2');
