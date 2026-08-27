@@ -3,6 +3,26 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Planned: **Top priorities on the profile** (2026-08-27)
+
+Founder request, deliberately separate from the business work: up to six very
+short things a traveler wants to do out there, listed on the profile. Plan in
+**docs/TOP_PRIORITIES.md**.
+
+Why it is worth its own doc rather than another prompt: everything else on a
+profile describes a person, trips describe a place and a window, and this is
+the only section that describes a **plan**. A plan is the one thing a stranger
+can say yes to without having to be charming first, which is why each entry is
+a tappable RSVP that opens the composer anchored to it ("Say you're in").
+
+Shape: a `profile_priorities` table modelled on `profile_prompts` (slot 0-5, so
+six is enforced by the primary key rather than by client code), 40 characters
+per entry, screened by the same classifier the prompts and the bio go through,
+visible exactly where the profile is. The editor is one screen where the return
+key commits a row and opens the next, so six entries cost six lines of typing
+and no taps in between. One open question for the founder: one list per
+profile or one per trip (§9 D1, recommendation: one list).
+
 ## Planned: **Phase 13-17 — business accounts ("Places")** (2026-08-27)
 
 The founder asked for business accounts: a persistent place on the map with
@@ -19,9 +39,43 @@ Headline findings: the chat spec is closer to built than it reads
 groups.speaking is two of the three modes); the genuinely new surface is the
 business identity, verification against impersonation, and two §7 amendments.
 
-**Blocked on the founder**: §7 amendments for rules 3 and 4, the rule 5
-restatement, proposed rule 8, and decisions 1-21 in the plan's §9. Nothing is
-implemented until those are signed.
+**Revised 2026-08-27** after the founder read the plan. Twelve changes, all
+folded in:
+
+- Posts expire when the business says so, including never. No mandatory 30
+  days.
+- "Run a business? Put it on the map." and the tab is **My business**.
+- **Businesses verify themselves, with no founder in the loop** (§3.9). Path A:
+  the signup email's domain matches the claimed website, so a six-digit code to
+  that address proves both at once. Path B, for a business whose email is a
+  free provider: a code placed anywhere public on their own site, fetched by an
+  Edge Function. Either path then passes a Claude plausibility check. Signup
+  asks for the business address up front and says why. Honest gap: a business
+  with no website _and_ no domain email cannot pass either path, so the contact
+  form stays as a rare manual exception rather than the default.
+- Messages to a business always go through, with no accept step. A business
+  cannot open a conversation with a person who has not written first.
+- The member list in a business chat is open to everyone in it. It is an app
+  for meeting people, and this reverses the earlier decision 18.
+- The departure question is a date picker with "I'm not sure", and says plainly
+  that you leave the chat three days after that date, or after ninety, and can
+  go or come back whenever.
+- Only admins can send photos in a business chat, even in the everyone mode.
+  Enforced by a trigger, not by hiding the button.
+- **Verified travelers can rate businesses, Beli-style** (§3.10). This reverses
+  an earlier refusal of mine, and the reason it reverses is specific: the
+  extortion lever in reviews is the free text, and Beli's mechanic has none.
+  You pick loved / fine / not for me, then answer three or four "which did you
+  prefer" comparisons, and the score falls out of where the place lands in your
+  own ranked list. No written reviews anywhere. Public number only past five
+  raters, mirroring the heatmap's k-threshold, and a business never learns who
+  rated it.
+- Category names and the capitalisation kept as proposed.
+
+**Blocked on the founder**: the §7 amendments for rules 3 and 4, the rule 5
+restatement, proposed rule 8, and the four decisions still open in the plan's
+§9 (6, 20, 21, 22). Everything else is signed. Nothing is implemented until
+those are.
 
 ## Current status: **Phase 12 — the founder's second review batch** (2026-08-23)
 

@@ -1,16 +1,12 @@
-# Business accounts ("Places") — the plan
+# Business accounts — the plan
 
-Drafted 2026-08-27 from five research lenses (data model, traveler UX, business
-UX, trust & safety, migration/competitive), then adversarially reviewed by three
-critics (UX simplicity, §7/privacy, engineering feasibility) before this final
-form. The review found three blocking defects in the first draft — a
-departure-date leak through `group_members()`, anti-scraping refusals asserted
-in prose with no migration to live in, and a dropped RPC that would have broken
-every deployed client's Join button — all folded in below, marked **[review]**
-where the fix changed the design.
+Drafted 2026-08-27 from five research lenses, adversarially reviewed by three
+critics, then **revised 2026-08-28 against the founder's comments**. Changes
+from the founder's pass are marked **[founder]**; changes the adversarial
+review forced are marked **[review]**.
 
-Nothing in this document is implemented. It is a plan for founder review, and
-§9 lists every decision that is the founder's to make.
+Nothing here is implemented. §9 lists what is still the founder's to decide;
+everything else is settled.
 
 ---
 
@@ -18,91 +14,77 @@ Nothing in this document is implemented. It is a plan for founder review, and
 
 A business account is a normal auth user that owns a row in `businesses`
 (today's `establishments`, grown up): a persistent, publicly readable place on
-the map with photos, hours, links, posts, and one open chat, visible to anyone
-with zero matching. It is not a person: it never appears in Travelers, never
-posts trips or pins, never sends a first message, and its public face is the
-business record, not a profile. Almost all of the requested chat machinery
-already exists — venue rooms, speaking modes, roles, the moderation pipeline,
-the guest ladder — so this feature is mostly a new front door onto shipped
-plumbing, plus §7 amendments the founder must sign before anything lands.
+the map with photos, hours, links, posts, and one open chat anyone can join,
+visible to everyone with zero matching. It is not a person: it never appears in
+Travelers, never posts trips or pins, never messages anyone first. Most of the
+chat machinery already exists — rooms, roles, speaking modes, the expiry sweep,
+the moderation pipeline — so the genuinely new work is the business identity,
+**automatic verification**, ratings, and the map presence.
 
 ---
 
-## 2. The §7 reckoning (nothing ships without this)
+## 2. The §7 reckoning
 
-Every rule below quotes proposed amendment language verbatim for sign-off.
-Rules 1, 2, 6, and 7 need no carve-out; they are stated for the record.
+Proposed amendments, quoted as they would land in the product brief.
 
-**Rule 3 — "Pins hard-expire at ≤72 hours."** A business marker is persistent.
-Proposed amendment:
+**Rule 3 — "Pins hard-expire at ≤72 hours."**
 
 > _"Traveler pins (`public.pins`) hard-expire at ≤72h and are then unreadable —
-> unchanged. Business markers are persistent commercial listings stored in
-> `public.businesses`; they are statements about a premises, not about a
-> person, contain no dates and no personal data, never enter `public.pins`,
-> and never count toward heatmap aggregation. Business posts (deals/events)
-> carry their own mandatory expiry (≤30 days) and are swept."_
+> unchanged. Business listings are persistent commercial records in
+> `public.businesses`: statements about a premises, not about a person. They
+> carry no dates and no personal data, never enter `public.pins`, and never
+> count toward heatmap aggregation. A business post has an end date its owner
+> chooses, or none at all."_
 
-Note: seeded establishments have rendered persistent venue locations since
-20260817200000; this writes down a carve-out that is already implicitly live.
+**[founder]** The mandatory 30-day post expiry is gone. A business sets how
+long a post runs, or leaves it up indefinitely. The 10-live-post cap is what
+bounds the surface now, and dated posts still archive themselves once the date
+passes (an event last Tuesday must stop reading as "on"). See §3.3.
 
-**Rule 4 — "Social handles are never visible pre-accept."** Business handles
-are public by design. Proposed amendment:
+**Rule 4 — "Social handles are never visible pre-accept."**
 
-> _"Rule 4 protects people. Personal `social_handles` keep the
-> accepted-direct-chat gate unchanged. A business's socials, links, and contact
-> info are advertising about a premises, live in a separate public table
-> (`business_links`), and are shown to anyone pre-contact. In exchange the gate
-> tightens: a chat with a business (`chats.kind = 'business'`) never unlocks
-> anyone's personal handles, in either direction."_
+> _"Rule 4 protects people. Personal handles keep the accepted-direct-chat gate
+> unchanged. A business's socials, links and contact details are advertising
+> about a premises, live in a separate public table, and are shown to anyone.
+> In exchange the gate tightens: a chat with a business never unlocks anyone's
+> personal handles, in either direction."_
 
-Ground truth: `has_accepted_chat` already requires `kind = 'direct'`
-(20260819210000:263-281), so the rule-4 protection falls out for free —
-**provided** business DM chats are always created `kind='business'`, never
-`'direct'`. That invariant is load-bearing and gets a two-direction pgTAP
-attack test.
+`has_accepted_chat` already requires `kind = 'direct'`, so this falls out for
+free — provided business DM chats are always `kind='business'`. That invariant
+gets a two-direction pgTAP attack test.
 
-**Rule 5 — "Every first message passes moderation."** Fully intact, no
-carve-out — but the _accept ceremony_ (never itself a §7 rule) is waived for
-one recipient class. Restatement for sign-off:
+**Rule 5 — "Every first message passes moderation."**
 
-> _"Every first message from a person to a business passes the identical
-> prefilter → held-state → LLM-verdict pipeline before any chat exists; on a
-> clean verdict the chat opens immediately instead of landing in an accept
-> inbox. Business accounts send no first messages at all. Business broadcast
-> text (name, description, posts, link labels) passes the same regex prefilter
-> on write, via a `screen_business_text` trigger in the shape of the existing
-> `screen_profile_text`."_ **[review]** (the first draft named a `screen_text`
-> function that does not exist; the real chokepoints are
-> `screen_first_message` and the profile-text trigger, and the business
-> trigger reuses them.)
+> _"A first message to a business is screened by the same prefilter every
+> message passes, and is then delivered immediately. There is no accept step
+> and no held state: a business wants to be asked questions. The romance
+> classifier does not run on business messages — it screens for the wrong
+> thing when somebody is asking about beds. Business accounts send no first
+> messages at all. Business broadcast text (name, description, posts, link
+> labels) passes the same prefilter on write."_
 
-**Proposed new rule 8** (the anti-spam posture — recommend adopting):
+**[founder]** "Messages to businesses should always go through." The accept
+ceremony is gone and so is the LLM hold — a question to a hostel should not sit
+in a queue waiting on a classifier trained to spot flirting. The prefilter
+stays, because slurs and scam patterns are still slurs and scam patterns. Rule
+5 remains true; it just means the right moderation for the speech act.
+
+**Proposed rule 8** (new):
 
 > _"A business account never initiates contact with a traveler, never joins a
 > traveler's group or another business's chat, and never reads traveler
-> discovery surfaces. Its reach is its marker, its posts, and its own chats."_
+> discovery surfaces. Its reach is its listing, its posts, its chat and its
+> replies."_
 
-**[review]** The first draft's rule-8 wording promised more than its triggers
-enforced. The wording above matches the enforcement exactly: BEFORE INSERT
-refusals on `trips`, `pins`, `message_requests` (as sender),
-`verification_requests`, `profile_photos`, **and `room_members`** (a business
-joins no rooms — its own is moderated through ownership, not membership), plus
-`create_group` refusing business callers, plus the three discovery reads
-refusing them (§3.7).
+**[founder]** "Businesses can't message individuals without being messaged
+first" — exactly rule 8, confirmed. Enforced by BEFORE INSERT refusals on
+`trips`, `pins`, `message_requests` (as sender), `verification_requests`,
+`profile_photos` and `room_members`, plus `create_group` refusing business
+callers, plus the discovery reads refusing them (§3.7).
 
-**Rule 1 note:** nothing here gates any traveler-facing read or message on
-payment. Business features are free at v1; if business-side monetization ever
-arrives it must be placement, never gating traveler reads/messages, and never
-pay-to-rank (decision 15).
-
-**Rule 2 note:** a business's lat/lng is a claimed place of business entered at
-registration, not a device reading. No location permission enters app.json.
-
-**Rule 6 note:** businesses are structurally outside heat — `heat_cells`
-aggregates only `public.pins`, and businesses can never have rows there
-(trigger-enforced). A permanent commercial marker in heat would light a cell
-forever and destroy the date signal; the k-count stays a count of travelers.
+**Rules 1, 2, 6, 7** need no carve-out. Free at v1 (decision 15); a business's
+lat/lng is a claimed premises, not a device reading; businesses are
+structurally outside heat because `heat_cells` only aggregates `public.pins`.
 
 ---
 
@@ -110,679 +92,602 @@ forever and destroy the date signal; the k-count stays a count of travelers.
 
 ### 3.1 Account identity
 
-No mirrored flag — the guests build proved mirrored flags drift; ownership is
-the source of truth:
+No mirrored flag — the guests build proved those drift. Ownership is the truth:
 
-- `businesses.owner_user_id uuid unique references users(id)` — owning a row
-  IS being a business account.
-- `is_business_account(p_user_id uuid default auth.uid()) returns boolean` —
-  SECURITY DEFINER, one lookup via the unique index, execute revoked from anon
-  (the `is_guest_account` shape).
-- **The keystone invariant, reused from guests:** a business profile's
+- `businesses.owner_user_id uuid unique references users(id)` — owning a row IS
+  being a business account.
+- `is_business_account(p_user_id uuid default auth.uid())` — SECURITY DEFINER,
+  one indexed lookup, revoked from anon (the `is_guest_account` shape).
+- **Keystone invariant, reused from guests:** a business profile's
   `onboarding_completed_at` stays NULL forever
-  (`business_profile_stays_minimal` BEFORE UPDATE trigger on profiles, refusing
-  the stamp plus age/gender/bio). That single fact keeps businesses out of
-  `get_matches`, `featured_traveler`, `daily_spotlight`, `city_pins`, and the
-  Travelers tab with zero edits to those functions. Per the Phase 11 lesson,
-  pgTAP still attacks each surface individually.
-- The registration RPC sets `profiles.display_name := business name`, so chat
-  headers and message authorship render correctly with zero query changes.
+  (`business_profile_stays_minimal` BEFORE UPDATE trigger). That single fact
+  keeps businesses out of `get_matches`, `featured_traveler`,
+  `daily_spotlight`, `city_pins` and the Travelers tab with no edits to any of
+  them. pgTAP still attacks each surface individually.
+- `profiles.display_name` is set to the business name, so chat headers and
+  message authorship render with zero query changes.
 - One account is one identity: a caller with `onboarding_completed_at` set
-  cannot register a business, and a business owner who travels makes a second
-  free account (decision 5).
-
-Guard triggers (guest idiom), the full list: `businesses_do_not_broadcast`
-(trips, pins), `businesses_do_not_reach_out` (message_requests as sender),
-`businesses_do_not_upload` (verification_requests, profile_photos),
-`businesses_do_not_join` (room_members) **[review]**, and a business-caller
-refusal inside `create_group`.
+  cannot register a business (decision 5).
 
 ### 3.2 The `businesses` table
 
-Rename, don't parallel: `alter table establishments rename to businesses;
-alter table establishment_staff rename to business_staff;` — live rooms,
-chat_ids, members, and messages carry over untouched. A permanent
-`establishments`/`businesses` split would leave every future reader guessing
-which table means what; the cost — recreating every SECURITY DEFINER function
-that names the table — is bounded, greppable, and proven by the full pgTAP run.
-It is the single riskiest migration of the set (§8) and lands with the full
-recreation list in one file.
+`alter table establishments rename to businesses; alter table
+establishment_staff rename to business_staff;` — live rooms, chat ids, members
+and messages carry over untouched. Cost is recreating every SECURITY DEFINER
+function naming the table: bounded, greppable, proven by the pgTAP run.
 
-New/changed columns on `businesses`:
+| column                                                | notes                                                                                                                            |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `owner_user_id uuid unique → users`                   | NULL for the four seeded venues                                                                                                  |
+| `category public.business_category`                   | hostel, hotel, guesthouse, bar, restaurant, cafe, club, tour, activity, coworking, wellness, shop, other **[founder: approved]** |
+| `description`, `place_label`, `hours_note`            | ≤600 / ≤120 / ≤200, all screened                                                                                                 |
+| `website_url text`                                    | the verification anchor (§3.9)                                                                                                   |
+| `verification_state public.business_verification`     | enum: `unverified`, `pending`, `verified`, `failed`                                                                              |
+| `verified_at timestamptz`, `claimed_at`, `updated_at` |                                                                                                                                  |
 
-| column                                                                         | notes                                                                                                                                                       |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `owner_user_id uuid unique → users`                                            | NULL for the four seeded venues (unclaimed)                                                                                                                 |
-| `category public.business_category`                                            | enum: hostel, hotel, guesthouse, bar, restaurant, cafe, club, tour, activity, coworking, wellness, shop, other; backfilled from `kind`, then `kind` dropped |
-| `description text` (≤600), `place_label text` (≤120), `hours_note text` (≤200) | all through the business text screen                                                                                                                        |
-| `moderation_status public.moderation_status default 'pending'`                 | seeded rows backfilled 'approved'; unapproved businesses are **invisible, not badged**                                                                      |
-| `claimed_at timestamptz`, `updated_at`                                         |                                                                                                                                                             |
+**Column-scoped grants** **[review]**: the existing table grants full-row SELECT
+to anon, which after the rename would hand out `owner_user_id`. Grants become
+column lists — anon and authenticated read (id, city_id, name, category,
+description, place_label, hours_note, website_url, lat, lng, public_preview,
+verification_state) of `active` + `verified` rows only. `owner_user_id`,
+`claimed_at` and the verification evidence are never client-readable.
 
-**Access, column-scoped** **[review]**: the existing table grants full-row
-SELECT to anon, which after this migration would hand out `owner_user_id`.
-Grants become column lists: anon+authenticated read (id, city_id, name,
-category, description, place_label, hours_note, lat, lng, public_preview) of
-approved+active rows; `owner_user_id`, `moderation_status`, `claimed_at` are
-never client-readable — clients never learn which human owns a place, and
-`message_business` exists precisely so they never need to.
-
-**Registration evidence is not on this table** **[review]**: the claimed
-website and business contact email used for verification live in a separate
-`business_claims` table with **no client grants at all** (service-role and the
-founder's admin view only). Verification evidence about a pending claim is
-nobody's business but the reviewer's.
-
-RLS: select for anon+authenticated where `active and
-moderation_status='approved'`; owner selects own row always (own-columns
-grant). Client UPDATE column-granted to (name, description, hours_note,
-place_label, public_preview) with a validate trigger (text screen + 30/day
-velocity); lat/lng, city_id, active, moderation_status, owner_user_id are
-server-owned. Name/city/location changes go through
-`update_business_location(...)` and re-enter `moderation_status='pending'`
-(closes the verify-as-surf-shack-rename-to-Marriott attack). No client
-INSERT/DELETE.
-
-`register_business(...) returns uuid` — refuses guests, completed-onboarding
-callers, existing owners, bad standing; geofence-validated; lands 'pending';
-writes the evidence row to `business_claims`.
-`admin_review_business(p_business_id, p_action, p_note)` — service-role only,
-`assert_service_caller`, audited to `moderation_events`. v1 verdicts are
-founder-manual via an `admin_business_queue` view; the claim evidence is what
-the founder judges. A document-upload evidence bucket is deferred to v2 — at
-four-city volume the founder is already talking to venues.
+RLS: select where `active and verification_state = 'verified'`; owner selects
+own row always. Client UPDATE column-granted to (name, description, hours_note,
+place_label, public_preview) behind a screening + velocity trigger; lat/lng,
+city_id, active, verification_state, owner_user_id are server-owned. Name, city
+or location changes go through `update_business_location(...)` and **re-enter
+verification** — that closes verify-as-surf-shack, rename-to-Marriott.
 
 ### 3.3 Content tables
 
-- **`business_hours`** — (business_id, weekday 0-6, opens time, closes time,
-  position; pk on all three). Multiple rows per weekday = split shifts;
-  closes < opens = past midnight; absent weekday = closed. Exceptions live in
-  the free-text `hours_note`. "Open now" is computed against the launch city's
-  timezone (4 cities, lookup table); when in doubt show plain hours, never a
-  wrong "Open". Read: anon+authenticated via `is_visible_business(p_business_id)`;
-  writes owner-only.
+- **`business_hours`** — (business_id, weekday 0-6, opens, closes, position).
+  Multiple rows per weekday = split shifts; `closes < opens` = past midnight;
+  absent weekday = closed. Exceptions live in the free-text `hours_note`. "Open
+  now" is computed in the city's timezone; when in doubt, show plain hours and
+  never a wrong "Open".
 - **`business_links`** — (id, business_id, kind enum: website, reservations,
-  tickets, menu, phone, email, whatsapp, instagram, tiktok, facebook, x,
-  other; label ≤40, value ≤300, position). This is where business socials
-  live; `social_handles` stays people-only. Validator trigger: scheme
-  allowlist by kind (https for links, tel:/mailto: for contact, bare handles
-  for socials), no IP-literal hosts, label screened, cap 10 per business
-  (advisory-locked). Free-text business fields refuse URLs at the prefilter,
-  so every outbound URL passes one chokepoint. Public read; owner-only writes.
+  tickets, menu, phone, email, whatsapp, instagram, tiktok, facebook, x, other;
+  label ≤40, value ≤300, position). Business socials live here;
+  `social_handles` stays people-only. Validator trigger: scheme allowlist per
+  kind, no IP-literal hosts, label screened, cap 10. Free-text business fields
+  refuse URLs, so every outbound link passes one chokepoint.
 - **`business_photos`** — mirror of profile_photos, deliberately separate
-  (profile_photos is entangled with person surfaces: avatar semantics, 7-cap,
-  matching reads). (id, business_id, storage_path, position 0-9 with 0 =
-  cover, moderation_status, created_at); cap 10. New private bucket
-  `business-photos`, paths `<owner_user_id>/<uuid>.jpg`, own-folder insert
-  with object ceiling 30, signed URLs. Same worker pipeline: BEFORE INSERT
-  hold at 'pending'; `apply_business_photo_verdict` service-role-only;
-  rejection is a strike against owner_user_id. Approved photos of visible
-  businesses readable by anon.
-- **`business_posts`** — (id, business_id, title 2-80, body ≤600, photo_path,
-  happens_at timestamptz nullable, `ends_at not null`, archived_at,
-  timestamps). **[review]** The first draft's Event/Deal/Update kind enum is
-  dropped: travelers only ever saw the derived caption, so the three-way
-  choice was composer friction with no payoff. A post is a post; "When is it?"
-  (optional `happens_at`) and "Until when?" (`ends_at`) drive the caption
-  ("Tonight 20:00" / "Until Sun"). **Every post expires**:
-  `check (ends_at > coalesce(happens_at, created_at))` and
-  `check (ends_at <= created_at + interval '30 days')`. Caps: ≤10 live, 5
-  writes/day, advisory-locked. Title/body screened on write. Nightly
-  `archive_expired_posts()` stamps `archived_at` — soft-archive; §7.3's
-  hard-delete is a personal-location promise and does not apply to commercial
-  content (recorded reasoning). Live posts readable by anon; owner reads own
-  archive.
+  (profile_photos is entangled with avatar semantics and matching reads). Cap
+  10, position 0 = cover. New private bucket `business-photos`, own-folder
+  insert, object ceiling 30, signed URLs, the same worker pipeline: held at
+  'pending' on insert, `apply_business_photo_verdict` service-role-only,
+  rejection is a strike against the owner.
+- **`business_posts`** **[founder: expiry is the business's choice]** — (id,
+  business_id, title 2-80, body ≤600, photo_path, `happens_at timestamptz`
+  nullable, `ends_at timestamptz` **nullable**, archived_at, timestamps).
+
+  | the business picks | stored                           | what happens                             |
+  | ------------------ | -------------------------------- | ---------------------------------------- |
+  | "Tonight, 8pm"     | `happens_at` set, `ends_at` null | archives itself once `happens_at` passes |
+  | "Until Sunday"     | `ends_at` set                    | archives itself at `ends_at`             |
+  | "Keep it up"       | both null                        | stays until the business takes it down   |
+
+  No 30-day ceiling. What bounds the surface is the 10-live-post cap, 5 writes
+  a day, and the fact that a post is one card on one page. The composer's
+  third option reads **"Keep it up until I take it down"**, so indefinite is a
+  choice somebody makes, not a default they fall into. `archive_expired_posts()`
+  runs nightly over the two dated cases. Soft-archive, not delete: §7 rule 3's
+  hard-delete is a promise about personal whereabouts and does not apply to a
+  bar's happy-hour notice.
+
+  **[founder]** The Event / Deal / Update kind picker is gone — travelers only
+  ever saw the derived caption, so the three-way choice was friction with no
+  payoff. A post is a post; the dates make the caption.
 
 ### 3.4 Business chats
 
-New table, not a `groups` row and not a column on `businesses`:
+`business_chats` (chat_id pk → chats, business_id → businesses, `speaking
+public.group_speaking default 'everyone'`, created_at, **unique(business_id)**
+at v1). Not a `groups` row — that would invert the guest read-only invariant
+("a room with no groups row is a venue room") — and not a column on
+`businesses`, which cannot grow to multi-room. Backfill from
+`businesses.chat_id`, re-point readers, drop the column.
 
-`business_chats` (chat_id uuid pk → chats, business_id → businesses,
-`speaking public.group_speaking default 'everyone'`, created_at,
-**unique(business_id)** for v1 — one room per business; dropping that
-constraint later is the whole multi-room migration).
+| founder's words        | mode       | who may post                        |
+| ---------------------- | ---------- | ----------------------------------- |
+| "allow all users"      | `everyone` | any live member                     |
+| "allow selected users" | `granted`  | speakers + admins + owner/staff     |
+| "read only"            | `admins`   | owner, staff, appointed admins only |
 
-Why this shape: a `groups` row would silently invert the guest read-only
-invariant ("room with no groups row = venue room", 20260823120000) and
-duplicate name/created_by; a column on `businesses` cannot grow to multi-room.
-Backfill in the same migration from `businesses.chat_id`, re-point every
-reader, then drop `businesses.chat_id`. `guest_message_limits` is recreated so
-the venue-room test becomes "exists business_chats row" instead of "no groups
-row" — backfill and guard land in one migration, with a guest-post attack test
-against the seeded venues specifically.
+`may_speak_in_room` reads `coalesce(groups.speaking, business_chats.speaking)`
+and treats 'admins' as moderator-only. `is_room_moderator` gains three arms:
+business_staff, owner_user_id, `room_members.role = 'admin'`.
 
-Speaking modes — the founder's three map onto the existing enum plus one value
-(`alter type group_speaking add value 'admins'`; own migration file — new enum
-values are unusable in the adding transaction, repo precedent). An explicit
-third value means flipping modes never wipes speaker grants.
+**Photos are admins-only, always** **[founder]** — a new
+`business_room_photo_guard` BEFORE INSERT trigger on `messages`: if the chat is
+a business chat and `image_path is not null` and the sender is not
+owner/staff/appointed admin, refuse. This holds _even in `everyone` mode_, so
+"anyone can post" never means "anyone can post images". It is the cheapest
+possible answer to the one thing that makes an open room ugly, and it keeps a
+free-to-join room away from the vision classifier at volume. The composer hides
+the photo button rather than failing on send.
 
-| founder's words        | mode       | who may post                                                             |
-| ---------------------- | ---------- | ------------------------------------------------------------------------ |
-| "allow all users"      | `everyone` | any live member                                                          |
-| "allow selected users" | `granted`  | speakers + admins + business/staff (today's machinery, `set_group_role`) |
-| "read only"            | `admins`   | business owner, staff, appointed admins only                             |
+**Reactions survive read-only** **[review]** — the reaction policy currently
+gates on `can_send_in_chat`, which would make "read only" mean "no reactions".
+Recreated so any live member may react regardless of speaking mode, which is
+what makes the copy "You can read and react" true.
 
-`may_speak_in_room` recreated to read
-`coalesce(groups.speaking, business_chats.speaking)` and treat 'admins' as
-moderator-only; `can_send_in_chat` unchanged. `is_room_moderator` recreated
-with three arms: business_staff, owner_user_id, room_members.role='admin'. All
-existing moderator tools (remove message with evidence, remove member, pinned
-messages) follow for free.
-
-**Reactions in read-only rooms** **[review]**: the reaction policy currently
-gates on `can_send_in_chat`, which would make "read only" mean "no reactions"
-— the wrong feel for an announcements room. The reaction policy is recreated
-to allow any live member to react regardless of speaking mode; the copy "You
-can read and react" then tells the truth.
-
-Admin appointment: `business_set_chat_role(p_chat_id, p_user_id, p_role in
-member|speaker|admin)` — callable only by owner/staff, so appointed admins
-cannot mint admins. Appointed admins moderate (remove people/messages) but
-cannot change speaking mode or edit the business. Guard added to
-`room_remove_member`: an admin row is removable only by owner/staff.
-`leave_room` unchanged — users always remove themselves.
-
-**[review]** `promote_group_successor` needs no change: its first guard
-already returns for chats with no `groups` row, so business rooms are
-structurally excluded — the first draft scheduled a pointless recreation. A
-pgTAP case proves the exclusion instead.
+Admin appointment: `business_set_chat_role(p_chat_id, p_user_id, p_role)` —
+owner/staff only, so appointed admins cannot mint admins. They moderate; they
+cannot change the speaking mode or edit the business. `room_remove_member`
+gains a guard: an admin row is removable only by owner/staff. `leave_room` is
+untouched — people always remove themselves.
 
 ### 3.5 Membership lifecycle
 
-`join_business_chat(p_chat_id uuid, p_departure_date date default null)
-returns jsonb`. Auth + `assert_good_standing` + **a guest refusal in the RPC
-itself** **[review]** (decision 9 was client-enforced-only in the first draft
-— the exact failure mode 20260823120000 exists to correct); chat must belong
-to an active, approved business. Joining IS the auto-add — no trip required,
-no business approval, `p_departure_date >= current_date` when given. Upsert,
-so rejoin/extend is one tap. Room cap 2,000 members.
+`join_business_chat(p_chat_id uuid, p_departure_date date default null)`. Auth,
+`assert_good_standing`, **a guest refusal in the RPC itself** **[review]**, and
+the business must be active and verified. Joining IS the add — no trip, no
+approval. Upsert, so rejoining or changing the date is one tap. Room cap 2,000.
 
-**[review]** `room_members.departure_date` is NOT NULL today; this migration
-relaxes it to nullable for the "Not sure yet" path, and every reader of the
-column is checked for null-safety in the same file (the recreation list
-covers them).
+`room_members.departure_date` is relaxed to nullable for the "I'm not sure"
+path, and every reader of that column is checked for null-safety in the same
+migration.
 
-| rule                          | value                                                | mechanism                                                                                                                                                                                                                      |
-| ----------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| join requirement              | none (no trip, no approval)                          | RPC checks standing + business visibility + not-a-guest                                                                                                                                                                        |
-| expiry with departure date    | departure + 3 days                                   | `expires_at = least((dep + 3)::timestamptz, now() + 90d)`                                                                                                                                                                      |
-| expiry with no departure date | join + 90 days                                       | same formula, null branch                                                                                                                                                                                                      |
-| hard cap                      | 90 days from join                                    | the `least()` clamp; rejoin is one tap                                                                                                                                                                                         |
-| removal                       | hourly `expire_room_members()` sweep                 | **[review]** recreated: spares admins only where a `groups` row exists — an appointed admin in a business room expires like anyone and can be reappointed on rejoin; immortal traveler-admins in a commercial room were a leak |
-| self-removal                  | any time                                             | `leave_room`, unchanged                                                                                                                                                                                                        |
-| removal by others             | owner/staff/appointed admins only                    | `room_remove_member` + admin-row guard                                                                                                                                                                                         |
-| existing venue-room members   | keep their promised expiry (all ≤30d out)            | grandfathered; new numbers apply from next join (decision 8)                                                                                                                                                                   |
-| guests                        | read where `public_preview`; never join, post, or DM | RPC refusal + recreated `guest_message_limits` + `message_requests_no_guests` (decision 9)                                                                                                                                     |
-| business DMs                  | never expire; freeze on block/suspension             | standard chat semantics                                                                                                                                                                                                        |
+| rule                        | value                                              |
+| --------------------------- | -------------------------------------------------- |
+| join requirement            | none — no trip, no approval                        |
+| with a departure date       | departure + 3 days                                 |
+| without one                 | join + 90 days                                     |
+| hard cap                    | 90 days from joining                               |
+| leave                       | any time, one tap                                  |
+| remove others               | owner, staff, appointed admins only                |
+| existing venue-room members | keep their promised dates; new math from next join |
+| guests                      | read public rooms; never join, post or DM          |
 
-Traveler groups keep their own +7d/long-horizon numbers — the spec's "applies
-to all business chats" is read as business chats only.
+The hourly sweep is recreated to spare admins **only where a `groups` row
+exists** **[review]** — an appointed admin in a business room expires like
+anyone and is reappointed on rejoin. Immortal traveler-admins in a commercial
+room were a leak.
 
-### 3.6 Inbound DMs
+### 3.6 Inbound messages
 
-- Enum additions (one migration): `chat_kind + 'business'`,
-  `request_source + 'business'`, `group_speaking + 'admins'`,
-  `report_reason + 'impersonation'`.
-- `message_business(p_business_id uuid, p_first_message text)` — public
-  wrapper resolving `owner_user_id` server-side (clients never see owner ids),
-  refusing **unclaimed** businesses with the oracle-proof error, calling
-  `send_message_request` with source='business'.
-- `send_message_request` business branch: validates business visibility
-  instead of overlap/pin; **skips** `is_discoverable_owner` /
-  `discovery_pair_ok` (meaningless for a premises); **keeps** guest refusal,
-  blocks both ways, one-conversation-per-pair (kind-aware check — it cannot
-  use `has_accepted_chat`, which now correctly ignores business chats),
-  velocity caps, oracle-proof single error, and `screen_first_message` + the
-  `pending_moderation` hold.
-- Delivery = auto-accept: a clean verdict immediately creates the chat
-  (`kind='business'`) + both participants, status 'accepted'. With the LLM
-  flag on, it holds exactly like today, and `apply_message_verdict`'s allow
-  arm gains a business branch — **critically**, its re-validation must not
-  call `is_discoverable_owner(recipient)` for source='business' (always false
-  for a business; without the branch every held message silently declines,
-  and only in production config).
-- **The shadowban collision, designed rather than inherited** **[review]**:
-  today a shadowbanned sender's request is silently stored 'declined' while
-  the client is told delivered — the illusion works because delivery was
-  never immediate. Auto-accept breaks that: a shadowbanned sender would
-  notice no chat ever opens. Fix: for a shadowbanned sender the chat IS
-  created, with a `shadowed` flag on the chat row; the sender sees a normal
-  business chat and can type into the void; `my_chats` and the push enqueue
-  exclude shadowed chats for the business side. One column, two predicate
-  edits, and a pgTAP case proving the business never sees it.
-- Cap: business first messages draw a **separate 10/day budget**, not the
-  8/day social-hello budget (asking a hostel about beds is not a hello;
-  decision 11); still under the global 30 requests/day trigger.
+- `message_business(p_business_id, p_first_message)` — resolves the owner
+  server-side (clients never see owner ids), refuses unverified or unclaimed
+  businesses with the oracle-proof error.
+- **Delivery is immediate** **[founder]**. The prefilter runs; on a pass the
+  chat is created (`kind='business'`, status 'accepted') and the message lands.
+  No held state, no LLM classifier, no accept inbox. On a prefilter refusal the
+  sender gets the existing reword notice.
+- Kept from the person-to-person path: guest refusal, blocks both ways,
+  one-conversation-per-pair (kind-aware), velocity caps, the single
+  oracle-proof error.
+- **Shadowban** **[review]**: today a shadowbanned sender's request is silently
+  stored 'declined' while the client is told it sent — the illusion works
+  because delivery was never instant. Immediate delivery breaks it. Fix: the
+  chat IS created, flagged `shadowed`; the sender sees a normal chat and types
+  into it; `my_chats` and the push enqueue exclude shadowed chats on the
+  business side. One column, two predicates, one pgTAP case.
+- Separate 10/day budget for business messages, not the 8/day hello budget
+  (decision 11) — asking a hostel about beds is not a hello.
 - `my_chats()` recreated (DROP first, grants restated — the AGENTS.md trap):
-  direct arm becomes `kind in ('direct','business')`; business rows carry the
-  business name/cover on the traveler side, the traveler's name/avatar on the
-  business side, and a new `business_id` out column for routing.
-- Who answers: owner account only at v1 (staff moderate the room, not DMs) —
-  decision 13.
+  the direct arm becomes `kind in ('direct','business')`, business rows carry
+  the business name and cover on the traveler side and the traveler's name and
+  avatar on the business side, plus a `business_id` out column.
 
 ### 3.7 Map read path, and what a business may read
 
-No new pin table; the `businesses` row is the marker.
-`city_businesses(p_city_id)` (anon+authenticated) supersedes `city_rooms` —
-returns business_id, name, category, lat/lng, place_label, cover_photo_path,
-has_live_post, chat_id, member_count, public_preview.
-`business_detail(p_business_id)` returns the full sheet in one round trip,
-also anon ("no matching is required to see all of the business' details").
+The `businesses` row is the marker; there is no new pin table.
+`city_businesses(p_city_id)` supersedes `city_rooms`;
+`business_detail(p_business_id)` returns the whole page in one round trip, to
+anon as well — "no matching is required to see all of the business' details."
 
-**The compatibility wrappers are load-bearing, not courtesy** **[review]**:
-the shipped app calls `join_room` and `city_rooms` today, and JS ships OTA —
-dropping either breaks every installed client's Join button until they update.
-`join_room` survives as a wrapper delegating to `join_business_chat`;
-`city_rooms` survives as a wrapper over `city_businesses`, deriving its old
-`kind text` column from `category` (the column it exposed is dropped)
-**[review]**. Both are retired in Phase 17 after OTA adoption, never before.
+**Compatibility wrappers are load-bearing** **[review]**: the shipped app calls
+`join_room` and `city_rooms`, and JS ships over the air, so dropping either
+breaks the Join button on every installed phone. Both survive as wrappers
+until adoption, retired in a later cleanup.
 
-**What a business account may read** **[review]** — the first draft asserted
-this in prose with no migration to carry it; it now has a landing spot.
-Migration 2 recreates `city_pins`, `traveler_trips`, and `get_matches` with a
-one-line `is_business_account()` refusal at the top (42501), and the attack
-suite calls each as a business. A business sees traveler pins only through the
-**anonymous** feed (`public_city_pins`) — a free-to-mint commercial account
-must not be a scraping vector.
-
-**Member privacy has enforcement now** **[review]** — decision 18 promised
-"never departure dates" while the live `group_members(p_chat_id)` returns
-`departure_date` to every member and moderator. Recreated: for business chats
-the column comes back NULL (each member still sees their own leave date via
-their own membership row and the room header); traveler groups keep it — "in
-town until" is the social fabric there, and no business can be in a traveler
-group (the join guard). pgTAP: a business-room moderator calling
-`group_members` sees names, roles, join dates, and no dates of travel.
+**A business reads no traveler surface.** Migration 2 recreates `city_pins`,
+`traveler_trips` and `get_matches` with an `is_business_account()` refusal at
+the top, and the attack suite calls each as a business. A business sees
+traveler pins only through the anonymous feed.
 
 ### 3.8 Reporting and suspension
 
-Report context `business:<id>`; impersonation reports sort first in
-`admin_report_queue`. `admin_resolve_report` gains 'unverify'
-(moderation_status → 'pending', marker dark, room unjoinable) beside
-warn/strike/suspend/ban on the owner. **Unclaimed businesses have no owner to
-strike** **[review]**: reports against them resolve through a new 'unlist'
-action (`active=false`) instead of the owner ladder. Suspension cascades
-through existing machinery: `active=false` hides the marker,
-`join_business_chat` refuses, room chat status 'closed' silences everyone
-including the business, history stays readable as evidence; traveler-facing
-copy is oracle-proof ("This chat is paused."). Shadowban is not used for
-businesses (a dark storefront only delays impersonation harm). Strikes attach
-to `owner_user_id` and ride the existing 3/5/7 ladder; pgTAP proves suspending
-an owner silences room and DMs.
+Report context `business:<id>`; impersonation sorts first.
+`admin_resolve_report` gains 'unverify' (verification_state → 'failed', listing
+dark, room unjoinable) and 'unlist' for unclaimed venues that have no owner to
+strike **[review]**. Suspension freezes everything and deletes nothing: listing
+hidden, joins refused, chat status 'closed' so even the business is silent,
+history readable as evidence, copy oracle-proof ("This chat is paused.").
+Strikes ride the existing 3/5/7 ladder on the owner.
+
+### 3.9 Verification, automatic **[founder]**
+
+> _"Is there a way that a business could become verified in a similar way to
+> the way we verify profiles? Ideally something Claude can verify without any
+> interaction needed by me."_
+
+Yes. A selfie proves a face is live and matches a photo; the business analogue
+is proving control of the business's own public presence. Two automatic paths,
+either sufficient, both cheap and global:
+
+**Path A — business email at the business's own domain (the fast path).**
+The business gives its website. If the signup email's domain matches that
+website's domain, we mail a six-digit code and confirming it verifies them.
+Controlling `hello@hostelname.com` is strong evidence you are Hostel Name, and
+it works identically in Lisbon and Bangkok. **This is why business signup asks
+for a business email** — the email step says so plainly, because an address at
+your own domain is the whole shortcut.
+
+**Path B — a code on the website (for the many businesses on Gmail).**
+Most small businesses worldwide have no domain email. So: we show a short code;
+they put it anywhere public — a line in the footer, an About page, a meta tag,
+their Instagram or Facebook bio. An Edge Function fetches the URL and looks for
+it. Found → verified. This proves control of the business's public face
+without requiring a domain.
+
+**Both paths then pass a Claude plausibility check**, in the shape of the
+existing moderation-worker: given the claimed name, address, category and the
+fetched page text, does this look like the same business, and are there red
+flags — a parked domain, a different business's name, a chain's name on a
+personal blog, an address on the wrong continent. Verdict pass / fail /
+uncertain, audited to `moderation_events` like every other machine verdict.
+
+    verified  =  (domain-matched email confirmed  OR  code found on the site)
+                 AND Claude says the site plausibly belongs to this business
+
+New tables, both with **no client grants** — verification evidence is nobody's
+business but the reviewer's:
+
+- `business_claims` (business_id, claimed_website, claimed_email, method,
+  token, token_expires_at, attempts, state, evidence jsonb, timestamps)
+- `business_email_codes` (business_id, code_hash, expires_at, attempts) — the
+  code is mailed through the existing Resend path, not GoTrue, so no auth
+  configuration changes and no effect on traveler signup.
+
+Rate limits: 5 code sends per business per day, 10 verification attempts per
+day, tokens expire in 30 minutes; all standard for this schema.
+
+**Until verified, a business is dark** — no marker, no joinable chat, no
+messages. It can build its profile while waiting, and the screen says exactly
+which check is outstanding and how to pass it. Impersonation is the headline
+risk and an unverified listing is exactly the phishing surface.
+
+**The honest gap:** a business with no website and no domain email — a food
+stall whose entire presence is an Instagram account that blocks fetching —
+cannot pass either path. For those, the existing contact form is the escape
+hatch: it lands in the founder's inbox as a rare exception, not as the default
+path. Roughly: automatic for everyone with a web presence, manual only for the
+genuinely unwebbed. **Decision 6.**
+
+### 3.10 Ratings **[founder]**
+
+> _"I think verified users should be able to rate different businesses, similar
+> to how the beli app works."_
+
+I argued against ratings in the first draft on the grounds that a scoreable
+business plus a DM channel is an extortion lever. **Beli's mechanic
+substantially answers that objection**, and the founder's verified-only gate
+answers the rest, so this is in.
+
+**How Beli works** (researched, sources at the end of this section). You never
+type a score. You mark a place as been, choose one of three buckets — _loved
+it_ / _it was fine_ / _not for me_ — and then the app shows you one place you
+already rated and asks which you liked more. Three or four of those and a
+binary search has found the new place's exact position in your personal ranked
+list; the 0-10 number is read off that position. Scores are personal first and
+aggregate second, and there is **no written review anywhere in the flow**.
+
+**Why that matters here:** the extortion lever is the _text_. "Give me a free
+room or I post that the staff were rude" only works if there is somewhere to
+post it. A comparative ranking has no such surface. What a disgruntled traveler
+can do is place one hostel below another in their own list, which moves an
+aggregate by a fraction. That is a rating system that cannot be weaponised in
+the way a review system can, and it is the reason this is now in the plan.
+
+**The Samewhere version.**
+
+- **Who rates:** verified travelers only (founder's requirement, and the main
+  anti-brigading control). Guests and businesses never rate. Businesses cannot
+  be verified travelers, so a venue cannot rank a rival down.
+- **What you rate:** a place you have been. Comparisons stay **within a
+  category** — bars against bars, hostels against hostels — because "did you
+  prefer this hostel or this cocktail bar" is not a question with an answer.
+- **The flow:** _Been here_ → three buckets → three or four "which did you
+  prefer?" cards → done. Under ten seconds, no typing, and it works from the
+  first rating (with fewer than three rated places in a category, the bucket
+  alone sets the score).
+- **The number:** each bucket owns a band of the 0-10 scale (not for me 0-3.3,
+  fine 3.4-6.6, loved 6.7-10) and position within the bucket picks the point
+  inside the band. Your own score is always visible to you.
+- **The public number** appears on a place only once **five or more** travelers
+  have rated it, mirroring the heatmap's k-threshold instinct: below that it
+  reads "Not rated yet", because a 9.2 from one person is noise wearing a
+  number. Shown as `8.4 · 23 travelers`.
+- **Tags, not text.** After rating, an optional fixed-vocabulary tag row —
+  _good for meeting people, cheap, quiet, lively, late, good coffee, worth the
+  trip_. Fixed list, no free entry, so there is nothing to moderate and nothing
+  to extort with. The place page shows the top three.
+- **What the business sees:** its score, its count, its tags. **Never who
+  rated it.** That is the anti-retaliation control, and it is why the rating
+  table has no business-readable path to `user_id`.
+- **On a traveler's profile:** their highest-rated places in a city, which is
+  genuinely good social proof and pairs with Top Priorities (§ the separate
+  doc) as _been_ against _want_.
+
+Schema: `business_ratings` (user_id, business_id, category, bucket enum, `rank
+double precision` for cheap midpoint insertion, score numeric generated on
+write, tags text[], timestamps; pk (user_id, business_id)). RLS: read own
+always; nobody reads another user's row. `business_rating_summary(business_id)`
+is a SECURITY DEFINER aggregate returning average, count and top tags, and
+returning nulls below the threshold, so the count gate cannot be bypassed by
+reading the table. Cap 20 ratings a day. The binary search runs client-side
+over the user's own ranked list (tens of rows, their own data); the server
+validates the final position on write.
+
+**Open question, decision 22:** should rating a place require having been in
+its city — a trip that overlapped, or membership of its chat? It closes remote
+brigading at the cost of blocking a legitimate "I was here last year" rating.
+Recommendation: require it, because a rating from someone who was never in the
+city is the exact shape of a bought rating.
+
+Sources: [Today](https://www.today.com/food/trends/what-is-beli-app-rcna217748),
+[Spoon University](https://spoonuniversity.com/school/emory/rate-save-and-recommend-restaurants-on-app-beli/),
+[Anson Biggs](https://notes.ansonbiggs.com/rating-has-never-been-so-good/),
+[Crumble](https://crumble.me/guides/restaurant-ranking-apps).
 
 ---
 
 ## 4. The traveler experience
 
-Traveler-facing word is **"place"** — "business" is back-office vocabulary
-(decision 16). Business-facing copy also never says "pin" for the marker
-**[review]** — the §7 defense rests on a marker not being a pin, and the
-first draft's own strings undermined it. It is "your spot on the map."
+The traveler-facing word is **"place"**; "business" is back-office vocabulary.
+The marker is never called a "pin" anywhere, in either direction — that word is
+load-bearing in rule 3.
 
-**Map.** A third marker family beside traveler pins and curated seeds: a 26pt
-circular chip (a place IS the spot; a plan is an event at a spot, hence
-teardrop vs dot), surface-navy body, muted ring, amber category glyph. A live
-post within 24h brightens the ring to accent amber and bolds the glyph —
-**not** a gold star **[review]**: gold + star already means "curated seed" in
-this map's sign language, and one glyph must not carry two meanings. Drowning
-protection, three layers: chips render only past neighborhood zoom
-(`latitudeDelta < 0.05`); `displayPriority` default (yields to travelers'
-"required" and seeds' "high"); `zIndex: 0` under every pin — a stack of humans
-at a bar renders on top of the bar, which is the correct sentence. Places
-never join `clusterPins`.
+**Map.** A third marker family: a 26pt round chip with a category glyph,
+surface-navy, quieter than a traveler pin and drawn beneath it, so a stack of
+people at a bar renders on top of the bar. A place with something on tonight
+brightens its ring — **not** a gold star **[review]**, which already means
+"curated seed" on this map. Chips appear only past neighbourhood zoom, never
+join clustering, and yield priority to travelers.
 
-**Place sheet** (tap a chip; same non-modal inline Sheet as PinCard, map stays
-pannable): 3:2 hero + scrim with name, category, open state ("Open · till
-2:00" in `success` green / "Opens at 17:00" / "Closed today", computed in the
-city's timezone); one live-post strip ("Tonight 20:00 · Pub quiz"); address
-line + "View in Maps"; actions: **[Join the chat]** primary with "128 in the
-chat · anyone can read" footnote, **[Message]** ghost. Hero pushes
-`/place/[id]`. Guests see the sheet in full; only Join/Message gate.
+**Place sheet** (tap a chip; the same inline sheet as a pin card, map stays
+pannable): 3:2 hero, name, category, open state ("Open · till 2:00"), the
+rating if it has one, tonight's post if there is one, address with "View in
+Maps", then **[Join the chat]** and **[Message]**.
 
-**Place page** (`/place/[id]`, new `place-view.tsx` — deliberately not
-`ProfileView`, so a business can never drift into person grammar): landscape
-hero (0.8 ratio, not a person's 1.15) with name, category, open state — no
-"checked place" seal **[review]**: every visible place has passed the check,
-so a seal on all of them says nothing; **What's on** (post cards, soonest
-first, sentence-case captions "Tonight 20:00" / "Until Sun" **[review]** — the
-craft pass retired ALL-CAPS headers and overlines follow the same HIG
-decision; empty state "Nothing on right now."); **The chat here** (member
-count, read rule, your leave date or inline Join); **Hours** (today bold, "See
-the week" disclosure); **Find and book** (labeled link rows — "Book a table",
-"Buy tickets", "Website", Call — never raw URLs); **Photos**; **Socials**
-(public, no gate); and the bottom bar.
+**One hierarchy everywhere** **[review]**: Join the chat leads until you are in
+it, then it becomes Open the chat. Message is second on every surface, always.
 
-**One action hierarchy everywhere** **[review]** — the first draft made Join
-primary on the sheet and Message primary on the page, flipping the app's
-answer to "what should I do here?" between two surfaces for the same place.
-The rule: **Join the chat is primary until you are in it; then the primary
-becomes Open the chat; Message is secondary on both surfaces, always.**
+**Place page** (`/place/[id]`, its own view so a business never drifts into
+person grammar): landscape hero, name, category, score; **What's on**; **The
+chat here**; **Hours** (today bold, "See the week"); **Find and book** (labeled
+rows — "Book a table", "Buy tickets", never a raw URL); **Photos**;
+**Socials**; and **Rate this place** for verified travelers.
 
-**Two rows, one place, never confused** **[review]**: a traveler who joins the
-chat AND messages the team has two conversations with the same name and cover.
-The group chat lives in the Groups segment as today; the DM lives in Chats
-with the storefront glyph **and** a standing subtitle "The people who run
-{place}" — a person row and a place row never blur, and the two place rows
-never blur either.
+**Two rows, never confused** **[review]**: a traveler who joins the chat and
+messages the team has two conversations with one name. The group chat sits in
+Groups; the DM sits in Chats with a storefront glyph and the standing subtitle
+"The people who run {place}".
 
-**Joining the chat** (reuse the room footer flow): header "How long are you
-around?", optional date field ("Not sure yet" → 90-day membership), footnote
-**"You leave the chat 3 days after this. Change it any time."**, button "Join
-the chat". If the date clamps: "Chats run 90 days at most. You can rejoin any
-time." In-chat header: "128 people here · anyone can read · you leave 12 Nov".
-Read-only notice: **"Only the people who run {place} post here. You can read
-and react."** **[review]** — the first draft's "Only {place name} posts here"
-lied whenever staff or an appointed admin posted.
+**Joining the chat** **[founder]** — a real date picker, not a text field:
 
-**Messaging a place** — different verb, different ceremony from "Say hi":
-composer sheet "Message {name}" / "Goes to the people who run it. You'll find
-the chat in Chats." Chat opens instantly on a clean verdict; a blocked verdict
-shows the existing reword notice; no "Sent to…" ceremony. Businesses cannot
-message first, ever (rule 8).
+> **When are you leaving?**
+> [ date picker ] · **I'm not sure yet**
+> _You'll leave the chat 3 days after you go, or after 90 days if you're not
+> sure. Leave or rejoin whenever you like._
+> **[ Join the chat ]**
 
-**Elsewhere.** Chat tab "Rooms near you" becomes **"Chats to join in {city}"**
-**[review]** — "Open chats" put two meanings of "open" in one list, beside
-rows showing "Open · till 2:00". Travelers tab: places never appear; the
-empty state gains one quiet link, "See what's on in {city}" → Map. Guests:
-read everything public, act on nothing, gates say why ("Join this chat to
-post" / "Messaging {name} needs a profile").
+In-chat header: "128 people here · anyone can read · you leave 12 Nov".
+Read-only notice: "Only the people who run {place} post here. You can read and
+react." **[review]** — the earlier "Only {place} posts here" lied whenever
+staff posted.
+
+**The member list is open** **[founder]** — anyone in the chat can see everyone
+in it: photo, name, and "in town until", tapping through to a profile. This is
+an app for meeting people and making plans, and a room where you cannot see who
+is in it is a noticeboard. Two consequences stated plainly: the business sees
+that list too, and this reverses the earlier decision 18 to redact travel dates
+from moderators. Recommended and accepted, but it is a real change and it is
+recorded as one.
+
+**Messaging a place** — "Message {name}", "Goes to the people who run it. You'll
+find the chat in Chats." It opens instantly. Businesses can never message
+first.
+
+**Elsewhere.** The Chat tab's room list becomes "Chats to join in {city}"
+**[review]** — "open chats" collided with "Open · till 2:00" on the same rows.
+Travelers tab never shows places. Guests read everything public and act on
+nothing.
 
 ---
 
 ## 5. The business experience
 
-**Signup fork.** Two quiet entrances: the welcome-tour footer gains "Run a
-hostel, bar or tour? Put it on the map", and onboarding step 3 gains a
-"Setting this up for a business?" footnote. Either arms the business flag
-before the first business step, so a killed app resumes correctly. Business
-steps (StepShell reused, 7 steps): name + category chips; city + the existing
-drop-pin picker ("Drop the pin right on your door." — the picker drops a pin;
-the resulting marker is never called one) + address line; links editor ("A
-website, a booking link, a WhatsApp. Add what you have."); hours editor
-(skippable); photos ("Photos of the place, not of a person. The first one is
-your cover."), Finish disabled until the cover slot fills. Finish calls
-`register_business`, creates the room, lands on:
+**Signup fork.** The welcome tour's footer reads **"Run a business? Put it on
+the map."** **[founder]**, and onboarding step 3 carries a "Setting this up for
+a business?" footnote. Either arms the business flag before the first business
+step, so a killed app resumes correctly.
 
-> **"You're on the list. We check every new place before it goes live, and
-> we'll tell you the moment you're on. Usually within a day."**
+Steps: name and category · city and the drop-pin picker ("Drop the pin right on
+your door.") · **website and business email** (the verification step, with the
+plain reason: _"Use the email at your business's own domain if you have one.
+It's the quickest way to get verified."_) · links · hours (skippable) · photos
+("Photos of the place, not of a person. The first one is your cover."). Finish
+lands on:
 
-**[review]** — the first draft's string carried an em dash (banned in
-user-facing copy) and promised working chat/DMs pre-approval while the
-recommendation is everything-dark-until-approved. The copy now matches the
-recommended mechanics.
+> **"You're nearly on. Confirm the code we just emailed you and you'll be live
+> on the map."**
 
-**Tabs.** The middle tab trigger swaps to **"My place"** (SF `storefront`) on
-`is_business_account`; route file stays `travelers.tsx`, branching the way
-`GuestTravelers` already does. **My place**: cover hero + status chip ("Live
-on the map" / "Waiting on a quick check" / "Paused"); **What's on** with
-docked "Post something" → composer (title, details, "When is it?" +
-"Until when?" — no kind chips **[review]**; empty state "Nothing on. Post
-tonight's plan and everyone who taps your spot sees it."); **Your details**
-rows (Hours, Links, Description, Photos); **Your chat** card; top-right
-**"See it as a traveler"** (the profile-honesty rule applied to businesses).
-**Map**: own marker with a "You" ring; traveler pins served anonymously; no
-drop-pin button. **Chat**: own room pinned with a "Yours" chip, "Chats to
-join" hidden, inbound DMs as normal rows, no Requests section (messages
-arrive pre-screened).
+**Tabs.** The middle tab becomes **"My business"** **[founder]** with a
+storefront glyph, branching the way the guest Travelers tab already does. It
+holds: cover and status chip ("Live on the map" / "Waiting on verification" /
+"Paused"); **What's on** with a docked "Post something" (title, details, when,
+and how long — including "Keep it up until I take it down"); **Your details**
+(Hours, Links, Description, Photos); **Your chat**; **Your rating** once five
+travelers have rated; and "See it as a traveler". Map shows their own marker
+with a "You" ring and traveler pins anonymously, with no drop-pin button. Chat
+pins their own room and hides the join list.
 
-**Editors.** Hours: rule-based, not a 7×2 grid — one row of day-chips + two
-time wheels covers most venues; "Different hours on some days" adds a row;
-per-rule Closed toggle; "Past midnight is fine. 20:00 to 2:00 reads as one
-night."; free-text note ("Kitchen closes at 22:00."). Links: one list editor
-for links, socials, and contact (one mental model, one table); kind picker,
-drag reorder; empty state "The reservation link, the Instagram, the WhatsApp.
-Whatever travelers ask you for." Photos: PhotoGrid verbatim, "The first photo
-is your cover."
+**Editors.** Hours is rule-based rather than a 7×2 grid: a row of day chips
+plus two time wheels covers most venues, "Different hours on some days" adds a
+row, and "Past midnight is fine. 20:00 to 2:00 reads as one night." Links is
+one list for links, socials and contact — one mental model, one table. Photos
+reuses PhotoGrid.
 
-**Chat controls** (business variant of `group/[id]`), plain words throughout
-**[review]** (the microphone metaphor and "my team" mislabel are gone):
-speaking segmented with footnotes — **"Everyone"** / "Anyone in the chat can
-post."; **"People I pick"** / "You choose who posts. Everyone can read.";
-**"Just us"** / "You, your staff and your admins. Everyone can read." Member
-sheet: "Let them post" / "Stop them posting" / "Make them an admin" (confirm:
-"Admins can post, take messages down and remove people. You can undo this any
-time.") / "Remove {name}".
+**Chat controls**, in plain words **[review]** (the microphone metaphor is
+gone): **"Everyone"** / "Anyone in the chat can post."; **"People I pick"** /
+"You choose who posts. Everyone can read."; **"Just us"** / "You, your staff
+and your admins. Everyone can read." Under all three: _"Only you and your
+admins can send photos."_ Member sheet: "Let them post" / "Stop them posting" /
+"Make them an admin" / "Remove {name}".
 
-**Notifications.** Inbound DM: standard new-message push. New members: never
-per-join — **one daily digest** ("12 travelers joined your chat today.")
-**[review]** (the first draft specified a weekly count and a daily digest in
-one sentence). Review verdicts: "You're live on the map in {city}. Travelers
-can find you now." Push discipline in rooms: business/staff-authored messages
-carry pushes for at most 3 posts per rolling day per room; further posts
-deliver silently — the megaphone is a bell, not a siren. Mute-by-default for
-far-future joiners stays listed as the escape hatch if churn data demands it.
+**Notifications.** Inbound messages push normally. New members arrive as **one
+daily digest** **[review]**, never per-join. Verification: "You're live on the
+map in {city}. Travelers can find you now." Business posts push at most three
+times a rolling day per room and deliver silently beyond that — the megaphone
+is a bell, not a siren.
 
 ---
 
 ## 6. Trust & safety
 
-- **Impersonation is the top risk.** Every self-serve business is invisible
-  until the founder approves it (manual queue; evidence = the
-  `business_claims` row + judgment). Unapproved means fully dark: no marker,
-  no joinable room, no DMs — a fake venue can never farm members before
-  review. Name/city/location edits on an approved business re-enter 'pending';
-  description/hours/links/photos/posts publish immediately behind screening
-  and the photo pipeline (decision 17). Claiming a seeded venue opens the same
-  flow; conflicting claims queue for the founder; the claim-approval step
-  wipes or re-confirms legacy `business_staff` rows so no ex-staffer retains
-  power over a claimed venue's room.
-- **Spam.** Rule 8 (no outbound contact, no joins, no discovery reads) is the
-  core stance, DB-enforced by the trigger list in §3.1 and the read refusals
-  in §3.7. Sanctioned reach: marker, posts, own chats. Post caps (10 live,
-  5/day), link caps (10, scheme-allowlisted, URLs confined to link fields),
-  the 3-pushes/day room budget, and the 30/day text-edit velocity are the
-  brakes. Room messages by the business are not pre-screened (parity with all
-  room text); the reactive path is report → `room_remove_message` (evidence
-  kept) → strike ladder, on which business owners sit like anyone.
-- **Scraping.** Business accounts read no traveler surfaces (anonymous map
-  feed only; `city_pins` / `traveler_trips` / `get_matches` refuse them —
-  recreated in migration 2, attacked in pgTAP); member lists exclude
-  departure dates (recreated `group_members`); `kind='business'` chats never
-  satisfy the handle gate in either direction. Residual, acknowledged: a
-  venue can still browse as a person with a second account — velocity caps
-  are the practical bound. Heat gaming via sockpuppet pinners is watched
-  through `admin_pin_stats` per-city.
-- **Reporting.** Sheet on marker/page/room: "This isn't the real business" /
-  "Spam or a scam" / "Inappropriate content" / "Something else".
-  Impersonation jumps the queue. Guests can report (existing 10/day
-  throttle). Reports on unclaimed venues resolve via 'unlist', not the
-  owner ladder.
-- **Suspension.** As §3.8: everything freezes, nothing deletes, copy never
-  says why, reinstatement reopens, clocks tick through the freeze. Ban row:
-  "{Business} is no longer on Samewhere."
-- **Founder load.** Verification, impersonation reports, and claim conflicts
-  all land on one person — fine at 4 cities, but the `admin_ops_health`
-  pattern gets a business-queue-depth alarm from day one so it fails loudly.
-
-**Numbers to bless in one pass** (decision 19): 10 photos / 10 links / 10
-live posts / 5 post-writes-day / 30 text-edits-day / 10 business-DMs-opened
-per traveler per day / 3 push-bearing room posts per day / 2,000 room cap /
-10 staff seats / 30-day max post horizon.
+- **Impersonation** is the top risk, answered by §3.9: nothing is visible until
+  a machine has proved control of the business's public presence, and renaming
+  or moving re-enters verification.
+- **Spam** is answered by rule 8, enforced by trigger, plus the caps: 10 photos,
+  10 links, 10 live posts, 5 post-writes a day, 30 text edits a day, 10
+  business DMs opened per traveler per day, 3 push-bearing room posts a day,
+  2,000 room members, 10 staff seats. **[founder: approved as a set.]**
+- **Scraping**: businesses read no traveler surface; the anonymous map feed
+  only. Residual and acknowledged — a venue can browse as a person with a
+  second account, and velocity caps are the practical bound.
+- **Ratings** cannot be weaponised the way reviews can: no free text anywhere,
+  verified raters only, one rating per traveler per place, businesses never
+  see who rated them, and no public number below five raters.
+- **Photos** in open rooms are admins-only, which removes the highest-volume
+  moderation surface a free-to-join room would otherwise create.
+- **Reporting**: "This isn't the real business" / "Spam or a scam" /
+  "Inappropriate content" / "Something else", impersonation first in the queue.
+- **Suspension** freezes and never deletes; copy never says why.
 
 ---
 
-## 7. Migration from establishments/venue rooms — staged, never half-migrated
+## 7. Migration
 
-The principle: a business chat IS the establishment's existing room, so there
-is no data migration — only renames, new columns, and new math for new joins.
-Every row, message, member, and promised expiry survives.
+A business chat IS the establishment's existing room, so there is no data
+migration — renames, new columns, and new math for new joins. Every row,
+message, member and promised expiry survives.
 
-**Migration files, in order:**
+1. `..._business_enums.sql` — the `alter type ... add value` statements
+   (chat_kind 'business', request_source 'business', group_speaking 'admins',
+   report_reason 'impersonation') plus the new enums. Own file: a new enum
+   value is unusable in the transaction that adds it.
+2. `..._business_accounts.sql` — renames; new columns and column-scoped
+   grants; `business_claims`, `business_email_codes`; `business_chats` +
+   backfill + drop `businesses.chat_id`; `departure_date` nullable;
+   `is_business_account`; `register_business`; the guard triggers; **and the
+   recreation of every function naming `establishments` or reading a changed
+   column**: `is_room_moderator`, `is_public_room`, `may_speak_in_room`,
+   `guest_message_limits`, `room_info`, `room_messages`, `enqueue_message_push`,
+   `expire_room_members`, `group_members`, `join_business_chat` + the
+   `join_room` wrapper, `city_businesses` + the `city_rooms` wrapper,
+   `my_chats` (DROP first, grants restated), `business_set_chat_role`, the
+   `room_remove_member` guard, the reaction policy, the three discovery
+   refusals, and `seed_launch_establishments` **[review]** — it names the old
+   table and the dropped column, and the next fresh environment would break
+   without it. Completeness check: `grep -r establishments supabase/` returns
+   only history.
+3. `..._business_content.sql` — photos and bucket, links and validator, hours,
+   posts and the archive sweep, `is_visible_business`, `business_detail`,
+   `screen_business_text`, the photo guard trigger.
+4. `..._business_verification.sql` — claims, codes, the verify RPCs, the
+   Edge Function contract.
+5. `..._business_inbound.sql` — the immediate-delivery branch,
+   `message_business`, the `shadowed` flag and its predicates.
+6. `..._business_ratings.sql` — ratings, the summary function, caps.
 
-1. `..._business_enums.sql` — the four `alter type ... add value` statements
-   plus the two new enums. Own file: new enum values are unusable in the
-   adding transaction.
-2. `..._business_accounts.sql` — the renames; new `businesses` columns +
-   column-scoped grants; `business_claims`; `business_chats` + backfill +
-   drop `businesses.chat_id`; `departure_date` relaxed to nullable;
-   `is_business_account`; `register_business` / `admin_review_business`; the
-   §3.1 guard triggers; and **the recreation of every function that names
-   `establishments` or reads the changed columns**: `is_room_moderator`,
-   `is_public_room`, `may_speak_in_room`, `guest_message_limits`,
-   `room_info`, `room_messages`, `enqueue_message_push`,
-   `expire_room_members` (groups-only admin exemption), `group_members`
-   (business-room date redaction), `join_business_chat` + the `join_room`
-   compatibility wrapper **[review]**, `city_businesses` + the `city_rooms`
-   wrapper with derived `kind`, `my_chats` (DROP first, grants restated),
-   `business_set_chat_role`, the `room_remove_member` admin guard, the
-   reaction policy, the discovery-read refusals (`city_pins`,
-   `traveler_trips`, `get_matches`), and `seed_launch_establishments`
-   **[review]** (it names the old table and the dropped `kind` column; the
-   first draft's list missed it and the next fresh environment would have
-   broken). Completeness check: `grep -r establishments supabase/` returns
-   only history; proof: the full pgTAP run.
-3. `..._business_content.sql` — photos + bucket + verdict RPC, links +
-   validator, hours, posts + caps + sweep, `is_visible_business`,
-   `business_detail`, `screen_business_text`.
-4. `..._business_inbound.sql` — `send_message_request` business branch,
-   `message_business`, `apply_message_verdict` business release branch, the
-   `shadowed` chat flag and its `my_chats`/push predicates.
-
-**What carries over:** seeded venues become unclaimed approved businesses
-(owner NULL, 'approved'); staff rows keep moderating; live rooms keep chat
-ids, messages, members, and grandfathered expiries; speaking defaults to
-'everyone' (today's behavior); guests keep read-only via the recreated guard.
-`business_staff` is kept, not frozen — it is the multi-staff answer (three
-receptionists moderating without sharing a login).
-
-**pgTAP suite (`20_business_accounts` + updates to 10/11/16/18/19), written
-as attacks:** business absent from every discovery surface; business cannot
-insert trips/pins/message_requests/profile_photos/room_members or create a
-group; `city_pins`/`traveler_trips`/`get_matches` refuse a business caller;
-personal handles unreadable across a business chat in both directions; an
-unscreened or blocked first message never yields a chat; a held business
-message releases correctly (the re-validation branch); a shadowed chat is
-invisible to the business; guest join refused in the RPC and guest INSERT
-refused at the table (seeded venues specifically); 'admins' mode refuses
-member and speaker INSERTs while reactions still land; expiry math incl. null
-departure and the 90d clamp; the sweep expires business-room admins and
-spares group admins; `group_members` returns no departure dates on a business
-room; no business rows in heat output; anon reads everything public, writes
-nothing; link validator refuses `javascript:` and over-cap; admin-row removal
-refused to non-owner moderators; pending business fully dark; rename →
-re-pending trigger; suspended owner silences room and DMs; `promote_group_successor`
-ignores business rooms.
+**pgTAP (`20_business_accounts`, `21_business_ratings`, plus updates to
+10/11/16/18/19), written as attacks:** business absent from every discovery
+surface; business cannot insert trips/pins/requests/photos/room_members or
+create a group; the three discovery reads refuse a business caller; personal
+handles unreadable across a business chat both ways; a prefilter-blocked
+message yields no chat; a shadowed chat is invisible to the business; guest
+join refused in the RPC and at the table; 'admins' mode refuses member and
+speaker inserts while reactions still land; **a non-admin photo insert refused
+in `everyone` mode**; expiry math including the null-departure and 90-day
+clamp; the sweep expires business-room admins and spares group admins;
+`group_members` returns the full member list for a business room; no business
+rows in heat; anon reads everything public and writes nothing; the link
+validator refuses `javascript:` and over-cap; a pending business is fully dark;
+rename re-enters verification; a suspended owner silences room and DMs;
+ratings refuse an unverified rater, refuse a second rating, refuse a business
+rater, and return nulls below five raters.
 
 ---
 
 ## 8. Build order
 
-Phases sized like this repo's, each ending green, deployable, and pushed. All
-client work is JS and ships OTA; no native change anywhere in this plan.
+Each phase ends green, deployable and pushed. Everything ships over the air.
 
-**Phase 13 — Identity and the rename.** Migrations 1 + 2, the full
-function-recreation list, the attack suite, `is_business_account` client hook
+**Phase 13 — Identity and the rename.** Migrations 1-2, the recreation list,
+the attack suite, the client account-kind predicate in the `owesOnboarding`
+style. Zero visible change; the proof is that nothing broke and the deployed
+app's `join_room` / `city_rooms` calls still work.
 
-- routing predicate in the named-function style of `owesOnboarding`, with unit
-  tests. Ships with zero visible change — the proof is that nothing broke, and
-  the deployed app's `join_room`/`city_rooms` calls still work through the
-  wrappers. _Needs from founder: §7 amendments signed (rules 3, 4), rule 5
-  restatement confirmed, rule 8 adopted, decisions 3-5 and 8-9._ This phase is
-  the risk concentrate: a missed function recreation is a runtime outage in
-  chat/push/map, and a missed grant restatement bricks the Chat tab while every
-  migration reports success.
+**Phase 14 — The public surface.** Migration 3; markers, place sheet, place
+page, join flow with the new date picker and copy; the room list rename. The
+four seeded venues become the first places.
 
-**Phase 14 — The public surface.** Migration 3; `city_businesses` markers,
-place sheet, place page; "Chats to join in {city}"; join flow with the new
-copy and numbers. Seeded venues become the first four places (Message hidden —
-unclaimed). Deployable: travelers see and join places; no business can
-register yet. _Needs: category list (7), vocabulary (16), member-count
-honesty (20), the numbers table (19). Screens-suite verification of marker
-density at realistic counts before shipping._
+**Phase 15 — Verification.** Migration 4 and the verifier Edge Function. This
+is what unlocks self-serve signup, so it lands before the business side.
 
-**Phase 15 — Inbound DMs.** Migration 4; Message flow; storefront glyph +
-subtitle in Chats; `my_chats` business rows. Deployable against
-seeded-turned-claimed venues or dark until Phase 16. _Needs: decisions 11
-and 13._
+**Phase 16 — Inbound messages.** Migration 5; message flow, storefront rows.
 
-**Phase 16 — The business side.** Signup fork, business onboarding, My place
-tab, editors, chat controls, digest push, `admin_business_queue` + review
-flow. This is the long pole; the thin-dashboard fallback (founder onboards by
-hand, minimal edit screen) is the scope lever if launch pressure demands
-(decision 21). _Needs: decision 6 (approval flow + seeded-venue claims), copy
-sign-off per design-review, first real business recruited per city._
+**Phase 17 — The business side.** Signup fork, My business, editors, chat
+controls, digest push. The long pole.
 
-**Phase 17 — Hardening and cleanup.** Queue-depth alarm, push fan-out watch,
-retire the `city_rooms`/`join_room` wrappers after OTA adoption is
-near-total, revisit push-budget and mute defaults against real data, docs
-updated (ARCHITECTURE "Businesses" section, PROGRESS phase entries, the §7
-amendments landed in PRODUCT_BRIEF).
+**Phase 18 — Ratings.** Migration 6; the rate flow, the place-page number, the
+profile shelf.
+
+**Phase 19 — Hardening.** Wrapper retirement, push budgets against real data,
+docs.
 
 ---
 
-## 9. Founder decisions, consolidated
+## 9. Decisions still open
 
-1. **Sign the rule 3 amendment** (§2 wording). Recommendation: sign — it
-   writes down what seeded venues already do.
-2. **Sign the rule 4 amendment** (§2 wording). Recommendation: sign —
-   personal handles get strictly _more_ protected.
-3. **Confirm the rule 5 restatement**: full moderation pipeline kept, accept
-   inbox waived for businesses only. Recommendation: yes.
-4. **Adopt rule 8**: a business never messages first, never joins, never
-   reads discovery. Recommendation: adopt — the single biggest anti-spam
-   decision; relaxing later is one trigger drop, and it forecloses "invite
-   past guests" features without a new decision.
-5. **Separate account only** (no personal→business conversion; an owner who
-   travels makes a second free account). Recommendation: yes.
-6. **Manual approval gate**: registrations land 'pending' and fully dark
-   until you approve; seeded-venue claims verified by hand (email/phone
-   check) at v1. Recommendation: yes — instant listing is a phishing
-   surface. Sub-decision: does "dark" include the room and DMs pre-approval?
-   Recommendation: yes, everything dark.
-7. **Category list**: hostel, hotel, guesthouse, bar, restaurant, cafe,
-   club, tour, activity, coworking, wellness, shop, other.
-8. **Grandfather existing venue-room members' expiries**; +3d/90d applies
-   from each next join. Recommendation: grandfather — never shorten a
-   promised window.
-9. **Guests**: read public business rooms, never join/post/DM.
-   Recommendation: keep the shipped boundary; "any user can join" reads as
-   "any account".
-10. **The literal 90-day cap**: a member joining >90 days pre-departure
-    lapses mid-wait and rejoins in one tap. Recommendation: accept the spec
-    as written; the copy states it.
-11. **Business DM budget**: separate 10/day, not the 8/day hello budget.
-    Recommendation: separate.
-12. **One room per business at v1** (`unique(business_id)` is the one
-    constraint to drop for multi-room later). Recommendation: yes.
-13. **Owner account answers DMs at v1**; staff moderate the room only.
-    Recommendation: yes.
-14. **Event posts as expiring map pins**: v2. Recommendation: defer.
-15. **Money posture**: everything free at v1; any future monetization is
-    business-side placement, never traveler gating and never pay-to-rank.
-    Recommendation: write it next to rule 1 now.
-16. **Vocabulary**: "place" in all traveler-facing copy; the marker is never
-    called a "pin" in business-facing copy either. Recommendation: yes.
-17. **Edits re-entering review**: name/city/location re-pend;
-    description/hours/links/photos/posts publish behind screening.
-    Recommendation: yes.
-18. **Member privacy**: businesses see name, photo, role, join date — never
-    departure dates or trips. Enforced in the recreated `group_members`, not
-    just promised. Recommendation: yes; if hostels lobby for stay windows,
-    that is a deliberate trade to make explicitly later.
-19. **Bless the numbers table** (§6) in one pass.
-20. **Member-count honesty**: show total live memberships, or
-    active-in-14-days? Recommendation: total, with post-recency ranking and
-    a "quiet lately" label so a graveyard is never the first thing a city
-    shows.
-21. **Scope lever**: full My place dashboard at v1, or thin edit screen +
-    hand-onboarding? Recommendation: full dashboard, thin fallback if launch
-    pressure demands.
+Everything else is settled per the founder's pass.
+
+6. **The unwebbed escape hatch.** Businesses with no website and no domain
+   email cannot verify automatically. Recommendation: route them to the
+   existing contact form as a rare manual exception, so nobody is permanently
+   stuck. Confirm, or accept that v1 simply cannot list them.
+7. **Member counts**: show total members, or only those active in 14 days?
+   Recommendation: total, with a "quiet lately" label so a dead room is never
+   a city's first impression.
+8. **Scope lever**: full My business dashboard at v1, or a thin edit screen
+   with hand-onboarding? Recommendation: full, thin as the fallback.
+9. **Ratings and presence**: must a rater have been in the city (an
+   overlapping trip, or chat membership)? Recommendation: yes — a rating from
+   somebody never in the city is the shape of a bought rating.
+
+**Settled by the founder's pass:** posts expire when the business says
+(including never) · "Run a business? Put it on the map." · "My business" ·
+automatic verification via business email and website, no founder in the loop ·
+the category list · messages to businesses always go through with no accept ·
+the caps · the member list is open to everyone in the chat · the departure
+date picker and its wording · photos are admins-only in business chats ·
+Beli-style ratings for verified travelers.
 
 ---
 
-## 10. Deliberately not in this plan (v2 material)
+## 10. Not in this plan
 
-- Multiple rooms per business / per-event chats (drop `unique(business_id)`).
-- Staff invite tokens and staff answering DMs; staff self-management UI.
-- Document-upload verification bucket and any automated verification
-  verdicts.
-- Event posts as expiring map pins; posts counting into any map surface.
-- Ratings or reviews of businesses — **refused, not deferred**: the moment a
-  business can be scored, the DM channel becomes an extortion lever and the
-  moderation surface triples. Posts are the business talking, full stop.
-  Reopening this needs its own decision.
-- Paid placement, sponsored ranking, or any business payment surface.
-- Guests joining business chats; "open now" filtering on the map; a
-  holiday/exception hours calendar; a dedicated Places directory tab;
-  business analytics dashboards; LLM screening of business posts (regex
-  prefilter only at v1 — flagged as a fast-follow if abuse shows up);
-  business-to-business anything.
+- Multiple rooms per business; staff answering DMs; staff self-management.
+- Document-upload verification.
+- Posts as expiring map markers.
+- **Written reviews of businesses — refused, not deferred.** The rating system
+  above works precisely because there is no text to post, and adding a review
+  field would reintroduce every dynamic the comparative model avoids.
+- Paid placement, sponsored ranking, any business payment surface.
+- Guests joining business chats; "open now" filtering; a holiday hours
+  calendar; a Places directory tab; business analytics; LLM screening of
+  business posts (prefilter only at v1); business-to-business anything.
