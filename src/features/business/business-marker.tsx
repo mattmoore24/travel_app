@@ -76,6 +76,21 @@ export function PlaceGlyph({
         },
         live && { shadowColor: theme.highlight, shadowOpacity: 0.5, shadowRadius: 6 },
       ]}>
+      {/* Not hue alone. The ring going warm is the signal, and on a basemap
+          full of colour a hue change is exactly what somebody who cannot
+          separate those two hues gets nothing from. The dot is the second
+          channel: a shape that is either there or not. */}
+      {live ? (
+        <View
+          style={[
+            styles.liveDot,
+            {
+              backgroundColor: theme.highlight,
+              borderColor: onSurface ? theme.surfaceSunken : theme.surface,
+            },
+          ]}
+        />
+      ) : null}
       <SymbolView
         // vocabulary.ts types the glyph map as plain strings so it can be
         // imported by code that never renders one; SymbolView wants the SF
@@ -143,8 +158,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     // Room for the ring's glow inside the bitmap, and symmetric so the chip
-    // stays centred on its coordinate.
-    padding: 4,
+    // stays centred on its coordinate. Nine rather than four, because a
+    // marker's tappable area IS this view: 26 + 9 + 9 is 44, and 26 + 4 + 4
+    // was 34 — under the floor, on a map where the thing next to it is a
+    // 36pt pin with a tail.
+    padding: 9,
+  },
+  liveDot: {
+    position: 'absolute',
+    top: -1,
+    right: -1,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    borderWidth: 1,
   },
   chip: {
     ...Elevation.raised,
