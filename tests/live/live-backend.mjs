@@ -130,7 +130,7 @@ try {
   users.push(alex, brit, creep);
   check('three fresh accounts sign up and hold sessions', true);
 
-  await onboard(alex, { name: 'Alex Live', city: 'Lisbon' });
+  const lisbonId = await onboard(alex, { name: 'Alex Live', city: 'Lisbon' });
   await onboard(brit, { name: 'Brit Live', city: 'Lisbon' });
   await onboard(creep, { name: 'Casey Live', city: 'Lisbon' });
   check('onboarding writes profiles and overlapping Lisbon trips', true);
@@ -457,6 +457,275 @@ try {
     !spotErr && !spotlightedByBlocker,
     spotErr?.message
   );
+
+  // --- PLACES: the whole 2026-08-27 surface, against the real project -----
+  //
+  // pgTAP proves this schema against a local cluster whose `postgres` role is
+  // NOSUPERUSER and NOBYPASSRLS and which has no Supabase default privileges
+  // on it. Hosted Supabase differs in exactly the ways that break a places
+  // feature: `authenticated` gets default grants a migration did not ask for,
+  // a DROP FUNCTION silently re-grants EXECUTE to anon, and column-scoped
+  // SELECT grants behave differently from a table-wide one the moment a
+  // client names a column in a WHERE. So every RPC below is called the way
+  // the app calls it, with anon-key power only.
+  const { data: places, error: placesErr } = await guest.rpc('city_businesses', {
+    p_city_id: lisbonId,
+  });
+  const homeLisbon = (places ?? []).find((p) => p.name === 'Home Lisbon Hostel');
+  check(
+    'a signed-out reader sees the places on a city map',
+    !placesErr && Boolean(homeLisbon),
+    placesErr?.message ?? 'no Home Lisbon Hostel — run seed_launch_businesses()'
+  );
+
+  // The columns a place row must NOT carry. `state` is the moderation queue,
+  // `owner_user_id` is a person, and either one on the public map is a leak
+  // that no client-side omission can take back.
+  if (homeLisbon) {
+    check(
+      'and the row it gets carries no moderation state and no owner',
+      !('state' in homeLisbon) && !('owner_user_id' in homeLisbon),
+      `leaked: ${Object.keys(homeLisbon).join(', ')}`
+    );
+  }
+
+  if (homeLisbon) {
+    const placeId = homeLisbon.id;
+
+    const { data: detail, error: detailErr } = await guest.rpc('business_detail', {
+      p_business_id: placeId,
+    });
+    check(
+      'the place page loads for somebody with no account',
+      !detailErr && (detail ?? []).length === 1,
+      detailErr?.message
+    );
+
+    // --- ratings. Anyone may rate: the founder's call, on the grounds that
+    // somebody may have been there without ever entering the trip here.
+    const { error: rateErr } = await alex.client.rpc('rate_business', {
+      p_business_id: placeId,
+      p_bucket: 'loved',
+      p_rank: 0.5,
+      p_tags: ['good_for_meeting_people', 'cheap'],
+    });
+    check('a traveler rates a place they never posted a trip for', !rateErr, rateErr?.message);
+
+    const { data: mine, error: mineRateErr } = await alex.client.rpc('my_ratings', {
+      p_category: 'hostel',
+    });
+    check(
+      'and it comes straight back on their own list',
+      !mineRateErr && (mine ?? []).some((r) => r.business_id === placeId),
+      mineRateErr?.message
+    );
+
+    const { data: top, error: topErr } = await brit.client.rpc('top_rated_by', {
+      p_user_id: alex.userId,
+    });
+    check(
+      'another traveler can see what they loved',
+      !topErr && (top ?? []).some((r) => r.business_id === placeId),
+      topErr?.message
+    );
+
+    // The k-threshold, in the same spirit as the heatmap's: one person's
+    // opinion is not a public score, so below five raters the number is null
+    // rather than small. This run contributes at most three.
+    const { data: summary, error: sumErr } = await guest.rpc('business_rating_summary', {
+      p_business_id: placeId,
+    });
+    const row = (summary ?? [])[0];
+    check(
+      'a public score stays null until enough people have rated',
+      !sumErr && row != null && (row.rater_count >= 5 || row.average == null),
+      sumErr?.message ?? `average ${row?.average} on ${row?.rater_count} raters`
+    );
+
+    // A rank outside the bucket is the client's job to compute; the server
+    // must not take it on trust.
+    const { error: badRankErr } = await brit.client.rpc('rate_business', {
+      p_business_id: placeId,
+      p_bucket: 'fine',
+      p_rank: 4,
+    });
+    check('and a rank outside the window is refused', Boolean(badRankErr));
+
+    // --- messaging a place. No handshake: a business asked to be written to.
+    const { data: sent, error: msgErr } = await alex.client.rpc('message_business', {
+      p_business_id: placeId,
+      p_first_message: `Live canary ${RUN}: is the roof open tonight?`,
+    });
+    check(
+      'a traveler writes to a place and gets a chat straight away',
+      !msgErr && Boolean(sent?.chat_id),
+      msgErr?.message
+    );
+    if (sent?.chat_id) {
+      const { data: chats, error: chatsErr } = await alex.client.rpc('my_chats');
+      const thread = (chats ?? []).find((c) => c.chat_id === sent.chat_id);
+      check(
+        'and that chat is in their list, titled with the place',
+        !chatsErr && thread?.title === 'Home Lisbon Hostel',
+        chatsErr?.message ?? `titled ${JSON.stringify(thread?.title)}`
+      );
+    }
+
+    // --- reports. One voice per account, enforced by a partial unique index
+    // rather than by the client remembering.
+    const { error: reportErr } = await brit.client.rpc('report_business', {
+      p_business_id: placeId,
+      p_reason: 'not_this_business',
+      p_note: `Live canary ${RUN}. Not a real report; ignore.`,
+    });
+    check('a traveler can report a listing', !reportErr, reportErr?.message);
+
+    // ON CONFLICT DO NOTHING against the partial unique index, so a second
+    // report from the same account succeeds and changes nothing. The client
+    // says "we've got it" either way, which is the behaviour worth having:
+    // somebody who taps twice must not be shown an error for it.
+    const { error: report2Err } = await brit.client.rpc('report_business', {
+      p_business_id: placeId,
+      p_reason: 'not_a_real_place',
+    });
+    check(
+      'and reporting it a second time is quietly folded in, not an error',
+      !report2Err,
+      report2Err?.message
+    );
+
+    const { data: reportRows } = await brit.client.from('business_reports').select('*').limit(1);
+    check('the report queue itself stays unreadable', (reportRows ?? []).length === 0);
+  }
+
+  // --- a place's own account ---------------------------------------------
+  //
+  // register_business is EXECUTE-revoked from anon, and refuses an account
+  // that has finished traveler onboarding: the two kinds must never share an
+  // auth row, because every guard downstream asks that one question.
+  const { error: anonRegErr } = await guest.rpc('register_business', {
+    p_name: `Anon Bar ${RUN}`,
+    p_category: 'bar',
+    p_city_id: lisbonId,
+    p_lat: 38.71,
+    p_lng: -9.14,
+  });
+  check('a signed-out reader cannot register a place', Boolean(anonRegErr));
+
+  const { error: travelerRegErr } = await alex.client.rpc('register_business', {
+    p_name: `Alex Bar ${RUN}`,
+    p_category: 'bar',
+    p_city_id: lisbonId,
+    p_lat: 38.71,
+    p_lng: -9.14,
+  });
+  check('a traveler cannot turn into a place', Boolean(travelerRegErr));
+
+  // A fresh account that never onboarded as a traveler is what a real owner
+  // is. Registered for teardown before anything can throw.
+  const owner = await signUpUser('owner');
+  users.push(owner);
+  const { data: bizId, error: regErr } = await owner.client.rpc('register_business', {
+    p_name: `Canary Bar ${RUN}`,
+    p_category: 'bar',
+    p_city_id: lisbonId,
+    p_lat: 38.7123,
+    p_lng: -9.1399,
+  });
+  check('somebody who runs a bar can claim it', !regErr && Boolean(bizId), regErr?.message);
+
+  if (bizId) {
+    const { data: mineBiz, error: mineBizErr } = await owner.client.rpc('my_business');
+    const biz = (mineBiz ?? [])[0];
+    check(
+      'and reads their own place back, unverified and unlisted',
+      !mineBizErr && biz?.id === bizId && biz?.state === 'unconfirmed' && biz?.verified === false,
+      mineBizErr?.message ?? JSON.stringify(biz)
+    );
+
+    // §7 rule 3 in the other direction: a place is not a traveler, so it may
+    // not drop a 72-hour pin or post a trip. Six triggers enforce it; two
+    // are worth proving under the live roles.
+    const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+    const { error: bizTripErr } = await owner.client
+      .from('trips')
+      .insert({ user_id: owner.userId, city_id: lisbonId, start_date: day(2), end_date: day(5) });
+    check('a place cannot post a trip', Boolean(bizTripErr));
+
+    // Every column filled and every check satisfied, so the only thing left
+    // to refuse it is the trigger under test. A short row would have been
+    // rejected for a missing column and passed this assertion for the wrong
+    // reason, which is worse than no assertion.
+    const { error: bizPinErr } = await owner.client.from('pins').insert({
+      user_id: owner.userId,
+      city_id: lisbonId,
+      venue_name: `Canary ${RUN}`,
+      category: 'bar',
+      lat: 38.7123,
+      lng: -9.1399,
+      intent_date: day(0),
+      expires_at: new Date(Date.now() + 12 * 3600000).toISOString(),
+    });
+    check('a place cannot drop a traveler pin', Boolean(bizPinErr));
+
+    // The listing email. The code itself goes out by mail and is stored only
+    // as a hash, so a test can prove the request is accepted and that a wrong
+    // code is refused — which is the half that matters.
+    const { error: confReqErr } = await owner.client.rpc('request_business_email_confirmation', {
+      p_email: `${EMAIL_USER}+sw-biz-${RUN}@${EMAIL_DOMAIN}`,
+    });
+    check('a place can ask for a confirmation code', !confReqErr, confReqErr?.message);
+
+    // Asserting on the MESSAGE, not merely on failure: "ask for a code first"
+    // would also be an error, and would mean the request above had silently
+    // done nothing while this line reported success.
+    const { data: wrong, error: wrongErr } = await owner.client.rpc('confirm_business_email', {
+      p_code: '000000',
+    });
+    check(
+      'and a code somebody guessed is refused, as a wrong code and not a missing one',
+      Boolean(wrongErr) && /not right/i.test(wrongErr.message),
+      wrongErr?.message ?? `it was ACCEPTED: ${JSON.stringify(wrong)}`
+    );
+
+    // The map must not carry an unconfirmed place. This is the single most
+    // load-bearing assertion in the section: it is the difference between a
+    // listing directory and an open door for anyone with an email address.
+    const { data: afterReg } = await guest.rpc('city_businesses', { p_city_id: lisbonId });
+    check('an unconfirmed place is NOT on the map', !(afterReg ?? []).some((p) => p.id === bizId));
+  }
+
+  // --- top priorities -----------------------------------------------------
+  //
+  // Six is the PRIMARY KEY (user_id, slot) with a 0-5 check, not a client
+  // rule, and the text is screened by the same trigger as a first message.
+  const priorityRows = Array.from({ length: 6 }, (_, slot) => ({
+    user_id: alex.userId,
+    slot,
+    text: `live canary plan ${slot}`,
+  }));
+  const { error: prioErr } = await alex.client.from('profile_priorities').insert(priorityRows);
+  check('a traveler writes six top priorities', !prioErr, prioErr?.message);
+
+  const { error: seventhErr } = await alex.client
+    .from('profile_priorities')
+    .insert({ user_id: alex.userId, slot: 6, text: 'one too many' });
+  check('and a seventh is refused by the database, not by the app', Boolean(seventhErr));
+
+  const { data: seen, error: seenErr } = await brit.client
+    .from('profile_priorities')
+    .select('slot, text')
+    .eq('user_id', alex.userId);
+  check(
+    'somebody who can see the profile can see the list',
+    !seenErr && (seen ?? []).length === 6,
+    seenErr?.message ?? `${(seen ?? []).length} rows`
+  );
+
+  const { error: theirsErr } = await brit.client
+    .from('profile_priorities')
+    .insert({ user_id: alex.userId, slot: 0, text: 'not yours to write' });
+  check('but cannot write into it', Boolean(theirsErr));
 
   // --- a capped answer is shaped like every other answer ------------------
   //

@@ -2,12 +2,19 @@
 //
 // Called by the signed-in user from the Profile tab. Order matters:
 //   1. Verify the caller's JWT and resolve their user id.
-//   2. Remove their storage objects (profile photos + any verification
-//      selfies) — the storage API is the only correct way to delete objects.
+//   2. Remove their storage objects (profile photos, verification selfies,
+//      chat photos, and a place's gallery and storefront evidence) — the
+//      storage API is the only correct way to delete objects.
 //   3. Hard-delete every chat they participate in (mirrors unmatch: "deletes
 //      chat for both") so no orphaned conversations linger for the other
 //      member. Closed chats included: the account is leaving entirely.
-//   4. Delete the auth user — the FK graph cascades users -> profiles,
+//   4. Delete the place this account runs, if it runs one. `businesses`
+//      references the user with ON DELETE SET NULL, so step 5 alone would
+//      leave the whole listing standing — name, photos, posts, hours, links,
+//      ratings and its chat — owned by nobody and editable by nobody. That is
+//      not what "delete my account" means, and 5.1.1(v) applies to a business
+//      account exactly as it does to a traveler's.
+//   5. Delete the auth user — the FK graph cascades users -> profiles,
 //      photos, handles, trips, pins, requests, blocks, reports, tokens.
 //      moderation_events survive with subject_user_id = null (audit spine).
 //
@@ -45,8 +52,19 @@ Deno.serve(async (req) => {
   // Paged, because `list` returns a bounded page: one call cleaned a light
   // user completely and a heavy one partially, which is the worse of the two
   // failures because it looks like it worked.
+  //
+  // The two business buckets are on this list for the same reason: both use
+  // the `<owner uid>/<file>` path convention (business_content.sql spells out
+  // why the business id could not go first), so the same loop reaches a
+  // place's gallery photos and its storefront evidence.
   const PAGE = 100;
-  for (const bucket of ['profile-photos', 'verification-selfies', 'chat-photos']) {
+  for (const bucket of [
+    'profile-photos',
+    'verification-selfies',
+    'chat-photos',
+    'business-photos',
+    'business-verification',
+  ]) {
     for (let offset = 0; ; offset += PAGE) {
       const { data: objects, error: listError } = await admin.storage
         .from(bucket)
@@ -89,7 +107,40 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 4. The auth user — cascades the entire public-schema footprint.
+  // 4. The place this account runs, if any.
+  //
+  // Deleting the `businesses` row cascades its photos, links, hours, posts,
+  // verifications, reports, scans, ratings and email confirmations, all of
+  // which are keyed on business_id. Its chat is not: `businesses.chat_id` is
+  // ON DELETE SET NULL, which points the wrong way, so the chat has to be
+  // taken out by hand afterwards or the room and its messages outlive the
+  // place they belonged to.
+  //
+  // A launch venue that this account had claimed goes with it. That is the
+  // right answer — the photos and posts on it were theirs — and
+  // seed_launch_businesses() is idempotent, so putting the bare venue back is
+  // one call.
+  const { data: owned } = await admin
+    .from('businesses')
+    .select('id, chat_id')
+    .eq('owner_user_id', user.id)
+    .maybeSingle();
+  if (owned) {
+    const { error } = await admin.from('businesses').delete().eq('id', owned.id);
+    if (error) {
+      return Response.json({ error: `place cleanup failed: ${error.message}` }, { status: 500 });
+    }
+    if (owned.chat_id) {
+      const { error: chatError } = await admin.from('chats').delete().eq('id', owned.chat_id);
+      if (chatError) {
+        // The listing is already gone, which is the part that mattered. An
+        // orphaned room with no way back to it must not block the deletion.
+        console.error(`business chat cleanup: ${chatError.message}`);
+      }
+    }
+  }
+
+  // 5. The auth user — cascades the entire public-schema footprint.
   const { error: deleteError } = await admin.auth.admin.deleteUser(user.id);
   if (deleteError) {
     return Response.json({ error: deleteError.message }, { status: 500 });
