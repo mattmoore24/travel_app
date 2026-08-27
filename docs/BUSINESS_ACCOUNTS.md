@@ -124,25 +124,27 @@ function naming the table: bounded, greppable, proven by the pgTAP run.
 | `description`, `place_label`, `hours_note`          | ≤600 / ≤120 / ≤200, all screened                                                                                                 |
 | `website_url text`                                  | optional, and no longer a proof of anything (§3.9)                                                                               |
 | `state public.business_state`                       | enum: `unconfirmed`, `listed`, `flagged`, `removed` (§3.9)                                                                       |
+| `verified_at timestamptz`                           | set once by the storefront-photo check; cleared by rename, move or flag (§3.9)                                                   |
 | `listed_at timestamptz`, `claimed_at`, `updated_at` |                                                                                                                                  |
 
 **Column-scoped grants** **[review]**: the existing table grants full-row SELECT
 to anon, which after the rename would hand out `owner_user_id`. Grants become
 column lists — anon and authenticated read (id, city_id, name, category,
 description, place_label, hours_note, website_url, lat, lng, public_preview)
-of `active` + `listed` rows only. `owner_user_id`, `claimed_at` and the report
-history are never client-readable. **`state` is not readable either** — a
-client that can see a business at all knows it is `listed`, and exposing the
-enum would only invite a badge (§3.9 is emphatic that there is no badge).
+of `active` + `listed` rows only, **plus a derived boolean `verified`** so the
+badge can render. `owner_user_id`, `claimed_at`, the raw `verified_at` and the
+report history are never client-readable. **`state` is not readable either** —
+a client that can see a business at all knows it is `listed`, and exposing the
+enum would leak the moderation queue.
 
 RLS: select where `active and state = 'listed'`; owner selects own row always.
 Client UPDATE column-granted to (name, description, hours_note, place_label,
 public_preview) behind a screening + velocity trigger; lat/lng, city_id,
-active, state, owner_user_id are server-owned. Name, city or location changes
-go through `update_business_location(...)` and **drop the row back to
-`unconfirmed` until the email link is clicked again** — that closes
-list-a-surf-shack, rename-to-Marriott, which is the one attack a confirmation
-link genuinely does stop.
+active, state, verified_at, owner_user_id are server-owned. Name, city or
+location changes go through `update_business_location(...)`, which drops the
+row back to `unconfirmed` **and clears `verified_at`** — that closes
+verify-a-surf-shack, rename-to-Marriott, and it is the same edit set Google
+re-triggers on.
 
 ### 3.3 Content tables
 
@@ -296,8 +298,8 @@ traveler pins only through the anonymous feed.
 ### 3.8 Reporting and suspension
 
 Report context `business:<id>`; impersonation sorts first. The structured
-report path and its three-reporter escalation are §3.9, because at v1 reporting
-IS the verification mechanism rather than a backstop to it.
+report path and its first-report escalation are §3.9, because a business report
+carries a machine scan and an email that a person report does not.
 `admin_resolve_report` gains 'flag' (state → 'flagged', listing dark, room
 unjoinable), 'relist' and 'remove' for unclaimed venues that have no owner to
 strike **[review]**. Suspension freezes everything and deletes nothing: listing
@@ -305,171 +307,167 @@ hidden, joins refused, chat status 'closed' so even the business is silent,
 history readable as evidence, copy oracle-proof ("This chat is paused.").
 Strikes ride the existing 3/5/7 ladder on the owner.
 
-### 3.9 Getting listed, and staying listed **[founder]**
+### 3.9 Getting listed, and getting verified **[founder, final]**
 
-> _"Let's just send them a link to verify their email upon creating a business
-> account. We can then rely on businesses getting reported as fake to settle the
-> rare dispute manually ourselves, rather than overthinking it now with complex
-> verification methods. Look into how Google allows people to add/claim/verify
-> businesses on Google Maps for more ideas."_
+> _"Businesses required to verify their email address to use their email
+> address. This alone would not trigger a verification. For a business to be
+> verified, we can use the one time storefront/sign photo (must be a real
+> photo, like the selfie) method which uses Claude to judge if it is real,
+> similar to the selfie verifications. You could even require the photo be
+> taken a certain way if that would help to deter fake businesses further... I
+> also like Claude to scan each business profile and give an alert when
+> impersonation is plausible - but do this after the first report, and also
+> make sure that the report is alerted via email as well."_
 
-**The decision: confirmed email plus reports at v1.** The two-path scheme in
-the previous draft (domain-matched email, or a code planted on the website) is
-not built. It moves to tier 3 of the ladder at the end of this section, to be
-built when volume justifies it and not before.
+Two separate things, and keeping them separate is the whole design.
 
-#### What Google actually does, and what is worth stealing
+| step                   | what it proves                       | what it unlocks                           |
+| ---------------------- | ------------------------------------ | ----------------------------------------- |
+| **Confirm your email** | somebody reads that inbox            | the listing goes live. **No badge.**      |
+| **Storefront photo**   | somebody stood in front of the place | **the verified badge**, and the full caps |
 
-Google is the only organisation that has solved this at global scale, and the
-research is unambiguous about one thing: **they did not solve it at signup.**
+This is Google's claimed-versus-verified split, and it is the right one: a
+business gets onto the map in minutes, and the badge is earned by a bar high
+enough that the badge means something. Compare the previous draft, where a
+click on an email link would have produced a check mark: that badge would have
+lent an impersonator the app's credibility. This one does not, because behind
+it is a photograph of the premises judged the same way a selfie is.
 
-- **Google picks the method, the business does not.** Category, region, and how
-  much of a public footprint the business already has decide whether you get a
-  phone code, an email, a postcard, or a video. Verification strength is tiered
-  by risk rather than uniform.
-- **Video is now the primary method.** Not "do you own a domain" but "are you
-  physically standing in this business and do you have staff-level access": the
-  video has to show the street and the building number, signage whose name
-  matches the listing exactly, the interior, and then **proof of management** —
-  unlocking the door, opening the till, logging into the POS, walking into a
-  staff-only area.
-- **Email is their weakest and rarest method**, offered only to domain-based
-  addresses on businesses that already have a strong footprint. It is a
-  tiebreaker, not a gate.
-- **Postcards are dying.** Slow, useless for service-area businesses, and
-  hopeless internationally.
-- **Editing the name, address or category re-triggers verification.** Exactly
-  the attack we care about.
-- **The listing exists before anyone claims it.** Google builds listings from
-  other data; claiming is about who _controls_ one, not whether it exists.
-  Anyone can suggest edits to an unclaimed listing.
-- **Reporting is a first-class structured path**, not a support email:
-  "Suggest an edit" offers "This business doesn't exist", "permanently closed",
-  "Spam, fake or offensive", takes a photo as evidence, and feeds an AI
-  moderation stack.
-- **The badge is the payoff.** A verified profile carries a check and "You
-  manage this Business Profile". The badge means something precisely because
-  the bar behind it is a video of you opening the till.
-- **And it still leaks.** Verification takes 5 to 14 days, Google runs
-  periodic algorithmic sweeps of spam-prone categories, and there is an entire
-  cottage industry of consultants who do nothing but get wrongly-suspended
-  legitimate businesses reinstated. Nobody solves this at signup.
+#### Step 1 — confirm the email
 
-Sources: [Birdeye](https://birdeye.com/blog/how-to-verify-my-business-on-google/),
-[JXT Group](https://www.jxtgroup.com/google-business-profile-verification-in-2026-new-warnings-video-requirements-how-to-stay-compliant/),
-[Local Falcon](https://www.localfalcon.com/blog/the-ultimate-guide-to-google-business-profile-video-verification),
-[Search Engine Journal](https://www.searchenginejournal.com/google-business-profile-video-verification/462489/),
-[Red Points](https://www.redpoints.com/blog/how-to-report-a-fake-business-on-google-maps/),
-[Sterling Sky](https://www.sterlingsky.ca/top-reasons-google-my-business-suspended-your-listing/),
-[BrightLocal](https://www.brightlocal.com/learn/google-business-profile-suspensions/).
+A link, mailed through the **existing Resend path** used by `support-mailer`,
+not GoTrue — so no auth configuration changes and no effect on traveler signup,
+a flow that has already been broken once by an auth toggle.
 
-#### The recommendation
+- `business_email_confirmations` (business_id, token_hash, expires_at, attempts,
+  confirmed_at). **No client grants at all.** Link expires in 24 hours, 5 sends
+  per business per day.
+- Until confirmed the business is **`unconfirmed`, and fully dark**: no marker,
+  no joinable chat, no messages. It can build its page while it waits, and the
+  screen says plainly that the link is the only thing between it and the map.
+- Signup asks for a business email and says why: _"Use your business email.
+  It's the address travelers will reach you at, and it's what puts you on the
+  map."_ Nothing refuses a Gmail address; most small businesses on earth are on
+  one, and refusing them is refusing the market.
+- **Changing the email re-confirms.** Changing the name, city or location drops
+  the row back to `unconfirmed` **and clears the verification**, which is what
+  closes list-a-surf-shack, rename-to-Marriott. Google re-triggers on exactly
+  the same edits.
 
-The founder's instinct is right for launch, and the research supports it: with
-four seeded venues and the first handful of real ones hand-recruited per city,
-the fake-listing volume is zero and every hour spent on verification machinery
-is an hour not spent on the thing travelers actually use. Ship the confirmation
-link. Two things go with it that cost close to nothing now and are expensive to
-retrofit later, and one is optional.
+#### Step 2 — the storefront photo, and how it must be taken
 
-**1. There is no verified badge. This is the important one.**
+Modelled on `verification_requests` down to the table shape, the private
+bucket, the worker branch and the service-role-only verdict writer. It is one
+time, and it is the only thing that sets `verified_at`.
 
-A confirmation link proves an inbox exists and somebody read it. It proves
-nothing whatsoever about a business: `hostellisboa2024@gmail.com` confirms in
-four seconds. Google's check is credible because the bar behind it is a video
-of you unlocking the shop. A check mark next to a business that clicked an
-email would be **actively worse than no badge**, because it lends an
-impersonator our credibility. So v1 ships no badge, no "Verified" chip, no
-`state` in the client payload. A place is either on the map or it is not.
+**Two shots, live camera only, one session.** The design choice the founder
+left open, and the reasoning for it:
 
-That is a feature we do not build, which is why it is cheap. It also keeps the
-word "verified" meaning exactly one thing in this app — a traveler who passed
-the selfie check — instead of two things with different bars.
+1. **The wide shot.** _"Stand back across the street and get the whole front in,
+   with your sign."_
+2. **The close shot.** _"Now get closer, so we can read the sign."_
 
-**2. Reports are structured, and they escalate without the founder.**
+Why two and not one. A single close-up of a sign is the easiest thing on earth
+to find on the internet; a wide shot pins the sign to a building, a street and
+a streetscape, and the pair has to agree with each other **and** with the marker
+the business dropped on the map. Two shots taken minutes apart from different
+distances is a thing you get by standing there and a thing you do not get by
+searching. It costs the honest business twenty extra seconds.
 
-"Rely on reports" only scales as far as somebody reads them. Google's answer is
-a fixed reason list plus photo evidence plus machine review, and that shape
-ports directly onto machinery this app already has.
+Mechanically, and all of it mirrors the selfie flow:
+
+- **Camera only. The photo library is never offered** — the same rule the selfie
+  screen already enforces, and the single most important line in this section,
+  because a library picker turns the whole check into a search-and-download.
+- Both shots captured in one screen session, server-stamped, and **refused if
+  more than 15 minutes apart**.
+- Uploaded to the private `business-photos` bucket under a
+  `verification/<business_id>/` prefix that is never served publicly. These are
+  evidence, not gallery photos, and they never appear on the listing.
+- One pending submission at a time; 3 attempts a day; a rejection is a strike
+  against the owner on the existing ladder.
+
+**What Claude is asked** (branch in the existing `moderation-worker`, prompt
+text in the GitHub secret like every other classifier prompt, never in the
+repo). Given both photos plus the claimed name, category, city and address:
+
+1. Is each image a **photograph of a real place**, rather than a screenshot, a
+   photo of a screen, a stock image, a render or an AI generation?
+2. Do the two show the **same premises**?
+3. Does signage in the close shot **read the claimed business name**? Allow for
+   translation, transliteration and a trading name that differs from the legal
+   one, because this has to work in Bangkok as well as Lisbon.
+4. Does the storefront **look like the claimed category**?
+5. Does the wide shot's streetscape **plausibly match the claimed city**?
+
+Verdict `pass` / `fail` / `uncertain`, written back by a service-role-only
+`apply_business_verification_verdict`, audited to `moderation_events` like every
+other machine judgment. `uncertain` goes to the founder rather than to either
+extreme, because a hand-painted sign in a script the model reads poorly is a
+real business having a bad day.
+
+**A business with no sign at all** (a tour operator who works from a phone, a
+market stall) will fail step 2 honestly. It is still **listed** on the map, it
+simply has no badge, and the contact form is the route to arguing the case. The
+badge is the exception, not the ticket.
+
+#### What the badge does, and does not, unlock
+
+Deliberately almost nothing, so the badge stays a signal rather than a paywall:
+
+- **Listed, unconfirmed:** dark everywhere.
+- **Listed, email confirmed, unverified:** on the map, joinable chat, inbound
+  messages, and a **reduced ceiling — 3 live posts and no push-bearing posts.**
+  A quiet incentive to finish, with no core function withheld.
+- **Verified:** the badge, and the full caps from §6.
+
+The badge renders as a small check beside the name on the place sheet and page,
+in `accent`, with the accessible label "Verified business". Nowhere else. There
+is no "unverified" chip: labelling the absence would put a scarlet letter on
+every honest business that has not got round to it yet.
+
+#### Step 3 — impersonation scanning, on the first report **[founder]**
+
+The threshold moves from three reporters to **one**. The founder's reasoning is
+sound: the machine read is cheap, and it is the thing that keeps disputes rare
+enough to handle by hand.
 
 `business_reports` (id, business_id, reporter_user_id, reason enum, note ≤300,
-photo_path nullable, created_at; unique on (business_id, reporter_user_id) so
+photo_path nullable, created_at; unique on (business_id, reporter_user_id), so
 one account is one voice). Reasons, lifted from Google's list because it is
 well-worn: **not a real place · permanently closed · not this business (someone
 else is running it) · wrong location · spam or offensive**.
 
-Escalation, so the founder's inbox is the exception rather than the mechanism:
+| on the first report from a given account                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------- |
+| the report is stored, and **an email goes to `SUPPORT_INBOX` immediately**                                                |
+| the business profile is enqueued for a Claude impersonation scan                                                          |
+| the scan reads name, description, category, links, posts, photos and the report against a plausibility prompt             |
+| **plausible impersonation → `state = 'flagged'`**: listing dark, chat unjoinable, verification cleared, second email sent |
+| **not plausible → stays live**, verdict recorded on the report for the founder to glance at                               |
 
-| trigger                                | what happens                                                         |
-| -------------------------------------- | -------------------------------------------------------------------- |
-| 1st report                             | logged, listing untouched                                            |
-| 3 reports from distinct accounts       | queued for a Claude read of the reports plus the listing             |
-| Claude says impersonation is plausible | `state = 'flagged'`, listing dark, chat unjoinable, founder notified |
-| Claude says it looks fine              | stays live, flagged in the queue for the founder to glance at        |
-| founder resolves                       | `listed` again, or `removed`                                         |
+Two reports on the same business do not re-scan within 24 hours; the email
+still sends, because the founder wants to see them.
 
-Three reports auto-darkening with no machine read would itself be the attack (a
-competitor with three accounts). The Claude read between the threshold and the
-consequence is what makes the threshold safe, and it is the same worker shape
-as every other machine verdict here, audited to `moderation_events`.
+**The email** reuses `support-mailer`'s Resend path exactly, and is addressed to
+the `SUPPORT_INBOX` secret — the founder's personal address today, a dedicated
+support address later, and changing it is a secret rotation with no code change.
+Subject and body carry the business name, the city, the reason, the note, a link
+to the report row and, once the scan lands, the verdict. Nothing in it is
+guessed: if the scan has not finished, the email says the scan is pending and a
+second email follows.
 
-**3. Optional, and recommended: the storefront photo.**
+`admin_resolve_business_report(report_id, action)` with actions **flag**,
+**relist**, **remove**, **unverify** and **dismiss**, service-role only. This is
+the manual path the founder asked to be left with, and the machinery above
+exists to keep the queue short enough that it is a real path rather than a
+theoretical one.
 
-Signup already collects photos of the place. Make the **first one required,
-camera-only (not the library), and a photo of the front of the business with
-its sign visible** — then have the existing photo worker ask Claude one extra
-question: does the sign read the claimed name, does the storefront match the
-claimed category, is this a real premises rather than a screenshot or a stock
-image.
-
-This is video verification's cheapest 20%. It does not stop somebody who walks
-to the hostel and photographs its sign, and it should not pretend to. What it
-stops is the entire volume tier of fake listings, which is people who never
-leave their laptop. Cost is one signup step and one prompt in a worker that
-already runs, and it works identically in Lisbon and Bangkok with no domain, no
-postcard and no founder. **Recommended, but genuinely optional** — say no and
-v1 is the founder's plan exactly.
-
-#### The ladder, written down so nobody re-derives it
-
-Each tier gets built when the tier below it starts failing, not before.
-
-| tier    | proof                                                  | when                                         |
-| ------- | ------------------------------------------------------ | -------------------------------------------- |
-| **1**   | confirmed email + structured reports                   | **v1, now**                                  |
-| **1.5** | storefront photo checked by Claude                     | v1 if the founder says yes                   |
-| **2**   | domain-matched email, or a code planted on the website | when fake listings become a real trickle     |
-| **3**   | a short video walk-in, Google's shape                  | contested listings, or spam-prone categories |
-| **4**   | a badge, earned at tier 2 or 3                         | only once a tier exists that deserves one    |
-
-#### The state machine, and what "dark" means
+#### The state machine
 
 `business_state`: `unconfirmed → listed → flagged → removed`, plus `listed`
-again out of `flagged`.
-
-- **`unconfirmed`** — signed up, link not clicked. **Fully dark**: no marker, no
-  joinable chat, no messages. The business can build its page while it waits and
-  the screen says plainly that the link is what stands between it and the map.
-  Rename or move drops it back here.
-- **`listed`** — the link was clicked. On the map. No badge.
-- **`flagged`** — dark again, pending the founder. The owner sees why and can
-  reply through the contact form.
-- **`removed`** — gone, and the owner cannot re-list the same name in the same
-  city without the founder.
-
-The confirmation mail goes through the **existing Resend path**, not GoTrue —
-so no auth configuration changes and no effect on traveler signup, which is a
-flow that has already been broken once by an auth toggle. Rate limits: 5 sends
-per business per day, link expires in 24 hours.
-
-**Signup asks for a business email and says why**, which is the founder's point
-about forcing real addresses: _"Use your business email. It's the address
-travelers will reach you at, and it's what puts you on the map."_ Nothing
-refuses a Gmail address, because most small businesses on earth are on one and
-refusing them is refusing the market.
-
-`business_email_confirmations` (business_id, token_hash, expires_at, attempts,
-confirmed_at) with **no client grants at all**.
+again out of `flagged`. `verified_at` is orthogonal to all four: it is set once
+by the photo check, and cleared by a rename, a move, or a `flag`.
 
 ### 3.10 Ratings **[founder]**
 
@@ -637,9 +635,8 @@ Steps: name and category · city and the drop-pin picker ("Drop the pin right on
 your door.") · **business email** (with the plain reason: _"Use your business
 email. It's the address travelers will reach you at, and it's what puts you on
 the map."_) and an optional website · links · hours (skippable) · photos
-("Photos of the place, not of a person. The first one is your cover.") **and,
-if the founder takes §3.9's tier 1.5, the first photo is taken on the spot: "A
-photo of the front, with your sign in it."** Finish lands on:
+("Photos of the place, not of a person. The first one is your cover."). Finish
+lands on:
 
 > **"Almost there. Tap the link in the email we just sent and you're on the
 > map."**
@@ -647,11 +644,12 @@ photo of the front, with your sign in it."** Finish lands on:
 **Tabs.** The middle tab becomes **"My business"** **[founder]** with a
 storefront glyph, branching the way the guest Travelers tab already does. It
 holds: cover and status chip ("Live on the map" / "Waiting on your email" /
-"Paused"); **What's on** with a docked "Post something" (title, details, when,
+"Paused"), with a **"Get verified"** row beneath it until the storefront photo
+passes (§3.9); **What's on** with a docked "Post something" (title, details, when,
 and how long — including "Keep it up until I take it down"); **Your details**
 (Hours, Links, Description, Photos); **Your chat**; **Your rating** once five
-travelers have rated; and "See it as a traveler". No badge anywhere, per
-§3.9. Map shows their own marker
+travelers have rated; and "See it as a traveler". The verified check renders
+beside the name once earned, and nowhere else. Map shows their own marker
 with a "You" ring and traveler pins anonymously, with no drop-pin button. Chat
 pins their own room and hides the join list.
 
@@ -678,13 +676,13 @@ is a bell, not a siren.
 
 ## 6. Trust & safety
 
-- **Impersonation** is the top risk, answered by §3.9 in the founder's shape:
-  a confirmation link before anything is visible, no badge that could lend an
-  impersonator our credibility, renaming or moving dropping the listing back to
-  `unconfirmed`, and structured reports that escalate to a machine read at three
-  distinct reporters rather than waiting on somebody's inbox. The escalation
-  ladder for when that stops being enough is written down in §3.9 so nobody has
-  to re-derive it under pressure.
+- **Impersonation** is the top risk, answered by §3.9: a confirmation link
+  before anything is visible; a badge earned only by two live camera shots of
+  the premises, judged the way a selfie is, so the badge never lends an
+  impersonator our credibility; renaming or moving dropping the listing back to
+  `unconfirmed` and clearing the badge; **a Claude scan of the whole business
+  profile on the very first report [founder]**; and an email to `SUPPORT_INBOX`
+  on every report, so nothing waits on somebody opening a dashboard.
 - **Spam** is answered by rule 8, enforced by trigger, plus the caps: 10 photos,
   10 links, 10 live posts, 5 post-writes a day, 30 text edits a day, 10
   business DMs opened per traveler per day, 3 push-bearing room posts a day,
@@ -701,8 +699,9 @@ is a bell, not a siren.
   moderation surface a free-to-join room would otherwise create.
 - **Reporting** is a first-class structured path, Google's shape (§3.9): not a
   real place / permanently closed / not this business / wrong location / spam or
-  offensive, with an optional photo. Three distinct reporters trigger a machine
-  read; a plausible impersonation verdict darkens the listing immediately.
+  offensive, with an optional photo. **The first report** triggers both an email
+  and a machine read; a plausible impersonation verdict darkens the listing
+  immediately and clears its badge.
 - **Suspension** freezes and never deletes; copy never says why.
 
 ---
@@ -738,10 +737,11 @@ message, member and promised expiry survives.
 4. `..._business_listing.sql` — the confirmation link (token table, the mailer
    call on the existing Resend path, `confirm_business_email`), the
    `business_state` transitions including rename/move dropping back to
-   `unconfirmed`, `business_reports` with its one-voice-per-account unique, the
-   three-reporter escalation trigger, and `admin_resolve_business_report`. Plus
-   the storefront-photo question in the photo worker **if the founder takes
-   tier 1.5**.
+   `unconfirmed` and clearing `verified_at`; `business_verifications`,
+   `submit_business_verification` and the service-role-only
+   `apply_business_verification_verdict`; `business_reports` with its
+   one-voice-per-account unique; the **first-report** trigger that enqueues both
+   the email and the impersonation scan; and `admin_resolve_business_report`.
 5. `..._business_inbound.sql` — the immediate-delivery branch,
    `message_business`, the `shadowed` flag and its predicates.
 6. `..._business_ratings.sql` — ratings, the summary function, caps.
@@ -760,10 +760,11 @@ clamp; the sweep expires business-room admins and spares group admins;
 rows in heat; anon reads everything public and writes nothing; the link
 validator refuses `javascript:` and over-cap; an `unconfirmed` business is
 fully dark on every surface; rename and move both drop a listed business back
-to `unconfirmed`; `state` is absent from every client-readable payload (the
-no-badge invariant, asserted rather than trusted); two reports change nothing
-and three from distinct accounts enqueue exactly one review; the same account
-reporting twice is refused; a suspended owner silences room and DMs; ratings
+to `unconfirmed` **and null `verified_at`**; `state` and raw `verified_at` are
+absent from every client-readable payload while the derived `verified` boolean
+is present; a client cannot write `verified_at` by any path; the FIRST report
+enqueues exactly one email and one scan; the same account reporting twice is
+refused; an unverified business is held to the reduced post caps; a suspended owner silences room and DMs; ratings
 refuse a guest rater, refuse a business rater, refuse a second rating from one
 account, accept a rater with no trip in that city **[founder]**, and return
 nulls below five raters.
@@ -783,10 +784,10 @@ app's `join_room` / `city_rooms` calls still work.
 page, join flow with the new date picker and copy; the room list rename. The
 four seeded venues become the first places.
 
-**Phase 15 — Listing and reports.** Migration 4: the confirmation link, the
-state machine, the structured report path and its escalation. Much smaller than
-the verification phase it replaces, and it is what unlocks self-serve signup,
-so it still lands before the business side.
+**Phase 15 — Listing, verification and reports.** Migration 4: the confirmation
+link, the state machine, the storefront-photo check and its worker branch, the
+structured report path, the first-report email and impersonation scan. What
+unlocks self-serve signup, so it lands before the business side.
 
 **Phase 16 — Inbound messages.** Migration 5; message flow, storefront rows.
 
@@ -829,21 +830,23 @@ list · messages to businesses always go through with no accept · the caps · t
 member list is open to everyone in the chat · the departure date picker and its
 wording · photos are admins-only in business chats · Beli-style ratings.
 
-**The one thing still worth a yes or no** (not a blocker, and v1 is the
-founder's plan exactly without it): **§3.9 tier 1.5**, the required
-camera-taken storefront photo with the sign in it, checked by the photo worker
-that already runs. One extra signup step, no new infrastructure, and it removes
-the entire class of fake listing made by somebody who never leaves their
-laptop.
+**Closed 2026-08-27, and the last open question with it.** The storefront photo
+is in, and it is what the verified badge means. Confirming the email is required
+to use the account but grants no badge; the badge comes from a one-time real
+photo judged like the selfie; the impersonation scan runs on the **first** report
+rather than the third; every report emails `SUPPORT_INBOX`. §3.9 carries the
+full design, including the two-shot capture rule and why the photo library is
+never offered. **Implementation is cleared to proceed.**
 
 ---
 
 ## 10. Not in this plan
 
 - Multiple rooms per business; staff answering DMs; staff self-management.
-- Document-upload verification, and everything above tier 1.5 of the §3.9
-  ladder (domain-matched email, a code on the website, a video walk-in, and a
-  badge to go with any of them). Written down there, deliberately not built.
+- Document-upload verification, domain-matched email, a code planted on the
+  website, and a video walk-in. All strictly stronger than the storefront photo
+  and all deliberately not built: the photo is the bar, and the manual queue
+  behind the report path is what handles what it misses.
 - Posts as expiring map markers.
 - **Written reviews of businesses — refused, not deferred.** The rating system
   above works precisely because there is no text to post, and adding a review
