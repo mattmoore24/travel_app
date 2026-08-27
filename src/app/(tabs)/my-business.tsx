@@ -206,7 +206,10 @@ export default function MyBusinessScreen() {
 
   // One reading of the clock per data change rather than one per render, so
   // the Hours row cannot flip from open to closed mid-scroll.
-  const hoursLine = useMemo(() => (detail ? openLine(detail.hours, new Date()) : null), [detail]);
+  const hoursLine = useMemo(
+    () => (detail ? openLine(detail.hours, new Date(), detail.lng) : null),
+    [detail]
+  );
 
   useEffect(() => {
     analytics.capture('my_business_viewed');

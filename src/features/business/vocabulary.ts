@@ -146,6 +146,30 @@ export function weekdayLabel(weekday: number): string {
 }
 
 /**
+ * The place's own wall clock, approximated from its longitude.
+ *
+ * The device's clock is the wrong one. Somebody in Lisbon reading a Bangkok
+ * bar's hours would be told "Open" against Lisbon time, seven hours out, and
+ * the plan is explicit that a wrong "Open" is worse than no answer because it
+ * sends somebody across a city.
+ *
+ * `cities` carries no timezone column, so longitude does the work: fifteen
+ * degrees an hour. That is exact for a place sitting on its meridian and off
+ * by up to an hour where a political timezone is stretched, plus another hour
+ * wherever daylight saving is in force. An hour of error at a closing time is
+ * a real but bounded problem; seven hours is not. Adding a real timezone to
+ * `cities` (GeoNames publishes one) is the proper fix and is a migration, not
+ * a client change.
+ */
+export function cityNow(now: Date, lng: number | null): Date {
+  if (lng == null) {
+    return now;
+  }
+  const offsetMinutes = Math.round((lng / 15) * 60);
+  return new Date(now.getTime() + (now.getTimezoneOffset() + offsetMinutes) * 60_000);
+}
+
+/**
  * Is the place open, right now, in the city's own time?
  *
  * Two rules the naive version gets wrong. `closes < opens` means the row runs
@@ -185,8 +209,19 @@ export function isOpenNow(hours: BusinessHourJson[], now: Date): boolean | null 
   return false;
 }
 
-/** "Open · till 2:00", or just the hours when we cannot be sure. */
-export function openLine(hours: BusinessHourJson[], now: Date): string | null {
+/**
+ * "Open · till 2:00", or just the hours when we cannot be sure.
+ *
+ * Pass the place's longitude and the answer is about its clock rather than
+ * the reader's. Without it the reader's clock is used, which is only right
+ * for somebody already in the city.
+ */
+export function openLine(
+  hours: BusinessHourJson[],
+  clock: Date,
+  lng: number | null = null
+): string | null {
+  const now = cityNow(clock, lng);
   const open = isOpenNow(hours, now);
   if (open == null) {
     return null;

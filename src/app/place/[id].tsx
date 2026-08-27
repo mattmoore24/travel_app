@@ -28,6 +28,7 @@ import {
   CATEGORY_LABEL,
   LINK_LABEL,
   TAG_LABEL,
+  cityNow,
   isOpenNow,
   openLine,
   shortTime,
@@ -285,10 +286,12 @@ export default function PlaceScreen() {
   const { data: summary } = useRatingSummary(id ?? null);
   const chatsQuery = useMyChats();
 
-  const now = new Date();
+  // The PLACE's clock, not the reader's: somebody in Lisbon reading a Bangkok
+  // bar would otherwise be told "Open" seven hours out.
+  const now = cityNow(new Date(), place?.lng ?? null);
   const hours = place?.hours ?? [];
   const open = isOpenNow(hours, now);
-  const line = openLine(hours, now);
+  const line = openLine(hours, new Date(), place?.lng ?? null);
   // One hierarchy everywhere: Join the chat leads until you are in it.
   const inTheChat =
     place?.chat_id != null && (chatsQuery.data ?? []).some((c) => c.chat_id === place.chat_id);

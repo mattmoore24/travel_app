@@ -67,7 +67,10 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
   // One reading of the clock per data change rather than one per render, so
   // a re-render cannot flip "Open" to "Closed" halfway through a sentence,
   // and the post and its when-label cannot disagree about what time it is.
-  const open = useMemo(() => (place ? openLine(place.hours, new Date()) : null), [place]);
+  const open = useMemo(
+    () => (place ? openLine(place.hours, new Date(), place.lng) : null),
+    [place]
+  );
   const whatsOn = useMemo(() => {
     if (!place) {
       return null;

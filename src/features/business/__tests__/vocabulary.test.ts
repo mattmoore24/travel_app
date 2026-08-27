@@ -2,6 +2,7 @@ import {
   answerComparison,
   comparisonRank,
   comparisonsDone,
+  cityNow,
   isOpenNow,
   openLine,
   startComparison,
@@ -195,5 +196,47 @@ describe('the comparisons', () => {
   it('stops once the window is tighter than a tenth of the bucket', () => {
     const tight = { lo: 0.5, hi: 0.55, against: SIX_LOVED[0] };
     expect(comparisonsDone(tight, 0)).toBe(true);
+  });
+});
+
+// The reader's clock is the wrong clock. Somebody in Lisbon looking at a
+// Bangkok bar would otherwise be told "Open" seven hours out, and the plan is
+// explicit that a wrong "Open" is worse than no answer because it sends
+// somebody across a city.
+describe('cityNow', () => {
+  const utcNoon = new Date('2026-08-26T12:00:00Z');
+
+  it('leaves the reader alone when the place has no longitude', () => {
+    expect(cityNow(utcNoon, null).getTime()).toBe(utcNoon.getTime());
+  });
+
+  // Longitude, not a real timezone: fifteen degrees an hour. Bangkok's
+  // political offset is +7 and its longitude gives +6.7, so these assert the
+  // contract the function actually makes, which is "within an hour", not the
+  // political answer it never promised.
+  const hoursFrom = (lng: number) =>
+    (cityNow(utcNoon, lng).getTime() - utcNoon.getTime()) / 3_600_000;
+
+  it('reads a place east of the meridian as later in the day', () => {
+    // Bangkok, 100.5E. True offset +7.
+    expect(hoursFrom(100.5)).toBeGreaterThan(6);
+    expect(hoursFrom(100.5)).toBeLessThan(8);
+  });
+
+  it('and one west of it as earlier', () => {
+    // Mexico City, 99.13W. True offset -6.
+    expect(hoursFrom(-99.133)).toBeLessThan(-5);
+    expect(hoursFrom(-99.133)).toBeGreaterThan(-7);
+  });
+
+  it('so a bar open past midnight there reads shut from here', () => {
+    // Weekday 3: 15:00 UTC on 26 Aug 2026 is a Wednesday evening in Bangkok.
+    const bangkokNight = [{ weekday: 3, opens: '20:00:00', closes: '02:00:00' }];
+    // 22:00 in Bangkok is 15:00 UTC on the same Wednesday.
+    const duringOpening = new Date('2026-08-26T15:00:00Z');
+    expect(openLine(bangkokNight, duringOpening, 100.5)).toBe('Open · till 02:00');
+    // The same instant, judged against a UTC reader's own clock, is 15:00 on a
+    // Wednesday: shut, and the wrong answer.
+    expect(openLine(bangkokNight, duringOpening, null)).not.toBe('Open · till 02:00');
   });
 });
