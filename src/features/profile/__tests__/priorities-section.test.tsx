@@ -7,6 +7,13 @@ jest.mock('@/features/profile/hooks', () => ({
   usePhotoUrl: () => ({ data: null }),
 }));
 
+// ProfileView now mounts the "Been and loved" shelf, which asks React Query
+// for the viewer's ratings. Nothing here has a QueryClient, and nothing here
+// is testing the shelf, so it answers empty and renders nothing.
+jest.mock('@/features/business/hooks', () => ({
+  useTopRated: () => ({ data: [] }),
+}));
+
 const profile: ProfileRow = {
   user_id: 'u1',
   display_name: 'Maestro Test',

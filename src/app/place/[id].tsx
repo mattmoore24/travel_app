@@ -40,12 +40,7 @@ import { useIsGuest } from '@/features/guest/hooks';
 import { useMyChats } from '@/features/matching/hooks';
 import { openInMaps } from '@/features/pins/open-in-maps';
 import { useTheme } from '@/hooks/use-theme';
-import type {
-  BusinessCategory,
-  BusinessHourJson,
-  BusinessLinkJson,
-  BusinessPostJson,
-} from '@/lib/database.types';
+import type { BusinessHourJson, BusinessLinkJson, BusinessPostJson } from '@/lib/database.types';
 import { countOf } from '@/lib/plural';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
@@ -358,7 +353,9 @@ export default function PlaceScreen() {
     );
   }
 
-  if (detailQuery.isPending) {
+  // A disabled query never leaves `isPending`, so an id that never arrived
+  // would sit under a skeleton forever instead of saying anything.
+  if (detailQuery.isPending && id != null) {
     return (
       <ThemedView style={styles.root}>
         <SafeAreaView style={styles.safeArea} edges={['bottom']}>
@@ -399,7 +396,7 @@ export default function PlaceScreen() {
               <SymbolView
                 // The vocabulary table types its glyphs as plain strings;
                 // SymbolView wants the SF/Material unions.
-                name={CATEGORY_ICON[place.category as BusinessCategory] as SymbolViewProps['name']}
+                name={CATEGORY_ICON[place.category] as SymbolViewProps['name']}
                 size={34}
                 tintColor={theme.textTertiary}
               />
@@ -421,7 +418,13 @@ export default function PlaceScreen() {
                 </ThemedText>
                 {line ? (
                   <>
-                    <ThemedText type="callout" themeColor="textTertiary">
+                    {/* Punctuation between two facts, and nothing a screen
+                        reader should announce as a word. */}
+                    <ThemedText
+                      type="callout"
+                      themeColor="textTertiary"
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants">
                       ·
                     </ThemedText>
                     <ThemedText type="callout" themeColor={open ? 'success' : 'textSecondary'}>
@@ -505,7 +508,11 @@ export default function PlaceScreen() {
             {rest.length > 0 ? (
               <Section
                 title="Photos"
-                icon={{ ios: 'photo.on.rectangle', android: 'photo_library', web: 'photo_library' }}>
+                icon={{
+                  ios: 'photo.on.rectangle',
+                  android: 'photo_library',
+                  web: 'photo_library',
+                }}>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
