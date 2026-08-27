@@ -291,3 +291,76 @@ appId: com.mattmoore.samewhere
     visible: 'WHO CAN POST'
     timeout: 15000
 - takeScreenshot: 27-group-settings
+
+# ─────────────────────────────────────────────────────────────────────────
+# PLACES AND TOP PRIORITIES — the surface built on 2026-08-27, never yet
+# photographed. Every step below is optional on purpose.
+#
+# A map marker is the only way into a place page, and a MapKit annotation is
+# the least dependable thing in this app to address by label: react-native-map
+# hands the marker's accessibilityLabel to a native annotation view, and
+# whether XCUITest surfaces it is not something a flow can assert in advance.
+# So this segment is written to photograph what it can and walk away from what
+# it cannot, rather than to turn an unknown into a red run on a flow whose
+# real assertions have all already passed above.
+#
+# 'Once Again Hostel' is the Bangkok launch venue seeded by
+# seed_launch_businesses(), and the E2E account's trip is Bangkok, so it is on
+# this map if places render at all.
+# ─────────────────────────────────────────────────────────────────────────
+- tapOn:
+    text: 'Map'
+    optional: true
+- extendedWaitUntil:
+    visible: 'Drop a pin'
+    timeout: 15000
+    optional: true
+- takeScreenshot: 28-map-with-places
+- tapOn:
+    text: 'Once Again Hostel.*'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 29-place-sheet
+- tapOn:
+    text: 'See the whole page'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 30-place-page
+- scroll
+- takeScreenshot: 31-place-page-scrolled
+- tapOn:
+    text: 'Rate it'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 32-rate-place
+
+# The priorities editor, which unlike the place page is reached by an ordinary
+# labelled control and so is worth photographing whatever the map did.
+- tapOn:
+    text: 'Map'
+    optional: true
+- tapOn:
+    text: 'Your profile'
+    optional: true
+- extendedWaitUntil:
+    visible: 'Maestro Test.*'
+    timeout: 15000
+    optional: true
+- scrollUntilVisible:
+    element:
+      text: 'Top priorities'
+    direction: DOWN
+    timeout: 10000
+    optional: true
+- takeScreenshot: 33-priorities-empty
+- tapOn:
+    id: 'add-priority'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 34-priorities-editor
+- inputText: 'night market crawl'
+- takeScreenshot: 35-priorities-typed
