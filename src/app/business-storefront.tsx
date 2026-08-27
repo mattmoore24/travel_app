@@ -1,5 +1,4 @@
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
@@ -18,6 +17,7 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
+import { captureLivePhoto } from '@/lib/live-camera';
 
 /**
  * The check beside a place's name, earned by standing in front of it.
@@ -28,12 +28,11 @@ import { haptics } from '@/lib/haptics';
  * with the marker the place dropped on the map (docs/BUSINESS_ACCOUNTS.md
  * §3.9).
  *
- * THE PHOTO LIBRARY IS NEVER OFFERED, and that is the deliberate difference
- * from `verification.tsx`, which falls back to `launchImageLibraryAsync` when
- * the camera is refused. A picker turns this whole check into a
+ * THE PHOTO LIBRARY IS NEVER OFFERED. A picker turns this whole check into a
  * search-and-download, which is the single thing it exists to stop. Refused
  * camera permission gets an explanation and a way to fix it, never a second
- * route.
+ * route. Capture goes through `captureLivePhoto`, the one sanctioned path,
+ * shared with the selfie screen so neither can drift back to a library.
  */
 
 const SHOTS = [
@@ -77,24 +76,23 @@ export default function BusinessStorefrontScreen() {
   const settled = approved || pending || uncertain;
 
   const capture = async (which: ShotKey) => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
+    // No allowsEditing. A crop tool is a way to cut the street out of the wide
+    // shot, and the street is the half that cannot be downloaded.
+    const shot = await captureLivePhoto();
+    if (shot.kind === 'cancelled') {
+      return;
+    }
+    if (shot.kind !== 'captured') {
       setCameraBlocked(true);
       haptics.error();
       return;
     }
     setCameraBlocked(false);
-    // No allowsEditing. A crop tool is a way to cut the street out of the wide
-    // shot, and the street is the half that cannot be downloaded.
-    const shot = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1 });
-    if (shot.canceled || shot.assets.length === 0) {
-      return;
-    }
     haptics.medium();
     if (which === 'wide') {
-      setWideUri(shot.assets[0].uri);
+      setWideUri(shot.uri);
     } else {
-      setCloseUri(shot.assets[0].uri);
+      setCloseUri(shot.uri);
     }
   };
 

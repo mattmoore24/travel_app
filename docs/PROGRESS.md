@@ -35,15 +35,18 @@ the branch:
 
 **643 pgTAP assertions.** The client gate runs on every commit.
 
-### Two honest corrections
+### One honest correction, and the fix that followed it
 
-**The selfie screen is not camera-only.** `docs/BUSINESS_ACCOUNTS.md` §3.9 said
-the storefront check would enforce "the same rule the selfie screen already
-enforces". It does not: `src/app/verification.tsx` falls back to
-`launchImageLibraryAsync` on web or when camera permission is denied. The
-storefront flow is written camera-only from scratch, and the selfie screen's
-fallback is left alone for now because tightening it is a separate decision
-about a shipped flow.
+**The selfie screen was not camera-only — now it is.**
+`docs/BUSINESS_ACCOUNTS.md` §3.9 claimed the storefront check would enforce
+"the same rule the selfie screen already enforces". It did not:
+`src/app/verification.tsx` fell back to `launchImageLibraryAsync` on web or
+when camera permission was denied, which meant the badge could be earned with
+a picture of a face rather than a face. The founder's answer was to close it,
+so both screens now capture through `src/lib/live-camera.ts` — camera only, a
+refused permission gets an explanation and an Open Settings button, and
+`src/lib/__tests__/live-camera.test.ts` scans the source of both screens and
+the helper so no future kindness can reopen it.
 
 **`business_chats` is not built.** Decision 12 is one chat per business at v1,
 which `businesses.chat_id` already models exactly. The separate table only earns

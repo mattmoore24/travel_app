@@ -1,8 +1,7 @@
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Platform, StyleSheet, View } from 'react-native';
+import { Alert, Linking, StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { StepScreen } from '@/components/form/step-screen';
@@ -15,12 +14,22 @@ import {
   useSubmitVerification,
 } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
+import { haptics } from '@/lib/haptics';
+import { captureLivePhoto } from '@/lib/live-camera';
 
 /**
  * Selfie verification. The selfie goes into a write-only bucket and is
  * compared server-side (Claude vision) against the profile photos — a
  * plausibility check against casual catfishing, not certified identity
  * verification.
+ *
+ * THE PHOTO LIBRARY IS NEVER OFFERED. This screen used to fall back to
+ * `launchImageLibraryAsync` whenever the camera was refused, which read as a
+ * kindness and was actually a hole: a selfie chosen out of a library proves
+ * only that somebody owns a picture of a face, which is exactly what a
+ * catfish has. The badge means "this face was in front of this phone a moment
+ * ago" or it means nothing. Capture goes through `captureLivePhoto` and
+ * nowhere else, and a source-scanning test keeps it that way.
  */
 export default function VerificationScreen() {
   const theme = useTheme();
@@ -28,38 +37,30 @@ export default function VerificationScreen() {
   const { data: latest } = useLatestVerification();
   const submit = useSubmitVerification();
   const [selfieUri, setSelfieUri] = useState<string | null>(null);
+  const [cameraBlocked, setCameraBlocked] = useState(false);
 
   const verified = profile?.verified === true;
   const pending = !verified && latest?.status === 'pending';
   const rejected = !verified && latest?.status === 'rejected';
 
   const takeSelfie = async () => {
-    if (Platform.OS !== 'web') {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (permission.granted) {
-        const shot = await ImagePicker.launchCameraAsync({
-          mediaTypes: ['images'],
-          cameraType: ImagePicker.CameraType.front,
-          allowsEditing: true,
-          aspect: [4, 5],
-          quality: 1,
-        });
-        if (!shot.canceled && shot.assets.length > 0) {
-          setSelfieUri(shot.assets[0].uri);
-        }
-        return;
-      }
-    }
-    // Web (or camera permission denied): fall back to the photo library.
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+    const shot = await captureLivePhoto({
+      front: true,
       allowsEditing: true,
       aspect: [4, 5],
-      quality: 1,
     });
-    if (!picked.canceled && picked.assets.length > 0) {
-      setSelfieUri(picked.assets[0].uri);
+    if (shot.kind === 'captured') {
+      setCameraBlocked(false);
+      haptics.medium();
+      setSelfieUri(shot.uri);
+      return;
     }
+    if (shot.kind === 'cancelled') {
+      return;
+    }
+    // Denied or no camera at all. Say so plainly; there is no second route.
+    setCameraBlocked(true);
+    haptics.error();
   };
 
   const onSubmit = async () => {
@@ -73,6 +74,7 @@ export default function VerificationScreen() {
     }
     try {
       await submit.mutateAsync(selfieUri);
+      haptics.success();
       Alert.alert('Selfie submitted', 'Your badge shows up once it clears.');
       router.back();
     } catch {
@@ -91,7 +93,7 @@ export default function VerificationScreen() {
   return (
     <StepScreen
       title="Get your badge"
-      subtitle="Proves your photos are you. Nobody sees the selfie. We delete it after the check. No ID needed."
+      subtitle="One selfie, taken right now. It proves your photos are you. Nobody sees it, and we delete it after the check. No ID needed."
       continueLabel={continueLabel}
       continueLoading={submit.isPending}
       onContinue={onSubmit}>
@@ -123,10 +125,36 @@ export default function VerificationScreen() {
               </ThemedText>
             </ThemedView>
           ) : null}
+
+          {cameraBlocked ? (
+            <ThemedView type="backgroundElement" style={styles.card}>
+              <ThemedText type="smallBold" style={{ color: theme.warning }}>
+                The camera is off for Samewhere
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Open Settings, turn Camera on, then come back. A photo out of your library
+                won&apos;t do it — the badge only means something if the selfie was taken just now.
+              </ThemedText>
+              <PrimaryButton
+                variant="ghost"
+                label="Open Settings"
+                accessibilityLabel="Open Settings"
+                onPress={() => {
+                  Linking.openSettings().catch(() => {});
+                }}
+              />
+            </ThemedView>
+          ) : null}
+
           {selfieUri ? (
             <View style={styles.previewBlock}>
               <View style={[styles.preview, { backgroundColor: theme.backgroundElement }]}>
-                <Image source={{ uri: selfieUri }} style={styles.previewImage} contentFit="cover" />
+                <Image
+                  source={{ uri: selfieUri }}
+                  style={styles.previewImage}
+                  contentFit="cover"
+                  accessibilityLabel="Your selfie"
+                />
               </View>
               {/* A blurry shot could only be submitted or abandoned. Nobody
                   is going to submit a photo they can see is bad, so the real
@@ -134,6 +162,7 @@ export default function VerificationScreen() {
               <PrimaryButton
                 variant="ghost"
                 label="Retake"
+                accessibilityLabel="Retake your selfie"
                 disabled={submit.isPending}
                 onPress={takeSelfie}
               />

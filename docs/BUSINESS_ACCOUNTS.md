@@ -380,14 +380,15 @@ Mechanically, and all of it mirrors the selfie flow:
   important line in this section, because a library picker turns the whole
   check into a search-and-download.
 
-  **Correction, 2026-08-27:** an earlier draft of this line said "the same rule
-  the selfie screen already enforces". That was wrong. `src/app/verification.tsx`
-  falls back to `launchImageLibraryAsync` whenever the platform is web or camera
-  permission is denied. The storefront flow is therefore written camera-only from
-  scratch rather than copied, and if permission is refused it explains how to
-  turn it on rather than offering a second route. Whether to tighten the selfie
-  screen the same way is a separate decision about a shipped flow, and is not
-  taken here.
+  **History, 2026-08-27:** an earlier draft of this line said "the same rule the
+  selfie screen already enforces", which was wrong at the time —
+  `src/app/verification.tsx` fell back to `launchImageLibraryAsync` whenever the
+  platform was web or camera permission was denied. The founder called it, and
+  it is now true: both screens capture through `src/lib/live-camera.ts`, the one
+  sanctioned path, which never imports the library picker. A refused camera gets
+  an explanation and an Open Settings button on both screens, never a second
+  route. `src/lib/__tests__/live-camera.test.ts` scans the source of all three
+  files so the fallback cannot come back as a kindness.
 
 - Both shots captured in one screen session, server-stamped, and **refused if
   more than 15 minutes apart**.
