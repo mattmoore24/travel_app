@@ -37,3 +37,16 @@
 2026-08-23 — deploy: venue rooms stay read-only for a guest, in the database and not just the client
 2026-08-23 — deploy: the audience setting reaches the signed-out map too (public_city_pins)
 2026-08-26 — deploy: row-level security on the five public tables the Supabase linter flagged
+2026-08-27 — deploy: top priorities on the profile (profile_priorities, screened like the bio)
+2026-08-27 — deploy: Places, phases 13-18. The establishments rename with all eight
+             dependent functions recreated; §7 rule 8 as six triggers; photos, links,
+             hours and posts behind one visibility predicate; the six-digit listing
+             code and the storefront badge; reports that email SUPPORT_INBOX and queue
+             an impersonation scan on the FIRST report; messages that go straight
+             through on kind='business'; Beli-style ratings.
+             After this run, in the SQL editor:
+               select public.seed_launch_businesses();
+               select public.seed_launch_business_content();
+             And add the `storefront` and `impersonation` keys to the
+             MODERATION_PROMPTS secret (prompts.example.json documents them) — until
+             then those two queues pause and everything else keeps running.

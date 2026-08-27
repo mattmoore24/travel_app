@@ -353,13 +353,24 @@ as $$
 declare
   v_live int;
   v_cap int;
+  v_counts boolean := false;
 begin
   if (public.screen_first_message(concat_ws(' ', new.title, new.body)) ->> 'action') = 'block' then
     raise exception 'that text breaks our community guidelines'
       using errcode = 'check_violation';
   end if;
 
-  if tg_op = 'INSERT' or (new.archived_at is null and old.archived_at is not null) then
+  -- Written as two branches rather than one OR, because OLD is an unassigned
+  -- record on INSERT and reading OLD.archived_at from it raises. The single
+  -- expression happened to work only because the boolean short-circuited,
+  -- which is not something to rely on.
+  if tg_op = 'INSERT' then
+    v_counts := true;
+  elsif new.archived_at is null and old.archived_at is not null then
+    v_counts := true;
+  end if;
+
+  if v_counts then
     select case when b.verified then 10 else 3 end into v_cap
       from public.businesses b where b.id = new.business_id;
     select count(*) into v_live from public.business_posts
