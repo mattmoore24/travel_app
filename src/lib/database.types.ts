@@ -159,12 +159,75 @@ export type PublicPinRow = {
   expires_at: string;
 };
 
-/** city_rooms() — establishment rooms in a city. */
+/**
+ * Every kind of place that can be on the map. Mirrors the
+ * `public.business_category` enum; the two must move together.
+ */
+export type BusinessCategory =
+  | 'hostel'
+  | 'hotel'
+  | 'guesthouse'
+  | 'bar'
+  | 'restaurant'
+  | 'cafe'
+  | 'club'
+  | 'tour'
+  | 'activity'
+  | 'coworking'
+  | 'wellness'
+  | 'shop'
+  | 'other';
+
+/**
+ * One business, as far as the column-scoped grant lets a client read it.
+ *
+ * `owner_user_id`, `state` and the raw `verified_at` are deliberately absent:
+ * there is no SELECT grant on them, so naming one in a query is a permission
+ * error rather than a null. `verified` is a generated boolean that exists so
+ * the badge can render without the timestamp ever reaching a client.
+ */
+export type BusinessRow = {
+  id: string;
+  city_id: number;
+  name: string;
+  category: BusinessCategory;
+  description: string | null;
+  place_label: string | null;
+  hours_note: string | null;
+  website_url: string | null;
+  lat: number;
+  lng: number;
+  chat_id: string | null;
+  public_preview: boolean;
+  active: boolean;
+  verified: boolean;
+};
+
+/** Where a listing stands. Mirrors `public.business_state`. */
+export type BusinessState = 'unconfirmed' | 'listed' | 'flagged' | 'removed';
+
+/**
+ * my_business() — the caller's own listing, with the two fields no other
+ * client may read. `state` is here and nowhere else: the owner's dashboard
+ * has to be able to say "Waiting on your email", and the same column is
+ * hidden from everybody else because it would leak the moderation queue.
+ */
+export type MyBusinessRow = BusinessRow & {
+  state: BusinessState;
+};
+
+/**
+ * city_rooms() — business rooms in a city.
+ *
+ * `kind` is the category as text. The RPC keeps its old name and its old
+ * column order because iOS builds already in the field call it by name over
+ * the wire, and a binary does not update over the air.
+ */
 export type CityRoomRow = {
   chat_id: string;
-  establishment_id: string;
+  business_id: string;
   name: string;
-  kind: 'hostel' | 'hotel' | 'other';
+  kind: BusinessCategory;
   lat: number;
   lng: number;
   member_count: number;
@@ -235,7 +298,7 @@ export type ChatListRow = {
   chat_id: string;
   kind: ChatKind;
   chat_status: ChatStatus;
-  /** Establishment name for rooms, the other person's name for direct chats. */
+  /** Business name for rooms, the other person's name for direct chats. */
   title: string | null;
   other_user_id: string | null;
   photo_path: string | null;
@@ -493,6 +556,19 @@ export type Database = {
           answer: string;
         };
         Update: Pick<ProfilePromptRow, 'prompt_key' | 'answer'>;
+        Relationships: [];
+      };
+      businesses: {
+        Row: BusinessRow;
+        // Never inserted from a client: register_business() owns that path,
+        // because it writes owner_user_id, city_id and the marker.
+        Insert: never;
+        Update: Partial<
+          Pick<
+            BusinessRow,
+            'name' | 'description' | 'place_label' | 'hours_note' | 'website_url' | 'public_preview'
+          >
+        >;
         Relationships: [];
       };
       profile_priorities: {
@@ -801,6 +877,24 @@ export type Database = {
       room_info: {
         Args: { p_chat_id: string };
         Returns: RoomInfoRow[];
+      };
+      register_business: {
+        Args: {
+          p_name: string;
+          p_category: BusinessCategory;
+          p_city_id: number;
+          p_lat: number;
+          p_lng: number;
+        };
+        Returns: string;
+      };
+      is_business_account: {
+        Args: { p_user_id: string };
+        Returns: boolean;
+      };
+      my_business: {
+        Args: Record<string, never>;
+        Returns: MyBusinessRow[];
       };
       daily_spotlight: {
         Args: Record<string, never>;

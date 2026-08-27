@@ -1,6 +1,6 @@
 -- Establishment rooms, guest mode, reactions, and the traveler horizon.
 begin;
-select plan(48);
+select plan(49);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -173,15 +173,16 @@ select throws_ok(
   'guests cannot read social handles'
 );
 
--- ESTABLISHMENT ROOMS --------------------------------------------------------------
+-- BUSINESS ROOMS -------------------------------------------------------------------
 select pg_temp.admin();
 insert into public.chats (id, kind) values
   ('bbbbbbbb-0000-4000-8000-000000000001', 'room');
-insert into public.establishments (id, city_id, name, kind, lat, lng, chat_id)
+insert into public.businesses
+  (id, city_id, name, category, lat, lng, chat_id, state, listed_at)
 values ('cccccccc-0000-4000-8000-000000000001', pg_temp.lisbon(),
         'Home Lisbon Hostel', 'hostel', 38.7100, -9.1400,
-        'bbbbbbbb-0000-4000-8000-000000000001');
-insert into public.establishment_staff (establishment_id, user_id)
+        'bbbbbbbb-0000-4000-8000-000000000001', 'listed', now());
+insert into public.business_staff (business_id, user_id)
 values ('cccccccc-0000-4000-8000-000000000001', '00000000-0000-0000-0000-0000000000ff');
 
 -- Joining sets an expiry from the stated departure date.
@@ -195,16 +196,26 @@ select is(
   (select (expires_at::date - current_date)::int from public.room_members
     where chat_id = 'bbbbbbbb-0000-4000-8000-000000000001'
       and user_id = '00000000-0000-0000-0000-00000000000a'),
-  10,
-  'membership ends 7 days after the stated departure'
+  6,
+  'membership ends 3 days after the stated departure'
 );
-select public.join_room('bbbbbbbb-0000-4000-8000-000000000001', current_date + 90);
+select public.join_room('bbbbbbbb-0000-4000-8000-000000000001', current_date + 200);
 select is(
   (select (expires_at::date - current_date)::int from public.room_members
     where chat_id = 'bbbbbbbb-0000-4000-8000-000000000001'
       and user_id = '00000000-0000-0000-0000-00000000000a'),
-  30,
-  'a long stay is capped at 30 days in the room'
+  90,
+  'a long stay is capped at 90 days in the room'
+);
+-- "I'm not sure" is a real answer, so the column that drives expiry has to
+-- be allowed to be empty. Ninety days, the same cap, from today.
+select public.join_room('bbbbbbbb-0000-4000-8000-000000000001', null);
+select is(
+  (select (expires_at::date - current_date)::int from public.room_members
+    where chat_id = 'bbbbbbbb-0000-4000-8000-000000000001'
+      and user_id = '00000000-0000-0000-0000-00000000000a'),
+  90,
+  'and "I am not sure" gives you the full ninety'
 );
 -- Back to a normal stay for the rest of the file.
 select public.join_room('bbbbbbbb-0000-4000-8000-000000000001', current_date + 3);
@@ -270,13 +281,13 @@ select throws_ok(
   'guests can never post — read-only by construction'
 );
 select pg_temp.admin();
-update public.establishments set public_preview = false
+update public.businesses set public_preview = false
   where id = 'cccccccc-0000-4000-8000-000000000001';
 select pg_temp.guest();
 select is(
   (select count(*)::int from public.room_messages('bbbbbbbb-0000-4000-8000-000000000001')),
   0,
-  'an establishment can switch the public preview off'
+  'a business can switch the public preview off'
 );
 -- And that closes the name with it: room_info adds no visibility of its own.
 select is(
@@ -285,7 +296,7 @@ select is(
   'switching the preview off hides the name from strangers too'
 );
 select pg_temp.admin();
-update public.establishments set public_preview = true
+update public.businesses set public_preview = true
   where id = 'cccccccc-0000-4000-8000-000000000001';
 
 -- A member still sees the name whatever the preview flag says.

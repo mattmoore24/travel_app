@@ -29,6 +29,19 @@ describe('owesOnboarding', () => {
   it('and asks them the moment they convert to a real account', () => {
     expect(owesOnboarding(session(false), undefined)).toBe(true);
   });
+
+  // The same trap, one account kind later. A business account's
+  // onboarding_completed_at stays null forever on purpose, because that stamp
+  // is what makes somebody a discoverable traveler. Without the guard, every
+  // business would be held in a traveler flow it can never finish.
+  it('never asks a business to onboard as a traveler', () => {
+    expect(owesOnboarding(session(false), null, true)).toBe(false);
+    expect(owesOnboarding(session(false), undefined, true)).toBe(false);
+  });
+
+  it('still asks an ordinary new account, which is what the flag distinguishes', () => {
+    expect(owesOnboarding(session(false), null, false)).toBe(true);
+  });
 });
 
 describe('rootIsReady', () => {
@@ -38,15 +51,19 @@ describe('rootIsReady', () => {
     supabaseConfigured: true,
     profileSettled: true,
     standingSettled: true,
+    businessSettled: true,
   };
 
   it('holds until the persisted session is restored', () => {
     expect(rootIsReady({ ...base, initialized: false })).toBe(false);
   });
 
-  it('holds a member until their profile and standing have both settled', () => {
+  it('holds a member until profile, standing and account kind have all settled', () => {
     expect(rootIsReady({ ...base, profileSettled: false })).toBe(false);
     expect(rootIsReady({ ...base, standingSettled: false })).toBe(false);
+    // Committing before this one lands is what would flash a business
+    // through the traveler tabs on every cold start.
+    expect(rootIsReady({ ...base, businessSettled: false })).toBe(false);
     expect(rootIsReady(base)).toBe(true);
   });
 
@@ -63,6 +80,7 @@ describe('rootIsReady', () => {
         session: session(true),
         profileSettled: false,
         standingSettled: false,
+        businessSettled: false,
       })
     ).toBe(true);
   });

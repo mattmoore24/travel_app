@@ -14,7 +14,11 @@ import type { Session } from '@supabase/supabase-js';
  * Nothing else in the app would have noticed. Every migration test passed,
  * every unit test passed, and the feature was unusable.
  */
-export function owesOnboarding(session: Session | null, onboardedAt: string | null | undefined) {
+export function owesOnboarding(
+  session: Session | null,
+  onboardedAt: string | null | undefined,
+  isBusiness = false
+) {
   if (session == null) {
     // A visitor with no account browses the app. That is guest mode, and it
     // is the front door (docs/DESIGN.md).
@@ -23,6 +27,15 @@ export function owesOnboarding(session: Session | null, onboardedAt: string | nu
   if (session.user.is_anonymous === true) {
     // A guest is finished the moment they have a name. Asking them for a
     // profile is asking for the account they declined.
+    return false;
+  }
+  if (isBusiness) {
+    // The same trap, one account kind later. A business account's
+    // `onboarding_completed_at` stays NULL FOREVER, by design: that stamp is
+    // what makes somebody a discoverable traveler, and a business must never
+    // be one. Without this branch the expression below would read that
+    // permanent null as "unfinished" and hold every business in a traveler
+    // onboarding flow it can never complete.
     return false;
   }
   return onboardedAt == null;
@@ -52,6 +65,12 @@ export function rootIsReady(opts: {
   supabaseConfigured: boolean;
   profileSettled: boolean;
   standingSettled: boolean;
+  /**
+   * Whether the account-kind lookup has answered. Held for the same reason
+   * as the other two: commit before it lands and a business flashes through
+   * the traveler tabs on every cold start.
+   */
+  businessSettled: boolean;
 }) {
   if (!opts.initialized) {
     return false;
@@ -62,5 +81,5 @@ export function rootIsReady(opts: {
   if (opts.session.user.is_anonymous === true) {
     return true;
   }
-  return opts.profileSettled && opts.standingSettled;
+  return opts.profileSettled && opts.standingSettled && opts.businessSettled;
 }

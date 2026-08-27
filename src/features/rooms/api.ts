@@ -49,7 +49,7 @@ export async function fetchRoomInfo(chatId: string) {
   return (data ?? [])[0] ?? null;
 }
 
-/** Establishment rooms in a city. Readable signed-out. */
+/** Business rooms in a city. Readable signed-out. */
 export async function fetchCityRooms(cityId: number) {
   const { data, error } = await supabase.rpc('city_rooms', { p_city_id: cityId });
   if (error) {
@@ -60,7 +60,7 @@ export async function fetchCityRooms(cityId: number) {
 
 /**
  * A room's messages. Members and moderators always; everyone else only where
- * the establishment left the public preview on — the server decides, not us.
+ * the business left the public preview on — the server decides, not us.
  */
 export async function fetchRoomMessages(chatId: string) {
   const { data, error } = await supabase.rpc('room_messages', { p_chat_id: chatId });

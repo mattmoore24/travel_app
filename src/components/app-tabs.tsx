@@ -6,7 +6,7 @@ import { useWaitingCount } from '@/features/matching/hooks';
 
 // Three tabs, in the order people use them (docs/DESIGN.md). Profile lives
 // behind the avatar in the Map/Travelers headers, which buys the third slot
-// for Chat — now carrying direct chats, requests and establishment rooms.
+// for Chat — now carrying direct chats, hellos and business rooms.
 //
 // iOS-first: icons are SF Symbols, and NativeTabs renders the real iOS 26
 // Liquid Glass tab bar. Android drawables come with the Android release.

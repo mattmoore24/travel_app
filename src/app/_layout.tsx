@@ -16,6 +16,7 @@ import { useAuthStore } from '@/features/auth/store';
 import { ResetPasswordScreen } from '@/features/auth/reset-password-screen';
 import { owesOnboarding, rootIsReady } from '@/features/auth/routing';
 import { useAuthListener } from '@/features/auth/use-auth-listener';
+import { useOwnBusiness } from '@/features/business/hooks';
 import { useAccountStanding, useOwnProfile } from '@/features/profile/hooks';
 import { queryClient } from '@/lib/query-client';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -95,12 +96,20 @@ function RootNavigator() {
   const intro = useIntroState();
   const profileQuery = useOwnProfile();
   const standingQuery = useAccountStanding();
+  const businessQuery = useOwnBusiness();
 
   const signedIn = session != null;
   const onboarded = profileQuery.data?.onboarding_completed_at != null;
   // Not `signedIn && !onboarded`: a guest is signed in and can never be
   // onboarded, so that expression traps them. See features/auth/routing.
-  const needsProfile = owesOnboarding(session, profileQuery.data?.onboarding_completed_at);
+  // A business account is the second kind that can never be onboarded, and
+  // for the same structural reason a guest cannot. See features/auth/routing.
+  const isBusiness = businessQuery.data != null;
+  const needsProfile = owesOnboarding(
+    session,
+    profileQuery.data?.onboarding_completed_at,
+    isBusiness
+  );
   // Hold routing until the persisted session is restored and (when signed in)
   // the first profile + standing fetches settle — otherwise users flash
   // through the wrong stack on cold start. The hold unmounts the navigator,
@@ -111,6 +120,7 @@ function RootNavigator() {
     supabaseConfigured: isSupabaseConfigured,
     profileSettled: profileQuery.isSuccess || profileQuery.isError,
     standingSettled: standingQuery.isSuccess || standingQuery.isError,
+    businessSettled: businessQuery.isSuccess || businessQuery.isError,
   });
 
   if (!ready || intro.seen === null) {
@@ -150,7 +160,7 @@ function RootNavigator() {
     // route's name, which for tab pushes is the literal group name "(tabs)".
     <Stack screenOptions={{ headerShown: false, headerBackButtonDisplayMode: 'minimal' }}>
       {/* GUEST MODE: the tabs are the app's front door for everyone. A visitor
-          with no account browses the map, reads an establishment room and sees
+          with no account browses the map, reads a business room and sees
           one traveler; the account is asked for at the moment of action, not
           at the door (docs/DESIGN.md). A half-finished ACCOUNT is the one
           exception — it finishes onboarding first. A guest is not one of
