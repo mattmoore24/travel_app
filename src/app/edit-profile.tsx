@@ -2,15 +2,24 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
+import { SymbolView } from 'expo-symbols';
+
 import { LanguageField } from '@/components/form/language-field';
 import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { SelectField } from '@/components/form/select-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { PhotoGrid } from '@/components/photo-grid';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
-import { Space } from '@/constants/theme';
-import { useOwnProfile, useUpdateOwnProfile } from '@/features/profile/hooks';
+import { Radius, Space } from '@/constants/theme';
+import {
+  useOwnProfile,
+  useOwnUserId,
+  useProfilePriorities,
+  useUpdateOwnProfile,
+} from '@/features/profile/hooks';
+import { MAX_PRIORITIES } from '@/features/profile/priorities';
 import { SocialHandlesEditor } from '@/features/profile/social-handles-editor';
 import {
   LANGUAGES_MAX,
@@ -18,6 +27,7 @@ import {
   validateBio,
   validateDisplayName,
 } from '@/features/profile/validation';
+import { useTheme } from '@/hooks/use-theme';
 import type { Gender, ProfileRow } from '@/lib/database.types';
 
 const GENDER_OPTIONS: { value: Gender; label: string }[] = [
@@ -41,7 +51,9 @@ export default function EditProfileScreen() {
 type Section = 'photos' | 'about' | 'details' | 'socials';
 
 function EditProfileForm({ profile }: { profile: ProfileRow }) {
+  const theme = useTheme();
   const updateProfile = useUpdateOwnProfile();
+  const { data: priorities = [] } = useProfilePriorities(useOwnUserId());
   // Four Edit affordances on the profile page have always passed a section
   // here — the hero's camera button, and the headers on About, Details and
   // Socials — and this screen never read it, so every one of them landed you
@@ -178,6 +190,34 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
         error={bioError}
         {...keyboardDoneProps}
       />
+      {/* Priorities are rows in another table with their own saves, so they
+          get their own screen rather than joining this form's single
+          mutation. This row is how somebody who came to Edit profile looking
+          for them finds them, which is the founder's "when editing the
+          profile" taken literally. */}
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel={`Top priorities, ${priorities.length} of ${MAX_PRIORITIES}`}
+        haptic="light"
+        scaleTo={0.98}
+        onPress={() => router.push('/edit-priorities')}>
+        <View style={[styles.linkRow, { backgroundColor: theme.backgroundElement }]}>
+          <View style={styles.linkText}>
+            <ThemedText type="smallBold">Top priorities</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              What you want to do out there.
+            </ThemedText>
+          </View>
+          <ThemedText type="small" themeColor="textSecondary">
+            {priorities.length} of {MAX_PRIORITIES}
+          </ThemedText>
+          <SymbolView
+            name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+            size={13}
+            tintColor={theme.textTertiary}
+          />
+        </View>
+      </PressableScale>
       <ThemedText type="smallBold" onLayout={measure('photos')}>
         Photos
       </ThemedText>
@@ -208,5 +248,19 @@ const styles = StyleSheet.create({
   bioInput: {
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    minHeight: 56,
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.md,
+    borderRadius: Radius.lg,
+    borderCurve: 'continuous',
+  },
+  linkText: {
+    flex: 1,
+    gap: 2,
   },
 });

@@ -39,6 +39,7 @@ import { usePassedTravelers } from '@/features/matching/passed';
 import { AUDIENCE_LABEL, audienceInSentence } from '@/features/profile/audience';
 import {
   useOwnVisibility,
+  useProfilePriorities,
   useProfilePrompts,
   usePublicPhotos,
   usePublicProfile,
@@ -277,6 +278,7 @@ function TravelerPage({
   const { data: photos = [] } = usePublicPhotos(candidate.userId);
   const { data: trips = [] } = useTravelerTrips(candidate.userId);
   const { data: prompts = [] } = useProfilePrompts(candidate.userId);
+  const { data: priorities = [] } = useProfilePriorities(candidate.userId);
 
   // Fall back to what the match row already carries, so the page has a name
   // and a photo before the profile query lands.
@@ -369,6 +371,7 @@ function TravelerPage({
           profile={shown}
           photos={shownPhotos}
           prompts={prompts}
+          priorities={priorities}
           trips={profileTrips}
           handles={[]}
           owner={false}

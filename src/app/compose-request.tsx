@@ -29,6 +29,8 @@ const ELEMENT_OPTIONS = [
   // in front of each other, and it is the one anchor that always exists.
   { value: 'trip', label: 'Your dates together' },
   { value: 'bio', label: 'Their bio' },
+  // A plan is the easiest thing on a profile to answer, so it sits high.
+  { value: 'priority', label: 'Something on their list' },
   { value: 'photo:0', label: 'A photo' },
   { value: 'languages', label: 'Languages' },
   { value: 'home', label: 'Where they are from' },

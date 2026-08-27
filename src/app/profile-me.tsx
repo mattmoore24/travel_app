@@ -12,6 +12,7 @@ import { signOut } from '@/features/auth/api';
 import { deleteAccount } from '@/features/profile/api';
 import {
   useOwnUserId,
+  useProfilePriorities,
   useProfilePrompts,
   useLatestVerification,
   useOwnPhotos,
@@ -103,6 +104,7 @@ export default function ProfileScreen() {
   const { data: handles = [] } = useOwnSocialHandles();
   const { data: verification } = useLatestVerification();
   const { data: prompts = [] } = useProfilePrompts(useOwnUserId());
+  const { data: priorities = [] } = useProfilePriorities(useOwnUserId());
   const { data: trips = [] } = useMyTrips();
 
   if (!isSupabaseConfigured) {
@@ -157,6 +159,7 @@ export default function ProfileScreen() {
           profile={profile}
           photos={visiblePhotos}
           prompts={prompts}
+          priorities={priorities}
           trips={profileTrips}
           handles={handles}
           owner
@@ -166,6 +169,12 @@ export default function ProfileScreen() {
           onEditPrompt={(slot) =>
             router.push({
               pathname: '/edit-prompt',
+              params: slot == null ? {} : { slot: String(slot) },
+            })
+          }
+          onEditPriorities={(slot) =>
+            router.push({
+              pathname: '/edit-priorities',
               params: slot == null ? {} : { slot: String(slot) },
             })
           }

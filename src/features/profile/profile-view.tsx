@@ -21,9 +21,11 @@ import { platformLabel, usesAt } from '@/features/profile/social-handles-editor'
 import { SocialLogo } from '@/features/profile/social-logo';
 import { formatDateRange } from '@/features/trips/dates';
 import { TripEditor, type EditableTrip } from '@/features/trips/trip-editor';
+import { MAX_PRIORITIES } from '@/features/profile/priorities';
 import { MAX_PROMPTS, promptLabel, promptLabelInline } from '@/features/profile/prompts';
 import { useTheme } from '@/hooks/use-theme';
 import type {
+  ProfilePriorityRow,
   ProfilePromptRow,
   ProfilePhotoRow,
   ProfileRow,
@@ -108,6 +110,9 @@ const REPLY_LABELS: Record<string, string> = {
   About: 'Reply to their bio',
   Details: 'Reply to their details',
   'Travel plans': 'Reply to their travel plans',
+  // Not "Reply to top priorities". The control names what the traveler is
+  // actually doing, and what they are doing is joining a plan.
+  'Top priorities': "Say you're in",
 };
 
 function SectionHeader({
@@ -153,6 +158,127 @@ function SectionHeader({
           label={REPLY_LABELS[title] ?? `Reply to ${title.toLowerCase()}`}
           onPress={onReply}
         />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Top priorities: up to six very short plans, as a wrapping row of chips.
+ *
+ * Every chip is a button, and that is the whole feature. On somebody else's
+ * profile it opens the composer anchored to that plan, so the opening message
+ * is "I'm in for this" rather than an introduction. On your own it opens the
+ * editor at that row.
+ *
+ * Chips rather than a bulleted list: six bullets push About and the first
+ * prompt below the fold on a small phone, and the point of the cap is that
+ * the whole set reads at a glance. They wrap to a second line at large
+ * Dynamic Type and never truncate, because half a plan is worse than none —
+ * which is also why the text is capped at forty characters.
+ *
+ * Deliberately not numbered. Slots are insertion order, not preference
+ * order, so printing 1..6 beside them would claim a ranking nobody made.
+ */
+function PrioritiesSection({
+  priorities,
+  owner,
+  onEdit,
+  onRespondTo,
+}: {
+  priorities: ProfilePriorityRow[];
+  owner: boolean;
+  onEdit?: (slot: number | null) => void;
+  onRespondTo?: (target: RespondTarget) => void;
+}) {
+  const theme = useTheme();
+  if (priorities.length === 0 && !owner) {
+    return null;
+  }
+  return (
+    <View style={styles.section}>
+      <SectionHeader
+        title="Top priorities"
+        icon={{ ios: 'list.star', android: 'checklist', web: 'checklist' }}
+        onEdit={owner && onEdit ? () => onEdit(null) : undefined}
+        onReply={
+          onRespondTo && priorities.length > 0
+            ? () =>
+                onRespondTo({
+                  key: 'priority',
+                  label: 'something on their list',
+                  quote: priorities[0].text,
+                })
+            : undefined
+        }
+      />
+      {priorities.length > 0 ? (
+        <View style={styles.chipWrap}>
+          {priorities.map((priority) => {
+            const act = owner
+              ? onEdit && (() => onEdit(priority.slot))
+              : onRespondTo &&
+                (() =>
+                  onRespondTo({
+                    key: `priority:${priority.slot}`,
+                    label: 'something on their list',
+                    quote: priority.text,
+                  }));
+            const chip = (
+              <View style={[styles.chip, { backgroundColor: theme.surfaceSunken }]}>
+                <ThemedText type="footnote">{priority.text}</ThemedText>
+              </View>
+            );
+            return act ? (
+              <PressableScale
+                key={priority.slot}
+                accessibilityRole="button"
+                // Unique in context, and it names the action rather than
+                // leaving a stranger to guess what tapping a plan does.
+                accessibilityLabel={`${priority.text}. ${owner ? 'Edit.' : "Say you're in."}`}
+                haptic="light"
+                scaleTo={0.96}
+                // A footnote chip is about 30pt tall, so the tap target only
+                // clears 44 with this.
+                hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
+                onPress={act}>
+                {chip}
+              </PressableScale>
+            ) : (
+              <View key={priority.slot}>{chip}</View>
+            );
+          })}
+        </View>
+      ) : null}
+      {/* The nudge. An empty list on your own profile is the one place this
+          section can explain itself, and it is where most people will first
+          understand what it is for. */}
+      {owner && onEdit && priorities.length < MAX_PRIORITIES ? (
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={priorities.length === 0 ? 'Add your list' : 'Add another priority'}
+          testID="add-priority"
+          haptic="light"
+          scaleTo={0.98}
+          onPress={() => onEdit(null)}>
+          <View style={[styles.promptEmpty, { borderColor: theme.hairline }]}>
+            <SymbolView
+              name={{ ios: 'plus.circle', android: 'add_circle', web: 'add_circle' }}
+              size={18}
+              tintColor={theme.accent}
+            />
+            <View style={styles.promptEmptyText}>
+              <ThemedText type="callout">
+                {priorities.length === 0 ? 'What do you want to do?' : 'Add another'}
+              </ThemedText>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                {priorities.length === 0
+                  ? "Places, food, a night out, the one thing you'd hate to miss. Up to six."
+                  : `${MAX_PRIORITIES - priorities.length} left.`}
+              </ThemedText>
+            </View>
+          </View>
+        </PressableScale>
       ) : null}
     </View>
   );
@@ -516,6 +642,7 @@ export function ProfileView({
   profile,
   photos,
   prompts = [],
+  priorities = [],
   trips,
   handles,
   photosPending = false,
@@ -524,12 +651,15 @@ export function ProfileView({
   actions,
   onEditSection,
   onEditPrompt,
+  onEditPriorities,
   onRespondTo,
 }: {
   profile: ProfileRow;
   photos: ProfilePhotoRow[];
   /** Answered travel prompts, lowest slot first. */
   prompts?: ProfilePromptRow[];
+  /** Top priorities, lowest slot first. */
+  priorities?: ProfilePriorityRow[];
   /**
    * The photo query has not answered yet.
    *
@@ -552,6 +682,11 @@ export function ProfileView({
   onEditSection?: (section: 'photos' | 'about' | 'details' | 'socials') => void;
   /** Owner only: open the editor for one prompt slot, or the next free one. */
   onEditPrompt?: (slot: number | null) => void;
+  /**
+   * Owner only: open the priorities editor, focused on one row or on the
+   * empty field at the end.
+   */
+  onEditPriorities?: (slot: number | null) => void;
   /**
    * Supplied when the viewer could still open a conversation. Every photo
    * and every written block then carries a reply bubble, so the first
@@ -748,6 +883,16 @@ export function ProfileView({
                     })
                 : undefined
             }
+          />
+
+          {/* Trips say where and when; this says what. The pair is the whole
+              reason somebody messages a stranger, so it sits directly under
+              the plans and above everything that describes the person. */}
+          <PrioritiesSection
+            priorities={priorities}
+            owner={owner}
+            onEdit={onEditPriorities}
+            onRespondTo={onRespondTo}
           />
 
           {woven[0] ? <WovenPhoto photo={woven[0]} index={0} onRespondTo={onRespondTo} /> : null}

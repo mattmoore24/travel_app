@@ -1,3 +1,5 @@
+import { nextFreeSlot as freeSlot } from '@/features/profile/slots';
+
 /**
  * The questions a profile can answer.
  *
@@ -99,12 +101,11 @@ export function unusedPrompts(taken: string[]): TravelPrompt[] {
 /**
  * Where the next answer goes: the lowest free slot, so removing the middle
  * one and adding another does not leave a hole.
+ *
+ * The arithmetic moved to features/profile/slots when priorities arrived and
+ * needed the same thing at a different cap. This stays as the prompts-shaped
+ * door onto it, so no caller has to remember which number is theirs.
  */
 export function nextFreeSlot(usedSlots: number[]): number | null {
-  for (let slot = 0; slot < MAX_PROMPTS; slot += 1) {
-    if (!usedSlots.includes(slot)) {
-      return slot;
-    }
-  }
-  return null;
+  return freeSlot(usedSlots, MAX_PROMPTS);
 }

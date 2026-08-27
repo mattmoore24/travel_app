@@ -2,11 +2,13 @@ import {
   PROFILE_COLUMNS,
   VERIFICATION_REQUEST_COLUMNS,
   type ProfileAudience,
+  type ProfilePriorityRow,
   type ProfilePromptRow,
   type ProfileUpdate,
   type SocialPlatform,
   type VerificationRequestRow,
 } from '@/lib/database.types';
+import { tightenSlots } from '@/features/profile/slots';
 import { processAndUploadImage, removeUploadedImage } from '@/lib/image-upload';
 import { supabase } from '@/lib/supabase';
 
@@ -70,6 +72,71 @@ export async function deleteProfilePrompt(userId: string, slot: number) {
     .eq('slot', slot);
   if (error) {
     throw error;
+  }
+}
+
+/**
+ * The Top priorities list. Same query for your own and somebody else's, like
+ * prompts: RLS decides what comes back, and the profile renders both the same
+ * way so you always see yours as a stranger does.
+ */
+export async function fetchProfilePriorities(userId: string) {
+  const { data, error } = await supabase
+    .from('profile_priorities')
+    .select('*')
+    .eq('user_id', userId)
+    .order('slot');
+  if (error) {
+    throw error;
+  }
+  return (data ?? []) as ProfilePriorityRow[];
+}
+
+export async function saveProfilePriority(input: { userId: string; slot: number; text: string }) {
+  const { error } = await supabase
+    .from('profile_priorities')
+    .upsert(
+      { user_id: input.userId, slot: input.slot, text: input.text },
+      { onConflict: 'user_id,slot' }
+    );
+  if (error) {
+    throw error;
+  }
+}
+
+export async function deleteProfilePriority(userId: string, slot: number) {
+  const { error } = await supabase
+    .from('profile_priorities')
+    .delete()
+    .eq('user_id', userId)
+    .eq('slot', slot);
+  if (error) {
+    throw error;
+  }
+}
+
+/**
+ * Remove one entry and pull the rest up, so the list is always `0..n-1` and
+ * nothing downstream has to reason about a gap.
+ *
+ * The arithmetic lives in `tightenSlots` because the ordering rules there are
+ * the whole correctness of this, and they are much easier to get wrong than
+ * to test. This function is only the round trips.
+ */
+export async function removeProfilePriority(
+  userId: string,
+  slot: number,
+  rows: { slot: number; text: string }[]
+) {
+  const { writes, deletes } = tightenSlots(
+    rows.filter((row) => row.slot !== slot),
+    rows.map((row) => row.slot)
+  );
+  for (const write of writes) {
+    await saveProfilePriority({ userId, slot: write.slot, text: write.row.text });
+  }
+  for (const stale of deletes) {
+    await deleteProfilePriority(userId, stale);
   }
 }
 

@@ -1,0 +1,262 @@
+import { router, useLocalSearchParams } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
+import { useEffect, useRef, useState } from 'react';
+import { StyleSheet, View, type TextInput } from 'react-native';
+
+import { FormTextField } from '@/components/form/form-text-field';
+import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { StepScreen } from '@/components/form/step-screen';
+import { PressableScale } from '@/components/ui/pressable-scale';
+import { ThemedText } from '@/components/themed-text';
+import { Space } from '@/constants/theme';
+import {
+  useOwnUserId,
+  useProfilePriorities,
+  useRemoveProfilePriority,
+  useSaveProfilePriority,
+} from '@/features/profile/hooks';
+import {
+  MAX_PRIORITIES,
+  PRIORITY_MAX,
+  priorityPlaceholder,
+  validatePriority,
+} from '@/features/profile/priorities';
+import { useTheme } from '@/hooks/use-theme';
+import { haptics } from '@/lib/haptics';
+
+/**
+ * The whole list on one screen.
+ *
+ * The founder's ask was that adding up to six be EASY, and the obvious build
+ * is the one that fails it: a modal per entry, the way one prompt is edited,
+ * costs six screen transitions and about twenty taps. So instead there is one
+ * empty field at the end of the list, and its Return key commits the row and
+ * puts the cursor in a fresh one. Six entries is six lines of typing with
+ * nothing in between.
+ *
+ * Rows save on their own rather than behind one Save button, for three
+ * reasons: there is nothing else on the screen to save atomically; somebody
+ * who types four plans and swipes the sheet away should keep four plans (the
+ * discard-guard on edit-profile exists because that screen holds a bio
+ * somebody spent five minutes on, and a twenty-character chip is not that);
+ * and the screening trigger can refuse ONE row, which lands on the row that
+ * caused it while the others stay safe.
+ */
+export default function EditPrioritiesScreen() {
+  const theme = useTheme();
+  const params = useLocalSearchParams<{ slot?: string }>();
+  const userId = useOwnUserId();
+  const { data: priorities = [] } = useProfilePriorities(userId);
+  const save = useSaveProfilePriority();
+  const remove = useRemoveProfilePriority();
+
+  // Drafts live here, keyed by slot, so a row being edited does not snap back
+  // when the query refetches after its neighbour saves.
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
+  const [errors, setErrors] = useState<Record<number, string | null>>({});
+  const [pending, setPending] = useState('');
+  const [pendingError, setPendingError] = useState<string | null>(null);
+  const pendingRef = useRef<TextInput>(null);
+  const rowRefs = useRef<Record<number, TextInput | null>>({});
+
+  const full = priorities.length >= MAX_PRIORITIES;
+  const nextSlot = priorities.length;
+
+  // Arriving from a chip on the profile: put the cursor in that row, or in
+  // the empty field when the section header sent us here with nothing.
+  const focusSlot = params.slot != null ? Number(params.slot) : null;
+  const focused = useRef(false);
+  useEffect(() => {
+    if (focused.current || priorities.length === 0) {
+      return;
+    }
+    focused.current = true;
+    if (focusSlot != null) {
+      rowRefs.current[focusSlot]?.focus();
+    }
+  }, [focusSlot, priorities.length]);
+
+  const textOf = (slot: number, stored: string) => drafts[slot] ?? stored;
+
+  const commitRow = async (slot: number, stored: string) => {
+    const value = textOf(slot, stored).trim();
+    if (value === stored.trim()) {
+      return;
+    }
+    const problem = validatePriority(value);
+    if (problem) {
+      setErrors((e) => ({ ...e, [slot]: problem }));
+      return;
+    }
+    try {
+      await save.mutateAsync({ slot, text: value });
+      setErrors((e) => ({ ...e, [slot]: null }));
+    } catch (error) {
+      // The screening trigger speaks in a sentence meant for a person, so it
+      // goes under the row that caused it rather than into an alert.
+      setErrors((e) => ({ ...e, [slot]: messageFor(error) }));
+    }
+  };
+
+  /**
+   * Commit every row that has been typed into.
+   *
+   * Needed before a removal, because removing renumbers the slots and the
+   * drafts are keyed by slot. It is also not optional: the scroller uses
+   * `keyboardShouldPersistTaps="always"`, so tapping the minus on one row
+   * does NOT blur the field you are typing in, and without this an unsaved
+   * edit on a different row would be silently thrown away by the renumber.
+   */
+  const commitDirtyRows = async () => {
+    for (const priority of priorities) {
+      await commitRow(priority.slot, priority.text);
+    }
+  };
+
+  const commitPending = async ({ keepGoing }: { keepGoing: boolean }) => {
+    const value = pending.trim();
+    if (value.length === 0) {
+      return;
+    }
+    const problem = validatePriority(value);
+    if (problem) {
+      setPendingError(problem);
+      return;
+    }
+    try {
+      await save.mutateAsync({ slot: nextSlot, text: value });
+      haptics.light();
+      setPending('');
+      setPendingError(null);
+      // Straight back into the empty field, which is the whole point of the
+      // screen. Without this, adding six means six taps to refocus.
+      if (keepGoing && nextSlot + 1 < MAX_PRIORITIES) {
+        pendingRef.current?.focus();
+      }
+    } catch (error) {
+      setPendingError(messageFor(error));
+    }
+  };
+
+  return (
+    <StepScreen
+      title="Top priorities"
+      subtitle="The stuff you actually want to do out there. Places, food, a night out, a hike, whatever it is. Keep them short. Someone who wants the same thing can say they're in."
+      continueLabel="Done"
+      onContinue={async () => {
+        await commitPending({ keepGoing: false });
+        router.back();
+      }}
+      onClose={async () => {
+        await commitPending({ keepGoing: false });
+        router.back();
+      }}>
+      <View style={styles.list}>
+        {priorities.map((priority) => (
+          <View key={priority.slot} style={styles.row}>
+            <View style={styles.field}>
+              <FormTextField
+                inputRef={(ref) => {
+                  rowRefs.current[priority.slot] = ref;
+                }}
+                value={textOf(priority.slot, priority.text)}
+                onChangeText={(text) => {
+                  setDrafts((d) => ({ ...d, [priority.slot]: text }));
+                  setErrors((e) => ({ ...e, [priority.slot]: null }));
+                }}
+                onBlur={() => commitRow(priority.slot, priority.text)}
+                onSubmitEditing={() => commitRow(priority.slot, priority.text)}
+                error={errors[priority.slot] ?? null}
+                maxLength={PRIORITY_MAX}
+                returnKeyType="done"
+                autoCapitalize="none"
+                {...keyboardDoneProps}
+              />
+            </View>
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel={`Remove "${priority.text}"`}
+              haptic="light"
+              scaleTo={0.9}
+              hitSlop={12}
+              onPress={async () => {
+                await commitDirtyRows();
+                setDrafts({});
+                setErrors({});
+                remove.mutate({
+                  slot: priority.slot,
+                  rows: priorities.map((row) => ({ slot: row.slot, text: row.text })),
+                });
+              }}>
+              <SymbolView
+                name={{ ios: 'minus.circle.fill', android: 'remove_circle', web: 'remove_circle' }}
+                size={22}
+                tintColor={theme.textTertiary}
+              />
+            </PressableScale>
+          </View>
+        ))}
+
+        {full ? (
+          <ThemedText type="footnote" themeColor="textSecondary">
+            That&apos;s six. Remove one if you want to swap it out.
+          </ThemedText>
+        ) : (
+          <View style={styles.row}>
+            <View style={styles.field}>
+              <FormTextField
+                inputRef={pendingRef}
+                value={pending}
+                onChangeText={(text) => {
+                  setPending(text);
+                  setPendingError(null);
+                }}
+                // blurOnSubmit={false} is what keeps the keyboard up between
+                // rows. Without it iOS dismisses it on every Return and the
+                // "six lines of typing" turns into six taps and six waits.
+                blurOnSubmit={false}
+                onSubmitEditing={() => commitPending({ keepGoing: true })}
+                onBlur={() => commitPending({ keepGoing: false })}
+                error={pendingError}
+                placeholder={priorityPlaceholder(nextSlot)}
+                maxLength={PRIORITY_MAX}
+                returnKeyType="next"
+                autoCapitalize="none"
+                testID="new-priority"
+                {...keyboardDoneProps}
+              />
+            </View>
+            {/* The remove button's width, so the empty field lines up with
+                the rows above it instead of stretching past them. */}
+            <View style={styles.removeSpacer} />
+          </View>
+        )}
+      </View>
+    </StepScreen>
+  );
+}
+
+/** The DB speaks in sentences meant for a person; anything else is generic. */
+function messageFor(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  return message.includes('community guidelines')
+    ? 'That one breaks our community guidelines.'
+    : "Couldn't save that. Try again.";
+}
+
+const styles = StyleSheet.create({
+  list: {
+    gap: Space.sm,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+  },
+  field: {
+    flex: 1,
+  },
+  removeSpacer: {
+    width: 22,
+  },
+});

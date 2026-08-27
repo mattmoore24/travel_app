@@ -276,6 +276,18 @@ export type ProfilePromptRow = {
   updated_at: string;
 };
 
+/**
+ * One line on the Top priorities list (features/profile/priorities.ts).
+ * `slot` is 0-5 and is what orders the list; six is enforced by the primary
+ * key rather than by anything here.
+ */
+export type ProfilePriorityRow = {
+  user_id: string;
+  slot: number;
+  text: string;
+  updated_at: string;
+};
+
 export type GroupRole = 'admin' | 'speaker' | 'member';
 
 export type GroupSpeaking = 'everyone' | 'granted';
@@ -481,6 +493,16 @@ export type Database = {
           answer: string;
         };
         Update: Pick<ProfilePromptRow, 'prompt_key' | 'answer'>;
+        Relationships: [];
+      };
+      profile_priorities: {
+        Row: ProfilePriorityRow;
+        Insert: {
+          user_id: string;
+          slot: number;
+          text: string;
+        };
+        Update: Pick<ProfilePriorityRow, 'slot' | 'text'>;
         Relationships: [];
       };
       profile_photos: {

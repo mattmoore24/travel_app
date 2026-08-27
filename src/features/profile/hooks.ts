@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/features/auth/store';
 import {
   deletePhoto,
+  deleteProfilePriority,
   deleteProfilePrompt,
   deleteSocialHandle,
   fetchAccountStanding,
@@ -11,8 +12,11 @@ import {
   fetchOwnSocialHandles,
   fetchOwnVisibility,
   fetchPhotos,
+  fetchProfilePriorities,
   fetchProfilePrompts,
   fetchPublicProfile,
+  removeProfilePriority,
+  saveProfilePriority,
   saveProfilePrompt,
   setOwnVisibility,
   signedPhotoUrl,
@@ -91,6 +95,62 @@ export function useDeleteProfilePrompt() {
     mutationFn: (slot: number) => deleteProfilePrompt(userId!, slot),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['profile-prompts', userId] });
+    },
+  });
+}
+
+/**
+ * The Top priorities list on a profile. Same query for your own and somebody
+ * else's, for the same reason prompts are: RLS decides what comes back and
+ * the page renders both identically, so you always see yours as a stranger
+ * does.
+ */
+export function useProfilePriorities(userId: string | null) {
+  return useQuery({
+    queryKey: ['profile-priorities', userId],
+    queryFn: () => fetchProfilePriorities(userId!),
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+export function useSaveProfilePriority() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { slot: number; text: string }) =>
+      saveProfilePriority({ userId: userId!, ...input }),
+    onSuccess: () => {
+      analytics.capture('profile_priority_saved');
+      queryClient.invalidateQueries({ queryKey: ['profile-priorities', userId] });
+    },
+  });
+}
+
+/**
+ * Remove one and close the hole. The editor hands over the list it is looking
+ * at, because the renumbering has to be computed against the same rows the
+ * person can see rather than against a cache that may have moved on.
+ */
+export function useRemoveProfilePriority() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { slot: number; rows: { slot: number; text: string }[] }) =>
+      removeProfilePriority(userId!, input.slot, input.rows),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile-priorities', userId] });
+    },
+  });
+}
+
+/** Only used when a row fails to save and has to be dropped on its own. */
+export function useDeleteProfilePriority() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slot: number) => deleteProfilePriority(userId!, slot),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile-priorities', userId] });
     },
   });
 }
