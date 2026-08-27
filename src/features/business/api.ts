@@ -225,6 +225,21 @@ export async function messageBusiness(businessId: string, firstMessage: string) 
   return data as { chat_id?: string; blocked: boolean; existing?: boolean };
 }
 
+/**
+ * Which place a chat belongs to, or null if it belongs to a person.
+ *
+ * The chat list row cannot answer this: `my_chats` carries `other_user_id`,
+ * which for a business chat is the OWNER's auth id, and pushing that at
+ * `/profile/[userId]` opens a stub personal profile rather than the bar.
+ */
+export async function fetchBusinessForChat(chatId: string) {
+  const { data, error } = await supabase.rpc('business_for_chat', { p_chat_id: chatId });
+  if (error) {
+    throw error;
+  }
+  return (data ?? null) as string | null;
+}
+
 // -- Ratings -------------------------------------------------------------------
 
 export async function fetchRatingSummary(businessId: string) {

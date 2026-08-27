@@ -61,7 +61,14 @@ export default function RatePlaceScreen() {
   const ratings = useMyRatings(category);
   // A failed fetch is not a reason to stall. An empty list means the bucket
   // alone sets the score, which is exactly what a first rating does anyway.
-  const listSettled = ratings.isSuccess || ratings.isError;
+  //
+  // `detail.isError` belongs here too. When the detail fetch is the only
+  // source of the category and it fails, `category` stays null, useMyRatings
+  // stays disabled, and neither isSuccess nor isError ever becomes true — so
+  // the screen sat on "Just a sec." forever, with no spinner, no retry and no
+  // way on. Settling here lets the bucket alone set the score, which is what
+  // a first rating does anyway.
+  const listSettled = ratings.isSuccess || ratings.isError || detail.isError;
   // Re-rating a place already in the list would otherwise put it up against
   // itself, and "which did you prefer, this or this" has no answer.
   const mine = useMemo(
@@ -235,7 +242,7 @@ export default function RatePlaceScreen() {
                 </View>
                 {/* Only ever seen on a cold open, while the list you are being
                     compared against is still on its way. */}
-                {bucket != null ? (
+                {bucket != null && !listSettled ? (
                   <ThemedText type="footnote" themeColor="textSecondary">
                     Just a sec.
                   </ThemedText>
@@ -305,7 +312,7 @@ export default function RatePlaceScreen() {
                     {score.toFixed(1)}
                   </ThemedText>
                   <ThemedText type="footnote" themeColor="textSecondary">
-                    in your list
+                    out of 10, in your list
                   </ThemedText>
                 </View>
                 <View style={styles.tags}>
@@ -335,7 +342,7 @@ export default function RatePlaceScreen() {
               // Close, which throws away the bucket already picked.
               <PrimaryButton
                 variant="ghost"
-                label="That's close enough"
+                label="Good enough, save it"
                 onPress={() => setStopped(true)}
               />
             )}

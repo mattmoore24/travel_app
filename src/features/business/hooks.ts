@@ -4,6 +4,7 @@ import { useAuthStore } from '@/features/auth/store';
 import {
   archiveBusinessPost,
   confirmBusinessEmail,
+  fetchBusinessForChat,
   fetchBusinessDetail,
   fetchCityBusinesses,
   fetchLatestStorefrontCheck,
@@ -86,6 +87,16 @@ export function useArchiveBusinessPost(businessId: string | null) {
       // map is wrong the moment the last one comes down.
       queryClient.invalidateQueries({ queryKey: ['city-businesses'] });
     },
+  });
+}
+
+/** The place a chat belongs to. Asked only for `kind === 'business'` rows. */
+export function useBusinessForChat(chatId: string | null) {
+  return useQuery({
+    queryKey: ['business-for-chat', chatId],
+    queryFn: () => fetchBusinessForChat(chatId!),
+    enabled: isSupabaseConfigured && chatId != null,
+    staleTime: 10 * 60 * 1000,
   });
 }
 

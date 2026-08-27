@@ -49,7 +49,7 @@ export default function MapScreenWeb() {
               <ThemedText type="smallBold">{pin.venue_name}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
                 {intentLabel(pin.intent_date)}
-                {pin.seeded ? ' · curated' : pin.display_name ? ` · ${pin.display_name}` : ''}
+                {pin.seeded ? ' · ours' : pin.display_name ? ` · ${pin.display_name}` : ''}
               </ThemedText>
             </View>
           </ThemedView>

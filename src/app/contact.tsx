@@ -64,6 +64,7 @@ export default function ContactScreen() {
       continueLabel="Send"
       continueDisabled={!ready}
       continueLoading={send.isPending}
+      onClose={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
       onContinue={submit}>
       <FormTextField
         label="Your email"

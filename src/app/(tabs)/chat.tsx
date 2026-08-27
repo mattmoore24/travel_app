@@ -23,6 +23,8 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
 import { ChatRowSkeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
+import { useOwnBusiness } from '@/features/business/hooks';
+import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
 import { rowTimestamp, unreadLabel } from '@/features/chat/separators';
@@ -67,6 +69,34 @@ function Avatar({ path, size = 48 }: { path: string | null; size?: number }) {
       ) : (
         <SymbolView
           name={{ ios: 'person.fill', android: 'person', web: 'person' }}
+          size={size / 2}
+          tintColor={theme.textSecondary}
+        />
+      )}
+    </View>
+  );
+}
+
+/** The same circle, signed against the bucket a place's photos actually live in. */
+function PlaceAvatar({ path, size = 48 }: { path: string | null; size?: number }) {
+  const theme = useTheme();
+  const { data: url } = useBusinessPhotoUrl(path);
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        overflow: 'hidden',
+        backgroundColor: theme.backgroundSelected,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+      {url ? (
+        <Image source={{ uri: url }} style={styles.fill} contentFit="cover" />
+      ) : (
+        <SymbolView
+          name={{ ios: 'storefront.fill', android: 'storefront', web: 'storefront' }}
           size={size / 2}
           tintColor={theme.textSecondary}
         />
@@ -224,6 +254,11 @@ function ChatRow({ chat }: { chat: ChatListRow }) {
   const theme = useTheme();
   const preview = chat.last_message ?? chat.first_message;
   const isRoom = chat.kind === 'room';
+  // A conversation with a PLACE carries the place's cover photo, which lives
+  // in a different bucket. Signed through the profile hook it comes back a
+  // 404 wearing a valid-looking URL, so the row fell back to a person glyph
+  // for a bar.
+  const isPlace = chat.kind === 'business';
   const unread = chat.unread_count > 0;
   const stamp = rowTimestamp(chat.last_message_at ?? chat.created_at);
 
@@ -237,6 +272,8 @@ function ChatRow({ chat }: { chat: ChatListRow }) {
             tintColor={theme.accent}
           />
         </View>
+      ) : isPlace ? (
+        <PlaceAvatar path={chat.photo_path} />
       ) : (
         <Avatar path={chat.photo_path} />
       )}
@@ -567,6 +604,10 @@ export default function ChatScreen() {
   const { data: archived = [] } = useMyChats(true);
   const cityId = launchCities[0]?.city_id ?? null;
   const [tab, setTab] = useState<Tab>('individual');
+  // A place has no Travelers tab, no groups and no discovery surface: §7 rule
+  // 8 keeps it out of every one of them. Everything that assumed a traveler
+  // is gated on this.
+  const isBusiness = useOwnBusiness().data != null;
   const theme = useTheme();
 
   // One-to-one conversations and group rooms are different things people
@@ -687,29 +728,41 @@ export default function ChatScreen() {
         ]}>
         <View style={styles.headerRow}>
           <View style={styles.headerSwitch}>
-            <Segmented
-              options={tabs}
-              value={tab}
-              onChange={setTab}
-              accessibilityLabel="Chats or groups"
-            />
+            {/* No segments for a place. Groups is a traveler surface it can
+                neither join nor start, so the control offered a choice with
+                one real option in it. */}
+            {isBusiness ? (
+              <ThemedText type="title" accessibilityRole="header">
+                Messages
+              </ThemedText>
+            ) : (
+              <Segmented
+                options={tabs}
+                value={tab}
+                onChange={setTab}
+                accessibilityLabel="Chats or groups"
+              />
+            )}
           </View>
           {/* The '+' means "one more of whatever you are looking at": a new
               group on Groups, and on Chats the only way a one-to-one chat
-              ever starts, which is saying hi to somebody. */}
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel={tab === 'groups' ? 'Start a group' : 'Say hi to someone'}
-            haptic="light"
-            scaleTo={0.92}
-            onPress={() => router.push(tab === 'groups' ? '/new-group' : '/travelers')}
-            style={[styles.headerAction, { backgroundColor: theme.surface }]}>
-            <SymbolView
-              name={{ ios: 'plus', android: 'add', web: 'add' }}
-              size={18}
-              tintColor={theme.accent}
-            />
-          </PressableScale>
+              ever starts, which is saying hi to somebody. Both are traveler
+              routes, so a place gets neither. */}
+          {isBusiness ? null : (
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel={tab === 'groups' ? 'Start a group' : 'Say hi to someone'}
+              haptic="light"
+              scaleTo={0.92}
+              onPress={() => router.push(tab === 'groups' ? '/new-group' : '/travelers')}
+              style={[styles.headerAction, { backgroundColor: theme.surface }]}>
+              <SymbolView
+                name={{ ios: 'plus', android: 'add', web: 'add' }}
+                size={18}
+                tintColor={theme.accent}
+              />
+            </PressableScale>
+          )}
           <AvatarButton />
         </View>
 
@@ -811,17 +864,22 @@ export default function ChatScreen() {
               {tab === 'groups' ? 'No groups yet' : 'No chats yet'}
             </ThemedText>
             <ThemedText type="footnote" themeColor="textSecondary">
-              {tab === 'groups'
-                ? 'Join an open chat below, or start your own.'
-                : 'Say hi to someone going your way. The chat opens when they answer.'}
+              {isBusiness
+                ? 'Travelers who find you on the map can write to you here.'
+                : tab === 'groups'
+                  ? 'Join an open chat below, or start your own.'
+                  : 'Say hi to someone going your way. The chat opens when they answer.'}
             </ThemedText>
-            {tab === 'individual' ? (
+            {/* Both routes below are traveler-only and hidden from a place,
+                so for a business account these were two buttons that could
+                not do anything. */}
+            {tab === 'individual' && !isBusiness ? (
               <PrimaryButton label="Find travelers" onPress={() => router.push('/travelers')} />
             ) : null}
           </ThemedView>
         ) : null}
 
-        {tab === 'groups' ? (
+        {tab === 'groups' && !isBusiness ? (
           <>
             <PressableScale
               accessibilityRole="button"

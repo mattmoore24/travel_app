@@ -42,7 +42,11 @@ const SHAPES: { value: Shape; title: string; detail: string }[] = [
     title: "It's happening on a date",
     detail: 'It clears itself the morning after.',
   },
-  { value: 'ends', title: 'Take it down on', detail: 'It stays up through that whole day.' },
+  {
+    value: 'ends',
+    title: 'Keep it up until a date',
+    detail: 'It stays up through that whole day.',
+  },
   {
     value: 'open',
     title: 'Keep it up until I take it down',
@@ -209,7 +213,7 @@ export default function BusinessPostScreen() {
     trimmedTitle.length >= TITLE_MIN && titleError == null && bodyError == null && shape != null;
 
   const note = atCap
-    ? 'You have as many posts up as you can have at once. Take one down to put another up.'
+    ? `That's ${cap} up, which is the most at once. Tap one on My business to take it down.`
     : (titleError ??
       bodyError ??
       (trimmedTitle.length < TITLE_MIN
@@ -243,7 +247,7 @@ export default function BusinessPostScreen() {
   return (
     <StepScreen
       title="Post something"
-      subtitle="It shows on your page and in your chat."
+      subtitle="It shows on your page, and your marker lights up on the map."
       continueLabel="Put it up"
       // Disabled at the cap because a button that fires a refusal we already
       // know about is a button that lies. The database still has the last

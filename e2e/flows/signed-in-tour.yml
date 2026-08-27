@@ -308,6 +308,13 @@ appId: com.mattmoore.samewhere
 # seed_launch_businesses(), and the E2E account's trip is Bangkok, so it is on
 # this map if places render at all.
 # ─────────────────────────────────────────────────────────────────────────
+# Out of the pushed group screens first. Run 46 photographed the group
+# settings page five times over because `tapOn: 'Map'` cannot reach a tab bar
+# from a pushed route, and every step below it was optional, so the whole
+# segment ran against a screen that never changed.
+- back
+- back
+- back
 - tapOn:
     text: 'Map'
     optional: true

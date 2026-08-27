@@ -35,6 +35,18 @@ import { captureLivePhoto } from '@/lib/live-camera';
  * shared with the selfie screen so neither can drift back to a library.
  */
 
+/** Fifteen minutes, which is the rule the screen has always printed. */
+const STALE_PAIR_MS = 15 * 60 * 1000;
+
+/**
+ * Module scope so the compiler's purity rule can see it is not called during
+ * render. Both uses below are inside handlers, which is the only place a
+ * clock reading belongs.
+ */
+function nowMs(): number {
+  return Date.now();
+}
+
 const SHOTS = [
   {
     key: 'wide',
@@ -56,9 +68,12 @@ export default function BusinessStorefrontScreen() {
   const businessId = business?.id ?? null;
   const check = useLatestStorefrontCheck(businessId);
   const submit = useSubmitStorefront(businessId);
-  const [wideUri, setWideUri] = useState<string | null>(null);
-  const [closeUri, setCloseUri] = useState<string | null>(null);
+  const [wide, setWide] = useState<{ uri: string; at: number } | null>(null);
+  const [close, setClose] = useState<{ uri: string; at: number } | null>(null);
+  const wideUri = wide?.uri ?? null;
+  const closeUri = close?.uri ?? null;
   const [cameraBlocked, setCameraBlocked] = useState(false);
+  const [stale, setStale] = useState(false);
 
   const latest = check.data ?? null;
   // The check query keeps the PREVIOUS row while it refetches, so between a
@@ -89,10 +104,12 @@ export default function BusinessStorefrontScreen() {
     }
     setCameraBlocked(false);
     haptics.medium();
+    // The moment it was taken, so the pair can be refused if they drift.
+    const taken = { uri: shot.uri, at: nowMs() };
     if (which === 'wide') {
-      setWideUri(shot.uri);
+      setWide(taken);
     } else {
-      setCloseUri(shot.uri);
+      setClose(taken);
     }
   };
 
@@ -109,6 +126,20 @@ export default function BusinessStorefrontScreen() {
       await capture('close');
       return;
     }
+    // The rule this screen has always printed, now enforced. Two shots taken
+    // an evening apart are not somebody standing outside a building; they are
+    // somebody who found one photo and staged the other. A client check is a
+    // nudge and not a control — a determined faker owns the client — but the
+    // sentence says we will ask for the pair again, and now that is what
+    // happens rather than a promise nothing kept.
+    if (wide != null && close != null && Math.abs(close.at - wide.at) > STALE_PAIR_MS) {
+      haptics.error();
+      setStale(true);
+      setWide(null);
+      setClose(null);
+      return;
+    }
+    setStale(false);
     try {
       await submit.mutateAsync({ wideUri, closeUri });
       analytics.capture('business_storefront_submitted');
@@ -116,8 +147,8 @@ export default function BusinessStorefrontScreen() {
       // Stay put. The screen redraws as "we're having a look", which is the
       // thing the button promised; walking somebody back to where they came
       // from would leave them wondering whether it went at all.
-      setWideUri(null);
-      setCloseUri(null);
+      setWide(null);
+      setClose(null);
     } catch {
       // Surfaced by the global mutation error alert. The shots stay staged, so
       // a failed upload is retried from here rather than from the pavement.
@@ -179,8 +210,8 @@ export default function BusinessStorefrontScreen() {
         <ThemedView type="backgroundElement" style={styles.card}>
           <ThemedText type="smallBold">Someone is looking at these by hand</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            The photos were hard to call, so a person is checking them. We&apos;ll email you either
-            way.
+            The photos were hard to call, so a person is checking them. We&apos;ll email you when
+            they have.
           </ThemedText>
         </ThemedView>
       ) : (
@@ -198,6 +229,18 @@ export default function BusinessStorefrontScreen() {
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
                 Have another go. Same two shots.
+              </ThemedText>
+            </ThemedView>
+          ) : null}
+
+          {stale ? (
+            <ThemedView type="backgroundElement" style={styles.card}>
+              <ThemedText type="smallBold" style={{ color: theme.warning }}>
+                Those two were a while apart
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Both shots have to be taken in one go, within about fifteen minutes. Have another
+                go, standing outside.
               </ThemedText>
             </ThemedView>
           ) : null}

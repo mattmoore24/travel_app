@@ -26,12 +26,18 @@ export default function JoinPlaceScreen() {
   const theme = useTheme();
   // Two callers, two shapes: the place page sends only the business id, the
   // map's place sheet sends the chat and the name it already has in hand.
-  const params = useLocalSearchParams<{ id?: string; businessId?: string; chatId?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    businessId?: string;
+    chatId?: string;
+    name?: string;
+  }>();
   const businessId = params.id ?? params.businessId ?? null;
   // Asked only when the caller did not bring the chat id, so the common path
   // costs no round trip.
   const { data: place } = useBusinessDetail(params.chatId ? null : businessId);
   const chatId = params.chatId ?? place?.chat_id ?? null;
+  const placeName = params.name ?? place?.name ?? null;
 
   // Nothing is picked for them. A pre-filled date is a guess about somebody
   // else's trip, and it makes "I'm not sure yet" look like the odd answer.
@@ -59,10 +65,25 @@ export default function JoinPlaceScreen() {
   return (
     <StepScreen
       title="When do you leave?"
+      // The screen never said which place it was about. Somebody taps Join
+      // the chat at a bar and lands on a bare date question.
+      subtitle={
+        placeName ? `So we know when to drop you out of the chat at ${placeName}.` : undefined
+      }
       continueLabel="Join the chat"
       continueDisabled={!chatId || !answered}
       continueLoading={join.isPending}
-      note={answered ? null : "Pick a day, or tap I'm not sure yet."}
+      // The chat id half was silent: arriving from the place page, the detail
+      // query is still in flight, so somebody picked a date, watched the note
+      // disappear, and sat looking at a greyed-out button with no sentence
+      // anywhere saying why.
+      note={
+        !answered
+          ? "Pick a day, or tap I'm not sure yet."
+          : !chatId
+            ? 'Getting the chat ready.'
+            : null
+      }
       onClose={() => router.back()}
       onContinue={submit}>
       <ThemedText type="smallBold">
@@ -72,21 +93,6 @@ export default function JoinPlaceScreen() {
             ? `You leave ${formatDate(departure)}`
             : 'Tap the day you go'}
       </ThemedText>
-
-      {/* A range picker asked for one date: whichever end the tap landed on
-          is the day they meant, and holding `end` at null keeps the run of
-          highlighted days from ever being drawn. Four months because the
-          membership is capped at 90 days either way, so a departure further
-          out than that buys exactly what "I'm not sure yet" buys. */}
-      <TripCalendar
-        start={notSure ? null : departure}
-        end={null}
-        months={4}
-        onChange={(nextStart, nextEnd) => {
-          setNotSure(false);
-          setDeparture(nextEnd ?? nextStart);
-        }}
-      />
 
       <PressableScale
         accessibilityRole="button"
@@ -120,9 +126,24 @@ export default function JoinPlaceScreen() {
         </ThemedView>
       </PressableScale>
 
+      {/* A range picker asked for one date: whichever end the tap landed on
+          is the day they meant, and holding `end` at null keeps the run of
+          highlighted days from ever being drawn. Four months because the
+          membership is capped at 90 days either way, so a departure further
+          out than that buys exactly what "I'm not sure yet" buys. */}
+      <TripCalendar
+        start={notSure ? null : departure}
+        end={null}
+        months={4}
+        onChange={(nextStart, nextEnd) => {
+          setNotSure(false);
+          setDeparture(nextEnd ?? nextStart);
+        }}
+      />
+
       <ThemedText type="footnote" themeColor="textSecondary">
-        You&apos;ll drop out of the chat three days after you go, or after 90 days, whichever comes
-        first. Leave or come back whenever you like.
+        You&apos;ll drop out of the chat three days after you leave town. Come back or leave
+        whenever you like.
       </ThemedText>
     </StepScreen>
   );

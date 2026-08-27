@@ -96,7 +96,13 @@ export type TripRow = {
   updated_at: string;
 };
 
-export type ChatKind = 'direct' | 'room';
+/**
+ * 'business' is a traveler writing to a place. Added by
+ * 20260827090000_business_enums.sql and never added here, so every
+ * `kind === 'business'` branch in the client was typed as unreachable and
+ * quietly deleted by the compiler's narrowing.
+ */
+export type ChatKind = 'direct' | 'room' | 'business';
 
 /** Row shape returned by the get_matches() RPC. */
 export type MatchRow = {
@@ -1141,7 +1147,7 @@ export type Database = {
       };
       confirm_business_email: {
         Args: { p_code: string };
-        Returns: { confirmed: boolean };
+        Returns: { confirmed: boolean; first_time: boolean };
       };
       submit_business_verification: {
         Args: { p_wide_path: string; p_close_path: string };
@@ -1158,6 +1164,10 @@ export type Database = {
       message_business: {
         Args: { p_business_id: string; p_first_message: string };
         Returns: { chat_id?: string; blocked: boolean; existing?: boolean };
+      };
+      business_for_chat: {
+        Args: { p_chat_id: string };
+        Returns: string | null;
       };
       rate_business: {
         Args: {

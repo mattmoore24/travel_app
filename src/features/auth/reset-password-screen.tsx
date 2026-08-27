@@ -49,7 +49,7 @@ export function ResetPasswordScreen() {
       setError(
         typeof raw === 'string' && /same.*password|different/i.test(raw)
           ? 'That is the password you already had. Pick a different one.'
-          : 'Could not save that. The link may have expired — ask for a new one.'
+          : 'Could not save that. The link may have expired, so ask for a new one.'
       );
     } finally {
       setSaving(false);

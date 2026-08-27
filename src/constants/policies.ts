@@ -14,7 +14,7 @@ export const ZERO_TOLERANCE =
 export const GUIDELINE_SECTIONS = [
   {
     title: 'Respect and kindness',
-    body: "Treat people like someone you'd had a good chat with in the common room. That's the whole rule.",
+    body: "Treat people the way you'd treat someone you just had a good chat with in the common room. That's the whole rule.",
   },
   {
     title: 'Moderation',

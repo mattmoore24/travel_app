@@ -96,6 +96,12 @@ export default function VerificationScreen() {
       subtitle="One selfie, taken right now. It proves your photos are you. Nobody sees it, and we delete it after the check. No ID needed."
       continueLabel={continueLabel}
       continueLoading={submit.isPending}
+      // Without this the first-run state's only button says "Take a selfie",
+      // so the modal has no visible exit at all and the swipe down is a
+      // gesture nothing on screen mentions.
+      onClose={
+        verified || pending ? undefined : () => (router.canGoBack() ? router.back() : undefined)
+      }
       onContinue={onSubmit}>
       {verified ? (
         <ThemedView type="backgroundElement" style={styles.card}>
@@ -133,7 +139,7 @@ export default function VerificationScreen() {
               </ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
                 Open Settings, turn Camera on, then come back. A photo out of your library
-                won&apos;t do it — the badge only means something if the selfie was taken just now.
+                won&apos;t do it. The badge only means something if the selfie was taken just now.
               </ThemedText>
               <PrimaryButton
                 variant="ghost"

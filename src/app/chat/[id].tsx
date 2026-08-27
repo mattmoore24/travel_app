@@ -39,14 +39,26 @@ import { useReactions, useToggleReaction, useUnsendMessage } from '@/features/ro
 import { useOwnUserId, usePhotoUrl, usePublicProfile } from '@/features/profile/hooks';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { useTheme } from '@/hooks/use-theme';
+import { useBusinessForChat } from '@/features/business/hooks';
+import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import type { ChatListRow } from '@/lib/database.types';
 
 function ChatHeader({ chat }: { chat: ChatListRow }) {
   const theme = useTheme();
-  const { data: photoUrl } = usePhotoUrl(chat.photo_path);
+  // A conversation with a PLACE is not a conversation with a person, and it
+  // was dressed as one: `my_chats` hands back the place's cover photo, which
+  // usePhotoUrl signs against `profile-photos` and so comes back a 404
+  // wearing a valid-looking URL; `other_user_id` is the owner's auth id, and
+  // pushing that at /profile opens their stub personal profile rather than
+  // the bar. Both halves branch on the kind.
+  const isPlace = chat.kind === 'business';
+  const { data: personPhotoUrl } = usePhotoUrl(isPlace ? null : chat.photo_path);
+  const { data: placePhotoUrl } = useBusinessPhotoUrl(isPlace ? chat.photo_path : null);
+  const photoUrl = isPlace ? placePhotoUrl : personPhotoUrl;
+  const { data: placeId } = useBusinessForChat(isPlace ? chat.chat_id : null);
   // my_chats() carries the name and the photo but not the badge, and this is
   // one row the client already has cached from the profile screen.
-  const { data: other } = usePublicProfile(chat.other_user_id);
+  const { data: other } = usePublicProfile(isPlace ? null : chat.other_user_id);
   const block = useBlockUser();
   const leaveChat = useLeaveChat();
 
@@ -124,21 +136,39 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
     <View style={styles.header}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="View profile"
-        onPress={() => router.push(`/profile/${chat.other_user_id}`)}
+        accessibilityLabel={isPlace ? `About ${chat.title ?? 'this place'}` : 'View profile'}
+        disabled={isPlace && placeId == null}
+        onPress={() =>
+          isPlace
+            ? placeId && router.push({ pathname: '/place/[id]', params: { id: placeId } })
+            : router.push(`/profile/${chat.other_user_id}`)
+        }
         style={styles.headerIdentity}>
         <View style={[styles.headerAvatar, { backgroundColor: theme.backgroundElement }]}>
           {photoUrl ? (
             <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
           ) : (
             <SymbolView
-              name={{ ios: 'person.fill', android: 'person', web: 'person' }}
+              name={
+                isPlace
+                  ? { ios: 'storefront.fill', android: 'storefront', web: 'storefront' }
+                  : { ios: 'person.fill', android: 'person', web: 'person' }
+              }
               size={16}
               tintColor={theme.textSecondary}
             />
           )}
         </View>
-        <ThemedText type="smallBold">{chat.title ?? 'Traveler'}</ThemedText>
+        <View style={styles.headerNames}>
+          <ThemedText type="smallBold">
+            {chat.title ?? (isPlace ? 'This place' : 'Traveler')}
+          </ThemedText>
+          {isPlace ? (
+            <ThemedText type="caption" themeColor="textSecondary">
+              {`The people who run ${chat.title ?? 'it'}`}
+            </ThemedText>
+          ) : null}
+        </View>
         {/* The third place trust is spent, after the Travelers hero and the
             profile: this is the screen where somebody decides whether to
             actually go and meet a stranger. */}
@@ -480,9 +510,13 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
   },
   headerIdentity: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+  },
+  headerNames: {
+    flexShrink: 1,
   },
   headerAvatar: {
     width: 32,

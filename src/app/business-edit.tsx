@@ -19,6 +19,7 @@ import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanim
 import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
+import { LoadError } from '@/components/ui/load-error';
 import { SelectField } from '@/components/form/select-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
@@ -452,8 +453,8 @@ function PhotoTile({
       {photo.moderation_status !== 'approved' ? (
         <View
           style={[styles.tileChip, { backgroundColor: rejected ? theme.warning : theme.surface }]}>
-          <ThemedText type="caption" style={rejected ? { color: theme.onAccent } : undefined}>
-            {rejected ? 'Taken down' : 'In review'}
+          <ThemedText type="caption" style={rejected ? { color: theme.onHighlight } : undefined}>
+            {rejected ? "Didn't pass" : 'In review'}
           </ThemedText>
         </View>
       ) : cover ? (
@@ -588,7 +589,16 @@ function BusinessPhotos({ businessId, userId }: { businessId: string; userId: st
               style={[
                 styles.tile,
                 styles.emptyTile,
-                { width: size, height: size, borderColor: theme.hairline },
+                // `hairline` is documented as decorative and measures 1.5:1
+                // against the canvas, so the "add a photo" tile was a bare
+                // glyph floating beside filled squares with no box around it.
+                // Same treatment the storefront screen gives its empty frame.
+                {
+                  width: size,
+                  height: size,
+                  backgroundColor: theme.surfaceSunken,
+                  borderColor: theme.border,
+                },
               ]}>
               {upload.isPending ? (
                 <ActivityIndicator color={theme.accent} />
@@ -800,6 +810,18 @@ export default function BusinessEditScreen() {
   if (!business) {
     return null;
   }
+  // A spinner is the right answer while the rows are on their way, and the
+  // wrong one after the retries have run out: `data` stays undefined either
+  // way, so this screen span forever on hostel wifi with no message and no
+  // way out but killing the app. Every other screen in this feature uses
+  // LoadError; this one has to as well.
+  if (hours.isError) {
+    return (
+      <ThemedView style={styles.loading}>
+        <LoadError what="your hours" error={hours.error} onRetry={hours.refetch} />
+      </ThemedView>
+    );
+  }
   // The hours editor seeds its rules from the rows, so it cannot mount before
   // they land without a state-syncing effect to keep the two in step.
   if (hours.data == null) {
@@ -891,7 +913,47 @@ function BusinessEditForm({
       ? `That is ${description.length - DESCRIPTION_MAX} characters too long.`
       : null;
   const brokenRule = rules.find((rule) => rule.days.length > 0 && rule.opens === rule.closes);
-  const valid = nameError == null && descriptionError == null && brokenRule == null;
+  // The same two rules validate_business_link applies to a link row, said
+  // here so somebody finds out while typing rather than through a database
+  // refusal after Save. The server enforces them either way.
+  const trimmedWebsite = website.trim();
+  const websiteError =
+    trimmedWebsite === ''
+      ? null
+      : !/^https:\/\//i.test(trimmedWebsite)
+        ? 'Your website has to start with https://'
+        : /^https:\/\/[0-9]{1,3}(\.[0-9]{1,3}){3}/.test(trimmedWebsite)
+          ? 'That needs a real domain, not a string of numbers.'
+          : null;
+  const valid =
+    nameError == null && descriptionError == null && websiteError == null && brokenRule == null;
+
+  /**
+   * Renaming costs the listing and the badge, so it gets asked about.
+   *
+   * `business_rename_resets` drops a listed place back to `unconfirmed` and
+   * clears `verified_at`, which means it comes off the map until a new email
+   * code is typed, and the check earned by standing outside with a phone is
+   * gone. A footnote under the field was carrying the whole warning, and the
+   * common reason to touch that field is fixing a typo.
+   */
+  const save = async () => {
+    if (!valid) {
+      return;
+    }
+    if (!nameChanged) {
+      await commit();
+      return;
+    }
+    Alert.alert(
+      'Change the name and come off the map?',
+      `Travelers stop seeing ${business.name} until you type a new email code, and the check goes with it.`,
+      [
+        { text: 'Keep the name', style: 'cancel' },
+        { text: 'Change it', style: 'destructive', onPress: () => void commit() },
+      ]
+    );
+  };
 
   const close = () => {
     if (!dirty) {
@@ -904,10 +966,7 @@ function BusinessEditForm({
     ]);
   };
 
-  const save = async () => {
-    if (!valid) {
-      return;
-    }
+  const commit = async () => {
     try {
       if (detailsChanged) {
         await updateBusiness.mutateAsync({
@@ -958,7 +1017,7 @@ function BusinessEditForm({
       note={
         brokenRule
           ? 'One of your hour lines opens and closes at the same time.'
-          : (descriptionError ?? nameError)
+          : (descriptionError ?? nameError ?? websiteError)
       }
       continueLoading={updateBusiness.isPending || saveHours.isPending}
       onContinue={save}
@@ -1003,7 +1062,7 @@ function BusinessEditForm({
         value={placeLabel}
         onChangeText={setPlaceLabel}
         maxLength={PLACE_LABEL_MAX}
-        hint="The bit a map pin cannot tell anyone."
+        hint="The bit the map can't tell anyone."
       />
       <FormTextField
         label="Anything the hours miss"
@@ -1021,6 +1080,7 @@ function BusinessEditForm({
         autoCorrect={false}
         keyboardType="url"
         maxLength={WEBSITE_MAX}
+        error={websiteError ?? undefined}
       />
 
       <ThemedText type="smallBold" onLayout={measure('hours')}>
