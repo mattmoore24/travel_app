@@ -1,9 +1,11 @@
-// Claude moderation worker. Drains four server-side queues:
+// Claude moderation worker. Drains six server-side queues:
 //
 //   1. message_requests in 'pending_moderation'  -> apply_message_verdict
 //   2. profile_photos   in 'pending'             -> apply_photo_verdict
 //   3. verification_requests in 'pending'        -> apply_verification_verdict
 //   4. messages with a pending photo             -> apply_chat_photo_verdict
+//   5. business_verifications in 'pending'       -> apply_business_verification_verdict
+//   6. business_scans in 'pending'               -> apply_business_scan_verdict
 //
 // Deploy:   supabase functions deploy moderation-worker
 // Secrets:  ANTHROPIC_API_KEY + MODERATION_PROMPTS (see prompts.example.json),
@@ -32,6 +34,8 @@ const MESSAGES_PER_TICK = 10;
 const PHOTOS_PER_TICK = 5;
 const VERIFICATIONS_PER_TICK = 3;
 const CHAT_PHOTOS_PER_TICK = 8;
+const STOREFRONTS_PER_TICK = 3;
+const SCANS_PER_TICK = 3;
 const SIGNED_URL_TTL_SECONDS = 600;
 
 const MessageVerdict = z.object({
@@ -55,6 +59,23 @@ const VerificationVerdict = z.object({
   reason: z.string(),
 });
 
+// Three outcomes, not two. 'uncertain' exists because a hand-painted sign in
+// a script the model reads poorly is a real business having a bad day, and
+// refusing it outright would be this app being confidently wrong about
+// somebody's livelihood. Uncertain goes to the founder.
+const StorefrontVerdict = z.object({
+  action: z.enum(['approve', 'reject', 'uncertain']),
+  confidence: z.number(),
+  // User-facing on a reject: what to do differently, never an accusation.
+  reason: z.string(),
+});
+
+const ImpersonationVerdict = z.object({
+  impersonation_plausible: z.boolean(),
+  confidence: z.number(),
+  reason: z.string(),
+});
+
 // The classifier instructions are deliberately NOT in this (public) source:
 // publishing the exact BLOCK/ALLOW rules would hand evaders a how-to guide.
 // They live in the MODERATION_PROMPTS function secret as JSON with keys
@@ -63,7 +84,21 @@ const VerificationVerdict = z.object({
 // Absent or malformed prompts fail CLOSED (hard rule 5): the worker refuses
 // to classify, queues hold, and admin_ops_health raises
 // oldest_held_message_minutes rather than anything auto-approving.
-type ModerationPrompts = { message: string; photo: string; verification: string };
+type ModerationPrompts = {
+  message: string;
+  photo: string;
+  verification: string;
+  /**
+   * The two business keys are OPTIONAL, and that is load-bearing rather than
+   * lazy. loadPrompts returns null unless every REQUIRED key is present, and
+   * a null there stops all four original queues dead. If these were required,
+   * deploying this code before the MODERATION_PROMPTS secret caught up would
+   * take message moderation, photo moderation and selfie verification down
+   * with it. Absent, exactly one business queue pauses and says so.
+   */
+  storefront?: string;
+  impersonation?: string;
+};
 
 function loadPrompts(): ModerationPrompts | null {
   const raw = Deno.env.get('MODERATION_PROMPTS');
@@ -84,11 +119,19 @@ function loadPrompts(): ModerationPrompts | null {
 
 const PROMPTS = loadPrompts();
 
+/** An optional prompt, or null when the secret has not caught up yet. */
+function optionalPrompt(key: 'storefront' | 'impersonation'): string | null {
+  const value = PROMPTS?.[key];
+  return typeof value === 'string' && value.length >= 40 ? value : null;
+}
+
 type WorkerReport = {
   messages: { approved: number; blocked: number; failed: number };
   photos: { approved: number; rejected: number; failed: number };
   chatPhotos: { approved: number; rejected: number; failed: number };
   verifications: { approved: number; rejected: number; failed: number };
+  storefronts: { approved: number; rejected: number; uncertain: number; failed: number };
+  scans: { cleared: number; flagged: number; failed: number };
   notes: string[];
 };
 
@@ -199,6 +242,8 @@ Deno.serve(async (req) => {
     photos: { approved: 0, rejected: 0, failed: 0 },
     chatPhotos: { approved: 0, rejected: 0, failed: 0 },
     verifications: { approved: 0, rejected: 0, failed: 0 },
+    storefronts: { approved: 0, rejected: 0, uncertain: 0, failed: 0 },
+    scans: { cleared: 0, flagged: 0, failed: 0 },
     notes: [],
   };
 
@@ -540,6 +585,265 @@ Deno.serve(async (req) => {
         `verification ${verification.id}: ${(error as Error).message}` +
           (bumpError ? ` (attempts update failed: ${bumpError.message})` : '')
       );
+    }
+  }
+
+  // -- 5. Storefront photos: the check the verified badge actually means ------
+  //
+  // Modelled on the selfie branch with two deliberate departures. Two images
+  // instead of one, because a close-up of a sign is the easiest thing on
+  // earth to find online and a wide shot pins that sign to a building and a
+  // street. And the evidence is NOT deleted afterwards: a traveler appeals
+  // nothing, but a refused business is told to write in, and the founder
+  // cannot judge an appeal against a photo that no longer exists.
+  const storefrontPrompt = optionalPrompt('storefront');
+  if (!storefrontPrompt) {
+    report.notes.push('storefront: no prompt in MODERATION_PROMPTS, queue paused');
+  } else {
+    const { data: storefronts } = await supabase
+      .from('business_verifications')
+      .select('id, business_id, wide_path, close_path, attempts')
+      .eq('status', 'pending')
+      .order('created_at')
+      .limit(STOREFRONTS_PER_TICK);
+
+    const applyStorefront = async (id: string, verdict: Record<string, unknown>) => {
+      const { error } = await supabase.rpc('apply_business_verification_verdict', {
+        p_request_id: id,
+        p_verdict: verdict,
+      });
+      if (error) {
+        throw new Error(`apply_business_verification_verdict: ${error.message}`);
+      }
+    };
+
+    for (const check of storefronts ?? []) {
+      try {
+        if ((check.attempts ?? 0) >= MAX_ATTEMPTS) {
+          await applyStorefront(check.id, {
+            action: 'reject',
+            reason: 'We could not process those photos. Have another go.',
+            engine: 'failsafe',
+          });
+          report.storefronts.rejected += 1;
+          continue;
+        }
+
+        const { data: business } = await supabase
+          .from('businesses')
+          .select('name, category, place_label, city_id')
+          .eq('id', check.business_id)
+          .maybeSingle();
+        const { data: city } = business
+          ? await supabase
+              .from('cities')
+              .select('name, country_code')
+              .eq('id', business.city_id)
+              .maybeSingle()
+          : { data: null };
+
+        const wideUrl = await signedUrl('business-verification', check.wide_path);
+        const closeUrl = await signedUrl('business-verification', check.close_path);
+        const claim = [
+          `CLAIMED NAME: ${business?.name ?? '(unknown)'}`,
+          `CLAIMED CATEGORY: ${business?.category ?? '(unknown)'}`,
+          `CLAIMED CITY: ${city ? `${city.name}, ${city.country_code}` : '(unknown)'}`,
+          business?.place_label ? `THE BUSINESS SAYS: ${business.place_label}` : null,
+        ]
+          .filter(Boolean)
+          .join('\n');
+
+        const content: Anthropic.MessageParam['content'] = [
+          { type: 'text', text: claim },
+          { type: 'text', text: 'WIDE SHOT, from across the street:' },
+          { type: 'image', source: { type: 'url', url: wideUrl } },
+          { type: 'text', text: 'CLOSE SHOT, near enough to read the sign:' },
+          { type: 'image', source: { type: 'url', url: closeUrl } },
+          {
+            type: 'text',
+            text:
+              'Are both of these real photographs of a real premises rather than ' +
+              'screenshots, photos of a screen, stock images or renders? Do they show ' +
+              'the SAME premises? Does signage in the close shot read the claimed name, ' +
+              'allowing for translation, transliteration and a trading name that differs ' +
+              'from the legal one? Does the storefront look like the claimed category? ' +
+              'Does the wide shot plausibly match the claimed city?',
+          },
+        ];
+
+        const verdict = await classify(anthropic, storefrontPrompt, content, StorefrontVerdict);
+        // A model refusal on a photo of a shopfront is strange enough that a
+        // human should look, rather than either side of it being assumed.
+        const payload = verdict
+          ? { ...verdict, engine: 'claude-storefront', model: MODEL }
+          : {
+              action: 'uncertain',
+              reason: 'We could not review those photos automatically.',
+              engine: 'claude-storefront',
+              model: MODEL,
+            };
+        await applyStorefront(check.id, payload);
+        if (payload.action === 'approve') {
+          report.storefronts.approved += 1;
+        } else if (payload.action === 'uncertain') {
+          report.storefronts.uncertain += 1;
+        } else {
+          report.storefronts.rejected += 1;
+        }
+      } catch (error) {
+        if (isAuthError(error)) {
+          return Response.json(
+            { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
+            { status: 503 }
+          );
+        }
+        report.storefronts.failed += 1;
+        const { error: bumpError } = await supabase
+          .from('business_verifications')
+          .update({ attempts: (check.attempts ?? 0) + 1 })
+          .eq('id', check.id);
+        report.notes.push(
+          `storefront ${check.id}: ${(error as Error).message}` +
+            (bumpError ? ` (attempts update failed: ${bumpError.message})` : '')
+        );
+      }
+    }
+  }
+
+  // -- 6. Impersonation scans, on the first report ---------------------------
+  //
+  // **[founder]** the scan runs on the FIRST report rather than the third.
+  // Nothing here darkens a listing on its own: the RPC does that, and only on
+  // a plausible-impersonation verdict, which is what keeps a competitor with
+  // one spare account from being able to take a rival down.
+  const impersonationPrompt = optionalPrompt('impersonation');
+  if (!impersonationPrompt) {
+    report.notes.push('impersonation: no prompt in MODERATION_PROMPTS, queue paused');
+  } else {
+    const { data: scans } = await supabase
+      .from('business_scans')
+      .select('id, business_id, trigger_report_id, attempts')
+      .eq('status', 'pending')
+      .order('created_at')
+      .limit(SCANS_PER_TICK);
+
+    for (const scan of scans ?? []) {
+      try {
+        if ((scan.attempts ?? 0) >= MAX_ATTEMPTS) {
+          // Fail OPEN here, and only here. Everything else in this worker
+          // fails closed, but a scan that cannot run is not evidence of
+          // anything, and darkening a real business because the classifier
+          // was down would be the app doing the damage it exists to prevent.
+          // The report is already in the founder's inbox.
+          await supabase.rpc('apply_business_scan_verdict', {
+            p_scan_id: scan.id,
+            p_verdict: {
+              impersonation_plausible: false,
+              reason: 'The check could not run. Left for a person to look at.',
+              engine: 'failsafe',
+            },
+          });
+          report.scans.cleared += 1;
+          continue;
+        }
+
+        const { data: business } = await supabase
+          .from('businesses')
+          .select('name, category, description, place_label, website_url, city_id')
+          .eq('id', scan.business_id)
+          .maybeSingle();
+        const { data: city } = business
+          ? await supabase
+              .from('cities')
+              .select('name, country_code')
+              .eq('id', business.city_id)
+              .maybeSingle()
+          : { data: null };
+        const { data: report_row } = scan.trigger_report_id
+          ? await supabase
+              .from('business_reports')
+              .select('reason, note')
+              .eq('id', scan.trigger_report_id)
+              .maybeSingle()
+          : { data: null };
+        const { data: links } = await supabase
+          .from('business_links')
+          .select('kind, label, value')
+          .eq('business_id', scan.business_id)
+          .limit(10);
+        const { data: posts } = await supabase
+          .from('business_posts')
+          .select('title, body')
+          .eq('business_id', scan.business_id)
+          .is('archived_at', null)
+          .limit(10);
+
+        const listing = [
+          `NAME: ${business?.name ?? '(unknown)'}`,
+          `CATEGORY: ${business?.category ?? '(unknown)'}`,
+          `CITY: ${city ? `${city.name}, ${city.country_code}` : '(unknown)'}`,
+          `DESCRIPTION: ${business?.description ?? '(none)'}`,
+          `DIRECTIONS: ${business?.place_label ?? '(none)'}`,
+          `WEBSITE: ${business?.website_url ?? '(none)'}`,
+          `LINKS: ${(links ?? []).map((l: any) => `${l.kind} "${l.label}" ${l.value}`).join(' | ') || '(none)'}`,
+          `POSTS: ${(posts ?? []).map((p: any) => `${p.title}: ${p.body ?? ''}`).join(' | ') || '(none)'}`,
+          '',
+          `SOMEBODY REPORTED IT AS: ${report_row?.reason ?? '(unknown)'}`,
+          `THEY SAID: ${report_row?.note ?? '(nothing)'}`,
+        ].join('\n');
+
+        const verdict = await classify(
+          anthropic,
+          impersonationPrompt,
+          [
+            { type: 'text', text: listing },
+            {
+              type: 'text',
+              text:
+                'Is it plausible that this listing is pretending to be a business it ' +
+                'is not, or is otherwise not the real thing? Weigh the report, but do ' +
+                'not treat it as evidence on its own: a competitor can file one.',
+            },
+          ],
+          ImpersonationVerdict
+        );
+        const payload = verdict
+          ? { ...verdict, engine: 'claude-impersonation', model: MODEL }
+          : {
+              impersonation_plausible: false,
+              reason: 'The model would not answer. Left for a person to look at.',
+              engine: 'claude-impersonation',
+              model: MODEL,
+            };
+        const { error: applyError } = await supabase.rpc('apply_business_scan_verdict', {
+          p_scan_id: scan.id,
+          p_verdict: payload,
+        });
+        if (applyError) {
+          throw new Error(`apply_business_scan_verdict: ${applyError.message}`);
+        }
+        if (payload.impersonation_plausible) {
+          report.scans.flagged += 1;
+        } else {
+          report.scans.cleared += 1;
+        }
+      } catch (error) {
+        if (isAuthError(error)) {
+          return Response.json(
+            { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
+            { status: 503 }
+          );
+        }
+        report.scans.failed += 1;
+        const { error: bumpError } = await supabase
+          .from('business_scans')
+          .update({ attempts: (scan.attempts ?? 0) + 1 })
+          .eq('id', scan.id);
+        report.notes.push(
+          `scan ${scan.id}: ${(error as Error).message}` +
+            (bumpError ? ` (attempts update failed: ${bumpError.message})` : '')
+        );
+      }
     }
   }
 

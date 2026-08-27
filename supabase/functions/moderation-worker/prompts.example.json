@@ -5,9 +5,12 @@
     "BLOCK/ALLOW rules would double as an evasion manual. Keep the real value",
     "in the GitHub secret MODERATION_PROMPTS (Settings -> Secrets -> Actions);",
     "the Supabase deploy workflow syncs it to the Edge Function. Each value is",
-    "a full system prompt (min 40 chars, enforced by the worker's loader)."
+    "a full system prompt (min 40 chars, enforced by the worker's loader).",
+    "The two business keys are OPTIONAL: the worker's loader requires only message, photo and verification, so deploying business code before this secret catches up pauses ONE business queue instead of stopping moderation entirely. Add them when you are ready."
   ],
   "message": "System prompt for first-message moderation on a strictly platonic travel app. Must instruct the model to return an allow/block verdict per the MessageVerdict schema, define what gets blocked (romantic/sexual advances, harassment, spam/scams, off-platform payment lures) and what stays allowed (friendly platonic plans), and say which way to lean on ambiguity.",
   "photo": "System prompt for profile/chat photo moderation (18+ app, platonic). Must instruct the model to return an allow/block verdict per the PhotoVerdict schema and define blocked imagery vs normal travel photos, including how to treat readable personal contact info.",
-  "verification": "System prompt for selfie-vs-profile-photos plausibility review. Must instruct the model to return an approve/reject verdict per the VerificationVerdict schema, with short non-accusatory user-facing reasons on reject."
+  "verification": "System prompt for selfie-vs-profile-photos plausibility review. Must instruct the model to return an approve/reject verdict per the VerificationVerdict schema, with short non-accusatory user-facing reasons on reject.",
+  "storefront": "System prompt for the business storefront check: two live photos (a wide shot from the street and a close shot of the sign) against a claimed name, category and city. Must return approve/reject/uncertain per the StorefrontVerdict schema, must treat translation, transliteration and trading names as normal rather than suspicious, must call out screenshots, photos of a screen, stock imagery and renders, and must prefer 'uncertain' over 'reject' whenever the photos are simply hard to read.",
+  "impersonation": "System prompt for the business impersonation scan, run on the first report. Given a listing's name, category, city, description, links and posts plus one report, must return impersonation_plausible per the ImpersonationVerdict schema. Must weigh the report without treating it as evidence on its own, because a competitor can file one, and must lean towards not plausible when the listing is merely thin or badly written."
 }

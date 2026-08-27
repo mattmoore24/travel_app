@@ -1,4 +1,5 @@
-// Emails whatever the in-app contact form has collected.
+// Emails whatever is waiting to go out: the in-app contact form, and the
+// business queue (confirmation codes, report alerts, verification outcomes).
 //
 // Deploy:  supabase functions deploy support-mailer
 // Schedule: pg_cron every five minutes (see the support_messages migration).
@@ -131,13 +132,13 @@ Deno.serve(async (req) => {
   if (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
-  if (!pending || pending.length === 0) {
-    return Response.json({ delivered: 0 });
-  }
 
   const report = { delivered: 0, failed: 0, notes: [] as string[] };
 
-  for (const message of pending as any[]) {
+  // Not an early return when this queue is empty: the business queue below
+  // has its own rows, and an empty contact form used to mean nothing else
+  // got sent either.
+  for (const message of (pending ?? []) as any[]) {
     const who = message.user_id ? `account ${message.user_id}` : 'a guest';
     try {
       const response = await fetch(RESEND_URL, {
@@ -205,5 +206,97 @@ Deno.serve(async (req) => {
     }
   }
 
-  return Response.json(report);
+  const mail = await drainOutboundMail(supabase, { apiKey, from, inbox });
+  return Response.json({ ...report, mail });
 });
+
+/**
+ * The second queue: public.outbound_mail.
+ *
+ * Kept as its own pass rather than folded into the loop above, because the
+ * contact form has been running against real traffic since August and a
+ * business email is not worth the risk of touching it. Same backoff, same
+ * give-up rule, same "the row is the record" posture.
+ *
+ * `to_address` NULL means the support inbox. That indirection is why the
+ * founder's own address is nowhere in the database: the destination is a
+ * secret, substituted here at send time.
+ */
+async function drainOutboundMail(
+  supabase: any,
+  config: { apiKey: string; from: string; inbox: string }
+) {
+  const { data: pending, error } = await supabase
+    .from('outbound_mail')
+    .select('id, to_address, subject, text_body, kind, created_at, delivery_attempts')
+    .is('delivered_at', null)
+    .lt('delivery_attempts', MAX_ATTEMPTS)
+    .lte('next_attempt_at', new Date().toISOString())
+    .order('created_at')
+    .limit(BATCH);
+  if (error) {
+    return { error: error.message };
+  }
+  if (!pending || pending.length === 0) {
+    return { delivered: 0 };
+  }
+
+  const report = { delivered: 0, failed: 0, notes: [] as string[] };
+
+  for (const item of pending as any[]) {
+    const to = item.to_address ?? config.inbox;
+    try {
+      const response = await fetch(RESEND_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: config.from,
+          to: [to],
+          subject: item.subject,
+          text: item.text_body,
+          html: `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(item.text_body)}</pre>`,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`resend ${response.status}: ${(await response.text()).slice(0, 300)}`);
+      }
+      const { error: markError } = await supabase
+        .from('outbound_mail')
+        .update({
+          delivered_at: new Date().toISOString(),
+          delivery_attempts: (item.delivery_attempts ?? 0) + 1,
+          delivery_error: null,
+        })
+        .eq('id', item.id);
+      if (markError) {
+        // It went out. Say so loudly: the row comes back on the next tick and
+        // somebody gets the same code twice.
+        report.notes.push(`${item.id}: sent but not marked: ${markError.message}`);
+      }
+      report.delivered += 1;
+    } catch (sendError) {
+      report.failed += 1;
+      const attempts = (item.delivery_attempts ?? 0) + 1;
+      const detail = (sendError as Error).message.slice(0, 500);
+      const wait = backoffMinutes(attempts);
+      await supabase
+        .from('outbound_mail')
+        .update({
+          delivery_attempts: attempts,
+          delivery_error: detail,
+          next_attempt_at: new Date(Date.now() + wait * 60_000).toISOString(),
+        })
+        .eq('id', item.id);
+      report.notes.push(
+        attempts >= MAX_ATTEMPTS
+          ? `${item.id} (${item.kind}): giving up after ${attempts} attempts (${detail}).`
+          : `${item.id} (${item.kind}): ${detail} — next try in ${wait}m`
+      );
+    }
+  }
+
+  return report;
+}
