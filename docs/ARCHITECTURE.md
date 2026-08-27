@@ -485,6 +485,61 @@ because a scan that could not run is not evidence, and darkening a real business
 because the classifier was down would be the app doing the damage it exists to
 prevent.
 
+### What the final audit changed (2026-08-27)
+
+Four passes over the surface before the founder's first test. The structural
+ones are recorded here because they are decisions, not tidying.
+
+**`business_detail` carries `claimed`.** A boolean, never the owner's id or
+name: the only question a traveler's screen has to answer is whether there is
+somebody on the other end of a message, and anything richer would put a person
+on an endpoint that anon can call. The four launch venues have no owner, and
+`message_business` refused them _after_ the message was typed.
+
+**An `uncertain` storefront verdict is terminal for the machine and open for a
+person.** `apply_business_verification_verdict` writes it and then refuses to
+touch the row again, which is right — it is the machine's last word — but it
+left nobody able to finish. `admin_resolve_business_verification` is
+service-role only and accepts `pending` or `uncertain`. Rejection now emails the
+business the way approval does: somebody who sent their photos and put the phone
+away has no reason to open the app again.
+
+**One question, one answer, in both places.** `is_room_moderator` gained an
+owner arm — `register_business` writes no `business_staff` row and
+`room_members_refuse_business` stops the owner ever joining, so the one person
+who runs the place could read their own room and not post in it.
+`report_business` gained the `is_business_account` refusal that `rate_business`
+and `message_business` already had; the client guard alone was never a guard,
+because the anon key ships in the app.
+
+**`is_business_account` is revoked from clients.** It was the one helper in the
+set without a revoke, so Supabase's default grant stood and PostgREST served it:
+any user id lifted off a profile page could be posted to it, and the answer is
+exactly what the column-scoped grant hiding `owner_user_id` exists to withhold.
+Every caller inside the database is SECURITY DEFINER and unaffected.
+
+**`website_url` goes through the link validator.** `business_links` funnels
+every row through `validate_business_link` — https only, no IP literals — and
+`website_url` was separately client-writable and screened only for offensive
+text. The identical string refused as a link row was accepted here and rendered
+as a tappable button on the public page. One chokepoint or none.
+
+**Deleting a business account deletes the place.** `businesses.owner_user_id` is
+ON DELETE SET NULL, so the listing outlived the account that made it — name,
+photos, posts, hours, links, ratings, chat. The Edge Function now deletes the
+row (which cascades everything keyed on `business_id`), then its chat by hand
+because that FK points the other way, and sweeps both business storage buckets.
+A claimed launch venue goes with it, which is the right answer — the content on
+it was theirs — and `seed_launch_businesses()` is idempotent, so restoring the
+bare venue is one call.
+
+**A verification photo is always taken, never chosen.** Both verification
+screens capture through `src/lib/live-camera.ts`, which never imports
+`launchImageLibraryAsync`, and a source-scanning test holds both of them plus
+the helper. The selfie screen had a library fallback for a refused camera. It
+read as a kindness and it was a hole: a selfie chosen from a camera roll proves
+only that somebody owns a picture of a face, which is what a catfish has.
+
 ## Launch hardening (Phase 6)
 
 - **Velocity caps** complement the Phase 2–5 _standing_ caps (5 active trips,

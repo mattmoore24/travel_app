@@ -3,7 +3,71 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current: **Places is built** (2026-08-27)
+## Current: **Places is built and audited** (2026-08-27)
+
+### The final audit, and what it found
+
+Four independent passes over the whole surface before the founder tests it —
+copy and voice, layout and contrast, client correctness against the migrations,
+and a walk through five user journeys. They converged, which is the useful part:
+the same handful of problems came back from passes that could not see each
+other's notes.
+
+Every finding that mattered was **silent**. The app did nothing, or it said it
+had done something it had not. That is the class of bug a green test suite
+cannot see and a screenshot cannot either.
+
+**Dead on arrival, all now fixed:**
+
+- **A business account could not open a single chat.** `chat/[id]` sat behind
+  `signedIn && onboarded`, and a business's `onboarding_completed_at` is NULL
+  forever by design. A traveler's message reached the owner's Chat tab, the
+  owner tapped it, and nothing happened. Ever. The whole inbound feature was
+  dead on the receiving end.
+- **Message was offered on the four unclaimed launch venues**, where
+  `message_business` refuses — after five hundred characters and a Send.
+  `business_detail` now returns `claimed`.
+- **An `uncertain` storefront verdict was a permanent dead end.** The writer set
+  status `uncertain`; its own guard refuses anything not `pending`. Nobody could
+  finish it, and the business sat on "someone is looking at these by hand" with
+  the retry button taken away. `admin_resolve_business_verification` is the way
+  back in.
+- **A second message to the same place was thrown away.** The RPC short-circuited
+  on the existing chat and never inserted. Success haptic, straight into a thread
+  holding only what you said last week.
+- **A post could never be taken down**, so three standing notices permanently
+  bricked an unverified place's own composer — which then told it to take one
+  down.
+- **`register_business` never set `display_name`**, so every message a place sent
+  was authored by nobody.
+- **`report_business` let a business report a rival.** One report emails support
+  and queues a Claude impersonation scan, one verdict from darkening a
+  competitor. **`is_business_account`** was the one helper with no revoke, so any
+  user id could be posted to it. **`website_url`** skipped the validator every
+  link row passes.
+- **Deleting a place's account left the listing up.** `owner_user_id` is ON
+  DELETE SET NULL, so the name, photos, posts, hours, links and chat all outlived
+  the account. 5.1.1(v) applies to a business account too.
+
+**Wrong on screen:** the place sheet could run off the bottom with nothing to
+scroll; every text field in the app had a 1.24:1 edge while `theme.border`
+existed unused and documented for exactly that; chips were 34-40pt against a 44
+floor; a place's chat was drawn as a person's, down to signing the cover photo
+against the profile bucket and linking to the owner's stub profile; nothing on
+the map said what the new markers were.
+
+**Wrong in words:** the storefront screen promised a fifteen-minute rule nothing
+enforced (it does now); a post said it appeared in the chat, which nothing does;
+"Paused" told an owner they had switched their own listing off when moderation
+had taken it down; two em dashes; "a map pin" for a commercial listing, which is
+the one word §7 rule 3 needs to keep.
+
+The audits also found the **one door** to listing a place was a ghost button
+below the fold on step 3 of traveler signup. There is one on the welcome tour
+now, and it carries through signup — finishing traveler onboarding refuses
+`register_business` permanently, so dropping somebody there was a trap.
+
+## What was built (2026-08-27)
 
 The founder gave the all clear, and phases 13 to 18 are implemented. What is on
 the branch:
@@ -55,14 +119,21 @@ depended on it.
 
 ### What the founder has to do
 
-1. **Add two keys to the `MODERATION_PROMPTS` GitHub secret**: `storefront` and
-   `impersonation`. `supabase/functions/moderation-worker/prompts.example.json`
-   documents what each has to say. Until they are there, those two queues pause
-   and say so in the worker report; everything else keeps running, which is
-   deliberate. The loader requires only the original three keys precisely so a
-   stale secret cannot take message moderation down with it.
-2. Nothing else. `RESEND_API_KEY` and `SUPPORT_INBOX` are already set, and the
-   business mail rides the same path the contact form does.
+**Nothing before testing.** `MODERATION_PROMPTS_BUSINESS` is set and synced, so
+the storefront and impersonation queues are live. `RESEND_API_KEY` and
+`SUPPORT_INBOX` were already set, and the business mail rides the same path the
+contact form does.
+
+Two things to know while testing:
+
+1. **A verification photo can never come from the library**, for a person or for
+   a place. Both screens go through `src/lib/live-camera.ts` and a
+   source-scanning test keeps them there. Refusing the camera gets an
+   explanation and an Open Settings button, not a second route.
+2. **An `uncertain` storefront verdict now waits for you**, and the founder's
+   email says exactly what to run:
+   `select public.admin_resolve_business_verification('<request id>', true);`
+   (or `false, 'reason'`). Before this it waited forever.
 
 ## Planned: **Top priorities on the profile** (2026-08-27)
 
