@@ -78,9 +78,11 @@ const ImpersonationVerdict = z.object({
 
 // The classifier instructions are deliberately NOT in this (public) source:
 // publishing the exact BLOCK/ALLOW rules would hand evaders a how-to guide.
-// They live in the MODERATION_PROMPTS function secret as JSON with keys
-// { message, photo, verification } — prompts.example.json documents the
-// shape, and the deploy workflow syncs the GitHub secret to the function.
+// They live in function secrets as JSON: MODERATION_PROMPTS carries
+// { message, photo, verification }, and MODERATION_PROMPTS_BUSINESS
+// optionally carries { storefront, impersonation }. prompts.example.json
+// documents both shapes, and the deploy workflow syncs the GitHub secrets to
+// the function.
 // Absent or malformed prompts fail CLOSED (hard rule 5): the worker refuses
 // to classify, queues hold, and admin_ops_health raises
 // oldest_held_message_minutes rather than anything auto-approving.
@@ -100,19 +102,45 @@ type ModerationPrompts = {
   impersonation?: string;
 };
 
-function loadPrompts(): ModerationPrompts | null {
-  const raw = Deno.env.get('MODERATION_PROMPTS');
+function parseJson(raw: string | undefined): Record<string, unknown> {
   if (!raw) {
-    return null;
+    return {};
   }
   try {
     const parsed = JSON.parse(raw);
-    const keys = ['message', 'photo', 'verification'] as const;
-    if (keys.every((key) => typeof parsed[key] === 'string' && parsed[key].length >= 40)) {
-      return parsed as ModerationPrompts;
-    }
+    return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
-    // fall through — malformed JSON is the same as missing
+    // Malformed JSON is the same as missing. It must not throw here: this
+    // runs at module scope, and a throw would take the whole function down
+    // rather than failing one queue closed.
+    return {};
+  }
+}
+
+/**
+ * The prompts, from one secret or two.
+ *
+ * MODERATION_PROMPTS holds the three original classifiers.
+ * MODERATION_PROMPTS_BUSINESS optionally holds the two business ones, and the
+ * split exists for one practical reason: a GitHub secret is write-only, so
+ * nobody can read the working value back to append to it. Requiring all five
+ * in one secret would mean retyping three live, tuned classifier prompts from
+ * memory to add a fourth, and getting one of them slightly wrong would quietly
+ * change how every hello in the app is screened.
+ *
+ * Either secret may carry either set; the business one wins on a clash, since
+ * it is the more specific of the two. Put all five in MODERATION_PROMPTS and
+ * this still works.
+ */
+function loadPrompts(): ModerationPrompts | null {
+  const base = parseJson(Deno.env.get('MODERATION_PROMPTS'));
+  const business = parseJson(Deno.env.get('MODERATION_PROMPTS_BUSINESS'));
+  const merged = { ...base, ...business } as Record<string, unknown>;
+  const required = ['message', 'photo', 'verification'] as const;
+  if (
+    required.every((key) => typeof merged[key] === 'string' && (merged[key] as string).length >= 40)
+  ) {
+    return merged as ModerationPrompts;
   }
   return null;
 }

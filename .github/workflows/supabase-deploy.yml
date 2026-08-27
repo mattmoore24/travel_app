@@ -10,6 +10,10 @@
 #   ANTHROPIC_API_KEY       synced to Edge Function secrets for moderation-worker
 #   MODERATION_PROMPTS      classifier system prompts (JSON) — kept out of this
 #                           public repo; see moderation-worker/prompts.example.json
+#   MODERATION_PROMPTS_BUSINESS
+#                           the two business prompts, as their own secret so the
+#                           three live ones never have to be retyped (a GitHub
+#                           secret is write-only, so it cannot be appended to)
 #
 # Two ways to run it:
 #   * Commit any change to supabase/.deploy-request (works from any branch).
@@ -44,6 +48,7 @@ jobs:
       DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       MODERATION_PROMPTS: ${{ secrets.MODERATION_PROMPTS }}
+      MODERATION_PROMPTS_BUSINESS: ${{ secrets.MODERATION_PROMPTS_BUSINESS }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       SUPPORT_INBOX: ${{ secrets.SUPPORT_INBOX }}
       SUPPORT_FROM: ${{ secrets.SUPPORT_FROM }}
@@ -140,6 +145,11 @@ jobs:
           else
             echo "::warning::MODERATION_PROMPTS repo secret is not set — the"\
               "moderation worker fails closed (queues hold) until it exists."
+          fi
+          if [ -n "$MODERATION_PROMPTS_BUSINESS" ]; then
+            npx --yes "$SUPABASE_CLI" secrets set \
+              MODERATION_PROMPTS_BUSINESS="$MODERATION_PROMPTS_BUSINESS" \
+              --project-ref "$PROJECT_REF"
           fi
 
       # Separate from the Anthropic block above so a project with a support
