@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
 import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
@@ -87,11 +87,9 @@ export default function MessagePlaceScreen() {
         onChangeText={setMessage}
         {...keyboardDoneProps}
       />
-      <View style={styles.countRow}>
-        <ThemedText type="small" themeColor="textSecondary">
-          {message.length}/{MESSAGE_MAX}
-        </ThemedText>
-      </View>
+      <ThemedText type="small" themeColor="textSecondary">
+        {message.length}/{MESSAGE_MAX}
+      </ThemedText>
 
       {risky && !blockedNotice ? (
         <ThemedView type="backgroundElement" style={styles.blockedCard}>
@@ -119,11 +117,6 @@ export default function MessagePlaceScreen() {
 }
 
 const styles = StyleSheet.create({
-  countRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   messageInput: {
     minHeight: 110,
     textAlignVertical: 'top',
