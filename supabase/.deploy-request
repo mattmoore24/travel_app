@@ -56,3 +56,11 @@
 2026-08-27 — deploy: delete-account now takes a place's listing with the account.
              businesses.owner_user_id is ON DELETE SET NULL, so the listing used to
              outlive the account that made it. No migration; the Edge Function alone.
+2026-08-27 — deploy: 20260827160000_places_polish.sql, everything the final audit
+             found on the database side. business_detail gains `claimed` (DROP first,
+             grants restated); an uncertain storefront check can be finished by a
+             person; register_business sets display_name and a rename carries it;
+             the owner is a moderator in their own room; a business cannot report a
+             rival; is_business_account is revoked from clients; website_url goes
+             through the link validator; a re-used confirmation code still relists;
+             writing to a place you have written to before actually sends.
