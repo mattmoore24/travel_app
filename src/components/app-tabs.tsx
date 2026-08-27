@@ -40,17 +40,22 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf={{ default: 'map', selected: 'map.fill' }} />
       </NativeTabs.Trigger>
 
-      {isBusiness ? (
-        <NativeTabs.Trigger name="my-business">
-          <NativeTabs.Trigger.Label>My business</NativeTabs.Trigger.Label>
-          <NativeTabs.Trigger.Icon sf={{ default: 'storefront', selected: 'storefront.fill' }} />
-        </NativeTabs.Trigger>
-      ) : (
-        <NativeTabs.Trigger name="travelers">
-          <NativeTabs.Trigger.Label>Travelers</NativeTabs.Trigger.Label>
-          <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} />
-        </NativeTabs.Trigger>
-      )}
+      {/* BOTH triggers are always declared, with `hidden` deciding which one
+          shows. expo-router builds its screen list from the triggers, so
+          conditionally omitting one changes the shape of that list between
+          renders — and the account-kind query settles AFTER the first paint.
+          `hidden` also means the route cannot be navigated to at all, which is
+          the stronger guarantee here: a business must not reach Travelers by
+          any route, deep link included. */}
+      <NativeTabs.Trigger name="travelers" hidden={isBusiness}>
+        <NativeTabs.Trigger.Label>Travelers</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="my-business" hidden={!isBusiness}>
+        <NativeTabs.Trigger.Label>My business</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'storefront', selected: 'storefront.fill' }} />
+      </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="chat">
         <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>

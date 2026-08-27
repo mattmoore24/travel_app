@@ -1,0 +1,199 @@
+import {
+  answerComparison,
+  comparisonRank,
+  comparisonsDone,
+  isOpenNow,
+  openLine,
+  startComparison,
+} from '@/features/business/vocabulary';
+import type { BusinessHourJson, MyRatingRow, RatingBucket } from '@/lib/database.types';
+
+function hour(weekday: number, opens: string, closes: string): BusinessHourJson {
+  return { weekday, opens, closes };
+}
+
+/**
+ * A clock reading, as a real date.
+ *
+ * The week of 23 August 2026 starts on a Sunday, so the day offset IS the
+ * weekday number the hour rows are keyed by, and the two can never drift.
+ * Built with the local-time constructor because `getDay()` and `getHours()`
+ * read local time, and a UTC literal would move the answer with the runner's
+ * timezone.
+ */
+function at(weekday: number, hours24: number, minutes = 0): Date {
+  return new Date(2026, 7, 23 + weekday, hours24, minutes);
+}
+
+const SUN = 0;
+const WED = 3;
+const THU = 4;
+const FRI = 5;
+const SAT = 6;
+
+describe('isOpenNow', () => {
+  const nineToFive = [hour(WED, '09:00:00', '17:00:00')];
+
+  it('is open between the hours of a normal daytime row', () => {
+    expect(isOpenNow(nineToFive, at(WED, 12))).toBe(true);
+    expect(isOpenNow(nineToFive, at(WED, 9))).toBe(true);
+  });
+
+  // Closing time is the moment it shuts, not a last minute of being open.
+  // Standing outside at 17:00 is standing outside a closed door.
+  it('is shut before it opens and at the closing time itself', () => {
+    expect(isOpenNow(nineToFive, at(WED, 8, 59))).toBe(false);
+    expect(isOpenNow(nineToFive, at(WED, 17))).toBe(false);
+  });
+
+  it('is still open at one in the morning for a bar that shuts at two', () => {
+    const fridayNight = [hour(FRI, '20:00:00', '02:00:00')];
+    expect(isOpenNow(fridayNight, at(FRI, 21))).toBe(true);
+    // The case the naive version gets wrong: it is Saturday now, and the row
+    // that keeps this place open belongs to Friday.
+    expect(isOpenNow(fridayNight, at(SAT, 1))).toBe(true);
+    expect(isOpenNow(fridayNight, at(SAT, 3))).toBe(false);
+    expect(isOpenNow(fridayNight, at(FRI, 19))).toBe(false);
+  });
+
+  // Saturday night into Sunday morning is the one that walks off the end of
+  // the week, so it exercises the wrap rather than plain subtraction.
+  it('carries a Saturday night row across into Sunday', () => {
+    const saturdayNight = [hour(SAT, '22:00:00', '04:00:00')];
+    expect(isOpenNow(saturdayNight, at(SUN, 2))).toBe(true);
+    expect(isOpenNow(saturdayNight, at(SUN, 5))).toBe(false);
+  });
+
+  // null and false are different answers and the caller branches on it: a
+  // place with no hours shows plain text, a place that is shut says so. A
+  // wrong "Open" sends somebody across a city.
+  it('says it does not know when there are no hours at all', () => {
+    expect(isOpenNow([], at(WED, 12))).toBeNull();
+  });
+
+  it('says shut, not unknown, on a weekday the place has no row for', () => {
+    expect(isOpenNow(nineToFive, at(THU, 12))).toBe(false);
+  });
+});
+
+describe('openLine', () => {
+  const nineToFive = [hour(WED, '09:00:00', '17:00:00')];
+
+  it('quotes the closing time while the place is open', () => {
+    expect(openLine(nineToFive, at(WED, 12))).toBe('Open · till 17:00');
+  });
+
+  it('quotes the opening time while the place is shut but opens later today', () => {
+    expect(openLine(nineToFive, at(WED, 8))).toBe('Closed · opens 09:00');
+  });
+
+  it('says closed today when there is no row for today to quote', () => {
+    expect(openLine(nineToFive, at(THU, 12))).toBe('Closed today');
+  });
+
+  it('says nothing at all when the hours are unknown', () => {
+    expect(openLine([], at(WED, 12))).toBeNull();
+  });
+});
+
+/** Highest score first, which is the order `my_ratings()` returns and rank reads. */
+function rated(bucket: RatingBucket, names: string[]): MyRatingRow[] {
+  return names.map((name, index) => ({
+    business_id: `${bucket}-${index}`,
+    name,
+    bucket,
+    score: 10 - index,
+  }));
+}
+
+const SIX_LOVED = rated('loved', [
+  'Casa do Bairro',
+  'Sol e Pesca',
+  'Damas',
+  'A Tasca',
+  'Park',
+  'Pensão Amor',
+]);
+
+/** Every path through the search, as four yes/no answers. */
+const ANSWER_PATHS = Array.from({ length: 16 }, (_, mask) =>
+  [0, 1, 2, 3].map((step) => ((mask >> step) & 1) === 1)
+);
+
+function walk(mine: MyRatingRow[], answers: boolean[]) {
+  let current = startComparison('loved', mine);
+  let asked = 0;
+  const seen: string[] = [];
+  while (!comparisonsDone(current, asked)) {
+    seen.push(current.against!.name);
+    current = answerComparison(current, 'loved', mine, answers[asked] ?? true);
+    asked += 1;
+  }
+  return { asked, seen, rank: comparisonRank(current), ranOut: current.against == null };
+}
+
+describe('the comparisons', () => {
+  it('asks nothing at all when there is nothing yet to compare against', () => {
+    const start = startComparison('loved', []);
+    expect(start.against).toBeNull();
+    expect(comparisonsDone(start, 0)).toBe(true);
+    // A first rating has only its bucket to go on, and the middle of the
+    // bucket is what that means. The server derives the score from it.
+    expect(comparisonRank(start)).toBe(0.5);
+  });
+
+  it('only ever offers a place from the bucket you picked', () => {
+    const mine = [
+      ...SIX_LOVED,
+      ...rated('fine', ['The Rooftop', 'Ler Devagar', 'Tasca do Chico']),
+      ...rated('not_for_me', ['The Irish Bar']),
+    ];
+    const lovedNames = SIX_LOVED.map((row) => row.name);
+    for (const answers of ANSWER_PATHS) {
+      const { seen } = walk(mine, answers);
+      // Not vacuous: a run that asked nothing would pass the loop below.
+      expect(seen.length).toBeGreaterThan(0);
+      for (const name of seen) {
+        expect(lovedNames).toContain(name);
+      }
+    }
+  });
+
+  it('runs out of places to ask about before the four-answer cap, at this size', () => {
+    for (const answers of ANSWER_PATHS) {
+      const { asked, ranOut } = walk(SIX_LOVED, answers);
+      expect(asked).toBeLessThanOrEqual(4);
+      // The window closing on its own is the healthy stop. If this ever
+      // fails, the search is being cut off mid-way and the score it hands
+      // the server is a guess rather than an answer.
+      expect(ranOut).toBe(true);
+    }
+  });
+
+  it('lands inside the bucket, whatever the answers were', () => {
+    for (const answers of ANSWER_PATHS) {
+      const { rank } = walk(SIX_LOVED, answers);
+      expect(rank).toBeGreaterThanOrEqual(0);
+      expect(rank).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('puts a place you preferred every time above one you preferred to nothing', () => {
+    const best = walk(SIX_LOVED, [true, true, true, true]).rank;
+    const worst = walk(SIX_LOVED, [false, false, false, false]).rank;
+    expect(best).toBeGreaterThan(worst);
+  });
+
+  // The backstop for a long list, where halving the window takes more than
+  // four questions. Nobody is asked a fifth.
+  it('stops at four answers even with the window still wide open', () => {
+    const wideOpen = { lo: 0, hi: 1, against: SIX_LOVED[0] };
+    expect(comparisonsDone(wideOpen, 3)).toBe(false);
+    expect(comparisonsDone(wideOpen, 4)).toBe(true);
+  });
+
+  it('stops once the window is tighter than a tenth of the bucket', () => {
+    const tight = { lo: 0.5, hi: 0.55, against: SIX_LOVED[0] };
+    expect(comparisonsDone(tight, 0)).toBe(true);
+  });
+});

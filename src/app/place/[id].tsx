@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
@@ -23,7 +22,6 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HitTarget, MaxContentWidth, Radius, Space } from '@/constants/theme';
-import { BUSINESS_PHOTO_BUCKET } from '@/features/business/api';
 import { useBusinessDetail, useRatingSummary } from '@/features/business/hooks';
 import {
   CATEGORY_ICON,
@@ -35,6 +33,7 @@ import {
   shortTime,
   weekdayLabel,
 } from '@/features/business/vocabulary';
+import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { dayLabel } from '@/features/chat/separators';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useMyChats } from '@/features/matching/hooks';
@@ -42,44 +41,11 @@ import { openInMaps } from '@/features/pins/open-in-maps';
 import { useTheme } from '@/hooks/use-theme';
 import type { BusinessHourJson, BusinessLinkJson, BusinessPostJson } from '@/lib/database.types';
 import { countOf } from '@/lib/plural';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
-
-/**
- * The signed URL's life. Shorter than the hour the profile bucket uses, so
- * the cache below has room to let go of a link before it dies.
- */
-const SIGNED_URL_TTL_SECONDS = 3000;
 
 /** 24-hour, so an event time reads next to "Open · till 2:00" as one clock. */
 const TIME = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 const HERO_RATIO = 3 / 2;
-
-/**
- * A place's photo, signed.
- *
- * `usePhotoUrl` cannot do this: it takes a path and nothing else, and signs
- * it against `profile-photos`. A business photo put through it comes back as
- * a 404 wearing a valid-looking URL. Same query shape and the same
- * sign-once-an-hour rhythm, different bucket.
- */
-function usePlacePhotoUrl(storagePath: string | null) {
-  return useQuery({
-    queryKey: ['business-photo-url', storagePath],
-    queryFn: async () => {
-      const { data, error } = await supabase.storage
-        .from(BUSINESS_PHOTO_BUCKET)
-        .createSignedUrl(storagePath!, SIGNED_URL_TTL_SECONDS);
-      if (error) {
-        throw error;
-      }
-      return data.signedUrl;
-    },
-    enabled: isSupabaseConfigured && storagePath != null,
-    staleTime: 40 * 60 * 1000,
-    gcTime: 45 * 60 * 1000,
-  });
-}
 
 function PlaceImage({
   path,
@@ -91,7 +57,7 @@ function PlaceImage({
   fallback?: ReactNode;
 }) {
   const theme = useTheme();
-  const { data: url } = usePlacePhotoUrl(path);
+  const { data: url } = useBusinessPhotoUrl(path);
   return (
     <View style={[styles.frame, { backgroundColor: theme.surfaceSunken }, style]}>
       {url ? (
@@ -118,7 +84,9 @@ function VerifiedCheck() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Verified business"
+      // "Verified place", not "verified business": travelers never see that
+      // second word, and the place sheet already says it this way.
+      accessibilityLabel="Verified place"
       accessibilityHint="What the check means"
       // 14 + 15 + 15 = 44 on a glyph that draws at 14.
       hitSlop={Math.ceil((HitTarget - 14) / 2)}

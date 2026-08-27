@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -12,17 +11,16 @@ import { Sheet, leavingSheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HitTarget, Radius, Space } from '@/constants/theme';
-import { BUSINESS_PHOTO_BUCKET } from '@/features/business/api';
 import { PlaceGlyph } from '@/features/business/business-marker';
 import { useBusinessDetail, useRatingSummary } from '@/features/business/hooks';
 import { CATEGORY_LABEL, openLine, weekdayLabel } from '@/features/business/vocabulary';
+import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useMyChats } from '@/features/matching/hooks';
 import { openInMaps } from '@/features/pins/open-in-maps';
 import { useTheme } from '@/hooks/use-theme';
 import type { BusinessPostJson } from '@/lib/database.types';
 import { countOf } from '@/lib/plural';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 /**
  * A place, opened.
@@ -60,7 +58,7 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
   const rating = useRatingSummary(businessId);
   const place = detail.data ?? null;
   const { data: chats = [] } = useMyChats();
-  const cover = usePlacePhotoUrl(place?.photos[0]?.storage_path ?? null);
+  const cover = useBusinessPhotoUrl(place?.photos[0]?.storage_path ?? null);
 
   // Every push from inside a sheet dismisses it first. The scrim outliving
   // the push is what left the map dead to touch. See components/ui/sheet.
@@ -342,36 +340,6 @@ export function PlaceSeal() {
 }
 
 const SEAL = 14;
-
-/**
- * The cover, signed.
- *
- * Its own query rather than `usePhotoUrl`, which is bound to the profile
- * bucket. Places live in their own private bucket, and a signed-out visitor
- * cannot sign anything there at all, so a missing URL is an ordinary outcome
- * and the sheet has to read without one.
- */
-function usePlacePhotoUrl(storagePath: string | null) {
-  return useQuery({
-    queryKey: ['place-photo-url', storagePath],
-    queryFn: async () => {
-      const { data, error } = await supabase.storage
-        .from(BUSINESS_PHOTO_BUCKET)
-        .createSignedUrl(storagePath!, SIGNED_URL_TTL_SECONDS);
-      if (error) {
-        throw error;
-      }
-      return data.signedUrl;
-    },
-    enabled: isSupabaseConfigured && storagePath != null,
-    // Both under the hour the URL is good for, so a cached one cannot be
-    // handed out after it has expired.
-    staleTime: 50 * 60 * 1000,
-    gcTime: 55 * 60 * 1000,
-  });
-}
-
-const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 /**
  * What is on, if anything: the first post that has not finished yet.
