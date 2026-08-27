@@ -173,8 +173,16 @@ function RootNavigator() {
       </Stack.Protected>
       {/* Reachable from every sign-up gate, signed in or not. */}
       <Stack.Screen name="(auth)" />
-      {/* Establishment rooms are readable signed-out (the hostel's public
-          preview), so this sits outside the guards like guidelines does. */}
+      {/* A place's page is readable signed-out for the same reason a business
+          room is: the map is the front door, and a visitor who taps a marker
+          must land somewhere real rather than on a sign-up wall. Every ACTION
+          on it still asks for an account at the moment it is taken. */}
+      <Stack.Screen
+        name="place/[id]"
+        options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+      />
+      {/* Business rooms are readable signed-out (the public preview), so this
+          sits outside the guards like guidelines does. */}
       <Stack.Screen
         name="room/[id]"
         options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
@@ -191,6 +199,15 @@ function RootNavigator() {
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
         <Stack.Screen name="edit-prompt" options={{ presentation: 'modal' }} />
         <Stack.Screen name="edit-priorities" options={{ presentation: 'modal' }} />
+        {/* Everything a traveler DOES with a place needs an account, which is
+            why these are inside the guard while the page itself is not. */}
+        <Stack.Screen name="join-place" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="message-place" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="rate-place" options={{ presentation: 'modal' }} />
+        {/* Reporting needs a session and not a profile, like the traveler
+            report screen below, but a business account must not be able to
+            report a rival, and the DB refuses that rather than this guard. */}
+        <Stack.Screen name="report-place" options={{ presentation: 'modal' }} />
         <Stack.Screen name="verification" options={{ presentation: 'modal' }} />
         <Stack.Screen name="visibility" options={{ presentation: 'modal' }} />
         <Stack.Screen name="add-trip" options={{ presentation: 'modal' }} />
@@ -213,6 +230,19 @@ function RootNavigator() {
           name="archived-chats"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
+      </Stack.Protected>
+      {/* The business side. `business-signup` is deliberately OUTSIDE the
+          onboarded guard: the whole point is that it is reached by an account
+          that has NOT finished a traveler profile, and putting it behind that
+          guard would make it unreachable by exactly the people it is for.
+          The rest is guarded on being signed in, because register_business
+          has already run by then. */}
+      <Stack.Protected guard={signedIn}>
+        <Stack.Screen name="business-signup" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="business-email" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="business-storefront" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="business-edit" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="business-post" options={{ presentation: 'modal' }} />
       </Stack.Protected>
       {/* Outside every guard so it's readable BEFORE sign-up (the welcome
           screen links to it) and from the profile tab after — but declared

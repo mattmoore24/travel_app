@@ -21,6 +21,7 @@ import { platformLabel, usesAt } from '@/features/profile/social-handles-editor'
 import { SocialLogo } from '@/features/profile/social-logo';
 import { formatDateRange } from '@/features/trips/dates';
 import { TripEditor, type EditableTrip } from '@/features/trips/trip-editor';
+import { TopRatedShelf } from '@/features/business/top-rated-shelf';
 import { MAX_PRIORITIES } from '@/features/profile/priorities';
 import { MAX_PROMPTS, promptLabel, promptLabelInline } from '@/features/profile/prompts';
 import { useTheme } from '@/hooks/use-theme';
@@ -963,6 +964,15 @@ export function ProfileView({
               onRespondTo={onRespondTo}
             />
           ) : null}
+
+          {/* Been, against want. The shelf sits below the plans deliberately:
+              where somebody has been is context, and what they want to do is
+              the thing another traveler can say yes to. It renders nothing at
+              all when the list is empty. */}
+          <TopRatedShelf
+            userId={profile.user_id}
+            cityId={overlapTrip?.cityId ?? trips[0]?.cityId ?? null}
+          />
 
           {woven[2] ? <WovenPhoto photo={woven[2]} index={2} onRespondTo={onRespondTo} /> : null}
 

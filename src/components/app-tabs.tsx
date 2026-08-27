@@ -2,11 +2,19 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useColorScheme } from 'react-native';
 
 import { Colors } from '@/constants/theme';
+import { useOwnBusiness } from '@/features/business/hooks';
 import { useWaitingCount } from '@/features/matching/hooks';
 
 // Three tabs, in the order people use them (docs/DESIGN.md). Profile lives
 // behind the avatar in the Map/Travelers headers, which buys the third slot
 // for Chat — now carrying direct chats, hellos and business rooms.
+//
+// A business account gets the same three slots with the middle one swapped:
+// Travelers becomes My business. That is not a cosmetic choice. Travelers is
+// the discovery queue, and §7 rule 8 says a business never reads a traveler
+// discovery surface, so the tab is not merely useless to a business, it is a
+// door that must not exist for them. The DB refuses the reads underneath it
+// too; this is the door, not the lock.
 //
 // iOS-first: icons are SF Symbols, and NativeTabs renders the real iOS 26
 // Liquid Glass tab bar. Android drawables come with the Android release.
@@ -18,6 +26,7 @@ export default function AppTabs() {
   // nothing the app wants. A red dot that has cried wolf once is a red dot
   // people learn to ignore, and then real messages go unanswered.
   const waiting = useWaitingCount();
+  const isBusiness = useOwnBusiness().data != null;
 
   // Untinted system glass — HIG: never paint the tab bar's background; the
   // accent lives only on the selected item.
@@ -31,10 +40,17 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf={{ default: 'map', selected: 'map.fill' }} />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="travelers">
-        <NativeTabs.Trigger.Label>Travelers</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} />
-      </NativeTabs.Trigger>
+      {isBusiness ? (
+        <NativeTabs.Trigger name="my-business">
+          <NativeTabs.Trigger.Label>My business</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Icon sf={{ default: 'storefront', selected: 'storefront.fill' }} />
+        </NativeTabs.Trigger>
+      ) : (
+        <NativeTabs.Trigger name="travelers">
+          <NativeTabs.Trigger.Label>Travelers</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} />
+        </NativeTabs.Trigger>
+      )}
 
       <NativeTabs.Trigger name="chat">
         <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>

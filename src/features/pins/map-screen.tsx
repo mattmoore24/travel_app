@@ -31,6 +31,9 @@ import {
   Spacing,
 } from '@/constants/theme';
 import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
+import { BusinessMarker } from '@/features/business/business-marker';
+import { useCityBusinesses } from '@/features/business/hooks';
+import { PlaceSheet } from '@/features/business/place-sheet';
 import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
 import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { AudienceChip } from '@/features/pins/audience-chip';
@@ -524,6 +527,10 @@ export default function MapScreen() {
   // user id, so this falls back to 'everyone' for them.
   const { data: audience = 'everyone' } = useOwnVisibility();
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
+  // Places are the third marker family, and they are quiet on purpose:
+  // people stack on top of places, which is the right sentence for this app.
+  const { data: places = [] } = useCityBusinesses(activeCityId);
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   // Every other gate in the app states its reason before it asks. Dropping a
   // pin was the one that did not: it teleported a guest to an email form with
   // no explanation of what had just happened to them.
@@ -772,6 +779,31 @@ export default function MapScreen() {
             />
           ) : null}
 
+          {/* Declared FIRST so places sit beneath every traveler pin. Two
+              things are doing that work: MapKit honours declaration order for
+              equal zIndex, and BusinessMarker sets a lower one explicitly.
+              Only past city scale, so the city view stays about travelers -
+              which is also what Apple's own POI labels do. */}
+          {!cityScale && !placing
+            ? places.map((place) => (
+                <BusinessMarker
+                  key={place.id}
+                  business={place}
+                  onPress={() => {
+                    if (place.id === selectedPlaceId) {
+                      return;
+                    }
+                    haptics.light();
+                    // One card at a time. A place sheet and a pin card open on
+                    // the same corner of the screen.
+                    setSelectedPinId(null);
+                    setVenueKey(null);
+                    setSelectedPlaceId(place.id);
+                  }}
+                />
+              ))
+            : null}
+
           {!cityScale &&
             clusters
               .filter((cluster) => cluster.pins.length > 1)
@@ -786,6 +818,7 @@ export default function MapScreen() {
                     }
                     haptics.light();
                     setSelectedPinId(null);
+                    setSelectedPlaceId(null);
                     setVenueKey(cluster.key);
                   }}
                 />
@@ -806,6 +839,7 @@ export default function MapScreen() {
                     }
                     haptics.light();
                     setVenueKey(null);
+                    setSelectedPlaceId(null);
                     setSelectedPinId(pin.id);
                     // Nudge the camera so the pin stays visible above the sheet.
                     const delta = lastRegion.current?.latitudeDelta ?? 0.05;
@@ -1280,6 +1314,13 @@ export default function MapScreen() {
             />
           )}
         </Sheet>
+      ) : null}
+
+      {/* Same non-modal treatment as the pin card, and for the same reason:
+          a place card is a card ABOUT the map, so tapping another marker
+          swaps it in place rather than making you dismiss this one first. */}
+      {mode === 'browse' && selectedPlaceId ? (
+        <PlaceSheet businessId={selectedPlaceId} onClose={() => setSelectedPlaceId(null)} />
       ) : null}
 
       {/* The map is not a StepScreen, so it mounts its own. The pin search

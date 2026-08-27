@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -106,6 +107,25 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
     />
   );
 
+  // The fork, and it can only live here.
+  //
+  // A business account is one whose `onboarding_completed_at` stays NULL
+  // forever, so the offer has to be made BEFORE that stamp exists, which
+  // means before this flow finishes. Every other surface in the app is on the
+  // far side of it. Step 3 rather than a later one because somebody who runs
+  // a bar should not have to type their own age first to find out they were
+  // in the wrong flow.
+  const businessFooter = (
+    <>
+      <PrimaryButton
+        variant="ghost"
+        label="Run a business? Put it on the map."
+        onPress={() => router.push('/business-signup')}
+      />
+      {signOutFooter}
+    </>
+  );
+
   if (step === 3) {
     return (
       <StepShell
@@ -117,7 +137,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         // fields touched, which is what shows the person WHY it will not go
         // through. A disabled button just sits there.
         continueLoading={updateProfile.isPending}
-        footer={signOutFooter}
+        footer={businessFooter}
         onContinue={() => {
           setTouched(true);
           if (!basicsOk) {

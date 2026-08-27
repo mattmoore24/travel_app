@@ -3,6 +3,64 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **Places is built** (2026-08-27)
+
+The founder gave the all clear, and phases 13 to 18 are implemented. What is on
+the branch:
+
+- **Phase 13, identity and the rename.** `establishments` is `businesses`, all
+  eight dependent functions recreated in the same migration (a function body is
+  stored as TEXT and `ALTER TABLE ... RENAME` does not rewrite it, so a bare
+  rename fails at runtime with a green deploy). `city_rooms` and `join_room`
+  keep their names because shipped iOS builds call them over the wire. §7 rule 8
+  is six BEFORE INSERT triggers. Routing gets the guest bug's sequel before it
+  happens: a business's `onboarding_completed_at` is null forever by design.
+- **Phase 14, the public surface.** Photos, links, hours and posts, all hanging
+  off one `is_visible_business` predicate, so a dark listing takes its content
+  with it. Posts expire when the business says, including never; the live-post
+  cap bounds the surface instead, and an unverified business gets three rather
+  than ten. Links are the one chokepoint a URL can enter through, so the scheme
+  allowlist lives in that trigger.
+- **Phase 15, listing and the badge.** A six-digit code lights the listing up
+  and grants no badge. Two live camera shots of the storefront earn the badge.
+  Renaming or moving clears it. The first report emails `SUPPORT_INBOX` and
+  queues a Claude read of the whole listing.
+- **Phase 16, inbound messages.** Straight through on a clean prefilter verdict,
+  no accept step, no romance classifier. `kind = 'business'` is what keeps the
+  handle gate shut in both directions.
+- **Phase 18, ratings.** Buckets, head-to-head comparisons, a score derived from
+  where it lands, no text anywhere, public number only past five raters.
+- **Phase 17, the business side**, and the traveler screens for all of the
+  above.
+
+**643 pgTAP assertions.** The client gate runs on every commit.
+
+### Two honest corrections
+
+**The selfie screen is not camera-only.** `docs/BUSINESS_ACCOUNTS.md` §3.9 said
+the storefront check would enforce "the same rule the selfie screen already
+enforces". It does not: `src/app/verification.tsx` falls back to
+`launchImageLibraryAsync` on web or when camera permission is denied. The
+storefront flow is written camera-only from scratch, and the selfie screen's
+fallback is left alone for now because tightening it is a separate decision
+about a shipped flow.
+
+**`business_chats` is not built.** Decision 12 is one chat per business at v1,
+which `businesses.chat_id` already models exactly. The separate table only earns
+its place alongside multi-room, which §10 defers. Nothing else in the plan
+depended on it.
+
+### What the founder has to do
+
+1. **Add two keys to the `MODERATION_PROMPTS` GitHub secret**: `storefront` and
+   `impersonation`. `supabase/functions/moderation-worker/prompts.example.json`
+   documents what each has to say. Until they are there, those two queues pause
+   and say so in the worker report; everything else keeps running, which is
+   deliberate. The loader requires only the original three keys precisely so a
+   stale secret cannot take message moderation down with it.
+2. Nothing else. `RESEND_API_KEY` and `SUPPORT_INBOX` are already set, and the
+   business mail rides the same path the contact form does.
+
 ## Planned: **Top priorities on the profile** (2026-08-27)
 
 Founder request, deliberately separate from the business work: up to six very

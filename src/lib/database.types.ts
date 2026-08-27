@@ -216,6 +216,134 @@ export type MyBusinessRow = BusinessRow & {
   state: BusinessState;
 };
 
+/** business_link_kind. What a link is FOR, which decides its icon and its label. */
+export type BusinessLinkKind =
+  | 'website'
+  | 'reservations'
+  | 'tickets'
+  | 'menu'
+  | 'phone'
+  | 'email'
+  | 'whatsapp'
+  | 'instagram'
+  | 'tiktok'
+  | 'facebook'
+  | 'x'
+  | 'other';
+
+/** city_businesses() — one marker on the map. */
+export type CityBusinessRow = {
+  id: string;
+  chat_id: string | null;
+  name: string;
+  category: BusinessCategory;
+  lat: number;
+  lng: number;
+  verified: boolean;
+  cover_path: string | null;
+  /** Something on tonight. Earns a brighter ring, never a bigger marker. */
+  has_live_post: boolean;
+  member_count: number;
+};
+
+export type BusinessPhotoJson = { id: string; storage_path: string };
+export type BusinessLinkJson = {
+  id: string;
+  kind: BusinessLinkKind;
+  label: string;
+  value: string;
+};
+/** `opens`/`closes` are 'HH:MM:SS'. closes < opens means past midnight. */
+export type BusinessHourJson = { weekday: number; opens: string; closes: string };
+export type BusinessPostJson = {
+  id: string;
+  title: string;
+  body: string | null;
+  photo_path: string | null;
+  happens_at: string | null;
+  ends_at: string | null;
+};
+
+/** business_detail() — one place's whole page, in one round trip. */
+export type BusinessDetailRow = {
+  id: string;
+  chat_id: string | null;
+  city_id: number;
+  name: string;
+  category: BusinessCategory;
+  description: string | null;
+  place_label: string | null;
+  hours_note: string | null;
+  website_url: string | null;
+  lat: number;
+  lng: number;
+  verified: boolean;
+  member_count: number;
+  photos: BusinessPhotoJson[];
+  links: BusinessLinkJson[];
+  hours: BusinessHourJson[];
+  posts: BusinessPostJson[];
+};
+
+export type BusinessVerificationStatus = 'pending' | 'approved' | 'rejected' | 'uncertain';
+
+/** The columns the owner is granted. `verdict` and the paths are not among them. */
+export const BUSINESS_VERIFICATION_COLUMNS =
+  'id, business_id, status, reason, created_at, reviewed_at';
+
+export type BusinessVerificationRow = {
+  id: string;
+  business_id: string;
+  status: BusinessVerificationStatus;
+  reason: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+};
+
+export type BusinessReportReason =
+  | 'not_a_real_place'
+  | 'permanently_closed'
+  | 'not_this_business'
+  | 'wrong_location'
+  | 'spam_or_offensive';
+
+export type RatingBucket = 'not_for_me' | 'fine' | 'loved';
+
+export type RatingTag =
+  | 'good_for_meeting_people'
+  | 'cheap'
+  | 'quiet'
+  | 'lively'
+  | 'late'
+  | 'good_coffee'
+  | 'worth_the_trip';
+
+/** my_ratings() — the caller's own ranked list, which the comparisons walk. */
+export type MyRatingRow = {
+  business_id: string;
+  name: string;
+  bucket: RatingBucket;
+  score: number;
+};
+
+/**
+ * business_rating_summary() — `average` and `top_tags` are NULL below five
+ * raters, and that is the server's decision rather than the client's.
+ */
+export type RatingSummaryRow = {
+  average: number | null;
+  rater_count: number;
+  top_tags: RatingTag[] | null;
+};
+
+/** top_rated_by() — somebody's best places, for the shelf on their profile. */
+export type TopRatedRow = {
+  business_id: string;
+  name: string;
+  category: BusinessCategory;
+  score: number;
+};
+
 /**
  * city_rooms() — business rooms in a city.
  *
@@ -571,6 +699,101 @@ export type Database = {
         >;
         Relationships: [];
       };
+      business_photos: {
+        Row: {
+          id: string;
+          business_id: string;
+          storage_path: string;
+          position: number;
+          moderation_status: 'pending' | 'approved' | 'rejected';
+          created_at: string;
+        };
+        Insert: { business_id: string; storage_path: string; position: number };
+        Update: { position?: number };
+        Relationships: [];
+      };
+      business_links: {
+        Row: {
+          id: string;
+          business_id: string;
+          kind: BusinessLinkKind;
+          label: string;
+          value: string;
+          position: number;
+          created_at: string;
+        };
+        Insert: {
+          business_id: string;
+          kind: BusinessLinkKind;
+          label: string;
+          value: string;
+          position?: number;
+        };
+        Update: {
+          kind?: BusinessLinkKind;
+          label?: string;
+          value?: string;
+          position?: number;
+        };
+        Relationships: [];
+      };
+      business_hours: {
+        Row: {
+          id: string;
+          business_id: string;
+          weekday: number;
+          opens: string;
+          closes: string;
+          position: number;
+        };
+        Insert: {
+          business_id: string;
+          weekday: number;
+          opens: string;
+          closes: string;
+          position?: number;
+        };
+        Update: { weekday?: number; opens?: string; closes?: string; position?: number };
+        Relationships: [];
+      };
+      business_posts: {
+        Row: {
+          id: string;
+          business_id: string;
+          title: string;
+          body: string | null;
+          photo_path: string | null;
+          happens_at: string | null;
+          ends_at: string | null;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          business_id: string;
+          title: string;
+          body?: string | null;
+          photo_path?: string | null;
+          happens_at?: string | null;
+          ends_at?: string | null;
+        };
+        Update: {
+          title?: string;
+          body?: string | null;
+          happens_at?: string | null;
+          ends_at?: string | null;
+          archived_at?: string | null;
+        };
+        Relationships: [];
+      };
+      business_verifications: {
+        Row: BusinessVerificationRow;
+        // submit_business_verification owns this path: it checks both objects
+        // exist in storage before it opens a row.
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
       profile_priorities: {
         Row: ProfilePriorityRow;
         Insert: {
@@ -895,6 +1118,59 @@ export type Database = {
       my_business: {
         Args: Record<string, never>;
         Returns: MyBusinessRow[];
+      };
+      city_businesses: {
+        Args: { p_city_id: number };
+        Returns: CityBusinessRow[];
+      };
+      business_detail: {
+        Args: { p_business_id: string };
+        Returns: BusinessDetailRow[];
+      };
+      request_business_email_confirmation: {
+        Args: { p_email: string };
+        Returns: undefined;
+      };
+      confirm_business_email: {
+        Args: { p_code: string };
+        Returns: { confirmed: boolean };
+      };
+      submit_business_verification: {
+        Args: { p_wide_path: string; p_close_path: string };
+        Returns: { request_id: string; status: string };
+      };
+      report_business: {
+        Args: {
+          p_business_id: string;
+          p_reason: BusinessReportReason;
+          p_note?: string | null;
+        };
+        Returns: undefined;
+      };
+      message_business: {
+        Args: { p_business_id: string; p_first_message: string };
+        Returns: { chat_id?: string; blocked: boolean; existing?: boolean };
+      };
+      rate_business: {
+        Args: {
+          p_business_id: string;
+          p_bucket: RatingBucket;
+          p_rank: number;
+          p_tags?: RatingTag[];
+        };
+        Returns: { score: number };
+      };
+      my_ratings: {
+        Args: { p_category: BusinessCategory };
+        Returns: MyRatingRow[];
+      };
+      business_rating_summary: {
+        Args: { p_business_id: string };
+        Returns: RatingSummaryRow[];
+      };
+      top_rated_by: {
+        Args: { p_user_id: string; p_city_id?: number | null };
+        Returns: TopRatedRow[];
       };
       daily_spotlight: {
         Args: Record<string, never>;

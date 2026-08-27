@@ -201,6 +201,32 @@ export default function ProfileScreen() {
                 label="House rules and help"
                 onPress={() => router.push('/guidelines')}
               />
+              {/* Without this the answer is a dead end. A business is its own
+                  account by design (decision 5), and register_business refuses
+                  an account that has already finished a traveler profile, so
+                  somebody who onboarded first and THEN wants to list their bar
+                  has no route at all from inside the app. Saying it plainly and
+                  offering the one step that works beats leaving them to guess
+                  that signing out is the answer. */}
+              <PrimaryButton
+                variant="ghost"
+                label="Run a business?"
+                onPress={() =>
+                  Alert.alert(
+                    'A place gets its own account',
+                    "Yours is a traveler account, and the two work differently, so a place needs one of its own. It's free. Sign out, make a new account, and the offer is on the first screen.",
+                    [
+                      { text: 'Not now', style: 'cancel' },
+                      {
+                        text: 'Sign out',
+                        onPress: () => {
+                          signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
+                        },
+                      },
+                    ]
+                  )
+                }
+              />
               <PrimaryButton
                 variant="ghost"
                 label="Sign out"

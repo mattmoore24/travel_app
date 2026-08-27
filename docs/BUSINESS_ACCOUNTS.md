@@ -376,9 +376,19 @@ searching. It costs the honest business twenty extra seconds.
 
 Mechanically, and all of it mirrors the selfie flow:
 
-- **Camera only. The photo library is never offered** — the same rule the selfie
-  screen already enforces, and the single most important line in this section,
-  because a library picker turns the whole check into a search-and-download.
+- **Camera only. The photo library is never offered.** The single most
+  important line in this section, because a library picker turns the whole
+  check into a search-and-download.
+
+  **Correction, 2026-08-27:** an earlier draft of this line said "the same rule
+  the selfie screen already enforces". That was wrong. `src/app/verification.tsx`
+  falls back to `launchImageLibraryAsync` whenever the platform is web or camera
+  permission is denied. The storefront flow is therefore written camera-only from
+  scratch rather than copied, and if permission is refused it explains how to
+  turn it on rather than offering a second route. Whether to tighten the selfie
+  screen the same way is a separate decision about a shipped flow, and is not
+  taken here.
+
 - Both shots captured in one screen session, server-stamped, and **refused if
   more than 15 minutes apart**.
 - Uploaded to the private `business-photos` bucket under a
@@ -823,6 +833,19 @@ reasoning, because a decision without its reasoning gets re-litigated.
 **§7 rules 3, 4, 5 and proposed rule 8: signed by the founder, 2026-08-27**, as
 recommended. They go into `docs/PRODUCT_BRIEF.md` §7 in phase 13, in the wording
 quoted in §2 of this document.
+
+**Built, 2026-08-27, with two deliberate departures from this document:**
+
+- **`business_chats` is not built.** Decision 12 is one chat per business at v1,
+  which `businesses.chat_id` already models exactly, so the separate table and
+  its backfill would have been schema churn with no behaviour behind it. It
+  earns its place alongside multi-room, which §10 defers. Nothing else in the
+  plan depended on it, and every function that would have read it reads
+  `chat_id` instead.
+- **The confirmation is a six-digit code, not a tappable link.** Functionally
+  identical - both prove somebody reads that inbox - and a code needs no
+  deep-link handling, no associated-domain entitlement and no native build, so
+  it ships over the air today. It also survives mail clients that rewrite links.
 
 **Settled by the first pass:** posts expire when the business says (including
 never) · "Run a business? Put it on the map." · "My business" · the category

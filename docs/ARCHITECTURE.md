@@ -409,6 +409,82 @@ membership is fixed by index in `scripts/demo-travelers.json`:
 test those from a Denpasar trip. This is a property of the demo roster, not of the
 feature.
 
+## Places: business accounts (Phases 13-18)
+
+Full design in [`BUSINESS_ACCOUNTS.md`](BUSINESS_ACCOUNTS.md). The shape, for
+somebody reading the schema cold:
+
+**A business account is an ordinary auth user whose `profiles.onboarding_completed_at`
+stays NULL forever.** That one fact is the keystone. The stamp is what makes
+somebody a discoverable traveler, so an account that never gets it can never be
+matched, spotlit, queued or pinned, and every discovery function built on
+completed profiles excludes them without knowing they exist. Everything else is
+belt and braces on top of it.
+
+`establishments` became `businesses` in `20260827100000`. Eight functions named
+the old table and all eight were recreated in the same migration, because a
+function body is stored as TEXT and `ALTER TABLE ... RENAME` does not rewrite
+it: a bare rename produces a green deploy and a broken app. `city_rooms` and
+`join_room` keep their names, because shipped iOS builds call them over the wire
+and a binary does not update over the air.
+
+| table                          | what it holds                                                  |
+| ------------------------------ | -------------------------------------------------------------- |
+| `businesses`                   | the listing. `state` and `verified_at` are ORTHOGONAL          |
+| `business_staff`               | who moderates the room, no expiry                              |
+| `business_photos`              | private bucket `business-photos`, cover is position 0          |
+| `business_links`               | the one chokepoint a URL can enter through                     |
+| `business_hours`               | rows, not a grid: two rows is a split shift                    |
+| `business_posts`               | expiry chosen by the business, including never                 |
+| `business_email_confirmations` | the six-digit code. No client grants at all                    |
+| `business_verifications`       | the two storefront shots. Evidence, never rendered             |
+| `business_reports`             | one voice per account, enforced by a partial unique index      |
+| `business_scans`               | the impersonation queue, one scan a day per business           |
+| `business_ratings`             | Beli-style. No text anywhere                                   |
+| `outbound_mail`                | queued email; `to_address` NULL means the SUPPORT_INBOX secret |
+
+**`state` is permission to appear; `verified_at` is a badge.** Confirming the
+email moves a listing from `unconfirmed` to `listed` and grants no check mark,
+because a link click proves an inbox exists and nothing more. Two live camera
+shots of the premises, judged the way a selfie is, are what set `verified_at`.
+Renaming or moving clears the badge and drops the listing back to `unconfirmed`,
+which is the one attack a confirmation step genuinely stops.
+
+**One predicate decides all visibility**: `is_visible_business(id)` is
+`active and state = 'listed'`, and every content table's SELECT policy reads it,
+so a listing that goes dark takes its photos, links, hours and posts with it.
+The people-side equivalent is `is_visible_owner`, and the discipline is the
+same: one place to change, one place to test.
+
+**Column-scoped grants, not full-row.** `owner_user_id`, `state` and the raw
+`verified_at` have no client grant at all; `verified` is a generated boolean so
+the badge renders without the timestamp ever reaching a client. That has a
+consequence worth knowing before you debug it: Postgres requires SELECT on every
+column a statement NAMES, including in a WHERE, so even the owner cannot filter
+by `owner_user_id`. RLS does the scoping instead, and `my_business()` is the one
+RPC that answers "am I a business, and which one".
+
+**§7 rule 8 is six BEFORE INSERT triggers** on trips, pins, message_requests,
+verification_requests, profile_photos and room_members, plus `register_business`
+refusing an account that has already finished a traveler profile. In the
+database rather than the client, because the client is a thing somebody can
+replace, and because this is what stops a venue scraping who is in town.
+
+**A business chat is `kind = 'business'`, and that is not a label.**
+`has_accepted_chat` requires `kind = 'direct'`, so that one enum value is what
+makes "a chat with a business never unlocks anybody's personal handles, in
+either direction" true rather than merely promised.
+
+**Two worker branches**, inside the existing moderation-worker: the storefront
+check and the impersonation scan. Their prompt keys are OPTIONAL in
+`loadPrompts`, which is load-bearing rather than lazy: the loader returns null
+unless every REQUIRED key is present, and a null stops all four original queues,
+so making these required would let a stale secret take message moderation down.
+The impersonation scan is also the one branch in that worker that fails OPEN,
+because a scan that could not run is not evidence, and darkening a real business
+because the classifier was down would be the app doing the damage it exists to
+prevent.
+
 ## Launch hardening (Phase 6)
 
 - **Velocity caps** complement the Phase 2–5 _standing_ caps (5 active trips,
