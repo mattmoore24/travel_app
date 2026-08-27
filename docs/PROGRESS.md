@@ -3,6 +3,26 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Planned: **Phase 13-17 — business accounts ("Places")** (2026-08-27)
+
+The founder asked for business accounts: a persistent place on the map with
+photos, hours, links, posts, and one open chat anyone can join; inbound DMs
+with no matching; three speaking modes; departure+3d / 90d membership; the
+whole thing replacing the hostel-room dynamic. The full plan is
+**docs/BUSINESS_ACCOUNTS.md** - researched across five lenses, then
+adversarially reviewed by three critics whose findings (a departure-date leak
+through group_members, anti-scraping refusals with no migration to live in, a
+dropped RPC that would break deployed clients' Join button) are folded in.
+
+Headline findings: the chat spec is closer to built than it reads
+(room_members already carries roles, departure dates and the expiry sweep;
+groups.speaking is two of the three modes); the genuinely new surface is the
+business identity, verification against impersonation, and two §7 amendments.
+
+**Blocked on the founder**: §7 amendments for rules 3 and 4, the rule 5
+restatement, proposed rule 8, and decisions 1-21 in the plan's §9. Nothing is
+implemented until those are signed.
+
 ## Current status: **Phase 12 — the founder's second review batch** (2026-08-23)
 
 ### Phase 12 — what the founder asked for after testing on the phone
