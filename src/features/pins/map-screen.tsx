@@ -532,7 +532,6 @@ export default function MapScreen() {
   const { data: places = [] } = useCityBusinesses(activeCityId);
   // One at a time. Two chips stacked over a map is furniture, so the places
   // one waits until the heat one has been read and dismissed.
-  const placesLegend = usePlacesLegend(places.length > 0 && !legend.visible);
   // A place is not a traveler and may not drop a 72-hour pin (§7 rule 8, six
   // BEFORE INSERT triggers). Without this the owner filled in the whole pin
   // form and was refused by a raw database alert at the end of it.
@@ -550,6 +549,11 @@ export default function MapScreen() {
   // the region ref because it has to repaint — but it only ever changes when
   // the threshold is crossed, not on every frame of a pinch.
   const [cityScale, setCityScale] = useState(false);
+  // `!cityScale` matters as much as the count: place markers are only drawn
+  // past city scale, so without it the chip invited somebody to "tap a place"
+  // on a map showing none — the app contradicting itself, which is the whole
+  // reason the legend exists.
+  const placesLegend = usePlacesLegend(!cityScale && places.length > 0 && !legend.visible);
 
   // The drop-a-pin flow lives on this map, not a separate screen: browse →
   // place (map pans under a fixed pin) → detail (form sheet over the map).

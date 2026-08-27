@@ -119,11 +119,19 @@ export function BusinessMarker({
     <Marker
       coordinate={{ latitude: business.lat, longitude: business.lng }}
       anchor={CHIP_ANCHOR}
-      // Beneath every traveler pin, in both senses. `zIndex` orders the draw;
-      // `low` lets MapKit drop a place first when a corner is crowded, which
-      // is the right thing to lose.
+      // Beneath every traveler pin. `zIndex` plus declaration order is what
+      // does that, and it is ALL that should: layering is a drawing question.
+      //
+      // NOT displayPriority="low", which is what shipped and which meant no
+      // place was ever drawn at all. That prop is MapKit's DECLUTTERING
+      // control, it defaults to 'required', and 'low' means "hide this
+      // whenever it would collide with anything higher". Every traveler pin
+      // is higher, and so is every one of Apple's own POI labels — which this
+      // map deliberately keeps, at the founder's request, and which blanket a
+      // city. So every chip lost every collision, everywhere, and a
+      // decluttered annotation leaves the accessibility tree with it, which
+      // is why the simulator suite could not tap one either.
       zIndex={0}
-      displayPriority="low"
       tracksViewChanges={tracking}
       accessibilityRole="button"
       // Never "business": that word is back-office only. And "something on"
