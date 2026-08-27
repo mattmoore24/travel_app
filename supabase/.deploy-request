@@ -50,3 +50,6 @@
              And add the `storefront` and `impersonation` keys to the
              MODERATION_PROMPTS secret (prompts.example.json documents them) — until
              then those two queues pause and everything else keeps running.
+2026-08-27 — deploy: sync MODERATION_PROMPTS_BUSINESS to the moderation-worker. The
+             founder added the secret; the storefront and impersonation queues stay
+             paused until the function actually holds it. No migration in this run.
