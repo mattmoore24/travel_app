@@ -57,7 +57,7 @@ begin
       values (
         v_row.id,
         'Come and say hello',
-        'The chat is open to anyone passing through. Ask us anything about the city.'
+        'The chat here is open to anyone passing through. Swap plans with whoever is around.'
       );
     end if;
   end loop;

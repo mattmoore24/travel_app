@@ -56,10 +56,18 @@ export function FormTextField({
               color: theme.text,
               backgroundColor: theme.backgroundElement,
               fontFamily: Fonts?.sans,
+              // A visible edge, from the token that exists for exactly this:
+              // theme.ts calls `border` "input outlines and anything whose
+              // edge a user must see — 3.4:1". The field's fill measures
+              // 1.24:1 against the page, so without a stroke the boundary of
+              // every text box in the app was below the 3:1 floor for a
+              // control edge and simply not visible in bright light.
+              borderWidth: 1,
+              borderColor: theme.border,
             },
             // Room for the eye, so a long password does not run underneath it.
             showToggle && styles.inputWithToggle,
-            error != null && { borderWidth: 1, borderColor: theme.danger },
+            error != null && { borderColor: theme.danger },
             style,
           ]}
           {...rest}

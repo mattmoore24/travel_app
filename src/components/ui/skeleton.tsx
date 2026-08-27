@@ -24,11 +24,19 @@ import { useTheme } from '@/hooks/use-theme';
 export function Skeleton({
   width,
   height,
+  aspectRatio,
   radius = Radius.md,
   style,
 }: {
   width?: number | `${number}%`;
-  height: number;
+  height?: number;
+  /**
+   * For a block whose real height is a ratio of the screen width. A hardcoded
+   * height for a hero photo is right on exactly one phone and wrong on every
+   * other, so the photo landing kicked everything below it down by up to a
+   * hundred points.
+   */
+  aspectRatio?: number;
   radius?: number;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -49,7 +57,7 @@ export function Skeleton({
       importantForAccessibility="no-hide-descendants"
       pointerEvents="none"
       style={[
-        { width, height, borderRadius: radius, backgroundColor: theme.surfaceSunken },
+        { width, height, aspectRatio, borderRadius: radius, backgroundColor: theme.surfaceSunken },
         animated,
         style,
       ]}

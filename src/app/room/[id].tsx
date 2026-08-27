@@ -35,6 +35,7 @@ import {
   useUnsendMessage,
 } from '@/features/rooms/hooks';
 import { addDays, formatDateRange, toISODate } from '@/features/trips/dates';
+import { useBusinessForChat, useOwnBusiness } from '@/features/business/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { countOf } from '@/lib/plural';
 
@@ -88,6 +89,14 @@ export default function RoomScreen() {
   // why instead of watching Send do nothing.
   const muted = isGroup && group.speaking === 'granted' && membership?.my_role === 'member';
   const isModerator = membership?.my_role === 'admin';
+  // A place's room, as opposed to a traveler group. `business_for_chat`
+  // answers only for the first, so a null here IS the distinction — and it
+  // is what gives a traveler a way back to the hours, the address and the
+  // rating they joined from. Without it, joining from the map was one-way:
+  // the only route back to the place was finding the chip again.
+  const { data: placeId } = useBusinessForChat(isGroup ? null : (id ?? null));
+  const ownBusinessId = useOwnBusiness().data?.id ?? null;
+  const isOwnPlace = placeId != null && placeId === ownBusinessId;
 
   // The shared thread speaks MessageRow. A room row carries three things it
   // does not — who sent it by name, their photo, and whether a moderator took
@@ -157,6 +166,33 @@ export default function RoomScreen() {
                     tintColor={theme.text}
                   />
                 </Pressable>
+              ) : placeId != null ? (
+                // The same control a group gets, pointed at the place rather
+                // than at group settings. The owner gets ONLY this: offering
+                // "Leave" for a chat you run is nonsense, and the database
+                // will not let them join it in the first place.
+                <View style={styles.roomActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="About this place"
+                    onPress={() =>
+                      router.push({ pathname: '/place/[id]', params: { id: placeId } })
+                    }
+                    hitSlop={8}>
+                    <SymbolView
+                      name={{ ios: 'info.circle', android: 'info', web: 'info' }}
+                      size={20}
+                      tintColor={theme.text}
+                    />
+                  </Pressable>
+                  {isMember && !isOwnPlace ? (
+                    <Pressable accessibilityRole="button" onPress={confirmLeave} hitSlop={8}>
+                      <ThemedText type="footnote" themeColor="textSecondary">
+                        Leave
+                      </ThemedText>
+                    </Pressable>
+                  ) : null}
+                </View>
               ) : isMember ? (
                 <Pressable accessibilityRole="button" onPress={confirmLeave} hitSlop={8}>
                   <ThemedText type="footnote" themeColor="textSecondary">
@@ -179,6 +215,14 @@ export default function RoomScreen() {
                   day: 'numeric',
                   month: 'short',
                 })}
+              </ThemedText>
+            ) : isOwnPlace ? (
+              // The owner has no room_members row — the database refuses one
+              // — so without this branch the person who runs the place was
+              // told to "join in to post" in their own chat.
+              <ThemedText type="footnote" themeColor="textSecondary">
+                {info ? `${countOf(info.member_count, 'person', 'people')} here · ` : ''}
+                you run this chat
               </ThemedText>
             ) : (
               <ThemedText type="footnote" themeColor="textSecondary">
@@ -480,6 +524,11 @@ export default function RoomScreen() {
 }
 
 const styles = StyleSheet.create({
+  roomActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+  },
   dateField: {
     gap: 2,
     paddingHorizontal: Space.lg,

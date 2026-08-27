@@ -668,3 +668,20 @@ end
 $$;
 
 revoke execute on function public.message_business(uuid, text) from public, anon;
+
+-- ---------------------------------------------------------------------------
+-- 10. The standing post on an unclaimed venue stops speaking as "us"
+-- ---------------------------------------------------------------------------
+--
+-- seed_launch_business_content() is idempotent, so it will not rewrite a post
+-- it already placed. The four launch venues have owner_user_id null: there is
+-- nobody to "ask us anything", and the traveler-facing screens now say so
+-- plainly. This is one row per venue, done here rather than by hand.
+
+update public.business_posts po
+   set body = 'The chat here is open to anyone passing through. Swap plans with whoever is around.'
+  from public.businesses b
+ where b.id = po.business_id
+   and b.owner_user_id is null
+   and po.archived_at is null
+   and po.body = 'The chat is open to anyone passing through. Ask us anything about the city.';

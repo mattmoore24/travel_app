@@ -21,7 +21,7 @@ import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { Skeleton } from '@/components/ui/skeleton';
-import { HitTarget, MaxContentWidth, Radius, Space } from '@/constants/theme';
+import { HitTarget, MaxContentWidth, Motion, Radius, Space } from '@/constants/theme';
 import { useBusinessDetail, useOwnBusiness, useRatingSummary } from '@/features/business/hooks';
 import { PlaceSeal } from '@/features/business/place-seal';
 import {
@@ -53,17 +53,27 @@ function PlaceImage({
   path,
   style,
   fallback,
+  label,
 }: {
   path: string | null;
   style?: StyleProp<ViewStyle>;
   fallback?: ReactNode;
+  /** What the photo is of. A "Photos" heading over unlabelled images is a
+      heading over nothing, as far as VoiceOver is concerned. */
+  label?: string;
 }) {
   const theme = useTheme();
   const { data: url } = useBusinessPhotoUrl(path);
   return (
     <View style={[styles.frame, { backgroundColor: theme.surfaceSunken }, style]}>
       {url ? (
-        <Image source={{ uri: url }} style={styles.fill} contentFit="cover" transition={180} />
+        <Image
+          source={{ uri: url }}
+          style={styles.fill}
+          contentFit="cover"
+          transition={Motion.quick}
+          accessibilityLabel={label}
+        />
       ) : (
         fallback
       )}
@@ -102,7 +112,9 @@ function PostCard({ post }: { post: BusinessPostJson }) {
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
-      {post.photo_path ? <PlaceImage path={post.photo_path} style={styles.postPhoto} /> : null}
+      {post.photo_path ? (
+        <PlaceImage path={post.photo_path} style={styles.postPhoto} label={post.title} />
+      ) : null}
       <View style={styles.cardBody}>
         {at && when ? (
           // Warm light is this app's "happening now", the same signal the map
@@ -301,7 +313,7 @@ export default function PlaceScreen() {
     return (
       <ThemedView style={styles.root}>
         <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-          <Skeleton height={220} radius={0} />
+          <Skeleton width="100%" aspectRatio={HERO_RATIO} radius={0} />
           <View style={styles.loading}>
             <Skeleton width="70%" height={28} />
             <Skeleton width="45%" height={18} />
@@ -333,6 +345,7 @@ export default function PlaceScreen() {
         <ScrollView contentContainerStyle={styles.content}>
           <PlaceImage
             path={cover?.storage_path ?? null}
+            label={`Photo of ${place.name}`}
             style={styles.hero}
             fallback={
               <SymbolView
@@ -465,7 +478,12 @@ export default function PlaceScreen() {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.strip}>
                   {rest.map((photo) => (
-                    <PlaceImage key={photo.id} path={photo.storage_path} style={styles.stripItem} />
+                    <PlaceImage
+                      key={photo.id}
+                      path={photo.storage_path}
+                      label={`Photo of ${place.name}`}
+                      style={styles.stripItem}
+                    />
                   ))}
                 </ScrollView>
               </Section>

@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -26,6 +26,14 @@ const PASSWORD_MIN = 8;
  */
 export default function JoinScreen() {
   const isGuestAccount = useIsGuestAccount();
+  // Arriving from the "Run a place?" door on the welcome tour. Carried
+  // through because register_business refuses an account that has finished
+  // traveler onboarding, and onboarding is exactly where the root guard
+  // drops somebody the moment they have a session — so without this, the one
+  // person who came here to list their bar is four taps from permanently
+  // locking themselves out of doing it.
+  const { business } = useLocalSearchParams<{ business?: string }>();
+  const forBusiness = business === '1';
   const [step, setStep] = useState<1 | 2>(1);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -67,8 +75,14 @@ export default function JoinScreen() {
         await signUpWithEmail(email.trim(), password);
       }
       haptics.success();
-      analytics.capture('signup_step_completed', { step: 'password' });
-      // The root guard swaps to the profile steps on the auth event.
+      analytics.capture('signup_step_completed', { step: 'password', business: forBusiness });
+      // The root guard swaps to the profile steps on the auth event. For a
+      // place we jump straight past them: `business-signup` sits outside the
+      // onboarded guard precisely so it can be reached by an account that
+      // will never finish traveler onboarding.
+      if (forBusiness) {
+        router.replace('/business-signup');
+      }
     } catch (e) {
       const message = (e as Error).message ?? 'Something went wrong.';
       if (/already|registered|exists/i.test(message)) {

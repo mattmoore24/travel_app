@@ -31,7 +31,7 @@ import {
   Spacing,
 } from '@/constants/theme';
 import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
-import { BusinessMarker } from '@/features/business/business-marker';
+import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker';
 import { useCityBusinesses, useOwnBusiness } from '@/features/business/hooks';
 import { PlaceSheet } from '@/features/business/place-sheet';
 import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
@@ -46,7 +46,7 @@ import {
   type PinCluster,
 } from '@/features/pins/cluster';
 import { heatRings, mergeHeatCells } from '@/features/pins/heat';
-import { useHeatLegend } from '@/features/pins/heat-legend';
+import { useHeatLegend, usePlacesLegend } from '@/features/pins/heat-legend';
 import {
   CityCountView,
   MARKER_ANCHOR,
@@ -530,6 +530,9 @@ export default function MapScreen() {
   // Places are the third marker family, and they are quiet on purpose:
   // people stack on top of places, which is the right sentence for this app.
   const { data: places = [] } = useCityBusinesses(activeCityId);
+  // One at a time. Two chips stacked over a map is furniture, so the places
+  // one waits until the heat one has been read and dismissed.
+  const placesLegend = usePlacesLegend(places.length > 0 && !legend.visible);
   // A place is not a traveler and may not drop a 72-hour pin (§7 rule 8, six
   // BEFORE INSERT triggers). Without this the owner filled in the whole pin
   // form and was refused by a raw database alert at the end of it.
@@ -1211,6 +1214,39 @@ export default function MapScreen() {
               ]}>
               <View style={[styles.legendDot, { backgroundColor: 'rgba(255, 154, 90, 0.85)' }]} />
               <ThemedText type="footnote">Glowing spots are plans nearby</ThemedText>
+              <SymbolView
+                name={{ ios: 'xmark', android: 'close', web: 'close' }}
+                size={11}
+                tintColor={theme.textSecondary}
+              />
+            </View>
+          </PressableScale>
+        </Animated.View>
+      ) : null}
+
+      {placesLegend.visible && !legend.visible && mode === 'browse' ? (
+        <Animated.View
+          entering={FadeInUp.duration(Motion.standard)}
+          exiting={FadeOut.duration(Motion.quick)}
+          style={[
+            styles.legend,
+            { bottom: BottomTabInset + insets.bottom + Space.xxxl + Space.xl },
+          ]}
+          pointerEvents="box-none">
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="The small chips are places. Tap one to see what's on."
+            accessibilityHint="Dismisses this"
+            scaleTo={0.96}
+            haptic="light"
+            onPress={placesLegend.dismiss}>
+            <View
+              style={[
+                styles.legendChip,
+                { backgroundColor: theme.surface, borderColor: theme.hairline },
+              ]}>
+              <PlaceGlyph category="bar" live={false} size={18} onSurface />
+              <ThemedText type="footnote">Tap a place to see what&apos;s on</ThemedText>
               <SymbolView
                 name={{ ios: 'xmark', android: 'close', web: 'close' }}
                 size={11}

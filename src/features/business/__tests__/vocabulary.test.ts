@@ -240,3 +240,35 @@ describe('cityNow', () => {
     expect(openLine(bangkokNight, duringOpening, null)).not.toBe('Open · till 02:00');
   });
 });
+
+describe('openLine on a day with two shifts', () => {
+  // 09:00-14:00 and 18:00-23:00: a kitchen that shuts in the afternoon.
+  const SPLIT = [
+    { weekday: 3, opens: '09:00:00', closes: '14:00:00' },
+    { weekday: 3, opens: '18:00:00', closes: '23:00:00' },
+  ];
+
+  // A Wednesday. Built from parts so the assertion is about the clock and
+  // not about whatever timezone the test runner happens to be in.
+  const wednesdayAt = (hour: number, minute = 0) => new Date(2026, 7, 26, hour, minute);
+
+  it('quotes the evening service, not this morning, in the gap between them', () => {
+    expect(openLine(SPLIT, wednesdayAt(16))).toBe('Closed · opens 18:00');
+  });
+
+  it('is open during either shift', () => {
+    expect(openLine(SPLIT, wednesdayAt(11))).toBe('Open · till 14:00');
+    expect(openLine(SPLIT, wednesdayAt(20))).toBe('Open · till 23:00');
+  });
+
+  // Before the first opening there IS something later today, so no "tomorrow".
+  it('quotes this morning before it opens', () => {
+    expect(openLine(SPLIT, wednesdayAt(7))).toBe('Closed · opens 09:00');
+  });
+
+  // After the last close there is nothing left today, and saying "opens
+  // 09:00" flat would read as a place that is about to open.
+  it('says tomorrow once the day is done', () => {
+    expect(openLine(SPLIT, wednesdayAt(23, 30))).toBe('Closed · opens 09:00 tomorrow');
+  });
+});

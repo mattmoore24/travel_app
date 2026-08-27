@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import Animated, {
   FadeIn,
   FadeInRight,
@@ -14,6 +14,7 @@ import { useEffect } from 'react';
 
 import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
+import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -97,9 +98,14 @@ export function StepShell({
           <View style={styles.backSlot} />
         </View>
 
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* KeyboardFloor, not KeyboardAvoidingView. The avoider measures its
+            own frame against its PARENT, which is right for the four
+            full-screen signup steps and wrong for `business-signup`, the one
+            consumer presented as a modal: the card is inset from the window,
+            so the avoider under-shoots by the inset and the autofocused
+            field on steps 1 and 3 sits under the keyboard. Same swap
+            step-screen.tsx already made, for the same reason. */}
+        <KeyboardFloor>
           <ScrollView
             style={styles.flex}
             contentContainerStyle={styles.content}
@@ -134,7 +140,7 @@ export function StepShell({
             />
             {footer}
           </ThemedView>
-        </KeyboardAvoidingView>
+        </KeyboardFloor>
         {/* Outside the scroller and outside the avoider: iOS hosts this in
             the keyboard's own window, so where it sits in the tree only
             decides which fields can reach it by id. */}

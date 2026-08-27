@@ -229,8 +229,20 @@ export function openLine(
   const day = now.getDay();
   const todays = hours.filter((h) => h.weekday === day);
   if (!open) {
-    const next = todays[0];
-    return next ? `Closed · opens ${shortTime(next.opens)}` : 'Closed today';
+    // The next opening, not the first row of the day. A restaurant that runs
+    // 09:00-14:00 and 18:00-23:00 read "Closed · opens 09:00" at four in the
+    // afternoon, which somebody sensibly takes to mean "shut for the day"
+    // rather than "back in two hours".
+    const minutesNow = now.getHours() * 60 + now.getMinutes();
+    const upcoming = todays
+      .filter((h) => minutesOf(h.opens) > minutesNow)
+      .sort((a, b) => minutesOf(a.opens) - minutesOf(b.opens))[0];
+    const next = upcoming ?? todays[0];
+    return next
+      ? upcoming
+        ? `Closed · opens ${shortTime(next.opens)}`
+        : `Closed · opens ${shortTime(next.opens)} tomorrow`
+      : 'Closed today';
   }
   const minutes = now.getHours() * 60 + now.getMinutes();
   const current =

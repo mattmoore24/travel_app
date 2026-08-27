@@ -54,12 +54,18 @@ export function TopRatedShelf({ userId, cityId }: { userId: string; cityId: numb
             accessibilityLabel={`${place.name}, ${place.score.toFixed(1)}. Open it.`}
             haptic="light"
             scaleTo={0.96}
-            // A footnote chip is about 30pt tall, so the target only clears
-            // 44 with this.
-            hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
+            // Measured, not estimated: a footnote's lineHeight is 18 and
+            // Space.xs a side makes 26, so 9 top and bottom is what actually
+            // reaches 44. The old 7 left it at 40.
+            hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
             onPress={() => router.push(`/place/${place.business_id}`)}>
             <View style={[styles.chip, { backgroundColor: theme.surfaceSunken }]}>
-              <ThemedText type="footnote">{place.name}</ThemedText>
+              {/* A place name runs to 80 characters. Without the shrink the
+                  name took the whole width and pushed the score past the
+                  pill's rounded edge. */}
+              <ThemedText type="footnote" numberOfLines={1} style={styles.chipName}>
+                {place.name}
+              </ThemedText>
               <ThemedText type="footnote" themeColor="textSecondary" style={styles.score}>
                 {place.score.toFixed(1)}
               </ThemedText>
@@ -96,7 +102,11 @@ const styles = StyleSheet.create({
     paddingVertical: Space.xs,
     borderRadius: Radius.pill,
   },
+  chipName: {
+    flexShrink: 1,
+  },
   score: {
+    flexShrink: 0,
     // Scores line up when several chips wrap onto one row.
     fontVariant: ['tabular-nums'],
   },

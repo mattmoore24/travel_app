@@ -239,9 +239,10 @@ function PrioritiesSection({
                 accessibilityLabel={`${priority.text}. ${owner ? 'Edit.' : "Say you're in."}`}
                 haptic="light"
                 scaleTo={0.96}
-                // A footnote chip is about 30pt tall, so the tap target only
-                // clears 44 with this.
-                hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
+                // Measured, not estimated: a footnote's lineHeight is 18 and
+                // Space.xs a side makes 26, so 9 top and bottom is what
+                // actually reaches 44. The old 7 left it at 40.
+                hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
                 onPress={act}>
                 {chip}
               </PressableScale>

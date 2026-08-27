@@ -431,6 +431,25 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
                         I already have an account
                       </Text>
                     </Pressable>
+                    {/* The door for a place. Until this, the only one in the
+                        whole app was a ghost button at the bottom of step 3
+                        of traveler signup, under the fold on a small phone —
+                        so somebody who runs a bar and downloaded the app to
+                        list it had no way of finding out that they could.
+                        Quiet, like the sign-in link: it is the rarer door,
+                        and a traveler must not read it as a fourth thing to
+                        decide about. */}
+                    <Pressable
+                      accessibilityRole="button"
+                      hitSlop={12}
+                      onPress={() => {
+                        finish('signup');
+                        router.push('/join?business=1');
+                      }}>
+                      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.signInLink}>
+                        Run a place? Put it on the map
+                      </Text>
+                    </Pressable>
                   </View>
                 ) : null}
               </PageLayer>

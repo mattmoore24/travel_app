@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useState } from 'react';
 
 const KEY = 'samewhere.heat.legend.v1';
+const PLACES_KEY = 'samewhere.places.legend.v1';
 
 /**
  * Whether the "what are these glowing patches" chip still needs showing.
@@ -12,33 +13,49 @@ const KEY = 'samewhere.heat.legend.v1';
  * furniture, not an explanation.
  */
 export function useHeatLegend(hasHeat: boolean) {
+  return useOneShotLegend(KEY, hasHeat);
+}
+
+/**
+ * The same one-shot chip for the place markers.
+ *
+ * They arrived on an existing map as a family of unexplained grey dots
+ * underneath the amber pins, with no callout, no name and no legend, so the
+ * first time somebody opened the app after the release there was nothing at
+ * all telling them what they were looking at.
+ */
+export function usePlacesLegend(hasPlaces: boolean) {
+  return useOneShotLegend(PLACES_KEY, hasPlaces);
+}
+
+function useOneShotLegend(storageKey: string, active: boolean) {
   // null while storage is being read: a legend that flashes and vanishes is
   // worse than one that arrives a beat late.
   const [dismissed, setDismissed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    let active = true;
-    AsyncStorage.getItem(KEY)
+    let live = true;
+    AsyncStorage.getItem(storageKey)
       .then((value) => {
-        if (active) {
+        if (live) {
           setDismissed(value === '1');
         }
       })
       .catch(() => {
         // Storage unavailable: treat as dismissed rather than nagging.
-        if (active) {
+        if (live) {
           setDismissed(true);
         }
       });
     return () => {
-      active = false;
+      live = false;
     };
-  }, []);
+  }, [storageKey]);
 
   const dismiss = useCallback(() => {
     setDismissed(true);
-    AsyncStorage.setItem(KEY, '1').catch(() => {});
-  }, []);
+    AsyncStorage.setItem(storageKey, '1').catch(() => {});
+  }, [storageKey]);
 
-  return { visible: hasHeat && dismissed === false, dismiss };
+  return { visible: active && dismissed === false, dismiss };
 }

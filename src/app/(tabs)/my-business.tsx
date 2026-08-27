@@ -82,7 +82,12 @@ function VerifiedCheck() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="What the check means"
+      // "Verified place" is the LABEL and the explanation is the hint, the
+      // same order the traveler-facing seal uses. The other way round,
+      // VoiceOver never announced that the place is verified at all — only
+      // that there was a button explaining something.
+      accessibilityLabel="Verified place"
+      accessibilityHint="What the check means"
       // 14 + 15 + 15 = 44 on a glyph that draws at 14.
       hitSlop={Math.ceil((HitTarget - 14) / 2)}
       onPress={() =>
@@ -278,7 +283,7 @@ export default function MyBusinessScreen() {
     return (
       <ThemedView style={styles.root}>
         <View style={styles.column}>
-          <Skeleton height={200} radius={0} />
+          <Skeleton width="100%" aspectRatio={HERO_RATIO} radius={0} />
           <View style={styles.loading}>
             <Skeleton width="65%" height={28} />
             <Skeleton width="40%" height={18} />

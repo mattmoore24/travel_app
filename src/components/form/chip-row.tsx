@@ -21,6 +21,8 @@ export function ChipRow<T extends string>({ options, selected, onToggle }: ChipR
         const isSelected = selected.includes(option.value);
         return (
           <Pressable
+            // 34pt of chip plus 5 a side is the 44 every control here buys.
+            hitSlop={{ top: 5, bottom: 5 }}
             key={option.value}
             accessibilityRole="button"
             accessibilityState={{ selected: isSelected }}
