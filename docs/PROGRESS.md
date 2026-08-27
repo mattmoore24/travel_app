@@ -20,8 +20,9 @@ six is enforced by the primary key rather than by client code), 40 characters
 per entry, screened by the same classifier the prompts and the bio go through,
 visible exactly where the profile is. The editor is one screen where the return
 key commits a row and opens the next, so six entries cost six lines of typing
-and no taps in between. One open question for the founder: one list per
-profile or one per trip (§9 D1, recommendation: one list).
+and no taps in between. **One list per profile**, settled by the founder;
+adding a nullable `trip_id` later is one migration with no backfill if that
+ever changes.
 
 ## Planned: **Phase 13-17 — business accounts ("Places")** (2026-08-27)
 
@@ -45,14 +46,30 @@ folded in:
 - Posts expire when the business says so, including never. No mandatory 30
   days.
 - "Run a business? Put it on the map." and the tab is **My business**.
-- **Businesses verify themselves, with no founder in the loop** (§3.9). Path A:
-  the signup email's domain matches the claimed website, so a six-digit code to
-  that address proves both at once. Path B, for a business whose email is a
-  free provider: a code placed anywhere public on their own site, fetched by an
-  Edge Function. Either path then passes a Claude plausibility check. Signup
-  asks for the business address up front and says why. Honest gap: a business
-  with no website _and_ no domain email cannot pass either path, so the contact
-  form stays as a rare manual exception rather than the default.
+- **Getting listed is a confirmation link, and nothing more** (§3.9). The
+  two-path scheme drafted first (domain-matched email, or a code planted on the
+  website) is written down as tier 2 of a ladder and deliberately not built.
+  The founder's call, and the Google Maps research backs it: Google picks the
+  method by risk rather than offering one; video verification is now their
+  primary method because it proves physical presence rather than domain
+  ownership; email is their weakest and rarest; re-verification triggers on a
+  name or address edit; reporting is a structured first-class path feeding
+  machine review; and even so, verification takes 5-14 days and there is a
+  consultancy industry built on wrongly-suspended listings. Nobody solves this
+  at signup.
+
+  Three things came out of that. **There is no verified badge** — a link click
+  proves an inbox exists, and a check mark next to it would lend an impersonator
+  the app's credibility, so v1 ships the absence of the feature and "verified"
+  keeps meaning exactly one thing in this app. **Reports are structured and
+  escalate without the founder** — Google's reason list, one voice per account,
+  three distinct reporters trigger a Claude read of the reports plus the
+  listing, and a plausible impersonation verdict darkens it immediately. And one
+  recommended optional addition: **a camera-taken storefront photo with the sign
+  in it**, checked by the photo worker that already runs. That is video
+  verification's cheapest 20%, and it removes every fake listing made by
+  somebody who never leaves their laptop.
+
 - Messages to a business always go through, with no accept step. A business
   cannot open a conversation with a person who has not written first.
 - The member list in a business chat is open to everyone in it. It is an app
@@ -62,20 +79,29 @@ folded in:
   go or come back whenever.
 - Only admins can send photos in a business chat, even in the everyone mode.
   Enforced by a trigger, not by hiding the button.
-- **Verified travelers can rate businesses, Beli-style** (§3.10). This reverses
-  an earlier refusal of mine, and the reason it reverses is specific: the
-  extortion lever in reviews is the free text, and Beli's mechanic has none.
-  You pick loved / fine / not for me, then answer three or four "which did you
-  prefer" comparisons, and the score falls out of where the place lands in your
-  own ranked list. No written reviews anywhere. Public number only past five
-  raters, mirroring the heatmap's k-threshold, and a business never learns who
-  rated it.
+- **Anyone with an account can rate a business, Beli-style** (§3.10). This
+  reverses an earlier refusal of mine, and the reason it reverses is specific:
+  the extortion lever in reviews is the free text, and Beli's mechanic has
+  none. You pick loved / fine / not for me, then answer three or four "which did
+  you prefer" comparisons, and the score falls out of where the place lands in
+  your own ranked list. No written reviews anywhere. Public number only past
+  five raters, mirroring the heatmap's k-threshold, and a business never learns
+  who rated it. The founder dropped both gates the draft had: verified-only and
+  been-in-the-city. Somebody who stayed there in 2024 has a better-informed
+  opinion than somebody who joined the chat yesterday.
+  `app_config.ratings_require_verified` is the lever if brigading ever appears,
+  one row rather than a migration.
 - Category names and the capitalisation kept as proposed.
 
-**Blocked on the founder**: the §7 amendments for rules 3 and 4, the rule 5
-restatement, proposed rule 8, and the four decisions still open in the plan's
-§9 (6, 20, 21, 22). Everything else is signed. Nothing is implemented until
-those are.
+**Signed off 2026-08-27**: §7 rules 3, 4, 5 and proposed rule 8, all as
+recommended, plus the last four decisions (6 agreed; 20 total members with the
+"quiet lately" label dropped; 21 agreed; 22 no blockers to rating). Nothing is
+blocked. One optional yes or no is outstanding and holds nothing up: the
+storefront photo at §3.9 tier 1.5.
+
+Build order is seven phases, 13 through 19, everything over the air. Phase 13
+is the rename and the identity and ships with zero visible change; the proof is
+that nothing broke.
 
 ## Current status: **Phase 12 — the founder's second review batch** (2026-08-23)
 

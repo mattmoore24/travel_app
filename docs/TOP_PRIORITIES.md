@@ -419,17 +419,20 @@ exactly the kind of thing an exit code cannot see.
 
 ---
 
-## 9. Decisions for the founder
+## 9. Decisions
 
-**D1. One list per profile, not one per trip.** The request says "while on
-their trip", and a traveler with a Lisbon trip and a Tokyo trip genuinely has
-two different lists. Per-trip is more precise and costs about six times the
-UI: a list per trip, an editor that asks which trip first, and a profile whose
-priorities change depending on which of your trips overlaps the viewer's.
-Recommendation: **one list**, standing, describing what this person is into.
-The city is already on screen right above it, and someone who wants to be
-specific writes "day trip to Sintra" rather than "day trip". Say the word and
-it becomes per-trip.
+**D1. One list per profile, not one per trip. Settled by the founder,
+2026-08-27.** A traveler with a Lisbon trip and a Tokyo trip genuinely has two
+different lists, and per-trip would be more precise. It also costs about six
+times the interface: a list per trip, an editor that asks which trip first, and
+a profile whose priorities change depending on which of your trips overlaps the
+person reading it. One standing list it is. The city is on screen directly
+above, and somebody who wants to be specific writes "day trip to Sintra" rather
+than "day trip".
+
+The schema keeps the option open at zero cost: `profile_priorities` is keyed on
+`(user_id, slot)`, and adding a nullable `trip_id` later is one migration with
+no backfill, because a null means exactly what the rows mean today.
 
 **D2. Six is the cap and it is hard.** No paid tier, no "add a seventh".
 Consistent with prompts capping at three, and the reason is the same: a
