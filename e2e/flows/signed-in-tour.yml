@@ -308,13 +308,18 @@ appId: com.mattmoore.samewhere
 # seed_launch_businesses(), and the E2E account's trip is Bangkok, so it is on
 # this map if places render at all.
 # ─────────────────────────────────────────────────────────────────────────
-# Out of the pushed group screens first. Run 46 photographed the group
+# Relaunch, rather than trying to walk back out. Run 46 photographed the group
 # settings page five times over because `tapOn: 'Map'` cannot reach a tab bar
-# from a pushed route, and every step below it was optional, so the whole
-# segment ran against a screen that never changed.
-- back
-- back
-- back
+# from a pushed route; run 47 did it again, because Maestro's `back` on iOS is
+# an edge swipe and these screens carry a custom header that does not answer
+# it. `launchApp` with no clearState keeps the session and the dismissed tour
+# (both live in AsyncStorage, which this does not touch) and lands on the tab
+# bar, which is the one thing every step below needs.
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+    optional: true
 - tapOn:
     text: 'Map'
     optional: true

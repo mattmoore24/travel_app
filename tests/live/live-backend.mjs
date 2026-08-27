@@ -551,25 +551,37 @@ try {
     });
     check('and a rank outside the window is refused', Boolean(badRankErr));
 
-    // --- messaging a place. No handshake: a business asked to be written to.
-    const { data: sent, error: msgErr } = await alex.client.rpc('message_business', {
+    // --- messaging a place NOBODY runs.
+    //
+    // Run 14 failed here, and the failure was this test's assumption rather
+    // than the app's behaviour: the four launch venues are seeded with
+    // owner_user_id null, and message_business refuses them outright. That
+    // refusal is correct and it is the thing worth proving live — a chat
+    // opened into the void is worse than a plain no.
+    //
+    // The bug the refusal exposed was on the CLIENT, which offered Message
+    // anyway and only found out after five hundred characters had been typed
+    // and Send pressed. The fix is `claimed`, asserted below: it is the field
+    // the place page and the map sheet now read to decide whether to draw the
+    // button at all. There is no claimed AND listed business in this run to
+    // send a real message to — claiming one needs an email code out of an
+    // inbox — so the send path stays covered by pgTAP suite 23.
+    const detailRow = (detail ?? [])[0];
+    check(
+      'the place page says whether anybody runs it',
+      detailRow != null && detailRow.claimed === false,
+      `claimed: ${JSON.stringify(detailRow?.claimed)}`
+    );
+
+    const { error: msgErr } = await alex.client.rpc('message_business', {
       p_business_id: placeId,
       p_first_message: `Live canary ${RUN}: is the roof open tonight?`,
     });
     check(
-      'a traveler writes to a place and gets a chat straight away',
-      !msgErr && Boolean(sent?.chat_id),
-      msgErr?.message
+      'and writing to a place nobody runs is refused, not opened into the void',
+      Boolean(msgErr) && /nobody runs this place/i.test(msgErr.message),
+      msgErr?.message ?? 'IT WAS ACCEPTED'
     );
-    if (sent?.chat_id) {
-      const { data: chats, error: chatsErr } = await alex.client.rpc('my_chats');
-      const thread = (chats ?? []).find((c) => c.chat_id === sent.chat_id);
-      check(
-        'and that chat is in their list, titled with the place',
-        !chatsErr && thread?.title === 'Home Lisbon Hostel',
-        chatsErr?.message ?? `titled ${JSON.stringify(thread?.title)}`
-      );
-    }
 
     // --- reports. One voice per account, enforced by a partial unique index
     // rather than by the client remembering.
