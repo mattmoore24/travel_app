@@ -45,11 +45,18 @@ export function PlaceGlyph({
   category,
   live = false,
   size = CHIP,
+  onSurface = false,
 }: {
   category: BusinessCategory;
   /** Something posted. It brightens the RING, and nothing else. */
   live?: boolean;
   size?: number;
+  /**
+   * Drawn on one of the app's own surfaces rather than on the basemap. The
+   * chip is surface navy, and a sheet IS surface navy, so without this it
+   * would be a ring around nothing.
+   */
+  onSurface?: boolean;
 }) {
   const theme = useTheme();
 
@@ -61,7 +68,7 @@ export function PlaceGlyph({
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: theme.surface,
+          backgroundColor: onSurface ? theme.surfaceSunken : theme.surface,
           // The only difference a live post makes. A bigger marker would let
           // a place shout over the people standing on it, and a gold star
           // already means "one of our picks" on this map.

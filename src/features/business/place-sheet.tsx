@@ -133,7 +133,9 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
         {/* The same chip and glyph as the marker just tapped, so the sheet
             reads as that marker opening rather than as a new object. A cover
             photo says it better, so it only stands in when there is none. */}
-        {cover.data ? null : <PlaceGlyph category={place.category} live={whatsOn != null} />}
+        {cover.data ? null : (
+          <PlaceGlyph category={place.category} live={whatsOn != null} size={30} onSurface />
+        )}
         <View style={styles.title}>
           <View style={styles.nameRow}>
             <ThemedText type="headline" numberOfLines={2} style={styles.name}>
@@ -311,8 +313,12 @@ function RatingLine({ average, raters }: { average: number | null; raters: numbe
  * that explains itself wrongly is worse than one that says nothing. The
  * spoken label is "Verified place" and never "verified business", because
  * that word is back-office vocabulary a traveler never meets.
+ *
+ * Exported so the place page shows the same check with the same sentence
+ * behind it. Two badges explaining themselves differently is how a signal
+ * stops being one.
  */
-function PlaceSeal() {
+export function PlaceSeal() {
   const theme = useTheme();
   return (
     <Pressable
