@@ -21,9 +21,15 @@ function PendingInviteHandoff() {
   const token = useAuthStore((s) => s.pendingInvite);
   const signedIn = useAuthStore((s) => s.session != null);
   const inviteHandled = useAuthStore((s) => s.inviteHandled);
+  // Somebody listing a business is mid-flow: `join` fires its own replace to
+  // /business-signup the moment the account exists, and two navigations
+  // racing to the top of one stack is a coin toss. The flag is cleared by the
+  // listing form itself, and clearing it re-runs this effect — so the invite
+  // is handed back after the listing rather than instead of it.
+  const listingIntent = useAuthStore((s) => s.listingIntent);
 
   useEffect(() => {
-    if (!signedIn || !token) {
+    if (!signedIn || !token || listingIntent) {
       return;
     }
     // Cleared BEFORE the push, not after: the invite screen is a route like
@@ -31,7 +37,7 @@ function PendingInviteHandoff() {
     // store would push it straight back on.
     inviteHandled();
     router.push(`/join-group/${token}`);
-  }, [signedIn, token, inviteHandled]);
+  }, [signedIn, token, listingIntent, inviteHandled]);
 
   return null;
 }
