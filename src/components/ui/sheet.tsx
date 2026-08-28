@@ -152,20 +152,22 @@ export function Sheet({
   const keyboard = useAnimatedKeyboard();
   const drag = useSharedValue(0);
 
-  // The entrance is a TRANSFORM, not one of Reanimated's presentation presets.
+  // The entrance is a TRANSFORM, not Reanimated's slide-in preset.
   //
-  // Every layout animation in this library animates the view's real layout —
-  // the slide-up preset animates `originY`, not translateY — and while one is
-  // running Reanimated re-applies the frame it SNAPSHOTTED when the animation
-  // began, once per frame, width and height included. A sheet whose content
-  // arrives after it opens (a query resolving, a photo signing, a skeleton
-  // giving way to a card) therefore lands at the size it had at the moment of
-  // the tap and stays there. That is the place card that opened a third of the
-  // way and needed closing and re-tapping to come up whole: the second tap was
-  // served from cache, so the snapshot was of the finished card.
+  // The Slide family animates the view's real LAYOUT — `originY`, not
+  // translateY — and for as long as one runs Reanimated re-applies the frame
+  // it SNAPSHOTTED when the animation began, once per frame, width and height
+  // included. A sheet whose content arrives after it opens (a query
+  // resolving, a photo signing, a skeleton giving way to a card) therefore
+  // lands at the size it had at the moment of the tap and stays there. That is
+  // the place card that opened a third of the way and needed closing and
+  // re-tapping to come up whole: the second tap was served from cache, so the
+  // snapshot was of the finished card.
   //
   // Sliding by `translateY` leaves the layout entirely to React Native, so the
-  // sheet grows the instant its content does, mid-entrance or long after.
+  // sheet grows the instant its content does, mid-entrance or long after. Fade
+  // and Zoom are clear of this — they animate opacity and transform, so their
+  // frame never overrides anything, which is why the scrim below keeps one.
   const enter = useSharedValue(1);
   useEffect(() => {
     enter.value = withSpring(0, Springs.sheet);

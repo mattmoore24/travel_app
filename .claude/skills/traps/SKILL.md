@@ -105,12 +105,20 @@ device does something else.
 - **`StyleSheet.absoluteFillObject` is not in this RN's typings.** Use
   `StyleSheet.absoluteFill`.
 
-## Reanimated entrances animate LAYOUT, and freeze the frame while they run
+## The Slide presets animate LAYOUT, and freeze the frame while they run
 
-- **`entering={SlideInDown}` and every other preset animate `originX/originY/
-width/height`, not a transform** — read `Slide.js` in the package: the
-  builder returns `animations: { originY: ... }`. So the animation owns the
-  view's real frame for its whole duration.
+- **`entering={SlideInDown}` and the rest of the Slide family animate
+  `originY`, not a transform** — read `Slide.js` in the package: the builder
+  returns `animations: { originY: ... }`. So the animation owns the view's
+  real frame for its whole duration.
+- **The Fade and Zoom presets do not, and that distinction is half this
+  entry.** `Fade.js` and `Zoom.js` animate `opacity` and `transform`, so
+  their per-frame style carries no layout key. `updateLayoutMetrics` in
+  `LayoutAnimationsUtils.h` uses optionals precisely "to avoid overwriting
+  non-animated values", so the frame they push is the one already on screen,
+  and React Native's mounting layer skips an `updateLayoutMetrics` whose old
+  and new are equal. `FadeInDown`, `FadeInUp` and `ZoomIn` are safe on a
+  container that grows. Do not go hunting them.
 - **While it runs, Reanimated re-applies the frame it SNAPSHOTTED at the
   start, once per frame, width and height included.** In
   `LayoutAnimationsProxy_Legacy.cpp`, a real layout `Update` for that tag is
@@ -132,8 +140,12 @@ width/height`, not a transform** — read `Slide.js` in the package: the
   React Native keeps the layout and the view resizes the instant its content
   does. `components/ui/sheet.tsx` does this, and
   `components/ui/__tests__/sheet.test.ts` keeps the preset from coming back.
-  A preset is still fine on something that cannot change size — the sheet's
-  scrim is `absoluteFill`, so its frame is its parent's and cannot go stale.
+  A Slide preset is still fine on something that cannot change size — an
+  `absoluteFill` scrim takes its frame from its parent, and a marker with
+  fixed dimensions has nothing to grow.
+- Swept 2026-08-28: the sheet was the app's only Slide entrance. Every other
+  entrance in `src/` is a Fade, a Zoom, a `Keyframe` of opacity, or carries
+  `layout={LinearTransition}`. All clear.
 - `layout={LinearTransition}` also defuses it (the proxy re-targets an
   ongoing animation only when a LAYOUT animation is configured), but it
   animates every subsequent size change too, including the keyboard growing a
