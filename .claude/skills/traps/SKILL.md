@@ -311,6 +311,14 @@ failed"` on every check, while the same simulator talks to Supabase over
   run go green on a screen where two form fields had been concatenated into
   one. Assert the exact text a human would read.
 - Screenshots are the evidence, not the exit code. See the `screens` skill.
+- **A Pressable with its own `accessibilityLabel` HIDES the text inside it
+  from Maestro.** On iOS it becomes a single accessibility element and its
+  children stop being elements at all, so `visible: "<the words on screen>"`
+  fails on a screenshot that plainly shows those words. Assert the spoken
+  label instead — and remember it is usually not the same sentence, because a
+  spoken label has to say what the thing IS. This cost a run on the map's
+  places legend, whose chip reads "Tap a place to see what's on" and speaks
+  "The small chips are places. Tap one to see what's on.".
 
 ## Apple Maps props: two that silently do nothing, and one ordering hazard
 

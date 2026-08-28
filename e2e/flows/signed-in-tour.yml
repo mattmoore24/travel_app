@@ -350,6 +350,14 @@ appId: com.mattmoore.samewhere
 # when `!cityScale && places.length > 0`, so seeing it proves the place data
 # reached a map drawn at a zoom where markers are drawn too.
 #
+# Matched on the chip's ACCESSIBILITY LABEL, not on the words it prints. The
+# chip is a PressableScale carrying `accessibilityRole` and its own
+# `accessibilityLabel`, which on iOS makes it a single accessibility element
+# and hides the Text inside it — so asserting the visible string failed on a
+# screenshot that plainly shows the string. The two sentences differ on
+# purpose (the spoken one has to say what a chip IS), so this has to quote the
+# spoken one.
+#
 # What is NOT assertable, and cost two runs to learn: a place marker itself.
 # A MapKit annotation does not surface its accessibilityLabel to XCUITest, so
 # `tapOn: 'Once Again Hostel.*'` can never match — not for a place, and not
@@ -357,7 +365,7 @@ appId: com.mattmoore.samewhere
 # which is the whole reason the screens skill says to look at the pictures
 # rather than at an exit code. Do not put the tap back.
 - extendedWaitUntil:
-    visible: "Tap a place to see what's on"
+    visible: 'The small chips are places'
     timeout: 15000
 
 # The priorities editor. Reached by ordinary labelled controls, so unlike the
