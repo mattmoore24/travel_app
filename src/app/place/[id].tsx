@@ -35,6 +35,7 @@ import {
   shortTime,
   weekdayLabel,
 } from '@/features/business/vocabulary';
+import { hrefFor } from '@/features/business/links';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { dayLabel } from '@/features/chat/separators';
 import { useIsGuest } from '@/features/guest/hooks';
@@ -194,42 +195,32 @@ function Hours({ hours, note }: { hours: BusinessHourJson[]; note: string | null
   );
 }
 
-/**
- * Where a link actually goes.
- *
- * The scheme fallback is the one that matters: a place types "example.com"
- * into its own listing, and `openURL` on a string with no scheme does
- * nothing at all - which on the screen is indistinguishable from a dead
- * button.
- */
-function hrefFor(link: BusinessLinkJson): string {
-  const value = link.value.trim();
-  if (link.kind === 'phone') {
-    return `tel:${value.replace(/\s/g, '')}`;
-  }
-  if (link.kind === 'email') {
-    return `mailto:${value}`;
-  }
-  return /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
-}
-
 function LinkRow({ link }: { link: BusinessLinkJson }) {
   const theme = useTheme();
   const label = link.label.trim() || LINK_LABEL[link.kind];
   const phone = link.kind === 'phone';
   const email = link.kind === 'email';
+  const whatsapp = link.kind === 'whatsapp';
   const glyph: SymbolViewProps['name'] = phone
     ? { ios: 'phone.fill', android: 'call', web: 'call' }
     : email
       ? { ios: 'envelope.fill', android: 'mail', web: 'mail' }
-      : { ios: 'arrow.up.right', android: 'open_in_new', web: 'open_in_new' };
+      : whatsapp
+        ? { ios: 'message.fill', android: 'chat', web: 'chat' }
+        : { ios: 'arrow.up.right', android: 'open_in_new', web: 'open_in_new' };
 
   return (
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={
-        phone ? 'Calls them' : email ? 'Opens your mail app' : 'Opens outside the app'
+        phone
+          ? 'Calls them'
+          : email
+            ? 'Opens your mail app'
+            : whatsapp
+              ? 'Opens WhatsApp'
+              : 'Opens outside the app'
       }
       haptic="light"
       scaleTo={0.98}
@@ -242,8 +233,9 @@ function LinkRow({ link }: { link: BusinessLinkJson }) {
       <View style={styles.linkText}>
         <ThemedText type="callout">{label}</ThemedText>
         {/* The number and the address are worth reading; a web address is
-            not, and printing one would make the button a raw URL. */}
-        {phone || email ? (
+            not, and printing one would make the button a raw URL. A WhatsApp
+            link IS a number, so it reads like one. */}
+        {phone || email || whatsapp ? (
           <ThemedText type="footnote" themeColor="textSecondary">
             {link.value}
           </ThemedText>
