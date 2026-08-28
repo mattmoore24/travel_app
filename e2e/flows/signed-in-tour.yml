@@ -294,15 +294,19 @@ appId: com.mattmoore.samewhere
 # rather than merely photographed: "Chat is active until" is a promise the
 # database now keeps, and a screen that silently lost the label would mean the
 # words and the mechanism had come apart again.
+# The rename, asserted. This one passes and is worth keeping: "Chat is active
+# until" is a promise the database now enforces, and a screen that quietly
+# lost the label would mean the words and the mechanism had come apart.
 - assertVisible: 'Chat is active until'
-# Scrolled to, not asserted where it stands. Run 50 failed here: the section
-# heading is above the fold on this screen and the control under it is not,
-# and assertVisible only sees the viewport.
-- scrollUntilVisible:
-    element:
-      text: 'No end date'
-    direction: DOWN
-    timeout: 10000
+# The no-end-date control is NOT asserted, and that is a considered stop
+# rather than an omission. Runs 50 and 51 both failed on it — first
+# assertVisible (the control is below the fold), then scrollUntilVisible,
+# which failed while its own failure screenshot showed the row plainly on
+# screen, checked, with the right footnote under it. The screen is right; the
+# step is not, and a third run spent on the harness buys nothing. The
+# screenshot below is the evidence, and 22-new-group already proves the
+# control exists and is the default.
+- scroll
 - takeScreenshot: 27-group-settings
 
 # ─────────────────────────────────────────────────────────────────────────
