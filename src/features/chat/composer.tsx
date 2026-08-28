@@ -67,9 +67,22 @@ export function Composer({
       await onSend({ text, photoUri });
       setAttachment(null);
     } catch {
-      // Held on purpose. A photo has no failed bubble to live in, so
-      // clearing it here would lose the picture and make the person go and
-      // find it again.
+      // The picture is held on purpose: a photo has no failed bubble to live
+      // in, so clearing it would lose it and send the person off to find it
+      // again.
+      //
+      // And now that a caption travels WITH its photo in one message, the
+      // words have to be held with it. Cleared, the retry would send the
+      // picture on its own and the sentence somebody wrote would be gone
+      // with no failed bubble anywhere to hold it. Text on its own is
+      // different: it already has a bubble, greyed, with the retry on it.
+      //
+      // Functional, because the send is awaited and somebody may have started
+      // typing the next thing while it was in flight. What they are writing
+      // now wins.
+      if (photoUri) {
+        setDraft((current) => (current.length > 0 ? current : text));
+      }
     }
   };
 
