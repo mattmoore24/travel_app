@@ -14,6 +14,7 @@ import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { NativeAppearance, Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { closeDayLabel } from '@/features/groups/closing';
+import { useAuthStore } from '@/features/auth/store';
 import { useGroupInvitePreview, useJoinGroup } from '@/features/groups/hooks';
 import { useIsSignedOut } from '@/features/guest/hooks';
 import { addDays, formatDate, parseISODate, toISODate } from '@/features/trips/dates';
@@ -32,14 +33,42 @@ export default function JoinGroupScreen() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const theme = useTheme();
   const isSignedOut = useIsSignedOut();
+  // One reading of "now" for the whole screen, taken at mount. Every date
+  // comparison below has to agree with every other one, and a clock re-read
+  // on each render does not — the floor of the picker would drift under a
+  // ceiling computed a frame earlier.
+  const [openedAt] = useState(() => new Date());
   const preview = useGroupInvitePreview(token ?? null);
   const join = useJoinGroup();
+  const inviteRemembered = useAuthStore((s) => s.inviteRemembered);
   const group = preview.data ?? null;
   const { data: photoUrl } = useChatPhotoUrl(group?.photo_path ?? null);
 
   // Null when the group has no end date, which is now the common case: there
   // is no ceiling on how long you can say you are staying.
-  const maxDate = group?.max_stay_until ? parseISODate(group.max_stay_until) : null;
+  const rawMaxDate = group?.max_stay_until ? parseISODate(group.max_stay_until) : null;
+  // Never behind the minimum. A chat whose last day is TODAY (or, for a few
+  // hours around a timezone boundary, yesterday) handed the picker a maximum
+  // earlier than its minimum, and iOS renders that as a control that cannot
+  // be moved to any value at all.
+  const maxDate = rawMaxDate && rawMaxDate.getTime() < openedAt.getTime() ? null : rawMaxDate;
+
+  // The way out, and it has to work on a phone that has never opened this app
+  // before. An invite is very often somebody's FIRST launch: the link is the
+  // only route in the stack, `router.back()` dispatches a GO_BACK nothing
+  // handles, and the tap silently does nothing. Falling through to the tabs
+  // means declining an invite always lands on the map rather than nowhere.
+  const leave = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)'));
+
+  // Off to make an account, holding the invite. Without this the token dies
+  // with this screen and they finish onboarding on the map, no closer to the
+  // chat they tapped a link to join.
+  const leaveForAccount = (go: () => void) => {
+    if (token) {
+      inviteRemembered(token);
+    }
+    go();
+  };
   const [stayUntil, setStayUntil] = useState<Date | null>(null);
   const [pickingDate, setPickingDate] = useState(false);
   // A group with no end date leaves nothing to default to, and a null default
@@ -53,7 +82,11 @@ export default function JoinGroupScreen() {
   // people want and the only value guaranteed to be valid.
   const chosen = stayUntil ?? maxDate ?? aMonthOut;
 
-  if (preview.isPending) {
+  // `&& token`: with no token the query never runs, so isPending stays true
+  // forever and this branch painted a blank screen with nothing on it. A
+  // truncated or mistyped link now falls through to "not open", which at
+  // least says something and offers a way out.
+  if (preview.isPending && token) {
     return <ThemedView style={styles.root} />;
   }
 
@@ -76,7 +109,7 @@ export default function JoinGroupScreen() {
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
             It may have expired or been turned off. Ask whoever sent it for a new link.
           </ThemedText>
-          <PrimaryButton variant="ghost" label="Go back" onPress={() => router.back()} />
+          <PrimaryButton variant="ghost" label="Go back" onPress={leave} />
         </View>
       </ThemedView>
     );
@@ -99,7 +132,7 @@ export default function JoinGroupScreen() {
               : ''}
             , so there is nothing to join. Whoever runs it can start a new one.
           </ThemedText>
-          <PrimaryButton variant="ghost" label="Go back" onPress={() => router.back()} />
+          <PrimaryButton variant="ghost" label="Go back" onPress={leave} />
         </View>
       </ThemedView>
     );
@@ -131,7 +164,15 @@ export default function JoinGroupScreen() {
               })
             }
           />
-          <SignUpGate reason="Or make a profile" where="group-invite" cta="Make a profile" />
+          <SignUpGate
+            reason="Or make a profile"
+            where="group-invite"
+            cta="Make a profile"
+            onNavigate={leaveForAccount}
+          />
+          {/* Nobody has to answer this to use the app. The link is somebody
+              else's invitation, and the map is open to everyone. */}
+          <PrimaryButton variant="ghost" label="Just look around" onPress={leave} />
         </View>
       </ThemedView>
     );
@@ -146,6 +187,7 @@ export default function JoinGroupScreen() {
             label="Open the group"
             onPress={() => router.replace(`/room/${group.chat_id}`)}
           />
+          <PrimaryButton variant="ghost" label="Not now" onPress={leave} />
         </View>
       </ThemedView>
     );
@@ -169,6 +211,7 @@ export default function JoinGroupScreen() {
       subtitle={`${countOf(group.member_count, 'person', 'people')} in the group`}
       continueLabel="Join the group"
       continueLoading={join.isPending}
+      onClose={leave}
       onContinue={submit}>
       <View style={styles.identity}>
         <View style={[styles.groupPhoto, { backgroundColor: theme.surfaceSunken }]}>

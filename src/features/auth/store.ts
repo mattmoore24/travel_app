@@ -39,6 +39,19 @@ type AuthState = {
    * in ordinary onboarding rather than in a loop.
    */
   listingIntent: boolean;
+  /**
+   * An invite link somebody opened before they had an account.
+   *
+   * Taking "Make a profile" from an invite used to throw the token away:
+   * signing up swaps the whole navigator, so six screens later they were on
+   * the map with no idea what had happened to the chat they were invited to.
+   * The tabs hand it back the moment they land (see app/(tabs)/_layout).
+   *
+   * Deliberately NOT persisted. It is worth carrying across a sign-up in one
+   * sitting and not worth resurrecting a week later, when the link has very
+   * likely expired and the surprise would be worse than the loss.
+   */
+  pendingInvite: string | null;
   setSession: (session: Session | null) => void;
   setInitialized: () => void;
   recoveryStarted: () => void;
@@ -47,6 +60,8 @@ type AuthState = {
   endRecovery: () => void;
   listingStarted: () => void;
   listingDone: () => void;
+  inviteRemembered: (token: string) => void;
+  inviteHandled: () => void;
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -54,6 +69,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   initialized: false,
   recovery: null,
   listingIntent: false,
+  pendingInvite: null,
   setSession: (session) => set({ session }),
   setInitialized: () => set({ initialized: true }),
   recoveryStarted: () => set({ recovery: { status: 'establishing', message: null } }),
@@ -62,4 +78,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   endRecovery: () => set({ recovery: null }),
   listingStarted: () => set({ listingIntent: true }),
   listingDone: () => set({ listingIntent: false }),
+  inviteRemembered: (token) => set({ pendingInvite: token }),
+  inviteHandled: () => set({ pendingInvite: null }),
 }));

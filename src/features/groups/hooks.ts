@@ -116,7 +116,9 @@ export function useGroupInvitePreview(token: string | null) {
     queryKey: ['group-invite-preview', token],
     queryFn: () => groupInvitePreview(token!),
     enabled: isSupabaseConfigured && token != null && token.length > 0,
-    retry: false,
+    // Retries like every other query (query-client sets 2). It used to be
+    // `false`, so one flaky moment on a phone that had just been handed a
+    // link told somebody their friend's invite was dead.
   });
 }
 

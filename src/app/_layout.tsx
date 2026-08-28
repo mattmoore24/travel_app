@@ -23,6 +23,19 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 
 SplashScreen.preventAutoHideAsync();
 
+/**
+ * The route the stack falls back to when it has nowhere else to go.
+ *
+ * A deep link opened from a cold start builds a navigation state containing
+ * ONLY the linked route — so an invite arriving on somebody's first launch
+ * gave them a screen with no tab bar, no back button, and a `router.back()`
+ * that dispatched a GO_BACK no navigator was able to handle. Nothing threw;
+ * the tap simply did nothing, twice, and the app read as broken. The anchor
+ * puts the tabs underneath every cold-start link, so there is always
+ * somewhere to go back to.
+ */
+export const unstable_settings = { anchor: '(tabs)' };
+
 // Shown when we're signed in but the profile fetch failed (offline cold
 // start, server error) — without it, users would be routed into a blank
 // onboarding stack with no way out.

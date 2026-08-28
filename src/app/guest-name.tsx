@@ -51,12 +51,26 @@ export default function GuestNameScreen() {
         analytics.capture('guest_joined');
       }
       haptics.success();
-      // replace, not push: nobody should be able to swipe back into naming
-      // themselves after they have a name.
-      if (next) {
+      // Back first, ALWAYS. This screen is pushed on top of whatever asked
+      // for a name — usually an invite — and that screen is still mounted
+      // underneath, so going back reveals it re-rendered with a session on
+      // it. `router.replace(next)` instead pushed a SECOND copy of the invite
+      // over the first, which is why there was no way back to the other
+      // option once you had picked one: the screen you wanted was two
+      // dismissals down, behind a stack the app had built by hand.
+      //
+      // Signing in as a guest does not unmount the navigator (a guest needs
+      // no profile lookup, so the root's readiness hold never goes up — see
+      // features/auth/routing), so the pending back is safe to dispatch.
+      //
+      // `next` survives as the fallback for the one case back cannot serve:
+      // a cold start that opened straight onto this screen.
+      if (router.canGoBack()) {
+        router.back();
+      } else if (next) {
         router.replace(next as never);
       } else {
-        router.back();
+        router.replace('/(tabs)');
       }
     } catch (e) {
       setError(saveFailureMessage(e));
@@ -76,6 +90,12 @@ export default function GuestNameScreen() {
       continueLabel={isGuestAccount ? 'Save' : 'Join the chat'}
       continueDisabled={!ok}
       continueLoading={busy}
+      // A visible way to change your mind. This is one of two doors on an
+      // invite — a name, or a profile — and taking the wrong one left people
+      // with no marked exit and a swipe-down gesture nothing on the screen
+      // mentions. Backing out here lands on the invite again, both doors
+      // still on it.
+      onClose={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
       onContinue={submit}>
       <FormTextField
         label="Name"
