@@ -526,7 +526,14 @@ function MessageMenu({
     shift = floor - wantedBottom;
   }
   if (wantedTop + shift < ceiling) {
-    shift = ceiling - wantedTop;
+    // The second clamp used to simply overwrite the first, so for a block
+    // taller than the screen the top always won and the action card — Report,
+    // Unsend — was laid out below the bottom edge of a layer that does not
+    // scroll. Report was unreachable on exactly the long message worth
+    // reporting. When both cannot be satisfied something has to run off, and
+    // it is the top: you already know what the message says, and the reason
+    // you opened this is at the bottom.
+    shift = Math.min(ceiling - wantedTop, floor - wantedBottom);
   }
 
   return (
