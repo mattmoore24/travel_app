@@ -3,6 +3,78 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **The sheet that opened halfway, and eight more** (2026-08-28)
+
+The founder: "When I click the business pins, they don't open all the way
+(they only open partially, then I have to close out of them and re-tap on the
+pin to open it completely). Please fix this and any other issues you find."
+
+### The sheet
+
+Reanimated's Slide presets animate the view's real LAYOUT — `SlideInDown`
+animates `originY`, not `translateY`, which is in `Slide.js` in as many words
+— and for as long as one is running the library re-applies the frame it
+snapshotted at the start, once per frame, width and height included. A real
+layout update lands and is immediately overwritten by
+`addOngoingAnimations`; when the spring settles nothing restores it, because
+from React Native's side the layout was committed and has not changed.
+
+So a sheet whose content arrives after the tap that opened it stays the size
+it was at the tap. The place card's data lands after the tap the first time
+and is served from cache the second, which is exactly the founder's "close it
+and tap again". It only became visible when the card became a ScrollView in
+the last session, because a ScrollView clips — before that the content spilled
+out of the frozen frame and off the bottom of the screen, which was the "card
+runs off the bottom" the audit had already found. One bug, two faces.
+
+The entrance is a `translateY` in the sheet's own animated style now, so
+layout stays React Native's and the sheet grows the instant its content does.
+`components/ui/__tests__/sheet.test.ts` keeps the preset from coming back, and
+`traps` carries the mechanism. Fade and Zoom are clear of this — they animate
+opacity and transform — and a sweep of `src/` found the sheet was the app's
+only Slide entrance.
+
+### And the eight the sweep found
+
+Five lenses over the codebase, every finding then handed to a skeptic told to
+refute it. Three died there, including two that tried to apply the frame-
+freeze above to `FadeInRight`. Nine survived and all nine were confirmed by
+hand before anything was changed:
+
+- **The trip calendar swallowed the page and hid its own Save button.** It is
+  a fourteen-month vertical ScrollView; inside StepScreen's page scroller it
+  took every drag and had nothing to scroll, so Add a trip froze once the
+  header scrolled away, and inside the trip editor's sheet its wrapper could
+  not shrink, so Save changes was laid out below the bottom edge. You could
+  not save a trip from your profile at all.
+- **An invite nobody could accept.** With no end date there was nothing to
+  default the invitee's stay to, so Join the group was greyed out under a
+  picker already showing a date. Every new group has no end date, so that was
+  every invite.
+- **A radio that set an expiry.** Tapping the already-selected "No end date"
+  row in group settings quietly gave the chat thirty days.
+- **A place card from the last city.** Switching cities cleared the selected
+  pin but not the selected place, so a Bangkok bar stayed parked on the Lisbon
+  map with Join the chat still wired to it. Tapping empty basemap missed it too.
+- **A pin that posted into thin air.** Drop a pin for tomorrow while the map is
+  filtered to today and both the marker and the confirmation card read from the
+  filtered list: the sheet closed on a map that looked untouched.
+- **WhatsApp and social handles were dead buttons.** A WhatsApp link is stored
+  as a phone number — the database insists on it — and became
+  `https://+34 600 123 456`, which iOS opens in Safari on a dead host rather
+  than erroring. `@yourplace` went the same way.
+- **A business saw every traveler as a storefront.** `kind = 'business'` goes
+  to both sides and `my_chats` already flips per reader; the client did not.
+- **Report fell off the bottom of the long message worth reporting.** Two
+  clamps, and the second assigned where it should have clamped.
+- **A closed group stopped being readable a week later.** Yesterday's change
+  kept the `room_members` row, but every gate asks `expires_at > now()` and
+  none asks whether a row exists. `is_room_member` and `my_chats` know what a
+  closed group is now; the pgTAP that "covered" this asserted only the half
+  that was already true.
+
+Database: **667** pgTAP assertions. Client: **313** unit tests.
+
 ## Current: **Chat is active until** (2026-08-27)
 
 The founder asked for a no-end-date option, the rename from "People can stay
