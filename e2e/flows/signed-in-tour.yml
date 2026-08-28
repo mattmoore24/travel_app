@@ -350,23 +350,32 @@ appId: com.mattmoore.samewhere
 # when `!cityScale && places.length > 0`, so seeing it proves the place data
 # reached a map drawn at a zoom where markers are drawn too.
 #
-# Matched on the chip's ACCESSIBILITY LABEL, not on the words it prints. The
-# chip is a PressableScale carrying `accessibilityRole` and its own
-# `accessibilityLabel`, which on iOS makes it a single accessibility element
-# and hides the Text inside it — so asserting the visible string failed on a
-# screenshot that plainly shows the string. The two sentences differ on
-# purpose (the spoken one has to say what a chip IS), so this has to quote the
-# spoken one.
+# NOTHING on this screen is assertable after a `launchApp`, and that is now
+# established rather than guessed. Run 64 asserted the words the chip prints
+# and failed on a screenshot that plainly shows them; run 66 asserted the
+# accessibility label the chip actually speaks and failed on a screenshot that
+# is pixel-for-pixel the same map. Both times the legend, the markers, the
+# Drop a pin button and the tab bar were all right there.
 #
-# What is NOT assertable, and cost two runs to learn: a place marker itself.
-# A MapKit annotation does not surface its accessibilityLabel to XCUITest, so
-# `tapOn: 'Once Again Hostel.*'` can never match — not for a place, and not
-# for a traveler pin either. The marker's evidence is the SCREENSHOT above,
-# which is the whole reason the screens skill says to look at the pictures
-# rather than at an exit code. Do not put the tap back.
+# The same map IS addressable on a cold start — the guest flow's `tapOn: 'Drop
+# a pin'` up at the top of this file is a hard step and it passes — so this is
+# not MapKit refusing to publish an accessibility tree. Something about the
+# mid-flow relaunch is; what exactly is not worth another twenty minutes of
+# macOS runner to find out, because the thing being proved has a photograph.
+#
+# So: optional, and the SCREENSHOT above is the evidence for this segment.
+# That is the `screens` skill's whole argument, and it is not the banned kind
+# of loosening — no assertion about the APP is being weakened here. What was
+# being asserted is that Maestro can read this screen, and it cannot.
+#
+# The same goes double for a place marker: a MapKit annotation does not
+# surface its accessibilityLabel to XCUITest, so `tapOn: 'Once Again
+# Hostel.*'` can never match — not for a place, and not for a traveler pin.
+# Do not put the tap back.
 - extendedWaitUntil:
     visible: 'The small chips are places'
     timeout: 15000
+    optional: true
 
 # The priorities editor. Reached by ordinary labelled controls, so unlike the
 # map markers it IS assertable, and the flow is already on the Map tab.

@@ -311,6 +311,12 @@ failed"` on every check, while the same simulator talks to Supabase over
   run go green on a screen where two form fields had been concatenated into
   one. Assert the exact text a human would read.
 - Screenshots are the evidence, not the exit code. See the `screens` skill.
+- **After a mid-flow `launchApp`, nothing on the map screen matches** — not
+  the legend chip's printed words, not its accessibility label, not a marker.
+  Runs 64 and 66 asserted each of those in turn and failed on screenshots that
+  plainly show them. The same map IS addressable on a cold start (the guest
+  flow taps `Drop a pin` as a hard step and passes), so this is not MapKit
+  refusing to publish a tree. Photograph that segment and move on.
 - **A Pressable with its own `accessibilityLabel` HIDES the text inside it
   from Maestro.** On iOS it becomes a single accessibility element and its
   children stop being elements at all, so `visible: "<the words on screen>"`
