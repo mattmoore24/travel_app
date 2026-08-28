@@ -607,6 +607,13 @@ export default function MapScreen() {
   const selectCity = (id: number) => {
     setCityId(id);
     setSelectedPinId(null);
+    // The pin card and the venue stack heal themselves — both are looked up
+    // in the city's own list, so they resolve to null the moment the list
+    // reloads. The place card does not: it is handed a bare id and
+    // `business-detail` is cached under that id alone, so without this the
+    // card for a bar in Bangkok stays parked at the bottom of the Lisbon map,
+    // with Join the chat and Message still wired to it.
+    setSelectedPlaceId(null);
     const city = launchCities.find((c) => c.city_id === id);
     if (city) {
       mapRef.current?.animateToRegion(
@@ -696,6 +703,10 @@ export default function MapScreen() {
             if (mode === 'browse') {
               setSelectedPinId(null);
               setVenueKey(null);
+              // Same omission as the city switch had: a tap on empty basemap
+              // is how anybody dismisses a card, and the place card was the
+              // one that ignored it.
+              setSelectedPlaceId(null);
             }
           }}
           onRegionChange={() => {
@@ -1182,6 +1193,13 @@ export default function MapScreen() {
           onPosted={(pinId) => {
             setMode('browse');
             setLifted(false);
+            // The form lets you pin for tomorrow while the map is filtered to
+            // today, and both the markers and the confirmation card read from
+            // the FILTERED list — so the sheet closed on a map that looked
+            // untouched, still saying nothing was pinned for today. Widen the
+            // view to the day you just posted for, which is always covered by
+            // no filter at all.
+            setDateFilter('all');
             // Sheets are presented as modals, and iOS silently drops a
             // presentation that begins while another modal is still
             // dismissing — which left a freshly dropped pin with no
