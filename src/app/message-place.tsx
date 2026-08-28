@@ -70,7 +70,7 @@ export default function MessagePlaceScreen() {
   return (
     <StepScreen
       scrollRef={scrollRef}
-      title={name ?? 'This place'}
+      title={name ?? 'This business'}
       subtitle="Goes to the people who run it. You'll find it on the Chat tab."
       continueLabel="Send"
       continueDisabled={!businessId || message.trim().length === 0 || message.length > MESSAGE_MAX}

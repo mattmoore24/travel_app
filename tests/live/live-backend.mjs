@@ -579,7 +579,7 @@ try {
     });
     check(
       'and writing to a place nobody runs is refused, not opened into the void',
-      Boolean(msgErr) && /nobody runs this place/i.test(msgErr.message),
+      Boolean(msgErr) && /nobody runs this business/i.test(msgErr.message),
       msgErr?.message ?? 'IT WAS ACCEPTED'
     );
 

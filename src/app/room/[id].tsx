@@ -181,7 +181,7 @@ export default function RoomScreen() {
                 <View style={styles.roomActions}>
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="About this place"
+                    accessibilityLabel="About this business"
                     onPress={() =>
                       router.push({ pathname: '/place/[id]', params: { id: placeId } })
                     }

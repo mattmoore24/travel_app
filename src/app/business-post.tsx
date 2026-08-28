@@ -325,7 +325,7 @@ export default function BusinessPostScreen() {
         </ThemedText>
         {business != null && !business.verified ? (
           <ThemedText type="footnote" themeColor="textSecondary">
-            Get the check on your place and you can keep ten up at once.
+            Get the check on your business and you can keep ten up at once.
           </ThemedText>
         ) : null}
       </View>

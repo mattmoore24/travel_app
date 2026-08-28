@@ -550,7 +550,7 @@ export default function MapScreen() {
   // the threshold is crossed, not on every frame of a pinch.
   const [cityScale, setCityScale] = useState(false);
   // `!cityScale` matters as much as the count: place markers are only drawn
-  // past city scale, so without it the chip invited somebody to "tap a place"
+  // past city scale, so without it the chip invited somebody to "tap a business"
   // on a map showing none — the app contradicting itself, which is the whole
   // reason the legend exists.
   const placesLegend = usePlacesLegend(!cityScale && places.length > 0 && !legend.visible);
@@ -1257,7 +1257,7 @@ export default function MapScreen() {
           pointerEvents="box-none">
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel="The small chips are places. Tap one to see what's on."
+            accessibilityLabel="The small chips are businesses. Tap one to see what's on."
             accessibilityHint="Dismisses this"
             scaleTo={0.96}
             haptic="light"
@@ -1268,7 +1268,7 @@ export default function MapScreen() {
                 { backgroundColor: theme.surface, borderColor: theme.hairline },
               ]}>
               <PlaceGlyph category="bar" live={false} size={18} onSurface />
-              <ThemedText type="footnote">Tap a place to see what&apos;s on</ThemedText>
+              <ThemedText type="footnote">Tap a business to see what&apos;s on</ThemedText>
               <SymbolView
                 name={{ ios: 'xmark', android: 'close', web: 'close' }}
                 size={11}

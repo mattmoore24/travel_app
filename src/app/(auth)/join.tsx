@@ -43,7 +43,7 @@ export default function JoinScreen() {
       listingDone();
     }
   };
-  // Arriving from the "Run a place?" door on the welcome tour. Carried
+  // Arriving from the "Run a business?" door on the welcome tour. Carried
   // through because register_business refuses an account that has finished
   // traveler onboarding, and onboarding is exactly where the root guard
   // drops somebody the moment they have a session — so without this, the one

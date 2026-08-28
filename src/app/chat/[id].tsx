@@ -138,7 +138,7 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
     <View style={styles.header}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={isPlace ? `About ${chat.title ?? 'this place'}` : 'View profile'}
+        accessibilityLabel={isPlace ? `About ${chat.title ?? 'this business'}` : 'View profile'}
         disabled={isPlace && placeId == null}
         onPress={() =>
           isPlace
@@ -163,7 +163,7 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
         </View>
         <View style={styles.headerNames}>
           <ThemedText type="smallBold">
-            {chat.title ?? (isPlace ? 'This place' : 'Traveler')}
+            {chat.title ?? (isPlace ? 'This business' : 'Traveler')}
           </ThemedText>
           {isPlace ? (
             <ThemedText type="caption" themeColor="textSecondary">

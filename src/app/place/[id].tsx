@@ -294,7 +294,7 @@ export default function PlaceScreen() {
     return (
       <ThemedView style={styles.root}>
         <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-          <LoadError what="this place" error={detailQuery.error} onRetry={detailQuery.refetch} />
+          <LoadError what="this business" error={detailQuery.error} onRetry={detailQuery.refetch} />
         </SafeAreaView>
       </ThemedView>
     );
@@ -323,7 +323,7 @@ export default function PlaceScreen() {
         <SafeAreaView style={styles.safeArea} edges={['bottom']}>
           <View style={styles.missing}>
             <ThemedText type="callout" themeColor="textSecondary">
-              That place is not on the map any more.
+              That business is not on the map any more.
             </ThemedText>
             <PrimaryButton variant="ghost" label="Go back" onPress={() => router.back()} />
           </View>
@@ -536,7 +536,7 @@ export default function PlaceScreen() {
               // buttons, which is the same bug one listing over.
               <View style={styles.actions}>
                 <ThemedText type="footnote" themeColor="textSecondary">
-                  You&apos;re signed in as a place, so this is a look at how another one reads.
+                  You&apos;re signed in as a business, so this is a look at how another one reads.
                   Joining, rating and messaging belong to travelers.
                 </ThemedText>
               </View>
@@ -588,7 +588,7 @@ export default function PlaceScreen() {
                   />
                 ) : (
                   <ThemedText type="footnote" themeColor="textSecondary">
-                    Nobody runs this place on Samewhere yet. The chat is open to anyone passing
+                    Nobody runs this business on Samewhere yet. The chat is open to anyone passing
                     through.
                   </ThemedText>
                 )}
@@ -597,7 +597,7 @@ export default function PlaceScreen() {
                     same size, in the same row, below the fold. */}
                 <PrimaryButton
                   variant="ghost"
-                  label="Rate this place"
+                  label="Rate this business"
                   accessibilityLabel={`Rate ${place.name}`}
                   onPress={() =>
                     router.push({

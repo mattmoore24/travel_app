@@ -447,7 +447,7 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
                         router.push('/join?business=1');
                       }}>
                       <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.signInLink}>
-                        Run a place? Put it on the map
+                        Run a business? Put it on the map
                       </Text>
                     </Pressable>
                   </View>

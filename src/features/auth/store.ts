@@ -23,7 +23,7 @@ type AuthState = {
    */
   recovery: null | { status: 'establishing' | 'ready' | 'failed'; message: string | null };
   /**
-   * Somebody who started signing up through "Run a place? Put it on the map"
+   * Somebody who started signing up through "Run a business? Put it on the map"
    * and has not reached the listing form yet.
    *
    * Same reason `recovery` is here: it has to outlive a screen. Creating the

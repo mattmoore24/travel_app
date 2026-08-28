@@ -564,7 +564,7 @@ function BusinessPhotos({ businessId, userId }: { businessId: string; userId: st
       style={styles.block}
       onLayout={(event: LayoutChangeEvent) => setWidth(Math.round(event.nativeEvent.layout.width))}>
       <ThemedText type="footnote" themeColor="textSecondary">
-        Photos of the place, not of a person. The first one is your cover.
+        Photos of the business, not of a person. The first one is your cover.
       </ThemedText>
       {size > 0 ? (
         <View style={[styles.grid, { gap: PHOTO_GAP }]}>
@@ -630,12 +630,12 @@ function valuePlaceholder(kind: BusinessLinkKind): string {
     case 'whatsapp':
       return '+34 600 123 456';
     case 'email':
-      return 'hello@yourplace.com';
+      return 'hello@yourbusiness.com';
     case 'instagram':
     case 'tiktok':
     case 'facebook':
     case 'x':
-      return '@yourplace, or the full link';
+      return '@yourbusiness, or the full link';
     default:
       return 'https://';
   }
@@ -904,7 +904,7 @@ function BusinessEditForm({
   const trimmedName = name.trim();
   const nameError =
     trimmedName.length < NAME_MIN
-      ? 'A place needs a name, even a short one.'
+      ? 'A business needs a name, even a short one.'
       : trimmedName.length > NAME_MAX
         ? `That is longer than ${NAME_MAX} characters. Use the name on the sign.`
         : null;
@@ -1011,7 +1011,7 @@ function BusinessEditForm({
 
   return (
     <StepScreen
-      title="Edit your place"
+      title="Edit your business"
       continueLabel="Save"
       continueDisabled={!valid}
       note={
@@ -1036,12 +1036,12 @@ function BusinessEditForm({
           and drops a listed place back to unconfirmed. */}
       <ThemedText type="footnote" themeColor={nameChanged ? 'warning' : 'textSecondary'}>
         {nameChanged
-          ? 'You changed the name. Saving takes the place off the map until you confirm your email again, and the check goes with it.'
-          : 'Change the name and the place comes off the map until you confirm your email again. The check goes with it.'}
+          ? 'You changed the name. Saving takes your business off the map until you confirm your email again, and the check goes with it.'
+          : 'Change the name and your business comes off the map until you confirm your email again. The check goes with it.'}
       </ThemedText>
 
       <FormTextField
-        label="About the place"
+        label="About the business"
         placeholder="What it's like, who turns up, what to order."
         multiline
         numberOfLines={4}

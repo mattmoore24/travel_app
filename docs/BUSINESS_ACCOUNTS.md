@@ -446,7 +446,7 @@ enough to handle by hand.
 `business_reports` (id, business_id, reporter_user_id, reason enum, note ≤300,
 photo_path nullable, created_at; unique on (business_id, reporter_user_id), so
 one account is one voice). Reasons, lifted from Google's list because it is
-well-worn: **not a real place · permanently closed · not this business (someone
+well-worn: **not a real business · permanently closed · not this business (someone
 else is running it) · wrong location · spam or offensive**.
 
 | on the first report from a given account                                                                                  |
@@ -573,7 +573,11 @@ Sources: [Today](https://www.today.com/food/trends/what-is-beli-app-rcna217748),
 
 ## 4. The traveler experience
 
-The traveler-facing word is **"place"**; "business" is back-office vocabulary.
+The word everywhere, in both directions, is **"business"** — travelers read it
+too. Founder, 2026-08-28: _"I don't think we should refer to businesses as
+'places', we should always call them businesses to keep it consistent and also
+less confusing."_ "Place" survives only where it means a spot on the map, never
+a listing.
 The marker is never called a "pin" anywhere, in either direction — that word is
 load-bearing in rule 3.
 
@@ -596,7 +600,7 @@ it, then it becomes Open the chat. Message is second on every surface, always.
 person grammar): landscape hero, name, category, score; **What's on**; **The
 chat here**; **Hours** (today bold, "See the week"); **Find and book** (labeled
 rows — "Book a table", "Buy tickets", never a raw URL); **Photos**;
-**Socials**; and **Rate this place**, open to anyone with an account.
+**Socials**; and **Rate this business**, open to anyone with an account.
 
 **Two rows, never confused** **[review]**: a traveler who joins the chat and
 messages the team has two conversations with one name. The group chat sits in
@@ -646,7 +650,7 @@ Steps: name and category · city and the drop-pin picker ("Drop the pin right on
 your door.") · **business email** (with the plain reason: _"Use your business
 email. It's the address travelers will reach you at, and it's what puts you on
 the map."_) and an optional website · links · hours (skippable) · photos
-("Photos of the place, not of a person. The first one is your cover."). Finish
+("Photos of the business, not of a person. The first one is your cover."). Finish
 lands on:
 
 > **"Almost there. Tap the link in the email we just sent and you're on the
@@ -709,7 +713,7 @@ is a bell, not a siren.
 - **Photos** in open rooms are admins-only, which removes the highest-volume
   moderation surface a free-to-join room would otherwise create.
 - **Reporting** is a first-class structured path, Google's shape (§3.9): not a
-  real place / permanently closed / not this business / wrong location / spam or
+  real business / permanently closed / not this business / wrong location / spam or
   offensive, with an optional photo. **The first report** triggers both an email
   and a machine read; a plausible impersonation verdict darkens the listing
   immediately and clears its badge.

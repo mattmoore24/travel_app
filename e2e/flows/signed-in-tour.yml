@@ -373,7 +373,7 @@ appId: com.mattmoore.samewhere
 # Hostel.*'` can never match — not for a place, and not for a traveler pin.
 # Do not put the tap back.
 - extendedWaitUntil:
-    visible: 'The small chips are places'
+    visible: 'The small chips are businesses'
     timeout: 15000
     optional: true
 

@@ -12,8 +12,8 @@ const SEAL = 14;
  * Its own control rather than `VerifiedSeal`, which explains a live SELFIE
  * checked against a profile: true of a traveler, false of a bar, and a badge
  * that explains itself wrongly is worse than one that says nothing. The
- * spoken label is "Verified place" and never "verified business", because
- * that word is back-office vocabulary a traveler never meets.
+ * spoken label is "Verified business", which is the word travelers read too
+ * since the founder collapsed the old place/business split on 2026-08-28.
  *
  * Its own FILE because three screens show it — the sheet, the place page and
  * the owner's dashboard — and for a while they each grew their own, with
@@ -29,12 +29,12 @@ export function PlaceSeal() {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel="Verified place"
+      accessibilityLabel="Verified business"
       accessibilityHint="What the verified check means"
       hitSlop={Math.ceil((HitTarget - SEAL) / 2)}
       onPress={() =>
         Alert.alert(
-          'Verified place',
+          'Verified business',
           'Somebody stood outside and sent us two photos of the front. We checked them against the spot on the map.'
         )
       }>

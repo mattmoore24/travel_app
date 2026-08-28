@@ -82,17 +82,17 @@ function VerifiedCheck() {
   return (
     <Pressable
       accessibilityRole="button"
-      // "Verified place" is the LABEL and the explanation is the hint, the
+      // "Verified business" is the LABEL and the explanation is the hint, the
       // same order the traveler-facing seal uses. The other way round,
       // VoiceOver never announced that the place is verified at all — only
       // that there was a button explaining something.
-      accessibilityLabel="Verified place"
+      accessibilityLabel="Verified business"
       accessibilityHint="What the check means"
       // 14 + 15 + 15 = 44 on a glyph that draws at 14.
       hitSlop={Math.ceil((HitTarget - 14) / 2)}
       onPress={() =>
         Alert.alert(
-          'Verified',
+          'Verified business',
           'Somebody stood outside and sent us two photos of the front. We checked them against the spot on the map.'
         )
       }>
@@ -264,7 +264,7 @@ export default function MyBusinessScreen() {
         icon={{ ios: 'storefront', android: 'storefront', web: 'storefront' }}
         title="My business"
         phase="waiting on backend keys"
-        description="Add Supabase keys to .env to put a place on the map."
+        description="Add Supabase keys to .env to put a business on the map."
       />
     );
   }
@@ -273,7 +273,7 @@ export default function MyBusinessScreen() {
     return (
       <ThemedView style={styles.root}>
         <View style={styles.column}>
-          <LoadError what="your place" error={ownQuery.error} onRetry={ownQuery.refetch} />
+          <LoadError what="your business" error={ownQuery.error} onRetry={ownQuery.refetch} />
         </View>
       </ThemedView>
     );
@@ -303,7 +303,7 @@ export default function MyBusinessScreen() {
       <ThemedView style={styles.root}>
         <View style={[styles.column, styles.centred]}>
           <ThemedText type="callout" themeColor="textSecondary" style={styles.centredText}>
-            {"We can't find your place right now."}
+            {"We can't find your business right now."}
           </ThemedText>
           <PrimaryButton variant="ghost" label="Try again" onPress={() => ownQuery.refetch()} />
         </View>

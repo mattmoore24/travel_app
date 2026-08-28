@@ -107,9 +107,9 @@ function BusinessAccount({ name }: { name: string | null }) {
           {name ?? 'Your account'}
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.guestText}>
-          Everything about your place lives on the My business tab.
+          Everything about it lives on the My business tab.
         </ThemedText>
-        <PrimaryButton label="Manage your place" onPress={() => router.replace('/(tabs)')} />
+        <PrimaryButton label="Manage your business" onPress={() => router.replace('/(tabs)')} />
         <PrimaryButton
           variant="ghost"
           label="House rules and help"
@@ -128,7 +128,7 @@ function BusinessAccount({ name }: { name: string | null }) {
           onPress={() =>
             Alert.alert(
               'Delete this account?',
-              'Your place comes off the map and everything on it goes: photos, posts, hours, links, ratings and its chat. This cannot be undone.',
+              'Your business comes off the map and everything on it goes: photos, posts, hours, links, ratings and its chat. This cannot be undone.',
               [
                 { text: 'Keep it', style: 'cancel' },
                 {
@@ -286,8 +286,8 @@ export default function ProfileScreen() {
                 label="Run a business?"
                 onPress={() =>
                   Alert.alert(
-                    'A place gets its own account',
-                    "Yours is a traveler account, and the two work differently, so a place needs one of its own. It's free. Sign out, make a new account, and the offer is on the first screen.",
+                    'A business gets its own account',
+                    "Yours is a traveler account, and the two work differently, so a business needs one of its own. It's free. Sign out, make a new account, and the offer is on the first screen.",
                     [
                       { text: 'Not now', style: 'cancel' },
                       {

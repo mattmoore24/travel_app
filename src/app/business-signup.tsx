@@ -50,7 +50,7 @@ const EMAIL_PROMISE = "Almost there. We'll email you a code. Type it in and you'
 function nameProblem(value: string): string | null {
   const trimmed = value.trim();
   if (trimmed.length < NAME_MIN) {
-    return 'A place needs a name, even a short one.';
+    return 'A business needs a name, even a short one.';
   }
   if (trimmed.length > NAME_MAX) {
     return `That is longer than ${NAME_MAX} characters. Use the name on the sign.`;
@@ -134,9 +134,9 @@ export default function BusinessSignupScreen() {
       <StepShell
         step={1}
         total={TOTAL_STEPS}
-        title="What's the place called?"
-        subtitle="The name over the door, and what kind of place it is."
-        note={category == null ? 'Pick what kind of place it is.' : null}
+        title="What's your business called?"
+        subtitle="The name over the door, and what kind of business it is."
+        note={category == null ? 'Pick what kind of business it is.' : null}
         onBack={router.canGoBack() ? () => router.back() : undefined}
         continueTestID="business-name-continue"
         // Pressable while incomplete on purpose, exactly like the traveler
@@ -160,7 +160,7 @@ export default function BusinessSignupScreen() {
           {...keyboardDoneProps}
         />
         <View style={styles.block}>
-          <ThemedText type="callout">What kind of place?</ThemedText>
+          <ThemedText type="callout">What kind of business?</ThemedText>
           <CategoryGrid value={category} onChange={setCategory} />
         </View>
       </StepShell>

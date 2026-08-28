@@ -44,7 +44,7 @@ export default function ReportPlaceScreen() {
       // telling whoever is holding the phone what this account did before.
       Alert.alert(
         'Report sent',
-        `It comes to us straight away and we take a look. ${name ?? 'The place'} never finds out who reported it.`,
+        `It comes to us straight away and we take a look. ${name ?? 'The business'} never finds out who reported it.`,
         [{ text: 'Done', onPress: () => router.back() }]
       );
     } catch {
@@ -54,7 +54,7 @@ export default function ReportPlaceScreen() {
 
   return (
     <StepScreen
-      title="Report this place"
+      title="Report this business"
       subtitle="A real person reads every report."
       continueLabel="Send report"
       continueDisabled={reason == null}
@@ -63,7 +63,7 @@ export default function ReportPlaceScreen() {
       onClose={() => router.back()}
       onContinue={submit}>
       <ThemedText type="smallBold">
-        {name ? `What's off with ${name}?` : "What's off with this place?"}
+        {name ? `What's off with ${name}?` : "What's off with this business?"}
       </ThemedText>
 
       {/* Rows rather than chips: these labels are sentences, and five of them

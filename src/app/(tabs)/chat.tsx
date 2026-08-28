@@ -689,7 +689,7 @@ export default function ChatScreen() {
                 </>
               ) : null}
               <ThemedText type="footnote" themeColor="textSecondary">
-                Places you stay run open chats. Have a look before you join.
+                Businesses you stay at run open chats. Have a look before you join.
               </ThemedText>
               <RoomDiscovery cityId={cityId} />
               <SignUpGate

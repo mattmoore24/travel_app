@@ -36,7 +36,7 @@ const GENDER_OPTIONS: { value: Gender; label: string }[] = [
 
 export default function OnboardingScreen() {
   const { data: profile } = useOwnProfile();
-  // Somebody who signed up through "Run a place? Put it on the map" belongs
+  // Somebody who signed up through "Run a business? Put it on the map" belongs
   // in the listing form, and the replace that was supposed to take them there
   // is dispatched while the root's readiness hold has the navigator unmounted,
   // so it is dropped. Without this they land here — and this is the one flow a

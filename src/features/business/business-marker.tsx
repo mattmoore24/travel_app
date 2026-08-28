@@ -134,9 +134,8 @@ export function BusinessMarker({
       zIndex={0}
       tracksViewChanges={tracking}
       accessibilityRole="button"
-      // Never "business": that word is back-office only. And "something on"
-      // rather than "tonight", because the flag says a post exists, not when
-      // it happens.
+      // "something on" rather than "tonight", because the flag says a post
+      // exists, not when it happens.
       accessibilityLabel={[
         business.name,
         CATEGORY_LABEL[business.category],

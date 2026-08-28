@@ -102,7 +102,7 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
     return (
       <View style={styles.card}>
         <LoadError
-          what="this place"
+          what="this business"
           error={detail.error}
           onRetry={() => detail.refetch()}
           compact
@@ -242,7 +242,7 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
 
       {isGuest ? (
         <SignUpGate
-          reason="Join the chat here, or message the place"
+          reason="Join the chat here, or message the business"
           where="place-sheet"
           compact
           onNavigate={leaveThen}
@@ -289,7 +289,8 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
             />
           ) : (
             <ThemedText type="footnote" themeColor="textSecondary" style={styles.unclaimed}>
-              Nobody runs this place on Samewhere yet. The chat is open to anyone passing through.
+              Nobody runs this business on Samewhere yet. The chat is open to anyone passing
+              through.
             </ThemedText>
           )}
         </View>

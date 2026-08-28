@@ -11,11 +11,19 @@ import type {
 /**
  * The words a traveler sees, in one place.
  *
- * Two vocabulary rules from the design brief run through all of it. Travelers
- * never see the word "business" - they see a place. And nothing is ever
- * called a "pin": that word is load-bearing in §7 rule 3, where it means a
- * traveler's 72-hour marker, and a permanent commercial listing borrowing it
- * would blur the one distinction the rule exists to draw.
+ * Two vocabulary rules run through all of it.
+ *
+ * A commercial listing is a BUSINESS in every string anybody reads, traveler
+ * or owner. This reverses the older rule, which had travelers only ever
+ * seeing "place" - founder, 2026-08-28: "I don't think we should refer to
+ * businesses as places, we should always call them businesses to keep it
+ * consistent and also less confusing." The word "place" survives only where
+ * it means a spot on the map, as in the drop-a-pin search field.
+ *
+ * And nothing is ever called a "pin": that word is load-bearing in §7 rule 3,
+ * where it means a traveler's 72-hour marker, and a permanent commercial
+ * listing borrowing it would blur the one distinction the rule exists to
+ * draw.
  */
 
 export const CATEGORY_LABEL: Record<BusinessCategory, string> = {
@@ -31,7 +39,7 @@ export const CATEGORY_LABEL: Record<BusinessCategory, string> = {
   coworking: 'Coworking',
   wellness: 'Wellness',
   shop: 'Shop',
-  other: 'Somewhere else',
+  other: 'Something else',
 };
 
 /** SF Symbols first, with Material names for the other two platforms. */
@@ -87,7 +95,7 @@ export const LINK_LABEL: Record<BusinessLinkKind, string> = {
 };
 
 export const REPORT_REASONS: { value: BusinessReportReason; label: string }[] = [
-  { value: 'not_this_business', label: "This isn't the real place" },
+  { value: 'not_this_business', label: "This isn't the real business" },
   { value: 'not_a_real_place', label: "It doesn't exist" },
   { value: 'permanently_closed', label: "It's closed for good" },
   { value: 'wrong_location', label: "It's in the wrong spot" },

@@ -263,7 +263,7 @@ update public.businesses set state = 'flagged' where name = 'Casa Azul';
 select pg_temp.login('00000000-0000-0000-0000-0000000000c3');
 select throws_ok(
   $$ select public.rate_business(pg_temp.biz(), 'loved', 0.5) $$,
-  'place not found',
+  'business not found',
   'and a flagged place cannot be rated at all'
 );
 

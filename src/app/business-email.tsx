@@ -134,7 +134,7 @@ export default function BusinessEmailScreen() {
           ? `We sent a six-digit code to ${address}. It lasts twenty minutes.`
           : 'We sent a six-digit code to your business email. It lasts twenty minutes.'
       }
-      continueLabel="Put my place on the map"
+      continueLabel="Put my business on the map"
       continueDisabled={code.length !== CODE_LENGTH}
       continueLoading={confirm.isPending}
       note={code.length === CODE_LENGTH ? null : 'Six digits, from the email.'}
@@ -154,7 +154,7 @@ export default function BusinessEmailScreen() {
               autoCorrect={false}
               keyboardType="email-address"
               textContentType="emailAddress"
-              placeholder="hello@yourplace.com"
+              placeholder="hello@yourbusiness.com"
               value={draft}
               onChangeText={setDraft}
               onSubmitEditing={() => sendAgain(draft)}

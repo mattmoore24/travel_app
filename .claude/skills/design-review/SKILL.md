@@ -125,6 +125,12 @@ Banned, each for a reason already paid for:
 - **Em dashes and the other AI tells**, in anything the app itself shows.
   (Internal docs, this one included, are not user-facing copy.) Read every
   string aloud before shipping it.
+- **"place" for a business.** A hostel, bar, cafe or tour operator is a
+  **business** in every string anybody reads, traveler or owner. This reverses
+  the earlier rule ("travelers never see the word business, they see a
+  place"), which the founder overturned on 2026-08-28: consistency beats the
+  softer word. "Place" is still right where it means a spot on the map, as in
+  the drop-a-pin search field.
 
 A control says exactly what happens, and the confirmation echoes it. Errors
 say what went wrong and what to do — "Nothing by that name in Lisbon. Try the
