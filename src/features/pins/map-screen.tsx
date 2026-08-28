@@ -997,7 +997,18 @@ export default function MapScreen() {
                   have, which is who and what is on the map. Everything is
                   behind this now, and it carries a count so a narrowed map
                   is never a mystery. */}
-              <FilterButton filters={filters} onPress={() => setFiltersOpen(true)} />
+              <FilterButton
+                filters={filters}
+                onPress={() => {
+                  // The header stays live under an inline sheet, so this is
+                  // reachable with a pin card or a venue stack already open —
+                  // and three sheets at the bottom of one map is a pile.
+                  setSelectedPinId(null);
+                  setSelectedPlaceId(null);
+                  setVenueKey(null);
+                  setFiltersOpen(true);
+                }}
+              />
 
               {/* Renders nothing while the audience is open, so the common
                   case is one chip and the avatar. */}
@@ -1269,14 +1280,15 @@ export default function MapScreen() {
         </Sheet>
       ) : null}
 
-      {/* A stack of plans, opened. Same non-modal treatment as the pin card
-          below: the map stays live, so tapping a different venue swaps this
-          for that one. */}
       {/* Inline, so the map answers every tick behind it — which is the
           whole argument against an Apply button, and why there isn't one.
           Never a pushed route: a route opened from inside a presented sheet
-          goes UNDER its scrim, and the scrim outlives it. */}
-      {filtersOpen ? (
+          goes UNDER its scrim, and the scrim outlives it.
+
+          Gated on browse for the same reason every other sheet here is:
+          while somebody is placing a pin, the map is a viewfinder and nothing
+          else may sit on top of it. */}
+      {mode === 'browse' && filtersOpen ? (
         <MapFilterSheet
           filters={filters}
           onChange={setFilters}
@@ -1284,6 +1296,9 @@ export default function MapScreen() {
         />
       ) : null}
 
+      {/* A stack of plans, opened. Same non-modal treatment as the pin card
+          below: the map stays live, so tapping a different venue swaps this
+          for that one. */}
       {mode === 'browse' && openVenue && activeCityId != null ? (
         <Sheet inline dimmed={false} onClose={() => setVenueKey(null)}>
           <View style={styles.venueHeader}>
