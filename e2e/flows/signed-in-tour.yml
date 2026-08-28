@@ -318,6 +318,14 @@ appId: com.mattmoore.samewhere
 # now" — and every picture of it so far has been of an EMPTY list, which is
 # the one state the redesign does not change. A flush row with an avatar, a
 # name, a preview and a timestamp is the thing to look at.
+# Relaunched, not backed out of. Group settings is a pushed route two levels
+# deep, so the tab bar is not on screen at all and run 74's `tapOn: 'Chat'`
+# had nothing to hit. A relaunch lands on the Map tab with the tab bar
+# present, which is the same pattern this flow already uses above.
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
 - tapOn: 'Chat'
 - extendedWaitUntil:
     visible: 'Groups'
