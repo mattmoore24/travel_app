@@ -165,21 +165,40 @@ type WorkerReport = {
 
 // Classifies with structured output; returns the parsed verdict or throws.
 // A refusal stop reason returns null so callers can map it to a block.
+//
+// `effort` is the latency dial, and the only one worth turning: the model
+// thinks adaptively, so how long a verdict takes is set by this and not by
+// max_tokens (which is a ceiling, and costs nothing when unspent).
+//
+// FAST is for the two queues a person is watching in a live conversation — a
+// photo held behind a placeholder, and a first hello held before delivery.
+// Both are bounded either/or calls against a tuned prompt, and neither gets
+// any safer for thinking longer about it.
+//
+// CAREFUL is the default, and stays the default deliberately. Verification,
+// storefronts and impersonation are judgments about who somebody IS: a wrong
+// call there withdraws a badge, darkens a real business, or accuses somebody.
+// Nobody is staring at a placeholder while those run, so there is nothing to
+// buy by hurrying them.
+const FAST = 'low' as const;
+const CAREFUL = 'high' as const;
+
 async function classify<T>(
   anthropic: Anthropic,
   system: string,
   content: Anthropic.MessageParam['content'],
-  schema: z.ZodType<T>
+  schema: z.ZodType<T>,
+  effort: typeof FAST | typeof CAREFUL = CAREFUL
 ): Promise<T | null> {
   const response = await anthropic.messages.parse({
     model: MODEL,
-    // Opus 5 thinks adaptively by default and thinking tokens count against
-    // max_tokens — generous headroom keeps a long think from truncating the
-    // verdict (which would read as a classification failure).
+    // Opus 5 thinks adaptively and thinking tokens count against max_tokens —
+    // generous headroom keeps a long think from truncating the verdict (which
+    // would read as a classification failure). Unspent headroom is free.
     max_tokens: 16000,
     system,
     messages: [{ role: 'user', content }],
-    output_config: { format: zodOutputFormat(schema) },
+    output_config: { format: zodOutputFormat(schema), effort },
   });
   if (response.stop_reason === 'refusal') {
     return null;
@@ -285,7 +304,73 @@ Deno.serve(async (req) => {
     return data.signedUrl;
   };
 
-  // -- 1. Held first messages -------------------------------------------------
+  // The order of these six queues is the order somebody experiences them,
+  // not the order they were written. A chat photo is the only one with a
+  // person watching a placeholder in a live conversation, so it drains
+  // first; a held hello is second because somebody is waiting on a reply.
+  // Verification, storefronts and scans are all read minutes later at the
+  // earliest, and they are the slowest classifications, so putting them
+  // last costs nobody anything.
+  // -- 1. Photos posted into chats and rooms ------------------------------
+  // A room can be read by anyone, so an unscreened photo there is the most
+  // exposed content in the product. Same classifier, same fail-closed rule.
+  const { data: chatPhotos } = await supabase
+    .from('messages')
+    .select('id, image_path')
+    .eq('moderation_status', 'pending')
+    .not('image_path', 'is', null)
+    .order('created_at')
+    .limit(CHAT_PHOTOS_PER_TICK);
+
+  for (const photo of chatPhotos ?? []) {
+    try {
+      const url = await signedUrl('chat-photos', photo.image_path);
+      const verdict = await classify(
+        anthropic,
+        PROMPTS.photo,
+        [
+          { type: 'image', source: { type: 'url', url } },
+          { type: 'text', text: 'Moderate this photo posted in a travel chat.' },
+        ],
+        PhotoVerdict,
+        FAST
+      );
+      const payload = verdict
+        ? { ...verdict, engine: 'claude-moderator', model: MODEL }
+        : {
+            action: 'block',
+            category: 'refusal',
+            reason: 'the model refused to process this content',
+            engine: 'claude-moderator',
+            model: MODEL,
+          };
+      const { error } = await supabase.rpc('apply_chat_photo_verdict', {
+        p_message_id: photo.id,
+        p_verdict: payload,
+      });
+      if (error) {
+        throw new Error(`apply_chat_photo_verdict: ${error.message}`);
+      }
+      if (payload.action === 'allow') {
+        report.chatPhotos.approved += 1;
+      } else {
+        report.chatPhotos.rejected += 1;
+      }
+    } catch (error) {
+      if (isAuthError(error)) {
+        return Response.json(
+          { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
+          { status: 503 }
+        );
+      }
+      // Left pending, which means invisible to everyone but the sender —
+      // already fail-closed. The next tick retries.
+      report.chatPhotos.failed += 1;
+      report.notes.push(`chat photo ${photo.id}: ${(error as Error).message}`);
+    }
+  }
+
+  // -- 2. Held first messages -----------------------------------------------
   const { data: held, error: heldError } = await supabase
     .from('message_requests')
     .select('id, first_message, profile_element, source, moderation_attempts')
@@ -310,7 +395,8 @@ Deno.serve(async (req) => {
               `First message:\n${request.first_message}`,
           },
         ],
-        MessageVerdict
+        MessageVerdict,
+        FAST
       );
       const payload = verdict
         ? { ...verdict, engine: 'claude-moderator', model: MODEL }
@@ -371,7 +457,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  // -- 2. Pending profile photos ------------------------------------------------------
+  // -- 3. Pending profile photos --------------------------------------------
   const { data: photos } = await supabase
     .from('profile_photos')
     .select('id, storage_path, moderation_attempts')
@@ -449,64 +535,6 @@ Deno.serve(async (req) => {
             (bumpError ? ` (attempts update failed: ${bumpError.message})` : '')
         );
       }
-    }
-  }
-
-  // -- 3. Photos posted into chats and rooms ---------------------------------
-  // A room can be read by anyone, so an unscreened photo there is the most
-  // exposed content in the product. Same classifier, same fail-closed rule.
-  const { data: chatPhotos } = await supabase
-    .from('messages')
-    .select('id, image_path')
-    .eq('moderation_status', 'pending')
-    .not('image_path', 'is', null)
-    .order('created_at')
-    .limit(CHAT_PHOTOS_PER_TICK);
-
-  for (const photo of chatPhotos ?? []) {
-    try {
-      const url = await signedUrl('chat-photos', photo.image_path);
-      const verdict = await classify(
-        anthropic,
-        PROMPTS.photo,
-        [
-          { type: 'image', source: { type: 'url', url } },
-          { type: 'text', text: 'Moderate this photo posted in a travel chat.' },
-        ],
-        PhotoVerdict
-      );
-      const payload = verdict
-        ? { ...verdict, engine: 'claude-moderator', model: MODEL }
-        : {
-            action: 'block',
-            category: 'refusal',
-            reason: 'the model refused to process this content',
-            engine: 'claude-moderator',
-            model: MODEL,
-          };
-      const { error } = await supabase.rpc('apply_chat_photo_verdict', {
-        p_message_id: photo.id,
-        p_verdict: payload,
-      });
-      if (error) {
-        throw new Error(`apply_chat_photo_verdict: ${error.message}`);
-      }
-      if (payload.action === 'allow') {
-        report.chatPhotos.approved += 1;
-      } else {
-        report.chatPhotos.rejected += 1;
-      }
-    } catch (error) {
-      if (isAuthError(error)) {
-        return Response.json(
-          { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
-          { status: 503 }
-        );
-      }
-      // Left pending, which means invisible to everyone but the sender —
-      // already fail-closed. The next tick retries.
-      report.chatPhotos.failed += 1;
-      report.notes.push(`chat photo ${photo.id}: ${(error as Error).message}`);
     }
   }
 

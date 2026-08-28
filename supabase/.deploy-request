@@ -103,3 +103,18 @@
              business. report_business, message_business and rate_business
              restated whole with the new words; no OUT columns change, so
              create-or-replace and the grants survive, restated anyway.
+2026-08-28 — deploy: 20260828170000_moderation_answers_now.sql. A photo posted
+             into a chat waited on the clock, not on Claude: cron fires every
+             minute (mean 30s of nothing), and chat photos drained third of
+             six. The insert is the trigger now — worker_pokes throttles to one
+             invocation per three seconds so a room where six people paste at
+             once is still one call, poke_worker swallows its own failures
+             because a photo that cannot be SENT is worse than one that waits,
+             and the every-minute cron stays exactly as it was as the backstop.
+             admin_moderation_latency measures queued-to-verdict per queue and
+             is the only thing the app's "usually about N seconds" may quote.
+             The worker also reorders its queues (chat photos first, held
+             hellos second) and runs those two at low effort — the two calls
+             somebody watches a placeholder for. Verification, storefronts and
+             impersonation stay careful: nobody is waiting on those, and being
+             wrong about who somebody IS costs more than a few seconds.
