@@ -128,3 +128,15 @@
              except for the sender, who could already read their own upload
              through chat_photos_select_own and was being shown a blank tile
              about their own picture.
+2026-08-28 — deploy: 20260828190000_a_poke_never_waits_for_a_lock.sql.
+             poke_worker claimed its throttle slot with `on conflict do
+             update`, which takes a row lock — so two people posting a photo in
+             the same second serialised on one row, on the path of SENDING A
+             MESSAGE. Short in practice, and the failure mode is bad in a
+             specific way: a wait long enough to hit statement_timeout raises
+             query_canceled, which plpgsql's `when others` does not catch, so
+             the handler that exists to keep a poke harmless would let it
+             through and the insert would fail. A try-advisory lock removes the
+             wait entirely; losing that race is the same answer the throttle
+             gives anyway. create-or-replace — the signature is unchanged and
+             four triggers depend on the caller.

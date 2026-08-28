@@ -12,7 +12,7 @@
 -- to survive its absence: a photo that cannot be sent because the poke threw
 -- would be far worse than a photo that waits for the cron.
 begin;
-select plan(22);
+select plan(23);
 
 create function pg_temp.guest() returns void language plpgsql as $$
 begin
@@ -104,6 +104,18 @@ select ok(
 select lives_ok(
   $$ select public.poke_worker('drop-table-worker') $$,
   'an unknown worker name is refused rather than interpolated'
+);
+
+-- The advisory lock is what keeps a poke off the critical path: two senders
+-- in the same second must not queue behind each other on the throttle row,
+-- because a wait long enough to hit statement_timeout raises query_canceled,
+-- which plpgsql's `when others` does not catch — and the message insert would
+-- fail. Asserted structurally: a second session cannot be opened from inside
+-- one pgTAP transaction, so what is checked is that the guard is THERE.
+select matches(
+  (select prosrc from pg_proc where proname = 'poke_worker'),
+  'pg_try_advisory_xact_lock',
+  'a poke never waits for another poke'
 );
 
 select is(
