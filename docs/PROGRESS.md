@@ -3,6 +3,69 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **Business, not place. And the keyboard.** (2026-08-28)
+
+Three things the founder asked for, all of them about being understood.
+
+### The account kind is a question now
+
+"When I click sign in, it isn't clear how to sign up or sign in as a
+business... it should be extra clear when you are creating your profile by
+entering your email if you are proceeding with creating an individual or
+business account."
+
+It was neither asked nor shown. The only door to a business account was one
+line on the last page of the welcome tour, so anybody who reached signup any
+other way had no idea the choice existed. That is not just confusing: finishing
+traveler onboarding stamps `onboarding_completed_at`, and `register_business`
+refuses an account that carries it, so a bar owner who guessed wrong was locked
+out of listing for good.
+
+Two rows above the email field, each with a sentence, because "traveler" and
+"business" do not by themselves say what you are about to get. The choice
+drives the listing flag rather than the submit handler, so Apple carries the
+answer too. `autoFocus` came off that field: a keyboard that opens on arrival
+scrolls the field into view and the question out of it. Sign in says it covers
+both kinds and carries its own door to the business side.
+
+### Every keyboard closes
+
+"Every keypad in the app should be able to be closed without pressing enter."
+
+The second time this has been asked. The first pass made it a judgement per
+field, on the reasoning that a return key which ends typing is an exit. It is
+not: Return submits, or it jumps to the next field, and somebody who has just
+finished typing wants neither. `FormTextField` points at the Done bar by
+default now, so a screen gets it by using the app's own field. `Sheet` mounts a
+bar of its own, because a sheet presented through a Modal is its own iOS window
+and cannot reach the one underneath, which is what stranded the trip editor and
+the language picker. The chat and room composers stop being exemptions.
+
+### A business is a business
+
+"I don't think we should refer to businesses as 'places', we should always call
+them businesses to keep it consistent and also less confusing."
+
+This reverses a rule the codebase had written down in four places and enforced
+across every traveler-facing string. All four are gone, including one sitting
+on the map marker that no search for "place" would have found, and the design
+brief carries the new rule so the next pass does not restore the old one.
+
+Seventy-odd strings, found by reading every file rather than by find and
+replace, which is what kept the route names, enum values, testIDs and the
+genuine map-location meanings out of it. "Place the marker on the map" stays:
+that is a verb.
+
+Two were more than a swap. The catch-all category read "Somewhere else" under a
+heading that now says "What kind of business?", which was the location word
+sneaking back in; it is "Something else". And "Places you stay run open chats"
+needed a preposition to survive: "Businesses you stay at run open chats".
+
+Five Postgres exception strings reach the screen verbatim by design, so an
+alert said "nobody runs this place yet" on every unclaimed listing. Three
+functions restated, with the pgTAP and live-canary assertions that quote them
+moved in the same commit.
+
 ## Current: **The sheet that opened halfway, and eight more** (2026-08-28)
 
 The founder: "When I click the business pins, they don't open all the way
