@@ -5,7 +5,7 @@
 -- who can read an invite token, and whether a shared group counts as a
 -- connection for the social-handle gate (hard rule 4 — it must not).
 begin;
-select plan(97);
+select plan(100);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -864,8 +864,39 @@ select is(
     where chat_id = (select chat_id from public.groups where name = 'Forever')
       and user_id = '00000000-0000-0000-0000-00000000000b'),
   1,
-  'so the conversation is still in their list to read'
+  'so the row a reader is recognised by survives'
 );
+
+-- Surviving the sweep is not the same as being let in, and for a while it was
+-- the only half that was true. Every gate downstream asks `expires_at > now()`
+-- and none of them asks whether a row exists, so a member whose seat lapsed
+-- after the close kept a row nobody consults: no group in the list, no
+-- messages behind it. Both gates have to know what a closed group is.
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select ok(
+  public.is_room_member((select chat_id from public.groups where name = 'Forever')),
+  'a lapsed seat still reads a group that has closed'
+);
+select is(
+  (select count(*)::int from public.my_chats()
+    where chat_id = (select chat_id from public.groups where name = 'Forever')),
+  1,
+  'and the closed group is still in their chat list to open'
+);
+
+-- The exemption is the CLOSE, not the lapse. Reopening the group puts a lapsed
+-- seat straight back outside, which is what a reopened group means.
+select pg_temp.admin();
+update public.groups set max_stay_until = (current_date + 7)::date
+ where name = 'Forever';
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
+select ok(
+  not public.is_room_member((select chat_id from public.groups where name = 'Forever')),
+  'and reopening it puts that lapsed seat back outside'
+);
+select pg_temp.admin();
+update public.groups set max_stay_until = (current_date - 2)::date
+ where name = 'Forever';
 
 -- And nothing quietly archives it either. unarchive_on_message is a trigger
 -- on INSERT, and inserting is the one thing a closed chat refuses, so an
