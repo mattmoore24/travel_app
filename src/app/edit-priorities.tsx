@@ -60,18 +60,18 @@ export default function EditPrioritiesScreen() {
   const pendingRef = useRef<TextInput>(null);
   const rowRefs = useRef<Record<number, TextInput | null>>({});
 
-  const full = priorities.length >= MAX_PRIORITIES;
-  // The lowest slot nobody holds, not `priorities.length`. Two entries typed
-  // faster than the refetch both read length 0 and the upsert on
-  // (user_id, slot) meant the second silently replaced the first. `justWrote`
-  // covers the same gap from the other side: the query has not come back yet,
-  // so the slot we wrote a moment ago is not in `priorities`.
+  // `justWrote` covers the gap between an upsert and its refetch: the slot we
+  // wrote a moment ago is not in `priorities` yet. Two entries typed faster
+  // than the refetch both read length 0, and the upsert on (user_id, slot)
+  // meant the second silently replaced the first.
   const justWrote = useRef<number[]>([]);
-  // Null only when all six are taken, which is exactly when `full` is true
-  // and the empty field is not rendered at all.
-  const nextSlot =
-    nextFreeSlot([...priorities.map((p) => p.slot), ...justWrote.current], MAX_PRIORITIES) ??
-    MAX_PRIORITIES - 1;
+  const taken = [...priorities.map((p) => p.slot), ...justWrote.current];
+  const nextSlot = nextFreeSlot(taken, MAX_PRIORITIES);
+  // Counted the same way the slot is. `priorities.length` alone disagreed
+  // with `nextSlot` for exactly one refetch after the sixth was typed, and
+  // the empty field stayed on screen — so a seventh entry fell through to the
+  // `?? MAX - 1` fallback and overwrote the sixth.
+  const full = nextSlot == null;
 
   // Arriving from a chip on the profile: put the cursor in that row, or in
   // the empty field when the section header sent us here with nothing.
@@ -148,15 +148,23 @@ export default function EditPrioritiesScreen() {
       setPendingError(problem);
       return;
     }
+    // No free slot means the list filled up while this was being typed, and
+    // there is no honest place to put it. Writing it anyway is what used to
+    // overwrite the sixth.
+    const slot = nextSlot;
+    if (slot == null) {
+      setPendingError('That is all six. Clear one to add another.');
+      return;
+    }
     try {
-      await save.mutateAsync({ slot: nextSlot, text: value });
-      justWrote.current = [...justWrote.current, nextSlot];
+      await save.mutateAsync({ slot, text: value });
+      justWrote.current = [...justWrote.current, slot];
       haptics.light();
       setPending('');
       setPendingError(null);
       // Straight back into the empty field, which is the whole point of the
       // screen. Without this, adding six means six taps to refocus.
-      if (keepGoing && nextSlot + 1 < MAX_PRIORITIES) {
+      if (keepGoing && slot + 1 < MAX_PRIORITIES) {
         pendingRef.current?.focus();
       }
     } catch (error) {
@@ -245,7 +253,7 @@ export default function EditPrioritiesScreen() {
                 onSubmitEditing={() => commitPending({ keepGoing: true })}
                 onBlur={() => commitPending({ keepGoing: false })}
                 error={pendingError}
-                placeholder={priorityPlaceholder(nextSlot)}
+                placeholder={priorityPlaceholder(nextSlot ?? MAX_PRIORITIES - 1)}
                 maxLength={PRIORITY_MAX}
                 returnKeyType="next"
                 autoCapitalize="none"

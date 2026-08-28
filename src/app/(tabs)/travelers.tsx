@@ -516,7 +516,14 @@ export default function TravelersScreen() {
     return <GuestTravelers />;
   }
 
-  const sentByRecipient = new Map(sentRequests.map((r) => [r.recipient_id, r]));
+  // `state === 'blocked'` is a hello the moderation pre-filter refused. It was
+  // never delivered, the other person has no idea it happened, and the row is
+  // kept only so the sender can be told why — so counting it as "you already
+  // said hi" quietly deleted that traveler from the queue for good, with no
+  // way back and nothing on screen to explain it.
+  const sentByRecipient = new Map(
+    sentRequests.filter((r) => r.state !== 'blocked').map((r) => [r.recipient_id, r])
+  );
   const chatByUser = new Map(
     chats.filter((c) => c.chat_status === 'active').map((c) => [c.other_user_id, c.chat_id])
   );

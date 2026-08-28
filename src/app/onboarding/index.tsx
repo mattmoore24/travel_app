@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -11,6 +11,7 @@ import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Space } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
+import { useAuthStore } from '@/features/auth/store';
 import { useOwnPhotos, useOwnProfile, useUpdateOwnProfile } from '@/features/profile/hooks';
 import { SocialHandlesEditor } from '@/features/profile/social-handles-editor';
 import {
@@ -35,6 +36,18 @@ const GENDER_OPTIONS: { value: Gender; label: string }[] = [
 
 export default function OnboardingScreen() {
   const { data: profile } = useOwnProfile();
+  // Somebody who signed up through "Run a place? Put it on the map" belongs
+  // in the listing form, and the replace that was supposed to take them there
+  // is dispatched while the root's readiness hold has the navigator unmounted,
+  // so it is dropped. Without this they land here — and this is the one flow a
+  // place must never finish, because completing it stamps
+  // `onboarding_completed_at` and `register_business` then refuses the account
+  // outright. The flag is cleared by the form itself, so backing out of it
+  // leaves them here rather than bouncing.
+  const listingIntent = useAuthStore((s) => s.listingIntent);
+  if (listingIntent) {
+    return <Redirect href="/business-signup" />;
+  }
   if (!profile) {
     return null;
   }

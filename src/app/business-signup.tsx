@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ChipRow } from '@/components/form/chip-row';
@@ -10,6 +10,7 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Radius, Space } from '@/constants/theme';
+import { useAuthStore } from '@/features/auth/store';
 import { useRegisterBusiness, useRequestBusinessEmailCode } from '@/features/business/hooks';
 import { CATEGORY_ICON, CATEGORY_LABEL, CATEGORY_ORDER } from '@/features/business/vocabulary';
 import { useLaunchCities } from '@/features/pins/hooks';
@@ -58,6 +59,14 @@ function nameProblem(value: string): string | null {
 }
 
 export default function BusinessSignupScreen() {
+  // Arriving here is what the flag was for, so put it down. Left up, backing
+  // out of this form would land in onboarding and be forwarded straight back,
+  // which is a trap rather than a rescue. See features/auth/store.
+  const listingDone = useAuthStore((s) => s.listingDone);
+  useEffect(() => {
+    listingDone();
+  }, [listingDone]);
+
   const launchCitiesQuery = useLaunchCities();
   const launchCities = launchCitiesQuery.data ?? [];
   const registerBusiness = useRegisterBusiness();

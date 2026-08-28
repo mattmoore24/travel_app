@@ -130,7 +130,14 @@ function RootNavigator() {
     return <View style={styles.bootHold} />;
   }
 
-  if (signedIn && profileQuery.isError) {
+  // `data == null` as well as isError. React Query keeps the cached row and
+  // still flips status to 'error' on a BACKGROUND failure, and this branch
+  // replaces the whole navigator — so one flaky refetch on returning to the
+  // app took a traveler out of the conversation they were reading and put up
+  // "Can't load your profile", with everything needed to draw the app sitting
+  // in memory. Unmounting the stack also loses the route (see
+  // features/auth/routing), so even Retry landed them back on the map.
+  if (signedIn && profileQuery.isError && profileQuery.data == null) {
     return (
       <ProfileLoadError onRetry={() => profileQuery.refetch()} retrying={profileQuery.isFetching} />
     );
@@ -173,6 +180,11 @@ function RootNavigator() {
       </Stack.Protected>
       {/* Reachable from every sign-up gate, signed in or not. */}
       <Stack.Screen name="(auth)" />
+      {/* The password-reset link's landing route. It has to be in the tree for
+          `samewhere://reset-password` to resolve inside this layout at all —
+          see app/reset-password. The recovery branch above takes over before
+          it renders whenever the link still carries tokens. */}
+      <Stack.Screen name="reset-password" />
       {/* A place's page is readable signed-out for the same reason a business
           room is: the map is the front door, and a visitor who taps a marker
           must land somewhere real rather than on a sign-up wall. Every ACTION

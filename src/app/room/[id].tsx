@@ -501,7 +501,7 @@ export default function RoomScreen() {
           ) : (
             <View style={styles.footer}>
               <ThemedText type="footnote" themeColor="textSecondary">
-                When do you check out? You leave a week later.
+                When do you check out? You drop out of the chat three days later.
               </ThemedText>
               {/* The real date, not three guesses at it: people know their
                   checkout day, and picking "7 days" when you mean Thursday

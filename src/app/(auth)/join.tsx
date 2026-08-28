@@ -9,6 +9,7 @@ import { Space } from '@/constants/theme';
 import { signUpWithEmail, upgradeGuestToAccount } from '@/features/auth/api';
 import { AppleSignInButton } from '@/features/auth/apple-button';
 import { ConsentNote } from '@/features/auth/consent-note';
+import { useAuthStore } from '@/features/auth/store';
 import { useIsGuestAccount } from '@/features/guest/hooks';
 import { StepShell } from '@/features/signup/step-shell';
 import { SIGNUP_TOTAL_STEPS } from '@/features/signup/steps';
@@ -26,6 +27,7 @@ const PASSWORD_MIN = 8;
  */
 export default function JoinScreen() {
   const isGuestAccount = useIsGuestAccount();
+  const listingStarted = useAuthStore((s) => s.listingStarted);
   // Arriving from the "Run a place?" door on the welcome tour. Carried
   // through because register_business refuses an account that has finished
   // traveler onboarding, and onboarding is exactly where the root guard
@@ -80,7 +82,14 @@ export default function JoinScreen() {
       // place we jump straight past them: `business-signup` sits outside the
       // onboarded guard precisely so it can be reached by an account that
       // will never finish traveler onboarding.
+      //
+      // The flag as well as the replace, because the replace alone loses the
+      // race about half the time: signing in raises the root's readiness hold,
+      // the hold unmounts the navigator, and a queued navigation with nothing
+      // mounted is dropped. Onboarding reads the flag and forwards. See
+      // features/auth/store.
       if (forBusiness) {
+        listingStarted();
         router.replace('/business-signup');
       }
     } catch (e) {
@@ -119,10 +128,22 @@ export default function JoinScreen() {
         }>
         {/* Apple first, because it is one tap and no password to invent, and
             because Apple requires it to be offered wherever a third-party
-            sign-in is. It renders nothing where it is unavailable. */}
-        <View style={styles.appleRow}>
-          <AppleSignInButton label="signup" />
-        </View>
+            sign-in is. It renders nothing where it is unavailable.
+
+            Not for a GUEST, though. The email path calls
+            `upgradeGuestToAccount`, which adds the address to the anonymous
+            row and so keeps the id and every chat made under it.
+            `signInWithIdToken` cannot do that — it mints a second user — and
+            a guest who took the one-tap option would have walked away from
+            the conversations this app promised would come with them. Apple's
+            own rule is about offering it alongside OTHER third-party logins,
+            and the only alternative here is first-party email, so leaving it
+            out on this one screen is fine. */}
+        {isGuestAccount ? null : (
+          <View style={styles.appleRow}>
+            <AppleSignInButton label="signup" />
+          </View>
+        )}
         <FormTextField
           label="Email"
           testID="email-input"

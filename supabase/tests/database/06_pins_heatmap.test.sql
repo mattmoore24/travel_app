@@ -1,7 +1,7 @@
 -- Pins: 72h hard expiry (rule 3), geofenced launch cities, immutability,
 -- k-anonymous heatmap (rule 6), seeded pins, pin-source requests.
 begin;
-select plan(29);
+select plan(31);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -364,6 +364,41 @@ select is(
    where seeded and venue_name = 'LX Factory night market'),
   1,
   'and the sweep leaves one of each venue, not two'
+);
+
+-- HARD RULE 3 IS A GRANT, NOT JUST A CHECK ---------------------------------
+--
+-- The 72h ceiling is `expires_at <= created_at + interval '72 hours'`, so it
+-- is only as strong as who may write `created_at`. Supabase grants INSERT on
+-- every column by default and 20260816210000 revoked only update/truncate/
+-- references/trigger — so a request carrying a `created_at` a month out
+-- satisfied the CHECK with an `expires_at` a month out, and the same forged
+-- column walks past throttle_pins, which counts it. The app never sends it;
+-- the anon key ships inside the app, so the grant is the control.
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+select throws_ok(
+  format($$
+    insert into public.pins
+      (user_id, city_id, venue_name, category, lat, lng, intent_date,
+       created_at, expires_at)
+    values ('00000000-0000-0000-0000-00000000000d', %s, 'Forever bar', 'bar',
+            38.72, -9.14, current_date, now() + interval '30 days',
+            now() + interval '31 days')
+  $$, pg_temp.lisbon()),
+  '42501',
+  'permission denied for table pins',
+  'a client cannot set created_at, so it cannot buy a pin a longer life'
+);
+
+-- And the ten columns the app does send still go through.
+select lives_ok(
+  format($$
+    insert into public.pins
+      (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
+    values ('00000000-0000-0000-0000-00000000000d', %s, 'Ordinary bar', 'bar',
+            38.72, -9.14, current_date, now() + interval '20 hours')
+  $$, pg_temp.lisbon()),
+  'while an ordinary pin is unaffected'
 );
 
 select * from finish();

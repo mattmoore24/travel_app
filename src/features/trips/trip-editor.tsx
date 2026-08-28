@@ -67,7 +67,13 @@ export function TripEditor({
   };
 
   const save = async () => {
-    if (!city || rangeError) {
+    // `!end` matters as much as the other two. Tapping any day while a
+    // finished range is showing starts a NEW range and clears the end, and a
+    // half-picked range has no rangeError - it is a range still being picked.
+    // Saving there sent only the start, `updateTrip` drops an absent field, so
+    // the row kept its old end date and the profile showed a window nobody
+    // entered. get_matches joins on exactly those two columns.
+    if (!city || !end || rangeError) {
       return;
     }
     try {
@@ -213,7 +219,7 @@ export function TripEditor({
       <PrimaryButton
         label={trip ? 'Save changes' : 'Add trip'}
         testID="save-trip"
-        disabled={!city || rangeError != null || busy}
+        disabled={!city || !end || rangeError != null || busy}
         loading={busy}
         onPress={save}
       />
