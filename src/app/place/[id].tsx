@@ -257,6 +257,7 @@ export default function PlaceScreen() {
   const detailQuery = useBusinessDetail(id ?? null);
   const place = detailQuery.data ?? null;
   const isOwner = place != null && ownBusiness.data?.id === place.id;
+  const isBusinessAccount = ownBusiness.data != null;
   const ratingQuery = useRatingSummary(id ?? null);
   const summary = ratingQuery.data;
   const chatsQuery = useMyChats();
@@ -525,6 +526,19 @@ export default function PlaceScreen() {
                     </ThemedText>
                   </Pressable>
                 </View>
+              </View>
+            ) : isBusinessAccount ? (
+              // Somebody else's listing, read by a business. The reasoning
+              // above applies unchanged: /join-place, /rate-place and
+              // /message-place are registered only for a traveler account, and
+              // report_business refuses a business caller outright. The owner
+              // branch got the honest row and this one was left with four dead
+              // buttons, which is the same bug one listing over.
+              <View style={styles.actions}>
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  You&apos;re signed in as a place, so this is a look at how another one reads.
+                  Joining, rating and messaging belong to travelers.
+                </ThemedText>
               </View>
             ) : (
               <View style={styles.actions}>
