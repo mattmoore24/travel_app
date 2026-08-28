@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet } from '@/components/ui/sheet';
@@ -107,6 +108,7 @@ export function LanguageField({
           name={{ ios: 'chevron.down', android: 'expand_more', web: 'expand_more' }}
           size={14}
           tintColor={theme.textSecondary}
+          {...keyboardDoneProps}
         />
       </PressableScale>
 

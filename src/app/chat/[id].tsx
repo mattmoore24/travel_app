@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { KeyboardDoneBar, keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PhotoButton } from '@/components/ui/photo-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -441,6 +442,10 @@ export default function ChatScreen() {
                   onChangeText={setDraft}
                   multiline
                   maxLength={2000}
+                  // Multiline: Return inserts a newline, so the keyboard has
+                  // no exit of its own and dragging the thread was the only
+                  // one, which nothing on screen says.
+                  {...keyboardDoneProps}
                 />
                 <Pressable
                   accessibilityRole="button"
@@ -463,6 +468,9 @@ export default function ChatScreen() {
             </View>
           )}
         </KeyboardFloor>
+        {/* Outside the scroller: iOS hosts it in the keyboard's own window,
+            so where it sits only decides which fields can reach it. */}
+        <KeyboardDoneBar />
       </SafeAreaView>
     </ThemedView>
   );

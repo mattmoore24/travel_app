@@ -10,11 +10,13 @@ import {
 
 // Founder, 2026-08-24: "every time the keyboard is up to type for any
 // situation, there is always a button or clear way to dismiss the keyboard."
+// Founder, 2026-08-28, on a screen that still had none: "every keypad in the
+// app should be able to be closed without pressing enter."
 //
-// The rule: a field whose keyboard has no usable return key needs the Done
-// bar. `number-pad` and `phone-pad` draw no return key at all on iOS, and a
-// `multiline` field's return key inserts a newline, so on all three the
-// return key is not an exit.
+// The rule is now the simple one, because the judgement version of it shipped
+// screens with no way out twice. EVERY field reaches the bar. Return is not an
+// exit: it submits, or it moves to the next field, and somebody who has just
+// finished typing wants neither.
 
 describe('KeyboardDoneBar', () => {
   it('offers a labelled Done, not a bare glyph', () => {
@@ -28,12 +30,14 @@ describe('KeyboardDoneBar', () => {
   });
 });
 
-// A source scan, deliberately. The bar is hosted by iOS in the keyboard's own
-// window, so no render test can prove a field reaches it. But every field that
-// NEEDS it is identifiable in the source, and one shipping without it is
-// exactly how this went unnoticed the first time.
-describe('every field with no usable return key asks for the bar', () => {
+// Source scans, deliberately. The bar is hosted by iOS in the keyboard's own
+// window, so no render test can prove a field reaches it — but both halves of
+// "every field reaches it" are visible in the source, and both have been
+// broken before.
+describe('every field reaches the bar', () => {
   const SRC = path.join(__dirname, '../../..');
+
+  const read = (file: string) => fs.readFileSync(path.join(SRC, file), 'utf8');
 
   const sources = () => {
     const out: { file: string; text: string }[] = [];
@@ -53,20 +57,45 @@ describe('every field with no usable return key asks for the bar', () => {
     return out;
   };
 
-  // The chat composers are the deliberate exception, listed so that adding
-  // one is a decision rather than an oversight: a Send button sits beside the
-  // field at all times, which is both the confirm and the reason the keyboard
-  // should stay up between messages.
-  const EXEMPT = ['app/chat/[id].tsx', 'app/room/[id].tsx'];
+  // Half one: the app's own field carries it, so a screen gets the behaviour
+  // by using FormTextField rather than by remembering to opt in. This is what
+  // covers the great majority of the app in one line.
+  it('FormTextField points at the bar by default', () => {
+    const field = read('components/form/form-text-field.tsx');
+    expect(field).toContain('{...keyboardDoneProps}');
+    // Before `...rest`, so a caller with its own accessory view can still win.
+    expect(field.indexOf('{...keyboardDoneProps}')).toBeLessThan(field.indexOf('{...rest}'));
+  });
 
-  const asksForBar = (text: string) =>
-    text.includes('keyboardDoneProps') || text.includes('inputAccessoryViewID');
-
-  it.each(['multiline', 'number-pad', 'phone-pad'])('no file uses %s without it', (needle) => {
+  // Half two: a raw TextInput bypasses that, so it has to ask. No exemptions
+  // any more — the chat composers used to be one, on the reasoning that a Send
+  // button beside the field is exit enough, and a Send button sends rather
+  // than dismisses.
+  it('no raw TextInput ships without asking for it', () => {
     const offenders = sources()
-      .filter(({ file }) => !EXEMPT.some((e) => file.endsWith(e)))
-      .filter(({ text }) => text.includes(needle) && !asksForBar(text))
+      .filter(({ file }) => file !== 'components/form/form-text-field.tsx')
+      // Whitespace after the tag, so `useRef<TextInput>(null)` — a type
+      // argument, not an element — is not mistaken for one.
+      .filter(({ text }) => /<TextInput\s/.test(text))
+      .filter(
+        ({ text }) => !text.includes('keyboardDoneProps') && !text.includes('inputAccessoryViewID')
+      )
       .map(({ file }) => file);
     expect(offenders).toEqual([]);
+  });
+
+  // And the bar has to be MOUNTED somewhere the focused field can see. A sheet
+  // presented through a Modal is its own iOS window, so the screen underneath
+  // does not count — which is why Sheet carries one of its own.
+  it.each([
+    'components/form/step-screen.tsx',
+    'features/signup/step-shell.tsx',
+    'components/ui/sheet.tsx',
+    'features/pins/map-screen.tsx',
+    'app/chat/[id].tsx',
+    'app/room/[id].tsx',
+    'app/group/[id].tsx',
+  ])('%s mounts one', (file) => {
+    expect(read(file)).toContain('<KeyboardDoneBar />');
   });
 });

@@ -22,19 +22,18 @@ export const KEYBOARD_DONE_ID = 'keyboard-done';
  * Sometimes I find myself done typing and it's not clear how to quickly make
  * the keyboard go away."
  *
- * The rule this implements, so the next screen does not have to be argued
- * about: a field whose return key already ends typing needs nothing here. A
- * field whose keyboard has NO usable return key does:
+ * The rule this implements, and it is now the simple one: EVERY field can
+ * reach it. `FormTextField` points at this bar by default, so a screen gets
+ * the behaviour by using the app's own field rather than by remembering.
  *
- *   - `number-pad` and `phone-pad` draw no return key at all on iOS, so
- *     nothing on the keyboard can end typing. Setting returnKeyType on one is
- *     a no-op that reads like a fix.
- *   - `multiline` draws one, and it inserts a newline. That is correct for a
- *     bio, and it means the return key is not an exit.
- *
- * On both, the only remaining exits were a docked Continue (which commits and
- * moves on rather than putting the keyboard away) and dragging the scroll
- * view, which nothing on screen advertises.
+ * It used to be a judgement per field - a keyboard whose return key already
+ * ended typing was deemed to have an exit, and only `number-pad`,
+ * `phone-pad` and `multiline` got a bar. The founder disagreed twice, and
+ * they were right: Return is not "put the keyboard away". It submits the
+ * form, or it jumps to the next field. Somebody who has simply finished
+ * typing and wants to see the screen again has neither of those in mind, and
+ * on a screen with a docked Continue the only other exit was dragging the
+ * scroll view, which nothing advertises.
  *
  * Lifted verbatim out of pin-form-sheet, which had the whole pattern working
  * for one multiline field and kept it to itself.
@@ -45,10 +44,11 @@ export const KEYBOARD_DONE_ID = 'keyboard-done';
  * iOS only. Android has a system back gesture that dismisses the keyboard and
  * no InputAccessoryView, so there is nothing to render and nothing missing.
  *
- * One deliberate holdout: pin-form-sheet keeps its own bar under its own
- * nativeID. It renders inside map-screen, which now mounts this one, and two
- * accessory views sharing a nativeID is undefined behaviour rather than a
- * tidy-up. Leave them distinct.
+ * Mount one wherever a field can be focused: the two step shells, the map,
+ * `Sheet`, and the three screens that draw their own layout (a chat, a room,
+ * a group's settings). Mounting it twice in one window is harmless — both
+ * bars are this same bar — but a screen with none leaves its fields pointing
+ * at nothing.
  */
 export function KeyboardDoneBar() {
   const theme = useTheme();

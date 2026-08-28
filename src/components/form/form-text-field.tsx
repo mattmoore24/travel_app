@@ -2,6 +2,7 @@ import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
+import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { Type, Radius, Fonts, HitTarget, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -70,6 +71,18 @@ export function FormTextField({
             error != null && { borderColor: theme.danger },
             style,
           ]}
+          // Every field reaches the Done bar unless it is told not to.
+          //
+          // Founder, twice now: "every keypad in the app should be able to be
+          // closed without pressing enter". The first pass made that a
+          // judgement per field — a return key that ends typing was deemed
+          // exit enough — and the judgement was wrong. Pressing Return is not
+          // the same as putting the keyboard away: it submits, or it moves to
+          // the next field, and neither is what somebody who has finished
+          // typing wants. So this is the default now, and a caller that
+          // genuinely has its own accessory view overrides it by passing its
+          // own id through `rest`.
+          {...keyboardDoneProps}
           {...rest}
           secureTextEntry={rest.secureTextEntry === true && !revealed}
         />

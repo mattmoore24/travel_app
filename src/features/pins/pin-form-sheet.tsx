@@ -1,16 +1,9 @@
 import * as Location from 'expo-location';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import {
-  InputAccessoryView,
-  Keyboard,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
 import { HoursSlider } from '@/components/form/hours-slider';
@@ -36,8 +29,6 @@ import { haptics } from '@/lib/haptics';
 import type { LocalSearchResult } from '@/modules/local-search';
 
 /** iOS toolbar id: gives the multiline field a way out of the keyboard. */
-const ACCESSORY_ID = 'pin-form-done';
-
 type PinFormSheetProps = {
   cityId: number;
   cityName: string;
@@ -259,7 +250,7 @@ export function PinFormSheet({
                 animated: true,
               });
             }}
-            inputAccessoryViewID={Platform.OS === 'ios' ? ACCESSORY_ID : undefined}
+            {...keyboardDoneProps}
           />
         </View>
         {/* A single scrolling line, not a wrapped grid: with a keyboard up
@@ -294,23 +285,6 @@ export function PinFormSheet({
       <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
         Gone in 72h max. Never shows where you are.
       </ThemedText>
-
-      {Platform.OS === 'ios' ? (
-        <InputAccessoryView nativeID={ACCESSORY_ID}>
-          <View style={[styles.accessory, { backgroundColor: theme.surface }]}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Done editing"
-              hitSlop={10}
-              // Blurs whatever is focused without needing a ref to it.
-              onPress={() => Keyboard.dismiss()}>
-              <ThemedText type="smallBold" themeColor="accent">
-                Done
-              </ThemedText>
-            </Pressable>
-          </View>
-        </InputAccessoryView>
-      ) : null}
     </Sheet>
   );
 }
@@ -358,10 +332,5 @@ const styles = StyleSheet.create({
   },
   note: {
     textAlign: 'center',
-  },
-  accessory: {
-    alignItems: 'flex-end',
-    paddingHorizontal: Space.lg,
-    paddingVertical: Space.sm,
   },
 });
