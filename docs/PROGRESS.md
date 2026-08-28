@@ -3,6 +3,155 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **Eleven things from a group chat** (2026-08-28)
+
+The founder tested the app while actually using it — texting a group, sending
+a link, sending a photo — and came back with eleven things. They are grouped
+below by what was really wrong, which is not always what was reported.
+
+### The invite link "crashed", and there was no way out of it
+
+"When I sent the link to someone to join it crashed the first time then worked
+the second time."
+
+Nothing threw. A deep link opened from a cold start builds a navigation state
+containing ONLY the linked route: no tab bar, no back chevron, and a
+`router.back()` that dispatches a GO_BACK no navigator handles — silently.
+The second tap came in warm, on an app that already had the tabs mounted, so
+it worked. `unstable_settings = { anchor: '(tabs)' }` puts the app underneath
+every cold-start link.
+
+Four more on the same screen. Every terminal branch has a marked exit and the
+join form has a real Close, all falling through to the map when there is
+nothing to go back to — the founder's "they should be able to just view the
+app without joining the chat". Typing a name now returns to the invite instead
+of pushing a second copy of it over the first, which is why picking one of the
+two doors made the other unreachable. Taking "Make a profile" keeps the invite:
+the token is parked in the auth store and handed back the moment the tabs mount
+with a session, so six screens of onboarding no longer end on a map with no
+memory of why you opened the app. And an invite with no token painted a blank
+screen forever, because the query never runs and `isPending` never resolves.
+
+### The colour scheme was not the problem
+
+"The 'or create a profile' section had some wording that was a bit hard to read
+due to the colour scheme."
+
+Measured every string on that screen: 7.9:1 or better against the ground, and
+neither `hairline` nor `textTertiary` appears on it. What made it hard to read
+is that it opened with a fragment ("Or make a profile") and then repeated
+itself one line down on its own button, under a filled button offering the
+other answer. It asks a question now and answers it once.
+
+The contrast defect is real and it is elsewhere. `opacity: 0.4` dims a label
+and its ground together, so it cannot lower one without lowering the other. The
+filled variant measured 2.35:1 and was fixed by swapping the fill; ghost and
+danger kept the fade at **2.28:1** — under the 3:1 floor for a control, on
+pills that still looked tappable. Nothing fades now.
+
+### The chat list was a stack of cards
+
+"I want all chats to appear almost exactly as they do when using popular
+messaging apps like iMessage... right now the page is confusing and ugly."
+
+Conversations were separate filled cards floating on the canvas with 16pt
+between them, which is a layout for a feed of unrelated things. iMessage,
+WhatsApp, Telegram and Signal all landed on the same answer and it is the one
+that scans: flush rows on one surface, a hairline that starts where the text
+starts, a fixed row height. 52pt avatar, text column at x=80, separator inset
+to match, both preview lines always reserved. The unread dot moved out of the
+text and into a leading gutter, so the list can be scanned for what is waiting
+without reading a word of it.
+
+And the `+` means one thing on both segments now. It used to change under the
+person's hand — a new group on Groups, the Travelers tab on Chats — so tapping
+it in the tab you were reading messages in took you out of Chat entirely.
+
+### A photo and its caption were two messages, in the wrong order
+
+Text is delivered immediately; a photo waits for a moderation verdict. So a
+picture captioned "look at this" delivered the caption FIRST and the image some
+seconds later, underneath it. One row now, which also means one thing to
+unsend, one thing to react to, and one bubble.
+
+The wait itself was drawn as the words "Photo in review" in a text bubble — a
+small grey rectangle that then jumped to 220pt square, which is the founder's
+"tiny bubble". It is the photo's real frame now, with the picture behind it for
+the person who took it, saying "Checking this photo. We check every photo
+before it goes out. Usually about 5 seconds."
+
+The tile is keyed off the STATE, not off `image_path`, because a room masks the
+path from everybody but the sender: keying off the path drew nothing at all for
+the rest of the group, which is the empty bubble people were actually looking
+at. `room_messages` answers `photo_state` now.
+
+And nothing was listening for the verdict. It arrives as an UPDATE, and both
+realtime subscriptions only watched INSERT — so the screen most likely to be
+open while a photo cleared was the one screen that could not notice.
+
+### The five seconds are real, and they were forty
+
+The founder asked for a number and said to work it out. The honest answer at
+the time was ~40 seconds, and almost none of it was Claude: a cron firing every
+minute means a mean of thirty seconds doing nothing at all, and chat photos
+drained third of six queues behind work nobody was waiting on.
+
+So the insert pokes the worker directly now. `worker_pokes` throttles to one
+invocation every three seconds, so a room where six people paste photos at once
+is still one call, and `poke_worker` swallows its own failures — a photo that
+cannot be SENT would be far worse than one that waits for the cron, which stays
+as the backstop. The worker drains chat photos first and held hellos second,
+and runs those two at low effort; verification, storefronts and impersonation
+keep full effort, because those decide who somebody IS and nobody is staring at
+a screen while they run.
+
+`admin_moderation_latency` measures queued-to-verdict per queue over seven
+days. It is the only thing the app's "usually about N seconds" may be quoted
+from, and the 5 is an engineering estimate until there is enough live traffic
+to read a p95 off it.
+
+### Sending, Sent
+
+"I'd also like it if in chats it said 'sending' and 'sent' below messages...
+so that users can feel more confident if their messages were delivered."
+
+Under the newest of your own messages that landed, and nothing else — the rule
+every messaging app follows, and the reason it works. Not under a photo still
+being checked: it has not been delivered to anybody yet, and its own tile is
+already saying so. Delivered and Read are deliberately NOT built: there is no
+recipient-scoped column to hang them on, and read receipts create exactly the
+response pressure this app's safety posture is trying not to create.
+
+### Three date chips were not a filter system
+
+"The all, today, tomorrow filters are confusing. You should instead just add a
+filters icon that takes users to a different screen and select any type of
+filter they want."
+
+They filtered the dimension people ask about least, and there was no way at all
+to ask the question they actually have. One button now, with a count on it,
+opening four groups: **when** (any day, today, tomorrow, the day after — three
+days is the whole universe, a pin expires with the day it is about), **what to
+show** (travelers, businesses, Samewhere picks), **kind of plan** (the eight pin
+categories; nothing ticked means everything), and **who** (verified travelers
+only).
+
+Two judgement calls worth recording. The last marker family cannot be unticked,
+because an empty map reads as broken rather than as filtered. And "verified
+only" keeps our own picks: nobody stands behind one, so it can neither hold the
+badge nor be fairly refused for lacking it, and asking would silently empty a
+map somebody only meant to narrow.
+
+It is an inline sheet, so the map answers every tick behind it — which is the
+argument against an Apply button, and why there isn't one. Never a pushed
+route: a route opened from inside a presented sheet goes under its scrim and
+the scrim outlives it, which is the map freeze this app has already paid for.
+
+### Counts
+
+Database: **706** pgTAP assertions across 25 suites. Client: **353** unit
+tests across 39 suites.
+
 ## Current: **Business, not place. And the keyboard.** (2026-08-28)
 
 Three things the founder asked for, all of them about being understood.

@@ -210,6 +210,17 @@ device does something else.
 - `PostgrestError` is not an `Error`. `catch (e) { if (e instanceof Error) }`
   silently swallows every database message.
 
+**A Postgres Changes subscription filtered to `INSERT` cannot see a verdict.**
+Anything that lands in a pending state and is later cleared by a worker
+changes by UPDATE, not INSERT — a held photo, a moderated first message, a
+verification. Both of this repo's thread subscriptions watched INSERT only, so
+the screen most likely to be OPEN while a photo cleared was the one screen
+that could not notice, and the review tile sat there until somebody else
+posted or the person backed out and came back. Use `event: '*'` and either
+merge the row by id (a table-backed cache) or invalidate (an RPC-backed one).
+Merging matters as much as subscribing: a handler that treats a known id as
+"already have it" drops the very update it was subscribed for.
+
 ## Expo SDK 57
 
 - Read <https://docs.expo.dev/versions/v57.0.0/>. When docs are unreachable,
@@ -305,6 +316,25 @@ failed"` on every check, while the same simulator talks to Supabase over
   `Expo.plist` at build time, so there is no way to make an existing binary
   block on the download.
 
+## `opacity` cannot express "disabled" and stay legible
+
+Fading a control dims its label AND its ground together, in the same
+proportion, so the contrast between them collapses toward the contrast between
+the ground and itself — which is 1:1. There is no opacity value that says
+"unavailable" without also saying "unreadable".
+
+Measured here, on `#0E1020`: a filled pill at `opacity: 0.4` came out at
+**2.35:1** and a ghost label at the same value **2.28:1**, both under the 3:1
+floor for a control, and both still looking completely tappable. The fix is to
+change COLOUR, never alpha — swap the fill for `surfaceSunken` and the label
+for `textSecondary` — which lands at 8.2:1 and reads as unavailable because
+the accent is gone, not because it is faint.
+
+Two things follow. Fixing one variant is not fixing the component: the filled
+case was corrected months before the ghost and danger cases, which kept the
+fade. And WCAG's exemption for inactive controls is not a licence — the
+founder reads the screen, not the spec.
+
 ## Tests
 
 - **Never loosen an assertion to make a run pass.** A wildcard once let a
@@ -325,6 +355,20 @@ failed"` on every check, while the same simulator talks to Supabase over
   spoken label has to say what the thing IS. This cost a run on the map's
   places legend, whose chip reads "Tap a place to see what's on" and speaks
   "The small chips are places. Tap one to see what's on.".
+
+**A pgTAP fixture cannot be a temp table if the suite switches roles.** `set
+local role authenticated` has no privileges on anything in `pg_temp`, so the
+first assertion after the switch dies with "permission denied for table ctx" —
+and that is always the half of the test that matters, because it is the half
+about what a real user sees. Use a `pg_temp.<name>()` FUNCTION returning the id
+instead; functions are callable where tables are not.
+
+**And read the id from the table that has a policy for the reader.** `chats`
+carries no select policy for room members (harmless — `my_chats` is a definer
+function), so a helper that joins `chats` returns NULL the moment the suite
+becomes `authenticated`, and every insert afterwards goes to a null chat and
+is refused by RLS with an error that says nothing about the real cause. Read
+`groups.chat_id`.
 
 ## Apple Maps props: two that silently do nothing, and one ordering hazard
 
@@ -448,3 +492,28 @@ or hold the destination somewhere outside the stack and navigate after remount.
 Both are invisible to unit tests, to pgTAP, and to a signed-in E2E flow. The
 thing that caught them was walking the screens in the order a real person
 would.
+
+**A cold-start deep link is ALONE in the navigator unless you say otherwise.**
+Opening `samewhere://join-group/<token>` on a phone that was not already
+running builds a navigation state containing only that route: no tab bar, no
+back chevron, and `router.back()` dispatching a GO_BACK that no navigator
+handles — silently, so the button simply does nothing. Tap the same link again
+while the app is warm and it works perfectly, which is exactly how the founder
+reported it ("it crashed the first time then worked the second time"). Fix it
+once, at the root:
+
+```tsx
+export const unstable_settings = { anchor: '(tabs)' };
+```
+
+Then never let a linked screen's only exit be a bare `router.back()`. The
+idiom this repo uses everywhere is
+`router.canGoBack() ? router.back() : router.replace('/(tabs)')`, and every
+terminal branch of a linkable screen needs it.
+
+**`router.replace(next)` from a screen pushed on top of `next` pushes a SECOND
+copy of it.** The naming screen was reached from the invite and then replaced
+itself with the invite, so the invite the person wanted — with both of its
+options still on it — was two dismissals down, behind a stack the app had
+built by hand. Going back is almost always what was meant; keep `next` as the
+fallback for the cold-start case where there is nothing to go back to.

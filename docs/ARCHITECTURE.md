@@ -905,3 +905,31 @@ and the policy has to change with it.
 - **2026-08-17 (Phase 6)** — Account deletion is an Edge Function rather than an RPC: it
   must reach the storage API and `auth.admin.deleteUser`, neither of which is available to
   SQL — and doing it in one server-side place keeps "delete" honest (storage included).
+- **2026-08-28** — Moderation latency is driven by a **fire-on-insert poke** (AFTER INSERT
+  triggers calling a throttled `poke_worker`) with the every-minute cron kept as the
+  backstop, not by shortening the cron. A poke reaches the worker in the same second and
+  costs nothing when there is no work; a faster cron pays for an empty invocation every
+  time. `poke_worker` swallows every error inside its own exception block, because the
+  alternative is an insert that fails — a photo that cannot be sent is strictly worse than
+  one that waits for the backstop.
+- **2026-08-28** — The classifier's `effort` is set **per queue**, not globally: chat photos
+  and held first messages run at `low` (bounded either/or calls somebody is watching a
+  placeholder for), while verification, storefront and impersonation keep the default.
+  Those three decide who somebody IS, nobody is waiting on them, and a wrong call costs a
+  badge, a livelihood or an accusation. `max_tokens` stays generous everywhere — it is a
+  ceiling, and unspent headroom is free; effort is the only real latency dial.
+- **2026-08-28** — Any user-facing promise about how long moderation takes must be quoted
+  from `admin_moderation_latency` (queued-to-verdict, per queue, last 7 days) rather than
+  from an estimate. A promise nobody can keep is worse than no promise; the view exists so
+  the number can be corrected downward or upward from evidence.
+- **2026-08-28** — A photo and its caption are **one message row**, not two. Two rows
+  deliver in the wrong order by construction (text is immediate, a photo waits for a
+  verdict), and one row is also one thing to unsend, to react to and to report.
+- **2026-08-28** — `room_messages` returns `photo_state` alongside a masked `image_path`.
+  Masking alone is not enough: the client cannot draw a review state it cannot see, and the
+  result was an empty bubble for the whole wait. The path stays masked for everyone but the
+  sender, who could already read their own upload through `chat_photos_select_own`.
+- **2026-08-28** — Read receipts (Delivered / Read) are **not** built, and this is a product
+  decision rather than a backlog item: there is no recipient-scoped column to hang them on,
+  and they create response pressure that works against the safety posture. "Sending" and
+  "Sent" are sender-side facts and carry no such cost.
