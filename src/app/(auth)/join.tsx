@@ -173,7 +173,11 @@ export default function JoinScreen() {
         <FormTextField
           label="Email"
           testID="email-input"
-          autoFocus
+          // No autoFocus any more. There is a question above this field now,
+          // and a keyboard that opens on arrival scrolls the field into view
+          // and the question out of it, which is the whole thing this screen
+          // was changed to show. The password step keeps its autoFocus: there
+          // is nothing above it to read.
           autoCapitalize="none"
           autoCorrect={false}
           spellCheck={false}

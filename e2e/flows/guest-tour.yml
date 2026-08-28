@@ -55,3 +55,32 @@ appId: com.mattmoore.samewhere
 - takeScreenshot: 04-chat-guest
 - tapOn: 'Map'
 - takeScreenshot: 05-back-to-map
+
+# The account-kind choice, photographed. Founder, 2026-08-28: "it should be
+# clear right from the start if you are creating or signing into a business
+# account or an individual account." That question now sits above the email
+# field on the first signup screen, and nothing in the suite reached it — the
+# signed-in flow goes to the returning-user form instead, so the screen that
+# changed had no picture at all.
+#
+# From the map, because that is the door a guest actually finds: dropping a
+# pin is gated, the gate leads with "Make a profile", and that is /join.
+- tapOn: 'Drop a pin'
+- extendedWaitUntil:
+    visible: 'Make a profile'
+    timeout: 10000
+    optional: true
+- takeScreenshot: 06-guest-gate
+- tapOn:
+    text: 'Make a profile'
+    optional: true
+- extendedWaitUntil:
+    visible: 'What are you signing up as?'
+    timeout: 10000
+- takeScreenshot: 07-account-kind
+# Both answers, so the picture shows what a business owner sees rather than
+# only the default. The rows are a real radio: tapping one selects it.
+- tapOn: 'I run a business'
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 08-account-kind-business
