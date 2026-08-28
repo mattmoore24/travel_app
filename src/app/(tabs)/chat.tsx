@@ -37,7 +37,14 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
-import { BottomTabInset, HitTarget, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import {
+  BottomTabInset,
+  HitTarget,
+  MaxContentWidth,
+  Radius,
+  Space,
+  Spacing,
+} from '@/constants/theme';
 import {
   useIncomingRequests,
   useMyChats,
@@ -50,6 +57,15 @@ import { haptics } from '@/lib/haptics';
 import { countOf } from '@/lib/plural';
 import type { ChatListRow, IncomingRequestRow, SentRequestRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
+
+/**
+ * The conversation-row avatar, at the size the messaging apps converged on.
+ *
+ * With the 16pt leading inset and the 12pt gap after it, this puts the text
+ * column at x=80 — and the row separator starts there too, which is what
+ * makes a list of avatars read as one column rather than as stacked cards.
+ */
+const AVATAR = 52;
 
 function Avatar({ path, size = 48 }: { path: string | null; size?: number }) {
   const theme = useTheme();
@@ -211,86 +227,135 @@ function RequestCard({ request }: { request: IncomingRequestRow }) {
  * flat 'sent' (rules 4 and 5), and this row keeps that promise: one label,
  * unchanging, until it becomes a real conversation.
  */
-function SentHelloRow({ request }: { request: SentRequestRow }) {
+function SentHelloRow({ request, last = false }: { request: SentRequestRow; last?: boolean }) {
   const theme = useTheme();
   const { data: profile } = usePublicProfile(request.recipient_id);
   const { data: photos = [] } = usePublicPhotos(request.recipient_id);
   const photoPath = photos.find((p) => p.position === 0)?.storage_path ?? null;
   const name = profile?.display_name ?? 'Traveler';
 
-  // Deliberately NOT the chat row. It used to borrow styles.chatRow whole -
-  // same filled card, same 48pt avatar, same name-over-preview - so it read
-  // as a conversation, and tapping it opened a profile instead of a thread.
-  // A hello with no reply is not a chat yet, so it does not get to look like
-  // one: outline instead of fill, smaller avatar, your own words quoted back
-  // to you, and a chevron that says where the tap actually goes.
+  // The same row geometry as a conversation, quieter. A hello with no answer
+  // is not a chat yet — tapping it opens a profile, not a thread — so the
+  // avatar is smaller, the name is not bold, and the trailing word says what
+  // state it is in rather than when it happened.
   return (
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={`You said hi to ${name}`}
       accessibilityHint="Opens their profile"
-      scaleTo={0.98}
+      scaleTo={0.99}
       onPress={() => router.push(`/profile/${request.recipient_id}`)}>
-      <View style={[styles.sentRow, { borderColor: theme.hairline }]}>
-        <Avatar path={photoPath} size={36} />
-        <View style={styles.chatRowText}>
-          <ThemedText type="footnote" style={styles.strong} numberOfLines={1}>
+      <View style={styles.row}>
+        <View style={styles.unreadGutter} />
+        <Avatar path={photoPath} size={AVATAR - 8} />
+        <View style={styles.rowBody}>
+          <ThemedText type="body" style={styles.rowNameRead} numberOfLines={1}>
             {name}
           </ThemedText>
-          <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+          <ThemedText
+            type="callout"
+            themeColor="textSecondary"
+            numberOfLines={2}
+            style={styles.rowPreview}>
             You: {request.first_message}
           </ThemedText>
         </View>
-        <SymbolView
-          name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-          size={12}
-          tintColor={theme.textSecondary}
-        />
+        <View style={styles.rowTrailing}>
+          <ThemedText type="footnote" themeColor="textSecondary">
+            Sent
+          </ThemedText>
+        </View>
+        {last ? null : <View style={[styles.separator, { backgroundColor: theme.hairline }]} />}
       </View>
     </PressableScale>
   );
 }
 
-function ChatRow({ chat }: { chat: ChatListRow }) {
+/**
+ * One conversation, drawn the way the messaging apps people already use draw
+ * one.
+ *
+ * These used to be separate filled cards floating on the canvas with 16pt of
+ * air between them, which is a layout for a feed of unrelated things — and a
+ * list of conversations is the opposite of that. Flush rows on one surface,
+ * separated by a hairline that starts where the text starts, is what iMessage,
+ * WhatsApp, Telegram and Signal all settled on, and it is what makes a list
+ * scannable: the eye runs down a single column of names instead of stepping
+ * over a card edge every 80 points.
+ *
+ * The height is FIXED — two preview lines are always reserved, whether or not
+ * there are two — for the same reason. A list whose rows change height as
+ * messages come and go cannot be scanned by position, and the ragged right
+ * edge of the timestamps is what everybody complains about without being able
+ * to name.
+ */
+function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: boolean }) {
   const theme = useTheme();
-  const preview = chat.last_message ?? chat.first_message;
   const isRoom = chat.kind === 'room';
-  // A conversation with a PLACE carries the place's cover photo, which lives
-  // in a different bucket. Signed through the profile hook it comes back a
-  // 404 wearing a valid-looking URL, so the row fell back to a person glyph
+  // A conversation with a BUSINESS carries the business's cover photo, which
+  // lives in a different bucket. Signed through the profile hook it comes back
+  // a 404 wearing a valid-looking URL, so the row fell back to a person glyph
   // for a bar — and on the business's own side of the same row, where the
   // photo is the TRAVELER's, it did the reverse. See useIsPlaceChat.
   const isPlace = useIsPlaceChat(chat.kind);
   const unread = chat.unread_count > 0;
   const stamp = rowTimestamp(chat.last_message_at ?? chat.created_at);
+  const closed = chat.chat_status !== 'active';
+  // A group with nothing said in it yet has no preview to show, so the row
+  // says who is in it instead of sitting empty. Once somebody writes, the
+  // message wins: how many people are here is on the group's own screen, and
+  // a third line of metadata under every row is exactly the clutter this
+  // layout exists to remove.
+  // `expires_at` is NOT NULL on the server, so the admin of a chat with no
+  // end date holds an infinite seat and PostgREST sends the string
+  // "infinity" — truthy, and `new Date` of it is Invalid Date.
+  const leaveOn = isRoom ? finiteDate(chat.expires_at) : null;
+  const preview =
+    chat.last_message ??
+    chat.first_message ??
+    (isRoom && chat.member_count != null
+      ? `${countOf(chat.member_count, 'person', 'people')} here` +
+        (leaveOn
+          ? ` · you leave ${leaveOn.toLocaleDateString(undefined, {
+              day: 'numeric',
+              month: 'short',
+            })}`
+          : '')
+      : null);
 
   return (
-    <ThemedView type="backgroundElement" style={styles.chatRow}>
+    <View style={styles.row}>
+      {/* iMessage's leading gutter. The dot lives OUTSIDE the text column, so
+          the whole list can be scanned for what is waiting without reading a
+          single word of it. */}
+      <View style={styles.unreadGutter}>
+        {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.highlight }]} /> : null}
+      </View>
       {isRoom ? (
         <View style={[styles.roomBadge, { backgroundColor: theme.accentSoft }]}>
           <SymbolView
-            name={{ ios: 'house.fill', android: 'home', web: 'home' }}
-            size={20}
+            name={{ ios: 'person.3.fill', android: 'groups', web: 'groups' }}
+            size={22}
             tintColor={theme.accent}
           />
         </View>
       ) : isPlace ? (
-        <PlaceAvatar path={chat.photo_path} />
+        <PlaceAvatar path={chat.photo_path} size={AVATAR} />
       ) : (
-        <Avatar path={chat.photo_path} />
+        <Avatar path={chat.photo_path} size={AVATAR} />
       )}
-      <View style={styles.chatRowText}>
+      <View style={styles.rowBody}>
         <View style={styles.rowTitle}>
           <ThemedText
-            type="callout"
-            style={[styles.strong, styles.rowName, unread && styles.rowNameUnread]}
+            type="body"
+            style={[styles.rowName, unread ? styles.rowNameUnread : styles.rowNameRead]}
             numberOfLines={1}>
             {chat.title ?? 'Traveler'}
           </ThemedText>
           {chat.pinned ? (
             <SymbolView
               name={{ ios: 'pin.fill', android: 'push_pin', web: 'push_pin' }}
-              size={12}
+              size={11}
               tintColor={theme.textSecondary}
             />
           ) : null}
@@ -301,73 +366,48 @@ function ChatRow({ chat }: { chat: ChatListRow }) {
                 android: 'notifications_off',
                 web: 'notifications_off',
               }}
-              size={12}
+              size={11}
               tintColor={theme.textSecondary}
             />
           ) : null}
-          {/* When it happened, where every messaging app puts it. The name
-              takes flexShrink so a long one truncates instead of pushing the
-              time off the row. */}
-          {stamp ? (
-            <ThemedText
-              type="caption"
-              themeColor={unread ? 'highlight' : 'textSecondary'}
-              style={styles.rowStamp}>
-              {stamp}
-            </ThemedText>
-          ) : null}
         </View>
-        <View style={styles.rowPreview}>
-          {preview ? (
-            <ThemedText
-              type="footnote"
-              themeColor={unread ? 'text' : 'textSecondary'}
-              numberOfLines={1}
-              style={styles.rowPreviewText}>
-              {preview}
+        <ThemedText
+          type="callout"
+          themeColor={unread ? 'text' : 'textSecondary'}
+          numberOfLines={2}
+          style={styles.rowPreview}>
+          {preview ?? ''}
+        </ThemedText>
+      </View>
+      {/* Stretched and top-aligned, so the stamp sits on the name's line
+          while the avatar stays centred against the whole row. */}
+      <View style={styles.rowTrailing}>
+        {stamp ? (
+          <ThemedText type="footnote" themeColor={unread ? 'highlight' : 'textSecondary'}>
+            {stamp}
+          </ThemedText>
+        ) : null}
+        {/* The dot already said "unread". This says how much, and only when
+            that is worth a pill: the RPC counts human messages that have
+            cleared moderation and nothing else. */}
+        {chat.unread_count > 1 ? (
+          <View style={[styles.unreadPill, { backgroundColor: theme.highlight }]}>
+            <ThemedText type="caption" style={[styles.unreadCount, { color: theme.background }]}>
+              {unreadLabel(chat.unread_count)}
             </ThemedText>
-          ) : (
-            <View style={styles.rowPreviewText} />
-          )}
-          {/* One dot for "somebody wrote", a count once there are several.
-              It can only ever mean that: the RPC counts human messages that
-              have cleared moderation and nothing else. */}
-          {unread ? (
-            chat.unread_count > 1 ? (
-              <View style={[styles.unreadPill, { backgroundColor: theme.highlight }]}>
-                <ThemedText
-                  type="caption"
-                  style={[styles.unreadCount, { color: theme.background }]}>
-                  {unreadLabel(chat.unread_count)}
-                </ThemedText>
-              </View>
-            ) : (
-              <View style={[styles.unreadDot, { backgroundColor: theme.highlight }]} />
-            )
-          ) : null}
-        </View>
-        {isRoom && chat.member_count != null ? (
-          <ThemedText type="footnote" themeColor="textSecondary">
-            {countOf(chat.member_count, 'person', 'people')} here now
-            {/* `expires_at` is NOT NULL on the server, so the admin of a
-                chat with no end date holds an infinite seat and PostgREST
-                sends the string "infinity" — truthy, and `new Date` of it is
-                Invalid Date. */}
-            {finiteDate(chat.expires_at)
-              ? ` · you leave ${finiteDate(chat.expires_at)!.toLocaleDateString(undefined, {
-                  day: 'numeric',
-                  month: 'short',
-                })}`
-              : ''}
+          </View>
+        ) : null}
+        {closed ? (
+          <ThemedText type="caption" themeColor="textSecondary">
+            Closed
           </ThemedText>
         ) : null}
       </View>
-      {chat.chat_status !== 'active' ? (
-        <ThemedText type="footnote" themeColor="textSecondary">
-          closed
-        </ThemedText>
-      ) : null}
-    </ThemedView>
+      {/* Inset to the text column, which is the whole trick: a full-width
+          rule chops the list into slabs, an inset one threads the avatars
+          together into a single column. */}
+      {last ? null : <View style={[styles.separator, { backgroundColor: theme.hairline }]} />}
+    </View>
   );
 }
 
@@ -380,7 +420,7 @@ function RoomDiscovery({ cityId }: { cityId: number | null }) {
   }
   return (
     <>
-      <ThemedText type="smallBold" themeColor="textSecondary">
+      <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
         Rooms near you
       </ThemedText>
       {rooms.map((room) => (
@@ -443,7 +483,7 @@ function SwipeAction({
   );
 }
 
-function ChatRowLink({ chat }: { chat: ChatListRow }) {
+function ChatRowLink({ chat, last = false }: { chat: ChatListRow; last?: boolean }) {
   const theme = useTheme();
   const pref = useChatPref();
   const swipe = useRef<SwipeableMethods>(null);
@@ -474,7 +514,10 @@ function ChatRowLink({ chat }: { chat: ChatListRow }) {
       // Pin, mute and archive live behind a long press, which announces
       // itself to nobody. A hint is how VoiceOver is told there is more here.
       accessibilityHint="Press and hold for pin, mute and archive"
-      scaleTo={0.98}
+      // Barely any: a flush row that shrinks pulls away from the rows above
+      // and below it, and the gap that opens is the exact seam this layout
+      // exists to close. The press tint carries it instead.
+      scaleTo={0.995}
       onPress={() =>
         router.push(chat.kind === 'room' ? `/room/${chat.chat_id}` : `/chat/${chat.chat_id}`)
       }
@@ -495,7 +538,7 @@ function ChatRowLink({ chat }: { chat: ChatListRow }) {
           { text: 'Cancel', style: 'cancel' },
         ])
       }>
-      <ChatRow chat={chat} />
+      <ChatRow chat={chat} last={last} />
     </PressableScale>
   );
 
@@ -680,12 +723,21 @@ export default function ChatScreen() {
                   simply does not render. */}
               {myGroups.length > 0 ? (
                 <>
-                  <ThemedText type="smallBold" themeColor="textSecondary">
+                  <ThemedText
+                    type="smallBold"
+                    themeColor="textSecondary"
+                    style={styles.sectionHeading}>
                     Your groups
                   </ThemedText>
-                  {myGroups.map((chat) => (
-                    <ChatRowLink key={chat.chat_id} chat={chat} />
-                  ))}
+                  <View style={styles.list}>
+                    {myGroups.map((chat, i) => (
+                      <ChatRowLink
+                        key={chat.chat_id}
+                        chat={chat}
+                        last={i === myGroups.length - 1}
+                      />
+                    ))}
+                  </View>
                 </>
               ) : null}
               <ThemedText type="footnote" themeColor="textSecondary">
@@ -750,17 +802,23 @@ export default function ChatScreen() {
               />
             )}
           </View>
-          {/* The '+' means "one more of whatever you are looking at": a new
-              group on Groups, and on Chats the only way a one-to-one chat
-              ever starts, which is saying hi to somebody. Both are traveler
-              routes, so a place gets neither. */}
+          {/* One meaning, on both segments: start a chat and invite people to
+              it. It used to change under the person's hand — a new group on
+              Groups, the Travelers tab on Chats — so tapping '+' on the tab
+              you were reading messages in took you out of Chat entirely, to a
+              screen about meeting strangers. A control that does two
+              different things depending on a segment you may not have noticed
+              is a control nobody can learn. Starting a group is also the
+              honest answer for both: a one-to-one chat cannot be STARTED
+              here at all, it opens when somebody answers a hello. A business
+              gets none of this — §7 rule 8 keeps it out of groups. */}
           {isBusiness ? null : (
             <PressableScale
               accessibilityRole="button"
-              accessibilityLabel={tab === 'groups' ? 'Start a group' : 'Say hi to someone'}
+              accessibilityLabel="Start a chat"
               haptic="light"
               scaleTo={0.92}
-              onPress={() => router.push(tab === 'groups' ? '/new-group' : '/travelers')}
+              onPress={() => router.push('/new-group')}
               style={[styles.headerAction, { backgroundColor: theme.surface }]}>
               <SymbolView
                 name={{ ios: 'plus', android: 'add', web: 'add' }}
@@ -774,7 +832,7 @@ export default function ChatScreen() {
 
         {requests.length > 0 && tab === 'individual' ? (
           <>
-            <ThemedText type="smallBold" themeColor="textSecondary">
+            <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
               Waiting on you
             </ThemedText>
             {requests.map((request) => (
@@ -799,23 +857,31 @@ export default function ChatScreen() {
             answers, the hello IS the chat and lives in the list below. */}
         {tab === 'individual' && waitingOnThem.length > 0 ? (
           <>
-            <ThemedText type="smallBold" themeColor="textSecondary">
+            <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
               You said hi
             </ThemedText>
-            {waitingOnThem.map((request) => (
-              <SentHelloRow key={request.id} request={request} />
-            ))}
+            <View style={styles.list}>
+              {waitingOnThem.map((request, i) => (
+                <SentHelloRow
+                  key={request.id}
+                  request={request}
+                  last={i === waitingOnThem.length - 1}
+                />
+              ))}
+            </View>
           </>
         ) : null}
 
         {pinned.length > 0 ? (
           <>
-            <ThemedText type="smallBold" themeColor="textSecondary">
+            <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
               Pinned
             </ThemedText>
-            {pinned.map((chat) => (
-              <ChatRowLink key={chat.chat_id} chat={chat} />
-            ))}
+            <View style={styles.list}>
+              {pinned.map((chat, i) => (
+                <ChatRowLink key={chat.chat_id} chat={chat} last={i === pinned.length - 1} />
+              ))}
+            </View>
           </>
         ) : null}
 
@@ -825,13 +891,15 @@ export default function ChatScreen() {
                 separated from. The segment already says "Chats"; repeating
                 it directly underneath is a label labelling itself. */}
             {requests.length > 0 || pinned.length > 0 ? (
-              <ThemedText type="smallBold" themeColor="textSecondary">
+              <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
                 {tab === 'groups' ? 'Groups' : 'Chats'}
               </ThemedText>
             ) : null}
-            {rest.map((chat) => (
-              <ChatRowLink key={chat.chat_id} chat={chat} />
-            ))}
+            <View style={styles.list}>
+              {rest.map((chat, i) => (
+                <ChatRowLink key={chat.chat_id} chat={chat} last={i === rest.length - 1} />
+              ))}
+            </View>
           </>
         ) : null}
 
@@ -976,76 +1044,58 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   roomBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: AVATAR,
+    height: AVATAR,
+    borderRadius: AVATAR / 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rowTitle: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.one,
+    gap: Space.xs,
   },
   strong: {
     fontWeight: '600',
   },
+  /* Flush and square, like the rows they slide out from. Rounded pills with
+     gaps between them belonged to the card layout; against a continuous list
+     they read as three buttons that fell out of it. */
   swipeActions: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: 2,
-    paddingLeft: 2,
   },
   swipeAction: {
-    width: 68,
+    width: 74,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    borderRadius: Radius.md,
-    borderCurve: 'continuous',
   },
   feelsOff: {
     textDecorationLine: 'underline',
   },
-  /* Outlined, not filled, and shorter than a chat row - the whole point is
-     that it does not pass for a conversation at a glance. */
-  sentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: Radius.lg,
-    borderCurve: 'continuous',
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'transparent',
+  /* A flush list needs its headings to sit ON the gutter rather than float
+     in the gap between two cards. */
+  sectionHeading: {
+    paddingTop: Spacing.two,
   },
   /* The name gives way first, so a long one truncates rather than pushing
      the timestamp off the end of the row. */
   rowName: {
     flexShrink: 1,
   },
+  /* Semibold read, bold unread. The weight change is the second signal after
+     the dot, and it is the one that survives a colourblind eye. */
+  rowNameRead: {
+    fontWeight: '600',
+  },
   rowNameUnread: {
     fontWeight: '700',
   },
-  /* marginLeft:auto rather than flex:1 — the pin and mute glyphs sit between
-     the name and the stamp, and flex would stretch the gap around them. */
-  rowStamp: {
-    marginLeft: 'auto',
-    paddingLeft: Spacing.two,
-  },
-  rowPreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  rowPreviewText: {
-    flex: 1,
-  },
   unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   unreadPill: {
     minWidth: 20,
@@ -1084,6 +1134,9 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
   },
+  /* A card, still: "Have an invite?" and "Archived" are destinations, not
+     conversations, and drawing them as rows in the same column would say
+     they are the same kind of thing. */
   chatRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1094,6 +1147,56 @@ const styles = StyleSheet.create({
   chatRowText: {
     flex: 1,
     gap: 2,
+  },
+  /* Cancels the scroller's own 24pt gutter so the rows and their separators
+     run edge to edge, then each row pads itself back in. Everything else on
+     the screen keeps the gutter. */
+  list: {
+    marginHorizontal: -Spacing.four,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    paddingLeft: Space.lg,
+    paddingRight: Space.lg,
+    paddingVertical: Space.sm,
+  },
+  /* Outside the text column on purpose: the whole list can be scanned for
+     what is waiting without reading a word of it. Fixed width whether or not
+     there is a dot in it, so every name in the list starts at the same x. */
+  unreadGutter: {
+    width: 10,
+    alignItems: 'center',
+  },
+  rowBody: {
+    flex: 1,
+    gap: 2,
+  },
+  /* Always two lines tall, whether or not there are two. A list whose rows
+     change height as messages arrive cannot be scanned by position, and the
+     ragged column of timestamps is what reads as "ugly" without anybody
+     being able to name it. */
+  rowPreview: {
+    height: 40,
+  },
+  /* Stretched, so the stamp sits on the name's line while the avatar stays
+     centred against the whole row. */
+  rowTrailing: {
+    alignSelf: 'stretch',
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    gap: Space.xs,
+    paddingTop: 2,
+  },
+  /* Starts where the text starts. A full-width rule chops the list into
+     slabs; an inset one threads the avatars into a single column. */
+  separator: {
+    position: 'absolute',
+    left: Space.lg + 10 + Space.md,
+    right: 0,
+    bottom: 0,
+    height: StyleSheet.hairlineWidth,
   },
   pressed: {
     opacity: 0.7,
