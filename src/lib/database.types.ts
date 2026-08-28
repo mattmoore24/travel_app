@@ -386,6 +386,13 @@ export type RoomMessageRow = {
   body: string | null;
   image_path: string | null;
   removed: boolean;
+  /**
+   * Withdrawn, and when. The RPC predated unsend and did not return this, so
+   * a message unsent in a group came back with a null body, `removed = false`
+   * and no flag — and the thread drew an empty bubble under the sender's name,
+   * for everyone, forever.
+   */
+  unsent_at: string | null;
   created_at: string;
 };
 

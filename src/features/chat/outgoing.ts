@@ -65,6 +65,7 @@ export function optimisticRoomMessage(input: {
     body: input.body,
     image_path: null,
     removed: false,
+    unsent_at: null,
     created_at: at.toISOString(),
     local: 'sending',
   };

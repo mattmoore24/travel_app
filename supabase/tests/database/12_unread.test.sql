@@ -5,7 +5,7 @@
 -- cleared moderation". Everything below is one of the ways that could
 -- quietly stop being true.
 begin;
-select plan(21);
+select plan(27);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -234,6 +234,98 @@ select throws_ok(
   '42501',
   'permission denied for function mark_chat_read',
   'anon cannot call mark_chat_read'
+);
+
+-- MUTE, PUSH, AND WHAT A ROOM SHOWS ----------------------------------------
+--
+-- Three things the newer features never told the older ones about, all fixed
+-- in 20260828140000.
+
+-- 1. Mute is a promise about the PHONE, not just the badge. enqueue_message_push
+-- had no mute test on its direct arm at all, and read room_members.muted on its
+-- room arm - a column `authenticated` cannot write. The bell a person can
+-- actually press writes chat_prefs, which is also what my_chats reads back.
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_chat_pref(pg_temp.chat(), null, true, null);
+select pg_temp.admin();
+delete from public.push_queue;
+insert into public.messages (chat_id, sender_id, body, created_at)
+  values (pg_temp.chat(), '00000000-0000-0000-0000-00000000000b',
+          'while muted', clock_timestamp());
+select is(
+  (select count(*)::int from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000a'),
+  0,
+  'a muted chat does not queue a push'
+);
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.set_chat_pref(pg_temp.chat(), null, false, null);
+select pg_temp.admin();
+insert into public.messages (chat_id, sender_id, body, created_at)
+  values (pg_temp.chat(), '00000000-0000-0000-0000-00000000000b',
+          'and after unmuting', clock_timestamp());
+select is(
+  (select count(*)::int from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000a'),
+  1,
+  'and unmuting it starts the phone ringing again'
+);
+
+-- The same bell in a group, where the old arm read a column nobody could set.
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select public.set_chat_pref(pg_temp.crew(), null, true, null);
+select pg_temp.admin();
+delete from public.push_queue;
+insert into public.messages (chat_id, sender_id, body, created_at)
+  values (pg_temp.crew(), '00000000-0000-0000-0000-00000000000b',
+          'group noise', clock_timestamp());
+select is(
+  (select count(*)::int from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000c'),
+  0,
+  'and a muted group is quiet too'
+);
+
+-- 2. room_messages predates unsend. It returned a withdrawn message with a
+-- null body, removed = false and no flag at all, so the thread drew an empty
+-- bubble under the sender's name - for everyone, permanently.
+select pg_temp.admin();
+create temp table t_unsent as
+  select id from public.messages
+   where chat_id = pg_temp.crew() and body = 'group noise' limit 1;
+grant select on pg_temp.t_unsent to public;
+update public.messages
+   set unsent_at = now(), body = null, image_path = null
+ where id = (select id from pg_temp.t_unsent);
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select isnt(
+  (select unsent_at from public.room_messages(pg_temp.crew())
+    where id = (select id from pg_temp.t_unsent)),
+  null,
+  'a room reports a withdrawn message as withdrawn'
+);
+select is(
+  (select removed from public.room_messages(pg_temp.crew())
+    where id = (select id from pg_temp.t_unsent)),
+  false,
+  'and does not confuse withdrawing it with a moderator removing it'
+);
+
+-- 3. message_requests is unique on (sender, recipient), not on chat, so two
+-- people who both said hi before either accepted have two rows pointing at one
+-- chat - and the left join returned the conversation twice, with the same key.
+select pg_temp.admin();
+insert into public.message_requests
+  (chat_id, sender_id, recipient_id, source, first_message, status)
+  values (pg_temp.chat(), '00000000-0000-0000-0000-00000000000a',
+          '00000000-0000-0000-0000-00000000000b', 'trip_match', 'hi back', 'accepted');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  (select count(*)::int from public.my_chats() where chat_id = pg_temp.chat()),
+  1,
+  'a chat with a hello in both directions is still one row in the list'
 );
 
 select * from finish();

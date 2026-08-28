@@ -116,6 +116,7 @@ export default function RoomScreen() {
         sender_id: m.sender_id,
         body: m.body,
         image_path: m.image_path,
+        unsent_at: m.unsent_at,
         created_at: m.created_at,
         // Carried through, or a message that has not left the device yet
         // would look exactly like one that had.
