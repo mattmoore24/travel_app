@@ -9,6 +9,7 @@ import { Space } from '@/constants/theme';
 import { signUpWithEmail, upgradeGuestToAccount } from '@/features/auth/api';
 import { AppleSignInButton } from '@/features/auth/apple-button';
 import { ConsentNote } from '@/features/auth/consent-note';
+import { AccountKindChoice, type AccountKind } from '@/features/auth/account-kind';
 import { useAuthStore } from '@/features/auth/store';
 import { useIsGuestAccount } from '@/features/guest/hooks';
 import { StepShell } from '@/features/signup/step-shell';
@@ -28,6 +29,20 @@ const PASSWORD_MIN = 8;
 export default function JoinScreen() {
   const isGuestAccount = useIsGuestAccount();
   const listingStarted = useAuthStore((s) => s.listingStarted);
+  const listingDone = useAuthStore((s) => s.listingDone);
+
+  // The flag follows the chooser rather than the submit, so the Apple button
+  // carries the answer too. Signing in through Apple never reaches
+  // `submitPassword`, and without this a place owner who took the one-tap
+  // option landed in traveler onboarding just as before.
+  const chooseKind = (next: AccountKind) => {
+    setKind(next);
+    if (next === 'business') {
+      listingStarted();
+    } else {
+      listingDone();
+    }
+  };
   // Arriving from the "Run a place?" door on the welcome tour. Carried
   // through because register_business refuses an account that has finished
   // traveler onboarding, and onboarding is exactly where the root guard
@@ -35,7 +50,9 @@ export default function JoinScreen() {
   // person who came here to list their bar is four taps from permanently
   // locking themselves out of doing it.
   const { business } = useLocalSearchParams<{ business?: string }>();
-  const forBusiness = business === '1';
+  // The chooser below is the answer now; the link only sets what it opens on.
+  const [kind, setKind] = useState<AccountKind>(business === '1' ? 'business' : 'traveler');
+  const forBusiness = kind === 'business';
   const [step, setStep] = useState<1 | 2>(1);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -111,7 +128,11 @@ export default function JoinScreen() {
         step={1}
         total={SIGNUP_TOTAL_STEPS}
         title="What is your email?"
-        subtitle="Only for signing in. No newsletters."
+        subtitle={
+          forBusiness
+            ? 'Only for signing in. Your business gets its own email to confirm later.'
+            : 'Only for signing in. No newsletters.'
+        }
         continueLabel="Continue"
         continueDisabled={!emailOk}
         onContinue={submitEmail}
@@ -139,6 +160,11 @@ export default function JoinScreen() {
             own rule is about offering it alongside OTHER third-party logins,
             and the only alternative here is first-party email, so leaving it
             out on this one screen is fine. */}
+        {/* Before the field, not after it, and before Apple. Whoever is
+            typing an address should already know which kind of account it is
+            about to make. A guest is not offered the choice: they are
+            upgrading an account that already exists, and it is a traveler's. */}
+        {isGuestAccount ? null : <AccountKindChoice value={kind} onChange={chooseKind} />}
         {isGuestAccount ? null : (
           <View style={styles.appleRow}>
             <AppleSignInButton label="signup" />
@@ -178,7 +204,11 @@ export default function JoinScreen() {
       step={2}
       total={SIGNUP_TOTAL_STEPS}
       title="Pick a password"
-      subtitle="Eight characters or more."
+      subtitle={
+        forBusiness
+          ? 'Eight characters or more. This is for your business account.'
+          : 'Eight characters or more. This is for your traveler account.'
+      }
       continueLabel="Create account"
       continueTestID="create-account"
       continueDisabled={!passwordOk}
@@ -230,7 +260,9 @@ export default function JoinScreen() {
       {passwordOk ? (
         <View style={styles.matchRow}>
           <ThemedText type="footnote" themeColor="textSecondary">
-            That will do. Your profile is next.
+            {forBusiness
+              ? 'That will do. Your listing is next.'
+              : 'That will do. Your profile is next.'}
           </ThemedText>
         </View>
       ) : null}

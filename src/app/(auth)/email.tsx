@@ -107,7 +107,7 @@ export default function SignInScreen() {
   return (
     <StepScreen
       title="Welcome back"
-      subtitle="Good to see you again."
+      subtitle="Same sign in either way, whether this is your traveler account or your business."
       continueLabel="Sign in"
       continueDisabled={!canSubmit}
       continueLoading={loading}
@@ -119,6 +119,16 @@ export default function SignInScreen() {
             variant="ghost"
             label="New here? Make an account"
             onPress={() => router.replace('/join')}
+          />
+          {/* A second door to the same screen, opened on the other answer.
+              Founder: "when I click sign in, it isn't clear how to sign up or
+              sign in as a business." The choice is the first thing on /join
+              now, but somebody looking for it should not have to guess that
+              a button saying "make an account" is where a business starts. */}
+          <PrimaryButton
+            variant="ghost"
+            label="Run a business? Start here"
+            onPress={() => router.replace('/join?business=1')}
           />
         </View>
       }>
