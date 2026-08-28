@@ -392,18 +392,22 @@ export default function GroupScreen() {
                 <PressableScale
                   accessibilityRole="button"
                   accessibilityLabel={
-                    group.max_stay_until
-                      ? 'Give this chat no end date'
-                      : 'Give this chat an end date'
+                    group.max_stay_until ? 'Give this chat no end date' : 'No end date'
                   }
                   accessibilityState={{ selected: group.max_stay_until == null }}
                   haptic="selection"
                   scaleTo={0.98}
-                  onPress={() =>
-                    group.max_stay_until
-                      ? update.mutate({ clearMaxStay: true })
-                      : update.mutate({ maxStayUntil: toISODate(addDays(new Date(), 30)) })
-                  }>
+                  // A radio, not a toggle. It is drawn with a filled
+                  // checkmark and an accent border when there is no end date,
+                  // so tapping it there reads as confirming the state you are
+                  // already in — and it used to quietly hand the chat a
+                  // thirty-day expiry instead. Setting a date is the picker's
+                  // job, right above this.
+                  onPress={() => {
+                    if (group.max_stay_until) {
+                      update.mutate({ clearMaxStay: true });
+                    }
+                  }}>
                   <ThemedView
                     type={group.max_stay_until == null ? 'accentSoft' : 'backgroundElement'}
                     style={[

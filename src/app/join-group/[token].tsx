@@ -16,7 +16,7 @@ import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { closeDayLabel } from '@/features/groups/closing';
 import { useGroupInvitePreview, useJoinGroup } from '@/features/groups/hooks';
 import { useIsSignedOut } from '@/features/guest/hooks';
-import { formatDate, parseISODate, toISODate } from '@/features/trips/dates';
+import { addDays, formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { countOf, isAre } from '@/lib/plural';
 
@@ -42,10 +42,16 @@ export default function JoinGroupScreen() {
   const maxDate = group?.max_stay_until ? parseISODate(group.max_stay_until) : null;
   const [stayUntil, setStayUntil] = useState<Date | null>(null);
   const [pickingDate, setPickingDate] = useState(false);
+  // A group with no end date leaves nothing to default to, and a null default
+  // greyed out "Join the group" under a picker already showing today — with
+  // nothing on screen to say why, and no way out but to nudge the date. A
+  // month ahead is the same horizon a new group offers. Read once at mount so
+  // a re-render cannot move it.
+  const [aMonthOut] = useState(() => addDays(new Date(), 30));
 
-  // Default to the group's own horizon, which is what most people want and
-  // the only value guaranteed to be valid.
-  const chosen = stayUntil ?? maxDate;
+  // Default to the group's own horizon where it has one: it is what most
+  // people want and the only value guaranteed to be valid.
+  const chosen = stayUntil ?? maxDate ?? aMonthOut;
 
   if (preview.isPending) {
     return <ThemedView style={styles.root} />;
@@ -146,9 +152,6 @@ export default function JoinGroupScreen() {
   }
 
   const submit = async () => {
-    if (!chosen) {
-      return;
-    }
     try {
       const result = await join.mutateAsync({
         token: token!,
@@ -165,7 +168,6 @@ export default function JoinGroupScreen() {
       title={group.name}
       subtitle={`${countOf(group.member_count, 'person', 'people')} in the group`}
       continueLabel="Join the group"
-      continueDisabled={chosen == null}
       continueLoading={join.isPending}
       onContinue={submit}>
       <View style={styles.identity}>
@@ -197,7 +199,7 @@ export default function JoinGroupScreen() {
         </ThemedText>
         {Platform.OS === 'ios' ? (
           <DateTimePicker
-            value={chosen ?? new Date()}
+            value={chosen}
             mode="date"
             display="compact"
             minimumDate={new Date()}
@@ -213,12 +215,12 @@ export default function JoinGroupScreen() {
           <>
             <PrimaryButton
               variant="ghost"
-              label={chosen ? formatDate(toISODate(chosen)) : 'Pick a date'}
+              label={formatDate(toISODate(chosen))}
               onPress={() => setPickingDate(true)}
             />
             {pickingDate ? (
               <DateTimePicker
-                value={chosen ?? new Date()}
+                value={chosen}
                 mode="date"
                 minimumDate={new Date()}
                 maximumDate={maxDate ?? undefined}
