@@ -351,8 +351,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Space.md,
   },
+  /* Grows to its content and SHRINKS when there is not room. Without the
+     shrink, four groups on a small phone push Done off the bottom of a sheet
+     that is already at its maximum height. */
   scroll: {
     flexGrow: 0,
+    flexShrink: 1,
   },
   content: {
     gap: Space.lg,

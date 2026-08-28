@@ -340,13 +340,21 @@ function PhotoCheck({ url }: { url: string | null }) {
       ) : null}
       <View
         style={[StyleSheet.absoluteFill, styles.photoCheckVeil, { backgroundColor: theme.scrim }]}>
-        <ActivityIndicator color={theme.textSecondary} />
-        <ThemedText type="callout" style={styles.photoCheckTitle}>
-          Checking this photo
-        </ThemedText>
-        <ThemedText type="footnote" themeColor="textSecondary" style={styles.photoCheckNote}>
-          We check every photo before it goes out. Usually about {PHOTO_CHECK_SECONDS} seconds.
-        </ThemedText>
+        {/* On a solid card, not straight onto the scrim. The scrim sits over
+            the sender's own photo, so the effective background is whatever
+            they photographed: textSecondary over a 0.62 veil on a bright
+            picture measures 2.5:1, and no veil opacity fixes that without
+            hiding the photo this card exists to show. A card makes the ratio
+            the palette's, whatever is behind it. */}
+        <View style={[styles.photoCheckCard, { backgroundColor: theme.surface }]}>
+          <ActivityIndicator color={theme.textSecondary} />
+          <ThemedText type="callout" style={styles.photoCheckTitle}>
+            Checking this photo
+          </ThemedText>
+          <ThemedText type="footnote" themeColor="textSecondary" style={styles.photoCheckNote}>
+            We check every photo before it goes out. Usually about {PHOTO_CHECK_SECONDS} seconds.
+          </ThemedText>
+        </View>
       </View>
     </View>
   );
@@ -1117,8 +1125,14 @@ const styles = StyleSheet.create({
   photoCheckVeil: {
     alignItems: 'center',
     justifyContent: 'center',
+    padding: Space.md,
+  },
+  photoCheckCard: {
+    alignItems: 'center',
     gap: Space.sm,
-    paddingHorizontal: Space.lg,
+    padding: Space.md,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
   },
   photoCheckTitle: {
     fontWeight: '600',
