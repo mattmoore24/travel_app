@@ -96,3 +96,10 @@
              so two hellos in one chat stop returning the conversation twice.
              And pins loses its blanket INSERT for a per-column grant: the 72h
              CHECK is anchored to created_at, which a client could set.
+2026-08-28 — deploy: 20260828160000_businesses_not_places.sql. Five Postgres
+             exception strings say "place" and reach the screen verbatim
+             (saveFailureMessage returns error.message unchanged, by design),
+             so an alert said "nobody runs this place yet" while the app said
+             business. report_business, message_business and rate_business
+             restated whole with the new words; no OUT columns change, so
+             create-or-replace and the grants survive, restated anyway.
