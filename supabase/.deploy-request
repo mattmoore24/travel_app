@@ -76,3 +76,10 @@
              on a group older than 400 days, which is the one control that reopens
              a closed chat. Past-dated groups are pushed to +30 days so nothing goes
              dark on deploy day.
+2026-08-28 — deploy: 20260828120000_closed_groups_stay_readable.sql. Keeping a closed
+             group's room_members row was only half the promise — every gate reads
+             `expires_at > now()` and none of them asks whether a row exists, so a
+             lapsed seat lost the group about a week after it closed and the admin's
+             own thread opened empty. is_room_member and my_chats (restated whole,
+             OUT columns untouched, so create-or-replace and the grants survive) both
+             recognise a closed group now. Nothing here lets anybody post.
