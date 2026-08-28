@@ -4,7 +4,6 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import Animated, {
   FadeIn,
   FadeOut,
-  SlideInDown,
   SlideOutDown,
   runOnJS,
   useAnimatedKeyboard,
@@ -153,6 +152,25 @@ export function Sheet({
   const keyboard = useAnimatedKeyboard();
   const drag = useSharedValue(0);
 
+  // The entrance is a TRANSFORM, not one of Reanimated's presentation presets.
+  //
+  // Every layout animation in this library animates the view's real layout —
+  // the slide-up preset animates `originY`, not translateY — and while one is
+  // running Reanimated re-applies the frame it SNAPSHOTTED when the animation
+  // began, once per frame, width and height included. A sheet whose content
+  // arrives after it opens (a query resolving, a photo signing, a skeleton
+  // giving way to a card) therefore lands at the size it had at the moment of
+  // the tap and stays there. That is the place card that opened a third of the
+  // way and needed closing and re-tapping to come up whole: the second tap was
+  // served from cache, so the snapshot was of the finished card.
+  //
+  // Sliding by `translateY` leaves the layout entirely to React Native, so the
+  // sheet grows the instant its content does, mid-entrance or long after.
+  const enter = useSharedValue(1);
+  useEffect(() => {
+    enter.value = withSpring(0, Springs.sheet);
+  }, [enter]);
+
   // Register while this sheet owns the screen, so anything that would present
   // one of its own waits its turn. Inline sheets count too: nothing can
   // collide with them, but they are still what somebody is looking at, and
@@ -191,7 +209,9 @@ export function Sheet({
       // dead sheet between the last control and the keyboard, on the one
       // screen whose scroll area is being starved to make room for it.
       paddingBottom: Math.max(insets.bottom, lift) + Space.lg,
-      transform: [{ translateY: drag.value }],
+      // A full screen height below its resting place, then sprung home — the
+      // same travel the preset used, without handing Reanimated the layout.
+      transform: [{ translateY: drag.value + enter.value * height }],
     };
   });
 
@@ -215,9 +235,10 @@ export function Sheet({
       ) : null}
 
       <Animated.View
-        // The iOS system-sheet spring (SwiftUI response .55 / damping .825
-        // converted); dismissal is quicker than presentation by convention.
-        entering={SlideInDown.springify().mass(1).stiffness(130).damping(19)}
+        // Presentation is the iOS system-sheet spring (`Springs.sheet`:
+        // SwiftUI response .55 / damping .825 converted) applied to the
+        // transform above. Dismissal is quicker by convention, and it stays a
+        // layout animation safely — nothing grows on the way out.
         exiting={SlideOutDown.duration(200)}
         style={[
           styles.sheet,

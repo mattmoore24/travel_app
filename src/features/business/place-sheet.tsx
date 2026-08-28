@@ -10,7 +10,7 @@ import { LoadError } from '@/components/ui/load-error';
 import { Sheet, leavingSheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Motion, Radius, Space } from '@/constants/theme';
+import { HitTarget, Motion, Radius, Space } from '@/constants/theme';
 import { PlaceGlyph } from '@/features/business/business-marker';
 import { PlaceSeal } from '@/features/business/place-seal';
 import { useBusinessDetail, useRatingSummary } from '@/features/business/hooks';
@@ -82,13 +82,18 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
   }, [place]);
 
   if (detail.isPending) {
-    // Two lines of skeleton, not a hero-sized block: the sheet is small and
-    // the note in components/ui/skeleton is about shimmering over a BASEMAP,
-    // which this is not - it sits on the sheet's own surface.
+    // Shaped like the card it becomes — name, meta line, one button — rather
+    // than two stray lines. The sheet is sized by whatever is inside it, so a
+    // skeleton much shorter than the answer makes the card leap when the
+    // answer lands. No hero block: we do not yet know whether this place has a
+    // photo, and reserving one for a place without one is a worse lie than the
+    // jump. The note in components/ui/skeleton is about shimmering over a
+    // BASEMAP, which this is not - it sits on the sheet's own surface.
     return (
       <View style={styles.card}>
         <Skeleton width="65%" height={18} radius={Radius.sm} />
         <Skeleton width="40%" height={13} radius={Radius.sm} />
+        <Skeleton width="100%" height={HitTarget} radius={Radius.md} />
       </View>
     );
   }
@@ -119,6 +124,11 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
 
   const inTheChat = place.chat_id != null && chats.some((chat) => chat.chat_id === place.chat_id);
   const address = place.place_label?.trim() || null;
+  // Whether there IS a cover, which the listing already told us, as opposed to
+  // whether its signed URL has come back yet. The two are a round trip apart,
+  // and treating the second as the first is what made the card grow a photo's
+  // worth of height a beat after it opened.
+  const hasCover = place.photos[0]?.storage_path != null;
 
   return (
     // A ScrollView, not a View. Everything this card can hold at once —
@@ -140,13 +150,15 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
           transition={Motion.standard}
           accessibilityLabel={`Photo of ${place.name}`}
         />
+      ) : hasCover ? (
+        <Skeleton width="100%" aspectRatio={3 / 2} radius={Radius.lg} />
       ) : null}
 
       <View style={styles.header}>
         {/* The same chip and glyph as the marker just tapped, so the sheet
             reads as that marker opening rather than as a new object. A cover
             photo says it better, so it only stands in when there is none. */}
-        {cover.data ? null : (
+        {hasCover ? null : (
           <PlaceGlyph category={place.category} live={whatsOn != null} size={30} onSurface />
         )}
         <View style={styles.title}>
@@ -221,7 +233,9 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
           on the one number a place is judged by. */}
       {rating.isSuccess ? (
         <RatingLine average={rating.data?.average ?? null} raters={rating.data?.rater_count ?? 0} />
-      ) : null}
+      ) : (
+        <Skeleton width="35%" height={17} radius={Radius.sm} />
+      )}
 
       {isGuest ? (
         <SignUpGate

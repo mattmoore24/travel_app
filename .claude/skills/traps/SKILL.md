@@ -105,6 +105,40 @@ device does something else.
 - **`StyleSheet.absoluteFillObject` is not in this RN's typings.** Use
   `StyleSheet.absoluteFill`.
 
+## Reanimated entrances animate LAYOUT, and freeze the frame while they run
+
+- **`entering={SlideInDown}` and every other preset animate `originX/originY/
+width/height`, not a transform** — read `Slide.js` in the package: the
+  builder returns `animations: { originY: ... }`. So the animation owns the
+  view's real frame for its whole duration.
+- **While it runs, Reanimated re-applies the frame it SNAPSHOTTED at the
+  start, once per frame, width and height included.** In
+  `LayoutAnimationsProxy_Legacy.cpp`, a real layout `Update` for that tag is
+  passed through to the mount (`filteredMutations.push_back`) and then
+  `addOngoingAnimations` immediately overwrites it from the animation's own
+  `updateMap`. The last write wins, and it is the stale one. When the spring
+  settles nothing restores the true layout, because from React Native's point
+  of view the layout was already committed and has not changed since.
+- **So an animated container whose content arrives after the tap freezes at
+  the size it had at the moment of the tap.** The place card opened about a
+  third of the way and came up whole only on a second tap — the second tap
+  was served from the query cache, so the snapshot was of the finished card.
+  It went unnoticed for a while because iOS views do not clip by default: a
+  plain `<View>` child simply spilled out of the frozen frame and stayed
+  visible (which is its own bug — "the card runs off the bottom"). Putting a
+  `ScrollView` inside, which DOES clip, is what turned a spill into a
+  visibly half-open sheet.
+- **The fix is to slide on a `translateY` in `useAnimatedStyle` instead**, so
+  React Native keeps the layout and the view resizes the instant its content
+  does. `components/ui/sheet.tsx` does this, and
+  `components/ui/__tests__/sheet.test.ts` keeps the preset from coming back.
+  A preset is still fine on something that cannot change size — the sheet's
+  scrim is `absoluteFill`, so its frame is its parent's and cannot go stale.
+- `layout={LinearTransition}` also defuses it (the proxy re-targets an
+  ongoing animation only when a LAYOUT animation is configured), but it
+  animates every subsequent size change too, including the keyboard growing a
+  sheet's padding. Prefer the transform.
+
 ## Keyboard
 
 - Lifting a bottom-anchored sheet by `translateY` works for short sheets and
