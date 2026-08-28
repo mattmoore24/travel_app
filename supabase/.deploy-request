@@ -83,3 +83,16 @@
              own thread opened empty. is_room_member and my_chats (restated whole,
              OUT columns untouched, so create-or-replace and the grants survive) both
              recognise a closed group now. Nothing here lets anybody post.
+2026-08-28 — deploy: 20260828140000_room_unsend_and_mute.sql and
+             20260828150000_pin_lifetime_is_not_the_clients.sql.
+             room_messages DROPPED and recreated with unsent_at (grant
+             restated) — it predated unsend, so a withdrawn message came back
+             from a group with removed=false and no flag and drew an empty
+             bubble for everyone. enqueue_message_push gains the mute
+             predicate its direct arm never had and reads chat_prefs on both
+             arms, because room_members.muted is a column authenticated
+             cannot write — muting struck the bell through and kept ringing
+             the phone. my_chats takes the opening request through a lateral,
+             so two hellos in one chat stop returning the conversation twice.
+             And pins loses its blanket INSERT for a per-column grant: the 72h
+             CHECK is anchored to created_at, which a client could set.
