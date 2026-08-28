@@ -52,7 +52,12 @@ function GuestProfile({ guestName }: { guestName: string | null }) {
           </View>
         </View>
         <ThemedText type="title" style={styles.guestText}>
-          {guestName ? `You are ${guestName} in here` : 'Browsing as a guest'}
+          {/* Founder, 2026-08-28: "'you are [name] in here' for guests is
+              weird wording. Just have it say '[name], you are in guest
+              mode'." The old line was trying to say the name is only for
+              this app; it read as if it were correcting you about who you
+              are. */}
+          {guestName ? `${guestName}, you are in guest mode` : 'Browsing as a guest'}
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.guestText}>
           {guestName

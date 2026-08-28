@@ -2,16 +2,15 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useMemo, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { KeyboardDoneBar, keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { LoadError } from '@/components/ui/load-error';
-import { PhotoButton } from '@/components/ui/photo-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { MaxContentWidth, NativeAppearance, Radius, Space } from '@/constants/theme';
@@ -37,6 +36,7 @@ import {
 } from '@/features/rooms/hooks';
 import { addDays, formatDateRange, toISODate } from '@/features/trips/dates';
 import { useBusinessForChat, useOwnBusiness } from '@/features/business/hooks';
+import { Composer } from '@/features/chat/composer';
 import { closeDayLabel, finiteDate, useHasGroupClosed } from '@/features/groups/closing';
 import { useTheme } from '@/hooks/use-theme';
 import { countOf } from '@/lib/plural';
@@ -64,7 +64,6 @@ export default function RoomScreen() {
   const { data: pins = [] } = useRoomPins(id ?? null);
   const pin = usePinMessage(id!);
   const unpin = useUnpinMessage(id!);
-  const [draft, setDraft] = useState('');
 
   // Archived rooms too: the Archived screen links straight here, and a room
   // that had been archived resolved to no membership at all - so it offered
@@ -445,60 +444,31 @@ export default function RoomScreen() {
             </View>
           ) : isMember ? (
             <View style={styles.composerWrap}>
-              <View style={styles.composer}>
-                {/* Not for a guest: messages_guest_limits refuses an
-                    image_path outright, so the button could only ever fail.
-                    Photos cost storage and a vision call apiece and a free
-                    identity is the wrong thing to spend them on. */}
-                {isGuestAccount ? null : (
-                  <PhotoButton
-                    busy={sendPhoto.isPending}
-                    onPick={(uri) =>
-                      sendPhoto.mutate(uri, {
-                        onError: () =>
-                          Alert.alert('Could not send', 'Check your connection and try again.'),
-                      })
+              <Composer
+                inputTestID="room-composer"
+                placeholder="Message the room…"
+                // Not for a guest: messages_guest_limits refuses an
+                // image_path outright, so the button could only ever fail.
+                // Photos cost storage and a vision call apiece and a free
+                // identity is the wrong thing to spend them on.
+                allowPhotos={!isGuestAccount}
+                photoBusy={sendPhoto.isPending}
+                onSend={async ({ text, photoUri }) => {
+                  // A photo failure throws so the composer keeps the picture
+                  // staged; text has a failed bubble of its own to live in.
+                  if (photoUri) {
+                    try {
+                      await sendPhoto.mutateAsync(photoUri);
+                    } catch (error) {
+                      Alert.alert('Could not send', 'Check your connection and try again.');
+                      throw error;
                     }
-                  />
-                )}
-                <TextInput
-                  testID="room-composer"
-                  style={[
-                    styles.input,
-                    { backgroundColor: theme.surfaceSunken, color: theme.text },
-                  ]}
-                  placeholder="Message the room…"
-                  placeholderTextColor={theme.textSecondary}
-                  value={draft}
-                  onChangeText={setDraft}
-                  multiline
-                  {...keyboardDoneProps}
-                />
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Send"
-                  // Not disabled while a send is in flight any more: the
-                  // bubble is already on screen, so the composer's job is
-                  // done and locking it just stops the next sentence.
-                  disabled={draft.trim().length === 0}
-                  onPress={() => {
-                    send.mutate(draft.trim());
-                    setDraft('');
-                  }}
-                  style={[
-                    styles.sendButton,
-                    {
-                      backgroundColor:
-                        draft.trim().length === 0 ? theme.surfaceSunken : theme.accent,
-                    },
-                  ]}>
-                  <SymbolView
-                    name={{ ios: 'arrow.up', android: 'send', web: 'send' }}
-                    size={18}
-                    tintColor={draft.trim().length === 0 ? theme.textSecondary : theme.onAccent}
-                  />
-                </Pressable>
-              </View>
+                  }
+                  if (text.length > 0) {
+                    send.mutate(text);
+                  }
+                }}
+              />
             </View>
           ) : (
             <View style={styles.footer}>
