@@ -76,7 +76,7 @@ export default function JoinGroupScreen() {
   // nothing on screen to say why, and no way out but to nudge the date. A
   // month ahead is the same horizon a new group offers. Read once at mount so
   // a re-render cannot move it.
-  const [aMonthOut] = useState(() => addDays(new Date(), 30));
+  const [aMonthOut] = useState(() => addDays(openedAt, 30));
 
   // Default to the group's own horizon where it has one: it is what most
   // people want and the only value guaranteed to be valid.
@@ -91,9 +91,11 @@ export default function JoinGroupScreen() {
   }
 
   if (preview.isError) {
-    // Distinct from "not open". This query does not even retry, so one flaky
-    // moment used to tell somebody their friend's link was dead and send them
-    // back to ask for another one.
+    // Distinct from "not open", and reached far less often than it used to be:
+    // the query had `retry: false`, so one flaky moment told somebody their
+    // friend's link was dead and sent them back to ask for another one. It
+    // retries like every other query now, and this is what is left after
+    // three tries.
     return (
       <ThemedView style={styles.root}>
         <LoadError what="this invite" error={preview.error} onRetry={() => preview.refetch()} />
@@ -109,7 +111,7 @@ export default function JoinGroupScreen() {
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
             It may have expired or been turned off. Ask whoever sent it for a new link.
           </ThemedText>
-          <PrimaryButton variant="ghost" label="Go back" onPress={leave} />
+          <PrimaryButton variant="ghost" label="Close" onPress={leave} />
         </View>
       </ThemedView>
     );
@@ -132,7 +134,7 @@ export default function JoinGroupScreen() {
               : ''}
             , so there is nothing to join. Whoever runs it can start a new one.
           </ThemedText>
-          <PrimaryButton variant="ghost" label="Go back" onPress={leave} />
+          <PrimaryButton variant="ghost" label="Close" onPress={leave} />
         </View>
       </ThemedView>
     );
@@ -252,7 +254,7 @@ export default function JoinGroupScreen() {
             value={chosen}
             mode="date"
             display="compact"
-            minimumDate={new Date()}
+            minimumDate={openedAt}
             maximumDate={maxDate ?? undefined}
             themeVariant={NativeAppearance}
             onChange={(_, date) => {
@@ -272,7 +274,7 @@ export default function JoinGroupScreen() {
               <DateTimePicker
                 value={chosen}
                 mode="date"
-                minimumDate={new Date()}
+                minimumDate={openedAt}
                 maximumDate={maxDate ?? undefined}
                 onChange={(_, date) => {
                   setPickingDate(false);
