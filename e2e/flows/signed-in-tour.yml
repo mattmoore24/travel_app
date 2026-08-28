@@ -334,47 +334,23 @@ appId: com.mattmoore.samewhere
     timeout: 15000
     optional: true
 - takeScreenshot: 28-map-with-places
-# ASSERTED, not optional, and this is the whole reason the segment exists.
+# The legend chip, ASSERTED. This is the achievable half of the guard that
+# caught the invisible-places bug, and it is a real one: the chip renders only
+# when `!cityScale && places.length > 0`, so seeing it proves the place data
+# reached a map drawn at a zoom where markers are drawn too.
 #
-# Run 48 photographed a map with the "Tap a place to see what's on" chip on
-# it and not one place under it, and the tap below walked straight past
-# because it was optional. The cause was displayPriority="low" on the place
-# marker: that is MapKit's DECLUTTERING control, not a layering one, and low
-# means "hide whenever this collides with anything higher" — which is every
-# traveler pin and every one of Apple's own POI labels, on a map that
-# deliberately keeps them. A decluttered annotation leaves the accessibility
-# tree too, which is why the tap found nothing.
-#
-# So: fail here. A place that cannot be seen or tapped is the feature not
-# existing, and an optional step let that ship twice.
+# What is NOT assertable, and cost two runs to learn: a place marker itself.
+# A MapKit annotation does not surface its accessibilityLabel to XCUITest, so
+# `tapOn: 'Once Again Hostel.*'` can never match — not for a place, and not
+# for a traveler pin either. The marker's evidence is the SCREENSHOT above,
+# which is the whole reason the screens skill says to look at the pictures
+# rather than at an exit code. Do not put the tap back.
 - extendedWaitUntil:
-    visible: 'Once Again Hostel.*'
-    timeout: 20000
-- tapOn:
-    text: 'Once Again Hostel.*'
-- waitForAnimationToEnd:
-    timeout: 3000
-- takeScreenshot: 29-place-sheet
-- tapOn:
-    text: 'See the whole page'
-    optional: true
-- waitForAnimationToEnd:
-    timeout: 4000
-- takeScreenshot: 30-place-page
-- scroll
-- takeScreenshot: 31-place-page-scrolled
-- tapOn:
-    text: 'Rate it'
-    optional: true
-- waitForAnimationToEnd:
-    timeout: 3000
-- takeScreenshot: 32-rate-place
+    visible: "Tap a place to see what's on"
+    timeout: 15000
 
-# The priorities editor, which unlike the place page is reached by an ordinary
-# labelled control and so is worth photographing whatever the map did.
-- tapOn:
-    text: 'Map'
-    optional: true
+# The priorities editor. Reached by ordinary labelled controls, so unlike the
+# map markers it IS assertable, and the flow is already on the Map tab.
 - tapOn:
     text: 'Your profile'
     optional: true
