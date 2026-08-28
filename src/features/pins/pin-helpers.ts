@@ -248,8 +248,11 @@ export function intentLabel(intentISO: string, now = new Date()): string {
  * Matching either date fixes that without ever showing a plan that has already
  * happened, which is what a looser `<=` comparison would have done.
  */
-export function filterDates(filter: 'today' | 'tomorrow', now = new Date()): string[] {
-  const offset = filter === 'today' ? 0 : 1;
+export function filterDates(filter: 'today' | 'tomorrow' | 'later', now = new Date()): string[] {
+  // 'later' is the day after tomorrow, which is as far as a pin can ever
+  // reach: the lifetime is capped at 72 hours, so three days is the whole
+  // universe rather than an arbitrary stopping point.
+  const offset = filter === 'today' ? 0 : filter === 'tomorrow' ? 1 : 2;
   const local = toISODate(addDays(now, offset));
   const utc = new Date(now.getTime() + offset * 86_400_000).toISOString().slice(0, 10);
   return local === utc ? [local] : [local, utc];

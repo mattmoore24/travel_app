@@ -61,7 +61,17 @@ import { PinFormSheet } from '@/features/pins/pin-form-sheet';
 import { PinSearchField } from '@/features/pins/pin-search-field';
 import type { LocalSearchResult } from '@/modules/local-search';
 import { PlacePinOverlay } from '@/features/pins/place-pin-overlay';
-import { burnOutLabel, filterDates, intentLabel } from '@/features/pins/pin-helpers';
+import { burnOutLabel, intentLabel } from '@/features/pins/pin-helpers';
+import {
+  DEFAULT_FILTERS,
+  daysFor,
+  heatDay,
+  isDefault,
+  pinPasses,
+  showsBusinesses,
+  type MapFilters,
+} from '@/features/pins/filters';
+import { FilterButton, MapFilterSheet } from '@/features/pins/map-filter-sheet';
 import { useOwnUserId, useOwnVisibility, usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
@@ -345,13 +355,6 @@ const SEEDED_LABEL = 'One of our picks. Show up.';
  */
 const PLACE_DRIFT_M = 40;
 
-const DATE_FILTERS = [
-  { value: 'all', label: 'All' },
-  { value: 'today', label: 'Today' },
-  { value: 'tomorrow', label: 'Tomorrow' },
-] as const;
-type DateFilter = (typeof DATE_FILTERS)[number]['value'];
-
 /**
  * One marker for the whole city, once the map is zoomed past street scale:
  * at that size every venue is smaller than a fingertip, and a hundred
@@ -506,17 +509,17 @@ export default function MapScreen() {
   const [cityId, setCityId] = useState<number | null>(null);
   const activeCityId = cityId ?? launchCities[0]?.city_id ?? null;
   const activeCity = launchCities.find((c) => c.city_id === activeCityId);
-  // The brief's hook is "popular today/tomorrow" — the heat date dimension
-  // is filterable, not blended.
-  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  // Everything the map is narrowed by, behind one control. It used to be
+  // three date chips and nothing else, which filtered the dimension people
+  // asked about least and offered no way to ask about who is on the map at
+  // all. See features/pins/filters.
+  const [filters, setFilters] = useState<MapFilters>(DEFAULT_FILTERS);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   // One date for the heat RPC, which takes a single day, and the set of dates
   // the pin markers accept. They differ because two clocks write intent_date -
   // see filterDates.
-  const filterISO = dateFilter === 'all' ? null : filterDates(dateFilter)[0];
-  const filterSet = useMemo(
-    () => (dateFilter === 'all' ? null : new Set(filterDates(dateFilter))),
-    [dateFilter]
-  );
+  const filterISO = heatDay(filters.day);
+  const filterSet = useMemo(() => daysFor(filters.day), [filters.day]);
   const pinsQuery = useMapPins(activeCityId);
   const { data: allPins = [], isSuccess: pinsLoaded } = pinsQuery;
   const { data: heat = [] } = useMapHeat(activeCityId, filterISO);
@@ -564,8 +567,8 @@ export default function MapScreen() {
   const lastRegion = useRef<Region | null>(null);
 
   const pins = useMemo(
-    () => (filterSet ? allPins.filter((p) => filterSet.has(p.intent_date)) : allPins),
-    [allPins, filterSet]
+    () => allPins.filter((pin) => pinPasses(pin, filters, filterSet)),
+    [allPins, filters, filterSet]
   );
   const selectedPin = useMemo(
     () => pins.find((p) => p.id === selectedPinId) ?? null,
@@ -809,7 +812,7 @@ export default function MapScreen() {
               equal zIndex, and BusinessMarker sets a lower one explicitly.
               Only past city scale, so the city view stays about travelers -
               which is also what Apple's own POI labels do. */}
-          {!cityScale && !placing
+          {!cityScale && !placing && showsBusinesses(filters)
             ? places.map((place) => (
                 <BusinessMarker
                   key={place.id}
@@ -988,45 +991,16 @@ export default function MapScreen() {
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.dateChips}
               style={styles.dateScroll}>
-              {DATE_FILTERS.map((filter) => {
-                const selected = filter.value === dateFilter;
-                return (
-                  <PressableScale
-                    key={filter.value}
-                    accessibilityRole="button"
-                    accessibilityLabel={filter.label}
-                    accessibilityState={{ selected }}
-                    // The chip is drawn at 30pt on purpose, over a map that
-                    // needs the room. The target is 44.
-                    hitSlop={{ top: 7, bottom: 7, left: 4, right: 4 }}
-                    haptic="selection"
-                    scaleTo={0.94}
-                    onPress={() => setDateFilter(filter.value)}>
-                    {/* Selection means the same thing on both rails: accent
-                      fill, ink on top. The date chips used to say it in a
-                      third language (soft fill, accent border), so two rows
-                      eight points apart disagreed about what "on" looks
-                      like. */}
-                    <View
-                      style={[
-                        styles.dateChip,
-                        {
-                          backgroundColor: selected ? theme.accent : theme.surface,
-                          borderColor: selected ? 'transparent' : theme.hairline,
-                        },
-                      ]}>
-                      <ThemedText
-                        type="footnote"
-                        style={selected ? { color: theme.onAccent, fontWeight: '700' } : undefined}>
-                        {filter.label}
-                      </ThemedText>
-                    </View>
-                  </PressableScale>
-                );
-              })}
+              {/* One control where three date chips used to be. The chips
+                  filtered the dimension people asked about least — and
+                  offered no way at all to ask the question they actually
+                  have, which is who and what is on the map. Everything is
+                  behind this now, and it carries a count so a narrowed map
+                  is never a mystery. */}
+              <FilterButton filters={filters} onPress={() => setFiltersOpen(true)} />
 
               {/* Renders nothing while the audience is open, so the common
-                  case is the same three chips it has always been. */}
+                  case is one chip and the avatar. */}
               <AudienceChip audience={audience} />
             </ScrollView>
             <View style={styles.avatarDock}>
@@ -1120,19 +1094,21 @@ export default function MapScreen() {
             { bottom: BottomTabInset + insets.bottom + Spacing.five + 64 },
           ]}>
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
-            {/* The audience wins over the date, because it is the filter
-                with nothing on screen to show it is on. The date filter has
-                three chips saying so; a narrowed audience removed pins and
-                said nothing at all, which reads as an empty city. */}
+            {/* The audience wins over the filters, because it is the one
+                with nothing on screen to show it is on. The Filters button
+                carries a count; a narrowed audience removed pins and said
+                nothing at all, which reads as an empty city. */}
             <ThemedText type="smallBold">
               {audience !== 'everyone'
                 ? `Nothing pinned for ${audienceInSentence(audience)} yet`
-                : dateFilter === 'all'
+                : isDefault(filters)
                   ? `No pins in ${activeCity.cities.name} yet`
-                  : `Nothing pinned for ${dateFilter} yet`}
+                  : 'Nothing matches your filters'}
             </ThemedText>
             <ThemedText type="footnote" themeColor="textSecondary">
-              Be the first.
+              {audience === 'everyone' && !isDefault(filters)
+                ? 'Widen them, or be the first.'
+                : 'Be the first.'}
             </ThemedText>
           </GlassSurface>
         </Pressable>
@@ -1193,13 +1169,13 @@ export default function MapScreen() {
           onPosted={(pinId) => {
             setMode('browse');
             setLifted(false);
-            // The form lets you pin for tomorrow while the map is filtered to
-            // today, and both the markers and the confirmation card read from
-            // the FILTERED list — so the sheet closed on a map that looked
-            // untouched, still saying nothing was pinned for today. Widen the
-            // view to the day you just posted for, which is always covered by
-            // no filter at all.
-            setDateFilter('all');
+            // The form lets you pin for tomorrow — at a beach, unverified —
+            // while the map is filtered to today's bars, and both the markers
+            // and the confirmation card read from the FILTERED list, so the
+            // sheet closed on a map that looked untouched and said nothing
+            // had been pinned. Clearing every filter is the only setting
+            // guaranteed to contain whatever was just posted.
+            setFilters(DEFAULT_FILTERS);
             // Sheets are presented as modals, and iOS silently drops a
             // presentation that begins while another modal is still
             // dismissing — which left a freshly dropped pin with no
@@ -1296,6 +1272,18 @@ export default function MapScreen() {
       {/* A stack of plans, opened. Same non-modal treatment as the pin card
           below: the map stays live, so tapping a different venue swaps this
           for that one. */}
+      {/* Inline, so the map answers every tick behind it — which is the
+          whole argument against an Apply button, and why there isn't one.
+          Never a pushed route: a route opened from inside a presented sheet
+          goes UNDER its scrim, and the scrim outlives it. */}
+      {filtersOpen ? (
+        <MapFilterSheet
+          filters={filters}
+          onChange={setFilters}
+          onClose={() => setFiltersOpen(false)}
+        />
+      ) : null}
+
       {mode === 'browse' && openVenue && activeCityId != null ? (
         <Sheet inline dimmed={false} onClose={() => setVenueKey(null)}>
           <View style={styles.venueHeader}>
@@ -1466,12 +1454,6 @@ const styles = StyleSheet.create({
     // first chip still starts where it always did while the scrollable area
     // itself runs to the avatar.
     marginTop: Spacing.two,
-  },
-  dateChip: {
-    paddingHorizontal: Space.md,
-    paddingVertical: 6,
-    borderRadius: Radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
   },
   searchWrap: {
     flex: 1,
