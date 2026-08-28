@@ -164,8 +164,15 @@ export default function JoinGroupScreen() {
               })
             }
           />
+          {/* Not "Or make a profile". The founder read this section as hard
+              to read, and the colours are not why — every string on this
+              screen measures 7.9:1 or better against the ground. What made it
+              hard is that it read as a fragment ("Or ...") and then repeated
+              itself one line later on its own button, directly under a filled
+              button offering the other answer. A question, and one answer to
+              it. */}
           <SignUpGate
-            reason="Or make a profile"
+            reason="Rather have a full profile?"
             where="group-invite"
             cta="Make a profile"
             onNavigate={leaveForAccount}

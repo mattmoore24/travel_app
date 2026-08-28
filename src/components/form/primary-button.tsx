@@ -23,11 +23,15 @@ export function PrimaryButton({
   const theme = useTheme();
   const inactive = disabled || loading;
 
-  // A filled button that is not AVAILABLE changes colour rather than fading.
-  // opacity: 0.4 dims the fill and the label together, which on a dark ground
-  // measured 2.35:1 — under the 3:1 floor for a control, on a pill that still
-  // looked completely tappable. The first thing a first-time pinner sees is
-  // this button disabled, so it has to say so and still be readable.
+  // A button that is not AVAILABLE changes COLOUR. Nothing fades any more.
+  //
+  // `opacity: 0.4` dims a label and its ground together, so it cannot lower
+  // one without lowering the other: the filled variant measured 2.35:1 that
+  // way and the ghost and danger variants measured 2.28:1, all of them under
+  // the 3:1 floor for a control, on pills that still looked tappable. The
+  // fill swap fixed the first and left the other two, which is the half-fix
+  // this removes. A grey label where an accent one belongs is what says
+  // "not now", and it stays readable at 8.2:1 while it says it.
   //
   // Loading is deliberately NOT that state. A button that goes grey the
   // instant you press it reads as having broken rather than as working.
@@ -62,8 +66,6 @@ export function PrimaryButton({
         // No lift on a control you cannot press.
         variant === 'filled' && !unavailable && Elevation.raised,
         variant !== 'filled' && variant !== 'tonal' && styles.quiet,
-        // Only the shapeless variants still fade: there is no fill to swap.
-        inactive && variant !== 'filled' && variant !== 'tonal' && styles.disabled,
       ]}
       {...rest}>
       {loading ? (
@@ -94,8 +96,5 @@ const styles = StyleSheet.create({
   },
   label: {
     fontWeight: '600',
-  },
-  disabled: {
-    opacity: 0.4,
   },
 });
