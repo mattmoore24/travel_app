@@ -147,9 +147,50 @@ argument against an Apply button, and why there isn't one. Never a pushed
 route: a route opened from inside a presented sheet goes under its scrim and
 the scrim outlives it, which is the map freeze this app has already paid for.
 
+### And then it was reviewed against itself
+
+Seven more, all found by reading the diff back rather than by anything
+failing.
+
+A **poke could have failed the message that fired it.** `poke_worker` claimed
+its throttle slot with `on conflict do update`, which takes a row lock, so two
+people posting a photo in the same second serialised on one row — on the path
+of SENDING A MESSAGE. In practice the wait is microseconds, and "in practice"
+is not the standard here: a wait long enough to hit `statement_timeout` raises
+`query_canceled`, which plpgsql's `when others` does not catch, so the handler
+written precisely to keep a poke harmless would have let it through. A
+try-advisory lock removes the wait; losing that race is the same answer the
+throttle gives anyway.
+
+**Two more empty bubbles**, the same defect the founder reported on the other
+surface. A photo the classifier refuses is emptied and flagged removed; a room
+said so and a one-to-one chat said nothing at all, for both people, forever.
+
+**Three sheets could stack on one map.** The header stays live under an inline
+sheet, so Filters was reachable with a pin card or a venue stack already open.
+It clears them, and is gated on browse mode like everything else — while
+somebody is placing a pin, the map is a viewfinder.
+
+**The review tile's words sat on a photograph.** The scrim is not a background
+you can measure against: the effective ground is whatever somebody
+photographed, and `textSecondary` over a 0.62 veil on a bright picture is
+2.5:1. No veil opacity fixes that without hiding the photo the tile exists to
+show. The two lines sit on a solid card now.
+
+**The filter sheet could not shrink**, so four groups on a small phone pushed
+Done off the bottom of a sheet already at its maximum height.
+
+**Em dashes in three new strings**, which are on the banned list for anything
+the app shows. And "Places we put on the map ourselves" sat directly under a
+row called Businesses, where "places" is exactly the word the founder asked us
+to stop using.
+
+**The invite screen read three clocks** in one render and its exits said "Go
+back" on the screen most likely to have nothing to go back to.
+
 ### Counts
 
-Database: **706** pgTAP assertions across 25 suites. Client: **353** unit
+Database: **707** pgTAP assertions across 25 suites. Client: **353** unit
 tests across 39 suites.
 
 ## Current: **Business, not place. And the keyboard.** (2026-08-28)
