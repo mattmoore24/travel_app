@@ -34,15 +34,38 @@ export async function sendMessage(chatId: string, senderId: string, body: string
 }
 
 /**
- * Send a photo. The message row holds the storage path; with photo moderation
- * on it lands as 'pending' and nobody else can load the image until the
- * worker clears it — which is not optional in a publicly-readable room.
+ * Send a photo, and the words that came with it, as ONE message.
+ *
+ * They used to be two inserts, and the order they landed in was the opposite
+ * of the order they were written: the photo waits for a moderation verdict
+ * and the caption does not, so a picture with "look at this" under it
+ * delivered the caption first and the photo some seconds later, under it,
+ * reading as a non-sequitur followed by an unexplained image. One row also
+ * means one thing to unsend, one thing to react to, and one bubble.
+ *
+ * With photo moderation on the row lands as 'pending' and nobody but the
+ * sender can load the image until the worker clears it — which is not
+ * optional in a publicly-readable room.
  */
-export async function sendPhotoMessage(chatId: string, senderId: string, localUri: string) {
+export async function sendPhotoMessage(
+  chatId: string,
+  senderId: string,
+  localUri: string,
+  body?: string
+) {
   const imagePath = await processAndUploadImage(CHAT_PHOTO_BUCKET, senderId, localUri);
+  const caption = (body ?? '').trim();
   const { data, error } = await supabase
     .from('messages')
-    .insert({ chat_id: chatId, sender_id: senderId, image_path: imagePath })
+    .insert({
+      chat_id: chatId,
+      sender_id: senderId,
+      image_path: imagePath,
+      // Omitted rather than sent as null when there is no caption: the column
+      // defaults to null anyway, and `messages_have_content` is satisfied by
+      // the image either way.
+      ...(caption.length > 0 ? { body: caption } : {}),
+    })
     .select()
     .single();
   if (error) {
@@ -64,8 +87,15 @@ export async function signedChatPhotoUrl(storagePath: string) {
 }
 
 /**
- * Live inserts for one chat. Postgres Changes are RLS-filtered server-side,
- * so a subscriber only ever receives rows they could select.
+ * Live inserts AND updates for one chat. Postgres Changes are RLS-filtered
+ * server-side, so a subscriber only ever receives rows they could select.
+ *
+ * The update half is not decoration. A photo lands as 'pending' and becomes
+ * visible when the worker writes a verdict — an UPDATE, never an insert — so
+ * with INSERT alone the review tile sat there until something else happened
+ * in the conversation or the person backed out and came back in. The one
+ * screen most likely to be open while it clears was the one screen that could
+ * not notice.
  */
 export function subscribeToMessages(
   chatId: string,
@@ -75,8 +105,13 @@ export function subscribeToMessages(
     .channel(`messages:${chatId}`)
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
-      (payload) => onMessage(payload.new as MessageRow)
+      { event: '*', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
+      (payload) => {
+        const row = payload.new as MessageRow | Record<string, never>;
+        if (row && 'id' in row) {
+          onMessage(row as MessageRow);
+        }
+      }
     )
     .subscribe();
 }

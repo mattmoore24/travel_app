@@ -394,6 +394,15 @@ export type RoomMessageRow = {
    */
   unsent_at: string | null;
   created_at: string;
+  /**
+   * Whether there is a photo here and where it has got to.
+   *
+   * `image_path` above is masked until a verdict lands, which is right — but
+   * masking was all the RPC did, so a photo in review arrived as a row with
+   * no image and no flag, and the thread drew an empty bubble for the whole
+   * wait. 'checking' is what the review tile is drawn from.
+   */
+  photo_state: 'none' | 'ready' | 'checking' | 'blocked';
 };
 
 export type ReactionSummaryRow = {
@@ -559,6 +568,16 @@ export type MessageRow = {
   /** Set when the SENDER took the message back. Distinct from moderator removal. */
   unsent_at?: string | null;
   created_at: string;
+  /**
+   * Where a photo on this message has got to. Present because direct chats
+   * read `messages` with `select *`; a room reads the RPC instead and maps
+   * its own `photo_state` onto this, so the thread has one question to ask.
+   *
+   * The storage read policy is the actual control — it refuses anybody but
+   * the sender until 'approved' — so this is for drawing the review tile,
+   * never for deciding who may see a picture.
+   */
+  moderation_status?: 'pending' | 'approved' | 'rejected';
 };
 
 export type ReportReason =

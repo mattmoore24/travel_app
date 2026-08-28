@@ -51,7 +51,13 @@ export function useMessages(chatId: string | null) {
     }
     const channel = subscribeToMessages(chatId, (message) => {
       queryClient.setQueryData<MessageRow[]>(['messages', chatId], (current = []) =>
-        current.some((m) => m.id === message.id) ? current : [message, ...current]
+        // Replace, not skip. The same row arrives again when a verdict lands
+        // on a photo — that is the event that turns the review tile into a
+        // picture — and treating a known id as nothing to do meant the tile
+        // stayed up on the screen that was watching it.
+        current.some((m) => m.id === message.id)
+          ? current.map((m) => (m.id === message.id ? { ...m, ...message } : m))
+          : [message, ...current]
       );
     });
     return () => {
@@ -180,12 +186,20 @@ export function useDiscardFailed(chatId: string | null, kind: 'direct' | 'room' 
   };
 }
 
-/** Send a photo into a chat or room. */
+/**
+ * Send a photo into a chat or room, with whatever was typed under it.
+ *
+ * One message, not two. The caption used to be a second insert and it
+ * OVERTOOK the photo, because text is delivered immediately and a photo waits
+ * for a verdict — so "look at this" arrived first and the picture some seconds
+ * later, underneath it.
+ */
 export function useSendPhoto(chatId: string) {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (localUri: string) => sendPhotoMessage(chatId, userId!, localUri),
+    mutationFn: ({ localUri, body }: { localUri: string; body?: string }) =>
+      sendPhotoMessage(chatId, userId!, localUri, body),
     onSuccess: () => {
       analytics.capture('message_sent', { kind: 'photo' });
       queryClient.invalidateQueries({ queryKey: ['messages', chatId] });

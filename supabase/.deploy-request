@@ -118,3 +118,13 @@
              somebody watches a placeholder for. Verification, storefronts and
              impersonation stay careful: nobody is waiting on those, and being
              wrong about who somebody IS costs more than a few seconds.
+2026-08-28 — deploy: 20260828180000_a_photo_says_it_is_being_checked.sql.
+             room_messages DROPPED and recreated with photo_state (grant
+             restated): masking image_path until a verdict lands was ALL it
+             did, so a photo in review came back as a row with no image and
+             usually no body, and the thread drew an empty coloured bubble for
+             the whole wait — the founder's "tiny bubble". The state is not a
+             secret (every photo here is checked) and the PATH stays masked,
+             except for the sender, who could already read their own upload
+             through chat_photos_select_own and was being shown a blank tile
+             about their own picture.

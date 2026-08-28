@@ -79,13 +79,19 @@ export async function fetchRoomMessages(chatId: string) {
  * a raw messages row would render as a message from nobody. The caller
  * refetches instead.
  */
-export function subscribeToRoomMessages(chatId: string, onInsert: () => void): RealtimeChannel {
+export function subscribeToRoomMessages(chatId: string, onChange: () => void): RealtimeChannel {
   return supabase
     .channel(`room-messages:${chatId}`)
     .on(
+      // Updates as well as inserts. A photo lands as 'pending' and becomes
+      // visible when the worker writes a verdict, which is an UPDATE — so
+      // with INSERT alone the review tile sat there until somebody else
+      // posted, and the screen most likely to be open while it cleared was
+      // the one screen that could not notice. A room reads a joined RPC
+      // rather than the table, so this refetches rather than patching.
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
-      () => onInsert()
+      { event: '*', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}` },
+      () => onChange()
     )
     .subscribe();
 }

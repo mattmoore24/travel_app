@@ -118,6 +118,15 @@ export default function RoomScreen() {
         image_path: m.image_path,
         unsent_at: m.unsent_at,
         created_at: m.created_at,
+        // The RPC masks image_path until a verdict lands and answers the
+        // state separately; the thread asks one question, so map it onto the
+        // column a direct chat reads straight off the table.
+        moderation_status:
+          m.photo_state === 'checking'
+            ? ('pending' as const)
+            : m.photo_state === 'blocked'
+              ? ('rejected' as const)
+              : ('approved' as const),
         // Carried through, or a message that has not left the device yet
         // would look exactly like one that had.
         local: (m as { local?: 'sending' | 'failed' }).local,
@@ -454,15 +463,17 @@ export default function RoomScreen() {
                 allowPhotos={!isGuestAccount}
                 photoBusy={sendPhoto.isPending}
                 onSend={async ({ text, photoUri }) => {
+                  // One message, photo and caption together — see chat/[id].
                   // A photo failure throws so the composer keeps the picture
                   // staged; text has a failed bubble of its own to live in.
                   if (photoUri) {
                     try {
-                      await sendPhoto.mutateAsync(photoUri);
+                      await sendPhoto.mutateAsync({ localUri: photoUri, body: text });
                     } catch (error) {
                       Alert.alert('Could not send', 'Check your connection and try again.');
                       throw error;
                     }
+                    return;
                   }
                   if (text.length > 0) {
                     send.mutate(text);

@@ -67,6 +67,9 @@ export function optimisticRoomMessage(input: {
     removed: false,
     unsent_at: null,
     created_at: at.toISOString(),
+    // Text only. A photo never takes this path — it has an upload to finish
+    // before there is anything to show — so there is no state to be in.
+    photo_state: 'none',
     local: 'sending',
   };
 }

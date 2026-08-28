@@ -363,17 +363,19 @@ export default function ChatScreen() {
               disabled={busy}
               photoBusy={sendPhoto.isPending}
               onSend={async ({ text, photoUri }) => {
-                // Photo first so it reads above its caption, and as its own
-                // message because a photo goes through moderation and text
-                // does not.
+                // A photo and the words under it are ONE message. They used
+                // to be two, and they arrived in the wrong order: text is
+                // delivered immediately and a photo waits for a moderation
+                // verdict, so "look at this" landed first and the picture
+                // seconds later, underneath it.
                 //
                 // A photo failure THROWS, so the composer keeps the picture
                 // staged and the same one can go again. A text failure does
                 // not: the words are already in a failed bubble in the
-                // thread, which is where the retry lives, and rethrowing
-                // would strand a photo that had already sent.
+                // thread, which is where the retry lives.
                 if (photoUri) {
-                  await sendPhoto.mutateAsync(photoUri);
+                  await sendPhoto.mutateAsync({ localUri: photoUri, body: text });
+                  return;
                 }
                 if (text.length > 0) {
                   try {

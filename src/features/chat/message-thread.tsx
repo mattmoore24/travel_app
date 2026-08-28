@@ -2,7 +2,15 @@ import { SymbolView } from 'expo-symbols';
 import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
-import { FlatList, Keyboard, Modal, StyleSheet, View, useWindowDimensions } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Keyboard,
+  Modal,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -254,6 +262,7 @@ function BubbleBody({
   const theme = useTheme();
   const { data: imageUrl } = useChatPhotoUrl(message.image_path);
   const tail = tailed ? Radius.xs : Radius.bubble;
+  const checking = message.moderation_status === 'pending';
 
   return (
     <View
@@ -268,15 +277,20 @@ function BubbleBody({
         message.local === 'sending' && styles.bubbleSending,
         message.local === 'failed' && { borderWidth: 1, borderColor: theme.danger },
       ]}>
-      {message.image_path ? (
+      {/* `checking` rather than `image_path`, because a room MASKS the path
+          until a verdict lands — so keying off the path drew nothing at all
+          for everybody but the sender, which is the empty bubble people were
+          looking at. */}
+      {checking ? (
+        <PhotoCheck url={imageUrl ?? null} />
+      ) : message.image_path ? (
         imageUrl ? (
           <Image source={{ uri: imageUrl }} style={styles.photo} contentFit="cover" />
         ) : (
-          <ThemedText
-            type="footnote"
-            style={{ color: mine ? theme.onAccentDeep : theme.textSecondary }}>
-            Photo in review
-          </ThemedText>
+          // The path is there and the signing call has not answered yet.
+          // Same frame, so the bubble does not resize under the thread when
+          // it does.
+          <View style={[styles.photo, { backgroundColor: theme.surfaceSunken }]} />
         )
       ) : null}
       {message.body ? (
@@ -284,6 +298,56 @@ function BubbleBody({
           {message.body}
         </ThemedText>
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * How long people should expect to wait for a photo to clear.
+ *
+ * An estimate from the measured chain rather than a hope: the insert now pokes
+ * the worker directly (20260828170000) instead of waiting on a once-a-minute
+ * cron, chat photos drain before every other queue, and the classification
+ * runs at low effort. That is a cold start, a signed URL and one vision call.
+ *
+ * `admin_moderation_latency` measures the real thing, per queue, over the last
+ * seven days. When there is enough live traffic to read a p95 off it, this
+ * number comes from there — and a promise nobody can keep is worse than no
+ * promise, so if it turns out slower this says so instead.
+ */
+const PHOTO_CHECK_SECONDS = 5;
+
+/**
+ * A photo waiting on its verdict, at the size the photo itself will be.
+ *
+ * It used to be the words "Photo in review" in a text bubble — a tiny grey
+ * rectangle that then jumped to 220pt square when the picture arrived, which
+ * is the founder's "tiny bubble". Reserving the real frame means nothing in
+ * the thread moves when the verdict lands, and saying WHY out loud is the
+ * honest version of a blank space: every photo in this app is checked, and a
+ * person who knows that is waiting rather than wondering.
+ *
+ * The sender sees their own picture behind the scrim (storage lets them read
+ * their own upload before it clears, and the room RPC unmasks it for them);
+ * everybody else sees the frame. Both read the same sentence.
+ */
+function PhotoCheck({ url }: { url: string | null }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.photo, styles.photoCheck, { backgroundColor: theme.surfaceSunken }]}>
+      {url ? (
+        <Image source={{ uri: url }} style={StyleSheet.absoluteFill} contentFit="cover" />
+      ) : null}
+      <View
+        style={[StyleSheet.absoluteFill, styles.photoCheckVeil, { backgroundColor: theme.scrim }]}>
+        <ActivityIndicator color={theme.textSecondary} />
+        <ThemedText type="callout" style={styles.photoCheckTitle}>
+          Checking this photo
+        </ThemedText>
+        <ThemedText type="footnote" themeColor="textSecondary" style={styles.photoCheckNote}>
+          We check every photo before it goes out. Usually about {PHOTO_CHECK_SECONDS} seconds.
+        </ThemedText>
+      </View>
     </View>
   );
 }
@@ -299,6 +363,7 @@ function Bubble({
   onRetry,
   avatarPath,
   avatarName,
+  delivered = false,
 }: {
   message: ThreadMessage;
   mine: boolean;
@@ -315,6 +380,16 @@ function Bubble({
   avatarPath?: string | null;
   /** The name behind that face, for the monogram when there is no photo. */
   avatarName?: string | null;
+  /**
+   * Say "Sent" under this one.
+   *
+   * True for the NEWEST of your own messages that has actually landed, and
+   * nothing else — which is the rule every messaging app follows, and the
+   * reason it works: a column of "Sent" down the side of a thread carries no
+   * information, while one under the last thing you wrote answers the only
+   * question you were asking.
+   */
+  delivered?: boolean;
 }) {
   const anchor = useRef<View>(null);
 
@@ -403,14 +478,24 @@ function Bubble({
             <BubbleBody message={message} mine={mine} tailed={last} />
           </PressableScale>
         </View>
-        {/* The delivery ladder. "Sending" is honest about the pause the
-            first-message moderation check creates; a failure keeps the words
-            and offers the way out rather than deleting the sentence. */}
-        {message.local ? (
+        {/* The delivery ladder, in full: Sending, then Sent, or Not sent with
+            the way out. "Sending" is honest about the pause the first-message
+            moderation check creates; "Sent" is the confirmation the founder
+            asked for, and it is worth having precisely because this app makes
+            people wait more than most. A failure keeps the words and offers
+            the retry rather than deleting the sentence.
+
+            A photo still being checked gets neither: it has not been
+            delivered to anybody yet, and its own tile is already saying so. */}
+        {message.local || (delivered && message.moderation_status !== 'pending') ? (
           <PressableScale
             accessibilityRole={message.local === 'failed' ? 'button' : 'text'}
             accessibilityLabel={
-              message.local === 'failed' ? 'Not sent. Tap to try again.' : 'Sending'
+              message.local === 'failed'
+                ? 'Not sent. Tap to try again.'
+                : message.local === 'sending'
+                  ? 'Sending'
+                  : 'Sent'
             }
             haptic="none"
             scaleTo={message.local === 'failed' ? 0.96 : 1}
@@ -425,7 +510,11 @@ function Bubble({
             <ThemedText
               type="caption"
               themeColor={message.local === 'failed' ? 'danger' : 'textSecondary'}>
-              {message.local === 'failed' ? 'Not sent. Tap to try again.' : 'Sending…'}
+              {message.local === 'failed'
+                ? 'Not sent. Tap to try again.'
+                : message.local === 'sending'
+                  ? 'Sending…'
+                  : 'Sent'}
             </ThemedText>
           </PressableScale>
         ) : null}
@@ -752,6 +841,10 @@ export function MessageThread({
   }
 
   const mineFor = (m: MessageRow) => m.sender_id === ownUserId;
+  // The newest of your own messages that actually landed. `messages` is
+  // newest-first (the list is inverted), so the first match is it.
+  const deliveredId =
+    messages.find((m) => m.sender_id === ownUserId && m.local == null)?.id ?? null;
   const myEmojiOn = (messageId: string) =>
     (byMessage.get(messageId) ?? []).find((r) => r.reacted_by_me)?.emoji ?? null;
 
@@ -866,6 +959,7 @@ export function MessageThread({
                   reactions={byMessage.get(item.id) ?? []}
                   onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
                   onRetry={item.local === 'failed' && onRetry ? () => onRetry(item) : undefined}
+                  delivered={item.id === deliveredId}
                   onOpenMenu={
                     reactable
                       ? (rect) =>
@@ -1015,6 +1109,23 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: Radius.md,
+  },
+  photoCheck: {
+    overflow: 'hidden',
+    borderCurve: 'continuous',
+  },
+  photoCheckVeil: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Space.sm,
+    paddingHorizontal: Space.lg,
+  },
+  photoCheckTitle: {
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  photoCheckNote: {
+    textAlign: 'center',
   },
   unsentRow: {
     marginTop: Space.sm,
