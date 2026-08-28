@@ -193,6 +193,7 @@ export function TripEditor({
           {end ? 'Tap any day to start again.' : 'Now tap the day you leave.'}
         </ThemedText>
         <TripCalendar
+          scroll
           start={start}
           end={end}
           minISO={minISO}
@@ -239,5 +240,10 @@ const styles = StyleSheet.create({
   },
   dates: {
     gap: Space.xs,
+    // The sheet is capped to the screen and its buttons sit under this block,
+    // so this is the one part that gives way. Without it fourteen months of
+    // calendar laid out at full height and pushed "Add trip" clean off the
+    // bottom edge, with no scroller anywhere to reach it.
+    flexShrink: 1,
   },
 });

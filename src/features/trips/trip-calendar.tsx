@@ -36,6 +36,19 @@ type TripCalendarProps = {
   minISO?: string;
   /** How far ahead to render. */
   months?: number;
+  /**
+   * Scroll on its own.
+   *
+   * TRUE only where the calendar is the thing that has to give — a sheet with
+   * a fixed button under it, which is what `flexShrink` on this scroller and
+   * on its wrapper is for. Inside a page that already scrolls it must be
+   * FALSE: two vertical scrollers stacked means the inner one takes every
+   * drag that starts on it, and since its frame is already its whole content
+   * there is nothing for it to scroll — so the page freezes, and fourteen
+   * months of calendar is more than enough to fill the screen and freeze it
+   * everywhere.
+   */
+  scroll?: boolean;
 };
 
 /** Sunday-first, matching the iOS default in the locales this launches in. */
@@ -60,6 +73,7 @@ export function TripCalendar({
   onChange,
   minISO = toISODate(new Date()),
   months = 14,
+  scroll = false,
 }: TripCalendarProps) {
   const theme = useTheme();
   const today = toISODate(new Date());
@@ -92,8 +106,8 @@ export function TripCalendar({
     onChange(start, day);
   };
 
-  return (
-    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+  const body = (
+    <>
       <View style={styles.weekdays}>
         {WEEKDAYS.map((label, index) => (
           <Text key={index} style={[styles.weekday, { color: theme.textSecondary }]}>
@@ -171,7 +185,15 @@ export function TripCalendar({
       ))}
       {/* Room to scroll the last month clear of a docked button. */}
       <View style={styles.tail} />
+    </>
+  );
+
+  return scroll ? (
+    <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      {body}
     </ScrollView>
+  ) : (
+    <View style={styles.content}>{body}</View>
   );
 }
 
@@ -182,7 +204,11 @@ export function defaultEndFor(iso: string, nights = 4): string {
 
 const styles = StyleSheet.create({
   scroll: {
+    // Never taller than its content, and free to be shorter than it when the
+    // sheet around it runs out of screen. Without the shrink the sheet's
+    // maxHeight has nothing to give and the button below lands off-screen.
     flexGrow: 0,
+    flexShrink: 1,
   },
   content: {
     gap: Space.lg,
