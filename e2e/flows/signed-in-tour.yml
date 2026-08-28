@@ -290,6 +290,12 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'WHO CAN POST'
     timeout: 15000
+# The renamed section, and the control that turns the end date off. Asserted
+# rather than merely photographed: "Chat is active until" is a promise the
+# database now keeps, and a screen that silently lost the label would mean the
+# words and the mechanism had come apart again.
+- assertVisible: 'Chat is active until'
+- assertVisible: 'No end date'
 - takeScreenshot: 27-group-settings
 
 # ─────────────────────────────────────────────────────────────────────────

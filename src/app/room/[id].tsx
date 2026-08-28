@@ -36,6 +36,7 @@ import {
 } from '@/features/rooms/hooks';
 import { addDays, formatDateRange, toISODate } from '@/features/trips/dates';
 import { useBusinessForChat, useOwnBusiness } from '@/features/business/hooks';
+import { closeDayLabel, finiteDate, useHasGroupClosed } from '@/features/groups/closing';
 import { useTheme } from '@/hooks/use-theme';
 import { countOf } from '@/lib/plural';
 
@@ -88,6 +89,10 @@ export default function RoomScreen() {
   // The database refuses the insert anyway; this is so the person is told
   // why instead of watching Send do nothing.
   const muted = isGroup && group.speaking === 'granted' && membership?.my_role === 'member';
+  // A group past its last day. can_send_in_chat refuses every write in one,
+  // so anything that offers a write has to know — otherwise the refusal
+  // arrives as a raw row-level-security sentence in an alert.
+  const closed = useHasGroupClosed(isGroup ? (group.max_stay_until ?? null) : null);
   const isModerator = membership?.my_role === 'admin';
   // A place's room, as opposed to a traveler group. `business_for_chat`
   // answers only for the first, so a null here IS the distinction — and it
@@ -210,11 +215,20 @@ export default function RoomScreen() {
                 {countOf(membership.member_count ?? 0, 'person', 'people')} here
                 {/* A private group is not readable by passers-by, and saying
                     it is would be worse than saying nothing. */}
-                {isGroup ? '' : ' · anyone can read'} · you leave{' '}
-                {new Date(membership.expires_at).toLocaleDateString(undefined, {
-                  day: 'numeric',
-                  month: 'short',
-                })}
+                {isGroup ? '' : ' · anyone can read'}
+                {/* `expires_at` is NOT NULL, so the admin of a chat with no
+                    end date holds an infinite seat, and PostgREST sends that
+                    as the string "infinity" — truthy, and `new Date` of it is
+                    Invalid Date. */}
+                {finiteDate(membership.expires_at)
+                  ? ` · you leave ${finiteDate(membership.expires_at)!.toLocaleDateString(
+                      undefined,
+                      {
+                        day: 'numeric',
+                        month: 'short',
+                      }
+                    )}`
+                  : ''}
               </ThemedText>
             ) : isOwnPlace ? (
               // The owner has no room_members row — the database refuses one
@@ -279,7 +293,7 @@ export default function RoomScreen() {
             messages={thread}
             ownUserId={ownId}
             reactions={allReactions}
-            canReact={isMember}
+            canReact={isMember && !closed}
             onRetry={(message) => {
               const body = message.body ?? '';
               discardFailed(message.id);
@@ -406,7 +420,20 @@ export default function RoomScreen() {
                 compact
               />
             </View>
-          ) : chatsQuery.isPending ? null : muted ? (
+          ) : chatsQuery.isPending ? null : closed ? (
+            // Ahead of `muted`, deliberately. In a restricted group both are
+            // true at once and the muted line would have kept saying "you can
+            // read and react" about a chat where reacting now fails too.
+            <View style={styles.footer}>
+              <ThemedView type="backgroundElement" style={styles.mutedNotice}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  {closeDayLabel(group?.max_stay_until ?? null)
+                    ? `This chat closed on ${closeDayLabel(group?.max_stay_until ?? null)}. Everything in it is still here to read.`
+                    : 'This chat has closed. Everything in it is still here to read.'}
+                </ThemedText>
+              </ThemedView>
+            </View>
+          ) : muted ? (
             <View style={styles.footer}>
               <ThemedView type="backgroundElement" style={styles.mutedNotice}>
                 <ThemedText type="small" themeColor="textSecondary">

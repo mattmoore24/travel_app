@@ -13,6 +13,7 @@ import { LoadError } from '@/components/ui/load-error';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { NativeAppearance, Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
+import { closeDayLabel } from '@/features/groups/closing';
 import { useGroupInvitePreview, useJoinGroup } from '@/features/groups/hooks';
 import { useIsSignedOut } from '@/features/guest/hooks';
 import { formatDate, parseISODate, toISODate } from '@/features/trips/dates';
@@ -36,7 +37,9 @@ export default function JoinGroupScreen() {
   const group = preview.data ?? null;
   const { data: photoUrl } = useChatPhotoUrl(group?.photo_path ?? null);
 
-  const maxDate = group ? parseISODate(group.max_stay_until) : null;
+  // Null when the group has no end date, which is now the common case: there
+  // is no ceiling on how long you can say you are staying.
+  const maxDate = group?.max_stay_until ? parseISODate(group.max_stay_until) : null;
   const [stayUntil, setStayUntil] = useState<Date | null>(null);
   const [pickingDate, setPickingDate] = useState(false);
 
@@ -66,6 +69,29 @@ export default function JoinGroupScreen() {
           <ThemedText type="headline">This invite is not open</ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
             It may have expired or been turned off. Ask whoever sent it for a new link.
+          </ThemedText>
+          <PrimaryButton variant="ghost" label="Go back" onPress={() => router.back()} />
+        </View>
+      </ThemedView>
+    );
+  }
+
+  // A chat that reached its own last day is a different story from a link
+  // somebody withdrew, and the preview returns the row either way now so this
+  // screen can tell them apart. Saying "the link may have been turned off"
+  // about a group that simply ran its course sends somebody back to a friend
+  // to ask for a new link that would not help.
+  if (group.closed) {
+    return (
+      <ThemedView style={styles.root}>
+        <View style={styles.centered}>
+          <ThemedText type="headline">{`${group.name} has ended`}</ThemedText>
+          <ThemedText themeColor="textSecondary" style={styles.centerText}>
+            This chat closed
+            {closeDayLabel(group.max_stay_until)
+              ? ` on ${closeDayLabel(group.max_stay_until)}`
+              : ''}
+            , so there is nothing to join. Whoever runs it can start a new one.
           </ThemedText>
           <PrimaryButton variant="ghost" label="Go back" onPress={() => router.back()} />
         </View>
@@ -165,8 +191,9 @@ export default function JoinGroupScreen() {
       <View style={styles.block}>
         <ThemedText type="smallBold">Stay in the group until</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
-          You drop out on your own afterwards. The admin has set {formatDate(group.max_stay_until)}{' '}
-          as the latest anyone can pick.
+          {group.max_stay_until
+            ? `You drop out on your own afterwards. This chat is active until ${formatDate(group.max_stay_until)}, so that is the latest anyone can pick.`
+            : 'You drop out on your own afterwards. This chat has no end date, so pick whatever suits your trip.'}
         </ThemedText>
         {Platform.OS === 'ios' ? (
           <DateTimePicker

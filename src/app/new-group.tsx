@@ -8,9 +8,10 @@ import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { FormTextField } from '@/components/form/form-text-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
-import { NativeAppearance, Radius, Space } from '@/constants/theme';
+import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { uploadGroupPhoto } from '@/features/groups/api';
 import { useCreateGroup } from '@/features/groups/hooks';
 import { useOwnUserId } from '@/features/profile/hooks';
@@ -40,8 +41,13 @@ export default function NewGroupScreen() {
   const createGroup = useCreateGroup();
   const [name, setName] = useState('');
   const [speaking, setSpeaking] = useState<GroupSpeaking>('everyone');
-  const [maxStay, setMaxStay] = useState(() => addDays(new Date(), 30));
-  const [pickingDate, setPickingDate] = useState(Platform.OS === 'ios');
+  // Null is the default, and that is the founder's call: under the old
+  // meaning this date only capped how far ahead a joiner could pick, so a
+  // 30-day default was harmless. Now it decides whether the chat is open at
+  // all, and a default nobody thought about would quietly end every
+  // conversation a month after it started.
+  const [maxStay, setMaxStay] = useState<Date | null>(null);
+  const [pickingDate, setPickingDate] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -65,7 +71,7 @@ export default function NewGroupScreen() {
       }
       const chatId = await createGroup.mutateAsync({
         name: trimmed,
-        maxStayUntil: toISODate(maxStay),
+        maxStayUntil: maxStay ? toISODate(maxStay) : null,
         speaking,
         photoPath,
       });
@@ -153,11 +159,83 @@ export default function NewGroupScreen() {
       </View>
 
       <View style={styles.block}>
-        <ThemedText type="smallBold">People can stay until</ThemedText>
+        <ThemedText type="smallBold">Chat is active until</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
-          The latest anyone can pick. They drop out after their own date.
+          {maxStay
+            ? 'The chat is active through that day and closes the day after. Nobody can pick a later date to stay until.'
+            : 'This chat stays open until you set an end date.'}
         </ThemedText>
-        {Platform.OS === 'ios' ? (
+
+        {/* Listed first, and selected by default. It is the answer most
+            groups want, and it is the only one that cannot end a
+            conversation somebody forgot to think about. */}
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel="No end date"
+          accessibilityState={{ selected: maxStay == null }}
+          haptic="selection"
+          scaleTo={0.98}
+          onPress={() => {
+            setMaxStay(null);
+            setPickingDate(false);
+          }}>
+          <ThemedView
+            type={maxStay == null ? 'accentSoft' : 'backgroundElement'}
+            style={[
+              styles.choiceRow,
+              { borderColor: maxStay == null ? theme.accent : 'transparent' },
+            ]}>
+            <SymbolView
+              name={
+                maxStay == null
+                  ? { ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' }
+                  : {
+                      ios: 'circle',
+                      android: 'radio_button_unchecked',
+                      web: 'radio_button_unchecked',
+                    }
+              }
+              size={20}
+              tintColor={maxStay == null ? theme.accent : theme.textSecondary}
+            />
+            <ThemedText>No end date</ThemedText>
+          </ThemedView>
+        </PressableScale>
+
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel="Give this chat an end date"
+          accessibilityState={{ selected: maxStay != null }}
+          haptic="selection"
+          scaleTo={0.98}
+          onPress={() => {
+            setMaxStay((current) => current ?? addDays(new Date(), 30));
+            setPickingDate(Platform.OS !== 'ios');
+          }}>
+          <ThemedView
+            type={maxStay != null ? 'accentSoft' : 'backgroundElement'}
+            style={[
+              styles.choiceRow,
+              { borderColor: maxStay != null ? theme.accent : 'transparent' },
+            ]}>
+            <SymbolView
+              name={
+                maxStay != null
+                  ? { ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' }
+                  : {
+                      ios: 'circle',
+                      android: 'radio_button_unchecked',
+                      web: 'radio_button_unchecked',
+                    }
+              }
+              size={20}
+              tintColor={maxStay != null ? theme.accent : theme.textSecondary}
+            />
+            <ThemedText>{maxStay ? formatDate(toISODate(maxStay)) : 'Pick a day'}</ThemedText>
+          </ThemedView>
+        </PressableScale>
+
+        {maxStay != null && Platform.OS === 'ios' ? (
           <DateTimePicker
             value={maxStay}
             mode="date"
@@ -170,38 +248,38 @@ export default function NewGroupScreen() {
               }
             }}
           />
-        ) : (
-          <>
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel="Change the latest stay-until date"
-              haptic="selection"
-              scaleTo={0.98}
-              onPress={() => setPickingDate(true)}
-              style={[styles.dateButton, { backgroundColor: theme.surfaceSunken }]}>
-              <ThemedText>{formatDate(toISODate(maxStay))}</ThemedText>
-            </PressableScale>
-            {pickingDate ? (
-              <DateTimePicker
-                value={maxStay}
-                mode="date"
-                minimumDate={new Date()}
-                onChange={(_, date) => {
-                  setPickingDate(false);
-                  if (date) {
-                    setMaxStay(date);
-                  }
-                }}
-              />
-            ) : null}
-          </>
-        )}
+        ) : null}
+        {maxStay != null && Platform.OS !== 'ios' && pickingDate ? (
+          <DateTimePicker
+            value={maxStay}
+            mode="date"
+            minimumDate={new Date()}
+            onChange={(_, date) => {
+              setPickingDate(false);
+              if (date) {
+                setMaxStay(date);
+              }
+            }}
+          />
+        ) : null}
       </View>
     </StepScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  choiceRow: {
+    minHeight: HitTarget,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.md,
+    borderRadius: Radius.lg,
+    // Always drawn, only ever changing colour, so choosing one cannot shove
+    // the rest of the form down a line.
+    borderWidth: 1,
+  },
   photoRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -5,7 +5,7 @@
 -- who can read an invite token, and whether a shared group counts as a
 -- connection for the social-handle gate (hard rule 4 — it must not).
 begin;
-select plan(77);
+select plan(97);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -694,6 +694,188 @@ select is(
     where next_attempt_at > created_at + interval '1 second'),
   0,
   'and nothing arrives already deferred'
+);
+
+
+-- CHAT IS ACTIVE UNTIL -----------------------------------------------------
+--
+-- The date used to cap how far ahead a joiner could set their own departure.
+-- It now decides whether the chat is open at all, and it is allowed to be
+-- empty, which means the chat never closes. These assertions pin the three
+-- things the founder's sentence promises: active THROUGH the date, closed the
+-- day AFTER, and no end date when there is no date.
+
+select pg_temp.admin();
+
+-- Noon UTC on the following day, and the noon is load-bearing: "active
+-- through the 10th" has to hold until 23:59 on the 10th at UTC-12, which is
+-- 11:59 UTC on the 11th. Anything earlier cuts somebody off on a day the app
+-- told them was still theirs.
+select is(
+  public.group_closes_at('2026-09-10'::date),
+  '2026-09-11 12:00:00+00'::timestamptz,
+  'a chat closes at noon UTC the day after its last day'
+);
+select is(
+  public.group_closes_at(null),
+  'infinity'::timestamptz,
+  'and no end date means no closing time at all'
+);
+select ok(
+  public.group_closes_at((current_date)::date) > now(),
+  'a chat dated today is still open today'
+);
+-- current_date - 2, not - 1. Yesterday's chat closes at noon UTC TODAY, so a
+-- suite run before midday would have failed on an assertion about the
+-- arithmetic rather than about the rule. Two days back is closed whatever
+-- time it is.
+select ok(
+  public.group_closes_at((current_date - 2)::date) <= now(),
+  'and one whose day has been and gone has closed'
+);
+
+-- Its own fixtures from here. The groups above have been through removals,
+-- role changes and speaking settings by this point in the suite, so borrowing
+-- one would make these assertions depend on all of that.
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select lives_ok(
+  $$select public.create_group('Forever', null)$$,
+  'a group can be made with no end date'
+);
+select lives_ok(
+  $$select public.create_group('Until Friday', (current_date + 3)::date)$$,
+  'and one can still be made with a date'
+);
+select is(
+  (select max_stay_until from public.groups where name = 'Forever'),
+  null,
+  'the endless one stores no date rather than a sentinel'
+);
+
+-- The creator's own seat. NULL + 7 is NULL and room_members.expires_at is NOT
+-- NULL, so without the infinity branch this insert took the whole group
+-- creation down with it, rolling back the chat and the group too.
+select pg_temp.admin();
+select is(
+  (select rm.expires_at from public.room_members rm
+     join public.groups g on g.chat_id = rm.chat_id
+    where g.name = 'Forever'),
+  'infinity'::timestamptz,
+  'the admin of an endless group holds an endless seat'
+);
+
+-- The ceiling moved out of the table and into the RPC, because the old CHECK
+-- was anchored to created_at and so refused every future date on a group more
+-- than 400 days old — including the one that would reopen it.
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select throws_ok(
+  $$select public.create_group('Too far', (current_date + 500)::date)$$,
+  'That is further out than a chat can be set. Pick a nearer day, or choose no end date.',
+  'a date past the ceiling is refused with a sentence, not a constraint name'
+);
+select is(
+  (select count(*)::int from pg_constraint where conname = 'groups_max_stay_sane'),
+  0,
+  'and the created_at-anchored constraint is gone, so an old group can be re-dated'
+);
+
+-- Turning the end date off. NULL in this signature has always meant "leave
+-- alone", so switching a value OFF takes its own flag.
+select lives_ok(
+  $$select public.update_group(
+      (select chat_id from public.groups where name = 'Until Friday'),
+      p_clear_max_stay => true)$$,
+  'an admin can turn the end date off'
+);
+select is(
+  (select max_stay_until from public.groups where name = 'Until Friday'),
+  null,
+  'and the chat now has no closing time'
+);
+select throws_ok(
+  $$select public.update_group(
+      (select chat_id from public.groups where name = 'Forever'),
+      p_max_stay_until => (current_date + 5)::date,
+      p_clear_max_stay => true)$$,
+  'Pick a date or no end date, not both.',
+  'asking for both at once is refused rather than silently resolved'
+);
+
+-- Exactly one update_group. Adding a defaulted parameter creates an OVERLOAD
+-- rather than replacing the function, and a six-argument call then matches
+-- both and fails with "function is not unique" — from every client at once.
+select pg_temp.admin();
+select is(
+  (select count(*)::int from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'update_group'),
+  1,
+  'there is one update_group, not an ambiguous pair'
+);
+
+-- Sending, which is the whole point of the date meaning anything.
+select pg_temp.admin();
+update public.groups set max_stay_until = (current_date - 2)::date
+ where name = 'Forever';
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  public.can_send_in_chat((select chat_id from public.groups where name = 'Forever')),
+  false,
+  'nobody posts in a group whose day has passed, not even the admin who runs it'
+);
+select pg_temp.admin();
+update public.groups set max_stay_until = null where name = 'Forever';
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  public.can_send_in_chat((select chat_id from public.groups where name = 'Forever')),
+  true,
+  'and an endless group stays open'
+);
+
+-- Everything else in the app is untouched by all of this: a direct chat has
+-- no groups row, so group_chat_closed is false for it and can_send_in_chat is
+-- exactly as strict as it was.
+select is(
+  public.group_chat_closed(gen_random_uuid()),
+  false,
+  'a chat that is not a group is never closed by a date'
+);
+
+-- A closed group keeps its readers. Their seat lapsing would take the
+-- conversation out of my_chats, and the invite link now refuses a closed
+-- chat, so "you can still read everything here" would have lasted a week.
+select pg_temp.admin();
+update public.groups set max_stay_until = (current_date - 2)::date
+ where name = 'Forever';
+insert into public.room_members (chat_id, user_id, departure_date, expires_at)
+values (
+  (select chat_id from public.groups where name = 'Forever'),
+  '00000000-0000-0000-0000-00000000000b',
+  current_date - 9,
+  now() - interval '1 day'
+);
+select is(
+  public.expire_room_members(),
+  0,
+  'the sweep leaves the members of a closed group where they are'
+);
+select is(
+  (select count(*)::int from public.room_members
+    where chat_id = (select chat_id from public.groups where name = 'Forever')
+      and user_id = '00000000-0000-0000-0000-00000000000b'),
+  1,
+  'so the conversation is still in their list to read'
+);
+
+-- And nothing quietly archives it either. unarchive_on_message is a trigger
+-- on INSERT, and inserting is the one thing a closed chat refuses, so an
+-- archive here would be permanent and would read as the app deleting a group.
+select is(
+  (select count(*)::int from public.chat_prefs
+    where chat_id = (select chat_id from public.groups where name = 'Forever')
+      and archived_at is not null),
+  0,
+  'and no janitor archives a chat that was ended on purpose'
 );
 
 select * from finish();

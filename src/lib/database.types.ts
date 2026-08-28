@@ -503,7 +503,17 @@ export type GroupRow = {
   name: string;
   photo_path: string | null;
   speaking: GroupSpeaking;
-  max_stay_until: string;
+  /**
+   * The last day this chat is active; it closes the day after. NULL means no
+   * end date, and the chat never closes.
+   *
+   * Widened deliberately, and it is load-bearing rather than ceremonial:
+   * every reader of this field goes through parseISODate, which does
+   * `iso.split('-')` and throws on null. Typing it honestly is what makes
+   * every one of those call sites findable by the compiler instead of by a
+   * white screen.
+   */
+  max_stay_until: string | null;
   created_at: string;
 };
 
@@ -512,7 +522,8 @@ export type GroupMemberRow = {
   display_name: string | null;
   photo_path: string | null;
   role: GroupRole;
-  departure_date: string;
+  /** NULL for the admin of a group with no end date: they never leave. */
+  departure_date: string | null;
   joined_at: string;
 };
 
@@ -521,9 +532,15 @@ export type GroupInvitePreviewRow = {
   name: string;
   photo_path: string | null;
   member_count: number;
-  max_stay_until: string;
+  max_stay_until: string | null;
   speaking: GroupSpeaking;
   already_member: boolean;
+  /**
+   * The chat has ended, or its link was withdrawn. The row comes back either
+   * way now, so a group that ran its course is not described to a stranger as
+   * a link somebody turned off.
+   */
+  closed: boolean;
 };
 
 export type MessageRow = {
@@ -1221,7 +1238,8 @@ export type Database = {
       create_group: {
         Args: {
           p_name: string;
-          p_max_stay_until: string;
+          /** Null is a real answer: no end date, the chat never closes. */
+          p_max_stay_until: string | null;
           p_speaking?: GroupSpeaking;
           p_photo_path?: string | null;
         };
@@ -1232,9 +1250,12 @@ export type Database = {
           p_chat_id: string;
           p_name?: string | null;
           p_speaking?: GroupSpeaking | null;
+          /** Null means "leave it alone", the way it always has. */
           p_max_stay_until?: string | null;
           p_photo_path?: string | null;
           p_clear_photo?: boolean;
+          /** Turning the end date OFF, since null already means "leave it". */
+          p_clear_max_stay?: boolean;
         };
         Returns: undefined;
       };

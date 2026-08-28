@@ -53,6 +53,7 @@ export function useUpdateGroup(chatId: string) {
       name?: string;
       speaking?: GroupSpeaking;
       maxStayUntil?: string;
+      clearMaxStay?: boolean;
       photoPath?: string | null;
       clearPhoto?: boolean;
     }) => updateGroup({ chatId, ...input }),

@@ -17,7 +17,8 @@ import type {
 
 export async function createGroup(input: {
   name: string;
-  maxStayUntil: string;
+  /** Null for "no end date": the chat never closes. */
+  maxStayUntil: string | null;
   speaking: GroupSpeaking;
   photoPath: string | null;
 }): Promise<string> {
@@ -40,6 +41,11 @@ export async function updateGroup(input: {
   maxStayUntil?: string;
   photoPath?: string | null;
   clearPhoto?: boolean;
+  /**
+   * Turn the end date off. Its own flag because an omitted maxStayUntil has
+   * always meant "leave it alone" in this call, exactly like clearPhoto.
+   */
+  clearMaxStay?: boolean;
 }): Promise<void> {
   const { error } = await supabase.rpc('update_group', {
     p_chat_id: input.chatId,
@@ -48,6 +54,7 @@ export async function updateGroup(input: {
     p_max_stay_until: input.maxStayUntil ?? null,
     p_photo_path: input.photoPath ?? null,
     p_clear_photo: input.clearPhoto ?? false,
+    p_clear_max_stay: input.clearMaxStay ?? false,
   });
   if (error) {
     throw error;

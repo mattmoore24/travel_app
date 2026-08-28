@@ -24,6 +24,7 @@ import { Segmented } from '@/components/ui/segmented';
 import { ChatRowSkeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useOwnBusiness } from '@/features/business/hooks';
+import { finiteDate } from '@/features/groups/closing';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
@@ -347,8 +348,12 @@ function ChatRow({ chat }: { chat: ChatListRow }) {
         {isRoom && chat.member_count != null ? (
           <ThemedText type="footnote" themeColor="textSecondary">
             {countOf(chat.member_count, 'person', 'people')} here now
-            {chat.expires_at
-              ? ` · you leave ${new Date(chat.expires_at).toLocaleDateString(undefined, {
+            {/* `expires_at` is NOT NULL on the server, so the admin of a
+                chat with no end date holds an infinite seat and PostgREST
+                sends the string "infinity" — truthy, and `new Date` of it is
+                Invalid Date. */}
+            {finiteDate(chat.expires_at)
+              ? ` · you leave ${finiteDate(chat.expires_at)!.toLocaleDateString(undefined, {
                   day: 'numeric',
                   month: 'short',
                 })}`

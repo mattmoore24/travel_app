@@ -64,3 +64,15 @@
              rival; is_business_account is revoked from clients; website_url goes
              through the link validator; a re-used confirmation code still relists;
              writing to a place you have written to before actually sends.
+2026-08-27 — deploy: "Chat is active until". max_stay_until becomes nullable (no end
+             date); group_closes_at() at noon UTC the day after; can_send_in_chat
+             enforces it; the sweep and the archiver leave a closed group alone;
+             create_group/update_group take and clear the date (update_group DROPPED
+             and recreated with p_clear_max_stay — a defaulted parameter is an
+             OVERLOAD, not a replacement); join clamps instead of refusing;
+             group_invite_preview DROPPED and recreated with `closed` so an ended
+             chat is not described as a withdrawn link. The created_at-anchored
+             groups_max_stay_sane constraint is gone — it refused every future date
+             on a group older than 400 days, which is the one control that reopens
+             a closed chat. Past-dated groups are pushed to +30 days so nothing goes
+             dark on deploy day.

@@ -14,7 +14,7 @@ import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
-import { MaxContentWidth, NativeAppearance, Radius, Space } from '@/constants/theme';
+import { HitTarget, MaxContentWidth, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { uploadGroupPhoto } from '@/features/groups/api';
 import {
   useGroup,
@@ -28,7 +28,8 @@ import {
 import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { InviteQr } from '@/features/groups/invite-qr';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
-import { formatDate, parseISODate, toISODate } from '@/features/trips/dates';
+import { closeDayLabel, useHasGroupClosed } from '@/features/groups/closing';
+import { addDays, formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { pickImage } from '@/lib/pick-image';
 import type { GroupMemberRow, GroupSpeaking } from '@/lib/database.types';
@@ -127,7 +128,9 @@ function MemberRow({
       <View style={styles.memberText}>
         <ThemedText type="callout">{name}</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
-          Here until {formatDate(member.departure_date)}
+          {/* Null for the admin of a chat with no end date: they never leave,
+              and formatDate would have thrown on the split. */}
+          {member.departure_date ? `Here until ${formatDate(member.departure_date)}` : 'Here'}
         </ThemedText>
       </View>
       {roleLabel ? (
@@ -156,6 +159,23 @@ function MemberRow({
  * and that is enforced in the database, not by hiding buttons, so a member
  * who found their way here cannot rename the group by other means.
  */
+
+/**
+ * A day the date control is always allowed to display.
+ *
+ * A closed group's stored date is in the past while the picker's minimum is
+ * today, so handing the stored value straight to the control makes iOS show
+ * the clamped minimum instead — and then confirming the day it is showing
+ * fires no onChange and does nothing, which makes the one control that
+ * reopens a chat look broken.
+ */
+function pickerDay(maxStayUntil: string | null): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const stored = maxStayUntil ? parseISODate(maxStayUntil) : null;
+  return stored != null && stored.getTime() >= today.getTime() ? stored : addDays(new Date(), 30);
+}
+
 export default function GroupScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
@@ -176,6 +196,10 @@ export default function GroupScreen() {
   const [name, setName] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [editingDate, setEditingDate] = useState(false);
+  const closed = useHasGroupClosed(group?.max_stay_until ?? null);
+  // Always a day the control is allowed to display: today's minimum rules out
+  // a stored date in the past, and a chat with no end date has none at all.
+  const pickerValue = pickerDay(group?.max_stay_until ?? null);
 
   if (!group) {
     // A failed fetch is not an empty group. This used to render a blank
@@ -311,49 +335,113 @@ export default function GroupScreen() {
 
           <View style={styles.section}>
             <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
-              People can stay until
+              Chat is active until
             </ThemedText>
+            {closed ? (
+              <ThemedText type="smallBold" style={{ color: theme.warning }}>
+                {closeDayLabel(group.max_stay_until)
+                  ? `This chat closed on ${closeDayLabel(group.max_stay_until)}`
+                  : 'This chat has closed'}
+              </ThemedText>
+            ) : null}
             {isAdmin ? (
-              Platform.OS === 'ios' ? (
-                <DateTimePicker
-                  value={parseISODate(group.max_stay_until)}
-                  mode="date"
-                  display="compact"
-                  minimumDate={new Date()}
-                  themeVariant={NativeAppearance}
-                  onChange={(_, date) => {
-                    if (date) {
-                      update.mutate({ maxStayUntil: toISODate(date) });
-                    }
-                  }}
-                />
-              ) : (
-                <>
-                  <PrimaryButton
-                    variant="ghost"
-                    label={formatDate(group.max_stay_until)}
-                    onPress={() => setEditingDate(true)}
+              <>
+                {/* The picker always opens on a day it is allowed to show. A
+                    closed group's stored date is in the past and the minimum
+                    is today, so handing the stored value straight to the
+                    control made it display the clamped minimum instead — and
+                    confirming the day it showed then did nothing, which makes
+                    the one control that reopens a chat look broken. */}
+                {Platform.OS === 'ios' ? (
+                  <DateTimePicker
+                    value={pickerValue}
+                    mode="date"
+                    display="compact"
+                    minimumDate={new Date()}
+                    themeVariant={NativeAppearance}
+                    onChange={(_, date) => {
+                      if (date) {
+                        update.mutate({ maxStayUntil: toISODate(date) });
+                      }
+                    }}
                   />
-                  {editingDate ? (
-                    <DateTimePicker
-                      value={parseISODate(group.max_stay_until)}
-                      mode="date"
-                      minimumDate={new Date()}
-                      onChange={(_, date) => {
-                        setEditingDate(false);
-                        if (date) {
-                          update.mutate({ maxStayUntil: toISODate(date) });
-                        }
-                      }}
+                ) : (
+                  <>
+                    <PrimaryButton
+                      variant="ghost"
+                      label={
+                        group.max_stay_until ? formatDate(group.max_stay_until) : 'No end date'
+                      }
+                      onPress={() => setEditingDate(true)}
                     />
-                  ) : null}
-                </>
-              )
+                    {editingDate ? (
+                      <DateTimePicker
+                        value={pickerValue}
+                        mode="date"
+                        minimumDate={new Date()}
+                        onChange={(_, date) => {
+                          setEditingDate(false);
+                          if (date) {
+                            update.mutate({ maxStayUntil: toISODate(date) });
+                          }
+                        }}
+                      />
+                    ) : null}
+                  </>
+                )}
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    group.max_stay_until
+                      ? 'Give this chat no end date'
+                      : 'Give this chat an end date'
+                  }
+                  accessibilityState={{ selected: group.max_stay_until == null }}
+                  haptic="selection"
+                  scaleTo={0.98}
+                  onPress={() =>
+                    group.max_stay_until
+                      ? update.mutate({ clearMaxStay: true })
+                      : update.mutate({ maxStayUntil: toISODate(addDays(new Date(), 30)) })
+                  }>
+                  <ThemedView
+                    type={group.max_stay_until == null ? 'accentSoft' : 'backgroundElement'}
+                    style={[
+                      styles.noEndRow,
+                      {
+                        borderColor: group.max_stay_until == null ? theme.accent : 'transparent',
+                      },
+                    ]}>
+                    <SymbolView
+                      name={
+                        group.max_stay_until == null
+                          ? {
+                              ios: 'checkmark.circle.fill',
+                              android: 'check_circle',
+                              web: 'check_circle',
+                            }
+                          : {
+                              ios: 'circle',
+                              android: 'radio_button_unchecked',
+                              web: 'radio_button_unchecked',
+                            }
+                      }
+                      size={20}
+                      tintColor={group.max_stay_until == null ? theme.accent : theme.textSecondary}
+                    />
+                    <ThemedText>No end date</ThemedText>
+                  </ThemedView>
+                </PressableScale>
+              </>
             ) : (
-              <ThemedText>{formatDate(group.max_stay_until)}</ThemedText>
+              <ThemedText>
+                {group.max_stay_until ? formatDate(group.max_stay_until) : 'No end date'}
+              </ThemedText>
             )}
             <ThemedText type="footnote" themeColor="textSecondary">
-              Nobody can pick a date past this one, and membership ends on its own afterwards.
+              {group.max_stay_until
+                ? 'The chat is active through that day and closes the day after. Nobody can pick a later date to stay until.'
+                : 'This chat stays open until somebody sets an end date.'}
             </ThemedText>
           </View>
 
@@ -415,6 +503,18 @@ export default function GroupScreen() {
 }
 
 const styles = StyleSheet.create({
+  noEndRow: {
+    minHeight: HitTarget,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.md,
+    borderRadius: Radius.lg,
+    // Always drawn, only ever changing colour, so choosing it cannot shove
+    // the fine print underneath it.
+    borderWidth: 1,
+  },
   root: {
     flex: 1,
     flexDirection: 'row',
