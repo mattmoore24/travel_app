@@ -149,6 +149,7 @@ export function MapFilterSheet({
             {PIN_CATEGORIES.map((category) => (
               <Chip
                 key={category.value}
+                testID={`filter-category-${category.value}`}
                 label={`${category.emoji}  ${category.label}`}
                 selected={filters.categories.includes(category.value)}
                 onPress={() =>
@@ -165,7 +166,9 @@ export function MapFilterSheet({
         <Group title="Who">
           <CheckRow
             title="Verified travelers only"
-            detail="Our own picks stay either way. There is nobody behind one to verify."
+            // One short line. Two wrap, and the second was clipped by the pinned
+            // Done button on run 72.
+            detail="Our own picks stay either way."
             glyph={{
               ios: 'checkmark.seal.fill',
               android: 'verified',
@@ -212,14 +215,23 @@ function Chip({
   label,
   selected,
   onPress,
+  testID,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
+  /**
+   * For the simulator suite. A category chip's label leads with an emoji, so
+   * Maestro's full-string match on "Bar" can never hit it — run 72 failed on
+   * exactly that. An id is what the rest of the suite uses for anything whose
+   * visible text is not a clean handle.
+   */
+  testID?: string;
 }) {
   const theme = useTheme();
   return (
     <PressableScale
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected }}

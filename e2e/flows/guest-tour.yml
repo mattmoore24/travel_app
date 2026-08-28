@@ -78,7 +78,8 @@ appId: com.mattmoore.samewhere
 # the element is in the hierarchy with coordinates behind the tab bar, so the
 # tap landed on Travelers and the flow carried on somewhere else entirely.
 # Anything asserted here has to be on screen without scrolling.
-- tapOn: 'Bar'
+- tapOn:
+    id: 'filter-category-bar'
 - waitForAnimationToEnd:
     timeout: 1500
 - takeScreenshot: 05b-map-filters-on
