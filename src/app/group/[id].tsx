@@ -346,6 +346,17 @@ export default function GroupScreen() {
             ) : null}
             {isAdmin ? (
               <>
+                {/* Which of the two controls below is the ANSWER, and which is
+                    the offer. With no end date set, the picker still has to
+                    show a day - it is a date picker - and printing one
+                    straight under "Chat is active until", above a ticked "No
+                    end date", is the screen contradicting itself. This line
+                    says which one you are reading. */}
+                {group.max_stay_until ? null : (
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    Pick a day to close it on:
+                  </ThemedText>
+                )}
                 {/* The picker always opens on a day it is allowed to show. A
                     closed group's stored date is in the past and the minimum
                     is today, so handing the stored value straight to the
