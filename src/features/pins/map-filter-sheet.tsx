@@ -80,7 +80,7 @@ export function MapFilterSheet({
         showsVerticalScrollIndicator={false}>
         <Group
           title="When"
-          note="A plan can only ever be for the next three days — a pin expires with the day it is about.">
+          note="A plan only ever reaches three days out. A pin expires with the day it is about.">
           <View style={styles.chips}>
             {(
               [
@@ -120,7 +120,7 @@ export function MapFilterSheet({
               [
                 'picks',
                 'Samewhere picks',
-                'Places we put on the map ourselves.',
+                'Spots we put on the map ourselves.',
                 { ios: 'star.fill', android: 'star', web: 'star' },
               ],
             ] as [MarkerKind, string, string, SymbolViewProps['name']][]
@@ -141,7 +141,7 @@ export function MapFilterSheet({
           note={
             filters.categories.length === 0
               ? 'Nothing ticked means everything.'
-              : 'Only travelers’ plans — a business is filtered above.'
+              : 'Only travelers’ plans. Businesses are filtered above.'
           }>
           <View style={styles.chips}>
             {PIN_CATEGORIES.map((category) => (
@@ -163,7 +163,7 @@ export function MapFilterSheet({
         <Group title="Who" note="The badge means they matched a selfie to their photos.">
           <CheckRow
             title="Verified travelers only"
-            detail="Our picks stay either way — there is nobody behind one to verify."
+            detail="Our own picks stay either way. There is nobody behind one to verify."
             glyph={{
               ios: 'checkmark.seal.fill',
               android: 'verified',
