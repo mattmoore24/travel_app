@@ -128,7 +128,10 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
   // whether its signed URL has come back yet. The two are a round trip apart,
   // and treating the second as the first is what made the card grow a photo's
   // worth of height a beat after it opened.
-  const hasCover = place.photos[0]?.storage_path != null;
+  // ...and whether it is still on its way, as opposed to never arriving. A
+  // signing call that FAILS must give the space back rather than shimmer
+  // forever, which is a worse card than the one without a photo.
+  const coverComing = place.photos[0]?.storage_path != null && !cover.isError;
 
   return (
     // A ScrollView, not a View. Everything this card can hold at once —
@@ -150,7 +153,7 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
           transition={Motion.standard}
           accessibilityLabel={`Photo of ${place.name}`}
         />
-      ) : hasCover ? (
+      ) : coverComing ? (
         <Skeleton width="100%" aspectRatio={3 / 2} radius={Radius.lg} />
       ) : null}
 
@@ -158,7 +161,7 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
         {/* The same chip and glyph as the marker just tapped, so the sheet
             reads as that marker opening rather than as a new object. A cover
             photo says it better, so it only stands in when there is none. */}
-        {hasCover ? null : (
+        {coverComing ? null : (
           <PlaceGlyph category={place.category} live={whatsOn != null} size={30} onSurface />
         )}
         <View style={styles.title}>
