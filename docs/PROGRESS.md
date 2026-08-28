@@ -188,10 +188,21 @@ to stop using.
 **The invite screen read three clocks** in one render and its exits said "Go
 back" on the screen most likely to have nothing to go back to.
 
-### Counts
+### Counts, and what the pictures said
 
 Database: **707** pgTAP assertions across 25 suites. Client: **353** unit
-tests across 39 suites.
+tests across 39 suites. Simulator run **75** green.
+
+The screenshot runs earned their keep twice over. Run 71 showed the fourth
+filter group sitting under the pinned Done button and the tab bar — the
+robot's tap on it landed on the Travelers TAB, which is how a person would
+have missed it too. Run 72 showed the trim had worked and that the last row's
+second line was still clipped. Run 73 photographed the filtered map: one
+`Filters · 1` pill where three date chips used to be, and a Bangkok showing
+only cocktail pins with everything else gone. And run 75 finally photographed
+the chat list with a conversation actually IN it — every earlier picture of
+that screen was of an empty list, which is the one state the redesign does not
+change.
 
 ## Current: **Business, not place. And the keyboard.** (2026-08-28)
 
