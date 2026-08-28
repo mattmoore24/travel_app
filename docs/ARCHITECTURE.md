@@ -540,6 +540,60 @@ the helper. The selfie screen had a library fallback for a refused camera. It
 read as a kindness and it was a hole: a selfie chosen from a camera roll proves
 only that somebody owns a picture of a face, which is what a catfish has.
 
+## A group chat's lifetime (2026-08-27)
+
+`groups.max_stay_until` used to be one thing and is now two, and the founder's
+rename is what forced the second: it had always been the cap on how far ahead a
+JOINER could set their own departure date, and the label "Chat is active until"
+promises it is the chat's own life. It is both now, and the promise is
+enforced rather than printed.
+
+**`group_closes_at(date)`** is the single definition: noon UTC on the day
+after, and `'infinity'` for NULL. The noon is the decision. "Active through the
+10th" has to hold until 23:59 on the 10th wherever the reader is, and the last
+place on earth to finish its 10th is UTC-12 at 11:59 UTC on the 11th — so noon
+UTC on the 11th is the earliest instant that is never early for anybody. It is
+late by up to a day in the far east of the map, which is the right direction to
+be wrong in: a chat that lingers beats one that cuts somebody off on a day the
+app said was still theirs. IMMUTABLE, so a policy can call it.
+
+Every date shown to a person is derived from that INSTANT in their own
+timezone (`src/features/groups/closing.ts`), never from the date string plus
+one. East of UTC+12 those disagree, and printing the string would name a day
+the members can disprove from their own scrollback.
+
+**NULL means no end date**, and it is NULL rather than a far-future sentinel
+for a reason worth keeping: a CHECK constraint is satisfied unless it evaluates
+to FALSE, so NULL passes the existing ceiling untouched while
+`'infinity'::date` is rejected by it.
+
+**What closing means**: `can_send_in_chat` refuses, which takes reactions with
+it (their policy borrows it), and joining refuses. Reading does not change.
+A closed group is exempt from `expire_room_members` and `archive_idle_chats`,
+and that is load-bearing rather than tidy — the screen says "everything in it
+is still here to read", and without those two exemptions a member's seat would
+lapse a week later, `my_chats` would stop returning the group, and the invite
+link would refuse them. The conversation would be gone, permanently, from the
+app that had just promised it was readable.
+
+**`groups_max_stay_sane` is deleted**, not edited. It was anchored to
+`created_at`, so on a group older than 400 days there was no future date its
+admin could legally set — including the one that reopens a closed chat. The
+ceiling now lives in `create_group` and `update_group`, where a sentence can
+live with it.
+
+**`update_group` was dropped and recreated**, not replaced. Adding
+`p_clear_max_stay` as a defaulted parameter creates an OVERLOAD, and a
+six-argument call then matches both signatures and fails with "function is not
+unique" — from every client at once. Named to match `p_clear_photo` one line
+above it, since both exist for the same reason: NULL in that signature has
+always meant "leave this alone", so turning a value OFF needs its own flag.
+
+**`room_members.expires_at` is NOT NULL**, so the admin of an endless group
+holds `'infinity'`, which PostgREST serialises as the literal string
+`"infinity"` — truthy, and `new Date()` of it is `Invalid Date`. `finiteDate()`
+is the guard; two screens rendered "you leave Invalid Date" without it.
+
 ## Launch hardening (Phase 6)
 
 - **Velocity caps** complement the Phase 2–5 _standing_ caps (5 active trips,

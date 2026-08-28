@@ -3,6 +3,61 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **Chat is active until** (2026-08-27)
+
+The founder asked for a no-end-date option, the rename from "People can stay
+until", and copy clarifying that the chat is active through that date and
+closes the following day.
+
+The third was not true in three ways — the date capped joiners rather than the
+chat, every membership got seven more days of grace, and nothing had ever
+closed a group chat — so this is the mechanism rather than the words.
+`docs/ARCHITECTURE.md` has the design; the two calls that were the founder's
+and were asked before anything was written:
+
+- **A new group starts on "No end date."** Under the old meaning a 30-day
+  default was harmless. Under the new one, anybody who made a group and never
+  touched that control would have built a conversation that died in a month
+  without ever being told.
+- **Existing groups keep their dates**, and any already in the past is pushed
+  30 days forward, so nothing goes dark on deploy day and no admin's stated cap
+  is thrown away.
+
+### What the adversarial pass caught
+
+Three designs, two judges and three attackers, one of whom stood up a real
+Postgres 16 cluster rather than reasoning about it. What it found in the
+winning design, all fixed before shipping:
+
+- `groups_max_stay_sane` is anchored to `created_at`, so on a group older than
+  400 days there is no future date its admin can set — including the one that
+  reopens it. The constraint is gone; the ceiling is in the RPCs.
+- Adding a defaulted parameter to `update_group` creates an OVERLOAD, and a
+  six-argument call then fails with "function is not unique" from every client
+  at once.
+- "You can still read everything here" would have been true for a week, then
+  the sweep would have taken the seat and the conversation with it.
+- Reacting borrows `can_send_in_chat`, so it dies with sending — the heart row
+  has to go when the composer does, or the refusal arrives as a raw
+  row-level-security sentence.
+- `'infinity'` reaches the phone as the string `"infinity"`, which is truthy
+  and renders "you leave Invalid Date".
+
+### And one bug of my own, found by looking at a screenshot
+
+No place was ever drawn on the map. `displayPriority="low"` on the place marker
+is not a layering control — it is MapKit's decluttering priority, defaulting to
+`required`, where `low` means "hide whenever this collides with anything
+higher". Every traveler pin is higher, and so is every one of Apple's POI
+labels, which this map deliberately keeps. Every chip lost every collision.
+A decluttered annotation leaves the accessibility tree too, which is why
+nothing could tap one either.
+
+Also learned, at the cost of two runs: **a MapKit annotation cannot be
+addressed by label from Maestro at all**, for a place or a traveler pin. The
+marker's evidence is the screenshot. The flow now asserts the places legend
+instead, which renders only when the data arrived at a zoom where markers draw.
+
 ## Current: **Places is built and audited** (2026-08-27)
 
 ### The final audit, and what it found
