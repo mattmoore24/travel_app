@@ -567,6 +567,13 @@ export type MessageRow = {
   image_path: string | null;
   /** Set when the SENDER took the message back. Distinct from moderator removal. */
   unsent_at?: string | null;
+  /**
+   * Set when the message was taken down by somebody other than its sender —
+   * in a one-to-one chat, that means a photo the classifier refused, which
+   * also empties `image_path`. Without it the thread drew an empty bubble
+   * where the photo had been, for both people, forever.
+   */
+  removed_at?: string | null;
   created_at: string;
   /**
    * Where a photo on this message has got to. Present because direct chats

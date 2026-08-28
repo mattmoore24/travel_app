@@ -333,8 +333,12 @@ function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: boolean }) 
       </View>
       {isRoom ? (
         <View style={[styles.roomBadge, { backgroundColor: theme.accentSoft }]}>
+          {/* A house, not a group of figures. `kind === 'room'` covers a
+              hostel's own guest room as well as a travelers' group, and a
+              business room under three little people would be wrong about
+              what it is. */}
           <SymbolView
-            name={{ ios: 'person.3.fill', android: 'groups', web: 'groups' }}
+            name={{ ios: 'house.fill', android: 'home', web: 'home' }}
             size={22}
             tintColor={theme.accent}
           />

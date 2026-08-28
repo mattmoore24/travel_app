@@ -321,6 +321,17 @@ export default function ChatScreen() {
             messages={thread}
             ownUserId={ownUserId}
             otherName={chat.title}
+            // A photo the classifier refused is emptied and flagged removed,
+            // which in a one-to-one chat left an empty bubble in the thread
+            // for both people — the same nothing-there the founder reported
+            // in a group. A room already had this; a direct chat did not.
+            noteFor={(m) =>
+              m.removed_at == null
+                ? null
+                : m.sender_id === ownUserId
+                  ? 'Your photo did not pass our check'
+                  : 'Photo removed'
+            }
             onRetry={retry}
             // Above the oldest bubble (the list is inverted, so a footer is
             // the top). The chat opens on the same context the recipient had
