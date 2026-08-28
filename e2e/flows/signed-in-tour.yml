@@ -312,6 +312,24 @@ appId: com.mattmoore.samewhere
 - scroll
 - takeScreenshot: 27-group-settings
 
+# BACK TO THE LIST, with a real conversation in it. The founder's biggest
+# visual complaint was this screen — "the actual chats themselves should look
+# exactly like chats are shown in iMessage vs spacing them out like we have
+# now" — and every picture of it so far has been of an EMPTY list, which is
+# the one state the redesign does not change. A flush row with an avatar, a
+# name, a preview and a timestamp is the thing to look at.
+- tapOn: 'Chat'
+- extendedWaitUntil:
+    visible: 'Groups'
+    timeout: 15000
+- tapOn: 'Groups'
+- extendedWaitUntil:
+    visible: 'Maestro crew'
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 27a-chat-list-with-a-row
+
 # ─────────────────────────────────────────────────────────────────────────
 # PLACES AND TOP PRIORITIES — the surface built on 2026-08-27, never yet
 # photographed. Every step below is optional on purpose.
