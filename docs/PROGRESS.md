@@ -73,7 +73,48 @@ hand before anything was changed:
   closed group is now; the pgTAP that "covered" this asserted only the half
   that was already true.
 
-Database: **667** pgTAP assertions. Client: **313** unit tests.
+### And a second sweep, over the half the first one never lensed
+
+Five more lenses — first run and routing, profiles and the Travelers queue,
+chat, sentences the app says that the code does not keep, and the seven hard
+rules. Twelve more survived refutation. Three were refuted, including two that
+tried to read a documented tradeoff as a defect.
+
+- **Unsending in a group left a blank bubble for everyone.** `room_messages`
+  predates unsend and returned neither `unsent_at` nor anything else to mark
+  it, so a withdrawn message came back empty with `removed = false` and the
+  thread drew a coloured pill with nothing in it, under the sender's name and
+  face, still long-pressable and still reactable. The confirmation had just
+  said "It disappears for everyone."
+- **Mute never reached the phone.** The push trigger's direct arm had no mute
+  test at all, and its room arm read a column `authenticated` cannot write.
+  The bell struck through, the badge went, and the phone kept ringing.
+- **Password reset did not work.** The email points at a route that did not
+  exist, so expo-router matched a wildcard outside the root layout and the
+  whole recovery branch was dead. People got "Unmatched Route".
+- **Editing a trip could save a range nobody entered** — the start moved, the
+  old end stayed, and the Travelers queue is joined on exactly those columns.
+- **The whole app could disappear** because one background profile refetch
+  failed while the cached profile was still in memory.
+- **Signing up to list a place landed in traveler onboarding**, the one flow a
+  place must never finish.
+- **A guest who tapped Apple lost every chat they had made.** The email path
+  upgrades the anonymous row; a native Apple token cannot.
+- A hello the moderation filter refused deleted that traveler from the queue
+  for good; a room promised a week where the database grants three days; two
+  hellos in one chat listed the conversation twice; a seventh priority could
+  overwrite the sixth.
+- **Hard rule 3, closed at the grant.** The 72-hour ceiling is a CHECK
+  anchored to `created_at`, and `created_at` was a column a client could
+  INSERT — Supabase grants every column by default. A forged one bought a pin
+  a month of life and walked past the rate limit, which counts the same
+  column. The app never sends it; the anon key ships inside the app, so the
+  grant is the control, not the client.
+
+Left alone, deliberately: the heat k-threshold behaviour (documented tradeoff,
+three places) and the pin audience predicate (real, no user-visible failure).
+
+Database: **675** pgTAP assertions. Client: **313** unit tests.
 
 ## Current: **Chat is active until** (2026-08-27)
 
