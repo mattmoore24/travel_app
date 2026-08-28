@@ -20,7 +20,7 @@ import {
   submitStorefrontPhotos,
   updateOwnBusiness,
 } from '@/features/business/api';
-import type { BusinessCategory } from '@/lib/database.types';
+import type { BusinessCategory, ChatKind } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -88,6 +88,26 @@ export function useArchiveBusinessPost(businessId: string | null) {
       queryClient.invalidateQueries({ queryKey: ['city-businesses'] });
     },
   });
+}
+
+/**
+ * Is this chat a conversation with a PLACE, from where the reader is sitting?
+ *
+ * `kind = 'business'` is handed to BOTH sides of the conversation, and
+ * `my_chats` already flips the title and the photo per reader: the traveler
+ * gets the bar, the bar gets the traveler. The client did not flip with it, so
+ * a business reading its own inbox saw every traveler dressed as a storefront
+ * — a profile-photo path signed against the business bucket, which is a 404
+ * wearing a valid-looking URL; the subtitle "The people who run <the
+ * traveler's name>"; no verified badge on the one screen where it matters
+ * most; and a header that opened the business's own listing.
+ *
+ * Safe to ask here: the router resolves the account kind before any chat
+ * screen mounts, because app/_layout.tsx gates the whole stack on it.
+ */
+export function useIsPlaceChat(kind: ChatKind | null | undefined): boolean {
+  const iAmTheBusiness = useOwnBusiness().data != null;
+  return kind === 'business' && !iAmTheBusiness;
 }
 
 /** The place a chat belongs to. Asked only for `kind === 'business'` rows. */

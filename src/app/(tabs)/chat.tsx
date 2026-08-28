@@ -23,7 +23,7 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
 import { ChatRowSkeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
-import { useOwnBusiness } from '@/features/business/hooks';
+import { useIsPlaceChat, useOwnBusiness } from '@/features/business/hooks';
 import { finiteDate } from '@/features/groups/closing';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { useIsGuest } from '@/features/guest/hooks';
@@ -258,8 +258,9 @@ function ChatRow({ chat }: { chat: ChatListRow }) {
   // A conversation with a PLACE carries the place's cover photo, which lives
   // in a different bucket. Signed through the profile hook it comes back a
   // 404 wearing a valid-looking URL, so the row fell back to a person glyph
-  // for a bar.
-  const isPlace = chat.kind === 'business';
+  // for a bar — and on the business's own side of the same row, where the
+  // photo is the TRAVELER's, it did the reverse. See useIsPlaceChat.
+  const isPlace = useIsPlaceChat(chat.kind);
   const unread = chat.unread_count > 0;
   const stamp = rowTimestamp(chat.last_message_at ?? chat.created_at);
 

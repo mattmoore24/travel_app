@@ -39,7 +39,7 @@ import { useReactions, useToggleReaction, useUnsendMessage } from '@/features/ro
 import { useOwnUserId, usePhotoUrl, usePublicProfile } from '@/features/profile/hooks';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { useTheme } from '@/hooks/use-theme';
-import { useBusinessForChat } from '@/features/business/hooks';
+import { useBusinessForChat, useIsPlaceChat } from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import type { ChatListRow } from '@/lib/database.types';
 
@@ -50,8 +50,9 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
   // usePhotoUrl signs against `profile-photos` and so comes back a 404
   // wearing a valid-looking URL; `other_user_id` is the owner's auth id, and
   // pushing that at /profile opens their stub personal profile rather than
-  // the bar. Both halves branch on the kind.
-  const isPlace = chat.kind === 'business';
+  // the bar. Both halves branch on this — which is a question about the
+  // READER, not just the row. See useIsPlaceChat.
+  const isPlace = useIsPlaceChat(chat.kind);
   const { data: personPhotoUrl } = usePhotoUrl(isPlace ? null : chat.photo_path);
   const { data: placePhotoUrl } = useBusinessPhotoUrl(isPlace ? chat.photo_path : null);
   const photoUrl = isPlace ? placePhotoUrl : personPhotoUrl;
