@@ -78,9 +78,10 @@ export function MapFilterSheet({
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
-        <Group
-          title="When"
-          note="A plan only ever reaches three days out. A pin expires with the day it is about.">
+        {/* No note. Four chips ending on a weekday two days out say the
+            three-day horizon better than a sentence about it does, and the
+            four groups only fit on a small phone without one. */}
+        <Group title="When">
           <View style={styles.chips}>
             {(
               [
@@ -100,9 +101,10 @@ export function MapFilterSheet({
           </View>
         </Group>
 
-        <Group
-          title="What to show"
-          note="Untick everything and there is no map left, so one stays.">
+        {/* The one-stays rule is enforced rather than explained: unticking
+            the last box simply does not take, which is how every filter list
+            people already use behaves. */}
+        <Group title="What to show">
           {(
             [
               [
@@ -160,7 +162,7 @@ export function MapFilterSheet({
           </View>
         </Group>
 
-        <Group title="Who" note="The badge means they matched a selfie to their photos.">
+        <Group title="Who">
           <CheckRow
             title="Verified travelers only"
             detail="Our own picks stay either way. There is nobody behind one to verify."

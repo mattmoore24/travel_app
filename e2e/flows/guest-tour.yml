@@ -73,7 +73,12 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2000
 - takeScreenshot: 05a-map-filters
-- tapOn: 'Verified travelers only'
+# A category chip, not the row at the very bottom of the sheet. Run 71 tapped
+# "Verified travelers only", which sits under the Done button and the tab bar:
+# the element is in the hierarchy with coordinates behind the tab bar, so the
+# tap landed on Travelers and the flow carried on somewhere else entirely.
+# Anything asserted here has to be on screen without scrolling.
+- tapOn: 'Bar'
 - waitForAnimationToEnd:
     timeout: 1500
 - takeScreenshot: 05b-map-filters-on
@@ -86,6 +91,9 @@ appId: com.mattmoore.samewhere
 # And back to an unfiltered map, so nothing after this is looking at a
 # narrowed one.
 - tapOn: 'Filters, 1 on'
+- extendedWaitUntil:
+    visible: 'What to show'
+    timeout: 10000
 - tapOn: 'Clear all filters'
 - tapOn: 'Done'
 - waitForAnimationToEnd:

@@ -225,7 +225,10 @@ appId: com.mattmoore.samewhere
 - takeScreenshot: 20-chat-individual
 - tapOn: 'Groups'
 - takeScreenshot: 21-chat-groups
-- tapOn: 'Start a group'
+# "Start a chat" on both segments now, not "Start a group" on one of them:
+# the '+' used to change under the person's hand, which is the thing the
+# founder could not learn.
+- tapOn: 'Start a chat'
 # Wait on the field, not the title: the screen's heading and the button that
 # opened it are the same words, so a text match would pass before it opened.
 - extendedWaitUntil:
