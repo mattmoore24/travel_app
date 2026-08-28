@@ -56,6 +56,41 @@ appId: com.mattmoore.samewhere
 - tapOn: 'Map'
 - takeScreenshot: 05-back-to-map
 
+# The filters, photographed. Founder, 2026-08-28: "the all, today, tomorrow
+# filters are confusing. You should instead just add a filters icon that takes
+# users to a different screen and select any type of filter they want." The
+# three chips are gone and everything is behind one button, so the button, the
+# sheet and the count badge all need to be in the record.
+#
+# Tapped by ACCESSIBILITY LABEL, not by the visible text: a PressableScale
+# carrying its own label is one element on iOS and the Text inside it is not
+# an element at all, which is how a previous assertion failed on a screenshot
+# plainly showing the string it was looking for.
+- tapOn: 'Filters'
+- extendedWaitUntil:
+    visible: 'What to show'
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 05a-map-filters
+- tapOn: 'Verified travelers only'
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: 05b-map-filters-on
+- tapOn: 'Done'
+- waitForAnimationToEnd:
+    timeout: 2000
+# The count on the button is the whole reason a narrowed map is not a mystery.
+- assertVisible: 'Filters, 1 on'
+- takeScreenshot: 05c-map-filtered
+# And back to an unfiltered map, so nothing after this is looking at a
+# narrowed one.
+- tapOn: 'Filters, 1 on'
+- tapOn: 'Clear all filters'
+- tapOn: 'Done'
+- waitForAnimationToEnd:
+    timeout: 2000
+
 # The account-kind choice, photographed. Founder, 2026-08-28: "it should be
 # clear right from the start if you are creating or signing into a business
 # account or an individual account." That question now sits above the email
