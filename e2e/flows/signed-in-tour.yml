@@ -105,6 +105,16 @@ appId: com.mattmoore.samewhere
 # a newline is exactly what `.` does not match.
 - assertVisible: 'Meeting by the door around 7.*'
 - takeScreenshot: 15-pin-form-filled
+# HOW PEOPLE COME ALONG. The choice that turns a pin into a plan somebody can
+# join in one tap, versus the hello-and-wait the app had only ever offered.
+# Photographed rather than asserted-and-tapped: "Anyone can join" is the
+# default, so the run posts one either way and the next screenshots prove it.
+- scrollUntilVisible:
+    element:
+      id: 'pin-open-to-join'
+    direction: DOWN
+    timeout: 8000
+- takeScreenshot: 15b-pin-join-mode
 # 'Drop it' sits outside the form's scroll area and the sheet lifts with the
 # keyboard, so it is reachable with the keyboard still up.
 - tapOn: 'Drop it'
@@ -114,6 +124,11 @@ appId: com.mattmoore.samewhere
     visible: 'Rooftop hello from Maestro'
     timeout: 20000
 - takeScreenshot: 16-pin-posted
+# The proof that post_joinable_pin ran and the group came with it: a pin that
+# was posted message-me-first says "Your pin" here instead. This assertion is
+# the one place the whole path — RPC, group, room_members, the map re-read —
+# is checked in one line.
+- assertVisible: 'Your plan, open to join'
 # ASSERT THE APP STILL RESPONDS. Run 42 posted a pin and then went deaf:
 # Close, Travelers, Map and the avatar were all "tapped" — Maestro found every
 # one of them in the tree and reported success — while the screen did not
@@ -156,12 +171,17 @@ appId: com.mattmoore.samewhere
 # That is the state worth photographing anyway: it is what somebody deciding
 # whether the badge is worth a selfie sees, and it is exactly who the
 # both-ways note used to be hidden from.
+# The trailing .* is not slack: the setting moved from a ghost button at the
+# bottom of the page to a card at the TOP of it, and a card that does not say
+# what it is currently set to is a link rather than a selector — so its label
+# is now "Who you see, and who sees you. Currently Everyone." and a Maestro
+# pattern has to match the whole string.
 - scrollUntilVisible:
     element:
-      text: 'Who you see, and who sees you'
+      text: 'Who you see, and who sees you.*'
     direction: DOWN
     timeout: 10000
-- tapOn: 'Who you see, and who sees you'
+- tapOn: 'Who you see, and who sees you.*'
 - extendedWaitUntil:
     visible: 'Verified non-binary.*'
     timeout: 15000
@@ -311,6 +331,27 @@ appId: com.mattmoore.samewhere
 # control exists and is the default.
 - scroll
 - takeScreenshot: 27-group-settings
+
+# ADDING SOMEBODY WITHOUT LEAVING THE APP, and a door out of a group.
+#
+# Both were missing entirely. Inviting was a link — copy it, leave for
+# iMessage, find a phone number, paste — and a group's page had no Leave at
+# all, so the only way out of one was to be removed. The founder asked for
+# both. The row is open to every member, not only the admin, which is why the
+# screenshot is worth taking on a screen an admin happens to be looking at.
+- scrollUntilVisible:
+    element:
+      id: 'group-add-people'
+    direction: DOWN
+    timeout: 10000
+- takeScreenshot: 27b-group-add-and-leave
+- tapOn:
+    id: 'group-add-people'
+- extendedWaitUntil:
+    visible: 'Add someone'
+    timeout: 15000
+- takeScreenshot: 27c-add-people
+- tapOn: 'Done'
 
 # BACK TO THE LIST, with a real conversation in it. The founder's biggest
 # visual complaint was this screen — "the actual chats themselves should look
