@@ -37,6 +37,13 @@ type StepShellProps = {
   note?: string | null;
   footer?: ReactNode;
   continueTestID?: string;
+  /**
+   * A step somebody may pass over. Renders a quiet "Skip for now" under the
+   * button, which is the founder's rule: only non-essential steps get one, so
+   * its absence is what says a step is required.
+   */
+  onSkip?: () => void;
+  skipLabel?: string;
 };
 
 /**
@@ -59,6 +66,8 @@ export function StepShell({
   note,
   footer,
   continueTestID,
+  onSkip,
+  skipLabel = 'Skip for now',
 }: StepShellProps) {
   const theme = useTheme();
   const progress = useSharedValue(step / total);
@@ -138,6 +147,22 @@ export function StepShell({
               loading={continueLoading}
               onPress={onContinue}
             />
+            {/* Small, quiet, and only where it belongs. A step with no skip
+                has no skip button, which is how somebody can tell at a glance
+                which questions the app actually needs answered. */}
+            {onSkip ? (
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel={skipLabel}
+                haptic="light"
+                scaleTo={0.98}
+                onPress={onSkip}
+                style={styles.skip}>
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  {skipLabel}
+                </ThemedText>
+              </PressableScale>
+            ) : null}
             {footer}
           </ThemedView>
         </KeyboardFloor>
@@ -208,6 +233,11 @@ const styles = StyleSheet.create({
     padding: Space.lg,
     paddingTop: Space.sm,
     gap: Space.sm,
+  },
+  skip: {
+    minHeight: HitTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   note: {
     textAlign: 'center',

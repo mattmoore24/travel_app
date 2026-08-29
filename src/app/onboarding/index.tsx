@@ -15,7 +15,10 @@ import { useAuthStore } from '@/features/auth/store';
 import {
   useOwnPhotos,
   useOwnProfile,
+  useOwnUserId,
   useOwnVisibility,
+  useProfilePriorities,
+  useProfilePrompts,
   useSetVisibility,
   useUpdateOwnProfile,
 } from '@/features/profile/hooks';
@@ -33,11 +36,26 @@ import {
   validateBio,
   validateDisplayName,
 } from '@/features/profile/validation';
+import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
+import { MAX_PROMPTS, promptLabelInline } from '@/features/profile/prompts';
+import { MAX_PRIORITIES } from '@/features/profile/priorities';
+import { useMyTrips } from '@/features/trips/hooks';
+import { formatDateRange } from '@/features/trips/dates';
 import { StepShell } from '@/features/signup/step-shell';
 import { SIGNUP_TOTAL_STEPS } from '@/features/signup/steps';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 import type { Gender, ProfileRow } from '@/lib/database.types';
+
+/**
+ * The same sentence on every step that has one, in the same place.
+ *
+ * Founder: "a caveat at each step that this can be changed later at any
+ * time." One constant rather than thirteen hand-written reassurances, because
+ * the moment they drift they stop reading as a promise and start reading as
+ * filler.
+ */
+const CHANGE_LATER = 'You can change this any time, from your profile.';
 
 const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: 'woman', label: 'Woman' },
@@ -78,6 +96,20 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   const setAudience = useSetVisibility();
   const { data: photos = [] } = useOwnPhotos();
   const hasProfilePhoto = photos.some((photo) => photo.position === 0);
+  // The three sections nothing used to ask for. Read rather than edited here:
+  // each step explains what the section is and hands over to the editor that
+  // already owns it, which is also the editor people will use forever after.
+  const userId = useOwnUserId();
+  const { data: prompts = [] } = useProfilePrompts(userId);
+  const { data: priorities = [] } = useProfilePriorities(userId);
+  const { data: trips = [] } = useMyTrips();
+  const profileTrips: ProfileTrip[] = trips.map((trip) => ({
+    id: trip.id,
+    cityId: trip.city_id,
+    cityLabel: `${trip.cities.name}, ${trip.cities.country_name}`,
+    startDate: trip.start_date,
+    endDate: trip.end_date,
+  }));
 
   const [step, setStep] = useState(3);
   const [name, setName] = useState(profile.display_name ?? '');
@@ -258,48 +290,18 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
       <StepShell
         step={5}
         total={SIGNUP_TOTAL_STEPS}
-        title="Anything else?"
-        subtitle="All optional, all editable later."
-        continueLabel={bio.trim() || occupation.trim() ? 'Continue' : 'Skip for now'}
-        continueDisabled={bioError != null}
-        continueLoading={updateProfile.isPending}
+        title="Add a photo"
+        subtitle="One face, so people know who they are meeting. Add more if you like."
+        continueTestID="finish-photos"
+        // The slot the copy actually names. Adding one through the small "+"
+        // under "More photos, all optional" used to satisfy this, leaving the
+        // profile photo empty on a screen headed "Add a photo".
+        continueDisabled={!hasProfilePhoto}
+        note={hasProfilePhoto ? CHANGE_LATER : 'A profile photo is the one thing we need.'}
         footer={signOutFooter}
         onBack={() => go(4)}
-        onContinue={() =>
-          saveAndGo({ bio: bio.trim() || null, occupation: occupation.trim() || null }, 6)
-        }>
-        <FormTextField
-          label="What you do"
-          testID="occupation-input"
-          placeholder="Nurse, studying architecture, between jobs"
-          value={occupation}
-          onChangeText={setOccupation}
-        />
-        <View style={styles.block}>
-          <ThemedText type="callout">A bit about you</ThemedText>
-          <ThemedText type="footnote" themeColor="textSecondary">
-            What should someone message you about?
-          </ThemedText>
-          <FormTextField
-            multiline
-            testID="bio-input"
-            numberOfLines={5}
-            style={styles.bioInput}
-            placeholder="Street food missions, museum days, sunrise hikes, learning to surf badly"
-            value={bio}
-            onChangeText={setBio}
-            error={bioError}
-            hint={`${bio.length}/${BIO_MAX}`}
-            {...keyboardDoneProps}
-          />
-        </View>
-        <View style={styles.block}>
-          <ThemedText type="callout">Socials</ThemedText>
-          <ThemedText type="footnote" themeColor="textSecondary">
-            Only shared once you and someone else are chatting.
-          </ThemedText>
-          <SocialHandlesEditor />
-        </View>
+        onContinue={() => go(6)}>
+        <PhotoGrid />
       </StepShell>
     );
   }
@@ -309,12 +311,221 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
       <StepShell
         step={6}
         total={SIGNUP_TOTAL_STEPS}
+        title="What do you do?"
+        subtitle="Two words is plenty. It gives somebody an easy thing to ask about."
+        continueLoading={updateProfile.isPending}
+        note={CHANGE_LATER}
+        footer={signOutFooter}
+        onBack={() => go(5)}
+        onSkip={() => go(7)}
+        onContinue={() => saveAndGo({ occupation: occupation.trim() || null }, 7)}>
+        <FormTextField
+          label="What you do"
+          testID="occupation-input"
+          autoFocus
+          placeholder="Nurse, studying architecture, between jobs"
+          value={occupation}
+          onChangeText={setOccupation}
+        />
+      </StepShell>
+    );
+  }
+
+  if (step === 7) {
+    return (
+      <StepShell
+        step={7}
+        total={SIGNUP_TOTAL_STEPS}
+        title="A bit about you"
+        subtitle="What should somebody message you about? This sits under your photo."
+        continueDisabled={bioError != null}
+        continueLoading={updateProfile.isPending}
+        note={CHANGE_LATER}
+        footer={signOutFooter}
+        onBack={() => go(6)}
+        onSkip={() => go(8)}
+        onContinue={() => saveAndGo({ bio: bio.trim() || null }, 8)}>
+        <FormTextField
+          multiline
+          testID="bio-input"
+          numberOfLines={5}
+          style={styles.bioInput}
+          placeholder="Street food missions, museum days, sunrise hikes, learning to surf badly"
+          value={bio}
+          onChangeText={setBio}
+          error={bioError}
+          hint={`${bio.length}/${BIO_MAX}`}
+          {...keyboardDoneProps}
+        />
+      </StepShell>
+    );
+  }
+
+  if (step === 8) {
+    return (
+      <StepShell
+        step={8}
+        total={SIGNUP_TOTAL_STEPS}
+        title="Answer a prompt"
+        subtitle="The bit people actually read. One answer puts you ahead of most profiles."
+        continueLabel={prompts.length > 0 ? 'Continue' : 'Pick a prompt'}
+        note={CHANGE_LATER}
+        footer={signOutFooter}
+        onBack={() => go(7)}
+        onSkip={prompts.length > 0 ? undefined : () => go(9)}
+        onContinue={() => (prompts.length > 0 ? go(9) : router.push('/edit-prompt'))}>
+        {prompts.length === 0 ? (
+          <PrimaryButton
+            variant="ghost"
+            label="Pick a prompt"
+            testID="onboarding-add-prompt"
+            onPress={() => router.push('/edit-prompt')}
+          />
+        ) : (
+          <>
+            {prompts.map((prompt) => (
+              <View key={prompt.slot} style={styles.card}>
+                <ThemedText type="caption" themeColor="textSecondary">
+                  {promptLabelInline(prompt.prompt_key).toUpperCase()}
+                </ThemedText>
+                <ThemedText>{prompt.answer}</ThemedText>
+              </View>
+            ))}
+            {prompts.length < MAX_PROMPTS ? (
+              <PrimaryButton
+                variant="ghost"
+                label="Answer another"
+                onPress={() => router.push('/edit-prompt')}
+              />
+            ) : null}
+          </>
+        )}
+      </StepShell>
+    );
+  }
+
+  if (step === 9) {
+    return (
+      <StepShell
+        step={9}
+        total={SIGNUP_TOTAL_STEPS}
+        title="What are you after?"
+        subtitle="Places, food, a night out, the one thing you would hate to miss. So the right people say hi."
+        continueLabel={priorities.length > 0 ? 'Continue' : 'Add one'}
+        note={CHANGE_LATER}
+        footer={signOutFooter}
+        onBack={() => go(8)}
+        onSkip={priorities.length > 0 ? undefined : () => go(10)}
+        onContinue={() => (priorities.length > 0 ? go(10) : router.push('/edit-priorities'))}>
+        {priorities.length === 0 ? (
+          <PrimaryButton
+            variant="ghost"
+            label="Add one"
+            testID="onboarding-add-priority"
+            onPress={() => router.push('/edit-priorities')}
+          />
+        ) : (
+          <>
+            {priorities.map((priority) => (
+              <View key={priority.slot} style={styles.card}>
+                <ThemedText>{priority.text}</ThemedText>
+              </View>
+            ))}
+            {priorities.length < MAX_PRIORITIES ? (
+              <PrimaryButton
+                variant="ghost"
+                label="Add another"
+                onPress={() => router.push('/edit-priorities')}
+              />
+            ) : null}
+          </>
+        )}
+      </StepShell>
+    );
+  }
+
+  if (step === 10) {
+    return (
+      <StepShell
+        step={10}
+        total={SIGNUP_TOTAL_STEPS}
+        title="Where are you going?"
+        // The one step that earns the extra length. Everything else on a
+        // profile is decoration next to this: the whole app matches people by
+        // city and dates, so a profile with no trip is invisible to the
+        // feature it exists for. Nothing used to ask.
+        subtitle="A city and your dates. This is what puts you in front of the people who will be there when you are."
+        continueLabel={trips.length > 0 ? 'Continue' : 'Add a trip'}
+        note={CHANGE_LATER}
+        footer={signOutFooter}
+        onBack={() => go(9)}
+        onSkip={trips.length > 0 ? undefined : () => go(11)}
+        skipLabel="I have not booked anything yet"
+        onContinue={() => (trips.length > 0 ? go(11) : router.push('/add-trip'))}>
+        {trips.length === 0 ? (
+          <>
+            <PrimaryButton
+              variant="ghost"
+              label="Add a trip"
+              testID="onboarding-add-trip"
+              onPress={() => router.push('/add-trip')}
+            />
+            <ThemedText type="footnote" themeColor="textSecondary">
+              No trip yet is fine. You can still drop a pin and read the map, and you can add one
+              the moment you book.
+            </ThemedText>
+          </>
+        ) : (
+          <>
+            {trips.map((trip) => (
+              <View key={trip.id} style={styles.card}>
+                <ThemedText type="callout">
+                  {trip.cities.name}, {trip.cities.country_name}
+                </ThemedText>
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  {formatDateRange(trip.start_date, trip.end_date)}
+                </ThemedText>
+              </View>
+            ))}
+            <PrimaryButton
+              variant="ghost"
+              label="Add another"
+              onPress={() => router.push('/add-trip')}
+            />
+          </>
+        )}
+      </StepShell>
+    );
+  }
+
+  if (step === 11) {
+    return (
+      <StepShell
+        step={11}
+        total={SIGNUP_TOTAL_STEPS}
+        title="Your socials"
+        subtitle="Nobody sees these until you are both in a chat. Not on your profile, not on the map."
+        note={CHANGE_LATER}
+        footer={signOutFooter}
+        onBack={() => go(10)}
+        onSkip={() => go(12)}
+        onContinue={() => go(12)}>
+        <SocialHandlesEditor />
+      </StepShell>
+    );
+  }
+
+  if (step === 12) {
+    return (
+      <StepShell
+        step={12}
+        total={SIGNUP_TOTAL_STEPS}
         title="Who you see, and who sees you"
         subtitle={AUDIENCE_BOTH_WAYS}
         continueLabel="Continue"
         footer={signOutFooter}
-        onBack={() => go(5)}
-        onContinue={() => go(7)}>
+        onBack={() => go(11)}
+        onContinue={() => go(13)}>
         {/* Everything but Everyone is inert here, and that is the server's
             rule rather than this screen's: set_visibility refuses a narrowed
             audience from an account without the badge, and a brand-new
@@ -344,21 +555,27 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
     );
   }
 
+  // THE LAST STEP IS THE PROFILE ITSELF.
+  //
+  // Founder: "It should also give you a final look of how your profile
+  // appears to other users at the end of onboarding, with the option to go
+  // back and edit any portion before completing the initial onboarding."
+  //
+  // The same component a stranger gets, in owner mode, so this is not a
+  // preview of the profile — it IS the profile. Backing up from here lands on
+  // the step that owns whatever looks wrong.
   return (
     <StepShell
-      step={7}
+      step={13}
       total={SIGNUP_TOTAL_STEPS}
-      title="Add a photo"
-      subtitle="One is enough to start. You can add more any time."
-      continueLabel="Finish"
+      title="Here you are"
+      subtitle="Exactly what a stranger sees. Step back to change anything."
+      continueLabel="Looks right, finish"
       continueTestID="finish-profile"
-      // The slot the copy actually names. Adding one through the small "+"
-      // under "More photos, all optional" used to satisfy this, leaving the
-      // profile photo empty on a screen headed "Add a photo".
-      continueDisabled={!hasProfilePhoto}
       continueLoading={updateProfile.isPending}
-      note={hasProfilePhoto ? null : 'A profile photo is the one thing we need.'}
-      onBack={() => go(6)}
+      note="Every part of this is editable from your profile afterwards."
+      footer={signOutFooter}
+      onBack={() => go(12)}
       onContinue={async () => {
         try {
           await updateProfile.mutateAsync({ onboarding_completed_at: new Date().toISOString() });
@@ -368,9 +585,27 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         } catch {
           // Surfaced by the global mutation error alert.
         }
-      }}
-      footer={signOutFooter}>
-      <PhotoGrid />
+      }}>
+      <View style={styles.review}>
+        <ProfileView
+          photosPending={false}
+          profile={profile}
+          photos={photos}
+          prompts={prompts}
+          priorities={priorities}
+          trips={profileTrips}
+          handles={[]}
+          // NOT owner mode, and that is the point of the step: the founder
+          // asked for "a final look of how your profile appears to other
+          // users", and owner mode adds edit affordances that push to routes
+          // sitting behind the `onboarded` guard — which this account is not
+          // yet, so every one of them would be a tap that does nothing. The
+          // way back is the shell's own Back, through the step that owns
+          // whatever looks wrong.
+          owner={false}
+          connected={false}
+        />
+      </View>
     </StepShell>
   );
 }
@@ -378,6 +613,19 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
 const styles = StyleSheet.create({
   block: {
     gap: Space.sm,
+  },
+  card: {
+    gap: 2,
+    padding: Space.md,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'transparent',
+  },
+  review: {
+    // The profile draws its own full-bleed hero, so it cancels the shell's
+    // gutter rather than sitting inside it as a card.
+    marginHorizontal: -Space.lg,
   },
   bioInput: {
     minHeight: 120,

@@ -240,8 +240,6 @@ function RootNavigator() {
       </Stack.Protected>
       <Stack.Protected guard={signedIn && onboarded}>
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="edit-prompt" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="edit-priorities" options={{ presentation: 'modal' }} />
         {/* Everything a traveler DOES with a place needs an account, which is
             why these are inside the guard while the page itself is not. */}
         <Stack.Screen name="join-place" options={{ presentation: 'modal' }} />
@@ -256,7 +254,6 @@ function RootNavigator() {
         <Stack.Screen name="report-place" options={{ presentation: 'modal' }} />
         <Stack.Screen name="verification" options={{ presentation: 'modal' }} />
         <Stack.Screen name="visibility" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="add-trip" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compose-request" options={{ presentation: 'modal' }} />
         <Stack.Screen name="drop-pin" options={{ presentation: 'modal' }} />
         <Stack.Screen
@@ -275,6 +272,20 @@ function RootNavigator() {
           name="group/[id]"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
+      </Stack.Protected>
+      {/* The three editors signup now sends people into, which is why they
+          are not behind `onboarded`: a person part way through signup has not
+          been stamped yet, and prompts, priorities and trips are three whole
+          sections of a profile that nothing used to ask for. `needsProfile`
+          is exactly "signed in, mid-signup, and neither a guest nor a
+          business", so this guard admits somebody finishing their profile and
+          nobody else. A business must never reach these — refuse_business_write
+          would refuse a trip anyway, and this keeps the client and the
+          database saying the same thing. */}
+      <Stack.Protected guard={signedIn && (onboarded || needsProfile)}>
+        <Stack.Screen name="edit-prompt" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="edit-priorities" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="add-trip" options={{ presentation: 'modal' }} />
       </Stack.Protected>
       {/* The business side. `business-signup` is deliberately OUTSIDE the
           onboarded guard: the whole point is that it is reached by an account

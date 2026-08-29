@@ -1,0 +1,102 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+/**
+ * Signup asks for every part of a profile, once, and ends by showing it.
+ *
+ * Founder: "The business and individual should be prompted to add to each
+ * part of their profile during the onboarding, with detailed descriptions of
+ * what they are adding at that moment, with a small 'skip for now' button for
+ * only non-essential items... It should also give you a final look of how your
+ * profile appears to other users at the end of onboarding."
+ *
+ * What this guards is the SEQUENCE and which steps are passable, neither of
+ * which a render test can see. The three sections it exists for — prompts,
+ * top priorities and trips — were in the schema, on the profile and in the
+ * Travelers screen, and nothing in signup had ever mentioned them.
+ */
+const source = (...parts: string[]): string =>
+  fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+
+const stripped = (...parts: string[]): string =>
+  source(...parts)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+describe('every part of a profile is asked for', () => {
+  const code = stripped('onboarding', 'index.tsx');
+
+  it.each([
+    ['Add a photo', 5],
+    ['What do you do?', 6],
+    ['A bit about you', 7],
+    ['Answer a prompt', 8],
+    ['What are you after?', 9],
+    ['Where are you going?', 10],
+    ['Your socials', 11],
+    ['Who you see, and who sees you', 12],
+    ['Here you are', 13],
+  ])('asks "%s" at step %i', (title, step) => {
+    const at = code.indexOf(`step={${step}}`);
+    expect(at).toBeGreaterThan(-1);
+    // The title belongs to that step's shell, so it sits close after it.
+    expect(code.slice(at, at + 400)).toContain(title);
+  });
+
+  it('counts thirteen steps in one place', () => {
+    const steps = source('..', 'features', 'signup', 'steps.ts');
+    expect(steps).toContain('SIGNUP_TOTAL_STEPS = 13');
+    // Every shell reads the constant for `total`, so the bar stays honest.
+    expect(code).not.toMatch(/total=\{1[0-9]\}/);
+  });
+});
+
+describe('skip is only on the steps that may be skipped', () => {
+  const code = stripped('onboarding', 'index.tsx');
+
+  const shellAt = (step: number): string => {
+    const at = code.indexOf(`step={${step}}`);
+    const next = code.indexOf('<StepShell', at);
+    return code.slice(at, next > at ? next : at + 2600);
+  };
+
+  it.each([3, 4, 5, 12, 13])('step %i cannot be skipped', (step) => {
+    expect(shellAt(step)).not.toContain('onSkip');
+  });
+
+  it.each([6, 7, 11])('step %i can be', (step) => {
+    expect(shellAt(step)).toContain('onSkip');
+  });
+
+  it('lets the photo step through only once there is a photo', () => {
+    // Position 0, not "any photo": adding one through the small + under "More
+    // photos" used to satisfy a screen headed "Add a photo".
+    expect(shellAt(5)).toContain('continueDisabled={!hasProfilePhoto}');
+  });
+});
+
+describe('the last step is the profile, not a summary of it', () => {
+  const code = stripped('onboarding', 'index.tsx');
+
+  it('renders the same component a stranger gets, as a stranger gets it', () => {
+    // owner mode adds edit affordances that push to routes behind the
+    // `onboarded` guard, which this account is not yet — so every one of them
+    // would be a tap that does nothing, and the founder asked for a look at
+    // what OTHER people see anyway.
+    expect(code).toContain('<ProfileView');
+    expect(code).toContain('owner={false}');
+  });
+
+  it('is the only place the stamp is written', () => {
+    const stamps = code.match(/onboarding_completed_at/g) ?? [];
+    expect(stamps).toHaveLength(1);
+    expect(code.indexOf('onboarding_completed_at')).toBeGreaterThan(code.indexOf('step={13}'));
+  });
+
+  it('says the same thing about changing your mind everywhere', () => {
+    // One constant rather than thirteen hand-written reassurances: the moment
+    // they drift they read as filler instead of a promise.
+    expect(code).toContain('const CHANGE_LATER =');
+    expect((code.match(/note=\{CHANGE_LATER\}/g) ?? []).length).toBeGreaterThanOrEqual(5);
+  });
+});
