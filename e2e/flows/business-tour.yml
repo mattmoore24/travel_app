@@ -285,19 +285,25 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'My business'
     timeout: 40000
-- waitForAnimationToEnd:
-    timeout: 2500
-- takeScreenshot: 70-business-my-business
 # The middle tab is My business and never Travelers: §7 rule 8 says a business
 # does not read a traveler discovery surface, and the tab is `hidden` rather
 # than merely useless, so it cannot be reached by deep link either.
 - assertNotVisible: 'Travelers'
 
-# THE MAP, which the founder says "isn't used for that purpose" as a business.
-- tapOn: 'Map'
+# THE MAP FIRST, because that is where the app opens. The founder's words:
+# "the map page as a business isn't used for that purpose". No faces on it,
+# no drop-a-pin dock, no audience chip.
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 71-business-map
+
+# THE TAB ITSELF. Run 88 named the map 70-business-my-business, because
+# "My business" is the TAB LABEL and is on screen whichever tab is selected:
+# waiting for the words proved the tab bar exists, not that the tab is open.
+- tapOn: 'My business'
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 70-business-my-business
 
 # THE CHAT TAB. A business's own room and the travelers who wrote in, and
 # nothing shaped like a traveler's hello queue.
@@ -317,9 +323,16 @@ appId: com.mattmoore.samewhere
     timeout: 2000
 - takeScreenshot: 73-business-account
 
-- tapOn:
-    text: 'My business'
-    optional: true
+# Relaunch rather than walking back, which signed-in-tour.yml wrote down after
+# run 47: Maestro's `back` on iOS is an edge swipe, and these screens carry a
+# custom header that does not answer it. `tapOn: 'My business'` is no good
+# either - the account page PRINTS that phrase in its subtitle, so run 88
+# tapped a sentence, stayed put, and filed a duplicate of the screen above.
+- launchApp
+- extendedWaitUntil:
+    visible: 'My business'
+    timeout: 40000
+- tapOn: 'My business'
 - waitForAnimationToEnd:
-    timeout: 2000
-- takeScreenshot: 74-business-back-on-my-business
+    timeout: 3000
+- takeScreenshot: 74-business-my-business-again
