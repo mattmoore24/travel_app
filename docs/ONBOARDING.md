@@ -1,0 +1,201 @@
+# Onboarding, for a person and for a business
+
+The plan for rebuilding both signup flows so that every part of a profile is
+asked for once, in its own screen, with a sentence saying what it is for — and
+so that nobody finishes without having seen what they just made.
+
+Written 2026-08-29 from the founder's brief:
+
+> "The profile creation portion for a business also should be much better, the
+> user experience is confusing... There needs to be a detailed tutorial of all
+> the sections of the business profile that can be added and what each button
+> does, similar to how the individual user profile onboarding works. Both of
+> these need to be very thorough and detailed with a full audit to optimize the
+> user experience, with all formatting of the profile mirroring that of a hinge
+> profile as much as possible. The business and individual should be prompted
+> to add to each part of their profile during the onboarding, with detailed
+> descriptions of what they are adding at that moment, with a small 'skip for
+> now' button for only non-essential items. For example, a profile photo must
+> be mandatory for every profile... It should also give you a final look of how
+> your profile appears to other users at the end of onboarding, with the option
+> to go back and edit any portion before completing the initial onboarding and
+> a caveat at each step that this can be changed later at any time."
+
+## 1. What is wrong today
+
+**A person** answers seven screens. Three of them are honest one-thing screens
+(name/age, home/languages, photo). One — "Anything else?" — carries occupation,
+bio AND socials under the heading "All optional", which is three different
+questions in one box with permission to ignore all of them. And three whole
+sections of the profile are never mentioned at all: **prompts**, **top
+priorities** and **trips**. Somebody finishes signup, lands on the map, and
+their profile is a photo and a sentence — while the app's own Travelers screen
+is built to show prompts and shared dates.
+
+Trips are the worst of these, because trips are what the matching runs on. A
+profile with no trip is invisible to the feature the app exists for.
+
+**A business** answers three screens — name and category, where, email — and is
+then dropped into a code screen. Everything that makes a listing worth looking
+at (photos, description, hours, links) exists in the schema and in
+`docs/BUSINESS_ACCOUNTS.md` §5, and none of it is ever asked for. The owner has
+to find `business-storefront` afterwards and discover the sections one at a
+time. That is the confusion the founder hit.
+
+**Neither** flow ever shows you the thing you just made.
+
+## 2. The rules this rebuild follows
+
+1. **One question per screen**, with a title that asks it and a sentence under
+   it saying what it is for and where it shows up.
+2. **Mandatory is rare and stated.** A step with no skip has no skip button and
+   its Continue explains what is missing. Everything else carries a small
+   `Skip for now` ghost under Continue.
+3. **A photo is mandatory on every profile**, person or business. Founder's
+   call. For a business the first photo is the cover.
+4. **Every step says it can be changed later**, in the same words, in the same
+   place. A setting that feels permanent is one people get wrong and live with.
+5. **The last step is the profile itself**, rendered by the same component a
+   stranger gets, with a way back into any step before finishing.
+6. **Nothing is lost by leaving.** Every step saves on the way past it, which
+   is already true for a person and must become true for a business.
+7. **Hinge's shape, not Hinge's words.** Photo first with the name over it,
+   details beneath, prompts as cards. The vocabulary rules in
+   `.claude/skills/design-review` still win: no swipe, no deck, no match, no
+   hearts, no em dashes.
+
+## 3. A person: thirteen steps
+
+Two live in the auth stack and eleven in onboarding, continuous on one progress
+bar, exactly as the two stacks already share `SIGNUP_TOTAL_STEPS`.
+
+| #   | Screen               | Asks                           | Skippable          | Why it exists, in the subtitle                                                                            |
+| --- | -------------------- | ------------------------------ | ------------------ | --------------------------------------------------------------------------------------------------------- |
+| 1   | Email                | email                          | no                 | "Your email is never shown to other users."                                                               |
+| 2   | Password             | password                       | no                 | —                                                                                                         |
+| 3   | Who are you          | name, age, gender              | no                 | "The name people see, and your age. Your birthday stays yours."                                           |
+| 4   | Where you are from   | home city, country, languages  | no                 | "Home base, not where you happen to be today."                                                            |
+| 5   | Your photo           | photo at position 0, then more | **no**             | "One face, so people know who they are meeting. Add more if you like."                                    |
+| 6   | What you do          | occupation                     | yes                | "Two words is plenty. It gives people something to ask about."                                            |
+| 7   | About you            | bio                            | yes                | "What should somebody message you about?"                                                                 |
+| 8   | Prompts              | up to 3 answered prompts       | yes                | "The bit people actually read. Answer one and you are ahead of most."                                     |
+| 9   | What you are after   | top priorities                 | yes                | "What you are hoping to do, so the right people say hi."                                                  |
+| 10  | Your trips           | one trip                       | yes                | "Dates in a city. This is the whole matching engine, so one trip is worth more than everything above it." |
+| 11  | Socials              | handles                        | yes                | "Nobody sees these until you are both in a chat."                                                         |
+| 12  | Who sees you         | audience                       | no (has a default) | the existing `AUDIENCE_BOTH_WAYS` copy                                                                    |
+| 13  | Here is your profile | review                         | —                  | "This is exactly what a stranger sees."                                                                   |
+
+Step 10 is the one that earns the extra length: the app's core loop cannot run
+for a profile with no trip, and today nothing asks.
+
+Step 5 moves photos from last to fifth, which is Hinge's order and the right
+one: a face makes the rest of the questions feel worth answering, and a person
+who quits after step 5 still has a profile somebody could act on.
+
+Step 13 renders `ProfileView` in owner mode with every section's edit
+affordance wired to jump back to the step that owns it, then `Looks right,
+finish`. That is the only place `onboarding_completed_at` is stamped.
+
+## 4. A business: twelve steps
+
+| #   | Screen               | Asks                                     | Skippable      | Note                                                       |
+| --- | -------------------- | ---------------------------------------- | -------------- | ---------------------------------------------------------- |
+| 1   | Email                | sign-in email                            | no             | founder's copy: just for signing in                        |
+| 2   | Password             | password                                 | no             | —                                                          |
+| 3   | Name and kind        | name, category                           | no             | —                                                          |
+| 4   | Where is it          | city, **address**, pin                   | no             | address first, pin adjustable — §5 below                   |
+| 5   | Is this right        | confirm address + pin                    | no             | the row is created here (`register_business`)              |
+| 6   | How to reach you     | business email, phone, WhatsApp, website | email required | the code goes to the business email                        |
+| 7   | Photos               | cover + more                             | **no**         | "Photos of the business, not of a person."                 |
+| 8   | What it is           | description                              | yes            | "A couple of lines a traveler would want to read."         |
+| 9   | Hours                | weekly hours + note                      | yes            | "Past midnight is fine. 20:00 to 2:00 reads as one night." |
+| 10  | Links                | menu, booking, socials                   | yes            | one list for links, socials and contact                    |
+| 11  | Here is your listing | review                                   | —              | as a traveler sees it                                      |
+| 12  | The code             | six digits                               | no             | this is what turns the lights on                           |
+
+The business row is created at step 5 rather than at the end. It is
+`unconfirmed` until step 12, and `unconfirmed` is fully dark — no marker, no
+chat, no messages — so building the page while it waits is exactly what
+`docs/BUSINESS_ACCOUNTS.md` §3.9 already describes. That also makes steps 7
+through 10 ordinary edits of an existing row, which is how they will work
+forever afterwards from the storefront screen.
+
+## 5. Where is it: an address, then the pin
+
+Founder's ask, in their words:
+
+> "the business should be able to enter an address and confirm the pin
+> location, or have the option to drag and drop a pin without entering an
+> address. Address should be the default option, and the business will have the
+> option to confirm the address and pin location after completing the 'where is
+> it section'. The business should also be able to keep their address the same
+> as whatever they entered while adjusting the pin location if needed."
+
+Today step 2 is a city chip row and a map you tap. There is no address field at
+all, and `businesses.place_label` — the column that exists for exactly this — is
+never filled during signup.
+
+The rebuilt step:
+
+- **City chips**, unchanged. A marker belongs to the city it was placed in and
+  the server refuses one outside the radius.
+- **An address field, focused first**, with suggestions as you type. It shares
+  the machinery `pin-search-field` already uses for travelers: the native
+  `LocalSearch` module when the installed binary has it, geocoding as the
+  fallback. Picking a suggestion sets **both** the address text and the pin.
+- **A map under it** with the marker, draggable and tappable. Moving it sets the
+  coordinates and **never touches the address text**. That is the founder's
+  last sentence and it is the whole reason the two are separate pieces of state
+  rather than one derived from the other.
+- The address is **optional**. Somebody who would rather just place the marker
+  types nothing and drags. The field being first and focused is what makes the
+  address the default without making it a requirement.
+- **Step 5 confirms both**: the address as typed, the map with the marker, and
+  two ways back — `Fix the address` and `Move the marker`.
+
+## 6. Contact details, and what phone and WhatsApp can honestly do
+
+Founder's ask:
+
+> "Businesses should also be able to add additional contact information such as
+> a WhatsApp or phone number to verify their identity, in addition to or as in
+> alternative to an email."
+
+Two halves, and only one of them is shippable today.
+
+**Shippable now.** Phone and WhatsApp become first-class contact details on a
+business: collected at step 6, shown to travelers, editable forever, validated
+the way every other outbound value already is. `business_links` already has
+`phone` and `whatsapp` in its `kind` enum with a validator trigger, so this is
+a step that writes rows into a table that was built for it, not a new column.
+
+**Not shippable without a decision from the founder.** Sending a _code_ to a
+phone or a WhatsApp number needs an SMS or WhatsApp Business provider — Twilio
+or similar — which is a paid account, a new secret and a new Edge Function.
+Nothing in this project can send a text message today. So the confirmation code
+stays on email until that is wired, and the app must not imply otherwise.
+
+**And the email path has a live defect.** The founder's `@wustl.edu` address
+never received a code while their Gmail did. That is the shape of Resend's
+sandbox rule: with no verified sending domain, `onboarding@resend.dev` may only
+deliver to the Resend account's own address. This project has been bitten by it
+once already (`support-mailer`'s backoff comment records it). Two things follow:
+
+1. **Founder action:** verify a domain in Resend and set `SUPPORT_FROM` to an
+   address on it. Until that is done, no business but the founder's own can
+   ever receive a code.
+2. **Ours:** the app must stop claiming a delivery it cannot confirm.
+   `outbound_mail` already records `delivery_error`, so a narrow caller-scoped
+   RPC can tell the code screen "that address bounced" instead of leaving
+   somebody staring at "Check your email".
+
+## 7. What this does not change
+
+- The §7 hard rules, all of them.
+- `onboarding_completed_at` staying NULL forever for a business account, which
+  is what `owesOnboarding` and `register_business` both key on.
+- The audience step's constraint: `set_visibility` refuses a narrowed audience
+  without a verified badge, so the four narrowed rows stay inert during signup
+  with the reason said out loud.
+- `StepShell` as the shared chrome. Thirteen steps is a lot of screens and
+  exactly zero new layout components.
