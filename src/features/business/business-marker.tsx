@@ -29,6 +29,8 @@ import type { BusinessCategory, CityBusinessRow } from '@/lib/database.types';
 const CHIP = 26;
 const GLYPH = 13;
 const RING = 1.5;
+/** How much wider the owner's halo is than the chip inside it. */
+const OWN_RING = 10;
 
 /**
  * Centred on both providers: a chip has no tail, so the marker IS the point.
@@ -46,6 +48,7 @@ export function PlaceGlyph({
   live = false,
   size = CHIP,
   onSurface = false,
+  own = false,
 }: {
   category: BusinessCategory;
   /** Something posted. It brightens the RING, and nothing else. */
@@ -57,10 +60,17 @@ export function PlaceGlyph({
    * would be a ring around nothing.
    */
   onSurface?: boolean;
+  /**
+   * The viewer's own listing. An owner opening the map could not tell their
+   * business from the four rivals on the same street: every chip was drawn
+   * identically, so the one marker they came to see was the one they had to
+   * hunt for.
+   */
+  own?: boolean;
 }) {
   const theme = useTheme();
 
-  return (
+  const chip = (
     <View
       style={[
         styles.chip,
@@ -101,19 +111,50 @@ export function PlaceGlyph({
       />
     </View>
   );
+
+  if (!own) {
+    return chip;
+  }
+  // A second ring, concentric, in the brand blue. A SHAPE around the chip
+  // rather than a different colour of chip: hue alone is what the live dot
+  // exists to avoid repeating, and the halo is still legible when the ring
+  // underneath it has gone warm because there is something on tonight. It
+  // sits inside the marker's own 9pt padding, so nothing moves off its
+  // coordinate.
+  return (
+    <View
+      style={[
+        styles.ownRing,
+        {
+          width: size + OWN_RING,
+          height: size + OWN_RING,
+          borderRadius: (size + OWN_RING) / 2,
+          borderColor: theme.accent,
+        },
+      ]}>
+      {chip}
+    </View>
+  );
 }
 
 export function BusinessMarker({
   business,
+  own = false,
   onPress,
 }: {
   business: CityBusinessRow;
+  /** This is the viewer's own listing. See PlaceGlyph's `own`. */
+  own?: boolean;
   onPress: () => void;
 }) {
   // The rasterization window every marker on this map holds: track briefly so
   // the glyph and the entrance land in the bitmap, then freeze so a pan is
   // not a re-render per frame.
-  const tracking = useMarkerTracking(`${business.id}:${business.has_live_post}`);
+  //
+  // `own` is in the key because the account-kind query settles AFTER the
+  // first paint: without it the owner's chip freezes as a bitmap drawn
+  // before anyone knew whose it was, and the halo never appears.
+  const tracking = useMarkerTracking(`${business.id}:${business.has_live_post}:${own}`);
 
   return (
     <Marker
@@ -137,7 +178,7 @@ export function BusinessMarker({
       // "something on" rather than "tonight", because the flag says a post
       // exists, not when it happens.
       accessibilityLabel={[
-        business.name,
+        own ? `Your business, ${business.name}` : business.name,
         CATEGORY_LABEL[business.category],
         business.has_live_post ? 'something on' : null,
       ]
@@ -154,7 +195,7 @@ export function BusinessMarker({
         // a traveler's pin drops in.
         entering={FadeIn.duration(Motion.standard)}
         style={styles.wrap}>
-        <PlaceGlyph category={business.category} live={business.has_live_post} />
+        <PlaceGlyph category={business.category} live={business.has_live_post} own={own} />
       </Animated.View>
     </Marker>
   );
@@ -185,5 +226,10 @@ const styles = StyleSheet.create({
     borderWidth: RING,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  ownRing: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
   },
 });

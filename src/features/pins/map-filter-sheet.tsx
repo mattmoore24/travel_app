@@ -7,6 +7,7 @@ import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet } from '@/components/ui/sheet';
 import { Radius, Space } from '@/constants/theme';
+import { useIsBusiness } from '@/features/business/hooks';
 import {
   DEFAULT_FILTERS,
   activeFilterCount,
@@ -19,6 +20,57 @@ import {
 import { PIN_CATEGORIES } from '@/features/pins/pin-helpers';
 import { addDays } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
+
+/**
+ * The families of marker, as each kind of account is asked about them.
+ *
+ * A traveler is choosing who to meet, so the wording is about people and
+ * their plans. A business is choosing what its own map shows, and its feed
+ * of traveler pins carries no names, ages or faces at all (see
+ * features/guest/hooks) — so the row says so rather than implying a
+ * directory that is not there.
+ */
+const TRAVELER_KINDS: [MarkerKind, string, string, SymbolViewProps['name']][] = [
+  [
+    'travelers',
+    'Travelers',
+    'Plans other people have pinned.',
+    { ios: 'figure.walk', android: 'hiking', web: 'hiking' },
+  ],
+  [
+    'businesses',
+    'Businesses',
+    'Bars, hostels and cafes with a page here.',
+    { ios: 'storefront.fill', android: 'storefront', web: 'storefront' },
+  ],
+  [
+    'picks',
+    'Samewhere picks',
+    'Spots we put on the map ourselves.',
+    { ios: 'star.fill', android: 'star', web: 'star' },
+  ],
+];
+
+const BUSINESS_KINDS: [MarkerKind, string, string, SymbolViewProps['name']][] = [
+  [
+    'travelers',
+    'Traveler plans',
+    'Where people are heading. No names, no faces.',
+    { ios: 'figure.walk', android: 'hiking', web: 'hiking' },
+  ],
+  [
+    'businesses',
+    'Businesses',
+    'Every business on the map, yours included.',
+    { ios: 'storefront.fill', android: 'storefront', web: 'storefront' },
+  ],
+  [
+    'picks',
+    'Samewhere picks',
+    'Spots we put on the map ourselves.',
+    { ios: 'star.fill', android: 'star', web: 'star' },
+  ],
+];
 
 /**
  * Everything the map can be narrowed by, in one place.
@@ -44,6 +96,13 @@ export function MapFilterSheet({
   onChange: (next: MapFilters) => void;
   onClose: () => void;
 }) {
+  // The other two groups are traveler-discovery controls. "When" answers
+  // "which day am I meeting somebody", and "Kind of plan" narrows other
+  // people's evenings by category — a business is doing neither, and the
+  // founder's words are that the map "as a business isn't used for that
+  // purpose". What is left is the one question an owner does have: what is
+  // drawn on my map.
+  const viewerIsBusiness = useIsBusiness();
   // The third day has no name of its own — "later" is vague and the date is
   // noise — so it says which weekday it is, the way the pin form already does.
   const laterLabel = new Intl.DateTimeFormat('en', { weekday: 'long' }).format(
@@ -81,87 +140,72 @@ export function MapFilterSheet({
         {/* No note. Four chips ending on a weekday two days out say the
             three-day horizon better than a sentence about it does, and the
             four groups only fit on a small phone without one. */}
-        <Group title="When">
-          <View style={styles.chips}>
-            {(
-              [
-                ['any', 'Any day'],
-                ['today', 'Today'],
-                ['tomorrow', 'Tomorrow'],
-                ['later', laterLabel],
-              ] as [DayFilter, string][]
-            ).map(([value, label]) => (
-              <Chip
-                key={value}
-                label={label}
-                selected={filters.day === value}
-                onPress={() => onChange({ ...filters, day: value })}
-              />
-            ))}
-          </View>
-        </Group>
+        {viewerIsBusiness ? null : (
+          <Group title="When">
+            <View style={styles.chips}>
+              {(
+                [
+                  ['any', 'Any day'],
+                  ['today', 'Today'],
+                  ['tomorrow', 'Tomorrow'],
+                  ['later', laterLabel],
+                ] as [DayFilter, string][]
+              ).map(([value, label]) => (
+                <Chip
+                  key={value}
+                  label={label}
+                  selected={filters.day === value}
+                  onPress={() => onChange({ ...filters, day: value })}
+                />
+              ))}
+            </View>
+          </Group>
+        )}
 
         {/* The one-stays rule is enforced rather than explained: unticking
             the last box simply does not take, which is how every filter list
             people already use behaves. */}
         <Group title="What to show">
-          {(
-            [
-              [
-                'travelers',
-                'Travelers',
-                'Plans other people have pinned.',
-                { ios: 'figure.walk', android: 'hiking', web: 'hiking' },
-              ],
-              [
-                'businesses',
-                'Businesses',
-                'Bars, hostels and cafes with a page here.',
-                { ios: 'storefront.fill', android: 'storefront', web: 'storefront' },
-              ],
-              [
-                'picks',
-                'Samewhere picks',
-                'Spots we put on the map ourselves.',
-                { ios: 'star.fill', android: 'star', web: 'star' },
-              ],
-            ] as [MarkerKind, string, string, SymbolViewProps['name']][]
-          ).map(([value, title, detail, glyph]) => (
-            <CheckRow
-              key={value}
-              title={title}
-              detail={detail}
-              glyph={glyph}
-              checked={filters.kinds.includes(value)}
-              onPress={() => onChange({ ...filters, kinds: toggle(filters.kinds, value, true) })}
-            />
-          ))}
+          {(viewerIsBusiness ? BUSINESS_KINDS : TRAVELER_KINDS).map(
+            ([value, title, detail, glyph]) => (
+              <CheckRow
+                key={value}
+                title={title}
+                detail={detail}
+                glyph={glyph}
+                checked={filters.kinds.includes(value)}
+                onPress={() => onChange({ ...filters, kinds: toggle(filters.kinds, value, true) })}
+              />
+            )
+          )}
         </Group>
 
-        <Group
-          title="Kind of plan"
-          note={
-            filters.categories.length === 0
-              ? 'Nothing ticked means everything.'
-              : 'Only travelers’ plans. Businesses are filtered above.'
-          }>
-          <View style={styles.chips}>
-            {PIN_CATEGORIES.map((category) => (
-              <Chip
-                key={category.value}
-                testID={`filter-category-${category.value}`}
-                label={`${category.emoji}  ${category.label}`}
-                selected={filters.categories.includes(category.value)}
-                onPress={() =>
-                  onChange({
-                    ...filters,
-                    categories: toggle(filters.categories, category.value),
-                  })
-                }
-              />
-            ))}
-          </View>
-        </Group>
+        {viewerIsBusiness ? null : (
+          <Group
+            title="Kind of plan"
+            note={
+              filters.categories.length === 0
+                ? 'Nothing ticked means everything.'
+                : 'Only travelers’ plans. Businesses are filtered above.'
+            }>
+            <View style={styles.chips}>
+              {PIN_CATEGORIES.map((category) => (
+                <Chip
+                  key={category.value}
+                  testID={`filter-category-${category.value}`}
+                  label={`${category.emoji}  ${category.label}`}
+                  selected={filters.categories.includes(category.value)}
+                  onPress={() =>
+                    onChange({
+                      ...filters,
+                      categories: toggle(filters.categories, category.value),
+                    })
+                  }
+                />
+              ))}
+            </View>
+          </Group>
+        )}
       </ScrollView>
 
       {/* "Done", not "Apply". Nothing is waiting to be applied — the map has

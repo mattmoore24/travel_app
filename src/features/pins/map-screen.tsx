@@ -32,7 +32,7 @@ import {
 } from '@/constants/theme';
 import { useDeletePin, useJoinPinChat, useLaunchCities, usePinCrew } from '@/features/pins/hooks';
 import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker';
-import { useCityBusinesses, useOwnBusiness } from '@/features/business/hooks';
+import { useCityBusinesses, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
 import { PlaceSheet } from '@/features/business/place-sheet';
 import { useIsGuest, useIsSignedOut, useMapHeat, useMapPins } from '@/features/guest/hooks';
 import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
@@ -111,12 +111,19 @@ function PinCard({
   // every room this account is in.
   const joinPin = useJoinPinChat(cityId);
   const signedOut = useIsSignedOut();
+  // A business never joins a plan. The map is not that for them.
+  const viewerIsBusiness = useIsBusiness();
   const { data: chats = [] } = useMyChats();
   const openToJoin = pin.chat_id != null;
   const alreadyIn = openToJoin && chats.some((chat) => chat.chat_id === pin.chat_id);
   // pin_crew is granted to `authenticated` only — a guest account included,
   // a signed-out visitor not. Asking anyway would be a 403 per open pin.
-  const { data: crew = [] } = usePinCrew(pin.id, openToJoin && !signedOut);
+  //
+  // And never for a business. The faces on a plan are up to twenty travelers'
+  // photographs and first names, handed to a bar because it tapped a marker:
+  // a directory nobody offered and nobody consented to. Not asked for rather
+  // than fetched and hidden, so the names never reach the device.
+  const { data: crew = [] } = usePinCrew(pin.id, openToJoin && !signedOut && !viewerIsBusiness);
 
   // This card lives inside a Sheet, which is a Modal, so every push from here
   // has to leave the sheet first. See components/ui/sheet for why.
@@ -127,7 +134,14 @@ function PinCard({
   // actually a face to lead with - your own pin does not need your own
   // photograph, a curated pin has nobody, and a guest's feed is stripped of
   // photo_path server-side, so all three fall through to the old header.
-  const hero = !pin.seeded && !isOwn && photoUrl != null;
+  //
+  // A business is the fourth. Its feed is stripped the same way a guest's is
+  // (features/guest/hooks), so there is no face to lead with anyway - but the
+  // hero is also a BUTTON into /profile/[userId], a route the router does not
+  // mount for a business account, so the whole photograph was a tap that did
+  // nothing. Stated here rather than left to the empty feed: the affordance
+  // is what is wrong, not the pixels.
+  const hero = !pin.seeded && !isOwn && photoUrl != null && !viewerIsBusiness;
 
   return (
     <ThemedView style={styles.pinCard}>
@@ -241,7 +255,7 @@ function PinCard({
         <>
           {pin.seed_note ? <ThemedText type="body">{pin.seed_note}</ThemedText> : null}
           <ThemedText type="footnote" themeColor="textSecondary">
-            {SEEDED_LABEL}
+            {viewerIsBusiness ? BUSINESS_SEEDED_LABEL : SEEDED_LABEL}
           </ThemedText>
         </>
       ) : (
@@ -252,7 +266,12 @@ function PinCard({
               same card called you a stranger and then called the pin yours,
               a centimetre apart. You already know who you are, and your own
               profile is one tap away in the header. */}
-          {!isOwn && !hero ? (
+          {/* And never for a business. Same dead door as the hero: the row
+              pushes /profile/[userId], which is inside the traveler guard and
+              is therefore not in a business account's navigator at all, so
+              the chevron promised a page and the tap did nothing. A business
+              is not shown a traveler as a person to open. */}
+          {!isOwn && !hero && !viewerIsBusiness ? (
             <PressableScale
               accessibilityRole="button"
               accessibilityLabel={`${pin.display_name ?? 'this traveler'}'s profile`}
@@ -302,8 +321,14 @@ function PinCard({
 
           {/* Who is already going. Faces before the button, because "three
               people are in" is the thing that decides it, and the button is
-              only the consequence. */}
-          {openToJoin && crew.length > 0 ? (
+              only the consequence.
+
+              A business has no button for it to be the reason for, and the
+              rest of the app already answers what a business sees of a
+              traveler: not a row of faces and first names. `crew` is empty
+              for them anyway - the query above is not run - and this says
+              why. */}
+          {openToJoin && !viewerIsBusiness && crew.length > 0 ? (
             <CrewRow crew={crew} count={pin.crew} ownUserId={ownUserId} />
           ) : null}
 
@@ -355,7 +380,7 @@ function PinCard({
                 </ThemedText>
               </Pressable>
             </>
-          ) : openToJoin ? (
+          ) : openToJoin && !viewerIsBusiness ? (
             // The whole point of the feature: no hello to write, nobody to
             // wait on. Somebody already in it gets the door rather than the
             // doorbell.
@@ -392,6 +417,13 @@ function PinCard({
                   : `${pin.display_name ?? 'They'} opened this to anyone. You can leave any time.`}
               </ThemedText>
             </>
+          ) : viewerIsBusiness ? (
+            // Nothing to offer. A business reads the map to see the city it
+            // is in, not to meet the people on it, so the sheet stops at what
+            // the plan is and who opened it.
+            <ThemedText type="footnote" themeColor="textSecondary" style={styles.joinNote}>
+              Travelers say hi to each other here. Your page is where they say hi to you.
+            </ThemedText>
           ) : (
             <>
               <PrimaryButton
@@ -485,6 +517,8 @@ function CrewFace({ person, first }: { person: PinCrewRow; first: boolean }) {
 }
 
 const SEEDED_LABEL = 'One of our picks. Show up.';
+/** The same fact, without the invitation: nobody is asking a bar to show up. */
+const BUSINESS_SEEDED_LABEL = 'One of our picks in this city.';
 
 /**
  * How far the map centre can drift from a searched place before the pin
@@ -677,7 +711,11 @@ export default function MapScreen() {
   // A place is not a traveler and may not drop a 72-hour pin (§7 rule 8, six
   // BEFORE INSERT triggers). Without this the owner filled in the whole pin
   // form and was refused by a raw database alert at the end of it.
-  const isBusiness = useOwnBusiness().data != null;
+  const ownBusiness = useOwnBusiness().data ?? null;
+  const isBusiness = ownBusiness != null;
+  // Which chip on this map is theirs. Every listing was drawn identically,
+  // so an owner looking for their own business on their own map had to guess.
+  const ownBusinessId = ownBusiness?.id ?? null;
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   // Every other gate in the app states its reason before it asks. Dropping a
   // pin was the one that did not: it teleported a guest to an email form with
@@ -699,6 +737,12 @@ export default function MapScreen() {
   // on a map showing none — the app contradicting itself, which is the whole
   // reason the legend exists.
   const placesLegend = usePlacesLegend(!cityScale && places.length > 0 && !legend.visible);
+  // Whether the owner's own chip is actually drawn, which is not the same as
+  // being a business: a listing waiting on its email code is not in
+  // city_businesses yet. The legend below teaches the ring, and a sentence
+  // about a ring that is not on the map is the same contradiction the legend
+  // exists to avoid.
+  const ownChipOnMap = ownBusinessId != null && places.some((p) => p.id === ownBusinessId);
 
   // The drop-a-pin flow lives on this map, not a separate screen: browse →
   // place (map pans under a fixed pin) → detail (form sheet over the map).
@@ -959,6 +1003,7 @@ export default function MapScreen() {
                 <BusinessMarker
                   key={place.id}
                   business={place}
+                  own={place.id === ownBusinessId}
                   onPress={() => {
                     if (place.id === selectedPlaceId) {
                       return;
@@ -1153,8 +1198,14 @@ export default function MapScreen() {
               />
 
               {/* Renders nothing while the audience is open, so the common
-                  case is one chip and the avatar. */}
-              <AudienceChip audience={audience} />
+                  case is one chip and the avatar.
+
+                  Never for a business. It is a shortcut to /visibility, which
+                  is a traveler-discovery setting the database now refuses a
+                  business outright (set_visibility, 20260829190000) and which
+                  the router does not mount for them - so the one thing the
+                  chip does would have been a tap that goes nowhere. */}
+              {isBusiness ? null : <AudienceChip audience={audience} />}
             </ScrollView>
             <View style={styles.avatarDock}>
               <AvatarButton />
@@ -1265,6 +1316,40 @@ export default function MapScreen() {
             </ThemedText>
           </GlassSurface>
         </Pressable>
+      ) : null}
+
+      {/* The same fact for an owner, with the invitation taken out. A business
+          cannot drop a pin, so the traveler card above is hidden from them -
+          and hiding it left an empty city with nothing at all on it, which
+          reads as a map that failed to load rather than as a quiet Tuesday.
+          Not pressable, because there is nothing here for them to do. */}
+      {activeCity &&
+      mode === 'browse' &&
+      isBusiness &&
+      pinsLoaded &&
+      pins.length === 0 &&
+      !selectedPin ? (
+        <View
+          // The same height as the traveler card, dock or no dock: the two
+          // legends above it are positioned against that number.
+          style={[
+            styles.emptyBanner,
+            { bottom: BottomTabInset + insets.bottom + Spacing.five + 64 },
+          ]}
+          pointerEvents="none">
+          <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
+            <ThemedText type="smallBold">
+              {isDefault(filters)
+                ? `Nothing pinned in ${activeCity.cities.name} yet`
+                : 'Nothing matches your filters'}
+            </ThemedText>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              {isDefault(filters)
+                ? 'Plans travelers make here show up on this map.'
+                : 'Widen them to see what is on.'}
+            </ThemedText>
+          </GlassSurface>
+        </View>
       ) : null}
 
       {activeCity && mode === 'browse' && !isBusiness && !selectedPin ? (
@@ -1386,7 +1471,14 @@ export default function MapScreen() {
           pointerEvents="box-none">
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel="The small chips are businesses. Tap one to see what's on."
+            // An owner already knows what the chips are; what they cannot see
+            // is which one is theirs, so the one sentence they get teaches the
+            // ring instead.
+            accessibilityLabel={
+              ownChipOnMap
+                ? 'The ringed chip is your business.'
+                : "The small chips are businesses. Tap one to see what's on."
+            }
             accessibilityHint="Dismisses this"
             scaleTo={0.96}
             haptic="light"
@@ -1396,8 +1488,12 @@ export default function MapScreen() {
                 styles.legendChip,
                 { backgroundColor: theme.surface, borderColor: theme.hairline },
               ]}>
-              <PlaceGlyph category="bar" live={false} size={18} onSurface />
-              <ThemedText type="footnote">Tap a business to see what&apos;s on</ThemedText>
+              <PlaceGlyph category="bar" live={false} size={18} onSurface own={ownChipOnMap} />
+              <ThemedText type="footnote">
+                {ownChipOnMap
+                  ? 'The ringed chip is your business'
+                  : "Tap a business to see what's on"}
+              </ThemedText>
               <SymbolView
                 name={{ ios: 'xmark', android: 'close', web: 'close' }}
                 size={11}

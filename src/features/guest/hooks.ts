@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { useAuthStore } from '@/features/auth/store';
+import { useIsBusiness } from '@/features/business/hooks';
 import type {
   CityPinRow,
   FeaturedTravelerRow,
@@ -44,16 +45,30 @@ export function useIsGuestAccount() {
 }
 
 /**
- * Pins for the map. Signed-in callers get the identity-carrying feed; guests
- * get the same pins with no names, ages or photos attached — the server
- * enforces that, this just picks the door.
+ * Pins for the map. Travelers get the identity-carrying feed; guests and
+ * businesses get the same pins with no names, ages or photos attached — the
+ * server enforces that, this just picks the door.
+ *
+ * A business reads this map to see the city it is in, not the people on it.
+ * `city_pins` carries a name, an age, a face and a verified badge per pin, so
+ * a bar owner opening the Map tab was handed a traveler directory nobody
+ * offered to them and nobody consented to (§7 rule 8: a business never reads
+ * a traveler discovery surface). Same door as a guest, for the same reason:
+ * the rows have no identities in them at all.
  */
 export function useMapPins(cityId: number | null) {
   const isGuest = useIsGuest();
+  const isBusiness = useIsBusiness();
+  const anonymous = isGuest || isBusiness;
   return useQuery({
-    queryKey: ['map-pins', cityId, isGuest],
+    // The DOOR, not the account kind, and a word rather than a boolean. Two
+    // kinds of account now share the anonymous feed, so `isGuest` in the key
+    // would have let a business's faceless rows be served to a traveler who
+    // signed in on the same device, and the traveler's named rows to the
+    // business.
+    queryKey: ['map-pins', cityId, anonymous ? 'anonymous' : 'identified'],
     queryFn: async () => {
-      const rpc = isGuest ? 'public_city_pins' : 'city_pins';
+      const rpc = anonymous ? 'public_city_pins' : 'city_pins';
       const { data, error } = await supabase.rpc(rpc, { p_city_id: cityId! });
       if (error) {
         throw error;
