@@ -48,9 +48,9 @@ type StepShellProps = {
 
 /**
  * One step of the signup sequence. Every step shares this chrome so the
- * six screens read as one moving thing rather than six forms: the progress
- * bar springs forward, the content slides in from the right as the previous
- * step leaves to the left, and the button never moves.
+ * thirteen screens read as one moving thing rather than thirteen forms: the
+ * progress bar springs forward, the content slides in from the right as the
+ * previous step leaves to the left, and the button never moves.
  */
 export function StepShell({
   step,
@@ -108,11 +108,13 @@ export function StepShell({
         </View>
 
         {/* KeyboardFloor, not KeyboardAvoidingView. The avoider measures its
-            own frame against its PARENT, which is right for the four
-            full-screen signup steps and wrong for `business-signup`, the one
-            consumer presented as a modal: the card is inset from the window,
-            so the avoider under-shoots by the inset and the autofocused
-            field on steps 1 and 3 sits under the keyboard. Same swap
+            own frame against its PARENT, so a consumer presented as a modal
+            card, inset from the window, gets an under-shoot by exactly that
+            inset and its autofocused field ends up under the keyboard. Every
+            consumer is full-screen today — business-signup stopped being a
+            modal when that presentation crashed the app on the confirmation
+            code — but the floor measures against the window either way, so
+            this stays right whichever way a step is presented. Same swap
             step-screen.tsx already made, for the same reason. */}
         <KeyboardFloor>
           <ScrollView

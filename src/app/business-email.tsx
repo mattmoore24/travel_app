@@ -161,9 +161,10 @@ export default function BusinessEmailScreen() {
       continueDisabled={code.length !== CODE_LENGTH}
       continueLoading={confirm.isPending}
       note={code.length === CODE_LENGTH ? null : 'Six digits, from the email.'}
-      // Somewhere to go. Without this the modal's only exit is a swipe down,
-      // which nothing on the screen mentions, and this screen is reached by
-      // `replace` so there is no back chevron underneath it either.
+      // Somewhere to go. This screen is reached by `replace`, so there is no
+      // back chevron underneath it, and it is no longer a modal to swipe away
+      // either: without this the only way out of a code that never arrives is
+      // to kill the app.
       onClose={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
       onContinue={submit}
       footer={
