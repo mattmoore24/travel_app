@@ -283,8 +283,22 @@ function RootNavigator() {
           The rest is guarded on being signed in, because register_business
           has already run by then. */}
       <Stack.Protected guard={signedIn}>
-        <Stack.Screen name="business-signup" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="business-email" options={{ presentation: 'modal' }} />
+        {/* NOT modals, and that is a crash fix rather than a taste call.
+            These two are the only screens in the app that can legitimately
+            end up as the ONLY route in the root stack: signup is reached by a
+            Redirect and the code screen by a replace, and registering the
+            business flips `needsProfile` false, which filters `onboarding`
+            out of the navigator underneath them. react-native-screens forces
+            the first screen of a stack to be a push controller whatever its
+            stackPresentation, so a modal that lands at index 0 has to be
+            reshuffled out of the presented set while it is on screen — the
+            state its own source calls "illegally reshuffle presented
+            controllers". Confirming the code then replaced that index-0 slot
+            with a group whose layout mounts native tabs in the same commit,
+            and the app died with the listing already live on the server. Both
+            are full-screen StepShell flows; neither was ever a sheet. */}
+        <Stack.Screen name="business-signup" />
+        <Stack.Screen name="business-email" />
         <Stack.Screen name="business-storefront" options={{ presentation: 'modal' }} />
         <Stack.Screen name="business-edit" options={{ presentation: 'modal' }} />
         <Stack.Screen name="business-post" options={{ presentation: 'modal' }} />

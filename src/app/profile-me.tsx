@@ -116,7 +116,14 @@ function BusinessAccount({ name }: { name: string | null }) {
         <ThemedText themeColor="textSecondary" style={styles.guestText}>
           Everything about it lives on the My business tab.
         </ThemedText>
-        <PrimaryButton label="Manage your business" onPress={() => router.replace('/(tabs)')} />
+        {/* Guarded like every other exit in the app. An unguarded replace on
+            a one-route stack is what killed the app on the business code
+            screen; this one is far less exposed, and it costs nothing to
+            stop being the second example of the same shape. */}
+        <PrimaryButton
+          label="Manage your business"
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+        />
         <PrimaryButton
           variant="ghost"
           label="House rules and help"

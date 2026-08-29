@@ -106,9 +106,17 @@ export default function BusinessEmailScreen() {
         setAlreadyUsed(true);
       }
       // No congratulations dialog. The button said what would happen and the
-      // next screen is it. An alert fired at the same moment this modal starts
-      // dismissing is also the presentation iOS quietly drops, and on Fabric a
-      // dropped presentation takes touch with it (skills/traps).
+      // next screen is it. An alert fired at the same moment this screen
+      // starts leaving is also the presentation iOS quietly drops, and on
+      // Fabric a dropped presentation takes touch with it (skills/traps).
+      //
+      // This line killed the app for the founder, with the listing already
+      // live on the server, and the fix is in app/_layout: this screen is no
+      // longer presented as a modal, because registering the business filters
+      // `onboarding` out of the navigator underneath it and leaves it as the
+      // only route in the stack — and a modal at index 0 is a state
+      // react-native-screens has to reshuffle out of, mid-replace, into a
+      // group that mounts native tabs in the same commit.
       router.replace('/(tabs)');
     } catch {
       // The global mutation alert carries the database's own words ("that code
@@ -172,7 +180,14 @@ export default function BusinessEmailScreen() {
               placeholder="hello@yourbusiness.com"
               value={draft}
               onChangeText={setDraft}
-              onSubmitEditing={() => sendAgain(draft)}
+              // Gated the way the button beside it is. Two quick returns fired
+              // two sends and burned two of the five a business gets in a
+              // day, and the second one unmounted a still-focused field.
+              onSubmitEditing={() => {
+                if (!resend.isPending) {
+                  sendAgain(draft);
+                }
+              }}
               returnKeyType="send"
             />
             <PrimaryButton
