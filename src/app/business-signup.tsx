@@ -18,6 +18,7 @@ import {
   useOwnBusiness,
   useRegisterBusiness,
   useRequestBusinessEmailCode,
+  useUpdateBusinessLocation,
 } from '@/features/business/hooks';
 import { CATEGORY_ICON, CATEGORY_LABEL, CATEGORY_ORDER } from '@/features/business/vocabulary';
 import { countOf } from '@/lib/plural';
@@ -102,6 +103,7 @@ export default function BusinessSignupScreen() {
   const launchCitiesQuery = useLaunchCities();
   const launchCities = launchCitiesQuery.data ?? [];
   const registerBusiness = useRegisterBusiness();
+  const moveBusiness = useUpdateBusinessLocation();
   const requestCode = useRequestBusinessEmailCode();
   // The row, once it exists. Registering happens at the confirm step rather
   // than at the end, because everything after it — photos, hours, links — is
@@ -158,7 +160,24 @@ export default function BusinessSignupScreen() {
     if (category == null || city == null || coords == null) {
       return;
     }
+    // Already registered, so this is a correction rather than a creation:
+    // somebody walked back to "Where is it?" from a later step. lat, lng and
+    // city_id have no client UPDATE grant, so the move goes through the
+    // SECURITY DEFINER door, which re-runs the same city radius check.
     if (registered || business != null) {
+      try {
+        await moveBusiness.mutateAsync({
+          lat: coords.lat,
+          lng: coords.lng,
+          cityId: city.city_id,
+          address: address.trim() || null,
+          clearAddress: address.trim().length === 0,
+        });
+      } catch {
+        // Surfaced by the global mutation error alert; stay on the step so
+        // the marker can be dragged back inside the city.
+        return;
+      }
       go(6);
       return;
     }
@@ -297,7 +316,10 @@ export default function BusinessSignupScreen() {
           if (coords == null || city == null) {
             return;
           }
-          go(3);
+          // Forward to the confirm step. This said go(3) and sent an owner
+          // back to the name screen instead, which is a loop with no way out
+          // of the form: the founder's "Is this right?" was unreachable.
+          go(5);
         }}
         footer={
           launchCitiesQuery.isError ? (
@@ -387,7 +409,7 @@ export default function BusinessSignupScreen() {
         continueLabel="Yes, that's us"
         onBack={() => go(4)}
         continueTestID="business-confirm-place"
-        continueLoading={registerBusiness.isPending}
+        continueLoading={registerBusiness.isPending || moveBusiness.isPending}
         onContinue={register}>
         <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
           <ThemedText type="headline">{name.trim()}</ThemedText>

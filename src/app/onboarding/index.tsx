@@ -45,6 +45,7 @@ import { StepShell } from '@/features/signup/step-shell';
 import { SIGNUP_TOTAL_STEPS } from '@/features/signup/steps';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
+import { useTheme } from '@/hooks/use-theme';
 import type { Gender, ProfileRow } from '@/lib/database.types';
 
 /**
@@ -91,6 +92,7 @@ export default function OnboardingScreen() {
  * same fields are editable from the profile afterwards.
  */
 function ProfileSteps({ profile }: { profile: ProfileRow }) {
+  const theme = useTheme();
   const updateProfile = useUpdateOwnProfile();
   const { data: audience = 'everyone' } = useOwnVisibility();
   const setAudience = useSetVisibility();
@@ -384,7 +386,9 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         ) : (
           <>
             {prompts.map((prompt) => (
-              <View key={prompt.slot} style={styles.card}>
+              <View
+                key={prompt.slot}
+                style={[styles.card, { backgroundColor: theme.surfaceSunken }]}>
                 <ThemedText type="caption" themeColor="textSecondary">
                   {promptLabelInline(prompt.prompt_key).toUpperCase()}
                 </ThemedText>
@@ -427,7 +431,9 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         ) : (
           <>
             {priorities.map((priority) => (
-              <View key={priority.slot} style={styles.card}>
+              <View
+                key={priority.slot}
+                style={[styles.card, { backgroundColor: theme.surfaceSunken }]}>
                 <ThemedText>{priority.text}</ThemedText>
               </View>
             ))}
@@ -478,7 +484,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         ) : (
           <>
             {trips.map((trip) => (
-              <View key={trip.id} style={styles.card}>
+              <View key={trip.id} style={[styles.card, { backgroundColor: theme.surfaceSunken }]}>
                 <ThemedText type="callout">
                   {trip.cities.name}, {trip.cities.country_name}
                 </ThemedText>
@@ -619,8 +625,6 @@ const styles = StyleSheet.create({
     padding: Space.md,
     borderRadius: Radius.md,
     borderCurve: 'continuous',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'transparent',
   },
   review: {
     // The profile draws its own full-bleed hero, so it cancels the shell's

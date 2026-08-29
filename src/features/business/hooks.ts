@@ -19,6 +19,7 @@ import {
   reportBusiness,
   requestBusinessEmailCode,
   submitStorefrontPhotos,
+  updateBusinessLocation,
   updateOwnBusiness,
 } from '@/features/business/api';
 import type { BusinessCategory, ChatKind } from '@/lib/database.types';
@@ -54,6 +55,27 @@ export function useRegisterBusiness() {
       // with it. Anything less than a refetch leaves a fresh business sitting
       // in the traveler tabs.
       queryClient.invalidateQueries({ queryKey: ['my-business', userId] });
+    },
+  });
+}
+
+/**
+ * Move the marker, the city, or the address of a listing that already exists.
+ *
+ * Signup registers the row at the confirm step, so anybody who then walks
+ * back to "Where is it?" is editing rather than creating, and the create call
+ * is a no-op for them. Without this their correction would be accepted by the
+ * screen and quietly dropped.
+ */
+export function useUpdateBusinessLocation() {
+  const userId = useAuthStore((s) => s.session?.user.id ?? null);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updateBusinessLocation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-business', userId] });
+      queryClient.invalidateQueries({ queryKey: ['business-detail'] });
+      queryClient.invalidateQueries({ queryKey: ['city-businesses'] });
     },
   });
 }

@@ -62,6 +62,36 @@ export async function registerBusiness(input: {
 }
 
 /**
+ * Move a listing that already exists.
+ *
+ * `lat`, `lng` and `city_id` are deliberately withheld from the client's
+ * UPDATE grant — a business that could move its own marker could verify a
+ * surf shack and then become the Marriott — so this SECURITY DEFINER function
+ * is the only door, and it re-runs the city radius check on the way through.
+ *
+ * `clearAddress` exists because null means two different things through an
+ * optional parameter: "leave the address alone" and "the owner deleted it".
+ */
+export async function updateBusinessLocation(input: {
+  lat: number;
+  lng: number;
+  cityId?: number | null;
+  address?: string | null;
+  clearAddress?: boolean;
+}) {
+  const { error } = await supabase.rpc('update_business_location', {
+    p_lat: input.lat,
+    p_lng: input.lng,
+    p_city_id: input.cityId ?? null,
+    p_address: input.address ?? null,
+    p_clear_address: input.clearAddress ?? false,
+  });
+  if (error) {
+    throw error;
+  }
+}
+
+/**
  * Edit the parts of a listing a business owns.
  *
  * Filtered by `id`, never by `owner_user_id`: the column has no client grant,
