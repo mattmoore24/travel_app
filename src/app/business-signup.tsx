@@ -12,7 +12,7 @@ import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Radius, Space } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store';
-import { addBusinessLink } from '@/features/business/api';
+import { replaceBusinessContacts, type ContactKind } from '@/features/business/api';
 import { BusinessAddressField, addressFrom } from '@/features/business/address-field';
 import {
   useBusinessDetail,
@@ -86,6 +86,10 @@ const EMAIL_PROMISE = "Almost there. We'll email you a code. Type it in and you'
  */
 const CHANGE_LATER = 'You can change this any time, from your business page.';
 
+/** What a refused contact is called, in the words on its own field. */
+const CONTACT_LABEL = (kind: ContactKind): string =>
+  kind === 'email' ? 'email' : kind === 'phone' ? 'phone number' : 'WhatsApp number';
+
 function nameProblem(value: string): string | null {
   const trimmed = value.trim();
   if (trimmed.length < NAME_MIN) {
@@ -118,7 +122,7 @@ export default function BusinessSignupScreen() {
   // afterwards from the storefront screen. An `unconfirmed` business is fully
   // dark until the code goes in, so building the page while it waits costs
   // nobody anything (docs/BUSINESS_ACCOUNTS.md §3.9).
-  const { data: business } = useOwnBusiness();
+  const { data: business, refetch: refetchBusiness } = useOwnBusiness();
   const { data: detail } = useBusinessDetail(business?.id ?? null);
 
   // Three, not one. Steps 1 and 2 (email, password) live on /join, and the
@@ -140,6 +144,10 @@ export default function BusinessSignupScreen() {
   // See BusinessAddressField's onFocusChange: with the keyboard up there is
   // one field's worth of room left, and the chips and the map were eating it.
   const [addressFocused, setAddressFocused] = useState(false);
+  // What the contact step refused, and anything that stopped it saving.
+  const [refused, setRefused] = useState<ContactKind[]>([]);
+  const [contactProblem, setContactProblem] = useState<string | null>(null);
+  const [savingContacts, setSavingContacts] = useState(false);
   const [registered, setRegistered] = useState(false);
 
   // Chosen, never assumed. This used to fall back to `launchCities[0]`, so
@@ -212,36 +220,62 @@ export default function BusinessSignupScreen() {
     }
   };
 
-  /** The contact rows, written once the row they hang off exists. */
+  /**
+   * The contact rows, set to exactly what is in the fields.
+   *
+   * Three things this had wrong, all of them invisible from a single pass:
+   * it appended rather than replaced, so a correction left two emails on the
+   * public page; it swallowed a refusal, so a number the validator would not
+   * take just disappeared; and it returned silently when the business query
+   * had not landed yet, so Continue did nothing at all with no spinner and no
+   * word of explanation.
+   */
   const saveContacts = async () => {
     setTouched(true);
+    setRefused([]);
     if (!emailOk) {
       return;
     }
-    const businessId = business?.id;
+    // Registering invalidates this query and the refetch is not instant, so
+    // arriving here in the same breath as step 5 can find it empty. Wait for
+    // it rather than doing nothing: the button shows its spinner meanwhile.
+    let businessId = business?.id ?? null;
     if (businessId == null) {
+      setSavingContacts(true);
+      try {
+        const fresh = await refetchBusiness();
+        businessId = fresh.data?.id ?? null;
+      } catch {
+        businessId = null;
+      }
+    }
+    if (businessId == null) {
+      setSavingContacts(false);
+      setContactProblem('We could not reach your listing just then. Try that again.');
       return;
     }
-    const contacts: { kind: 'email' | 'phone' | 'whatsapp'; label: string; value: string }[] = [
-      { kind: 'email', label: 'Email', value: email.trim() },
-      { kind: 'phone', label: 'Phone', value: phone.trim() },
-      { kind: 'whatsapp', label: 'WhatsApp', value: whatsapp.trim() },
-    ];
-    let position = 0;
-    for (const contact of contacts) {
-      if (contact.value.length === 0) {
-        continue;
+    setSavingContacts(true);
+    setContactProblem(null);
+    try {
+      const rejected = await replaceBusinessContacts({
+        businessId,
+        email,
+        phone,
+        whatsapp,
+      });
+      if (rejected.length > 0) {
+        // Named rather than dropped. Still not fatal — everything here is
+        // editable from the business page — but somebody who typed a number
+        // deserves to know it did not take.
+        setRefused(rejected);
+        return;
       }
-      try {
-        await addBusinessLink({ businessId, ...contact, position });
-        position += 1;
-      } catch {
-        // Off the critical path deliberately: a number the validator refuses
-        // must not cost somebody the listing they have already registered,
-        // and every one of these is editable from the business page.
-      }
+      go(7);
+    } catch {
+      setContactProblem('We could not save those just then. Try that again.');
+    } finally {
+      setSavingContacts(false);
     }
-    go(7);
   };
 
   /** The last thing this form does. The code screen takes it from here. */
@@ -477,6 +511,13 @@ export default function BusinessSignupScreen() {
         title="How do people reach you?"
         subtitle="The email is the one we need. The rest is up to you."
         continueTestID="business-contact-continue"
+        continueLoading={savingContacts}
+        note={
+          contactProblem ??
+          (refused.length > 0
+            ? `We could not save your ${refused.map(CONTACT_LABEL).join(' or ')}. Check the format, or clear it and carry on.`
+            : null)
+        }
         onBack={() => go(5)}
         onContinue={saveContacts}>
         <FormTextField

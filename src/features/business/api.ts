@@ -164,6 +164,62 @@ export async function addBusinessLink(input: {
   }
 }
 
+/** The three ways to reach a business that signup collects. */
+export const CONTACT_KINDS = ['email', 'phone', 'whatsapp'] as const;
+export type ContactKind = (typeof CONTACT_KINDS)[number];
+
+/**
+ * Set a business's contact rows to exactly what was typed.
+ *
+ * REPLACE, not append. `addBusinessLink` is a blind insert, and signup's
+ * contact step is reachable more than once — step 7's Back leads to it, and
+ * so does "Use a different address" from the code screen. Appending meant an
+ * ordinary correction left two emails and two phone numbers on the public
+ * page, with the traveler-facing address no longer matching the one the
+ * confirmation code went to.
+ *
+ * Returns the kinds the database refused rather than throwing. A phone number
+ * the validator will not take must not cost somebody the listing they have
+ * already registered, which is why this never threw — but silence was the
+ * wrong other half: the number simply vanished. The caller names them.
+ */
+export async function replaceBusinessContacts(input: {
+  businessId: string;
+  email: string;
+  phone: string;
+  whatsapp: string;
+}): Promise<ContactKind[]> {
+  const { error: clearError } = await supabase
+    .from('business_links')
+    .delete()
+    .eq('business_id', input.businessId)
+    .in('kind', [...CONTACT_KINDS]);
+  if (clearError) {
+    throw clearError;
+  }
+
+  const rows: { kind: ContactKind; label: string; value: string }[] = [
+    { kind: 'email', label: 'Email', value: input.email.trim() },
+    { kind: 'phone', label: 'Phone', value: input.phone.trim() },
+    { kind: 'whatsapp', label: 'WhatsApp', value: input.whatsapp.trim() },
+  ];
+
+  const refused: ContactKind[] = [];
+  let position = 0;
+  for (const row of rows) {
+    if (row.value.length === 0) {
+      continue;
+    }
+    try {
+      await addBusinessLink({ businessId: input.businessId, ...row, position });
+      position += 1;
+    } catch {
+      refused.push(row.kind);
+    }
+  }
+  return refused;
+}
+
 export async function requestBusinessEmailCode(email: string) {
   const { error } = await supabase.rpc('request_business_email_confirmation', { p_email: email });
   if (error) {

@@ -549,9 +549,18 @@ function BusinessPhotos({ businessId, userId }: { businessId: string; userId: st
     }
   };
 
+  // The cover is the LOWEST surviving position, not position 0.
+  //
+  // Every reader takes `order by position limit 1` — the map's cover, the
+  // place sheet, the chat list. This screen compared against 0, so once the
+  // first photo was removed no tile said Cover even though the map had
+  // already promoted the next one, and the confirm on removing the real cover
+  // called it "this photo".
+  const coverId = photos.length > 0 ? photos[0].id : null;
+
   const confirmRemove = (photo: PhotoRow) => {
     Alert.alert(
-      photo.position === 0 ? 'Remove your cover photo?' : 'Remove this photo?',
+      photo.id === coverId ? 'Remove your cover photo?' : 'Remove this photo?',
       undefined,
       [
         { text: 'Keep it', style: 'cancel' },
@@ -574,7 +583,7 @@ function BusinessPhotos({ businessId, userId }: { businessId: string; userId: st
               key={photo.id}
               photo={photo}
               size={size}
-              cover={photo.position === 0}
+              cover={photo.id === coverId}
               onRemove={() => confirmRemove(photo)}
             />
           ))}
