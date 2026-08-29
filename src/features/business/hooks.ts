@@ -45,6 +45,23 @@ export function useOwnBusiness() {
   });
 }
 
+/**
+ * Whether this account runs a business.
+ *
+ * One name for the question every surface was asking as
+ * `useOwnBusiness().data != null`. The founder's rule is absolute — "under no
+ * circumstances should a business account ever have the option to join a chat
+ * of any other business or other pin of any kind" — and a rule that absolute
+ * should read the same everywhere it is enforced.
+ *
+ * The database says no too (assert_not_business, 20260829190000). This is the
+ * half that means nobody is ever offered the button: a refusal somebody could
+ * not have predicted is worse than no button at all.
+ */
+export function useIsBusiness() {
+  return useOwnBusiness().data != null;
+}
+
 export function useRegisterBusiness() {
   const userId = useAuthStore((s) => s.session?.user.id ?? null);
   const queryClient = useQueryClient();

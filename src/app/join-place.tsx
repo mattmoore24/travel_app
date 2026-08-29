@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { StyleSheet } from 'react-native';
@@ -8,7 +8,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { HitTarget, Radius, Space } from '@/constants/theme';
-import { useBusinessDetail } from '@/features/business/hooks';
+import { useBusinessDetail, useIsBusiness } from '@/features/business/hooks';
 import { useJoinRoom } from '@/features/rooms/hooks';
 import { formatDate } from '@/features/trips/dates';
 import { TripCalendar } from '@/features/trips/trip-calendar';
@@ -46,6 +46,12 @@ export default function JoinPlaceScreen() {
   const answered = notSure || departure != null;
 
   const join = useJoinRoom(chatId ?? '');
+  // A business is never asked when it is leaving, because a business never
+  // joins a room. The founder's words: "it also doesn't make sense for the
+  // business account to ever have to set a date for when it is leaving."
+  // Reached only by a stale deep link now, so it turns round rather than
+  // asking a question that cannot apply.
+  const viewerIsBusiness = useIsBusiness();
 
   const submit = async () => {
     if (!chatId || !answered) {
@@ -61,6 +67,10 @@ export default function JoinPlaceScreen() {
       // Surfaced by the global mutation error alert; stay on the question.
     }
   };
+
+  if (viewerIsBusiness) {
+    return <Redirect href="/(tabs)" />;
+  }
 
   return (
     <StepScreen

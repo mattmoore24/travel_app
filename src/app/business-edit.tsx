@@ -26,10 +26,17 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
+import { BusinessAddressField, addressFrom } from '@/features/business/address-field';
 import { BUSINESS_PHOTO_BUCKET } from '@/features/business/api';
-import { useOwnBusiness, useUpdateOwnBusiness } from '@/features/business/hooks';
+import {
+  useOwnBusiness,
+  useUpdateBusinessLocation,
+  useUpdateOwnBusiness,
+} from '@/features/business/hooks';
 import { LINK_LABEL, shortTime, weekdayLabel } from '@/features/business/vocabulary';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
+import { useLaunchCities } from '@/features/pins/hooks';
+import { LocationPicker } from '@/features/pins/location-picker';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import type { BusinessLinkKind, Database, MyBusinessRow } from '@/lib/database.types';
@@ -48,7 +55,7 @@ type PhotoRow = Database['public']['Tables']['business_photos']['Row'];
  * compiled, shipped, and opened the editor at the top instead of at the
  * field the row named.
  */
-export type Section = 'details' | 'hours' | 'links' | 'photos';
+export type Section = 'details' | 'location' | 'hours' | 'links' | 'photos';
 
 const NAME_MIN = 2;
 const NAME_MAX = 80;
@@ -882,6 +889,19 @@ function BusinessEditForm({
   const [placeLabel, setPlaceLabel] = useState(business.place_label ?? '');
   const [hoursNote, setHoursNote] = useState(business.hours_note ?? '');
   const [website, setWebsite] = useState(business.website_url ?? '');
+  // The marker, which the update grant refuses and a function owns instead
+  // (update_business_location: a business that could move its own marker
+  // could verify a surf shack and then become the Marriott). The editor used
+  // to say so in a comment and leave the owner no way to do it at all, so a
+  // business that moved premises had a listing on the wrong door forever.
+  const [coords, setCoords] = useState({ lat: business.lat, lng: business.lng });
+  const [cityId, setCityId] = useState(business.city_id);
+  // Same reason as signup: with the keyboard up there is one field's worth of
+  // room left, and the suggestion list was landing in it.
+  const [addressFocused, setAddressFocused] = useState(false);
+  const moveBusiness = useUpdateBusinessLocation();
+  const { data: launchCities = [] } = useLaunchCities();
+  const city = launchCities.find((row) => row.city_id === cityId) ?? null;
 
   // A place with no hours yet still gets a line to fill in, so the block is
   // never an empty heading. No days picked means nothing is written.
@@ -903,6 +923,8 @@ function BusinessEditForm({
   });
 
   const nameChanged = name.trim() !== business.name;
+  const markerMoved =
+    coords.lat !== business.lat || coords.lng !== business.lng || cityId !== business.city_id;
   const hoursChanged = serializeRules(rules) !== serializeRules(rulesFromRows(hourRows));
   const detailsChanged =
     nameChanged ||
@@ -911,7 +933,7 @@ function BusinessEditForm({
     placeLabel.trim() !== (business.place_label ?? '') ||
     hoursNote.trim() !== (business.hours_note ?? '') ||
     website.trim() !== (business.website_url ?? '');
-  const dirty = detailsChanged || hoursChanged;
+  const dirty = detailsChanged || hoursChanged || markerMoved;
 
   const trimmedName = name.trim();
   const nameError =
@@ -953,16 +975,24 @@ function BusinessEditForm({
     if (!valid) {
       return;
     }
-    if (!nameChanged) {
+    if (!nameChanged && !markerMoved) {
       await commit();
       return;
     }
+    // Moving the marker costs exactly what renaming costs, for the same
+    // reason, so it gets asked the same way instead of surprising somebody
+    // whose listing goes dark after they nudged a pin ten metres.
+    const what = nameChanged
+      ? markerMoved
+        ? 'Change the name and the marker'
+        : 'Change the name'
+      : 'Move the marker';
     Alert.alert(
-      'Change the name and come off the map?',
+      `${what} and come off the map?`,
       `Travelers stop seeing ${business.name} until you type a new email code, and the check goes with it.`,
       [
-        { text: 'Keep the name', style: 'cancel' },
-        { text: 'Change it', style: 'destructive', onPress: () => void commit() },
+        { text: 'Leave it as it is', style: 'cancel' },
+        { text: 'Go ahead', style: 'destructive', onPress: () => void commit() },
       ]
     );
   };
@@ -992,6 +1022,13 @@ function BusinessEditForm({
       }
       if (hoursChanged) {
         await saveHours.mutateAsync();
+      }
+      // Last, and on its own: the address above is an ordinary column and
+      // this is a geofenced function. Passing the address here as well would
+      // write it twice, and the marker is deliberately allowed to disagree
+      // with the words.
+      if (markerMoved) {
+        await moveBusiness.mutateAsync({ lat: coords.lat, lng: coords.lng, cityId });
       }
       haptics.success();
       router.back();
@@ -1032,7 +1069,7 @@ function BusinessEditForm({
           ? 'One of your hour lines opens and closes at the same time.'
           : (descriptionError ?? nameError ?? websiteError)
       }
-      continueLoading={updateBusiness.isPending || saveHours.isPending}
+      continueLoading={updateBusiness.isPending || saveHours.isPending || moveBusiness.isPending}
       onContinue={save}
       onClose={close}
       scrollRef={scroller}>
@@ -1069,20 +1106,78 @@ function BusinessEditForm({
         }
         {...keyboardDoneProps}
       />
-      {/* The address, and then the bit a map cannot tell anyone. Two fields
-          because they answer different questions, and because moving the
-          marker has to be able to leave the typed address alone. Moving the
-          marker itself is not here: lat/lng are withheld from the client's
-          update grant, and a move sends the listing back for another email
-          check. */}
-      <FormTextField
-        label="Address"
-        placeholder="Rua da Rosa 12"
-        value={address}
-        onChangeText={setAddress}
-        maxLength={ADDRESS_MAX}
-        hint="What a traveler pastes into a taxi app."
-      />
+      {/* The address, the marker, and the bit a map cannot tell anyone. Three
+          answers to three different questions, which is why moving one leaves
+          the others alone. */}
+      <View onLayout={measure('location')} />
+      {city ? (
+        <BusinessAddressField
+          value={address}
+          cityName={city.cities.name}
+          cityLat={city.cities.lat}
+          cityLng={city.cities.lng}
+          onFocusChange={setAddressFocused}
+          onChangeText={(next) => setAddress(next.slice(0, ADDRESS_MAX))}
+          // Picking a result moves both, because somebody who searched for
+          // their own address meant the door and not the words.
+          onPick={(place) => {
+            setAddress(addressFrom(place));
+            setCoords({ lat: place.latitude, lng: place.longitude });
+          }}
+        />
+      ) : (
+        <FormTextField
+          label="Address"
+          placeholder="Rua da Rosa 12"
+          value={address}
+          onChangeText={setAddress}
+          maxLength={ADDRESS_MAX}
+          hint="What a traveler pastes into a taxi app."
+        />
+      )}
+      {city && !addressFocused ? (
+        <>
+          {launchCities.length > 1 ? (
+            <SelectField
+              label="City"
+              options={launchCities.map((row) => ({
+                value: String(row.city_id),
+                label: row.cities.name,
+              }))}
+              value={String(cityId)}
+              onChange={(next) => {
+                const picked = launchCities.find((row) => String(row.city_id) === next);
+                if (!picked) {
+                  return;
+                }
+                setCityId(picked.city_id);
+                // The old marker is in the old city, and the geofence would
+                // refuse it. Start at the new centre and let them place it.
+                setCoords({ lat: picked.cities.lat, lng: picked.cities.lng });
+              }}
+              hint="Where you are, not where you deliver."
+            />
+          ) : null}
+          <LocationPicker
+            // Remounted per city for the same reason signup does it: the
+            // picker reads its centre once, through initialRegion.
+            key={`edit-${cityId}`}
+            centerLat={coords.lat}
+            centerLng={coords.lng}
+            lat={coords.lat}
+            lng={coords.lng}
+            // Street level. The question is whether the marker is on the door,
+            // and a city-wide view cannot answer it.
+            delta={0.004}
+            onChange={(lat, lng) => setCoords({ lat, lng })}
+          />
+          <ThemedText type="footnote" themeColor={markerMoved ? 'warning' : 'textSecondary'}>
+            {markerMoved
+              ? 'You moved the marker. Saving takes your business off the map until you confirm your email again, and the check goes with it.'
+              : 'Tap the map to put the marker on your door. Moving it takes you off the map until you confirm your email again.'}
+          </ThemedText>
+        </>
+      ) : null}
       <FormTextField
         label="Finding the door"
         placeholder="Two minutes from the station, blue door"

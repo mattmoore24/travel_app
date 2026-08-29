@@ -262,3 +262,64 @@ appId: com.mattmoore.samewhere
           visible: 'One last thing'
           timeout: 15000
       - takeScreenshot: 64-business-code-step
+
+# ---------------------------------------------------------------------------
+# THE APP AS A BUSINESS ACTUALLY LIVES IN IT
+# ---------------------------------------------------------------------------
+#
+# Everything above is signup. The founder's complaint was about the other
+# nine-tenths: "do a fulsome review and audit of all the functionalities of
+# the business account while it is logged in as a business user". None of it
+# had ever been photographed, because signup has no way out but finishing and
+# the mail cannot leave Resend until a domain is verified.
+#
+# Relaunching is the way through. `register_business` has already run by this
+# point, so the session on this device belongs to a business account, and
+# owesOnboarding answers false for one (routing.ts) - the app opens on the
+# tabs with the listing sitting at 'unconfirmed', which is exactly the state
+# the founder was in when he wrote.
+- launchApp
+- tapOn:
+    text: 'Skip'
+    optional: true
+- extendedWaitUntil:
+    visible: 'My business'
+    timeout: 40000
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: 70-business-my-business
+# The middle tab is My business and never Travelers: §7 rule 8 says a business
+# does not read a traveler discovery surface, and the tab is `hidden` rather
+# than merely useless, so it cannot be reached by deep link either.
+- assertNotVisible: 'Travelers'
+
+# THE MAP, which the founder says "isn't used for that purpose" as a business.
+- tapOn: 'Map'
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 71-business-map
+
+# THE CHAT TAB. A business's own room and the travelers who wrote in, and
+# nothing shaped like a traveler's hello queue.
+- tapOn: 'Chat'
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: 72-business-chat
+
+# THE ACCOUNT PAGE, behind the header button on Map and Chat.
+- tapOn: 'Map'
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    id: 'header-account-button'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 73-business-account
+
+- tapOn:
+    text: 'My business'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 74-business-back-on-my-business

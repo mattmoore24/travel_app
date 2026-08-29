@@ -19,6 +19,8 @@ import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 
 const CODE_LENGTH = 6;
+/** What the migration gives a code: twenty minutes, then it is not a code. */
+const CODE_TTL_MS = 20 * 60 * 1000;
 
 /**
  * Where the code was sent, remembered on the device.
@@ -33,6 +35,30 @@ const CODE_LENGTH = 6;
  * inbox.
  */
 const addressKey = (userId: string) => `samewhere.business.email.${userId}`;
+
+/**
+ * Whether the code that was sent has run out, without reading the clock
+ * during render (the compiler's purity rule, and it is right: a value that
+ * changes on its own has to change on a timer somebody can see). The timeout
+ * is set for the exact minute it dies, so a screen left open flips its own
+ * copy instead of lying until the next tap.
+ */
+function useCodeExpired(sentAtMs: number | null): boolean {
+  // Which code has run out, rather than a bare boolean. A resend gives a new
+  // sent_at, which no longer matches, so the screen goes back to "check your
+  // email" without anything having to reset it. Nothing calls setState in the
+  // effect body either, which is the rule that stops cascading renders.
+  const [expiredFor, setExpiredFor] = useState<number | null>(null);
+  useEffect(() => {
+    if (sentAtMs == null || Number.isNaN(sentAtMs)) {
+      return;
+    }
+    const left = sentAtMs + CODE_TTL_MS - Date.now();
+    const timer = setTimeout(() => setExpiredFor(sentAtMs), Math.max(left, 0));
+    return () => clearTimeout(timer);
+  }, [sentAtMs]);
+  return sentAtMs != null && expiredFor === sentAtMs;
+}
 
 /**
  * The last step of getting listed: six digits, and the place goes live.
@@ -63,6 +89,13 @@ export default function BusinessEmailScreen() {
   // saying it had been sent.
   const { data: delivery } = useBusinessCodeStatus(!changing);
   const bounced = delivery?.failed === true;
+  // "We sent you a code" is only true for twenty minutes. This screen is
+  // reached again from the dashboard days later, with the address remembered
+  // on the device, and it went on saying a code was on its way to an inbox
+  // that had nothing in it. `sent_at` is the only honest clock either side
+  // has.
+  const sentAt = delivery?.sent_at != null ? Date.parse(delivery.sent_at) : null;
+  const codeExpired = useCodeExpired(sentAt) && !sentAgain;
   // Whoever routed here knows the address; storage is only the fallback for a
   // second visit, so the handed value always wins rather than being copied
   // into state and then argued with.
@@ -147,15 +180,25 @@ export default function BusinessEmailScreen() {
 
   return (
     <StepScreen
-      title={bounced ? 'That address bounced' : 'Check your email'}
+      title={
+        bounced
+          ? 'That address bounced'
+          : codeExpired
+            ? 'That code has run out'
+            : 'Check your email'
+      }
       subtitle={
         bounced
           ? address
             ? `We could not deliver to ${address}. Try another address and we will send a fresh code.`
             : 'We could not deliver that one. Try another address and we will send a fresh code.'
-          : address
-            ? `We sent a six-digit code to ${address}. It lasts twenty minutes.`
-            : 'We sent a six-digit code to your business email. It lasts twenty minutes.'
+          : codeExpired
+            ? address
+              ? `The code we sent to ${address} has run out. Send yourself a fresh one.`
+              : 'The last code has run out. Send yourself a fresh one.'
+            : address
+              ? `We sent a six-digit code to ${address}. It lasts twenty minutes.`
+              : 'We sent a six-digit code to your business email. It lasts twenty minutes.'
       }
       continueLabel="Put my business on the map"
       continueDisabled={code.length !== CODE_LENGTH}
@@ -206,7 +249,10 @@ export default function BusinessEmailScreen() {
                 and this screen has no honest way to guess one. */}
             {address ? (
               <PrimaryButton
-                variant="ghost"
+                // It leads once the last code has expired: an empty six-digit
+                // box under a ghost button is the wrong shape for a screen
+                // whose only next step is a new code.
+                variant={codeExpired && !bounced ? 'filled' : 'ghost'}
                 label="Send it again"
                 accessibilityLabel="Send the code again"
                 loading={resend.isPending}

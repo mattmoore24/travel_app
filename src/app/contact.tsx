@@ -6,6 +6,7 @@ import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
+import { useIsBusiness } from '@/features/business/hooks';
 import { useSendSupportMessage } from '@/features/support/hooks';
 import { useOwnEmail } from '@/features/profile/hooks';
 
@@ -23,6 +24,9 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  */
 export default function ContactScreen() {
   const ownEmail = useOwnEmail();
+  // A business account has no traveler profile to open a Report from, so the
+  // line telling it to use one was directions to a door it does not have.
+  const viewerIsBusiness = useIsBusiness();
   const send = useSendSupportMessage();
   const [email, setEmail] = useState(ownEmail ?? '');
   const [body, setBody] = useState('');
@@ -94,7 +98,9 @@ export default function ContactScreen() {
         {...keyboardDoneProps}
       />
       <ThemedText type="footnote" themeColor="textSecondary">
-        Reporting someone? Use Report on their profile or in the chat. It carries the context.
+        {viewerIsBusiness
+          ? 'Reporting someone? Use Report in the chat. It carries the context.'
+          : 'Reporting someone? Use Report on their profile or in the chat. It carries the context.'}
       </ThemedText>
     </StepScreen>
   );
