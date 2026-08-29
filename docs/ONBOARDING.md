@@ -137,12 +137,30 @@ never filled during signup.
 
 The rebuilt step:
 
-- **City chips**, unchanged. A marker belongs to the city it was placed in and
-  the server refuses one outside the radius.
+- **City chips**, unchanged in shape. But the server has to start meaning it:
+  **there is no geofence on a business at all today.** `validate_pin` is the
+  only caller of `haversine_km` in the whole schema, `register_business`
+  validates the caller and nothing about geography, and
+  `businesses.city_id` references `cities` rather than `launch_cities` — so a
+  marker can sit anywhere on earth inside the plain -90..90 / -180..180
+  CHECKs while the listing claims a city. (business-signup's own catch comment
+  says the server refuses "a marker outside the city's radius". It does not.
+  That sentence is about pins.) The rebuilt step adds the same radius check
+  pins have had since August.
 - **An address field, focused first**, with suggestions as you type. It shares
   the machinery `pin-search-field` already uses for travelers: the native
   `LocalSearch` module when the installed binary has it, geocoding as the
   fallback. Picking a suggestion sets **both** the address text and the pin.
+
+  It needs its own column. `businesses.place_label` looks like the place to
+  put it and is not: it is the "finding the door" note ("Two minutes from the
+  station, blue door"), it is what business-edit calls "The bit the map can't
+  tell anyone", and travelers already read it under "Getting there". An
+  address overwriting that would delete the more useful of the two. So
+  `businesses.address text check (char_length(address) <= 160)`, in the public
+  column grant beside place_label, and `business_detail` DROPped and recreated
+  to carry it.
+
 - **A map under it** with the marker, draggable and tappable. Moving it sets the
   coordinates and **never touches the address text**. That is the founder's
   last sentence and it is the whole reason the two are separate pieces of state
@@ -152,6 +170,15 @@ The rebuilt step:
   address the default without making it a requirement.
 - **Step 5 confirms both**: the address as typed, the map with the marker, and
   two ways back — `Fix the address` and `Move the marker`.
+
+**Afterwards, moving the marker is not the business's to do.** The column
+grant withholds lat, lng and city_id from the client on purpose — "a business
+that could move its own marker could verify a surf shack and then become the
+Marriott" — and `business_rename_resets` knocks a listed place back to
+`unconfirmed` and clears `verified_at` on any such change. So the map lives in
+signup, where the row is being created, and in a later editor only through a
+server function that re-runs the geofence and accepts the badge cost. The
+address text itself is an ordinary granted column and is editable any time.
 
 ## 6. Contact details, and what phone and WhatsApp can honestly do
 
