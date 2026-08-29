@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -7,7 +8,8 @@ import { BuildStamp } from '@/components/ui/build-stamp';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BrandDeep, MaxContentWidth, Space } from '@/constants/theme';
+import { BrandDeep, MaxContentWidth, Radius, Space } from '@/constants/theme';
+import { BUSINESS_RULE_SECTIONS, BUSINESS_ZERO_TOLERANCE } from '@/constants/policies';
 import { signOut } from '@/features/auth/api';
 import { deleteAccount } from '@/features/profile/api';
 import {
@@ -25,6 +27,7 @@ import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { useOwnBusiness } from '@/features/business/hooks';
 import { useIsGuest, useIsGuestAccount } from '@/features/guest/hooks';
 import { useMyTrips } from '@/features/trips/hooks';
+import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -102,11 +105,17 @@ function GuestProfile({ guestName }: { guestName: string | null }) {
  * so all three did nothing at all. It also offered "Run a business?" to
  * somebody who runs one.
  *
- * Everything a place actually manages lives on the My business tab, so this
- * page is deliberately short: the way there, the way to a human, and the two
- * account controls App Review requires to be reachable from inside the app.
+ * Everything a business actually manages lives on the My business tab, so this
+ * page is deliberately short: the way there, the rules a business is held to,
+ * the way to a human, and the two account controls App Review requires to be
+ * reachable from inside the app.
  */
 function BusinessAccount({ name }: { name: string | null }) {
+  const theme = useTheme();
+  // Deleting an account is a round trip to an Edge Function, and the founder
+  // read the silence in between as "it didn't delete my account immediately".
+  const [deleting, setDeleting] = useState(false);
+
   return (
     <ThemedView style={styles.root}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.guestContent}>
@@ -114,20 +123,39 @@ function BusinessAccount({ name }: { name: string | null }) {
           {name ?? 'Your account'}
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.guestText}>
-          Everything about it lives on the My business tab.
+          Everything about your business lives on the My business tab.
         </ThemedText>
-        {/* Guarded like every other exit in the app. An unguarded replace on
-            a one-route stack is what killed the app on the business code
-            screen; this one is far less exposed, and it costs nothing to
-            stop being the second example of the same shape. */}
+        {/* navigate, not back: this button named a tab and then returned to
+            whichever one the owner had come from, so an owner who opened it
+            from Chat was handed Chat again. navigate pops to the tabs that
+            are already underneath this page and selects the one named,
+            rather than stacking a second copy of the whole navigator. */}
         <PrimaryButton
           label="Manage your business"
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+          onPress={() => router.navigate('/(tabs)/my-business')}
         />
+        {/* The rules a business is actually held to, on the page rather than
+            behind a button: it is four short lines, and the button it
+            replaces opened the traveler rulebook, which talks about pins and
+            "your profile" and bans commercial solicitation. */}
+        <View style={[styles.rules, { backgroundColor: theme.surface }]}>
+          <ThemedText type="callout">{BUSINESS_ZERO_TOLERANCE}</ThemedText>
+          {BUSINESS_RULE_SECTIONS.map((section) => (
+            <View key={section.title} style={styles.rulesSection}>
+              <ThemedText type="footnote">{section.title}</ThemedText>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                {section.body}
+              </ThemedText>
+            </View>
+          ))}
+        </View>
+        {/* The way to a human, which used to be two taps inside the traveler
+            guidelines. Nobody looking for help should have to read a rulebook
+            written for somebody else to find it. */}
         <PrimaryButton
           variant="ghost"
-          label="House rules and help"
-          onPress={() => router.push('/guidelines')}
+          label="Send us a message"
+          onPress={() => router.push('/contact')}
         />
         <PrimaryButton
           variant="ghost"
@@ -136,9 +164,14 @@ function BusinessAccount({ name }: { name: string | null }) {
             signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
           }}
         />
+        {/* App Review 5.1.1(v), and the same weight the traveler page gives
+            the same act. It was a ghost button here, so the one irreversible
+            control on the page rendered in accent blue, identical to Sign out
+            directly above it. */}
         <PrimaryButton
-          variant="ghost"
+          variant="danger"
           label="Delete account"
+          loading={deleting}
           onPress={() =>
             Alert.alert(
               'Delete this account?',
@@ -148,21 +181,25 @@ function BusinessAccount({ name }: { name: string | null }) {
                 {
                   text: 'Delete',
                   style: 'destructive',
-                  // Await it, then sign out. This used to fire and forget,
-                  // so the account was gone from the server while the phone
-                  // went on holding a session for a user that no longer
+                  // Await it, sign out, and LEAVE. This used to fire and
+                  // forget, so the account was gone from the server while the
+                  // phone went on holding a session for a user that no longer
                   // existed: the founder deleted their business and was still
-                  // looking at the app as themselves. Signing out is what
-                  // hands the root guard back to the sign-in screen, which is
-                  // where somebody who just deleted an account belongs.
+                  // looking at the app as themselves. Awaiting fixed half of
+                  // it. The other half is this screen, which is not behind
+                  // any guard and so survives the sign-out it triggers, still
+                  // showing a deleted business's name.
                   onPress: async () => {
+                    setDeleting(true);
                     try {
                       await deleteAccount();
                     } catch {
+                      setDeleting(false);
                       Alert.alert('Could not delete that', 'Try again in a minute.');
                       return;
                     }
-                    signOut().catch(() => {});
+                    await signOut().catch(() => {});
+                    router.replace('/join');
                   },
                 },
               ]
@@ -176,6 +213,10 @@ function BusinessAccount({ name }: { name: string | null }) {
 }
 
 export default function ProfileScreen() {
+  // Deleting is a round trip to an Edge Function that empties five storage
+  // buckets, so the button has to say it is working. See the business branch
+  // above for the rest of the reasoning.
+  const [deleting, setDeleting] = useState(false);
   // Not "has a session": a guest has one. The member page below reads
   // photos, trips, prompts and handles, none of which a guest can have, so
   // the question is membership.
@@ -344,6 +385,7 @@ export default function ProfileScreen() {
               <PrimaryButton
                 variant="danger"
                 label="Delete account"
+                loading={deleting}
                 onPress={() => {
                   Alert.alert(
                     'Delete your account?',
@@ -354,14 +396,20 @@ export default function ProfileScreen() {
                         text: 'Delete forever',
                         style: 'destructive',
                         onPress: async () => {
+                          setDeleting(true);
                           try {
                             await deleteAccount();
                           } catch {
+                            setDeleting(false);
                             Alert.alert('Deletion failed', 'Check your connection and try again.');
                             return;
                           }
-                          // The auth user no longer exists; clear the session.
-                          signOut().catch(() => {});
+                          // The auth user no longer exists, and this screen is
+                          // outside every route guard, so it survives its own
+                          // sign-out still showing a deleted profile. Both
+                          // halves, in the order they have to happen.
+                          await signOut().catch(() => {});
+                          router.replace('/join');
                         },
                       },
                     ]
@@ -378,6 +426,15 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  rules: {
+    gap: Space.md,
+    padding: Space.lg,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
+  rulesSection: {
+    gap: Space.xs,
+  },
   photoNotice: {
     paddingHorizontal: Space.lg,
     paddingBottom: Space.sm,

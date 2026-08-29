@@ -1,8 +1,8 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,6 +24,7 @@ import {
 } from '@/constants/theme';
 import {
   useArchiveBusinessPost,
+  useBusinessCodeStatus,
   useBusinessDetail,
   useLatestStorefrontCheck,
   useOwnBusiness,
@@ -32,6 +33,7 @@ import {
 import { CATEGORY_ICON, CATEGORY_LABEL, TAG_LABEL, openLine } from '@/features/business/vocabulary';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { dayLabel } from '@/features/chat/separators';
+import { usePushPrimer } from '@/features/notifications/primer-store';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import type { BusinessPostJson, MyBusinessRow } from '@/lib/database.types';
@@ -47,6 +49,33 @@ const DOCK_CLEARANCE = 120;
 
 /** PrimaryButton's filled height, which the backdrop has to cover exactly. */
 const DOCK_BUTTON = 52;
+
+/** Twenty minutes, which is what the migration gives a code. */
+const CODE_TTL_MS = 20 * 60 * 1000;
+
+/**
+ * Whether the last code has run out, without reading the clock during render.
+ *
+ * The dashboard is the screen an owner comes back to days later, and it went
+ * on saying a code had been sent to an inbox that had nothing in it. Same
+ * shape as the code screen's own hook (app/business-email.tsx): the timer is
+ * set for the exact minute the code dies, so a screen left open changes its
+ * own words rather than lying until the next tap, and nothing calls setState
+ * in the effect body.
+ */
+function useCodeRunOut(sentAt: string | null | undefined): boolean {
+  const sentAtMs = sentAt != null ? Date.parse(sentAt) : null;
+  const [runOutFor, setRunOutFor] = useState<number | null>(null);
+  useEffect(() => {
+    if (sentAtMs == null || Number.isNaN(sentAtMs)) {
+      return;
+    }
+    const left = sentAtMs + CODE_TTL_MS - Date.now();
+    const timer = setTimeout(() => setRunOutFor(sentAtMs), Math.max(left, 0));
+    return () => clearTimeout(timer);
+  }, [sentAtMs]);
+  return sentAtMs != null && runOutFor === sentAtMs;
+}
 
 /**
  * Where the listing stands, in a few words a person already understands.
@@ -246,6 +275,12 @@ export default function MyBusinessScreen() {
   const ratingQuery = useRatingSummary(business?.id ?? null);
   const rating = ratingQuery.data ?? null;
   const cover = useBusinessPhotoUrl(detail?.photos[0]?.storage_path ?? null);
+  // Whether the code we told this owner to look for is still a code. Asked
+  // only while the listing is waiting on one, and the query stops polling as
+  // soon as the answer is in.
+  const delivery = useBusinessCodeStatus(business?.state === 'unconfirmed').data;
+  const codeRunOut = useCodeRunOut(delivery?.sent_at);
+  const codeBounced = delivery?.failed === true;
 
   // One reading of the clock per data change rather than one per render, so
   // the Hours row cannot flip from open to closed mid-scroll.
@@ -257,6 +292,44 @@ export default function MyBusinessScreen() {
   useEffect(() => {
     analytics.capture('my_business_viewed');
   }, []);
+
+  // The first moment a traveler can write in is the first moment a
+  // notification is worth anything, and it is the only such moment a business
+  // ever reaches: the primer's ask() is called from useSendHello and
+  // useCreatePin, two things a business can never do. So a business account
+  // was never asked for permission at all, and the inbound message a bar is
+  // here for arrived nowhere but inside the app. Asked here, in a business's
+  // own words, because the primer sheet asks in a traveler's.
+  const askBusiness = usePushPrimer((s) => s.askBusiness);
+  const acceptPush = usePushPrimer((s) => s.accept);
+  const declinePush = usePushPrimer((s) => s.decline);
+  const live = business != null && business.state === 'listed' && business.active;
+  // Only while this tab is the one being looked at. The tabs mount together,
+  // so without this the question could arrive over the map or over a chat,
+  // which is the ambush the primer exists to avoid.
+  const focused = useIsFocused();
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!focused || !live || asked.current) {
+      return;
+    }
+    // Before the await, not after: two renders in the same tick would
+    // otherwise both get past the store's own guard and ask twice.
+    asked.current = true;
+    askBusiness('listing-live').then((worth) => {
+      if (!worth) {
+        return;
+      }
+      Alert.alert(
+        'Travelers can write to you now',
+        'Turn notifications on and your phone tells you when one does. Nothing else.',
+        [
+          { text: 'Not now', style: 'cancel', onPress: () => void declinePush() },
+          { text: 'Notify me', onPress: () => void acceptPush() },
+        ]
+      );
+    });
+  }, [focused, live, askBusiness, acceptPush, declinePush]);
 
   if (!isSupabaseConfigured) {
     return (
@@ -316,6 +389,30 @@ export default function MyBusinessScreen() {
   const photos = detail?.photos ?? [];
   const links = detail?.links ?? [];
   const dark = business.state !== 'listed' || !business.active;
+
+  // The screen's biggest button is whatever this owner has to do next.
+  // "Post something" sat here in every state, so a business that was not on
+  // the map yet had a composer promising the map as its most permanent
+  // action, while the one thing standing in the way was a quieter button
+  // halfway up a scroll.
+  const next =
+    business.state === 'unconfirmed'
+      ? {
+          label: 'Confirm your email',
+          hint: 'Confirm your business email',
+          onPress: () => router.push('/business-email'),
+        }
+      : dark
+        ? {
+            label: 'Contact us',
+            hint: 'Contact us about this listing',
+            onPress: () => router.push('/contact'),
+          }
+        : {
+            label: 'Post something',
+            hint: `Post something at ${business.name}`,
+            onPress: () => router.push('/business-post'),
+          };
 
   return (
     <ThemedView style={styles.root}>
@@ -380,35 +477,31 @@ export default function MyBusinessScreen() {
               </View>
             </View>
 
-            {/* The one thing standing between this place and the map, and
-                nothing else. Two asks stacked here would make both of them
-                optional-looking. */}
+            {/* What is standing between this business and the map, said and
+                not repeated: the docked button below is the way to answer it,
+                so a second copy of the same action here would only make both
+                of them look optional.
+
+                No claim that a code has just been sent, either. This screen
+                is where an owner comes back days later, and it went on saying
+                one was on its way long after the twenty minutes were up. */}
             {business.state === 'unconfirmed' ? (
               <View style={[styles.notice, { backgroundColor: theme.surface }]}>
                 <ThemedText type="footnote" themeColor="textSecondary">
-                  {
-                    "We sent a code to your business email. Travelers can't find you until it goes in."
-                  }
+                  {codeBounced
+                    ? 'That address bounced, so the code never arrived. Send it to another one and you are on the map.'
+                    : codeRunOut
+                      ? 'The code we sent has run out. Send yourself a fresh one and you are on the map.'
+                      : "Travelers can't find you until you confirm your business email."}
                 </ThemedText>
-                <PrimaryButton
-                  label="Confirm your email"
-                  accessibilityLabel="Confirm your business email"
-                  onPress={() => router.push('/business-email')}
-                />
               </View>
-            ) : business.state === 'flagged' || business.state === 'removed' ? (
+            ) : dark ? (
               <View style={[styles.notice, { backgroundColor: theme.surface }]}>
                 <ThemedText type="footnote" themeColor="textSecondary">
                   {business.state === 'flagged'
                     ? "We're taking a look at this listing."
-                    : 'This listing is off the map.'}
+                    : 'This listing is off the map. Write to us and we will tell you why.'}
                 </ThemedText>
-                <PrimaryButton
-                  variant="tonal"
-                  label="Contact us"
-                  accessibilityLabel="Contact us about this listing"
-                  onPress={() => router.push('/contact')}
-                />
               </View>
             ) : !business.verified ? (
               <View style={[styles.notice, { backgroundColor: theme.surface }]}>
@@ -484,6 +577,22 @@ export default function MyBusinessScreen() {
                 <Section
                   title="Your details"
                   icon={{ ios: 'list.bullet', android: 'list', web: 'list' }}>
+                  {/* A business that moved premises had a listing on the wrong
+                      door forever: this screen covered hours, links, words and
+                      photos and had no way to the address, the city or the
+                      marker, though the editor has held all three since
+                      business-edit's location section, and
+                      update_business_location is granted to the owner. */}
+                  <DetailRow
+                    label="Where you are"
+                    section="location"
+                    icon={{
+                      ios: 'mappin.and.ellipse',
+                      android: 'location_on',
+                      web: 'location_on',
+                    }}
+                    value={business.address ?? 'No address yet'}
+                  />
                   <DetailRow
                     label="Hours"
                     section="hours"
@@ -582,6 +691,25 @@ export default function MyBusinessScreen() {
                     </View>
                   )}
                 </Section>
+
+                {/* The account controls, from the tab the account page sends
+                    every owner to. They were reachable only by leaving this
+                    tab for another one and tapping a person icon, which is a
+                    thing nobody would guess and the icon of a traveler. */}
+                <Section
+                  title="Your account"
+                  icon={{ ios: 'gearshape', android: 'settings', web: 'settings' }}>
+                  <DetailRow
+                    label="Account and rules"
+                    icon={{
+                      ios: 'person.crop.circle',
+                      android: 'account_circle',
+                      web: 'account_circle',
+                    }}
+                    value="Sign out, delete, how this works"
+                    onPress={() => router.push('/profile-me')}
+                  />
+                </Section>
               </>
             )}
 
@@ -615,11 +743,7 @@ export default function MyBusinessScreen() {
         <View
           style={[styles.dock, { paddingBottom: BottomTabInset + insets.bottom / 2 + Space.sm }]}
           pointerEvents="box-none">
-          <PrimaryButton
-            label="Post something"
-            accessibilityLabel={`Post something at ${business.name}`}
-            onPress={() => router.push('/business-post')}
-          />
+          <PrimaryButton label={next.label} accessibilityLabel={next.hint} onPress={next.onPress} />
         </View>
       </View>
     </ThemedView>

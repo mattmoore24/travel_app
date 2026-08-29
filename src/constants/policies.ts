@@ -29,3 +29,38 @@ export const GUIDELINE_SECTIONS = [
     body: 'We never collect your location. Pins are plans you type, and they vanish within 72 hours. Your socials only show once you are both chatting. Delete your account, and everything in it, any time from your profile.',
   },
 ] as const;
+
+/**
+ * The same rules, for the account that runs a bar rather than travels.
+ *
+ * The traveler sections above were the only rulebook a business was ever
+ * offered, and they are written about pins, socials and "your profile", none
+ * of which a business has. Worse, "Also not allowed" bans commercial
+ * solicitation, which reads as banning the exact thing a business account is
+ * for. Founder, testing as a business: "every aspect of the business account
+ * [must be] perfected and fully optimized for business users."
+ *
+ * Nothing here is a new rule. It is §7 and rule 8 of docs/BUSINESS_ACCOUNTS.md
+ * said to the person who owns the premises.
+ */
+export const BUSINESS_ZERO_TOLERANCE =
+  'Be the business you say you are, and let travelers come to you.';
+
+export const BUSINESS_RULE_SECTIONS = [
+  {
+    title: 'Your listing is you',
+    body: 'The name over the door, photos of the business rather than of a person, and hours that are true. Changing your name or moving your marker takes you off the map until you confirm your email again.',
+  },
+  {
+    title: 'Travelers write first',
+    body: 'You reply to anyone who writes in, and you post to your own chat. You cannot message a traveler who has not written to you, and you cannot join a traveler plan or another business chat.',
+  },
+  {
+    title: 'What gets checked',
+    body: 'Your name, description, posts and photos go through the same check every message here does. Reports are read by a person.',
+  },
+  {
+    title: 'Your rating',
+    body: 'Travelers rate you out of ten. You never see who rated you, and nothing shows until five of them have.',
+  },
+] as const;
