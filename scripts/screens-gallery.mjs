@@ -68,6 +68,74 @@ const CAPTIONS = {
   '25-reaction-menu': ['Long press', 'The emoji row sits ON the message. This is the shot.'],
   '26-reacted': ['Reacted', 'One reaction per person; a second choice moves it.'],
   '27-group-settings': ['Group details', 'Who can post, who is in it, and the invite link.'],
+  '27a-chat-list-with-a-row': ['The chat list', 'One column, newest first.'],
+  '27b-group-add-and-leave': ['Add and leave', 'Both at the bottom of the details sheet.'],
+  '27c-add-people': ['Adding people', 'Anyone you already share a group with.'],
+  '28-map-with-places': ['Places on the map', 'Small chips are businesses; discs are people.'],
+  '15b-pin-join-mode': [
+    'How people come along',
+    'Anyone can join, or message me first. Above the fields, where it is read.',
+  ],
+  '18b-who-can-see-you': ['Who sees you', 'Both directions at once, and what a badge unlocks.'],
+  '33-priorities-empty': ['Top priorities, empty', 'The section, before anything is in it.'],
+  '34-priorities-editor': ['Adding a priority', 'The editor the onboarding step hands over to.'],
+  '35-priorities-typed': ['Typed', 'Saved on the way out.'],
+
+  // The business path. None of this had a picture before 2026-08-29.
+  '40-business-email-copy': [
+    'Signing up as a business',
+    "The founder's line: this email is only for signing in.",
+  ],
+  '41-business-name': ['Name and kind', 'The name over the door, and what it is.'],
+  '42-business-where-empty': ['Where is it, empty', 'Waiting on a city, and saying so.'],
+  '43-business-address-typing': [
+    'Typing an address',
+    'The chips and the map step aside so the suggestions get the screen.',
+  ],
+  '44-business-address-and-marker': [
+    'Picked',
+    'The address stays as written; the marker moves to the street.',
+  ],
+  '45-business-where-final': ['Where is it, done', 'Both halves agreed.'],
+  '46-business-confirm': [
+    'Is this right?',
+    'What a traveler sees when they tap you, at street zoom so the door can be checked.',
+  ],
+  '47-business-contact': [
+    'How to reach you',
+    'The email takes the code. Phone and WhatsApp are yours.',
+  ],
+  '48-business-photos': ['Show the place', 'One photo is the only thing this step needs.'],
+  '49-business-photo-added': ['A photo, uploading', 'The editor the step hands over to.'],
+  '50-business-photo-counted': [
+    'Counted',
+    'The photo is live, which is what lets this step be passed.',
+  ],
+  '60-business-description': ['What is it like?', 'Skippable, and it says so.'],
+  '61-business-hours': ['When are you open?', 'Past midnight is fine.'],
+  '62-business-links': ['Anywhere else?', 'Menus, bookings, socials, in one list.'],
+  '63-business-review': ['Here it is', 'The listing as a traveler meets it, before it goes live.'],
+  '64-business-code-step': ['One last thing', 'The address the code goes to.'],
+
+  // Making a profile. Same: no picture before 2026-08-29.
+  '50-signup-email': ['Signing up as a person', 'Your email is never shown to other users.'],
+  '51-signup-who': ['Who are you?', 'The name people see, and your age.'],
+  '52-signup-home': ['Where are you from?', 'Home base, not where you happen to be.'],
+  '53-signup-home-filled': ['Languages', 'Searchable, and this step will not go without one.'],
+  '54-signup-photo-gate': ['Add a photo', 'The one mandatory thing on every profile.'],
+  '55-signup-photo-added': ['A face', 'Which is what makes the rest worth answering.'],
+  '56-signup-occupation': ['What do you do?', 'The first step that may be skipped.'],
+  '57-signup-bio': ['A bit about you', 'What somebody should message you about.'],
+  '58-signup-prompts': ['Answer a prompt', 'The bit people actually read.'],
+  '59-signup-priorities': ['What are you after?', 'So the right people say hi.'],
+  '70-signup-trips': ['Where are you going?', 'The one step the whole matching engine runs on.'],
+  '71-signup-socials': ['Your socials', 'Nobody sees these until you are both in a chat.'],
+  '72-signup-audience': ['Who sees you', 'A default rather than a decision you must make now.'],
+  '73-signup-review': ['Here you are', 'Exactly what a stranger sees.'],
+  '74-signup-review-scrolled': ['The rest of it', 'Same page, further down.'],
+  '75-signup-done': ['In', 'The stamp landed and the tabs are there.'],
+  '90-photo-library': ['The photo picker', "Apple's, driven by the suite to get past the wall."],
+  '91-photo-crop': ['Cropping', 'The square iOS always gives, which is the square the app shows.'],
   'zz-final-state': ['Final state', 'Raw capture at the end of the run.'],
 };
 
@@ -87,6 +155,16 @@ const SECTIONS = [
     title: 'Chat',
     note: 'Starting a group, saying something, and reacting to it.',
     match: (n) => /^2/.test(n),
+  },
+  {
+    title: 'Making a profile',
+    note: 'Thirteen steps, each asking one thing. None of this had a picture before today.',
+    match: (n) => /^(5[0-9]|7[0-5]|9[01])-signup|^(5[0-9]|7[0-5])-signup|^9[01]-photo/.test(n),
+  },
+  {
+    title: 'Listing a business',
+    note: 'Twelve steps, from the name over the door to the code that turns the lights on.',
+    match: (n) => /^(4[0-9]|5[0-9]|6[0-4])-business/.test(n),
   },
   { title: 'Everything else', note: null, match: () => true },
 ];
@@ -110,9 +188,17 @@ try {
   // A gallery without run metadata is still a gallery.
 }
 
-// Failure captures (step-*) matter most when they exist, so they go first in
-// the budget even though they sort last by name.
-const priority = (name) => (name.startsWith('step-') ? 0 : name.startsWith('zz-') ? 2 : 1);
+// Budget order, most-wanted first. Run 84's page spent the whole budget on
+// the oldest screens and its footer listed EVERY new signup and business shot
+// as left out — the exact screens the run existed to photograph. Failures
+// still lead, because a step that found nothing is the one thing worth
+// finding by eye; then the two signup journeys, then everything else.
+const priority = (name) => {
+  if (name.startsWith('step-')) return 0;
+  if (/-signup|-business|-photo-(library|crop)/.test(name)) return 1;
+  if (name.startsWith('zz-')) return 3;
+  return 2;
+};
 const ordered = [...files].sort((a, b) => priority(a) - priority(b) || a.localeCompare(b));
 
 let used = 0;
