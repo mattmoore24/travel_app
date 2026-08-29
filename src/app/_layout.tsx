@@ -264,6 +264,13 @@ function RootNavigator() {
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
         <Stack.Screen name="new-group" options={{ presentation: 'modal' }} />
+        {/* A modal, like every other "do one thing and come back": it is
+            opened from a group's page, adds people, and closes onto it. */}
+        <Stack.Screen name="add-people/[chatId]" options={{ presentation: 'modal' }} />
+        {/* Both directions of the same act: from a group, find a person;
+            from a person, pick a group. */}
+        <Stack.Screen name="add-to-group/[userId]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="message/[userId]" options={{ presentation: 'modal' }} />
         <Stack.Screen
           name="group/[id]"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}

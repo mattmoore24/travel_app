@@ -223,7 +223,15 @@ function Reactions({
  * bubbles that do not carry it — otherwise every bubble in a run would sit
  * at a different indent and the column would zig-zag.
  */
-function RunAvatar({ path, name }: { path: string | null; name: string | null }) {
+function RunAvatar({
+  path,
+  name,
+  onPress,
+}: {
+  path: string | null;
+  name: string | null;
+  onPress?: () => void;
+}) {
   const theme = useTheme();
   const { data: url } = usePhotoUrl(path);
   // name is what separates the two kinds of empty. A bubble that is not the
@@ -232,20 +240,36 @@ function RunAvatar({ path, name }: { path: string | null; name: string | null })
   // rather than the hole that used to sit there.
   const filled = name != null;
   const initial = name?.trim()?.[0]?.toUpperCase() ?? null;
+  const style = [
+    styles.runAvatar,
+    path || filled ? { backgroundColor: theme.surfaceSunken } : undefined,
+  ];
+  const face = url ? (
+    <Image source={{ uri: url }} style={styles.runAvatarImage} contentFit="cover" />
+  ) : initial ? (
+    <ThemedText type="caption" themeColor="textSecondary" style={styles.runAvatarInitial}>
+      {initial}
+    </ThemedText>
+  ) : null;
+
+  // A face in a group thread is the most natural thing in the app to tap, and
+  // it did nothing. Only the foot of somebody else's run is live — the
+  // spacers that hold the column straight carry no name and must not be
+  // reachable by VoiceOver as buttons to nowhere.
+  if (!onPress || !filled) {
+    return <View style={style}>{face}</View>;
+  }
   return (
-    <View
-      style={[
-        styles.runAvatar,
-        path || filled ? { backgroundColor: theme.surfaceSunken } : undefined,
-      ]}>
-      {url ? (
-        <Image source={{ uri: url }} style={styles.runAvatarImage} contentFit="cover" />
-      ) : initial ? (
-        <ThemedText type="caption" themeColor="textSecondary" style={styles.runAvatarInitial}>
-          {initial}
-        </ThemedText>
-      ) : null}
-    </View>
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={`${name}'s profile`}
+      haptic="soft"
+      scaleTo={0.92}
+      hitSlop={6}
+      onPress={onPress}
+      style={style}>
+      {face}
+    </PressableScale>
   );
 }
 
@@ -371,6 +395,7 @@ function Bubble({
   onRetry,
   avatarPath,
   avatarName,
+  onOpenSender,
   delivered = false,
 }: {
   message: ThreadMessage;
@@ -388,6 +413,8 @@ function Bubble({
   avatarPath?: string | null;
   /** The name behind that face, for the monogram when there is no photo. */
   avatarName?: string | null;
+  /** Tapping that face. Absent in a one-to-one chat, where it is your own. */
+  onOpenSender?: () => void;
   /**
    * Say "Sent" under this one.
    *
@@ -409,7 +436,7 @@ function Bubble({
         { marginTop: grouped ? 2 : Space.sm },
       ]}>
       {avatarPath !== undefined && !mine ? (
-        <RunAvatar path={avatarPath} name={avatarName ?? null} />
+        <RunAvatar path={avatarPath} name={avatarName ?? null} onPress={onOpenSender} />
       ) : null}
       <View style={styles.bubbleColumn}>
         {/* A plain view around the pressable, because the menu needs to know
@@ -782,6 +809,7 @@ export function MessageThread({
   reportLabel = 'Report',
   authorFor,
   avatarFor,
+  onOpenSender,
   noteFor,
   canReact = true,
   emptyState,
@@ -821,6 +849,12 @@ export function MessageThread({
    * photo, and absent entirely in a one-to-one chat, which needs neither.
    */
   avatarFor?: (message: ThreadMessage) => string | null;
+  /**
+   * Opening the person behind a face. Group threads only: in a one-to-one
+   * chat the header already carries the other person, and there are no
+   * avatars in the column at all.
+   */
+  onOpenSender?: (senderId: string) => void;
   /**
    * A line to print in place of the bubble — "Message removed by the host".
    * Unsending already works this way internally; this opens the same slot to
@@ -964,6 +998,11 @@ export function MessageThread({
                   // Same slot, same condition: whoever owns the face owns the
                   // letter that stands in for it.
                   avatarName={avatarFor && !mine && last ? (authorFor?.(item) ?? null) : null}
+                  onOpenSender={
+                    onOpenSender && !mine && !isLocalId(item.id)
+                      ? () => onOpenSender(item.sender_id)
+                      : undefined
+                  }
                   reactions={byMessage.get(item.id) ?? []}
                   onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
                   onRetry={item.local === 'failed' && onRetry ? () => onRetry(item) : undefined}

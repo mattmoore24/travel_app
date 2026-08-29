@@ -6,6 +6,7 @@ import type {
   GroupMemberRow,
   GroupRow,
   GroupSpeaking,
+  KnownPersonRow,
 } from '@/lib/database.types';
 
 /**
@@ -148,4 +149,58 @@ export async function joinGroupWithInvite(input: {
     throw error;
   }
   return data as { chat_id: string; stay_until: string; expires_at: string };
+}
+
+/**
+ * Everybody you have actually met in here: a one-to-one chat, or a group you
+ * are both in. The server decides what counts — a venue room does not, and
+ * neither does a guest — so this is a door, not a lock.
+ */
+export async function peopleYouKnow(query: string): Promise<KnownPersonRow[]> {
+  const { data, error } = await supabase.rpc('people_you_know', {
+    p_query: query.trim() || null,
+  });
+  if (error) {
+    throw error;
+  }
+  return (data ?? []) as KnownPersonRow[];
+}
+
+/** Any member may bring somebody. Removing them is still the admin's. */
+export async function addToGroup(chatId: string, userId: string): Promise<void> {
+  const { error } = await supabase.rpc('add_to_group', {
+    p_chat_id: chatId,
+    p_user_id: userId,
+  });
+  if (error) {
+    throw error;
+  }
+}
+
+export async function sharesGroupWith(userId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('shares_group_with', { p_user_id: userId });
+  if (error) {
+    throw error;
+  }
+  return data === true;
+}
+
+/**
+ * Start talking to somebody you are already in a group with. No request, no
+ * accept: the first message is screened at the door instead, and a blocked
+ * one opens nothing at all.
+ */
+export async function openDirectChat(
+  userId: string,
+  firstMessage: string
+): Promise<{ chatId: string | null; blocked: boolean }> {
+  const { data, error } = await supabase.rpc('open_direct_chat', {
+    p_user_id: userId,
+    p_first_message: firstMessage,
+  });
+  if (error) {
+    throw error;
+  }
+  const result = data as { chat_id?: string; blocked: boolean };
+  return { chatId: result.chat_id ?? null, blocked: result.blocked };
 }

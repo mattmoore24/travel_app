@@ -6,6 +6,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { MaxContentWidth, Space } from '@/constants/theme';
 import { useBlockUser } from '@/features/chat/hooks';
+import { useSharesGroupWith } from '@/features/groups/hooks';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
 import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
@@ -37,7 +38,14 @@ export default function PublicProfileScreen() {
   const block = useBlockUser();
   const profile = profileQuery.data;
 
-  const connected = chats.some((chat) => chat.other_user_id === userId);
+  const directChat = chats.find((chat) => chat.other_user_id === userId && chat.kind === 'direct');
+  const connected = directChat != null;
+  // Founder: once you are both in the same chat, messaging should be one tap
+  // and not a hello somebody has to accept. The server decides what "same
+  // chat" means — a traveler group, never a venue's open room — so this is
+  // one question asked of it rather than a rule reimplemented here.
+  const { data: sharesGroup = false } = useSharesGroupWith(userId ?? null);
+  const known = connected || sharesGroup;
 
   if (profileQuery.isSuccess && !profile) {
     return (
@@ -79,7 +87,7 @@ export default function PublicProfileScreen() {
           // connected, the reply bubbles would just be a slower way to open
           // a chat you already have.
           onRespondTo={
-            connected || !userId
+            known || !userId
               ? undefined
               : (target) =>
                   openReply({
@@ -95,6 +103,37 @@ export default function PublicProfileScreen() {
           }
           actions={
             <>
+              {/* The one action this page never had. Reached from a group's
+                  member list — or from anywhere, once you two have a chat —
+                  it opens the conversation instead of a request form. */}
+              {known ? (
+                <PrimaryButton
+                  label={`Message ${profile.display_name ?? 'them'}`}
+                  onPress={() =>
+                    connected
+                      ? router.push({
+                          pathname: '/chat/[id]',
+                          params: { id: directChat!.chat_id },
+                        })
+                      : router.push({
+                          pathname: '/message/[userId]',
+                          params: { userId: userId!, name: profile.display_name ?? '' },
+                        })
+                  }
+                />
+              ) : null}
+              {known ? (
+                <PrimaryButton
+                  variant="ghost"
+                  label="Add to a group"
+                  onPress={() =>
+                    router.push({
+                      pathname: '/add-to-group/[userId]',
+                      params: { userId: userId!, name: profile.display_name ?? '' },
+                    })
+                  }
+                />
+              ) : null}
               {connected && handlesQuery.isError ? (
                 <PrimaryButton
                   variant="ghost"

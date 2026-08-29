@@ -1,7 +1,7 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { ActionSheetIOS, Alert, Platform, ScrollView, Share, StyleSheet, View } from 'react-native';
@@ -27,6 +27,7 @@ import {
   useUpdateGroup,
 } from '@/features/groups/hooks';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
+import { useLeaveRoom } from '@/features/rooms/hooks';
 import { InviteQr } from '@/features/groups/invite-qr';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { closeDayLabel, useHasGroupClosed } from '@/features/groups/closing';
@@ -49,11 +50,13 @@ function MemberRow({
   member,
   chatId,
   isAdmin,
+  isSelf,
   restricted,
 }: {
   member: GroupMemberRow;
   chatId: string;
   isAdmin: boolean;
+  isSelf: boolean;
   restricted: boolean;
 }) {
   const theme = useTheme();
@@ -61,6 +64,7 @@ function MemberRow({
   const setRole = useSetGroupRole(chatId);
   const remove = useRemoveGroupMember(chatId);
   const name = member.display_name ?? 'Traveler';
+  const canManage = isAdmin && member.role !== 'admin';
 
   const openActions = () => {
     const canSpeak = member.role !== 'member';
@@ -106,14 +110,25 @@ function MemberRow({
   const roleLabel =
     member.role === 'admin' ? 'Admin' : restricted && member.role === 'speaker' ? 'Can post' : null;
 
+  // Founder: you should be able to tap somebody in a chat you share and get
+  // to them — their profile, a message, an invite to another group. Every row
+  // used to be inert text unless you were the admin, and then it opened a
+  // moderation menu, so the one thing a face invites you to do was the one
+  // thing it could not do. Tapping now opens the person; the admin's tools
+  // moved to their own button on the right, where the ellipsis already was.
   return (
     <PressableScale
-      accessibilityRole={isAdmin && member.role !== 'admin' ? 'button' : 'text'}
-      accessibilityLabel={name}
-      haptic={isAdmin && member.role !== 'admin' ? 'light' : 'none'}
-      scaleTo={isAdmin && member.role !== 'admin' ? 0.98 : 1}
-      disabled={!isAdmin || member.role === 'admin'}
-      onPress={openActions}
+      accessibilityRole={isSelf ? 'text' : 'button'}
+      accessibilityLabel={isSelf ? `${name}, you` : `${name}'s profile`}
+      haptic={isSelf ? 'none' : 'soft'}
+      scaleTo={isSelf ? 1 : 0.98}
+      disabled={isSelf}
+      onPress={() =>
+        router.push({
+          pathname: '/profile/[userId]',
+          params: { userId: member.user_id, from: 'group', chatId },
+        })
+      }
       style={styles.memberRow}>
       <View style={[styles.avatar, { backgroundColor: theme.surfaceSunken }]}>
         {photoUrl ? (
@@ -141,12 +156,19 @@ function MemberRow({
           </ThemedText>
         </View>
       ) : null}
-      {isAdmin && member.role !== 'admin' ? (
-        <SymbolView
-          name={{ ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' }}
-          size={16}
-          tintColor={theme.textSecondary}
-        />
+      {canManage ? (
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`Manage ${name}`}
+          haptic="light"
+          hitSlop={10}
+          onPress={openActions}>
+          <SymbolView
+            name={{ ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' }}
+            size={16}
+            tintColor={theme.textSecondary}
+          />
+        </PressableScale>
       ) : null}
     </PressableScale>
   );
@@ -187,6 +209,7 @@ export default function GroupScreen() {
   const update = useUpdateGroup(id!);
   const revokeInvites = useRevokeGroupInvites(id!);
   const { data: photoUrl } = useChatPhotoUrl(group?.photo_path ?? null);
+  const leaveRoom = useLeaveRoom(id!);
 
   const myRole = members.find((m) => m.user_id === ownUserId)?.role ?? null;
   const isAdmin = myRole === 'admin';
@@ -201,6 +224,24 @@ export default function GroupScreen() {
   // Always a day the control is allowed to display: today's minimum rules out
   // a stored date in the past, and a chat with no end date has none at all.
   const pickerValue = pickerDay(group?.max_stay_until ?? null);
+
+  const confirmLeave = () => {
+    Alert.alert('Leave this chat?', 'You stop getting its messages.', [
+      { text: 'Stay', style: 'cancel' },
+      {
+        text: 'Leave',
+        style: 'destructive',
+        onPress: () => {
+          leaveRoom.mutate(undefined, {
+            // Back, not replace: this screen was pushed from the chat, which
+            // was pushed from the list, and both of those are now about a
+            // room this account is no longer in.
+            onSuccess: () => router.dismissAll(),
+          });
+        },
+      },
+    ]);
+  };
 
   if (!group) {
     // A failed fetch is not an empty group. This used to render a blank
@@ -503,14 +544,70 @@ export default function GroupScreen() {
                 member={member}
                 chatId={id!}
                 isAdmin={isAdmin}
+                isSelf={member.user_id === ownUserId}
                 restricted={restricted ?? false}
               />
             ))}
+            {/* Anybody in the group, not only the admin. A link was already
+                copyable by everyone, so "only admins bring people" was never
+                true — it was just slower and needed somebody's phone number. */}
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Add someone you know"
+              haptic="light"
+              scaleTo={0.98}
+              testID="group-add-people"
+              onPress={() =>
+                router.push({ pathname: '/add-people/[chatId]', params: { chatId: id! } })
+              }
+              style={styles.memberRow}>
+              <View style={[styles.avatar, { backgroundColor: theme.accentSoft }]}>
+                <SymbolView
+                  name={{ ios: 'person.badge.plus', android: 'person_add', web: 'person_add' }}
+                  size={16}
+                  tintColor={theme.accent}
+                />
+              </View>
+              <View style={styles.memberText}>
+                <ThemedText type="callout">Add someone</ThemedText>
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  Anyone you have chatted with. No link, no phone number.
+                </ThemedText>
+              </View>
+              <SymbolView
+                name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+                size={13}
+                tintColor={theme.textSecondary}
+              />
+            </PressableScale>
             {isAdmin ? (
               <ThemedText type="footnote" themeColor="textSecondary">
-                Tap someone to give them the microphone or take them out of the group.
+                Tap a name to open their profile. The button on the right of a row gives them the
+                microphone or takes them out of the group.
               </ThemedText>
             ) : null}
+          </View>
+
+          {/* A door out, which this screen simply did not have. The room
+              screen offers Leave for a venue's chat and not for a group, so
+              the only way out of a group was to be removed from it. */}
+          <View style={styles.section}>
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Leave this chat"
+              haptic="light"
+              scaleTo={0.98}
+              onPress={confirmLeave}
+              style={styles.leaveRow}>
+              <ThemedText type="callout" themeColor="danger">
+                Leave this chat
+              </ThemedText>
+            </PressableScale>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              {isAdmin
+                ? 'You run this one, so somebody else takes over when you go.'
+                : 'You stop getting messages. Anyone in the group can add you back.'}
+            </ThemedText>
           </View>
         </ScrollView>
         {/* Outside the scroller: iOS hosts it in the keyboard's own window,
@@ -562,6 +659,10 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Space.sm,
+  },
+  leaveRow: {
+    minHeight: HitTarget,
+    justifyContent: 'center',
   },
   sectionLabel: {
     // Sentence case, so the all-caps letter-spacing that used to hold

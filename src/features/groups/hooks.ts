@@ -1,15 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  addToGroup,
   createGroup,
   fetchGroup,
   fetchGroupMembers,
   groupInvitePreview,
   groupInviteToken,
   joinGroupWithInvite,
+  openDirectChat,
+  peopleYouKnow,
   removeGroupMember,
   revokeGroupInvites,
   setGroupRole,
+  sharesGroupWith,
   updateGroup,
 } from '@/features/groups/api';
 import { useOwnUserId } from '@/features/profile/hooks';
@@ -128,6 +132,60 @@ export function useJoinGroup() {
     mutationFn: joinGroupWithInvite,
     onSuccess: () => {
       analytics.capture('group_joined');
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
+    },
+  });
+}
+
+/**
+ * The address book, searched as you type.
+ *
+ * `keepPreviousData` on purpose: the list is short and the query fires per
+ * keystroke, so without it every letter empties the sheet and the row you
+ * were reaching for jumps out from under your thumb.
+ */
+export function usePeopleYouKnow(query: string) {
+  return useQuery({
+    queryKey: ['people-you-know', query.trim()],
+    queryFn: () => peopleYouKnow(query),
+    enabled: isSupabaseConfigured,
+    placeholderData: (previous) => previous,
+    staleTime: 30_000,
+  });
+}
+
+export function useAddToGroup(chatId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => addToGroup(chatId!, userId),
+    onSuccess: () => {
+      analytics.capture('group_member_added');
+      queryClient.invalidateQueries({ queryKey: ['group-members', chatId] });
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
+    },
+  });
+}
+
+/** Whether the say-hi gate applies to this person, or you already know them. */
+export function useSharesGroupWith(userId: string | null) {
+  return useQuery({
+    queryKey: ['shares-group', userId],
+    queryFn: () => sharesGroupWith(userId!),
+    enabled: isSupabaseConfigured && userId != null,
+    staleTime: 60_000,
+  });
+}
+
+export function useOpenDirectChat() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, firstMessage }: { userId: string; firstMessage: string }) =>
+      openDirectChat(userId, firstMessage),
+    onSuccess: (result) => {
+      if (result.blocked) {
+        return;
+      }
+      analytics.capture('direct_chat_opened');
       queryClient.invalidateQueries({ queryKey: ['chats'] });
     },
   });

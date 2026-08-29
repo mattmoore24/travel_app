@@ -315,6 +315,14 @@ export default function RoomScreen() {
             // A group is where you meet strangers, so knowing WHO said a
             // thing matters more here than anywhere else in the app.
             avatarFor={(m) => byId.get(m.id)?.photo_path ?? null}
+            // And tapping that face opens them, which is where messaging
+            // them or putting them in another group now lives.
+            onOpenSender={(senderId) =>
+              router.push({
+                pathname: '/profile/[userId]',
+                params: { userId: senderId, from: 'group', chatId: id! },
+              })
+            }
             noteFor={(m) => (byId.get(m.id)?.removed ? 'Message removed by the host' : null)}
             onToggleReaction={(messageId, emoji, on) => toggle.mutate({ messageId, emoji, on })}
             onUnsend={(messageId) =>
