@@ -172,8 +172,11 @@ appId: com.mattmoore.samewhere
     timeout: 20000
 - assertVisible: 'One photo is the only thing we need here.'
 - takeScreenshot: 48-business-photos
+# The docked button, which is the only one on this step when there are no
+# photos yet. The ghost duplicate above it was removed after run 87
+# photographed two identical "Add photos" on one screen.
 - tapOn:
-    id: 'business-add-photos'
+    id: 'business-photos-continue'
 - waitForAnimationToEnd:
     timeout: 3000
 - tapOn:

@@ -129,7 +129,12 @@ appId: com.mattmoore.samewhere
 - tapOn: 'Done'
 - waitForAnimationToEnd:
     timeout: 1500
-- assertVisible: 'English'
+# The chosen language shows as a chip INSIDE the field, and the field is a
+# pressable with its own accessibility label, so iOS hides the chip's text
+# from the tree — run 87 failed this assertion with English plainly chosen in
+# the picture. The note going away is the addressable proof that the step is
+# satisfied.
+- assertNotVisible: 'Add where you are from and at least one language.*'
 - takeScreenshot: 53-signup-home-filled
 - tapOn: 'Continue'
 

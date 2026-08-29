@@ -625,12 +625,20 @@ export default function BusinessSignupScreen() {
             ? go(8)
             : router.push({ pathname: '/business-edit', params: { section: 'photos' } })
         }>
-        <PrimaryButton
-          variant="ghost"
-          label={photoCount > 0 ? `${photoCount} added. Add more` : 'Add photos'}
-          testID="business-add-photos"
-          onPress={() => router.push({ pathname: '/business-edit', params: { section: 'photos' } })}
-        />
+        {/* Only once there is something to add TO. With no photos the docked
+            button already says "Add photos" and opens the same editor, so
+            this drew a second identical button adrift in an empty screen —
+            run 87 photographed it. */}
+        {photoCount > 0 ? (
+          <PrimaryButton
+            variant="ghost"
+            label={`${photoCount} added. Add more`}
+            testID="business-add-photos"
+            onPress={() =>
+              router.push({ pathname: '/business-edit', params: { section: 'photos' } })
+            }
+          />
+        ) : null}
       </StepShell>
     );
   }
