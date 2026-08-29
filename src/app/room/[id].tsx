@@ -317,11 +317,19 @@ export default function RoomScreen() {
             avatarFor={(m) => byId.get(m.id)?.photo_path ?? null}
             // And tapping that face opens them, which is where messaging
             // them or putting them in another group now lives.
-            onOpenSender={(senderId) =>
-              router.push({
-                pathname: '/profile/[userId]',
-                params: { userId: senderId, from: 'group', chatId: id! },
-              })
+            //
+            // Not for a guest: /profile/[userId] sits behind signedIn &&
+            // onboarded, so the route does not exist for them and the push
+            // would be a tap that is allowed to do nothing. Passing nothing
+            // leaves the face a plain view, which is honest.
+            onOpenSender={
+              isGuest
+                ? undefined
+                : (senderId) =>
+                    router.push({
+                      pathname: '/profile/[userId]',
+                      params: { userId: senderId, from: 'group', chatId: id! },
+                    })
             }
             noteFor={(m) => (byId.get(m.id)?.removed ? 'Message removed by the host' : null)}
             onToggleReaction={(messageId, emoji, on) => toggle.mutate({ messageId, emoji, on })}
