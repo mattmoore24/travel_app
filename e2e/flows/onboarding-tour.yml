@@ -105,11 +105,9 @@ appId: com.mattmoore.samewhere
 # The FIELD, not the section heading above it. Run 79 tapped the heading,
 # which is a label and does nothing, and then waited out its timeout on a
 # sheet that had never been asked to open.
-- scrollUntilVisible:
-    element:
-      text: 'Pick the ones you speak'
-    direction: DOWN
-    timeout: 8000
+# Tapped directly, not scrolled to. With the keyboard down this step fits on
+# one screen, and scrollUntilVisible at 100% visibility fails on a page that
+# cannot scroll — run 83 died here with the element plainly in the picture.
 - tapOn: 'Pick the ones you speak'
 - extendedWaitUntil:
     visible:

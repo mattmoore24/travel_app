@@ -180,6 +180,25 @@ appId: com.mattmoore.samewhere
     text: 'Close'
     optional: true
 
+# Back on the step, and the count has to catch up before Continue will move.
+# On the live project require_photo_moderation is ON, so a fresh photo holds
+# at 'pending' until the worker's next tick approves it — and until
+# 20260829180000 there was no worker branch and no trigger at all, so this
+# count sat at zero forever and the step could never be passed. Waiting for
+# the label to change is the end-to-end proof that the pipeline exists.
+- extendedWaitUntil:
+    visible: 'Show the place'
+    timeout: 20000
+- extendedWaitUntil:
+    visible: '1 added. Add more'
+    timeout: 120000
+    optional: true
+- takeScreenshot: 50-business-photo-counted
+- tapOn:
+    id: 'business-photos-continue'
+- waitForAnimationToEnd:
+    timeout: 2000
+
 # Everything below runs only if a photo actually landed. Driving Apple's
 # picker is the one part of this suite that depends on somebody else's UI, so
 # it is allowed to fail without taking the run with it — the four screenshots
