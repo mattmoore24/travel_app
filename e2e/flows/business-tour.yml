@@ -152,11 +152,9 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'business-phone-input'
 - inputText: '+351 912 345 678'
-- hideKeyboard
 - tapOn:
     id: 'business-whatsapp-input'
 - inputText: '+351 912 345 678'
-- hideKeyboard
 - takeScreenshot: 47-business-contact
 - tapOn:
     id: 'business-contact-continue'

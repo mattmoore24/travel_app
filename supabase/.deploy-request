@@ -228,3 +228,16 @@
              purpose — and it re-runs the geofence and leaves the typed address
              alone. business_detail DROPped and recreated with `address`.
              771 pgTAP assertions, 7 new and about exactly this.
+2026-08-29T17:37:42Z A business photo is ever seen
+             business_photos.moderation_status defaulted to 'pending' and
+             NOTHING ever moved it: profile_photos gets moderate_photo_stub on
+             insert, business photos got the same column, the same enum, the
+             same '= approved' filter on every read, and no trigger. So no
+             photo of a business had ever been visible to a traveler, and
+             business signup's photo step could not be passed at all — the
+             count it gates on comes from business_detail, which filters on
+             'approved', so it was pinned at zero however many went in.
+             Trigger for the flag-off case, apply_business_photo_verdict plus
+             a worker branch for the flag-on case (production runs flag-on, so
+             the trigger alone would have swapped one invisible state for
+             another). 779 pgTAP assertions, 8 new and about exactly this.

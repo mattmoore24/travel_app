@@ -92,6 +92,38 @@ const KNOWN = new Set([
   'condition',
 ]);
 
+/**
+ * Commands this suite has watched fail and will not have back.
+ *
+ * `hideKeyboard` took run 82 down in both tours — the same "no reliable
+ * dismiss path" that signed-in-tour.yml had already written down in a comment
+ * and that nobody read before reaching for it again. Every place it was used,
+ * nothing needed dismissing: the next target was a docked button. Where a
+ * keyboard genuinely has to go away, a single-line field takes `pressKey:
+ * Enter`, which iOS honours by blurring.
+ */
+const BANNED: Record<string, string> = {
+  hideKeyboard:
+    'no reliable dismiss path on this Maestro/iOS pair; it failed run 82 in both tours. ' +
+    'Use pressKey: Enter on a single-line field, or nothing at all when the next target is docked.',
+};
+
+describe('the flows do not reach for commands that have failed here', () => {
+  it.each(flowFiles().map((f) => [path.basename(f), f] as const))('%s', (_name, file) => {
+    const offenders: string[] = [];
+    fs.readFileSync(file, 'utf8')
+      .split('\n')
+      .forEach((line, i) => {
+        // The command itself, not a mention of it in a comment.
+        const match = /^\s*-\s+([A-Za-z][A-Za-z0-9_]*)\s*$/.exec(line);
+        if (match && BANNED[match[1]]) {
+          offenders.push(`${path.basename(file)}:${i + 1} ${match[1]} — ${BANNED[match[1]]}`);
+        }
+      });
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe('the Maestro flows use selectors Maestro has', () => {
   const files = flowFiles();
 

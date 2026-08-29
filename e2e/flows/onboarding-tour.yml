@@ -78,7 +78,6 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'age-input'
 - inputText: '29'
-- hideKeyboard
 - tapOn: 'Continue'
 
 # STEP 4 — where you are from.
@@ -180,7 +179,6 @@ appId: com.mattmoore.samewhere
       - tapOn:
           id: 'bio-input'
       - inputText: 'Street food missions and long walks. Terrible at surfing, still going.'
-      - hideKeyboard
       - takeScreenshot: 57-signup-bio
       - tapOn: 'Continue'
       # STEPS 8, 9, 10 — prompts, priorities and trips. Each hands over to

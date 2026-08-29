@@ -2,6 +2,7 @@
 //
 //   1. message_requests in 'pending_moderation'  -> apply_message_verdict
 //   2. profile_photos   in 'pending'             -> apply_photo_verdict
+//   2b. business_photos in 'pending'             -> apply_business_photo_verdict
 //   3. verification_requests in 'pending'        -> apply_verification_verdict
 //   4. messages with a pending photo             -> apply_chat_photo_verdict
 //   5. business_verifications in 'pending'       -> apply_business_verification_verdict
@@ -156,6 +157,7 @@ function optionalPrompt(key: 'storefront' | 'impersonation'): string | null {
 type WorkerReport = {
   messages: { approved: number; blocked: number; failed: number };
   photos: { approved: number; rejected: number; failed: number };
+  businessPhotos: { approved: number; rejected: number; failed: number };
   chatPhotos: { approved: number; rejected: number; failed: number };
   verifications: { approved: number; rejected: number; failed: number };
   storefronts: { approved: number; rejected: number; uncertain: number; failed: number };
@@ -287,6 +289,7 @@ Deno.serve(async (req) => {
   const report: WorkerReport = {
     messages: { approved: 0, blocked: 0, failed: 0 },
     photos: { approved: 0, rejected: 0, failed: 0 },
+    businessPhotos: { approved: 0, rejected: 0, failed: 0 },
     chatPhotos: { approved: 0, rejected: 0, failed: 0 },
     verifications: { approved: 0, rejected: 0, failed: 0 },
     storefronts: { approved: 0, rejected: 0, uncertain: 0, failed: 0 },
@@ -532,6 +535,103 @@ Deno.serve(async (req) => {
           .eq('id', photo.id);
         report.notes.push(
           `photo ${photo.id}: ${(error as Error).message}` +
+            (bumpError ? ` (attempts update failed: ${bumpError.message})` : '')
+        );
+      }
+    }
+  }
+
+  // -- 3b. Pending business photos -------------------------------------------
+  //
+  // These had no pipeline at all. `business_photos.moderation_status` defaults
+  // to 'pending' and nothing ever moved it, while every traveler-facing read
+  // filters on 'approved' — so no photo of a business had ever been seen by
+  // anybody but its owner, and business signup's photo step could not be
+  // passed, because the count it gates on comes from `business_detail` and was
+  // pinned at zero. The trigger added in 20260829180000 handles the flag-off
+  // case; this is the flag-on one, and production runs with the flag on.
+  //
+  // Same shape as the profile branch above, with a different question: the
+  // subject is a room or a shopfront rather than a face, and the thing that
+  // matters is whether it is a photo of the place at all.
+  const { data: businessPhotos } = await supabase
+    .from('business_photos')
+    .select('id, business_id, storage_path, moderation_attempts')
+    .eq('moderation_status', 'pending')
+    .lt('moderation_attempts', MAX_ATTEMPTS)
+    .order('created_at')
+    .limit(PHOTOS_PER_TICK);
+
+  for (const photo of businessPhotos ?? []) {
+    try {
+      const url = await signedUrl('business-photos', photo.storage_path);
+      const verdict = await classify(
+        anthropic,
+        PROMPTS.photo,
+        [
+          { type: 'image', source: { type: 'url', url } },
+          {
+            type: 'text',
+            text:
+              'Moderate this photo of a business, uploaded by the person who runs it. ' +
+              'It should show the place, its food, or its rooms.',
+          },
+        ],
+        PhotoVerdict
+      );
+      const payload = verdict
+        ? { ...verdict, engine: 'claude-moderator', model: MODEL }
+        : {
+            action: 'block',
+            category: 'refusal',
+            reason: 'the model refused to process this content',
+            engine: 'claude-moderator',
+            model: MODEL,
+          };
+      const { error } = await supabase.rpc('apply_business_photo_verdict', {
+        p_photo_id: photo.id,
+        p_verdict: payload,
+      });
+      if (error) {
+        throw new Error(`apply_business_photo_verdict: ${error.message}`);
+      }
+      if (payload.action === 'allow') {
+        report.businessPhotos.approved += 1;
+      } else {
+        report.businessPhotos.rejected += 1;
+      }
+    } catch (error) {
+      if (isAuthError(error)) {
+        return Response.json(
+          { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
+          { status: 503 }
+        );
+      }
+      report.businessPhotos.failed += 1;
+      const attempts = (photo.moderation_attempts ?? 0) + 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        // Fail closed, and say so in the ledger rather than leaving a listing
+        // owner staring at a photo step that will never advance.
+        const { error: rpcError } = await supabase.rpc('apply_business_photo_verdict', {
+          p_photo_id: photo.id,
+          p_verdict: {
+            action: 'block',
+            category: 'moderation_unavailable',
+            reason: `classification failed ${attempts} times`,
+            engine: 'failsafe',
+          },
+        });
+        report.notes.push(
+          rpcError
+            ? `business photo ${photo.id}: failsafe reject failed: ${rpcError.message}`
+            : `business photo ${photo.id}: failsafe reject after ${attempts} attempts`
+        );
+      } else {
+        const { error: bumpError } = await supabase.rpc('note_business_photo_attempt', {
+          p_photo_id: photo.id,
+        });
+        report.notes.push(
+          `business photo ${photo.id}: ${(error as Error).message}` +
             (bumpError ? ` (attempts update failed: ${bumpError.message})` : '')
         );
       }
