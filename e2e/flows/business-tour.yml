@@ -92,16 +92,23 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'business-address-input'
 - inputText: 'Rua da Rosa'
-# Suggestions arrive on a pause in typing, not on a button.
+# Suggestions arrive on a pause in typing, not on a button. While the field
+# has focus the step hides its chips and its map, so the list gets the screen
+# — run 79 photographed the first suggestion sliced in half by the docked
+# button, which is the bug this flow now proves is gone.
 - waitForAnimationToEnd:
     timeout: 4000
 - takeScreenshot: 43-business-address-typing
+# By index, not by words: the suggestion repeats what is in the box above it,
+# so driving this by its text matches two elements.
 - tapOn:
-    text: 'Done'
-    optional: true
+    id: 'address-suggestion-0'
 - waitForAnimationToEnd:
     timeout: 1500
+# Picking sets BOTH the address text and the marker, which is the whole
+# contract of this step. The map is back now that the field has let go.
 - takeScreenshot: 44-business-address-and-marker
+- assertVisible: 'Move the marker as much as you like.*'
 
 - takeScreenshot: 45-business-where-final
 

@@ -11,10 +11,26 @@ type LocationPickerProps = {
   lat: number;
   lng: number;
   onChange: (lat: number, lng: number) => void;
+  /**
+   * Whether `lat`/`lng` are a real choice or just somewhere to look.
+   *
+   * A business signing up has not placed anything yet, and the map was
+   * drawing a marker on the city centre anyway — so the screen showed a
+   * marker, refused Continue, and asked for a marker. False draws the map
+   * with none and says what to do.
+   */
+  placed?: boolean;
 };
 
 /** Tap or drag to place the pin at venue level — never tied to GPS. */
-export function LocationPicker({ centerLat, centerLng, lat, lng, onChange }: LocationPickerProps) {
+export function LocationPicker({
+  centerLat,
+  centerLng,
+  lat,
+  lng,
+  onChange,
+  placed = true,
+}: LocationPickerProps) {
   return (
     <View style={styles.container}>
       <MapView
@@ -48,17 +64,19 @@ export function LocationPicker({ centerLat, centerLng, lat, lng, onChange }: Loc
           strokeWidth={0}
           tappable={false}
         />
-        <Marker
-          coordinate={{ latitude: lat, longitude: lng }}
-          draggable
-          onDragEnd={(event) => {
-            const { latitude, longitude } = event.nativeEvent.coordinate;
-            onChange(latitude, longitude);
-          }}
-        />
+        {placed ? (
+          <Marker
+            coordinate={{ latitude: lat, longitude: lng }}
+            draggable
+            onDragEnd={(event) => {
+              const { latitude, longitude } = event.nativeEvent.coordinate;
+              onChange(latitude, longitude);
+            }}
+          />
+        ) : null}
       </MapView>
       <ThemedText type="small" themeColor="textSecondary">
-        Drag it to the spot.
+        {placed ? 'Drag it to the spot.' : 'Tap the map to drop your marker.'}
       </ThemedText>
     </View>
   );

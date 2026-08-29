@@ -33,6 +33,7 @@ export function BusinessAddressField({
   cityLng,
   onChangeText,
   onPick,
+  onFocusChange,
 }: {
   value: string;
   cityName: string;
@@ -41,6 +42,16 @@ export function BusinessAddressField({
   onChangeText: (next: string) => void;
   /** A result from the map: worth both the words and the coordinates. */
   onPick: (place: LocalSearchResult) => void;
+  /**
+   * Focused, so the step can get out of the way.
+   *
+   * With the keyboard up there is about one field's worth of room left on a
+   * phone, and this list was landing in it: run 79 photographed the first
+   * suggestion sliced in half by the docked button, under a line telling
+   * somebody to pick a suggestion or drag a marker that was three screens
+   * further down. The step hides its chips and its map while this is true.
+   */
+  onFocusChange?: (focused: boolean) => void;
 }) {
   const theme = useTheme();
   const inputRef = useRef<TextInput>(null);
@@ -68,6 +79,7 @@ export function BusinessAddressField({
   const pick = (result: LocalSearchResult) => {
     haptics.light();
     inputRef.current?.blur();
+    onFocusChange?.(false);
     clear();
     setPicked(true);
     onPick(result);
@@ -91,6 +103,8 @@ export function BusinessAddressField({
           placeholder={`Street and number in ${cityName}`}
           placeholderTextColor={theme.textSecondary}
           returnKeyType="search"
+          onFocus={() => onFocusChange?.(true)}
+          onBlur={() => onFocusChange?.(false)}
           autoCorrect={false}
           autoCapitalize="words"
           clearButtonMode="never"
@@ -128,6 +142,10 @@ export function BusinessAddressField({
               key={`${hit.name}:${hit.latitude}:${hit.longitude}`}
               accessibilityRole="button"
               accessibilityLabel={hit.name}
+              // The suggestion text repeats what is in the box above it, so
+              // driving this by its words finds two matches. The index is
+              // what a suite can aim at.
+              testID={`address-suggestion-${i}`}
               haptic="selection"
               scaleTo={0.99}
               onPress={() => pick(hit)}

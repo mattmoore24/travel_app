@@ -130,6 +130,9 @@ export default function BusinessSignupScreen() {
   const [phone, setPhone] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
   const [touched, setTouched] = useState(false);
+  // See BusinessAddressField's onFocusChange: with the keyboard up there is
+  // one field's worth of room left, and the chips and the map were eating it.
+  const [addressFocused, setAddressFocused] = useState(false);
   const [registered, setRegistered] = useState(false);
 
   // Chosen, never assumed. This used to fall back to `launchCities[0]`, so
@@ -305,9 +308,11 @@ export default function BusinessSignupScreen() {
         note={
           city == null
             ? 'Pick your city first.'
-            : coords == null
-              ? 'Pick a suggestion, or drag the marker onto your door.'
-              : null
+            : addressFocused
+              ? 'Pick your street from the list.'
+              : coords == null
+                ? 'Pick your street above, or tap the map on your door.'
+                : null
         }
         onBack={() => go(3)}
         continueTestID="business-place-continue"
@@ -330,7 +335,7 @@ export default function BusinessSignupScreen() {
             />
           ) : undefined
         }>
-        {launchCities.length > 0 ? (
+        {launchCities.length > 0 && !addressFocused ? (
           <View style={styles.block}>
             <ThemedText type="callout">Which city?</ThemedText>
             <ChipRow
@@ -359,6 +364,7 @@ export default function BusinessSignupScreen() {
                 types nothing and drags; the field being here does not make it
                 a requirement. */}
             <BusinessAddressField
+              onFocusChange={setAddressFocused}
               value={address}
               cityName={city.cities.name}
               cityLat={city.cities.lat}
@@ -369,30 +375,42 @@ export default function BusinessSignupScreen() {
                 setCoords({ lat: place.latitude, lng: place.longitude });
               }}
             />
-            <LocationPicker
-              // Remounted on a city change: the picker reads its centre once,
-              // through initialRegion, so without this the map keeps showing
-              // the city that was chosen first.
-              key={city.city_id}
-              centerLat={city.cities.lat}
-              centerLng={city.cities.lng}
-              lat={coords?.lat ?? city.cities.lat}
-              lng={coords?.lng ?? city.cities.lng}
-              // Only the marker. The address stays exactly as typed, which is
-              // the founder's rule and the reason these are two fields.
-              onChange={(lat, lng) => setCoords({ lat, lng })}
-            />
-            {address.trim().length > 0 && coords != null ? (
-              <ThemedText type="footnote" themeColor="textSecondary">
-                Move the marker as much as you like. Your address stays as you wrote it.
-              </ThemedText>
-            ) : null}
+            {addressFocused ? null : (
+              <>
+                <LocationPicker
+                  // Remounted on a city change: the picker reads its centre
+                  // once, through initialRegion, so without this the map keeps
+                  // showing the city that was chosen first.
+                  key={city.city_id}
+                  centerLat={city.cities.lat}
+                  centerLng={city.cities.lng}
+                  lat={coords?.lat ?? city.cities.lat}
+                  lng={coords?.lng ?? city.cities.lng}
+                  // No marker until there is one to draw. It used to sit on
+                  // the city centre, so the screen showed a marker, refused
+                  // Continue, and asked for a marker.
+                  placed={coords != null}
+                  // Only the marker. The address stays exactly as typed, which
+                  // is the founder's rule and the reason these are two fields.
+                  onChange={(lat, lng) => setCoords({ lat, lng })}
+                />
+                {address.trim().length > 0 && coords != null ? (
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    Move the marker as much as you like. Your address stays as you wrote it.
+                  </ThemedText>
+                ) : null}
+              </>
+            )}
           </>
         ) : (
           <ThemedText themeColor="textSecondary">
             {launchCitiesQuery.isError
               ? 'The map could not load the cities. Check your connection and try again.'
-              : 'Getting the map ready.'}
+              : launchCities.length > 0
+                ? // Nothing is loading here. The screen is waiting on a tap,
+                  // and it used to say "Getting the map ready" while doing it.
+                  'Pick your city above and the map will show up.'
+                : 'Getting the cities.'}
           </ThemedText>
         )}
       </StepShell>

@@ -101,12 +101,15 @@ appId: com.mattmoore.samewhere
 
 # Languages, which step 4 will not let go without. The picker is the app's own
 # sheet rather than a system dialog, so it is safe to drive.
+# The FIELD, not the section heading above it. Run 79 tapped the heading,
+# which is a label and does nothing, and then waited out its timeout on a
+# sheet that had never been asked to open.
 - scrollUntilVisible:
     element:
-      text: 'Languages'
+      text: 'Pick the ones you speak'
     direction: DOWN
     timeout: 8000
-- tapOn: 'Languages'
+- tapOn: 'Pick the ones you speak'
 - extendedWaitUntil:
     visible:
       id: 'language-search'
