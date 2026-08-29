@@ -5,7 +5,7 @@
 # a real phone.
 #
 # These are not real people: AI-generated portraits, [demo] marked bios.
-# LAUNCH_RUNBOOK step 4 requires purging before real users arrive.
+# LAUNCH_RUNBOOK step 5 requires purging before real users arrive.
 #
 # Seeding cannot mark anybody verified: this runs on the anon key on purpose,
 # and profiles.verified has no client grant. To test the "who can see you"

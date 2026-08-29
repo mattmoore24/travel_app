@@ -47,6 +47,11 @@ could spend five of them waiting for a cron tick.
 
 **Founder action, and the real fix:** verify a domain in Resend and set
 `SUPPORT_FROM`. Until then no business but the founder's own can receive a code.
+Deferred to go-live by the founder on 2026-08-29 ("I'll verify a domain later
+closer to go-live... For now I'll just keep using my own email to test"), and
+written down where it will be read at the right moment:
+[`LAUNCH_RUNBOOK.md`](LAUNCH_RUNBOOK.md) step 2, with the DNS records, the
+secret to set, and the proof to run.
 
 ### Where is it, and who to call
 

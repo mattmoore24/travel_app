@@ -16,7 +16,7 @@
 -- test database and broke a guest-visibility assertion. Idempotent, so running
 -- it twice is a no-op rather than a duplicate.
 --
--- LAUNCH_RUNBOOK step 4 purges demo content before real users arrive. This is
+-- LAUNCH_RUNBOOK step 5 purges demo content before real users arrive. This is
 -- content on OUR OWN four venues rather than fake businesses, so there is
 -- nothing to purge: the hours are plausible, the post says what it is, and a
 -- real owner claiming one of these later overwrites all of it.

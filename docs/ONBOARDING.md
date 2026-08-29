@@ -213,7 +213,8 @@ once already (`support-mailer`'s backoff comment records it). Two things follow:
 
 1. **Founder action:** verify a domain in Resend and set `SUPPORT_FROM` to an
    address on it. Until that is done, no business but the founder's own can
-   ever receive a code.
+   ever receive a code. Deferred to go-live on 2026-08-29 and written up as
+   [`LAUNCH_RUNBOOK.md`](LAUNCH_RUNBOOK.md) step 2.
 2. **Ours:** the app must stop claiming a delivery it cannot confirm.
    `outbound_mail` already records `delivery_error`, so a narrow caller-scoped
    RPC can tell the code screen "that address bounced" instead of leaving

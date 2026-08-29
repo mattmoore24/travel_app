@@ -70,7 +70,42 @@ message and photo waits in the held state — fail-closed, but broken UX.
 Verify: send a flirty first message from a test account → it must never
 arrive, and `select * from admin_moderation_stats;` must count it as blocked.
 
-## 2. Confirm the scheduled jobs
+## 2. Verify a sending domain in Resend
+
+**Not done. Founder action, and nothing in the repo can do it.** Until it is,
+the only inbox in the world that can receive a Samewhere email is the one the
+Resend account was opened with.
+
+`support-mailer` sends from `SUPPORT_FROM`, which is unset, so it falls back to
+Resend's shared `onboarding@resend.dev`. That address is a sandbox: with no
+verified domain of your own, Resend accepts the send, returns a 200, and then
+delivers only to the account owner's address. Everything else is dropped at
+their end. That is why `mattmoore@wustl.edu` never got a business confirmation
+code while `mattmoorefb24@gmail.com` did — the app was working, the mail was
+not leaving Resend.
+
+What that costs live: **no business but yours can confirm a listing**, and no
+support reply, no message-request digest, and nothing else the mailer is ever
+used for reaches a real user.
+
+To fix, closer to go-live:
+
+1. Resend → Domains → add the domain, publish the three DNS records it gives
+   you (SPF, DKIM, and the return-path CNAME), wait for all three to go green.
+2. Set the GitHub secret `SUPPORT_FROM` to an address on that domain, e.g.
+   `Samewhere <hello@samewhere.app>`, and redeploy the functions (Actions →
+   **Supabase deploy**).
+3. Prove it: sign up a business on an address that is **not** the Resend
+   account's own, and confirm the code arrives. Then
+   `select * from outbound_mail order by created_at desc limit 5;` — every row
+   should carry a `sent_at` and a null `delivery_error`.
+
+The app already tells the truth in the meantime: `my_business_code_status()`
+reads `outbound_mail`, and the code screen says the address bounced instead of
+leaving somebody staring at "Check your email". That is a decent failure, not a
+fix.
+
+## 3. Confirm the scheduled jobs
 
 | Job                          | Runs on                    | Check                                                     |
 | ---------------------------- | -------------------------- | --------------------------------------------------------- |
@@ -83,7 +118,7 @@ arrive, and `select * from admin_moderation_stats;` must count it as blocked.
 `select * from cron.job;` (the migrations schedule them automatically where
 the extension exists).
 
-## 3. Open the city and seed it
+## 4. Open the city and seed it
 
 ```sql
 -- Only Lisbon at first: launch dense, not wide (brief §2.6).
@@ -97,7 +132,7 @@ Seed curated pins so the map is never empty: run
 expire within 72h — re-run it every 2 days** during launch, or the map goes
 cold. Check supply with `select * from admin_pin_stats;`.
 
-## 4. Repo goes private again before real users arrive
+## 5. Repo goes private again before real users arrive
 
 The repo is **public while building** (free unlimited CI minutes — the macOS
 E2E runner alone bills 10x on private repos). That trade is only safe
@@ -123,13 +158,13 @@ pre-launch. Before opening the app to real users, in this order:
 - Optional hardening: rotate the `MODERATION_PROMPTS` wording — the prompts
   were never in the public repo, so this is belt-and-suspenders only.
 
-## 5. Ship the build
+## 6. Ship the build
 
 [`APP_STORE.md`](APP_STORE.md) has the full sequence: EAS environment
 variables → `eas build` → TestFlight → App Review notes → privacy labels.
 Needs the Apple Developer membership.
 
-## 6. Watch the numbers
+## 7. Watch the numbers
 
 Daily, from [`DASHBOARD.md`](DASHBOARD.md): `admin_liquidity` (the number that
 matters), `admin_request_funnel` (accept rate — a collapse means creep),
