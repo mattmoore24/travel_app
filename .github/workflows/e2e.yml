@@ -278,6 +278,14 @@ jobs:
           # Build the driver on a throwaway launch so flow #1 starts warm.
           reset_state
           maestro --udid "$UDID" test ../e2e/warmup.yml || true
+          # A throwaway account for the business flow, unique per run. It never
+          # finishes a traveler profile and never confirms a code, so what it
+          # leaves behind is an unonboarded auth row and, if the flow gets that
+          # far, an `unconfirmed` business — which is fully dark by definition:
+          # no marker, no chat, no messages. The business path is the one part
+          # of the app with no picture of it at all, which is how it drifted
+          # far enough for the founder to hit it.
+          E2E_BIZ_EMAIL="maestro-biz-$(date +%s)@samewhere.test"
           STATUS=0
           for flow in ../e2e/flows/*.yml; do
             # One retry: the first attempt pays the driver build cost and
@@ -286,11 +294,13 @@ jobs:
             # signed in and past the tour.
             reset_state
             maestro --udid "$UDID" test \
-              -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" "$flow" \
+              -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" \
+              -e E2E_BIZ_EMAIL="$E2E_BIZ_EMAIL" "$flow" \
               || {
                 reset_state
                 maestro --udid "$UDID" test \
-                  -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" "$flow"
+                  -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" \
+                  -e E2E_BIZ_EMAIL="$E2E_BIZ_EMAIL" "$flow"
               } \
               || STATUS=1
           done

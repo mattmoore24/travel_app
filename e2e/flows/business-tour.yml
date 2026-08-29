@@ -1,0 +1,110 @@
+# The business path, which until now had no picture of it at all.
+#
+# The only business screen the suite has ever photographed is the account-kind
+# chooser in guest-tour, and the founder found out the hard way what that
+# costs: a signup that asks for a map tap and never an address, an email step
+# that promised travelers would reach you at an address no traveler can see,
+# and a confirmation screen that crashed the app after the listing had already
+# gone live.
+#
+# This runs on a THROWAWAY account, unique per run (E2E_BIZ_EMAIL), and stops
+# before registering anything. What it leaves behind is an auth row that never
+# finished a profile, which is the same state a person who abandons signup
+# leaves. Nothing reaches the map.
+appId: com.mattmoore.samewhere
+---
+- launchApp
+- extendedWaitUntil:
+    visible: 'Skip'
+    timeout: 20000
+- tapOn: 'Skip'
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+
+# In through the door a business owner actually finds: the gate on dropping a
+# pin leads with "Make a profile", and that is /join with the kind question on
+# it.
+- tapOn: 'Drop a pin'
+- extendedWaitUntil:
+    visible: 'Make a profile'
+    timeout: 10000
+    optional: true
+- tapOn:
+    text: 'Make a profile'
+    optional: true
+- extendedWaitUntil:
+    visible: 'What are you signing up as?'
+    timeout: 10000
+- tapOn: 'I run a business'
+- waitForAnimationToEnd:
+    timeout: 1500
+# The founder's replacement copy, asserted rather than only photographed: the
+# old line told a business its sign-in email was the one customers would use,
+# which was never true.
+- assertVisible: 'This email is just for signing in.*'
+- takeScreenshot: 40-business-email-copy
+
+- tapOn:
+    id: 'email-input'
+- inputText: ${E2E_BIZ_EMAIL}
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: 'Pick a password'
+    timeout: 10000
+- tapOn:
+    id: 'password-input'
+- inputText: 'MaestroBiz!2026'
+- tapOn:
+    id: 'create-account'
+- tapOn:
+    text: 'Not Now'
+    optional: true
+
+# NAME AND KIND
+- extendedWaitUntil:
+    visible: "What's your business called?"
+    timeout: 30000
+- tapOn:
+    text: 'Not Now'
+    optional: true
+- tapOn:
+    id: 'business-name-input'
+- inputText: 'Maestro Cafe'
+- pressKey: Enter
+- tapOn: 'Cafe'
+- takeScreenshot: 41-business-name
+- tapOn:
+    id: 'business-name-continue'
+
+# WHERE IS IT — the step the founder asked for. An address first, with
+# suggestions, and a marker underneath that moving does not overwrite it.
+- extendedWaitUntil:
+    visible: 'Where is it?'
+    timeout: 15000
+- takeScreenshot: 42-business-where-empty
+# The city has to be CHOSEN now. It used to default to whichever launch city
+# the query returned first, so an owner who never touched the chips filed
+# their business in a city they never picked.
+- tapOn: 'Lisbon'
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    id: 'business-address-input'
+- inputText: 'Rua da Rosa'
+# Suggestions arrive on a pause in typing, not on a button.
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 43-business-address-typing
+- tapOn:
+    text: 'Done'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: 44-business-address-and-marker
+
+# Stops here on purpose. The next tap is Continue into the confirm step, and
+# the one after that registers a business for real — one account owns at most
+# one, and register_business is not idempotent, so a suite that registered
+# would leave a dead row on the live project every single run.
+- takeScreenshot: 45-business-where-final
