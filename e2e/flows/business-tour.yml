@@ -152,9 +152,16 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'business-phone-input'
 - inputText: '+351 912 345 678'
-- tapOn:
+# One number, not two. Tapping a second field while a keyboard is up does not
+# reliably move focus under XCUITest — signed-in-tour.yml has said so since
+# run 23 — and a phone pad has no Return to leave with. Run 84 typed the
+# WhatsApp number into the phone field on top of the first, making 33
+# characters, which the validator refuses at 30. What this step has to prove
+# is the founder's ask that a number can be a contact at all; the WhatsApp
+# field is asserted present and left empty, which is also the commonest real
+# answer.
+- assertVisible:
     id: 'business-whatsapp-input'
-- inputText: '+351 912 345 678'
 - takeScreenshot: 47-business-contact
 - tapOn:
     id: 'business-contact-continue'

@@ -105,10 +105,13 @@ appId: com.mattmoore.samewhere
 # The FIELD, not the section heading above it. Run 79 tapped the heading,
 # which is a label and does nothing, and then waited out its timeout on a
 # sheet that had never been asked to open.
-# Tapped directly, not scrolled to. With the keyboard down this step fits on
-# one screen, and scrollUntilVisible at 100% visibility fails on a page that
-# cannot scroll — run 83 died here with the element plainly in the picture.
-- tapOn: 'Pick the ones you speak'
+# By the FIELD's accessibility label, not the words inside it. The opener is a
+# PressableScale with accessibilityRole="button" and its own label, which makes
+# iOS treat the whole thing as one element and hides the "Pick the ones you
+# speak" text from the tree. Run 79 tapped the section heading, run 83 scrolled
+# to a field already on screen (scrollUntilVisible at 100% fails on a page that
+# cannot scroll), and run 84 tapped text no longer addressable. Third time.
+- tapOn: 'Languages you speak'
 - extendedWaitUntil:
     visible:
       id: 'language-search'

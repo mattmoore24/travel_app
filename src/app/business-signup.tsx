@@ -87,6 +87,9 @@ const EMAIL_PROMISE = "Almost there. We'll email you a code. Type it in and you'
 const CHANGE_LATER = 'You can change this any time, from your business page.';
 
 /** What a refused contact is called, in the words on its own field. */
+/** The database's own ceiling for a phone or WhatsApp number. */
+const CONTACT_MAX = 30;
+
 const CONTACT_LABEL = (kind: ContactKind): string =>
   kind === 'email' ? 'email' : kind === 'phone' ? 'phone number' : 'WhatsApp number';
 
@@ -532,7 +535,13 @@ export default function BusinessSignupScreen() {
           textContentType="emailAddress"
           value={email}
           onChangeText={setEmail}
-          error={touched && !emailOk ? 'That address looks off. Check it over.' : null}
+          error={
+            refused.includes('email')
+              ? 'That address did not take.'
+              : touched && !emailOk
+                ? 'That address looks off. Check it over.'
+                : null
+          }
           {...keyboardDoneProps}
         />
         {/* Its own line rather than the field's hint, which an error replaces:
@@ -554,6 +563,10 @@ export default function BusinessSignupScreen() {
           <ThemedText type="footnote" themeColor="textSecondary">
             Both optional, and both show as a button on your page.
           </ThemedText>
+          {/* Capped where the database caps it. Run 84 photographed a phone
+              field holding 33 characters, which is past the 30 the validator
+              takes, and nothing said so until Continue refused it. A limit
+              you cannot exceed beats an error you meet afterwards. */}
           <FormTextField
             label="Phone"
             testID="business-phone-input"
@@ -562,8 +575,10 @@ export default function BusinessSignupScreen() {
             keyboardType="phone-pad"
             textContentType="telephoneNumber"
             placeholder="+351 912 345 678"
+            maxLength={CONTACT_MAX}
             value={phone}
             onChangeText={setPhone}
+            error={refused.includes('phone') ? 'That number did not take.' : null}
             {...keyboardDoneProps}
           />
           <FormTextField
@@ -573,8 +588,10 @@ export default function BusinessSignupScreen() {
             autoCorrect={false}
             keyboardType="phone-pad"
             placeholder="Same number, or a different one"
+            maxLength={CONTACT_MAX}
             value={whatsapp}
             onChangeText={setWhatsapp}
+            error={refused.includes('whatsapp') ? 'That number did not take.' : null}
             {...keyboardDoneProps}
           />
         </View>
