@@ -254,3 +254,16 @@
              the founder objected to goes with it: it is join_room's second
              argument and a business never reaches join_room.
              788 pgTAP assertions, 9 new and about exactly this.
+
+2026-08-30 — 20260830000000_a_business_is_served_no_travelers.sql
+             The other half of the same rule: a business account is now
+             served no traveler identities at all. city_pins, traveler_trips,
+             pin_crew and featured_traveler return zero rows to a business
+             caller, and open_direct_chat refuses one outright rather than
+             failing to find a shared group by accident.
+             Two reads the room screen could not do are answered server-side
+             instead of derived: business_for_chat now resolves a business's
+             own public room (kind = 'room', not just the DM), and my_chats
+             gives the person who runs a room the admin role it already
+             grants them through is_room_moderator.
+             804 pgTAP assertions, 16 new and about exactly this.
