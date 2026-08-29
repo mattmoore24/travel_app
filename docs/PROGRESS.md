@@ -94,6 +94,26 @@ description, hours, links, then the listing as a traveler sees it, then the
 code. The row is created at the confirm step so everything after it is an
 ordinary edit of an existing business, and an `unconfirmed` listing is dark.
 
+### What reading it again found
+
+Three things, before any of it reached a phone:
+
+- **"Where is it?" had a dead end.** Its Continue said `go(3)` where it meant
+  `go(5)`, so pressing it sent an owner back to the name screen. The confirm
+  step the founder asked for was unreachable and the middle of business signup
+  was a loop. `src/app/__tests__/step-flow.test.ts` is the guard now: for every
+  step shell in both flows, Continue and Skip move forward and Back moves
+  exactly one. It fails on the bug and passes on the fix.
+- **A correction after registering was accepted and dropped.** `register`
+  short-circuits once the row exists, so walking back to the address step from
+  a later one changed nothing. `update_business_location` existed for exactly
+  this and nothing had ever called it; it does now, through the SECURITY
+  DEFINER door that re-runs the city radius check, because lat, lng and city_id
+  have no client UPDATE grant on purpose.
+- **The prompt, priority and trip cards were not cards.** Transparent border,
+  no background: padding with text in it. They now use the surface every other
+  card in the app uses.
+
 ### And two flows that had never been photographed
 
 The business path and making a profile. Both run on throwaway accounts, both
@@ -101,7 +121,7 @@ stop before writing anything that reaches the map, and the profile one says in
 its own header that steps 6 to 13 are held by source assertions rather than
 pictures — which is weaker, and worth saying out loud.
 
-Database: **771** pgTAP assertions. Client: **400** unit tests.
+Database: **771** pgTAP assertions. Client: **442** unit tests.
 
 ## Current: **A plan anyone can join, and the people you already know** (2026-08-29)
 
