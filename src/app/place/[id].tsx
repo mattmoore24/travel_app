@@ -443,6 +443,11 @@ export default function PlaceScreen() {
             ) : null}
 
             <Section title="Getting there" icon={{ ios: 'map', android: 'map', web: 'map' }}>
+              {/* The address first, then the bit a map cannot tell anyone.
+                  Two lines rather than one field doing both jobs: a street
+                  number is what you paste into a taxi app, and "blue door"
+                  is what stops you walking past it. */}
+              {place.address ? <ThemedText type="callout">{place.address}</ThemedText> : null}
               {place.place_label ? (
                 <ThemedText type="callout" themeColor="textSecondary">
                   {place.place_label}
@@ -453,7 +458,11 @@ export default function PlaceScreen() {
                 label="View in Maps"
                 accessibilityLabel={`View ${place.name} in Maps`}
                 onPress={() =>
-                  openInMaps({ lat: place.lat, lng: place.lng, label: place.place_label })
+                  openInMaps({
+                    lat: place.lat,
+                    lng: place.lng,
+                    label: place.address ?? place.place_label,
+                  })
                 }
               />
             </Section>

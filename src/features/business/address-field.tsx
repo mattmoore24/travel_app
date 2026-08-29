@@ -6,56 +6,60 @@ import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Type, Elevation, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
+import { Elevation, Fonts, HitTarget, Radius, Space, Type } from '@/constants/theme';
+import { usePlaceSearch } from '@/features/pins/use-place-search';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
-import { usePlaceSearch } from '@/features/pins/use-place-search';
-import { venueSearchAvailable, type LocalSearchResult } from '@/modules/local-search';
+import type { LocalSearchResult } from '@/modules/local-search';
 
-type PinSearchFieldProps = {
+/**
+ * A business typing its own address.
+ *
+ * Deliberately not PinSearchField, though it shares that screen's search
+ * through `usePlaceSearch`. A traveler's field empties when they pick a
+ * venue, because the pin form below then shows what was picked. A business is
+ * typing the ADDRESS ITSELF, so the words have to stay in the box, and the
+ * parent owns them: the founder's rule is that moving the marker afterwards
+ * leaves the address exactly as it was, which is only expressible if the two
+ * are separate pieces of state.
+ *
+ * Picking a suggestion sets both. Typing sets only the words. Dragging the
+ * map sets only the marker. That is the whole contract.
+ */
+export function BusinessAddressField({
+  value,
+  cityName,
+  cityLat,
+  cityLng,
+  onChangeText,
+  onPick,
+}: {
+  value: string;
   cityName: string;
   cityLat: number;
   cityLng: number;
-  /**
-   * The whole place, not just where it is. The pin form fills its own
-   * location block from this, so nobody retypes what the map already knows.
-   */
-  onFound: (place: LocalSearchResult) => void;
-};
-
-/**
- * Find the place you're planning to be, by typing its name.
- *
- * Suggestions arrive as you type — no button to hunt for, which is what
- * everyone expects from a search field and what the founder asked for after
- * using it. Two things this has to get right that a naive typeahead does not:
- *
- *   1. **Stale responses.** A slow request for "tim" must not overwrite the
- *      results for "time out market" just because it landed later. Every
- *      search carries a sequence number and anything but the newest is
- *      dropped on arrival.
- *   2. **Honest emptiness.** "No results yet" and "there is genuinely nothing
- *      by that name here" look identical unless you say which is which.
- *
- * Panning the map by hand stays the first-class way to place a pin; this is
- * the shortcut.
- */
-export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearchFieldProps) {
+  onChangeText: (next: string) => void;
+  /** A result from the map: worth both the words and the coordinates. */
+  onPick: (place: LocalSearchResult) => void;
+}) {
   const theme = useTheme();
   const inputRef = useRef<TextInput>(null);
-  const [query, setQuery] = useState('');
+  // Off while the value came from a pick, so echoing the chosen address back
+  // into the field does not immediately search for itself and reopen the list
+  // under the user's thumb.
+  const [picked, setPicked] = useState(false);
+
   const { hits, message, searching, clear, minQuery } = usePlaceSearch({
-    query,
+    query: value,
     cityName,
     cityLat,
     cityLng,
+    enabled: !picked,
   });
 
-  // Clearing happens on the keystroke, not in an effect: it is a response to
-  // what the user just did, and doing it here keeps the effect in the hook
-  // free of synchronous state writes.
-  const onChangeText = (text: string) => {
-    setQuery(text);
+  const change = (text: string) => {
+    setPicked(false);
+    onChangeText(text);
     if (text.trim().length < minQuery) {
       clear();
     }
@@ -65,20 +69,16 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
     haptics.light();
     inputRef.current?.blur();
     clear();
-    setQuery('');
-    // The venue's own name, address and category go into the pin, so
-    // "Pensão Amor" arrives spelled the way the map spells it and nobody is
-    // asked what kind of place it is.
-    onFound(result);
+    setPicked(true);
+    onPick(result);
   };
-
-  const showClear = query.length > 0;
 
   return (
     <View style={styles.wrap}>
+      <ThemedText type="callout">Address</ThemedText>
       {/* Opaque, not glass: a text field inside a UIVisualEffectView never
           receives the tap that would focus it. */}
-      <View style={[styles.row, Elevation.floating, { backgroundColor: theme.surface }]}>
+      <View style={[styles.row, { backgroundColor: theme.surfaceSunken }]}>
         <SymbolView
           name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
           size={17}
@@ -86,37 +86,27 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
         />
         <TextInput
           ref={inputRef}
-          value={query}
-          onChangeText={onChangeText}
-          placeholder={
-            venueSearchAvailable ? `Search ${cityName}` : `Street or area in ${cityName}`
-          }
+          value={value}
+          onChangeText={change}
+          placeholder={`Street and number in ${cityName}`}
           placeholderTextColor={theme.textSecondary}
           returnKeyType="search"
           autoCorrect={false}
           autoCapitalize="words"
           clearButtonMode="never"
-          // The Search key blurs, but nothing on screen said so, and "Pin
-          // here" sits underneath the keyboard the whole time somebody is
-          // typing. A labelled Done is the same affordance the pin form one
-          // step later already uses.
           {...keyboardDoneProps}
-          accessibilityLabel={`Search ${cityName}`}
-          testID="pin-search-input"
+          accessibilityLabel="Your address"
+          testID="business-address-input"
           style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
         />
         {searching ? <ActivityIndicator size="small" color={theme.textSecondary} /> : null}
-        {showClear && !searching ? (
+        {value.length > 0 && !searching ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Clear search"
+            accessibilityLabel="Clear the address"
             hitSlop={10}
-            // Through onChangeText, not setQuery: onChangeText is the only
-            // thing that also clears the hits and the "nothing by that name"
-            // line, so clearing by hand used to leave a stale dropdown over
-            // the map above an empty field claiming nothing was searched.
             onPress={() => {
-              onChangeText('');
+              change('');
               inputRef.current?.focus();
             }}>
             <SymbolView
@@ -159,41 +149,42 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
       ) : null}
 
       {message ? (
-        <Animated.View
-          entering={FadeIn.duration(140)}
-          style={[styles.message, { backgroundColor: theme.surface }, Elevation.raised]}>
-          <ThemedText type="footnote" themeColor="textSecondary">
-            {message}
-          </ThemedText>
-        </Animated.View>
+        <ThemedText type="footnote" themeColor="textSecondary">
+          {message}
+        </ThemedText>
       ) : null}
     </View>
   );
 }
 
+/**
+ * The words a picked result puts in the box.
+ *
+ * MapKit's street line when it has one, and the matched name when it does
+ * not — a POI search for "Casa Amarela" carries the street in `address` and
+ * the venue in `name`, and it is the street a business is being asked for.
+ */
+export function addressFrom(place: LocalSearchResult): string {
+  return (place.address?.trim() || place.name).slice(0, 160);
+}
+
 const styles = StyleSheet.create({
   wrap: {
-    gap: Space.sm,
+    gap: Space.xs,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.sm,
-    paddingLeft: Space.lg,
-    paddingRight: Space.lg,
-    height: HitTarget + 6,
-    borderRadius: Radius.pill,
+    paddingHorizontal: Space.md,
+    minHeight: HitTarget,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
   },
   input: {
     flex: 1,
     fontSize: Type.body.fontSize,
-    paddingVertical: 0,
-  },
-  message: {
-    paddingHorizontal: Space.lg,
     paddingVertical: Space.sm,
-    borderRadius: Radius.md,
-    borderCurve: 'continuous',
   },
   results: {
     borderRadius: Radius.md,
@@ -201,8 +192,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   result: {
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.sm,
     gap: 2,
-    paddingHorizontal: Space.lg,
-    paddingVertical: Space.md,
   },
 });

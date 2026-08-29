@@ -201,6 +201,9 @@ export type BusinessRow = {
   name: string;
   category: BusinessCategory;
   description: string | null;
+  /** The street address, as the business typed or picked it. */
+  address: string | null;
+  /** The finding-the-door note. Not the address, and not derived from it. */
   place_label: string | null;
   hours_note: string | null;
   website_url: string | null;
@@ -281,7 +284,10 @@ export type BusinessDetailRow = {
   name: string;
   category: BusinessCategory;
   description: string | null;
+  /** The finding-the-door note: "blue door, two minutes from the station". */
   place_label: string | null;
+  /** The street address, as the business typed or picked it. */
+  address: string | null;
   hours_note: string | null;
   website_url: string | null;
   lat: number;
@@ -790,7 +796,13 @@ export type Database = {
         Update: Partial<
           Pick<
             BusinessRow,
-            'name' | 'description' | 'place_label' | 'hours_note' | 'website_url' | 'public_preview'
+            | 'name'
+            | 'description'
+            | 'address'
+            | 'place_label'
+            | 'hours_note'
+            | 'website_url'
+            | 'public_preview'
           >
         >;
         Relationships: [];
@@ -1204,8 +1216,21 @@ export type Database = {
           p_city_id: number;
           p_lat: number;
           p_lng: number;
+          /** As typed or picked; never derived from the marker. */
+          p_address?: string | null;
         };
         Returns: string;
+      };
+      /** lat/lng are withheld from the client's UPDATE grant; this is the door. */
+      update_business_location: {
+        Args: {
+          p_lat: number;
+          p_lng: number;
+          p_city_id?: number | null;
+          p_address?: string | null;
+          p_clear_address?: boolean;
+        };
+        Returns: undefined;
       };
       is_business_account: {
         Args: { p_user_id: string };

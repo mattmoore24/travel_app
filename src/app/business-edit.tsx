@@ -54,6 +54,7 @@ const NAME_MIN = 2;
 const NAME_MAX = 80;
 const DESCRIPTION_MAX = 600;
 const PLACE_LABEL_MAX = 120;
+const ADDRESS_MAX = 160;
 const HOURS_NOTE_MAX = 200;
 const WEBSITE_MAX = 300;
 /** Both caps are the database's; these only keep the UI honest about them. */
@@ -868,6 +869,7 @@ function BusinessEditForm({
 
   const [name, setName] = useState(business.name);
   const [description, setDescription] = useState(business.description ?? '');
+  const [address, setAddress] = useState(business.address ?? '');
   const [placeLabel, setPlaceLabel] = useState(business.place_label ?? '');
   const [hoursNote, setHoursNote] = useState(business.hours_note ?? '');
   const [website, setWebsite] = useState(business.website_url ?? '');
@@ -896,6 +898,7 @@ function BusinessEditForm({
   const detailsChanged =
     nameChanged ||
     description.trim() !== (business.description ?? '') ||
+    address.trim() !== (business.address ?? '') ||
     placeLabel.trim() !== (business.place_label ?? '') ||
     hoursNote.trim() !== (business.hours_note ?? '') ||
     website.trim() !== (business.website_url ?? '');
@@ -972,6 +975,7 @@ function BusinessEditForm({
         await updateBusiness.mutateAsync({
           name: trimmedName,
           description: description.trim() || null,
+          address: address.trim() || null,
           place_label: placeLabel.trim() || null,
           hours_note: hoursNote.trim() || null,
           website_url: website.trim() || null,
@@ -1055,6 +1059,20 @@ function BusinessEditForm({
             : undefined
         }
         {...keyboardDoneProps}
+      />
+      {/* The address, and then the bit a map cannot tell anyone. Two fields
+          because they answer different questions, and because moving the
+          marker has to be able to leave the typed address alone. Moving the
+          marker itself is not here: lat/lng are withheld from the client's
+          update grant, and a move sends the listing back for another email
+          check. */}
+      <FormTextField
+        label="Address"
+        placeholder="Rua da Rosa 12"
+        value={address}
+        onChangeText={setAddress}
+        maxLength={ADDRESS_MAX}
+        hint="What a traveler pastes into a taxi app."
       />
       <FormTextField
         label="Finding the door"

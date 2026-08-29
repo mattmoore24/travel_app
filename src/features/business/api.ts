@@ -2,6 +2,7 @@ import {
   BUSINESS_VERIFICATION_COLUMNS,
   type BusinessCategory,
   type BusinessDetailRow,
+  type BusinessLinkKind,
   type BusinessReportReason,
   type BusinessVerificationRow,
   type CityBusinessRow,
@@ -43,6 +44,8 @@ export async function registerBusiness(input: {
   cityId: number;
   lat: number;
   lng: number;
+  /** As typed or picked. Never derived from the marker; see the migration. */
+  address?: string | null;
 }) {
   const { data, error } = await supabase.rpc('register_business', {
     p_name: input.name,
@@ -50,6 +53,7 @@ export async function registerBusiness(input: {
     p_city_id: input.cityId,
     p_lat: input.lat,
     p_lng: input.lng,
+    p_address: input.address ?? null,
   });
   if (error) {
     throw error;
@@ -70,6 +74,7 @@ export async function updateOwnBusiness(
   patch: {
     name?: string;
     description?: string | null;
+    address?: string | null;
     place_label?: string | null;
     hours_note?: string | null;
     website_url?: string | null;
@@ -101,6 +106,33 @@ export async function fetchBusinessDetail(businessId: string) {
 }
 
 // -- Getting listed -----------------------------------------------------------
+
+/**
+ * One contact row on a business's page.
+ *
+ * Shared with business-edit rather than duplicated: signup collects a phone
+ * and a WhatsApp number the same way the editor does forever afterwards, and
+ * the same validator trigger judges both (a phone must look like a phone, a
+ * link must be https with a real domain, ten is plenty).
+ */
+export async function addBusinessLink(input: {
+  businessId: string;
+  kind: BusinessLinkKind;
+  label: string;
+  value: string;
+  position: number;
+}) {
+  const { error } = await supabase.from('business_links').insert({
+    business_id: input.businessId,
+    kind: input.kind,
+    label: input.label,
+    value: input.value,
+    position: input.position,
+  });
+  if (error) {
+    throw error;
+  }
+}
 
 export async function requestBusinessEmailCode(email: string) {
   const { error } = await supabase.rpc('request_business_email_confirmation', { p_email: email });
