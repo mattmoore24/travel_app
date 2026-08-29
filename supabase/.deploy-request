@@ -241,3 +241,16 @@
              a worker branch for the flag-on case (production runs flag-on, so
              the trigger alone would have swapped one invisible state for
              another). 779 pgTAP assertions, 8 new and about exactly this.
+
+2026-08-29T21:05:00Z A business is not a traveler
+             The founder tested as a business and found it could join things.
+             Every one of these accepted the call: join_room (ANY listed
+             business's room, including its OWN), join_pin_chat, create_group,
+             post_joinable_pin, set_visibility, and a straight insert into
+             pins. The client hid some of the buttons; the anon key is in the
+             app bundle, so hiding a button is not a rule. assert_not_business
+             is now the one place that says no, called from all six, plus a
+             trigger on pins so the table itself refuses. The departure date
+             the founder objected to goes with it: it is join_room's second
+             argument and a business never reaches join_room.
+             788 pgTAP assertions, 9 new and about exactly this.

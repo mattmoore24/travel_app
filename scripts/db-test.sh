@@ -56,4 +56,4 @@ for f in "$REPO_ROOT"/supabase/migrations/*.sql; do
 done
 
 echo "==> running pgTAP suite"
-pg_prove --psql-bin "$PG_BIN/psql" -d "$DB" "$REPO_ROOT"/supabase/tests/database/*.test.sql
+pg_prove ${PGPROVE_ARGS:-} --psql-bin "$PG_BIN/psql" -d "$DB" "$REPO_ROOT"/supabase/tests/database/*.test.sql

@@ -148,10 +148,21 @@ function BusinessAccount({ name }: { name: string | null }) {
                 {
                   text: 'Delete',
                   style: 'destructive',
-                  onPress: () => {
-                    deleteAccount().catch(() =>
-                      Alert.alert('Could not delete that', 'Try again in a minute.')
-                    );
+                  // Await it, then sign out. This used to fire and forget,
+                  // so the account was gone from the server while the phone
+                  // went on holding a session for a user that no longer
+                  // existed: the founder deleted their business and was still
+                  // looking at the app as themselves. Signing out is what
+                  // hands the root guard back to the sign-in screen, which is
+                  // where somebody who just deleted an account belongs.
+                  onPress: async () => {
+                    try {
+                      await deleteAccount();
+                    } catch {
+                      Alert.alert('Could not delete that', 'Try again in a minute.');
+                      return;
+                    }
+                    signOut().catch(() => {});
                   },
                 },
               ]
