@@ -172,6 +172,11 @@ export function LanguageField({
                 <Pressable
                   accessibilityRole="checkbox"
                   accessibilityLabel={item.label}
+                  // The search box above holds the same word somebody just
+                  // typed, so driving this row by its label matches two
+                  // elements and the suite taps the field instead. Run 86
+                  // reached step 5 with no language chosen because of it.
+                  testID={`language-option-${item.value}`}
                   accessibilityState={{ checked: isSelected, disabled: !isSelected && atMax }}
                   onPress={() => toggle(item.value)}
                   style={({ pressed }) => [

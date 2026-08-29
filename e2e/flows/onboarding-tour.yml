@@ -121,10 +121,15 @@ appId: com.mattmoore.samewhere
 - inputText: 'English'
 - waitForAnimationToEnd:
     timeout: 1500
-- tapOn: 'English'
+# By id: the search box above holds the word that was just typed into it, so
+# tapping "English" matches two elements and lands on the field. Run 86 came
+# out of this sheet with nothing selected.
+- tapOn:
+    id: 'language-option-en'
 - tapOn: 'Done'
 - waitForAnimationToEnd:
     timeout: 1500
+- assertVisible: 'English'
 - takeScreenshot: 53-signup-home-filled
 - tapOn: 'Continue'
 
