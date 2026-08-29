@@ -107,13 +107,13 @@ appId: com.mattmoore.samewhere
 - takeScreenshot: 15-pin-form-filled
 # HOW PEOPLE COME ALONG. The choice that turns a pin into a plan somebody can
 # join in one tap, versus the hello-and-wait the app had only ever offered.
-# Photographed rather than asserted-and-tapped: "Anyone can join" is the
-# default, so the run posts one either way and the next screenshots prove it.
-- scrollUntilVisible:
-    element:
-      id: 'pin-open-to-join'
-    direction: DOWN
-    timeout: 8000
+# It sits ABOVE the fields now: run 76 photographed it below them, clipped in
+# half by the docked button with the alternative off screen entirely, and it
+# is the DEFAULT, so somebody who never scrolled to it would have opened a
+# group chat to strangers without seeing that they had. assertVisible, not
+# scrollUntilVisible: the whole claim is that no scrolling is needed.
+- assertVisible: 'Anyone can join.*'
+- assertVisible: 'Message me first.*'
 - takeScreenshot: 15b-pin-join-mode
 # 'Drop it' sits outside the form's scroll area and the sheet lifts with the
 # keyboard, so it is reachable with the keyboard still up.

@@ -303,7 +303,9 @@ function PinCard({
           {/* Who is already going. Faces before the button, because "three
               people are in" is the thing that decides it, and the button is
               only the consequence. */}
-          {openToJoin && crew.length > 0 ? <CrewRow crew={crew} count={pin.crew} /> : null}
+          {openToJoin && crew.length > 0 ? (
+            <CrewRow crew={crew} count={pin.crew} ownUserId={ownUserId} />
+          ) : null}
 
           {isOwn ? (
             // Your own pin, which is a thing you just DID, not a thing to
@@ -431,7 +433,15 @@ function PinCard({
  * (pin_crew orders them that way), so the leftmost face is always whose plan
  * it is.
  */
-function CrewRow({ crew, count }: { crew: PinCrewRow[]; count: number }) {
+function CrewRow({
+  crew,
+  count,
+  ownUserId,
+}: {
+  crew: PinCrewRow[];
+  count: number;
+  ownUserId: string | null;
+}) {
   const shown = crew.slice(0, 5);
   return (
     <View
@@ -444,7 +454,7 @@ function CrewRow({ crew, count }: { crew: PinCrewRow[]; count: number }) {
         ))}
       </View>
       <ThemedText type="footnote" themeColor="textSecondary" style={styles.crewText}>
-        {crewLabel(shown, count)}
+        {crewLabel(shown, count, ownUserId)}
       </ThemedText>
     </View>
   );

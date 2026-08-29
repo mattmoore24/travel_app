@@ -582,8 +582,8 @@ export default function GroupScreen() {
             </PressableScale>
             {isAdmin ? (
               <ThemedText type="footnote" themeColor="textSecondary">
-                Tap a name to open their profile. The button on the right of a row gives them the
-                microphone or takes them out of the group.
+                Tap a name to open their profile. The button on the right of a row lets somebody
+                post, or takes them out of the group.
               </ThemedText>
             ) : null}
           </View>

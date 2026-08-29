@@ -210,6 +210,60 @@ export function PinFormSheet({
           </Pressable>
         </View>
 
+        {/* ABOVE THE FIELDS, and that is the whole point of where it sits.
+            "Anyone can join" is the DEFAULT, and it does something a pin has
+            never done before: it opens a group chat and lets strangers into
+            it. Below the two text fields it was the last thing on a form
+            whose scroller is about two rows tall with a keyboard up — run 76
+            photographed it clipped in half, with the alternative entirely off
+            screen. A choice somebody has to go looking for is not a choice
+            they made. Here it is the first thing under the place, before any
+            field has taken focus and before any keyboard exists. */}
+        <View style={styles.joinBlock}>
+          <ThemedText type="smallBold">How people come along</ThemedText>
+          {JOIN_MODES.map((mode) => {
+            const active = mode.open === joinable;
+            return (
+              <PressableScale
+                key={mode.label}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`${mode.label}. ${mode.detail}`}
+                testID={mode.open ? 'pin-open-to-join' : 'pin-message-first'}
+                scaleTo={0.985}
+                onPress={() => {
+                  if (active) {
+                    return;
+                  }
+                  haptics.selection();
+                  setJoinable(mode.open);
+                }}
+                style={[
+                  styles.joinRow,
+                  { backgroundColor: active ? theme.accentSoft : theme.surfaceSunken },
+                ]}>
+                <SymbolView
+                  name={mode.glyph}
+                  size={17}
+                  tintColor={active ? theme.accent : theme.textSecondary}
+                />
+                <View style={styles.joinText}>
+                  <ThemedText type="callout">{mode.label}</ThemedText>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    {mode.detail}
+                  </ThemedText>
+                </View>
+                {active ? (
+                  <SymbolView
+                    name={{ ios: 'checkmark', android: 'check', web: 'check' }}
+                    size={16}
+                    tintColor={theme.accent}
+                  />
+                ) : null}
+              </PressableScale>
+            );
+          })}
+        </View>
         {/* BRING THE FOCUSED FIELD INTO VIEW. With the keyboard up the sheet
             reserves a keyboard's worth of floor and this scroller is what
             gives way — it ends up about two rows tall. Without this the plan
@@ -259,51 +313,6 @@ export function PinFormSheet({
             }}
             {...keyboardDoneProps}
           />
-        </View>
-        <View style={styles.joinBlock}>
-          <ThemedText type="smallBold">How people come along</ThemedText>
-          {JOIN_MODES.map((mode) => {
-            const active = mode.open === joinable;
-            return (
-              <PressableScale
-                key={mode.label}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`${mode.label}. ${mode.detail}`}
-                testID={mode.open ? 'pin-open-to-join' : 'pin-message-first'}
-                scaleTo={0.985}
-                onPress={() => {
-                  if (active) {
-                    return;
-                  }
-                  haptics.selection();
-                  setJoinable(mode.open);
-                }}
-                style={[
-                  styles.joinRow,
-                  { backgroundColor: active ? theme.accentSoft : theme.surfaceSunken },
-                ]}>
-                <SymbolView
-                  name={mode.glyph}
-                  size={17}
-                  tintColor={active ? theme.accent : theme.textSecondary}
-                />
-                <View style={styles.joinText}>
-                  <ThemedText type="callout">{mode.label}</ThemedText>
-                  <ThemedText type="footnote" themeColor="textSecondary">
-                    {mode.detail}
-                  </ThemedText>
-                </View>
-                {active ? (
-                  <SymbolView
-                    name={{ ios: 'checkmark', android: 'check', web: 'check' }}
-                    size={16}
-                    tintColor={theme.accent}
-                  />
-                ) : null}
-              </PressableScale>
-            );
-          })}
         </View>
         {/* A single scrolling line, not a wrapped grid: with a keyboard up
             the sheet has room for about a screen and a half of form. */}
