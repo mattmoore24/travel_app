@@ -347,8 +347,12 @@ appId: com.mattmoore.samewhere
 - takeScreenshot: 27b-group-add-and-leave
 - tapOn:
     id: 'group-add-people'
+# The search field, not the words "Add someone": that string is also the
+# label on the ROW that was just tapped, so an assertion on it would pass
+# while the modal sat unopened behind it.
 - extendedWaitUntil:
-    visible: 'Add someone'
+    visible:
+      id: 'add-people-search'
     timeout: 15000
 - takeScreenshot: 27c-add-people
 - tapOn: 'Done'
