@@ -3,6 +3,101 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **Onboarding, both kinds, and the business bugs** (2026-08-29)
+
+The founder listed four things after trying to list a business, and two of
+them were bugs with real root causes.
+
+### The crash after typing the confirmation code
+
+They typed the code, the app died, and on reopening the business was live. The
+server half had already committed; the client's last line was the problem.
+
+Registering the business flips `needsProfile` false, and expo-router filters
+`onboarding` out of the navigator underneath whichever business screen is
+showing — `StackRouter.getStateForRouteNamesChange` only filters routes, it
+never inserts the anchor, and `unstable_settings.anchor` applies at
+`getInitialState`, not on a routeNames change. So the stack goes to
+`[business-email]` with the index clamped to 0. react-native-screens forces
+the first screen of a stack to be a push controller **whatever its
+stackPresentation**, so a modal landing there is the state its own source
+calls "illegally reshuffle presented controllers", and
+`router.replace('/(tabs)')` then hands that slot to a group whose layout
+mounts a native `UITabBarController` in the same commit.
+
+Fixed at the source: `business-signup` and `business-email` are no longer
+modals. They are the only two screens that can legitimately be the sole route
+in the root stack, and both are full-screen `StepShell` flows that were never
+sheets.
+
+### The code that never arrived
+
+`@wustl.edu` got nothing while a second address did. That is Resend's sandbox
+rule: with no verified sending domain, `onboarding@resend.dev` may deliver only
+to the Resend account's own address. The mailer has always recorded the refusal
+in `outbound_mail.delivery_error` and **nothing had ever read it**, so the
+screen went on saying "we sent a code" about mail a provider had already
+declined to carry.
+
+`my_business_code_status()` is that read, and the screen titles itself "That
+address bounced" and promotes "Use a different address". The code also stops
+waiting on the clock: `poke_worker`'s allowlist was missing `support-mailer`
+while `invoke_edge_worker` already had it, so a code with a twenty-minute life
+could spend five of them waiting for a cron tick.
+
+**Founder action, and the real fix:** verify a domain in Resend and set
+`SUPPORT_FROM`. Until then no business but the founder's own can receive a code.
+
+### Where is it, and who to call
+
+The business location step asked for a city chip and a tap on a map. No
+address, ever. `place_label` looks like the place for one and is not — it is
+the finding-the-door note travelers read under "Getting there", and an address
+would overwrite the more useful of the two. So `businesses.address`, and the
+two live side by side, which is the only shape in which the founder's rule
+holds: **moving the marker leaves the typed address alone.**
+
+And **there was no geofence on a business at all.** `haversine_km` had exactly
+one caller in the schema and it was `validate_pin`; `register_business`
+checked the caller and nothing about geography; `businesses.city_id` pointed at
+`cities` rather than `launch_cities`. A marker could sit anywhere on earth
+while the listing claimed Bangkok — and business-signup carried a comment
+saying the server refused exactly that. It does now. The city is also a real
+choice: it used to default to whatever the launch-cities query returned first.
+
+Phone and WhatsApp are contact details now, on the founder's call that they
+need no code for the moment. They land as `business_links` rows, off the
+critical path: a number the validator refuses must not cost somebody the
+listing they just registered.
+
+### Onboarding, rebuilt for both
+
+Signup was seven screens and never mentioned **prompts, top priorities or
+trips**. Trips are the worst of the three, because trips are what the matching
+runs on: a profile with no trip is invisible to the feature the app exists for.
+
+Thirteen screens now, each asking one thing with a line saying what it is for.
+Photos move from last to fifth. Optional steps carry a small "Skip for now" and
+the absence of one is how you can tell a step is required. The last step is the
+profile itself, rendered by the component a stranger gets and deliberately not
+in owner mode — owner mode's edit links point at routes the account cannot
+reach yet.
+
+The business flow gets the same treatment and the four steps
+`docs/BUSINESS_ACCOUNTS.md` §5 specified and nobody ever built: photos,
+description, hours, links, then the listing as a traveler sees it, then the
+code. The row is created at the confirm step so everything after it is an
+ordinary edit of an existing business, and an `unconfirmed` listing is dark.
+
+### And two flows that had never been photographed
+
+The business path and making a profile. Both run on throwaway accounts, both
+stop before writing anything that reaches the map, and the profile one says in
+its own header that steps 6 to 13 are held by source assertions rather than
+pictures — which is weaker, and worth saying out loud.
+
+Database: **771** pgTAP assertions. Client: **400** unit tests.
+
 ## Current: **A plan anyone can join, and the people you already know** (2026-08-29)
 
 Four asks in one message from the founder, three of which turned out to be
