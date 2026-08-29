@@ -140,3 +140,34 @@
              wait entirely; losing that race is the same answer the throttle
              gives anyway. create-or-replace — the signature is unchanged and
              four triggers depend on the caller.
+2026-08-29 — deploy: 20260829120000_a_pin_anyone_can_join.sql and
+             20260829130000_add_people_without_a_link.sql.
+             A pin can now carry a group chat: groups.pin_id, pointing from
+             the group AT the pin and not the other way round, because pins are
+             hard deleted at 72 hours and a chat_id on pins would take the
+             conversation with it (ON DELETE SET NULL, so the chat lives on as
+             an ordinary no-end-date group). post_joinable_pin does the pin and
+             the group in one transaction — every BEFORE INSERT trigger on pins
+             still fires inside it, so the geofence, the 10-live cap, the 30/24h
+             churn cap and the guest and business refusals are unchanged.
+             join_pin_chat needs no token: it checks the pin is live and that
+             the OWNER is discoverable to you, which is the founder's rule that
+             the audience filter follows the poster and not the joiners.
+             city_pins and public_city_pins DROPPED and recreated with chat_id
+             and crew (grants restated on both — public_city_pins keeps anon).
+             The second migration writes down "people you already know" —
+             an active direct chat or an active traveler group, never a venue's
+             open room, never a guest — and hangs three doors off it:
+             people_you_know, add_to_group (any member, not only the admin) and
+             open_direct_chat (no request, no accept). Two §7 rules needed care.
+             Handles: chats gains opened_from_room, and the social_handles
+             policy moves to handles_unlocked_for, which for a room-opened chat
+             requires BOTH people to have spoken — stricter than the single
+             accept tap it stands in for, and no existing chat is affected.
+             has_accepted_chat is deliberately untouched: its six other callers
+             ask "do these two have a conversation", and the answer is yes.
+             First messages: open_direct_chat screens with screen_first_message
+             and a blocked one creates nothing at all, the same shape
+             message_business already uses.
+             707 existing pgTAP assertions still pass; 50 new ones in
+             26_joinable_pins_and_knowing_people.test.sql cover the above.
