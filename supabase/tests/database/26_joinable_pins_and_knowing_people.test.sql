@@ -9,7 +9,7 @@
 -- unlocks a social handle (hard rule 4 — it must not, until both have
 -- spoken).
 begin;
-select plan(50);
+select plan(51);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -266,6 +266,26 @@ select ok(
   (select is_owner from public.pin_crew(pg_temp.pin_named('Pensão Amor')) limit 1),
   'with the person whose plan it is first'
 );
+
+-- A GUEST SEES A PLAN, NOT THE PEOPLE IN IT ------------------------------------
+--
+-- The guest map has no identities on it by construction (public_city_pins
+-- returns no user_id, name, age or photo). pin_crew answers for anybody
+-- holding the authenticated role, which an anonymous account does, so without
+-- this it was the one door on that map with faces behind it.
+
+select pg_temp.admin();
+update auth.users set is_anonymous = true
+  where id = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select is(
+  (select count(*)::int from public.pin_crew(pg_temp.pin_named('Pensão Amor'))),
+  0,
+  'a guest is told a plan is open, and nothing about who is in it'
+);
+select pg_temp.admin();
+update auth.users set is_anonymous = false
+  where id = '00000000-0000-0000-0000-00000000000c';
 
 -- THE CHAT OUTLIVES THE PIN ----------------------------------------------------
 

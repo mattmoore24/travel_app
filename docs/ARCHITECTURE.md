@@ -734,6 +734,28 @@ The doors are `people_you_know(query)`, `add_to_group(chat, user)` — any
 member, not only the admin, because the invite link was always copyable by
 everyone — and `open_direct_chat(user, first_message)`.
 
+Two consequences worth stating plainly, because both are deliberate and both
+make an older sentence in this document false:
+
+- **`people_you_know` is not audience-filtered.** The audience setting governs
+  discovery — the map and Travelers — and has never governed chat ("anyone can
+  still message you", in the picker's own words). Somebody you are already in a
+  chat with is not a discovery result, so narrowing your audience does not
+  remove you from the address book of people you have already talked to.
+- **Adding somebody to a group is a new privilege level, not just a new
+  mechanism.** `group_invite_token` refuses a non-moderator, so before this an
+  ordinary member had no way at all to bring anyone in. `add_to_group` gives
+  them one, deliberately and on the founder's instruction, bounded by having
+  to already know the person.
+
+**The guest map stays faceless, open plans included.** `pin_crew` is the one
+surface here that could have leaked identity to an anonymous account — it
+answers for anybody holding `authenticated`, which a guest does — so it
+returns nothing for a guest (`20260829140000`). A guest can still JOIN an open
+plan and see the room from inside, the same as a group they hold a link for:
+that is a membership row somebody can see and an admin can remove, capped at
+ten, which is the difference between accountable and a free roster read.
+
 ### The two §7 rules this touches
 
 **Rule 4, handles never visible pre-accept.** There is no accept on this path,

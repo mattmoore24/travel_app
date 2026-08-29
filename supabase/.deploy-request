@@ -171,3 +171,16 @@
              message_business already uses.
              707 existing pgTAP assertions still pass; 50 new ones in
              26_joinable_pins_and_knowing_people.test.sql cover the above.
+2026-08-29 — deploy: 20260829140000_a_guest_map_stays_faceless.sql. Self-review
+             of yesterday's own migration: public_city_pins strips every trace
+             of a person from a guest's map — no user_id, no name, no age, no
+             photo — and pin_crew walked straight past that, because it answers
+             for anybody holding the `authenticated` role and an anonymous
+             guest holds it. That made the faces on an open plan a free read of
+             names and photo paths for every open pin in a city, without
+             joining anything, which is exactly the harvest the guest feed
+             exists to prevent. It returns nothing for a guest now. A guest can
+             still JOIN an open plan and see the room from the inside, the same
+             as a group they hold a link for: that is a membership row somebody
+             can see and an admin can remove, and it is capped at ten. Same OUT
+             columns, so create-or-replace; grant restated anyway.

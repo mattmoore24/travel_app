@@ -34,7 +34,7 @@ import { useDeletePin, useJoinPinChat, useLaunchCities, usePinCrew } from '@/fea
 import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker';
 import { useCityBusinesses, useOwnBusiness } from '@/features/business/hooks';
 import { PlaceSheet } from '@/features/business/place-sheet';
-import { useIsGuest, useMapHeat, useMapPins } from '@/features/guest/hooks';
+import { useIsGuest, useIsSignedOut, useMapHeat, useMapPins } from '@/features/guest/hooks';
 import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { AudienceChip } from '@/features/pins/audience-chip';
 import { audienceInSentence } from '@/features/profile/audience';
@@ -86,10 +86,19 @@ function PinCard({
   pin,
   cityId,
   onClose,
+  onNeedsAccount,
 }: {
   pin: CityPinRow;
   cityId: number;
   onClose: () => void;
+  /**
+   * Somebody with no session at all tapped Join. A guest ACCOUNT can join —
+   * it has a name and the group can hold it accountable — but a signed-out
+   * visitor has nothing to put in the room, and the RPC would answer with a
+   * raw 'not authenticated' alert. The map owns the gate, because a sheet
+   * cannot present one over itself.
+   */
+  onNeedsAccount: () => void;
 }) {
   const theme = useTheme();
   const ownUserId = useOwnUserId();
@@ -101,11 +110,13 @@ function PinCard({
   // you. The second needs no request of its own: the chat list already knows
   // every room this account is in.
   const joinPin = useJoinPinChat(cityId);
+  const signedOut = useIsSignedOut();
   const { data: chats = [] } = useMyChats();
   const openToJoin = pin.chat_id != null;
-  const alreadyIn =
-    openToJoin && chats.some((chat) => chat.chat_id === pin.chat_id && !chat.archived);
-  const { data: crew = [] } = usePinCrew(pin.id, openToJoin);
+  const alreadyIn = openToJoin && chats.some((chat) => chat.chat_id === pin.chat_id);
+  // pin_crew is granted to `authenticated` only — a guest account included,
+  // a signed-out visitor not. Asking anyway would be a 403 per open pin.
+  const { data: crew = [] } = usePinCrew(pin.id, openToJoin && !signedOut);
 
   // This card lives inside a Sheet, which is a Modal, so every push from here
   // has to leave the sheet first. See components/ui/sheet for why.
@@ -351,6 +362,10 @@ function PinCard({
                 label={alreadyIn ? 'Open the chat' : 'Join this plan'}
                 loading={joinPin.isPending}
                 onPress={async () => {
+                  if (signedOut) {
+                    onNeedsAccount();
+                    return;
+                  }
                   if (alreadyIn) {
                     leaveThen(() =>
                       router.push({ pathname: '/room/[id]', params: { id: pin.chat_id! } })
@@ -657,7 +672,10 @@ export default function MapScreen() {
   // Every other gate in the app states its reason before it asks. Dropping a
   // pin was the one that did not: it teleported a guest to an email form with
   // no explanation of what had just happened to them.
-  const [pinGate, setPinGate] = useState(false);
+  // Which gate is open, if any. Two of them now: dropping a pin, and joining
+  // somebody else's plan. One piece of state rather than two booleans,
+  // because only one sheet may ever be up.
+  const [gate, setGate] = useState<'drop' | 'join' | null>(null);
   // Which stack of plans is open, if any. Separate from selectedPinId: a
   // stack is a list of plans, and picking one out of it opens the pin card.
   const [venueKey, setVenueKey] = useState<string | null>(null);
@@ -750,7 +768,7 @@ export default function MapScreen() {
       return;
     }
     if (isGuest) {
-      setPinGate(true);
+      setGate('drop');
       return;
     }
     if (!activeCity) {
@@ -1380,16 +1398,20 @@ export default function MapScreen() {
         </Animated.View>
       ) : null}
 
-      {pinGate ? (
-        <Sheet onClose={() => setPinGate(false)}>
+      {gate ? (
+        <Sheet onClose={() => setGate(null)}>
           <SignUpGate
-            reason="Pins come with your name on them"
-            where="drop-pin"
+            reason={
+              gate === 'join'
+                ? 'Joining puts you in the chat, with a name'
+                : 'Pins come with your name on them'
+            }
+            where={gate === 'join' ? 'join-plan' : 'drop-pin'}
             cta="Make a profile"
             compact
             // Pushing a route from inside a sheet leaves its scrim over the
             // map and every later tap lands on nothing. See components/ui/sheet.
-            onNavigate={leavingSheet(() => setPinGate(false))}
+            onNavigate={leavingSheet(() => setGate(null))}
           />
         </Sheet>
       ) : null}
@@ -1498,6 +1520,9 @@ export default function MapScreen() {
               pin={selectedPin}
               cityId={activeCityId}
               onClose={() => setSelectedPinId(null)}
+              onNeedsAccount={() =>
+                leavingSheet(() => setSelectedPinId(null))(() => setGate('join'))
+              }
             />
           )}
         </Sheet>
