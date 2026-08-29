@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useEffect, useState } from 'react';
@@ -20,14 +21,20 @@ import {
   useRequestBusinessEmailCode,
   useUpdateBusinessLocation,
 } from '@/features/business/hooks';
-import { CATEGORY_ICON, CATEGORY_LABEL, CATEGORY_ORDER } from '@/features/business/vocabulary';
+import { useBusinessPhotoUrl } from '@/features/business/photo-url';
+import {
+  CATEGORY_ICON,
+  CATEGORY_LABEL,
+  CATEGORY_ORDER,
+  openLine,
+} from '@/features/business/vocabulary';
 import { countOf } from '@/lib/plural';
 import { useLaunchCities } from '@/features/pins/hooks';
 import { LocationPicker } from '@/features/pins/location-picker';
 import { StepShell } from '@/features/signup/step-shell';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
-import type { BusinessCategory } from '@/lib/database.types';
+import type { BusinessCategory, BusinessDetailRow } from '@/lib/database.types';
 import { haptics } from '@/lib/haptics';
 
 /**
@@ -662,20 +669,20 @@ export default function BusinessSignupScreen() {
         note="Every part of this is editable from your business page afterwards."
         onBack={() => go(10)}
         onContinue={() => go(12)}>
-        <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
-          <ThemedText type="headline">{detail?.name ?? name.trim()}</ThemedText>
-          <ThemedText type="footnote" themeColor="textSecondary">
-            {category ? CATEGORY_LABEL[category] : ''}
-            {city ? ` · ${city.cities.name}` : ''}
-          </ThemedText>
-          {detail?.address ? <ThemedText type="body">{detail.address}</ThemedText> : null}
-          {detail?.description ? <ThemedText type="body">{detail.description}</ThemedText> : null}
-          <ThemedText type="footnote" themeColor="textSecondary">
-            {countOf(detail?.photos?.length ?? 0, 'photo')} ·{' '}
-            {countOf(detail?.links?.length ?? 0, 'link')} ·{' '}
-            {(detail?.hours?.length ?? 0) > 0 ? 'hours set' : 'no hours yet'}
-          </ThemedText>
-        </View>
+        {/* The listing, not a receipt for it.
+            
+            This used to be a text card ending in "1 photo · 0 links · no
+            hours yet", which is a form's summary of itself. The founder asked
+            for "a final look of how your profile appears to other users", and
+            a traveler never sees a count — they see the cover photo first,
+            then the name, then whether you are open. So: the cover, at the
+            size the map card gives it, and the real words underneath. */}
+        <ListingPreview
+          detail={detail ?? null}
+          fallbackName={name.trim()}
+          category={category}
+          cityName={city?.cities.name ?? null}
+        />
       </StepShell>
     );
   }
@@ -756,7 +763,114 @@ function CategoryGrid({
   );
 }
 
+/**
+ * The listing as a traveler meets it, at the end of building one.
+ *
+ * The founder's rule for both kinds of profile: "It should also give you a
+ * final look of how your profile appears to other users at the end of
+ * onboarding." A person gets ProfileView, the same component a stranger gets.
+ * A business used to get a text card whose last line was "1 photo · 0 links ·
+ * no hours yet", which is a form describing itself.
+ *
+ * Not PlaceCard, though it is the real traveler view: that one carries
+ * Message, Rate and Report, all of which act on a business, and this one is
+ * still `unconfirmed` — dark, unlisted, unmessageable. Offering three buttons
+ * that cannot work is worse than not offering them. So this draws the same
+ * things in the same order, and nothing that does anything.
+ */
+function ListingPreview({
+  detail,
+  fallbackName,
+  category,
+  cityName,
+}: {
+  detail: BusinessDetailRow | null;
+  fallbackName: string;
+  category: BusinessCategory | null;
+  cityName: string | null;
+}) {
+  const theme = useTheme();
+  const { data: cover } = useBusinessPhotoUrl(detail?.photos?.[0]?.storage_path ?? null);
+  // The place's own clock, not the reader's — the same call the map card
+  // makes, so the two cannot disagree about whether somebody is open.
+  const open = detail ? openLine(detail.hours, new Date(), detail.lng) : null;
+  const extraPhotos = Math.max((detail?.photos?.length ?? 0) - 1, 0);
+
+  return (
+    <View style={[styles.preview, { backgroundColor: theme.surfaceSunken }]}>
+      {cover ? (
+        <Image source={{ uri: cover }} style={styles.previewCover} contentFit="cover" />
+      ) : (
+        <View style={[styles.previewCover, styles.previewCoverEmpty]}>
+          <ThemedText type="footnote" themeColor="textSecondary">
+            No photo yet
+          </ThemedText>
+        </View>
+      )}
+      <View style={styles.previewBody}>
+        <ThemedText type="headline">{detail?.name ?? fallbackName}</ThemedText>
+        <ThemedText type="footnote" themeColor="textSecondary">
+          {category ? CATEGORY_LABEL[category] : ''}
+          {cityName ? ` · ${cityName}` : ''}
+        </ThemedText>
+        {open ? <ThemedText type="footnote">{open}</ThemedText> : null}
+        {detail?.address ? (
+          <ThemedText type="footnote" themeColor="textSecondary">
+            {detail.address}
+          </ThemedText>
+        ) : null}
+        {detail?.description ? <ThemedText>{detail.description}</ThemedText> : null}
+        {(detail?.links?.length ?? 0) > 0 ? (
+          <View style={styles.previewChips}>
+            {detail?.links.map((link) => (
+              <View
+                key={`${link.kind}:${link.value}`}
+                style={[styles.previewChip, { backgroundColor: theme.surface }]}>
+                <ThemedText type="footnote">{link.label}</ThemedText>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        {extraPhotos > 0 ? (
+          <ThemedText type="footnote" themeColor="textSecondary">
+            {countOf(extraPhotos, 'more photo')} on your page.
+          </ThemedText>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  preview: {
+    borderRadius: Radius.lg,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
+  },
+  previewCover: {
+    width: '100%',
+    height: 180,
+  },
+  previewCoverEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewBody: {
+    padding: Space.md,
+    gap: Space.xs,
+  },
+  previewChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Space.xs,
+    marginTop: 2,
+  },
+  previewChip: {
+    paddingHorizontal: Space.sm,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+    borderCurve: 'continuous',
+  },
   block: {
     gap: Space.sm,
   },

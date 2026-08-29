@@ -139,3 +139,105 @@ appId: com.mattmoore.samewhere
     timeout: 15000
 - assertVisible: 'A profile photo is the one thing we need.'
 - takeScreenshot: 54-signup-photo-gate
+
+# Climbing the wall. Every command in the subflow is optional because it
+# drives Apple's picker rather than ours; everything after this runs only if
+# a photo actually landed, so a picker that has moved between iOS versions
+# costs the run its later pictures and not its verdict.
+- tapOn:
+    accessibilityLabel: 'Add your profile photo'
+    optional: true
+- runFlow: ../subflows/pick-a-photo.yml
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 55-signup-photo-added
+
+- runFlow:
+    when:
+      notVisible: 'A profile photo is the one thing we need.'
+    commands:
+      - tapOn:
+          id: 'finish-photos'
+      # STEP 6 — what you do. The first step that may be skipped, so the
+      # first that carries a "Skip for now" under the button. Its absence on
+      # steps 3 to 5 is how somebody can tell those are required.
+      - extendedWaitUntil:
+          visible: 'What do you do?'
+          timeout: 15000
+      - assertVisible: 'Skip for now'
+      - takeScreenshot: 56-signup-occupation
+      - tapOn:
+          id: 'occupation-input'
+      - inputText: 'Nurse, between contracts'
+      - tapOn:
+          text: 'Done'
+          optional: true
+      - tapOn: 'Continue'
+      # STEP 7 — the bio.
+      - extendedWaitUntil:
+          visible: 'A bit about you'
+          timeout: 15000
+      - tapOn:
+          id: 'bio-input'
+      - inputText: 'Street food missions and long walks. Terrible at surfing, still going.'
+      - tapOn:
+          text: 'Done'
+          optional: true
+      - takeScreenshot: 57-signup-bio
+      - tapOn: 'Continue'
+      # STEPS 8, 9, 10 — prompts, priorities and trips. Each hands over to
+      # the editor that owns it, which has its own pictures, so the flow
+      # photographs the step and takes its skip. Step 10 is the one that
+      # matters most and the one nothing used to ask: a profile with no trip
+      # is invisible to the feature the whole app exists for, which is why
+      # its skip says what it says rather than "Skip for now".
+      - extendedWaitUntil:
+          visible: 'Answer a prompt'
+          timeout: 15000
+      - takeScreenshot: 58-signup-prompts
+      - tapOn: 'Skip for now'
+      - extendedWaitUntil:
+          visible: 'What are you after?'
+          timeout: 15000
+      - takeScreenshot: 59-signup-priorities
+      - tapOn: 'Skip for now'
+      - extendedWaitUntil:
+          visible: 'Where are you going?'
+          timeout: 15000
+      - assertVisible: 'I have not booked anything yet'
+      - takeScreenshot: 70-signup-trips
+      - tapOn: 'I have not booked anything yet'
+      # STEP 11 — socials, and the §7 promise about them said out loud.
+      - extendedWaitUntil:
+          visible: 'Your socials'
+          timeout: 15000
+      - assertVisible: 'Nobody sees these until you are both in a chat.*'
+      - takeScreenshot: 71-signup-socials
+      - tapOn: 'Skip for now'
+      # STEP 12 — audience. No skip, because it has a default rather than
+      # because it is compulsory, and the narrowed rows are inert until a
+      # badge exists. That is the server's rule, and the step exists so
+      # nobody finishes without learning the setting is there.
+      - extendedWaitUntil:
+          visible: 'Who you see, and who sees you'
+          timeout: 15000
+      - takeScreenshot: 72-signup-audience
+      - tapOn: 'Continue'
+      # STEP 13 — THE PROFILE ITSELF, which is the founder's "final look of
+      # how your profile appears to other users", rendered by the component a
+      # stranger gets. Never once photographed before this run.
+      - extendedWaitUntil:
+          visible: 'Here you are'
+          timeout: 15000
+      - waitForAnimationToEnd:
+          timeout: 2500
+      - takeScreenshot: 73-signup-review
+      - scroll
+      - takeScreenshot: 74-signup-review-scrolled
+      - tapOn:
+          id: 'finish-profile'
+      # And out into the app, which is the proof the stamp landed.
+      - extendedWaitUntil:
+          visible: 'Travelers'
+          timeout: 25000
+      - takeScreenshot: 75-signup-done

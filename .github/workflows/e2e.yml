@@ -278,17 +278,35 @@ jobs:
           # Build the driver on a throwaway launch so flow #1 starts warm.
           reset_state
           maestro --udid "$UDID" test ../e2e/warmup.yml || true
-          # A throwaway account for the business flow, unique per run. It never
-          # finishes a traveler profile and never confirms a code, so what it
-          # leaves behind is an unonboarded auth row and, if the flow gets that
-          # far, an `unconfirmed` business — which is fully dark by definition:
-          # no marker, no chat, no messages. The business path is the one part
-          # of the app with no picture of it at all, which is how it drifted
-          # far enough for the founder to hit it.
-          E2E_BIZ_EMAIL="maestro-biz-$(date +%s)@samewhere.test"
-          # A second one, for the profile flow. Both sign up, so they cannot
-          # share an address: whichever ran second would be refused.
-          E2E_NEW_EMAIL="maestro-new-$(date +%s)@samewhere.test"
+          # A throwaway account per tour. Both are deleted by the teardown
+          # step below, which is what lets the business tour REGISTER: one
+          # account owns at most one business and register_business is not
+          # idempotent, so before teardown existed the flow had to stop at the
+          # confirm step and everything past it went unphotographed. That is
+          # how a dead end at step 4 reached the founder.
+          E2E_THROWAWAY_PASSWORD='MaestroBiz!2026'
+          # Both tours sign up, so they cannot share an address, and NEITHER
+          # can share one with its own retry: an attempt that got as far as
+          # create-account has taken the address, so the second attempt used
+          # to fail on the screen after it and report the wrong bug. Run 79
+          # lost both retries that way. A fresh pair per attempt instead.
+          ATTEMPT=0
+          new_addresses() {
+            ATTEMPT=$((ATTEMPT + 1))
+            E2E_BIZ_EMAIL="maestro-biz-$(date +%s)-$ATTEMPT@samewhere.test"
+            E2E_NEW_EMAIL="maestro-new-$(date +%s)-$ATTEMPT@samewhere.test"
+            # Every address this run has handed out, so teardown can reach the
+            # accounts the flows made. They own real rows now: the business
+            # tour registers.
+            BIZ_ALL="$BIZ_ALL${BIZ_ALL:+,}$E2E_BIZ_EMAIL"
+            NEW_ALL="$NEW_ALL${NEW_ALL:+,}$E2E_NEW_EMAIL"
+          }
+          run_flow() {
+            maestro --udid "$UDID" test \
+              -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" \
+              -e E2E_BIZ_EMAIL="$E2E_BIZ_EMAIL" -e E2E_NEW_EMAIL="$E2E_NEW_EMAIL" \
+              -e E2E_THROWAWAY_PASSWORD="$E2E_THROWAWAY_PASSWORD" "$1"
+          }
           STATUS=0
           for flow in ../e2e/flows/*.yml; do
             # One retry: the first attempt pays the driver build cost and
@@ -296,18 +314,16 @@ jobs:
             # before each attempt, since a half-finished flow leaves the app
             # signed in and past the tour.
             reset_state
-            maestro --udid "$UDID" test \
-              -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" \
-              -e E2E_BIZ_EMAIL="$E2E_BIZ_EMAIL" -e E2E_NEW_EMAIL="$E2E_NEW_EMAIL" "$flow" \
-              || {
-                reset_state
-                maestro --udid "$UDID" test \
-                  -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" \
-                  -e E2E_BIZ_EMAIL="$E2E_BIZ_EMAIL" -e E2E_NEW_EMAIL="$E2E_NEW_EMAIL" "$flow"
-              } \
-              || STATUS=1
+            new_addresses
+            run_flow "$flow" || {
+              reset_state
+              new_addresses
+              run_flow "$flow"
+            } || STATUS=1
           done
           echo "MAESTRO_STATUS=$STATUS" >> "$GITHUB_ENV"
+          echo "E2E_BIZ_ALL=$BIZ_ALL" >> "$GITHUB_ENV"
+          echo "E2E_NEW_ALL=$NEW_ALL" >> "$GITHUB_ENV"
           # Whatever happened above, capture the screen raw — pixels beat a
           # green flag, and simctl needs nothing from Maestro.
           xcrun simctl io "$UDID" screenshot zz-final-state.png || true
@@ -321,6 +337,24 @@ jobs:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
         run: node e2e/account.mjs teardown
+
+      # And the two the FLOWS made, which sign up through the UI rather than
+      # through account.mjs. The business tour registers a real listing now,
+      # so this is what keeps the live project clean: one account owns at most
+      # one business and register_business is not idempotent, so a run that
+      # left its account behind would poison every run after it.
+      - name: Destroy the tours' own throwaways
+        if: always()
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          IFS=','
+          for address in $E2E_BIZ_ALL $E2E_NEW_ALL; do
+            [ -n "$address" ] || continue
+            E2E_BIZ_EMAIL="$address" E2E_NEW_EMAIL="" \
+              node e2e/account.mjs teardown-extras
+          done
 
       # Even a failed flow usually produced screenshots — publish whatever
       # exists, then fail the job afterwards so red still means broken.

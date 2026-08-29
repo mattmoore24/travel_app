@@ -121,7 +121,117 @@ appId: com.mattmoore.samewhere
     visible: 'Is this right?'
     timeout: 15000
 - takeScreenshot: 46-business-confirm
-# Stops here on purpose. The next tap is the one that registers a business for
-# real — one account owns at most one, and register_business is not
-# idempotent, so a suite that registered would leave a dead row on the live
-# project every single run.
+
+# REGISTERING, which the suite could not do until the workflow learned to
+# delete this account afterwards. One account owns at most one business and
+# register_business is not idempotent, so every run used to stop here — and
+# everything past this line had never been photographed, which is how a dead
+# end at step 4 reached the founder.
+- tapOn:
+    id: 'business-confirm-place'
+
+# STEP 6 — how people reach you. The founder's phone and WhatsApp, which need
+# no code: "Just add those as a contact option without requiring a code for
+# now."
+- extendedWaitUntil:
+    visible: 'How do people reach you?'
+    timeout: 25000
+- tapOn:
+    id: 'business-email-input'
+- inputText: ${E2E_BIZ_EMAIL}
+- tapOn:
+    text: 'Done'
+    optional: true
+- scrollUntilVisible:
+    element:
+      id: 'business-phone-input'
+    direction: DOWN
+    timeout: 8000
+- tapOn:
+    id: 'business-phone-input'
+- inputText: '+351 912 345 678'
+- tapOn:
+    text: 'Done'
+    optional: true
+- tapOn:
+    id: 'business-whatsapp-input'
+- inputText: '+351 912 345 678'
+- tapOn:
+    text: 'Done'
+    optional: true
+- takeScreenshot: 47-business-contact
+- tapOn:
+    id: 'business-contact-continue'
+
+# STEP 7 — photos, and the wall. A listing cannot go on without one.
+- extendedWaitUntil:
+    visible: 'Show the place'
+    timeout: 20000
+- assertVisible: 'One photo is the only thing we need here.'
+- takeScreenshot: 48-business-photos
+- tapOn:
+    id: 'business-add-photos'
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    accessibilityLabel: 'Add your cover photo'
+    optional: true
+- runFlow: ../subflows/pick-a-photo.yml
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 49-business-photo-added
+- tapOn:
+    text: 'Done'
+    optional: true
+- tapOn:
+    accessibilityLabel: 'Close'
+    optional: true
+
+# Everything below runs only if a photo actually landed. Driving Apple's
+# picker is the one part of this suite that depends on somebody else's UI, so
+# it is allowed to fail without taking the run with it — the four screenshots
+# above are the founder's two asks either way, and the pictures say plainly
+# whether the wall was climbed.
+- runFlow:
+    when:
+      visible: 'What is it like?'
+    commands:
+      # Description and hours both open the business editor rather than
+      # taking text inline, and that editor has its own pictures elsewhere.
+      # What matters here is that a skippable step SAYS it is skippable, in
+      # the founder's words, and that skipping works.
+      - takeScreenshot: 60-business-description
+      - tapOn:
+          text: 'Skip for now'
+      - extendedWaitUntil:
+          visible: 'When are you open?'
+          timeout: 15000
+      - takeScreenshot: 61-business-hours
+      - tapOn:
+          text: 'Skip for now'
+      - extendedWaitUntil:
+          visible: 'Anywhere else to send people?'
+          timeout: 15000
+      - takeScreenshot: 62-business-links
+      - tapOn:
+          text: 'Skip for now'
+      # THE LISTING AS A TRAVELER MEETS IT. The founder's "final look of how
+      # your profile appears to other users": the cover photo at the top, the
+      # name, whether you are open, the address. Not a count of what you
+      # filled in.
+      - extendedWaitUntil:
+          visible: 'Here it is'
+          timeout: 15000
+      - waitForAnimationToEnd:
+          timeout: 2500
+      - takeScreenshot: 63-business-review
+      - tapOn:
+          id: 'business-review-continue'
+      # THE LAST STEP, showing the address the code is going to. Stops before
+      # sending: the mail cannot leave Resend until a domain is verified
+      # (docs/LAUNCH_RUNBOOK.md step 2), and a code sent to a .test address
+      # nobody reads proves nothing.
+      - extendedWaitUntil:
+          visible: 'One last thing'
+          timeout: 15000
+      - takeScreenshot: 64-business-code-step

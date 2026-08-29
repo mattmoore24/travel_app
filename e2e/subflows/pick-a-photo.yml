@@ -1,0 +1,58 @@
+# Getting one photo out of the simulator's library and into the app.
+#
+# Every profile needs a photo — the founder made it the one mandatory item on
+# both kinds of profile — so the photo step is a wall the suite has to climb
+# if anything past it is ever to be photographed. Before this, both tours
+# stopped at that wall and steps 6 to 13 of a profile, and 7 to 12 of a
+# listing, had never been seen.
+#
+# EVERY command here is optional, on purpose. This is the one place the suite
+# drives Apple's own UI rather than ours, and its layout is not ours to
+# depend on: the permission sheet, the album list and the crop editor have all
+# moved between iOS versions. A flow that failed here would be reporting on
+# Apple. So it tries, and the caller checks afterwards whether a photo landed
+# and either carries on or stops. The pictures say which happened.
+#
+# expo-image-picker with allowsEditing goes through UIImagePickerController
+# rather than PHPicker, which is why there is a permission sheet at all.
+appId: com.mattmoore.samewhere
+---
+# The permission sheet, whichever wording this iOS uses.
+- tapOn:
+    text: 'Allow Access to All Photos'
+    optional: true
+- tapOn:
+    text: 'Full Access'
+    optional: true
+- tapOn:
+    text: 'Allow Full Access'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Some versions open on the album list rather than straight into the grid.
+- tapOn:
+    text: 'Recents'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 90-photo-library
+
+# The first cell. Photo grids carry no text, so this is a point rather than a
+# match: top-left of the grid, below the navigation bar.
+- tapOn:
+    point: '18%,28%'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: 91-photo-crop
+
+# The crop editor's confirm, whichever word it uses.
+- tapOn:
+    text: 'Choose'
+    optional: true
+- tapOn:
+    text: 'Use Photo'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 4000

@@ -5,8 +5,11 @@
 // can do. Dependency-free on purpose: the macOS runner shouldn't pay for
 // an npm ci just to make two dozen REST calls.
 //
-//   node e2e/account.mjs setup      writes E2E_EMAIL/E2E_PASSWORD to $GITHUB_ENV
-//   node e2e/account.mjs teardown   deletes the account named by those vars
+//   node e2e/account.mjs setup             writes E2E_EMAIL/E2E_PASSWORD to $GITHUB_ENV
+//   node e2e/account.mjs teardown          deletes the account named by those vars
+//   node e2e/account.mjs teardown-extras   deletes the business and profile
+//                                          tours' own throwaways, which sign up
+//                                          through the UI rather than here
 //
 // Env: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY,
 //      TEST_EMAIL_BASE, GITHUB_ENV (in CI)
@@ -131,6 +134,45 @@ async function setup() {
   console.log(`setup ok: ${email} onboarded with a ${CITY} trip`);
 }
 
+/**
+ * The other two throwaways: the business tour's and the profile tour's.
+ *
+ * Both sign up through the UI, so nothing on the runner knows their ids —
+ * only their addresses and the one password the flows type. That is enough
+ * to sign in and call the same delete-account function, which also drops the
+ * `businesses` row the account owns (see its step 4).
+ *
+ * This is what lets the business tour REGISTER. Until it existed the flow had
+ * to stop at the confirm step, because register_business is not idempotent
+ * and one account owns at most one business, so every run would have left a
+ * real listing on the live project. Everything after step 5 was therefore
+ * unphotographed, which is how a dead end at step 4 reached the founder.
+ *
+ * Never fatal. A flow that failed before signup leaves no account, and a
+ * teardown that cannot find one has nothing to apologise for.
+ */
+async function teardownExtras() {
+  const password = process.env.E2E_THROWAWAY_PASSWORD;
+  const addresses = [process.env.E2E_BIZ_EMAIL, process.env.E2E_NEW_EMAIL].filter(Boolean);
+  if (!password || addresses.length === 0) {
+    console.log('no throwaway addresses in env — nothing extra to tear down');
+    return;
+  }
+  for (const email of addresses) {
+    try {
+      const session = await api('/auth/v1/token?grant_type=password', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      await api('/functions/v1/delete-account', { method: 'POST', token: session.access_token });
+      console.log(`teardown ok: ${email} deleted`);
+    } catch (e) {
+      // Expected whenever a flow stopped before it signed up.
+      console.log(`nothing to delete for ${email}: ${e.message.slice(0, 120)}`);
+    }
+  }
+}
+
 async function teardown() {
   const email = process.env.E2E_EMAIL;
   const password = process.env.E2E_PASSWORD;
@@ -150,6 +192,7 @@ const mode = process.argv[2];
 try {
   if (mode === 'setup') await setup();
   else if (mode === 'teardown') await teardown();
+  else if (mode === 'teardown-extras') await teardownExtras();
   else throw new Error(`unknown mode: ${mode}`);
 } catch (e) {
   console.error(`::error::account ${mode} failed: ${e.message}`);
