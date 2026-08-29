@@ -98,6 +98,9 @@ finish`. That is the only place `onboarding_completed_at` is stamped.
 
 ## 4. A business: twelve steps
 
+Steps 1 and 2 are on `/join`, exactly as for a person, so the bar is
+continuous across the two stacks.
+
 | #   | Screen               | Asks                                     | Skippable      | Note                                                       |
 | --- | -------------------- | ---------------------------------------- | -------------- | ---------------------------------------------------------- |
 | 1   | Email                | sign-in email                            | no             | founder's copy: just for signing in                        |

@@ -103,8 +103,18 @@ appId: com.mattmoore.samewhere
     timeout: 1500
 - takeScreenshot: 44-business-address-and-marker
 
-# Stops here on purpose. The next tap is Continue into the confirm step, and
-# the one after that registers a business for real — one account owns at most
-# one, and register_business is not idempotent, so a suite that registered
-# would leave a dead row on the live project every single run.
 - takeScreenshot: 45-business-where-final
+
+# THE CONFIRM STEP, which is the founder's "the business will have the option
+# to confirm the address and pin location after completing the where is it
+# section". Reaching it writes nothing.
+- tapOn:
+    id: 'business-place-continue'
+- extendedWaitUntil:
+    visible: 'Is this right?'
+    timeout: 15000
+- takeScreenshot: 46-business-confirm
+# Stops here on purpose. The next tap is the one that registers a business for
+# real — one account owns at most one, and register_business is not
+# idempotent, so a suite that registered would leave a dead row on the live
+# project every single run.

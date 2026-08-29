@@ -13,8 +13,14 @@ import { Radius, Space } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store';
 import { addBusinessLink } from '@/features/business/api';
 import { BusinessAddressField, addressFrom } from '@/features/business/address-field';
-import { useRegisterBusiness, useRequestBusinessEmailCode } from '@/features/business/hooks';
+import {
+  useBusinessDetail,
+  useOwnBusiness,
+  useRegisterBusiness,
+  useRequestBusinessEmailCode,
+} from '@/features/business/hooks';
 import { CATEGORY_ICON, CATEGORY_LABEL, CATEGORY_ORDER } from '@/features/business/vocabulary';
+import { countOf } from '@/lib/plural';
 import { useLaunchCities } from '@/features/pins/hooks';
 import { LocationPicker } from '@/features/pins/location-picker';
 import { StepShell } from '@/features/signup/step-shell';
@@ -39,7 +45,16 @@ import { haptics } from '@/lib/haptics';
  * place is still dark would promise something that has not happened yet.
  * Same reason SIGNUP_TOTAL_STEPS counts across two navigation stacks.
  */
-const TOTAL_STEPS = 5;
+/**
+ * Twelve, counting the code screen that lives on its own route: typing the
+ * emailed digits is the last step, and a bar that reads full while the place
+ * is still dark would promise something that has not happened yet. Same
+ * reason SIGNUP_TOTAL_STEPS counts across two navigation stacks.
+ *
+ * Two of the twelve — the email and the password — are on /join, so this form
+ * starts at three. See docs/ONBOARDING.md §4.
+ */
+const TOTAL_STEPS = 12;
 
 /** businesses.address is capped at 160 in the column CHECK. */
 const ADDRESS_MAX = 160;
@@ -55,6 +70,13 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EMAIL_REASON =
   'The code goes here, and this is the address travelers write to. Change any of it later from your business page.';
 const EMAIL_PROMISE = "Almost there. We'll email you a code. Type it in and you're on the map.";
+
+/**
+ * The same sentence on every step that has one, in the same place, and the
+ * same constant the traveler flow uses for the same reason: the moment
+ * thirteen hand-written reassurances drift they stop reading as a promise.
+ */
+const CHANGE_LATER = 'You can change this any time, from your business page.';
 
 function nameProblem(value: string): string | null {
   const trimmed = value.trim();
@@ -81,8 +103,18 @@ export default function BusinessSignupScreen() {
   const launchCities = launchCitiesQuery.data ?? [];
   const registerBusiness = useRegisterBusiness();
   const requestCode = useRequestBusinessEmailCode();
+  // The row, once it exists. Registering happens at the confirm step rather
+  // than at the end, because everything after it — photos, hours, links — is
+  // an ordinary edit of an existing business, exactly as it will be forever
+  // afterwards from the storefront screen. An `unconfirmed` business is fully
+  // dark until the code goes in, so building the page while it waits costs
+  // nobody anything (docs/BUSINESS_ACCOUNTS.md §3.9).
+  const { data: business } = useOwnBusiness();
+  const { data: detail } = useBusinessDetail(business?.id ?? null);
 
-  const [step, setStep] = useState(1);
+  // Three, not one. Steps 1 and 2 (email, password) live on /join, and the
+  // bar is continuous across the two stacks.
+  const [step, setStep] = useState(3);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<BusinessCategory | null>(null);
   const [cityId, setCityId] = useState<number | null>(null);
@@ -104,7 +136,6 @@ export default function BusinessSignupScreen() {
   // check either, so a marker in Bangkok could be filed under Lisbon.
   const city = cityId != null ? (launchCities.find((c) => c.city_id === cityId) ?? null) : null;
   const emailOk = EMAIL_PATTERN.test(email.trim());
-  const sending = registerBusiness.isPending || requestCode.isPending;
 
   const go = (next: number) => {
     haptics.light();
@@ -112,51 +143,84 @@ export default function BusinessSignupScreen() {
     setStep(next);
   };
 
-  const finish = async () => {
-    setTouched(true);
-    if (!emailOk || category == null || city == null || coords == null) {
+  /**
+   * Create the row, at the confirm step rather than at the end.
+   *
+   * Everything after this is an ordinary edit of an existing business — the
+   * same edits the storefront screen makes forever afterwards — and an
+   * `unconfirmed` listing is fully dark until the code goes in, so there is
+   * nothing on the map to be half-finished.
+   *
+   * Not idempotent: one account owns at most one business, so a second press
+   * would be refused by the database rather than retried.
+   */
+  const register = async () => {
+    if (category == null || city == null || coords == null) {
+      return;
+    }
+    if (registered || business != null) {
+      go(6);
       return;
     }
     try {
-      // Registering is not idempotent: one account owns at most one business,
-      // so a second press after a mail that failed to send would be refused by
-      // the database rather than retried. Remember it and only re-send.
-      if (!registered) {
-        const businessId = await registerBusiness.mutateAsync({
-          name: name.trim(),
-          category,
-          cityId: city.city_id,
-          lat: coords.lat,
-          lng: coords.lng,
-          address: address.trim() || null,
-        });
-        setRegistered(true);
-        analytics.capture('business_registered', { category, city_id: city.city_id });
+      await registerBusiness.mutateAsync({
+        name: name.trim(),
+        category,
+        cityId: city.city_id,
+        lat: coords.lat,
+        lng: coords.lng,
+        address: address.trim() || null,
+      });
+      setRegistered(true);
+      analytics.capture('business_registered', { category, city_id: city.city_id });
+      go(6);
+    } catch {
+      // Surfaced by the global mutation error alert (lib/query-client). Three
+      // refusals arrive this way: an account that has already finished a
+      // traveler profile, a city we have not launched in, and — new since
+      // 20260829160000, and previously claimed here but never true — a marker
+      // outside the city's radius.
+    }
+  };
 
-        // The contact rows, best effort and in that order. A phone number that
-        // the validator refuses must not cost somebody the listing they just
-        // registered: the number is editable from the business page forever
-        // afterwards, and the code is the thing standing between them and the
-        // map. Every one of these is optional by design (founder, 2026-08-29:
-        // "add those as a contact option without requiring a code for now").
-        const contacts: { kind: 'email' | 'phone' | 'whatsapp'; label: string; value: string }[] = [
-          { kind: 'email', label: 'Email', value: email.trim() },
-          { kind: 'phone', label: 'Phone', value: phone.trim() },
-          { kind: 'whatsapp', label: 'WhatsApp', value: whatsapp.trim() },
-        ];
-        let position = 0;
-        for (const contact of contacts) {
-          if (contact.value.length === 0) {
-            continue;
-          }
-          try {
-            await addBusinessLink({ businessId, ...contact, position });
-            position += 1;
-          } catch {
-            // Kept off the critical path deliberately; see above.
-          }
-        }
+  /** The contact rows, written once the row they hang off exists. */
+  const saveContacts = async () => {
+    setTouched(true);
+    if (!emailOk) {
+      return;
+    }
+    const businessId = business?.id;
+    if (businessId == null) {
+      return;
+    }
+    const contacts: { kind: 'email' | 'phone' | 'whatsapp'; label: string; value: string }[] = [
+      { kind: 'email', label: 'Email', value: email.trim() },
+      { kind: 'phone', label: 'Phone', value: phone.trim() },
+      { kind: 'whatsapp', label: 'WhatsApp', value: whatsapp.trim() },
+    ];
+    let position = 0;
+    for (const contact of contacts) {
+      if (contact.value.length === 0) {
+        continue;
       }
+      try {
+        await addBusinessLink({ businessId, ...contact, position });
+        position += 1;
+      } catch {
+        // Off the critical path deliberately: a number the validator refuses
+        // must not cost somebody the listing they have already registered,
+        // and every one of these is editable from the business page.
+      }
+    }
+    go(7);
+  };
+
+  /** The last thing this form does. The code screen takes it from here. */
+  const sendCode = async () => {
+    if (!emailOk) {
+      return;
+    }
+    try {
       await requestCode.mutateAsync(email.trim());
       haptics.success();
       // Replace rather than push: the form has been submitted, and a back
@@ -169,18 +233,15 @@ export default function BusinessSignupScreen() {
       // the app.
       router.replace({ pathname: '/business-email', params: { email: email.trim() } });
     } catch {
-      // Surfaced by the global mutation error alert (lib/query-client). Three
-      // refusals arrive this way: an account that has already finished a
-      // traveler profile, a city we have not launched in, and — new since
-      // 20260829160000, and previously claimed here but never true — a marker
-      // outside the city's radius.
+      // Surfaced by the global mutation error alert. The refusal that matters
+      // is the fifth code of the day.
     }
   };
 
-  if (step === 1) {
+  if (step === 3) {
     return (
       <StepShell
-        step={1}
+        step={3}
         total={TOTAL_STEPS}
         title="What's your business called?"
         subtitle="The name over the door, and what kind of business it is."
@@ -195,7 +256,7 @@ export default function BusinessSignupScreen() {
           if (nameProblem(name) != null || category == null) {
             return;
           }
-          go(2);
+          go(4);
         }}>
         <FormTextField
           label="Name"
@@ -215,10 +276,10 @@ export default function BusinessSignupScreen() {
     );
   }
 
-  if (step === 2) {
+  if (step === 4) {
     return (
       <StepShell
-        step={2}
+        step={4}
         total={TOTAL_STEPS}
         title="Where is it?"
         subtitle="Type your address, then check the marker is on your door."
@@ -229,7 +290,7 @@ export default function BusinessSignupScreen() {
               ? 'Pick a suggestion, or drag the marker onto your door.'
               : null
         }
-        onBack={() => go(1)}
+        onBack={() => go(3)}
         continueTestID="business-place-continue"
         onContinue={() => {
           setTouched(true);
@@ -316,17 +377,18 @@ export default function BusinessSignupScreen() {
     );
   }
 
-  if (step === 3) {
+  if (step === 5) {
     return (
       <StepShell
-        step={3}
+        step={5}
         total={TOTAL_STEPS}
         title="Is this right?"
         subtitle="This is what a traveler sees when they tap you on the map."
         continueLabel="Yes, that's us"
-        onBack={() => go(2)}
+        onBack={() => go(4)}
         continueTestID="business-confirm-place"
-        onContinue={() => go(4)}>
+        continueLoading={registerBusiness.isPending}
+        onContinue={register}>
         <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
           <ThemedText type="headline">{name.trim()}</ThemedText>
           <ThemedText type="footnote" themeColor="textSecondary">
@@ -347,7 +409,7 @@ export default function BusinessSignupScreen() {
             onChange={(lat, lng) => setCoords({ lat, lng })}
           />
         ) : null}
-        <PrimaryButton variant="ghost" label="Fix the address" onPress={() => go(2)} />
+        <PrimaryButton variant="ghost" label="Fix the address" onPress={() => go(4)} />
         <ThemedText type="footnote" themeColor="textSecondary">
           Both of these are yours to change later. Moving the marker after you go live sends the
           listing back for another email check, so it is worth getting right now.
@@ -356,75 +418,247 @@ export default function BusinessSignupScreen() {
     );
   }
 
+  if (step === 6) {
+    return (
+      <StepShell
+        step={6}
+        total={TOTAL_STEPS}
+        title="How do people reach you?"
+        subtitle="The email is the one we need. The rest is up to you."
+        continueTestID="business-contact-continue"
+        onBack={() => go(5)}
+        onContinue={saveContacts}>
+        <FormTextField
+          label="Email"
+          testID="business-email-input"
+          autoFocus
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+          autoComplete="email"
+          keyboardType="email-address"
+          textContentType="emailAddress"
+          value={email}
+          onChangeText={setEmail}
+          error={touched && !emailOk ? 'That address looks off. Check it over.' : null}
+          {...keyboardDoneProps}
+        />
+        {/* Its own line rather than the field's hint, which an error replaces:
+            this is the reason the address is being asked for at all, and it
+            has to survive a typo. */}
+        <ThemedText type="footnote" themeColor="textSecondary">
+          {EMAIL_REASON}
+        </ThemedText>
+
+        {/* Founder, 2026-08-29: "No need to require a code for phone or
+            WhatsApp for now. Just add those as a contact option without
+            requiring a code for now." So they are contact details and nothing
+            else — no code, no verification, no claim that either proves
+            anything. They land as business_links rows, which is where every
+            other way of reaching a business already lives and which already
+            validates a phone number. */}
+        <View style={styles.block}>
+          <ThemedText type="callout">Phone or WhatsApp</ThemedText>
+          <ThemedText type="footnote" themeColor="textSecondary">
+            Both optional, and both show as a button on your page.
+          </ThemedText>
+          <FormTextField
+            label="Phone"
+            testID="business-phone-input"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="phone-pad"
+            textContentType="telephoneNumber"
+            placeholder="+351 912 345 678"
+            value={phone}
+            onChangeText={setPhone}
+            {...keyboardDoneProps}
+          />
+          <FormTextField
+            label="WhatsApp"
+            testID="business-whatsapp-input"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="phone-pad"
+            placeholder="Same number, or a different one"
+            value={whatsapp}
+            onChangeText={setWhatsapp}
+            {...keyboardDoneProps}
+          />
+        </View>
+      </StepShell>
+    );
+  }
+
+  // THE PAGE ITSELF, four steps of it.
+  //
+  // All four were in docs/BUSINESS_ACCOUNTS.md §5 and none of them was ever
+  // built, so an owner finished signup and had to go and find the storefront
+  // screen to discover that photos, hours and links existed at all. That is
+  // the confusion the founder hit. Each step says what the section is for and
+  // hands over to the editor that already owns it — the same editor they will
+  // use forever afterwards, rather than a second copy living inside signup.
+
+  if (step === 7) {
+    const photoCount = detail?.photos?.length ?? 0;
+    return (
+      <StepShell
+        step={7}
+        total={TOTAL_STEPS}
+        title="Show the place"
+        subtitle="Photos of the business, not of a person. The first one is your cover, and it is the thing travelers see on the map."
+        continueLabel={photoCount > 0 ? 'Continue' : 'Add photos'}
+        continueTestID="business-photos-continue"
+        note={photoCount > 0 ? CHANGE_LATER : 'One photo is the only thing we need here.'}
+        onBack={() => go(6)}
+        onContinue={() =>
+          photoCount > 0
+            ? go(8)
+            : router.push({ pathname: '/business-edit', params: { section: 'photos' } })
+        }>
+        <PrimaryButton
+          variant="ghost"
+          label={photoCount > 0 ? `${photoCount} added. Add more` : 'Add photos'}
+          testID="business-add-photos"
+          onPress={() => router.push({ pathname: '/business-edit', params: { section: 'photos' } })}
+        />
+      </StepShell>
+    );
+  }
+
+  if (step === 8) {
+    return (
+      <StepShell
+        step={8}
+        total={TOTAL_STEPS}
+        title="What is it like?"
+        subtitle="A couple of lines a traveler would actually want to read. Not a menu, not an advert."
+        continueTestID="business-description-continue"
+        note={CHANGE_LATER}
+        onBack={() => go(7)}
+        onSkip={() => go(9)}
+        onContinue={() =>
+          detail?.description
+            ? go(9)
+            : router.push({ pathname: '/business-edit', params: { section: 'details' } })
+        }>
+        {detail?.description ? (
+          <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
+            <ThemedText>{detail.description}</ThemedText>
+          </View>
+        ) : null}
+        <PrimaryButton
+          variant="ghost"
+          label={detail?.description ? 'Change it' : 'Write it'}
+          onPress={() =>
+            router.push({ pathname: '/business-edit', params: { section: 'details' } })
+          }
+        />
+      </StepShell>
+    );
+  }
+
+  if (step === 9) {
+    const hourCount = detail?.hours?.length ?? 0;
+    return (
+      <StepShell
+        step={9}
+        total={TOTAL_STEPS}
+        title="When are you open?"
+        subtitle="Past midnight is fine. 20:00 to 2:00 reads as one night."
+        continueTestID="business-hours-continue"
+        note={CHANGE_LATER}
+        onBack={() => go(8)}
+        onSkip={hourCount > 0 ? undefined : () => go(10)}
+        onContinue={() =>
+          hourCount > 0
+            ? go(10)
+            : router.push({ pathname: '/business-edit', params: { section: 'hours' } })
+        }>
+        <PrimaryButton
+          variant="ghost"
+          label={hourCount > 0 ? 'Change your hours' : 'Set your hours'}
+          onPress={() => router.push({ pathname: '/business-edit', params: { section: 'hours' } })}
+        />
+        <ThemedText type="footnote" themeColor="textSecondary">
+          No hours is better than wrong hours. Somebody standing outside a closed door because your
+          page said otherwise is worse than not knowing.
+        </ThemedText>
+      </StepShell>
+    );
+  }
+
+  if (step === 10) {
+    const linkCount = detail?.links?.length ?? 0;
+    return (
+      <StepShell
+        step={10}
+        total={TOTAL_STEPS}
+        title="Anywhere else to send people?"
+        subtitle="A menu, a booking page, your Instagram. One list for links, socials and contact."
+        continueTestID="business-links-continue"
+        note={CHANGE_LATER}
+        onBack={() => go(9)}
+        onSkip={() => go(11)}
+        onContinue={() => go(11)}>
+        <PrimaryButton
+          variant="ghost"
+          label={linkCount > 0 ? `${linkCount} on your page. Add more` : 'Add a link'}
+          onPress={() => router.push({ pathname: '/business-edit', params: { section: 'links' } })}
+        />
+      </StepShell>
+    );
+  }
+
+  if (step === 11) {
+    return (
+      <StepShell
+        step={11}
+        total={TOTAL_STEPS}
+        title="Here it is"
+        subtitle="Exactly what a traveler sees when they tap you. Step back to change anything."
+        continueLabel="Looks right"
+        continueTestID="business-review-continue"
+        note="Every part of this is editable from your business page afterwards."
+        onBack={() => go(10)}
+        onContinue={() => go(12)}>
+        <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
+          <ThemedText type="headline">{detail?.name ?? name.trim()}</ThemedText>
+          <ThemedText type="footnote" themeColor="textSecondary">
+            {category ? CATEGORY_LABEL[category] : ''}
+            {city ? ` · ${city.cities.name}` : ''}
+          </ThemedText>
+          {detail?.address ? <ThemedText type="body">{detail.address}</ThemedText> : null}
+          {detail?.description ? <ThemedText type="body">{detail.description}</ThemedText> : null}
+          <ThemedText type="footnote" themeColor="textSecondary">
+            {countOf(detail?.photos?.length ?? 0, 'photo')} ·{' '}
+            {countOf(detail?.links?.length ?? 0, 'link')} ·{' '}
+            {(detail?.hours?.length ?? 0) > 0 ? 'hours set' : 'no hours yet'}
+          </ThemedText>
+        </View>
+      </StepShell>
+    );
+  }
+
   return (
     <StepShell
-      step={4}
+      step={12}
       total={TOTAL_STEPS}
-      title="How do people reach you?"
-      subtitle="The email is the one we need. The rest is up to you."
+      title="One last thing"
+      subtitle="Nobody can find you until an email proves somebody reads that inbox. That is the whole of it."
       continueLabel="Email me a code"
       continueTestID="business-email-continue"
-      continueLoading={sending}
+      continueLoading={requestCode.isPending}
       note={EMAIL_PROMISE}
-      onBack={() => go(3)}
-      onContinue={finish}>
-      <FormTextField
-        label="Email"
-        testID="business-email-input"
-        autoFocus
-        autoCapitalize="none"
-        autoCorrect={false}
-        spellCheck={false}
-        autoComplete="email"
-        keyboardType="email-address"
-        textContentType="emailAddress"
-        value={email}
-        onChangeText={setEmail}
-        error={touched && !emailOk ? 'That address looks off. Check it over.' : null}
-        {...keyboardDoneProps}
-      />
-      {/* Its own line rather than the field's hint, which an error replaces:
-          this is the reason the address is being asked for at all, and it has
-          to survive a typo. */}
-      <ThemedText type="footnote" themeColor="textSecondary">
-        {EMAIL_REASON}
-      </ThemedText>
-
-      {/* Founder, 2026-08-29: "No need to require a code for phone or WhatsApp
-          for now. Just add those as a contact option without requiring a code
-          for now." So they are contact details and nothing else — no code, no
-          verification, no claim that either proves anything. They land as
-          business_links rows, which is where every other way of reaching a
-          business already lives and which already validates a phone number. */}
-      <View style={styles.block}>
-        <ThemedText type="callout">Phone or WhatsApp</ThemedText>
-        <ThemedText type="footnote" themeColor="textSecondary">
-          Both optional, and both show as a button on your page.
+      onBack={() => go(11)}
+      onContinue={sendCode}>
+      <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
+        <ThemedText type="caption" themeColor="textSecondary">
+          SENDING IT TO
         </ThemedText>
-        <FormTextField
-          label="Phone"
-          testID="business-phone-input"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="phone-pad"
-          textContentType="telephoneNumber"
-          placeholder="+351 912 345 678"
-          value={phone}
-          onChangeText={setPhone}
-          {...keyboardDoneProps}
-        />
-        <FormTextField
-          label="WhatsApp"
-          testID="business-whatsapp-input"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="phone-pad"
-          placeholder="Same number, or a different one"
-          value={whatsapp}
-          onChangeText={setWhatsapp}
-          {...keyboardDoneProps}
-        />
+        <ThemedText type="headline">{email.trim()}</ThemedText>
       </View>
+      <PrimaryButton variant="ghost" label="Use a different address" onPress={() => go(6)} />
     </StepShell>
   );
 }
