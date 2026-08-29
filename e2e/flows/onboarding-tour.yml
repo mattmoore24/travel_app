@@ -1,0 +1,138 @@
+# Making a profile, which the suite has never photographed either.
+#
+# The signed-in tour signs into an account that is already onboarded, and the
+# guest tour stops at the account-kind chooser, so the front door of the whole
+# app — the screens that decide whether somebody ends up with a profile at all
+# — has had no picture of it. It just went from seven steps to thirteen.
+#
+# WHAT THIS COVERS, and what it does not. It walks the three steps nobody can
+# get past without answering: who you are, where you are from, and the photo.
+# Those are the ones where a break means nobody can create an account. It
+# stops at the photo gate, because getting past it means driving the iOS photo
+# picker, and a flaky system-dialog dance would make every run's verdict about
+# the harness rather than the app. Steps 6 to 13 are held by the 22 source
+# assertions in src/app/__tests__/onboarding-sequence.test.ts instead — which
+# is weaker than a picture, and worth saying out loud.
+#
+# Runs on its own throwaway account (E2E_NEW_EMAIL, unique per run, and a
+# different one from the business tour's — they both sign up, and the second
+# would be refused an address the first had already taken). It never stamps
+# onboarding_completed_at, so what it leaves behind is an unfinished profile:
+# invisible in Travelers, invisible on the map, exactly like somebody who
+# closed the app half way through.
+appId: com.mattmoore.samewhere
+---
+- launchApp
+- extendedWaitUntil:
+    visible: 'Skip'
+    timeout: 20000
+- tapOn: 'Skip'
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+- tapOn: 'Drop a pin'
+- extendedWaitUntil:
+    visible: 'Make a profile'
+    timeout: 10000
+    optional: true
+- tapOn:
+    text: 'Make a profile'
+    optional: true
+- extendedWaitUntil:
+    visible: 'What are you signing up as?'
+    timeout: 10000
+# The founder's replacement line for a person, asserted: the old one told
+# people what the address was NOT for, which is a strange thing to raise
+# unprompted.
+- assertVisible: 'Your email is never shown to other users.*'
+- takeScreenshot: 50-signup-email
+
+- tapOn:
+    id: 'email-input'
+- inputText: ${E2E_NEW_EMAIL}
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: 'Pick a password'
+    timeout: 10000
+- tapOn:
+    id: 'password-input'
+- inputText: 'MaestroBiz!2026'
+- tapOn:
+    id: 'create-account'
+- tapOn:
+    text: 'Not Now'
+    optional: true
+
+# STEP 3 — who you are. No skip, and there should not be one.
+- extendedWaitUntil:
+    visible: 'Who are you?'
+    timeout: 30000
+- tapOn:
+    text: 'Not Now'
+    optional: true
+- takeScreenshot: 51-signup-who
+- tapOn:
+    id: 'name-input'
+- inputText: 'Maestro Newcomer'
+- pressKey: Enter
+- tapOn:
+    id: 'age-input'
+- inputText: '29'
+- tapOn:
+    text: 'Done'
+    optional: true
+- tapOn: 'Continue'
+
+# STEP 4 — where you are from.
+- extendedWaitUntil:
+    visible: 'Where are you from?'
+    timeout: 15000
+- tapOn:
+    id: 'city-input'
+- inputText: 'Lisbon'
+- pressKey: Enter
+- tapOn:
+    id: 'country-input'
+- inputText: 'Portugal'
+- tapOn:
+    text: 'Done'
+    optional: true
+- takeScreenshot: 52-signup-home
+
+# Languages, which step 4 will not let go without. The picker is the app's own
+# sheet rather than a system dialog, so it is safe to drive.
+- scrollUntilVisible:
+    element:
+      text: 'Languages'
+    direction: DOWN
+    timeout: 8000
+- tapOn: 'Languages'
+- extendedWaitUntil:
+    visible:
+      id: 'language-search'
+    timeout: 10000
+- tapOn:
+    id: 'language-search'
+- inputText: 'English'
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn: 'English'
+- tapOn: 'Done'
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: 53-signup-home-filled
+- tapOn: 'Continue'
+
+# STEP 5 — the photo, which moved from last to fifth. Hinge's order, and the
+# right one: a face makes the rest worth answering, and somebody who quits
+# here still has a profile another person could act on.
+#
+# The gate is asserted rather than driven past: getting a photo in means
+# driving the iOS picker, and a flaky system-dialog dance would make every
+# run's verdict about the harness rather than the app. The note under the
+# button is the whole claim — this step cannot be passed, and it says why.
+- extendedWaitUntil:
+    visible: 'Add a photo'
+    timeout: 15000
+- assertVisible: 'A profile photo is the one thing we need.'
+- takeScreenshot: 54-signup-photo-gate

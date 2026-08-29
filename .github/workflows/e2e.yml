@@ -286,6 +286,9 @@ jobs:
           # of the app with no picture of it at all, which is how it drifted
           # far enough for the founder to hit it.
           E2E_BIZ_EMAIL="maestro-biz-$(date +%s)@samewhere.test"
+          # A second one, for the profile flow. Both sign up, so they cannot
+          # share an address: whichever ran second would be refused.
+          E2E_NEW_EMAIL="maestro-new-$(date +%s)@samewhere.test"
           STATUS=0
           for flow in ../e2e/flows/*.yml; do
             # One retry: the first attempt pays the driver build cost and
@@ -295,12 +298,12 @@ jobs:
             reset_state
             maestro --udid "$UDID" test \
               -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" \
-              -e E2E_BIZ_EMAIL="$E2E_BIZ_EMAIL" "$flow" \
+              -e E2E_BIZ_EMAIL="$E2E_BIZ_EMAIL" -e E2E_NEW_EMAIL="$E2E_NEW_EMAIL" "$flow" \
               || {
                 reset_state
                 maestro --udid "$UDID" test \
                   -e E2E_EMAIL="$E2E_EMAIL" -e E2E_PASSWORD="$E2E_PASSWORD" \
-                  -e E2E_BIZ_EMAIL="$E2E_BIZ_EMAIL" "$flow"
+                  -e E2E_BIZ_EMAIL="$E2E_BIZ_EMAIL" -e E2E_NEW_EMAIL="$E2E_NEW_EMAIL" "$flow"
               } \
               || STATUS=1
           done
