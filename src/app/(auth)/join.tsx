@@ -128,10 +128,16 @@ export default function JoinScreen() {
         step={1}
         total={SIGNUP_TOTAL_STEPS}
         title="What is your email?"
+        // Founder's words, both of them. The old pair told people what the
+        // email is NOT for, which invites the question, and the business one
+        // promised a second email nobody had asked about yet. These say the
+        // thing somebody actually wants to know: nobody sees it, and — for a
+        // business, whose whole point is being reachable — where the number
+        // customers will actually call goes instead.
         subtitle={
           forBusiness
-            ? 'Only for signing in. Your business gets its own email to confirm later.'
-            : 'Only for signing in. No newsletters.'
+            ? 'This email is just for signing in. You will enter your contact information where customers can reach you when creating your profile.'
+            : 'Your email is never shown to other users.'
         }
         continueLabel="Continue"
         continueDisabled={!emailOk}
