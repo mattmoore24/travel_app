@@ -199,6 +199,17 @@ export default function BusinessPostScreen() {
   const cap = business?.verified ? CAP_VERIFIED : CAP_UNVERIFIED;
   const live = livePosts.data?.length ?? 0;
   const atCap = livePosts.data != null && live >= cap;
+  // More up than the cap allows, which is not a broken count: renaming a
+  // verified business clears the check (business_rename_resets), so the cap
+  // drops from ten to three with ten posts already live. The counter read
+  // "10 of 3 up right now", which is the app telling an owner a number that
+  // cannot be true. Nothing goes down on its own, so this holds until they
+  // take some off.
+  const overCap = livePosts.data != null && live > cap;
+  // Whether anybody but the owner can see a new post. A listing waiting on
+  // its email code, or one moderation has taken down, is dark: the subtitle
+  // promised a marker lighting up on the map either way.
+  const onTheMap = business != null && business.state === 'listed' && business.active;
 
   const trimmedTitle = title.trim();
   const titleError =
@@ -212,15 +223,17 @@ export default function BusinessPostScreen() {
   const ready =
     trimmedTitle.length >= TITLE_MIN && titleError == null && bodyError == null && shape != null;
 
-  const note = atCap
-    ? `That's ${cap} up, which is the most at once. Tap one on My business to take it down.`
-    : (titleError ??
-      bodyError ??
-      (trimmedTitle.length < TITLE_MIN
-        ? 'Give it a title.'
-        : shape == null
-          ? 'Say how long it stays up.'
-          : null));
+  const note = overCap
+    ? `You have ${live} up and ${cap} is the most at once. Take some down on My business first.`
+    : atCap
+      ? `That's ${cap} up, which is the most at once. Tap one on My business to take it down.`
+      : (titleError ??
+        bodyError ??
+        (trimmedTitle.length < TITLE_MIN
+          ? 'Give it a title.'
+          : shape == null
+            ? 'Say how long it stays up.'
+            : null));
 
   const submit = async () => {
     if (!ready || businessId == null) {
@@ -247,7 +260,11 @@ export default function BusinessPostScreen() {
   return (
     <StepScreen
       title="Post something"
-      subtitle="It shows on your page, and your marker lights up on the map."
+      subtitle={
+        onTheMap
+          ? 'It shows on your page, and your marker lights up on the map.'
+          : 'It goes on your page. Only you can see it while your listing is off the map.'
+      }
       continueLabel="Put it up"
       // Disabled at the cap because a button that fires a refusal we already
       // know about is a button that lies. The database still has the last
@@ -319,9 +336,11 @@ export default function BusinessPostScreen() {
         <ThemedText type="footnote">
           {livePosts.data == null
             ? 'Checking what you have up.'
-            : live === 0
-              ? `Nothing up right now. You can have ${cap} at once.`
-              : `${live} of ${cap} up right now.`}
+            : overCap
+              ? `${live} up right now, which is over the ${cap} you can have at once.`
+              : live === 0
+                ? `Nothing up right now. You can have ${cap} at once.`
+                : `${live} of ${cap} up right now.`}
         </ThemedText>
         {business != null && !business.verified ? (
           <ThemedText type="footnote" themeColor="textSecondary">

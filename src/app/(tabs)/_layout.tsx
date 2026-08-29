@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 
 import AppTabs from '@/components/app-tabs';
 import { useAuthStore } from '@/features/auth/store';
+import { useIsBusiness } from '@/features/business/hooks';
 import { ConnectedNotice } from '@/features/matching/connected-notice';
 import { useAcceptedCelebration } from '@/features/matching/use-accepted-celebration';
 import { PushPrimer } from '@/features/notifications/push-primer';
@@ -27,9 +28,19 @@ function PendingInviteHandoff() {
   // listing form itself, and clearing it re-runs this effect — so the invite
   // is handed back after the listing rather than instead of it.
   const listingIntent = useAuthStore((s) => s.listingIntent);
+  // A business account has nothing to spend an invite on. The join screen
+  // says so plainly when one arrives by link, which is right for a tap
+  // somebody just made; handing it back UNPROMPTED at the end of listing a
+  // business is a different thing, and the first screen after signing up
+  // should be the business, not a group refusal.
+  const viewerIsBusiness = useIsBusiness();
 
   useEffect(() => {
     if (!signedIn || !token || listingIntent) {
+      return;
+    }
+    if (viewerIsBusiness) {
+      inviteHandled();
       return;
     }
     // Cleared BEFORE the push, not after: the invite screen is a route like
@@ -37,7 +48,7 @@ function PendingInviteHandoff() {
     // store would push it straight back on.
     inviteHandled();
     router.push(`/join-group/${token}`);
-  }, [signedIn, token, listingIntent, inviteHandled]);
+  }, [signedIn, token, listingIntent, viewerIsBusiness, inviteHandled]);
 
   return null;
 }

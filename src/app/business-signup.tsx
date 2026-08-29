@@ -48,12 +48,6 @@ import { haptics } from '@/lib/haptics';
  */
 
 /**
- * Four, not the three steps that live here. Typing the emailed code on
- * `/business-email` is the last one, and a bar that reads full while the
- * place is still dark would promise something that has not happened yet.
- * Same reason SIGNUP_TOTAL_STEPS counts across two navigation stacks.
- */
-/**
  * Twelve, counting the code screen that lives on its own route: typing the
  * emailed digits is the last step, and a bar that reads full while the place
  * is still dark would promise something that has not happened yet. Same
@@ -86,10 +80,10 @@ const EMAIL_PROMISE = "Almost there. We'll email you a code. Type it in and you'
  */
 const CHANGE_LATER = 'You can change this any time, from your business page.';
 
-/** What a refused contact is called, in the words on its own field. */
 /** The database's own ceiling for a phone or WhatsApp number. */
 const CONTACT_MAX = 30;
 
+/** What a refused contact is called, in the words on its own field. */
 const CONTACT_LABEL = (kind: ContactKind): string =>
   kind === 'email' ? 'email' : kind === 'phone' ? 'phone number' : 'WhatsApp number';
 
@@ -614,7 +608,7 @@ export default function BusinessSignupScreen() {
       <StepShell
         step={7}
         total={TOTAL_STEPS}
-        title="Show the place"
+        title="Show your business"
         subtitle="Photos of the business, not of a person. The first one is your cover, and it is the thing travelers see on the map."
         continueLabel={photoCount > 0 ? 'Continue' : 'Add photos'}
         continueTestID="business-photos-continue"
@@ -651,6 +645,10 @@ export default function BusinessSignupScreen() {
         title="What is it like?"
         subtitle="A couple of lines a traveler would actually want to read. Not a menu, not an advert."
         continueTestID="business-description-continue"
+        // Says what the press does. With nothing written yet the button
+        // opens the editor rather than moving on, and calling that
+        // "Continue" is the same lie step 7 already stopped telling.
+        continueLabel={detail?.description ? 'Continue' : 'Write it'}
         note={CHANGE_LATER}
         onBack={() => go(7)}
         onSkip={() => go(9)}
@@ -659,18 +657,23 @@ export default function BusinessSignupScreen() {
             ? go(9)
             : router.push({ pathname: '/business-edit', params: { section: 'details' } })
         }>
+        {/* The card and the ghost button only once there is something to
+            show and something to change. Empty, this step drew a "Write it"
+            ghost directly above a docked button that did the same thing. */}
         {detail?.description ? (
-          <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
-            <ThemedText>{detail.description}</ThemedText>
-          </View>
+          <>
+            <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
+              <ThemedText>{detail.description}</ThemedText>
+            </View>
+            <PrimaryButton
+              variant="ghost"
+              label="Change it"
+              onPress={() =>
+                router.push({ pathname: '/business-edit', params: { section: 'details' } })
+              }
+            />
+          </>
         ) : null}
-        <PrimaryButton
-          variant="ghost"
-          label={detail?.description ? 'Change it' : 'Write it'}
-          onPress={() =>
-            router.push({ pathname: '/business-edit', params: { section: 'details' } })
-          }
-        />
       </StepShell>
     );
   }
@@ -684,6 +687,7 @@ export default function BusinessSignupScreen() {
         title="When are you open?"
         subtitle="Past midnight is fine. 20:00 to 2:00 reads as one night."
         continueTestID="business-hours-continue"
+        continueLabel={hourCount > 0 ? 'Continue' : 'Set your hours'}
         note={CHANGE_LATER}
         onBack={() => go(8)}
         onSkip={hourCount > 0 ? undefined : () => go(10)}
@@ -692,11 +696,18 @@ export default function BusinessSignupScreen() {
             ? go(10)
             : router.push({ pathname: '/business-edit', params: { section: 'hours' } })
         }>
-        <PrimaryButton
-          variant="ghost"
-          label={hourCount > 0 ? 'Change your hours' : 'Set your hours'}
-          onPress={() => router.push({ pathname: '/business-edit', params: { section: 'hours' } })}
-        />
+        {/* Only once there is something to change. With no hours set this was
+            a ghost "Set your hours" above a docked button that opened the
+            same editor, which is the pair run 87 caught on the photos step. */}
+        {hourCount > 0 ? (
+          <PrimaryButton
+            variant="ghost"
+            label="Change your hours"
+            onPress={() =>
+              router.push({ pathname: '/business-edit', params: { section: 'hours' } })
+            }
+          />
+        ) : null}
         <ThemedText type="footnote" themeColor="textSecondary">
           No hours is better than wrong hours. Somebody standing outside a closed door because your
           page said otherwise is worse than not knowing.
@@ -714,15 +725,27 @@ export default function BusinessSignupScreen() {
         title="Anywhere else to send people?"
         subtitle="A menu, a booking page, your Instagram. One list for links, socials and contact."
         continueTestID="business-links-continue"
+        // Continue and Skip for now both went to step 11, so the docked
+        // button and the quiet one under it were the same control wearing two
+        // words. Now the button adds a link until there is one to add to.
+        continueLabel={linkCount > 0 ? 'Continue' : 'Add a link'}
         note={CHANGE_LATER}
         onBack={() => go(9)}
         onSkip={() => go(11)}
-        onContinue={() => go(11)}>
-        <PrimaryButton
-          variant="ghost"
-          label={linkCount > 0 ? `${linkCount} on your page. Add more` : 'Add a link'}
-          onPress={() => router.push({ pathname: '/business-edit', params: { section: 'links' } })}
-        />
+        onContinue={() =>
+          linkCount > 0
+            ? go(11)
+            : router.push({ pathname: '/business-edit', params: { section: 'links' } })
+        }>
+        {linkCount > 0 ? (
+          <PrimaryButton
+            variant="ghost"
+            label={`${linkCount} on your page. Add more`}
+            onPress={() =>
+              router.push({ pathname: '/business-edit', params: { section: 'links' } })
+            }
+          />
+        ) : null}
       </StepShell>
     );
   }

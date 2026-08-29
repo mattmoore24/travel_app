@@ -12,6 +12,7 @@ import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { NativeAppearance, Radius, Space } from '@/constants/theme';
+import { useIsBusiness } from '@/features/business/hooks';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { closeDayLabel } from '@/features/groups/closing';
 import { useAuthStore } from '@/features/auth/store';
@@ -33,6 +34,7 @@ export default function JoinGroupScreen() {
   const { token } = useLocalSearchParams<{ token: string }>();
   const theme = useTheme();
   const isSignedOut = useIsSignedOut();
+  const viewerIsBusiness = useIsBusiness();
   // One reading of "now" for the whole screen, taken at mount. Every date
   // comparison below has to agree with every other one, and a clock re-read
   // on each render does not — the floor of the picker would drift under a
@@ -81,6 +83,35 @@ export default function JoinGroupScreen() {
   // Default to the group's own horizon where it has one: it is what most
   // people want and the only value guaranteed to be valid.
   const chosen = stayUntil ?? maxDate ?? aMonthOut;
+
+  // A BUSINESS NEVER JOINS ANYTHING, and this is the one join screen that
+  // sits outside every guard in app/_layout: an invite link opens it for
+  // whoever taps it, business included. Until this branch a business got the
+  // traveler flow whole — "Stay in the group until" with a date picker under
+  // it, and a "Join the group" button that walked to the database to be
+  // refused by assert_not_business. The founder's fourth complaint, word for
+  // word: "it also doesn't make sense for the business account to ever have
+  // to set a date for when it is leaving."
+  //
+  // Said rather than redirected. join-place turns a business round with a
+  // Redirect because nothing put that route in front of them; a link is
+  // something somebody deliberately tapped, and being bounced to your own
+  // tabs with no word teaches nothing about what you tapped.
+  if (viewerIsBusiness) {
+    return (
+      <ThemedView style={styles.root}>
+        <View style={styles.centered}>
+          <ThemedText type="headline">Groups are for travelers</ThemedText>
+          <ThemedText themeColor="textSecondary" style={styles.centerText}>
+            You are signed in as a business, so there is no group here for you to join. Travelers
+            write to you first, and everything they send lands in your chat.
+          </ThemedText>
+          <PrimaryButton label="Open My business" onPress={() => router.replace('/my-business')} />
+          <PrimaryButton variant="ghost" label="Close" onPress={leave} />
+        </View>
+      </ThemedView>
+    );
+  }
 
   // `&& token`: with no token the query never runs, so isPending stays true
   // forever and this branch painted a blank screen with nothing on it. A

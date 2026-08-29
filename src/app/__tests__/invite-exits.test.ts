@@ -41,9 +41,10 @@ describe('a cold-start invite has somewhere to go', () => {
 
   it('offers a way past every terminal branch of the invite', () => {
     const code = source('join-group', '[token].tsx');
-    // Expired link, ended chat, already a member, signed out, and the join
-    // form itself: five dead ends, five marked exits.
-    expect((code.match(/onPress=\{leave\}/g) ?? []).length).toBe(4);
+    // Expired link, ended chat, already a member, signed out, a business
+    // account (groups are for travelers), and the join form itself: six dead
+    // ends, six marked exits.
+    expect((code.match(/onPress=\{leave\}/g) ?? []).length).toBe(5);
     expect(code).toContain('onClose={leave}');
   });
 
