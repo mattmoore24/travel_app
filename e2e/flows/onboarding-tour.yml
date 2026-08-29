@@ -56,7 +56,7 @@ appId: com.mattmoore.samewhere
     timeout: 10000
 - tapOn:
     id: 'password-input'
-- inputText: 'MaestroBiz!2026'
+- inputText: ${E2E_THROWAWAY_PASSWORD}
 - tapOn:
     id: 'create-account'
 - tapOn:
@@ -147,7 +147,7 @@ appId: com.mattmoore.samewhere
 # a photo actually landed, so a picker that has moved between iOS versions
 # costs the run its later pictures and not its verdict.
 - tapOn:
-    accessibilityLabel: 'Add your profile photo'
+    text: 'Add your profile photo'
     optional: true
 - runFlow: ../subflows/pick-a-photo.yml
 - waitForAnimationToEnd:

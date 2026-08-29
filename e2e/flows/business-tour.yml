@@ -54,7 +54,7 @@ appId: com.mattmoore.samewhere
     timeout: 10000
 - tapOn:
     id: 'password-input'
-- inputText: 'MaestroBiz!2026'
+- inputText: ${E2E_THROWAWAY_PASSWORD}
 - tapOn:
     id: 'create-account'
 - tapOn:
@@ -172,14 +172,14 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 3000
 - tapOn:
-    accessibilityLabel: 'Add your cover photo'
+    text: 'Add your cover photo'
     optional: true
 - runFlow: ../subflows/pick-a-photo.yml
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 49-business-photo-added
 - tapOn:
-    accessibilityLabel: 'Close'
+    text: 'Close'
     optional: true
 
 # Everything below runs only if a photo actually landed. Driving Apple's

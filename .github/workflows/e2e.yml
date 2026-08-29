@@ -284,7 +284,14 @@ jobs:
           # idempotent, so before teardown existed the flow had to stop at the
           # confirm step and everything past it went unphotographed. That is
           # how a dead end at step 4 reached the founder.
+          # One password for both tours' throwaway accounts. It has to reach
+          # two steps — the flows type it, and the teardown below signs in
+          # with it — so it goes through GITHUB_ENV rather than staying a
+          # local. Masked because that file's contents are echoed into every
+          # later step's env dump, and these are public logs.
           E2E_THROWAWAY_PASSWORD='MaestroBiz!2026'
+          echo "::add-mask::$E2E_THROWAWAY_PASSWORD"
+          echo "E2E_THROWAWAY_PASSWORD=$E2E_THROWAWAY_PASSWORD" >> "$GITHUB_ENV"
           # Both tours sign up, so they cannot share an address, and NEITHER
           # can share one with its own retry: an attempt that got as far as
           # create-account has taken the address, so the second attempt used
