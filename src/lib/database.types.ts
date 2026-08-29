@@ -163,6 +163,9 @@ export type PublicPinRow = {
   seeded: boolean;
   seed_note: string | null;
   expires_at: string;
+  /** Set when the pin is open to join. Guests see that a plan is open too. */
+  chat_id: string | null;
+  crew: number;
 };
 
 /**
@@ -665,6 +668,35 @@ export type CityPinRow = {
   seeded: boolean;
   seed_note: string | null;
   expires_at: string;
+  /**
+   * The group chat this pin opened with, when its author ticked "anyone can
+   * join". Null on a message-me-first pin and on every curated one, which is
+   * exactly the test for "is this joinable".
+   */
+  chat_id: string | null;
+  /** How many are in that chat, counting the author. Zero when there is none. */
+  crew: number;
+};
+
+/** Row shape returned by pin_crew(): who is already going. */
+export type PinCrewRow = {
+  user_id: string;
+  display_name: string | null;
+  photo_path: string | null;
+  is_owner: boolean;
+  joined_at: string;
+};
+
+/** Row shape returned by people_you_know(): the address book, finally. */
+export type KnownPersonRow = {
+  user_id: string;
+  display_name: string | null;
+  photo_path: string | null;
+  verified: boolean;
+  /** You two have a one-to-one chat. */
+  chatted: boolean;
+  /** You two are in a group together. */
+  in_a_group: boolean;
 };
 
 /**
@@ -1360,6 +1392,44 @@ export type Database = {
       city_pins: {
         Args: { p_city_id: number };
         Returns: CityPinRow[];
+      };
+      post_joinable_pin: {
+        Args: {
+          p_city_id: number;
+          p_venue_name: string;
+          p_note: string | null;
+          p_place_label: string | null;
+          p_category: PinCategory;
+          p_lat: number;
+          p_lng: number;
+          p_intent_date: string;
+          p_expires_at: string;
+        };
+        Returns: { pin_id: string; chat_id: string };
+      };
+      join_pin_chat: {
+        Args: { p_pin_id: string };
+        Returns: { chat_id: string };
+      };
+      pin_crew: {
+        Args: { p_pin_id: string };
+        Returns: PinCrewRow[];
+      };
+      people_you_know: {
+        Args: { p_query?: string | null };
+        Returns: KnownPersonRow[];
+      };
+      shares_group_with: {
+        Args: { p_user_id: string };
+        Returns: boolean;
+      };
+      add_to_group: {
+        Args: { p_chat_id: string; p_user_id: string };
+        Returns: { chat_id: string; user_id: string };
+      };
+      open_direct_chat: {
+        Args: { p_user_id: string; p_first_message: string };
+        Returns: { chat_id?: string; blocked: boolean };
       };
       unmatch_chat: {
         Args: { p_chat_id: string };

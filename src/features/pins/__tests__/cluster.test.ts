@@ -21,6 +21,8 @@ function pin(over: Partial<CityPinRow> = {}): CityPinRow {
     seeded: false,
     seed_note: null,
     expires_at: '2026-08-24T00:00:00Z',
+    chat_id: null,
+    crew: 0,
     ...over,
   };
 }

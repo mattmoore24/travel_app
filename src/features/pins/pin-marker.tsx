@@ -67,6 +67,12 @@ type PinMarkerViewProps = {
    * has a URL to render here.
    */
   photoUri?: string | null;
+  /**
+   * The plan is open to join. Drawn as a badge rather than a second marker
+   * colour: the map is deliberately two colours (travelers, our picks) and a
+   * third would turn it into a legend nobody read.
+   */
+  open?: boolean;
 };
 
 /**
@@ -81,6 +87,7 @@ export function PinMarkerView({
   seeded,
   selected = false,
   photoUri = null,
+  open = false,
 }: PinMarkerViewProps) {
   const scale = useSharedValue(1);
 
@@ -119,6 +126,15 @@ export function PinMarkerView({
         ) : (
           <SymbolView name={glyph} size={15} tintColor={PIN_GLYPH} />
         )}
+        {open ? (
+          <View style={[styles.openDot, { backgroundColor: fill }]}>
+            <SymbolView
+              name={{ ios: 'person.2.fill', android: 'group', web: 'group' }}
+              size={8}
+              tintColor={PIN_GLYPH}
+            />
+          </View>
+        ) : null}
       </View>
       <View style={[styles.tail, { backgroundColor: fill }]} />
     </Animated.View>
@@ -415,6 +431,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: -3,
     bottom: -3,
+    width: 13,
+    height: 13,
+    borderRadius: 6.5,
+    borderWidth: 1,
+    borderColor: PIN_RING,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  openDot: {
+    position: 'absolute',
+    left: -3,
+    top: -3,
     width: 13,
     height: 13,
     borderRadius: 6.5,

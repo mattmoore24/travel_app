@@ -30,7 +30,7 @@ import {
   Space,
   Spacing,
 } from '@/constants/theme';
-import { useDeletePin, useLaunchCities } from '@/features/pins/hooks';
+import { useDeletePin, useJoinPinChat, useLaunchCities, usePinCrew } from '@/features/pins/hooks';
 import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker';
 import { useCityBusinesses, useOwnBusiness } from '@/features/business/hooks';
 import { PlaceSheet } from '@/features/business/place-sheet';
@@ -71,13 +71,15 @@ import {
   showsBusinesses,
   type MapFilters,
 } from '@/features/pins/filters';
+import { crewLabel } from '@/features/pins/crew';
 import { FilterButton, MapFilterSheet } from '@/features/pins/map-filter-sheet';
+import { useMyChats } from '@/features/matching/hooks';
 import { useOwnUserId, useOwnVisibility, usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 import { countOf } from '@/lib/plural';
-import type { CityPinRow, PinCategory } from '@/lib/database.types';
+import type { CityPinRow, PinCategory, PinCrewRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 function PinCard({
@@ -94,6 +96,16 @@ function PinCard({
   const { data: photoUrl } = usePhotoUrl(pin.photo_path);
   const deletePin = useDeletePin(cityId);
   const isOwn = pin.user_id != null && pin.user_id === ownUserId;
+
+  // Open to join is a property of the pin, and being in it is a property of
+  // you. The second needs no request of its own: the chat list already knows
+  // every room this account is in.
+  const joinPin = useJoinPinChat(cityId);
+  const { data: chats = [] } = useMyChats();
+  const openToJoin = pin.chat_id != null;
+  const alreadyIn =
+    openToJoin && chats.some((chat) => chat.chat_id === pin.chat_id && !chat.archived);
+  const { data: crew = [] } = usePinCrew(pin.id, openToJoin);
 
   // This card lives inside a Sheet, which is a Modal, so every push from here
   // has to leave the sheet first. See components/ui/sheet for why.
@@ -277,6 +289,11 @@ function PinCard({
             </PressableScale>
           ) : null}
 
+          {/* Who is already going. Faces before the button, because "three
+              people are in" is the thing that decides it, and the button is
+              only the consequence. */}
+          {openToJoin && crew.length > 0 ? <CrewRow crew={crew} count={pin.crew} /> : null}
+
           {isOwn ? (
             // Your own pin, which is a thing you just DID, not a thing to
             // undo. It used to climax in a red delete button: the one
@@ -289,9 +306,20 @@ function PinCard({
                   twice in one short sheet reads as a duplicated component
                   rather than a reminder. */}
               <ThemedText type="footnote" themeColor="textSecondary">
-                Your pin
+                {openToJoin ? 'Your plan, open to join' : 'Your pin'}
               </ThemedText>
-              <PrimaryButton label="Done" onPress={onClose} />
+              {openToJoin ? (
+                <PrimaryButton
+                  label="Open the chat"
+                  onPress={() =>
+                    leaveThen(() =>
+                      router.push({ pathname: '/room/[id]', params: { id: pin.chat_id! } })
+                    )
+                  }
+                />
+              ) : (
+                <PrimaryButton label="Done" onPress={onClose} />
+              )}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Take it down early"
@@ -313,6 +341,39 @@ function PinCard({
                   Take it down early
                 </ThemedText>
               </Pressable>
+            </>
+          ) : openToJoin ? (
+            // The whole point of the feature: no hello to write, nobody to
+            // wait on. Somebody already in it gets the door rather than the
+            // doorbell.
+            <>
+              <PrimaryButton
+                label={alreadyIn ? 'Open the chat' : 'Join this plan'}
+                loading={joinPin.isPending}
+                onPress={async () => {
+                  if (alreadyIn) {
+                    leaveThen(() =>
+                      router.push({ pathname: '/room/[id]', params: { id: pin.chat_id! } })
+                    );
+                    return;
+                  }
+                  try {
+                    const chatId = await joinPin.mutateAsync(pin.id);
+                    haptics.success();
+                    leaveThen(() =>
+                      router.push({ pathname: '/room/[id]', params: { id: chatId } })
+                    );
+                  } catch {
+                    // The global mutation alert says why (the plan closed, or
+                    // an admin took you out of it).
+                  }
+                }}
+              />
+              <ThemedText type="footnote" themeColor="textSecondary" style={styles.joinNote}>
+                {alreadyIn
+                  ? 'You are in this one.'
+                  : `${pin.display_name ?? 'They'} opened this to anyone. You can leave any time.`}
+              </ThemedText>
             </>
           ) : (
             <>
@@ -344,6 +405,57 @@ function PinCard({
         </>
       )}
     </ThemedView>
+  );
+}
+
+/**
+ * The faces on an open plan.
+ *
+ * Overlapping discs rather than a list, because this is a glance and not a
+ * roster — the group screen is where you read names. The author is first
+ * (pin_crew orders them that way), so the leftmost face is always whose plan
+ * it is.
+ */
+function CrewRow({ crew, count }: { crew: PinCrewRow[]; count: number }) {
+  const shown = crew.slice(0, 5);
+  return (
+    <View
+      style={styles.crewRow}
+      accessibilityRole="text"
+      accessibilityLabel={`${countOf(count, 'person', 'people')} going`}>
+      <View style={styles.crewFaces}>
+        {shown.map((person, index) => (
+          <CrewFace key={person.user_id} person={person} first={index === 0} />
+        ))}
+      </View>
+      <ThemedText type="footnote" themeColor="textSecondary" style={styles.crewText}>
+        {crewLabel(shown, count)}
+      </ThemedText>
+    </View>
+  );
+}
+
+function CrewFace({ person, first }: { person: PinCrewRow; first: boolean }) {
+  const theme = useTheme();
+  const { data: url } = usePhotoUrl(person.photo_path);
+  return (
+    <View
+      style={[
+        styles.crewFace,
+        {
+          backgroundColor: theme.backgroundElement,
+          borderColor: theme.surface,
+          marginLeft: first ? 0 : -10,
+        },
+      ]}>
+      {url ? (
+        <Image source={{ uri: url }} style={styles.fill} contentFit="cover" />
+      ) : (
+        <ThemedText type="caption" themeColor="textSecondary">
+          {(person.display_name ?? '?').slice(0, 1).toUpperCase()}
+        </ThemedText>
+      )}
+    </View>
   );
 }
 
@@ -412,7 +524,7 @@ function CityPinMarker({
   // Signed-in viewers see the poster's face on the map; a guest's feed has no
   // photo_path at all (server-stripped), so this simply resolves to nothing.
   const { data: photoUri } = usePhotoUrl(pin.photo_path);
-  const tracking = useMarkerTracking(`${selected}:${photoUri ?? ''}`);
+  const tracking = useMarkerTracking(`${selected}:${photoUri ?? ''}:${pin.chat_id ?? ''}`);
   return (
     <Marker
       coordinate={{ latitude: pin.lat, longitude: pin.lng }}
@@ -429,6 +541,7 @@ function CityPinMarker({
       accessibilityLabel={[
         pin.venue_name,
         pin.display_name,
+        pin.chat_id ? 'open to join' : null,
         intentLabel(pin.intent_date),
         burnOutLabel(pin.expires_at),
       ]
@@ -443,6 +556,7 @@ function CityPinMarker({
         seeded={pin.seeded}
         selected={selected}
         photoUri={photoUri ?? null}
+        open={pin.chat_id != null}
       />
     </Marker>
   );
@@ -1510,6 +1624,29 @@ const styles = StyleSheet.create({
   venueRowText: {
     flex: 1,
     gap: 2,
+  },
+  crewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+  },
+  crewFaces: {
+    flexDirection: 'row',
+  },
+  crewFace: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  crewText: {
+    flex: 1,
+  },
+  joinNote: {
+    textAlign: 'center',
   },
   takeDown: {
     textAlign: 'center',

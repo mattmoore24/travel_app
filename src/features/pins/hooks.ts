@@ -6,6 +6,9 @@ import {
   fetchCityPins,
   fetchHeatCells,
   fetchLaunchCities,
+  fetchPinCrew,
+  joinPinChat,
+  postJoinablePin,
 } from '@/features/pins/api';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { usePushPrimer } from '@/features/notifications/primer-store';
@@ -44,26 +47,67 @@ export function useHeatCells(cityId: number | null, date: string | null) {
   });
 }
 
+export type NewPin = {
+  cityId: number;
+  venueName: string;
+  note?: string | null;
+  placeLabel?: string | null;
+  category: PinCategory;
+  lat: number;
+  lng: number;
+  intentDate: string;
+  expiresAt: string;
+  /**
+   * Ticked "anyone can join": the pin arrives carrying a group chat and one
+   * tap puts somebody in it. Off is the original shape, where meeting starts
+   * with a hello that has to be accepted.
+   */
+  joinable?: boolean;
+};
+
+type PostedPin = {
+  id: string;
+  city_id: number;
+  category: PinCategory;
+  intent_date: string;
+  /** The group it opened with, when it was posted open to join. */
+  chat_id: string | null;
+};
+
 export function useCreatePin() {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: {
-      cityId: number;
-      venueName: string;
-      note?: string | null;
-      placeLabel?: string | null;
-      category: PinCategory;
-      lat: number;
-      lng: number;
-      intentDate: string;
-      expiresAt: string;
-    }) => createPin({ userId: userId!, ...input }),
+    // Both shapes answer with the same four things, because that is all
+    // anybody downstream reads: the id to select the new pin's card, and the
+    // three fields the analytics event wants. The joinable path also carries
+    // the chat it opened.
+    mutationFn: async ({ joinable, ...input }: NewPin): Promise<PostedPin> => {
+      if (!joinable) {
+        const row = await createPin({ userId: userId!, ...input });
+        return {
+          id: row.id,
+          city_id: row.city_id,
+          category: row.category,
+          intent_date: row.intent_date,
+          chat_id: null,
+        };
+      }
+      const { pin_id, chat_id } = await postJoinablePin(input);
+      return {
+        id: pin_id,
+        city_id: input.cityId,
+        category: input.category,
+        intent_date: input.intentDate,
+        chat_id,
+      };
+    },
     onSuccess: (pin) => {
       analytics.capture('pin_created', {
         city_id: pin.city_id,
         category: pin.category,
         intent_date: pin.intent_date,
+        joinable: pin.chat_id != null,
       });
       // Both cache families: 'city-pins'/'heat-cells' feed the web list,
       // 'map-pins'/'map-heat' (guest hooks) feed the native map. Missing the
@@ -76,6 +120,35 @@ export function useCreatePin() {
       // somebody answered is obviously worth something.
       usePushPrimer.getState().ask('pin-posted');
     },
+  });
+}
+
+/**
+ * Joining somebody's plan. No token, no hello: the server checks you can see
+ * the pin at all and puts you in its chat.
+ */
+export function useJoinPinChat(cityId: number | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (pinId: string) => joinPinChat(pinId),
+    onSuccess: () => {
+      analytics.capture('pin_joined');
+      queryClient.invalidateQueries({ queryKey: ['city-pins', cityId] });
+      queryClient.invalidateQueries({ queryKey: ['map-pins', cityId] });
+      // The chat list is where you land, so it has to know about the room
+      // before the push, not a poll later.
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
+    },
+  });
+}
+
+/** Who is already going, for the faces on the pin sheet. */
+export function usePinCrew(pinId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['pin-crew', pinId],
+    queryFn: () => fetchPinCrew(pinId!),
+    enabled: isSupabaseConfigured && enabled && pinId != null,
+    staleTime: 30_000,
   });
 }
 

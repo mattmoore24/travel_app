@@ -9,9 +9,10 @@ import { FormTextField } from '@/components/form/form-text-field';
 import { HoursSlider } from '@/components/form/hours-slider';
 import { PinGlyph } from '@/features/pins/pin-marker';
 import { PrimaryButton } from '@/components/form/primary-button';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet } from '@/components/ui/sheet';
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Space } from '@/constants/theme';
+import { HitTarget, Radius, Space } from '@/constants/theme';
 import { useCreatePin } from '@/features/pins/hooks';
 import {
   MAX_PIN_HOURS,
@@ -68,6 +69,11 @@ export function PinFormSheet({
   const [intentDate, setIntentDate] = useState(toISODate(new Date()));
   const [hours, setHours] = useState(() => defaultHoursForIntent(toISODate(new Date())));
   const [hoursTouched, setHoursTouched] = useState(false);
+  // Founder: some people want an open plan and some want to be asked first,
+  // and neither is the odd one out. Open is the default because it is the
+  // thing the app could not do before, and because a plan nobody has to
+  // audition for is the reason most of these pins get dropped.
+  const [joinable, setJoinable] = useState(true);
 
   // Where each text field sits in the scroller, and the scroller itself, so
   // focusing one can bring it above the fold. Written from onLayout and read
@@ -130,6 +136,7 @@ export function PinFormSheet({
         lng: coords.lng,
         intentDate: effectiveIntent,
         expiresAt: expiryForHours(effectiveHours).toISOString(),
+        joinable,
       });
       haptics.success();
       onPosted(pin.id);
@@ -253,6 +260,51 @@ export function PinFormSheet({
             {...keyboardDoneProps}
           />
         </View>
+        <View style={styles.joinBlock}>
+          <ThemedText type="smallBold">How people come along</ThemedText>
+          {JOIN_MODES.map((mode) => {
+            const active = mode.open === joinable;
+            return (
+              <PressableScale
+                key={mode.label}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`${mode.label}. ${mode.detail}`}
+                testID={mode.open ? 'pin-open-to-join' : 'pin-message-first'}
+                scaleTo={0.985}
+                onPress={() => {
+                  if (active) {
+                    return;
+                  }
+                  haptics.selection();
+                  setJoinable(mode.open);
+                }}
+                style={[
+                  styles.joinRow,
+                  { backgroundColor: active ? theme.accentSoft : theme.surfaceSunken },
+                ]}>
+                <SymbolView
+                  name={mode.glyph}
+                  size={17}
+                  tintColor={active ? theme.accent : theme.textSecondary}
+                />
+                <View style={styles.joinText}>
+                  <ThemedText type="callout">{mode.label}</ThemedText>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    {mode.detail}
+                  </ThemedText>
+                </View>
+                {active ? (
+                  <SymbolView
+                    name={{ ios: 'checkmark', android: 'check', web: 'check' }}
+                    size={16}
+                    tintColor={theme.accent}
+                  />
+                ) : null}
+              </PressableScale>
+            );
+          })}
+        </View>
         {/* A single scrolling line, not a wrapped grid: with a keyboard up
             the sheet has room for about a screen and a half of form. */}
         <ChipRail
@@ -288,6 +340,26 @@ export function PinFormSheet({
     </Sheet>
   );
 }
+
+/**
+ * The two shapes a pin can have. Written out rather than a switch, because
+ * the difference between them is the sentence under each label and not the
+ * boolean.
+ */
+const JOIN_MODES = [
+  {
+    open: true,
+    label: 'Anyone can join',
+    detail: 'One tap and they are in a group chat with you. No hello to answer.',
+    glyph: { ios: 'person.3.fill', android: 'group', web: 'group' },
+  },
+  {
+    open: false,
+    label: 'Message me first',
+    detail: 'They send a hello and you decide, one person at a time.',
+    glyph: { ios: 'envelope.fill', android: 'mail', web: 'mail' },
+  },
+] as const;
 
 function placeLabelFor(place: LocalSearchResult): string | null {
   const label = [place.address, place.locality].filter(Boolean).join(', ');
@@ -329,6 +401,22 @@ const styles = StyleSheet.create({
   },
   sliderBlock: {
     gap: Space.xs,
+  },
+  joinBlock: {
+    gap: Space.xs,
+  },
+  joinRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    minHeight: HitTarget,
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.sm,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
+  joinText: {
+    flex: 1,
   },
   note: {
     textAlign: 'center',
