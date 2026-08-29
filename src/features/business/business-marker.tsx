@@ -151,9 +151,12 @@ export function BusinessMarker({
   // the glyph and the entrance land in the bitmap, then freeze so a pan is
   // not a re-render per frame.
   //
-  // `own` is in the key because the account-kind query settles AFTER the
-  // first paint: without it the owner's chip freezes as a bitmap drawn
-  // before anyone knew whose it was, and the halo never appears.
+  // `own` is in the key because the chips arrive before the answer does.
+  // The account-kind query is already resolved by the time this mounts (the
+  // root holds the navigator behind `businessSettled`, _layout.tsx), but
+  // useCityBusinesses is not: markers paint as that query lands, and a chip
+  // rasterized in the tick before `own` reaches it would freeze as a bitmap
+  // with no halo on it, forever.
   const tracking = useMarkerTracking(`${business.id}:${business.has_live_post}:${own}`);
 
   return (

@@ -89,12 +89,22 @@ describe('a business is never offered a traveler on the map', () => {
 describe("a business tapping a business chip is not offered a traveler's controls", () => {
   it('join and message are behind the account-kind branch', () => {
     const code = src(SHEET);
-    guards(
-      code,
-      ') : viewerIsBusiness ? (',
-      "label={inTheChat ? 'Open the chat' : 'Join the chat'}"
-    );
-    guards(code, ') : viewerIsBusiness ? (', 'label="Message"');
+    // Exactly one business branch in this chain, and both controls after it,
+    // which puts both in the traveler arm. Said this way rather than by
+    // counting characters between them: the branch itself carries a
+    // paragraph of copy, and growing that copy is not a regression.
+    const branches = code.match(/\) : viewerIsBusiness \? \(/g) ?? [];
+    expect(branches).toHaveLength(1);
+    const guard = code.indexOf(') : viewerIsBusiness ? (');
+    expect(guard).toBeGreaterThan(-1);
+    for (const control of [
+      "label={inTheChat ? 'Open the chat' : 'Join the chat'}",
+      'label="Message"',
+    ]) {
+      const at = code.indexOf(control);
+      expect(at).toBeGreaterThan(-1);
+      expect(guard).toBeLessThan(at);
+    }
   });
 
   it('its own listing leads to My business instead of refusing it', () => {

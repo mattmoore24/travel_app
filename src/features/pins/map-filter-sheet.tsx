@@ -61,7 +61,12 @@ const BUSINESS_KINDS: [MarkerKind, string, string, SymbolViewProps['name']][] = 
   [
     'businesses',
     'Businesses',
-    'Every business on the map, yours included.',
+    // Not "yours included": city_businesses only carries listings that are
+    // active and listed, so an owner waiting on their email code has no chip
+    // at all, and this row would have promised them one and sent them hunting
+    // for it. The legend teaches the ring only when the ring is drawn; this
+    // says nothing it cannot keep either.
+    'Every business that is live on the map.',
     { ios: 'storefront.fill', android: 'storefront', web: 'storefront' },
   ],
   [

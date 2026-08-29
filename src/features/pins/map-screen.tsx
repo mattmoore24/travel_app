@@ -422,7 +422,12 @@ function PinCard({
             // is in, not to meet the people on it, so the sheet stops at what
             // the plan is and who opened it.
             <ThemedText type="footnote" themeColor="textSecondary" style={styles.joinNote}>
-              Travelers say hi to each other here. Your page is where they say hi to you.
+              {/* Named after things that exist. There is no "your page" in a
+                  business account, and "say hi" is the traveler-to-traveler
+                  verb: what a traveler does to a business is message it, and
+                  it lands in the Chat tab. */}
+              This is how travelers meet each other. When one wants to reach you, they message your
+              business and it arrives in your Chat tab.
             </ThemedText>
           ) : (
             <>
@@ -736,7 +741,13 @@ export default function MapScreen() {
   // past city scale, so without it the chip invited somebody to "tap a business"
   // on a map showing none — the app contradicting itself, which is the whole
   // reason the legend exists.
-  const placesLegend = usePlacesLegend(!cityScale && places.length > 0 && !legend.visible);
+  // `showsBusinesses(filters)` is the second way that happens, and the one a
+  // business owner reaches first: their filter sheet offers "Businesses" as a
+  // checkbox, and unticking it empties the map of chips while this legend went
+  // on pointing at them.
+  const placesLegend = usePlacesLegend(
+    !cityScale && showsBusinesses(filters) && places.length > 0 && !legend.visible
+  );
   // Whether the owner's own chip is actually drawn, which is not the same as
   // being a business: a listing waiting on its email code is not in
   // city_businesses yet. The legend below teaches the ring, and a sentence
@@ -1328,6 +1339,11 @@ export default function MapScreen() {
       isBusiness &&
       pinsLoaded &&
       pins.length === 0 &&
+      // Business chips are a separate marker family, and "show me only the
+      // businesses" is the obvious thing an owner does with the three
+      // checkboxes they now have. Without this the card said nothing matched
+      // over a map covered in the chips they had asked for.
+      !(!cityScale && showsBusinesses(filters) && places.length > 0) &&
       !selectedPin ? (
         <View
           // The same height as the traveler card, dock or no dock: the two
@@ -1346,7 +1362,9 @@ export default function MapScreen() {
             <ThemedText type="footnote" themeColor="textSecondary">
               {isDefault(filters)
                 ? 'Plans travelers make here show up on this map.'
-                : 'Widen them to see what is on.'}
+                : // Not "what is on": that is this owner's own word for their
+                  // posts, on their own tab, and it does not mean this.
+                  'Widen them to see traveler plans.'}
             </ThemedText>
           </GlassSurface>
         </View>
@@ -1488,7 +1506,16 @@ export default function MapScreen() {
                 styles.legendChip,
                 { backgroundColor: theme.surface, borderColor: theme.hairline },
               ]}>
-              <PlaceGlyph category="bar" live={false} size={18} onSurface own={ownChipOnMap} />
+              {/* Their own category when the sentence is about their own
+                  chip. It was hardcoded to a bar, so a cafe was shown a
+                  ringed cocktail glass and told to go and find it. */}
+              <PlaceGlyph
+                category={ownChipOnMap ? (ownBusiness?.category ?? 'bar') : 'bar'}
+                live={false}
+                size={18}
+                onSurface
+                own={ownChipOnMap}
+              />
               <ThemedText type="footnote">
                 {ownChipOnMap
                   ? 'The ringed chip is your business'

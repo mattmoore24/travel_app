@@ -168,7 +168,7 @@ appId: com.mattmoore.samewhere
 
 # STEP 7 — photos, and the wall. A listing cannot go on without one.
 - extendedWaitUntil:
-    visible: 'Show the place'
+    visible: 'Show your business'
     timeout: 20000
 - assertVisible: 'One photo is the only thing we need here.'
 - takeScreenshot: 48-business-photos
@@ -194,7 +194,7 @@ appId: com.mattmoore.samewhere
     text: 'Save'
     optional: true
 - extendedWaitUntil:
-    visible: 'Show the place'
+    visible: 'Show your business'
     timeout: 20000
 
 # The count has to catch up before Continue will move. On the live project

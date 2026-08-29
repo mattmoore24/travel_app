@@ -36,15 +36,23 @@ SplashScreen.preventAutoHideAsync();
  */
 export const unstable_settings = { anchor: '(tabs)' };
 
-// Shown when we're signed in but the profile fetch failed (offline cold
-// start, server error) — without it, users would be routed into a blank
-// onboarding stack with no way out.
-function ProfileLoadError({ onRetry, retrying }: { onRetry: () => void; retrying: boolean }) {
+// Shown when we're signed in but a fetch the router depends on failed
+// (offline cold start, server error) — without it, users would be routed into
+// a blank onboarding stack with no way out.
+function AccountLoadError({
+  title,
+  onRetry,
+  retrying,
+}: {
+  title: string;
+  onRetry: () => void;
+  retrying: boolean;
+}) {
   return (
     <ThemedView style={styles.errorRoot}>
       <SafeAreaView style={styles.errorContent}>
         <ThemedText type="subtitle" style={styles.errorText}>
-          Can&apos;t load your profile
+          {title}
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.errorText}>
           Check your connection and try again.
@@ -152,7 +160,31 @@ function RootNavigator() {
   // features/auth/routing), so even Retry landed them back on the map.
   if (signedIn && profileQuery.isError && profileQuery.data == null) {
     return (
-      <ProfileLoadError onRetry={() => profileQuery.refetch()} retrying={profileQuery.isFetching} />
+      <AccountLoadError
+        title="Can't load your profile"
+        onRetry={() => profileQuery.refetch()}
+        retrying={profileQuery.isFetching}
+      />
+    );
+  }
+
+  // The same rule for the query that decides WHICH APP somebody gets.
+  //
+  // `businessSettled` counts an error as settled, and `isBusiness` is
+  // `data != null`, so a failed my_business fetch on a cold start reads as
+  // "not a business" — and owesOnboarding then reads a business's permanently
+  // null onboarding_completed_at as unfinished and mounts the traveler
+  // onboarding stack. A bar owner on bad wifi was asked for their first name,
+  // their age and their photos, in a form every write of which
+  // refuse_business_write rejects. Not knowing the account kind is a reason
+  // to ask again, never a reason to guess traveler.
+  if (signedIn && businessQuery.isError && businessQuery.data == null) {
+    return (
+      <AccountLoadError
+        title="Can't load your account"
+        onRetry={() => businessQuery.refetch()}
+        retrying={businessQuery.isFetching}
+      />
     );
   }
 

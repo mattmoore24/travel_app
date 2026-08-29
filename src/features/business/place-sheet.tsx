@@ -272,18 +272,36 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
         <View style={styles.actions}>
           {isMine ? (
             <>
+              {/* Not "the way travelers see it": this is the owner's card,
+                  with the ring no traveler is shown and without the two
+                  buttons that are the whole of a traveler's version. The real
+                  preview is the listing page, under the name My business
+                  already gives it. */}
               <ThemedText type="footnote" themeColor="textSecondary" style={styles.viewerNote}>
-                Your business, the way travelers see it.
+                This is your listing, and the marker travelers tap.
               </ThemedText>
               <PrimaryButton
                 label="Open My business"
                 accessibilityLabel="Open My business"
                 onPress={() => leaveThen(() => router.navigate('/my-business'))}
               />
+              <PrimaryButton
+                variant="ghost"
+                label="See it as a traveler"
+                accessibilityLabel="See your listing as a traveler sees it"
+                onPress={() =>
+                  leaveThen(() =>
+                    router.push({ pathname: '/place/[id]', params: { id: place.id } })
+                  )
+                }
+              />
             </>
           ) : (
+            // What the card is FOR, rather than a list of what other people
+            // are allowed to do on it. It carries a rating and whatever the
+            // place has on tonight, and that is the answer.
             <ThemedText type="footnote" themeColor="textSecondary" style={styles.viewerNote}>
-              Another business on your map. Travelers are the ones who join and message.
+              This is what another business has on. Joining and messaging are for travelers.
             </ThemedText>
           )}
         </View>
