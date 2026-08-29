@@ -68,9 +68,15 @@ describe('counting what is on', () => {
   });
 
   it('adds up across groups', () => {
-    expect(
-      activeFilterCount(withFilters({ day: 'today', kinds: ['travelers'], verifiedOnly: true }))
-    ).toBe(3);
+    expect(activeFilterCount(withFilters({ day: 'today', kinds: ['travelers'] }))).toBe(2);
+  });
+
+  it('has no verified-only filter to count', () => {
+    // It was a second, weaker copy of the audience setting on the profile —
+    // and that one cuts both ways and is enforced in the database, so having
+    // both is how somebody narrows the map, believes they are hidden, and is
+    // not. Founder asked for it gone.
+    expect(Object.keys(DEFAULT_FILTERS)).not.toContain('verifiedOnly');
   });
 });
 
@@ -123,14 +129,14 @@ describe('who and what is on the map', () => {
     expect(toggle(['bar'], 'bar')).toEqual([]);
   });
 
-  it('keeps our picks when only verified travelers are asked for', () => {
-    // Nobody stands behind a pick, so it can neither hold the badge nor be
-    // fairly refused for lacking one — asking it to would silently empty a
-    // map somebody only meant to narrow.
-    const verifiedOnly = withFilters({ verifiedOnly: true });
-    expect(pinPasses(pin({ seeded: true, user_id: null }), verifiedOnly, null)).toBe(true);
-    expect(pinPasses(pin({ verified: false }), verifiedOnly, null)).toBe(false);
-    expect(pinPasses(pin({ verified: true }), verifiedOnly, null)).toBe(true);
+  it('never decides who you may see — the server already did', () => {
+    // discovery_pair_ok settles it before these rows reach the device, keyed
+    // to the pin's OWNER. An unverified traveler's pin is on this map because
+    // the server said it could be, and the client must not second-guess that
+    // — nor may a joiner on an open pin ever remove the pin from a map.
+    expect(pinPasses(pin({ verified: false }), DEFAULT_FILTERS, null)).toBe(true);
+    expect(pinPasses(pin({ verified: true }), DEFAULT_FILTERS, null)).toBe(true);
+    expect(pinPasses(pin({ seeded: true, user_id: null }), DEFAULT_FILTERS, null)).toBe(true);
   });
 
   it('narrows by what the plan is', () => {

@@ -12,7 +12,19 @@ import { ThemedText } from '@/components/themed-text';
 import { Radius, Space } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
-import { useOwnPhotos, useOwnProfile, useUpdateOwnProfile } from '@/features/profile/hooks';
+import {
+  useOwnPhotos,
+  useOwnProfile,
+  useOwnVisibility,
+  useSetVisibility,
+  useUpdateOwnProfile,
+} from '@/features/profile/hooks';
+import {
+  AUDIENCE_BOTH_WAYS,
+  AUDIENCE_GENDER_NOTE,
+  AUDIENCE_NEEDS_BADGE,
+} from '@/features/profile/audience';
+import { AudiencePicker } from '@/features/profile/audience-picker';
 import { SocialHandlesEditor } from '@/features/profile/social-handles-editor';
 import {
   BIO_MAX,
@@ -62,6 +74,8 @@ export default function OnboardingScreen() {
  */
 function ProfileSteps({ profile }: { profile: ProfileRow }) {
   const updateProfile = useUpdateOwnProfile();
+  const { data: audience = 'everyone' } = useOwnVisibility();
+  const setAudience = useSetVisibility();
   const { data: photos = [] } = useOwnPhotos();
   const hasProfilePhoto = photos.some((photo) => photo.position === 0);
 
@@ -290,9 +304,49 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
     );
   }
 
+  if (step === 6) {
+    return (
+      <StepShell
+        step={6}
+        total={SIGNUP_TOTAL_STEPS}
+        title="Who you see, and who sees you"
+        subtitle={AUDIENCE_BOTH_WAYS}
+        continueLabel="Continue"
+        footer={signOutFooter}
+        onBack={() => go(5)}
+        onContinue={() => go(7)}>
+        {/* Everything but Everyone is inert here, and that is the server's
+            rule rather than this screen's: set_visibility refuses a narrowed
+            audience from an account without the badge, and a brand-new
+            account never has one. Showing the locked rows anyway is the whole
+            point of the step — somebody who never learns the setting exists
+            is exactly who the founder wanted this step for. */}
+        <AudiencePicker
+          value={audience}
+          verified={profile.verified}
+          disabled={setAudience.isPending}
+          onChange={(next) => setAudience.mutate(next)}
+        />
+        <ThemedText type="footnote" themeColor="textSecondary">
+          {AUDIENCE_GENDER_NOTE}
+        </ThemedText>
+        {profile.verified ? null : (
+          <ThemedText type="footnote" themeColor="textSecondary">
+            {AUDIENCE_NEEDS_BADGE} The selfie check lives on your profile once you are in.
+          </ThemedText>
+        )}
+        {/* Said plainly, because a setting that feels permanent is one people
+            get wrong and then live with. */}
+        <ThemedText type="footnote" themeColor="textSecondary">
+          You can change this any time, at the top of your profile.
+        </ThemedText>
+      </StepShell>
+    );
+  }
+
   return (
     <StepShell
-      step={6}
+      step={7}
       total={SIGNUP_TOTAL_STEPS}
       title="Add a photo"
       subtitle="One is enough to start. You can add more any time."
@@ -304,7 +358,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
       continueDisabled={!hasProfilePhoto}
       continueLoading={updateProfile.isPending}
       note={hasProfilePhoto ? null : 'A profile photo is the one thing we need.'}
-      onBack={() => go(5)}
+      onBack={() => go(6)}
       onContinue={async () => {
         try {
           await updateProfile.mutateAsync({ onboarding_completed_at: new Date().toISOString() });

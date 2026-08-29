@@ -18,7 +18,9 @@ import {
   useOwnPhotos,
   useOwnProfile,
   useOwnSocialHandles,
+  useOwnVisibility,
 } from '@/features/profile/hooks';
+import { AudienceCard } from '@/features/profile/audience-picker';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { useOwnBusiness } from '@/features/business/hooks';
 import { useIsGuest, useIsGuestAccount } from '@/features/guest/hooks';
@@ -163,6 +165,7 @@ export default function ProfileScreen() {
   const isGuestAccount = useIsGuestAccount();
   const ownBusiness = useOwnBusiness();
   const { data: profile } = useOwnProfile();
+  const { data: audience = 'everyone' } = useOwnVisibility();
   const ownPhotos = useOwnPhotos();
   const photos = ownPhotos.data ?? [];
   // What a stranger would actually be served. The page below says it is
@@ -215,6 +218,18 @@ export default function ProfileScreen() {
   return (
     <ThemedView style={styles.root}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.pageContent}>
+        {/* First thing on the page, before the profile itself.
+            Founder: "make the selection of which users you want to see and
+            which can see you more prominent... I'd put it right at the top as
+            a key selector as I imagine all users will want to have this set
+            properly."
+
+            It was a ghost button at the bottom, under Edit profile and Get
+            verified, which is where a setting gets found by accident rather
+            than on purpose. It shows the current value, because a control
+            that does not say what it is set to is a link, not a selector. */}
+        <AudienceCard audience={audience} onPress={() => router.push('/visibility')} />
+
         {/* Exactly the page a stranger gets, with edit affordances on top —
             the only way to know what your profile actually looks like. */}
         {heldBack > 0 ? (
@@ -266,14 +281,9 @@ export default function ProfileScreen() {
                   onPress={() => router.push('/verification')}
                 />
               ) : null}
-              {/* Named for what it does in both directions, like the screen
-                  it opens. "Who can see you" described half of it, and half
-                  is what got tested and reported as broken. */}
-              <PrimaryButton
-                variant="ghost"
-                label="Who you see, and who sees you"
-                onPress={() => router.push('/visibility')}
-              />
+              {/* No "Who you see, and who sees you" here any more. It is the
+                  card at the top of this page: a setting this consequential
+                  should not be the fourth ghost button under the fold. */}
               <PrimaryButton
                 variant="ghost"
                 label="House rules and help"

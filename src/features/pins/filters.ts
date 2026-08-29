@@ -30,9 +30,19 @@ export type MapFilters = {
   kinds: MarkerKind[];
   /** Which plans to draw. EMPTY MEANS ALL — the natural reading of no boxes ticked. */
   categories: PinCategory[];
-  /** Only plans from travelers who have passed the selfie check. */
-  verifiedOnly: boolean;
 };
+
+/**
+ * There is deliberately no "verified travelers only" here.
+ *
+ * It was a second, weaker copy of the audience setting on the profile — that
+ * one cuts BOTH ways and is enforced in the database by discovery_pair_ok, so
+ * a narrowed audience is the real control and this was a client-side filter
+ * that only narrowed what you saw. Two controls for one idea is how somebody
+ * sets the map filter, believes they are hidden, and is not. Founder:
+ * "you can also remove the 'verified only' option from the filters page as it
+ * is already addressed with the filter in your profile."
+ */
 
 export const ALL_MARKER_KINDS: MarkerKind[] = ['travelers', 'businesses', 'picks'];
 
@@ -40,7 +50,6 @@ export const DEFAULT_FILTERS: MapFilters = {
   day: 'any',
   kinds: ALL_MARKER_KINDS,
   categories: [],
-  verifiedOnly: false,
 };
 
 /**
@@ -59,9 +68,6 @@ export function activeFilterCount(filters: MapFilters): number {
     count += 1;
   }
   if (filters.categories.length > 0 && filters.categories.length < PIN_CATEGORIES.length) {
-    count += 1;
-  }
-  if (filters.verifiedOnly) {
     count += 1;
   }
   return count;
@@ -116,13 +122,10 @@ export function pinPasses(pin: CityPinRow, filters: MapFilters, days: Set<string
   if (filters.categories.length > 0 && !filters.categories.includes(pin.category)) {
     return false;
   }
-  // One of our picks has no person behind it, so "only verified travelers"
-  // cannot be true or false of it. It is not a traveler, and the filter is
-  // about travelers — asking it to prove a badge it can never hold would
-  // silently empty a map that somebody only meant to narrow.
-  if (filters.verifiedOnly && !pin.seeded && !pin.verified) {
-    return false;
-  }
+  // Nothing here tests `verified`. Who may see whom is settled server-side by
+  // discovery_pair_ok before these rows ever reach the device, and it is
+  // keyed to the pin's OWNER — a joiner on an open pin never removes the pin
+  // from anybody's map, and never becomes visible through it.
   return true;
 }
 

@@ -162,22 +162,6 @@ export function MapFilterSheet({
             ))}
           </View>
         </Group>
-
-        <Group title="Who">
-          <CheckRow
-            title="Verified travelers only"
-            // One short line. Two wrap, and the second was clipped by the pinned
-            // Done button on run 72.
-            detail="Our own picks stay either way."
-            glyph={{
-              ios: 'checkmark.seal.fill',
-              android: 'verified',
-              web: 'verified',
-            }}
-            checked={filters.verifiedOnly}
-            onPress={() => onChange({ ...filters, verifiedOnly: !filters.verifiedOnly })}
-          />
-        </Group>
       </ScrollView>
 
       {/* "Done", not "Apply". Nothing is waiting to be applied — the map has
