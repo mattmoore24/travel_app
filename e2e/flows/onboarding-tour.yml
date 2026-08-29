@@ -78,9 +78,7 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'age-input'
 - inputText: '29'
-- tapOn:
-    text: 'Done'
-    optional: true
+- hideKeyboard
 - tapOn: 'Continue'
 
 # STEP 4 — where you are from.
@@ -94,9 +92,13 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'country-input'
 - inputText: 'Portugal'
-- tapOn:
-    text: 'Done'
-    optional: true
+# Return, not the accessory bar's Done: iOS blurs a single-line field on
+# submit, and taps on the Done bar do not reliably land because iOS hosts it
+# in the keyboard's own window. Run 80 died on the next command for exactly
+# that reason — the keyboard was still up, so Maestro's scroll swipe landed
+# on the docked footer instead of the scroller, and Languages never came into
+# view.
+- pressKey: Enter
 - takeScreenshot: 52-signup-home
 
 # Languages, which step 4 will not let go without. The picker is the app's own
@@ -169,9 +171,7 @@ appId: com.mattmoore.samewhere
       - tapOn:
           id: 'occupation-input'
       - inputText: 'Nurse, between contracts'
-      - tapOn:
-          text: 'Done'
-          optional: true
+      - pressKey: Enter
       - tapOn: 'Continue'
       # STEP 7 — the bio.
       - extendedWaitUntil:
@@ -180,9 +180,7 @@ appId: com.mattmoore.samewhere
       - tapOn:
           id: 'bio-input'
       - inputText: 'Street food missions and long walks. Terrible at surfing, still going.'
-      - tapOn:
-          text: 'Done'
-          optional: true
+      - hideKeyboard
       - takeScreenshot: 57-signup-bio
       - tapOn: 'Continue'
       # STEPS 8, 9, 10 — prompts, priorities and trips. Each hands over to

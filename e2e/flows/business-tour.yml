@@ -139,9 +139,11 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'business-email-input'
 - inputText: ${E2E_BIZ_EMAIL}
-- tapOn:
-    text: 'Done'
-    optional: true
+# Return, not the accessory bar's Done: iOS blurs a single-line field on
+# submit, and taps on the Done bar do not reliably land because iOS hosts it
+# in the keyboard's own window. A scroll with the keyboard still up swipes the
+# docked footer rather than the scroller and moves nothing.
+- pressKey: Enter
 - scrollUntilVisible:
     element:
       id: 'business-phone-input'
@@ -150,15 +152,11 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'business-phone-input'
 - inputText: '+351 912 345 678'
-- tapOn:
-    text: 'Done'
-    optional: true
+- hideKeyboard
 - tapOn:
     id: 'business-whatsapp-input'
 - inputText: '+351 912 345 678'
-- tapOn:
-    text: 'Done'
-    optional: true
+- hideKeyboard
 - takeScreenshot: 47-business-contact
 - tapOn:
     id: 'business-contact-continue'
@@ -180,9 +178,6 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 49-business-photo-added
-- tapOn:
-    text: 'Done'
-    optional: true
 - tapOn:
     accessibilityLabel: 'Close'
     optional: true

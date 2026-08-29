@@ -453,6 +453,10 @@ export default function BusinessSignupScreen() {
             centerLng={coords.lng}
             lat={coords.lat}
             lng={coords.lng}
+            // Street level, not city level. The question this step asks is
+            // whether the marker is on the door, and the city-wide default
+            // cannot answer it.
+            delta={0.004}
             onChange={(lat, lng) => setCoords({ lat, lng })}
           />
         ) : null}

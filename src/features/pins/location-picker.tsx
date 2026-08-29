@@ -20,6 +20,16 @@ type LocationPickerProps = {
    * with none and says what to do.
    */
   placed?: boolean;
+  /**
+   * How much world to show, in degrees. The default is the city, which is
+   * right when somebody is still looking for their street.
+   *
+   * The confirm step passes a street-level value, because its whole question
+   * is "is the marker on your door" and a city-wide map cannot answer it: run
+   * 80 photographed "Is this right?" showing half of Lisbon with a pin
+   * somewhere near the castle.
+   */
+  delta?: number;
 };
 
 /** Tap or drag to place the pin at venue level — never tied to GPS. */
@@ -30,6 +40,7 @@ export function LocationPicker({
   lng,
   onChange,
   placed = true,
+  delta = 0.06,
 }: LocationPickerProps) {
   return (
     <View style={styles.container}>
@@ -39,8 +50,8 @@ export function LocationPicker({
         initialRegion={{
           latitude: centerLat,
           longitude: centerLng,
-          latitudeDelta: 0.06,
-          longitudeDelta: 0.06,
+          latitudeDelta: delta,
+          longitudeDelta: delta,
         }}
         // Venue zoom, which is where Apple's place names are most useful:
         // somebody dropping a pin on a bar wants to see which bar. Both maps
