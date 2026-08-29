@@ -415,9 +415,89 @@ function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: boolean }) 
   );
 }
 
+/**
+ * A row that is not a conversation, in a conversation's geometry.
+ *
+ * "Have an invite?", "Archived" and the rooms near you used to be filled
+ * cards sitting among flush rows, which is the half-and-half the founder was
+ * still looking at after the list itself was fixed: one column of rows
+ * interrupted by three floating slabs. iMessage has no such thing anywhere on
+ * that screen, and neither does anything else people use.
+ *
+ * They are the same row now. What separates a destination from a conversation
+ * is the chevron and the quieter glyph, not a different container.
+ */
+function PlainRow({
+  title,
+  detail,
+  glyph,
+  tint,
+  chevron = false,
+  last = false,
+  accessibilityLabel,
+  onPress,
+}: {
+  title: string;
+  detail: string;
+  glyph: SymbolViewProps['name'];
+  /** 'accent' for a place you can go into, 'quiet' for a destination. */
+  tint?: 'accent' | 'quiet';
+  chevron?: boolean;
+  last?: boolean;
+  accessibilityLabel?: string;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const accented = tint !== 'quiet';
+  return (
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
+      haptic="light"
+      scaleTo={0.995}
+      onPress={onPress}>
+      <View style={styles.row}>
+        <View style={styles.unreadGutter} />
+        <View
+          style={[
+            styles.roomBadge,
+            { backgroundColor: accented ? theme.accentSoft : theme.surfaceSunken },
+          ]}>
+          <SymbolView
+            name={glyph}
+            size={22}
+            tintColor={accented ? theme.accent : theme.textSecondary}
+          />
+        </View>
+        <View style={styles.rowBody}>
+          <ThemedText type="body" style={styles.rowNameRead} numberOfLines={1}>
+            {title}
+          </ThemedText>
+          <ThemedText
+            type="callout"
+            themeColor="textSecondary"
+            numberOfLines={2}
+            style={styles.rowPreview}>
+            {detail}
+          </ThemedText>
+        </View>
+        {chevron ? (
+          <View style={styles.rowTrailing}>
+            <SymbolView
+              name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+              size={13}
+              tintColor={theme.textSecondary}
+            />
+          </View>
+        ) : null}
+        {last ? null : <View style={[styles.separator, { backgroundColor: theme.hairline }]} />}
+      </View>
+    </PressableScale>
+  );
+}
+
 /** Rooms a signed-out visitor (or a signed-in non-member) can look inside. */
 function RoomDiscovery({ cityId }: { cityId: number | null }) {
-  const theme = useTheme();
   const { data: rooms = [] } = useCityRooms(cityId);
   if (rooms.length === 0) {
     return null;
@@ -427,30 +507,18 @@ function RoomDiscovery({ cityId }: { cityId: number | null }) {
       <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
         Rooms near you
       </ThemedText>
-      {rooms.map((room) => (
-        <PressableScale
-          key={room.chat_id}
-          scaleTo={0.98}
-          onPress={() => router.push(`/room/${room.chat_id}`)}>
-          <ThemedView type="backgroundElement" style={styles.chatRow}>
-            <View style={[styles.roomBadge, { backgroundColor: theme.accentSoft }]}>
-              <SymbolView
-                name={{ ios: 'house.fill', android: 'home', web: 'home' }}
-                size={20}
-                tintColor={theme.accent}
-              />
-            </View>
-            <View style={styles.chatRowText}>
-              <ThemedText type="callout" style={styles.strong}>
-                {room.name}
-              </ThemedText>
-              <ThemedText type="footnote" themeColor="textSecondary">
-                {countOf(room.member_count, 'guest')} here now
-              </ThemedText>
-            </View>
-          </ThemedView>
-        </PressableScale>
-      ))}
+      <View style={styles.list}>
+        {rooms.map((room, i) => (
+          <PlainRow
+            key={room.chat_id}
+            title={room.name}
+            detail={`${countOf(room.member_count, 'guest')} here now`}
+            glyph={{ ios: 'house.fill', android: 'home', web: 'home' }}
+            last={i === rooms.length - 1}
+            onPress={() => router.push(`/room/${room.chat_id}`)}
+          />
+        ))}
+      </View>
     </>
   );
 }
@@ -959,41 +1027,34 @@ export default function ChatScreen() {
 
         {tab === 'groups' && !isBusiness ? (
           <>
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel="Join a group with an invite code"
-              haptic="light"
-              scaleTo={0.98}
-              onPress={promptForInvite}>
-              <ThemedView type="backgroundElement" style={styles.chatRow}>
-                <View style={styles.chatRowText}>
-                  <ThemedText type="callout">Have an invite?</ThemedText>
-                  <ThemedText type="footnote" themeColor="textSecondary">
-                    Paste the code somebody sent you.
-                  </ThemedText>
-                </View>
-                <SymbolView
-                  name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-                  size={14}
-                  tintColor={theme.textSecondary}
-                />
-              </ThemedView>
-            </PressableScale>
+            <View style={styles.list}>
+              <PlainRow
+                title="Have an invite?"
+                detail="Paste the code somebody sent you."
+                glyph={{ ios: 'link', android: 'link', web: 'link' }}
+                tint="quiet"
+                chevron
+                last
+                accessibilityLabel="Join a group with an invite code"
+                onPress={promptForInvite}
+              />
+            </View>
             <RoomDiscovery cityId={cityId} />
           </>
         ) : null}
 
         {archived.length > 0 ? (
-          <PressableScale scaleTo={0.98} onPress={() => router.push('/archived-chats')}>
-            <ThemedView type="backgroundElement" style={styles.chatRow}>
-              <View style={styles.chatRowText}>
-                <ThemedText type="callout">Archived</ThemedText>
-                <ThemedText type="footnote" themeColor="textSecondary">
-                  {archived.length} chat{archived.length === 1 ? '' : 's'} · still readable
-                </ThemedText>
-              </View>
-            </ThemedView>
-          </PressableScale>
+          <View style={styles.list}>
+            <PlainRow
+              title="Archived"
+              detail={`${countOf(archived.length, 'chat')} · still readable`}
+              glyph={{ ios: 'archivebox.fill', android: 'archive', web: 'archive' }}
+              tint="quiet"
+              chevron
+              last
+              onPress={() => router.push('/archived-chats')}
+            />
+          </View>
         ) : null}
       </ScrollView>
     </ThemedView>
@@ -1137,20 +1198,6 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-  },
-  /* A card, still: "Have an invite?" and "Archived" are destinations, not
-     conversations, and drawing them as rows in the same column would say
-     they are the same kind of thing. */
-  chatRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Radius.lg,
-  },
-  chatRowText: {
-    flex: 1,
-    gap: 2,
   },
   /* Cancels the scroller's own 24pt gutter so the rows and their separators
      run edge to edge, then each row pads itself back in. Everything else on

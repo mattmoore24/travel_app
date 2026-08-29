@@ -50,6 +50,19 @@ describe('the chat list is a list, not a stack of cards', () => {
     expect(code).toMatch(/unreadGutter: \{\s*width: 10,/);
   });
 
+  it('draws the destinations as rows too, not as cards among rows', () => {
+    // Founder, after the first pass: the Groups tab is what still looks
+    // wrong. "Have an invite?", the rooms near you and "Archived" were filled
+    // slabs interrupting a column of flush rows, which is the half-and-half
+    // iMessage never does anywhere on that screen.
+    expect(code).toContain('function PlainRow(');
+    expect(code).not.toContain('styles.chatRow');
+    expect(code).not.toContain('styles.chatRowText');
+    // A destination is told apart by its chevron and a quieter glyph, not by
+    // living in a different container.
+    expect(code).toContain('chevron\n');
+  });
+
   it('always starts a chat from the plus button, on either segment', () => {
     // It used to change under the person's hand: a new group on Groups, the
     // Travelers tab on Chats. Founder: "The plus button should always operate
