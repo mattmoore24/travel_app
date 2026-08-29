@@ -27,11 +27,16 @@ import { useMarkReadWhileOpen } from '@/features/chat/use-mark-read';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
 // Reactions are chat-shaped, not room-shaped: the table and the summary RPC
 // take any chat id, so direct chats reuse exactly what rooms use.
-import { useReactions, useToggleReaction, useUnsendMessage } from '@/features/rooms/hooks';
+import {
+  useChatPref,
+  useReactions,
+  useToggleReaction,
+  useUnsendMessage,
+} from '@/features/rooms/hooks';
 import { useOwnUserId, usePhotoUrl, usePublicProfile } from '@/features/profile/hooks';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { useTheme } from '@/hooks/use-theme';
-import { useBusinessForChat, useIsPlaceChat } from '@/features/business/hooks';
+import { useBusinessForChat, useIsBusiness, useIsPlaceChat } from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import type { ChatListRow } from '@/lib/database.types';
 
@@ -52,13 +57,26 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
   // my_chats() carries the name and the photo but not the badge, and this is
   // one row the client already has cached from the profile screen.
   const { data: other } = usePublicProfile(isPlace ? null : chat.other_user_id);
+  // The other half of the same question. When the READER is the business,
+  // the person who wrote in is a traveler and every traveler control on this
+  // header pointed somewhere a business account cannot go: /profile/[userId]
+  // sits behind `signedIn && onboarded` in app/_layout, which is never true
+  // for a business, so the tap on the customer's name did nothing at all.
+  const viewerIsBusiness = useIsBusiness();
   const block = useBlockUser();
   const leaveChat = useLeaveChat();
+  const pref = useChatPref();
 
   const confirmBlock = () => {
     Alert.alert(
       `Block ${chat.title ?? 'this traveler'}?`,
-      "They're gone from the map and Travelers, can't message you, and this chat freezes. They're not told.",
+      viewerIsBusiness
+        ? // The traveler version of this promises two things a business does
+          // not have: it is not on the map as a person and it has no
+          // Travelers tab. What a block actually does from here is close the
+          // conversation, which is all this should ever have claimed.
+          'They cannot write to you again, and this chat freezes. They are not told.'
+        : "They're gone from the map and Travelers, can't message you, and this chat freezes. They're not told.",
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -92,50 +110,89 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
     ]);
   };
 
+  /**
+   * What a business does with a finished conversation.
+   *
+   * NOT "Leave chat". That calls unmatch_chat, which hard-deletes the whole
+   * conversation for the traveler as well — a business tidying its inbox
+   * would have wiped a customer's copy of what it told them, from a menu item
+   * named for a feature a business does not have. Archiving is per-reader:
+   * the thread leaves this inbox and stays readable under Archived, and the
+   * traveler's side is untouched.
+   */
+  const archiveChat = () => {
+    pref.mutate({ chatId: chat.chat_id, archived: true });
+    router.back();
+  };
+
   const openMenu = () => {
-    const actions = ['View profile', 'Report', 'Block', 'Leave chat', 'Cancel'];
-    const handle = (index: number) => {
-      if (index === 0) {
-        router.push(`/profile/${chat.other_user_id}`);
-      } else if (index === 1) {
-        router.push({
-          pathname: '/report',
-          params: { userId: chat.other_user_id, context: `chat:${chat.chat_id}` },
-        });
-      } else if (index === 2) {
-        confirmBlock();
-      } else if (index === 3) {
-        confirmLeaveChat();
-      }
-    };
+    const items: { label: string; destructive?: boolean; run: () => void }[] = [
+      // A business has no traveler profile to open, and neither does the
+      // route: pushing /profile/[userId] from here was a tap that did
+      // nothing, in the screen a business uses most.
+      ...(viewerIsBusiness
+        ? []
+        : [{ label: 'View profile', run: () => router.push(`/profile/${chat.other_user_id}`) }]),
+      {
+        label: 'Report',
+        run: () =>
+          router.push({
+            pathname: '/report',
+            params: { userId: chat.other_user_id, context: `chat:${chat.chat_id}` },
+          }),
+      },
+      { label: 'Block', destructive: true, run: confirmBlock },
+      viewerIsBusiness
+        ? { label: 'Archive', run: archiveChat }
+        : { label: 'Leave chat', destructive: true, run: confirmLeaveChat },
+    ];
     if (Platform.OS === 'ios') {
       ActionSheetIOS.showActionSheetWithOptions(
-        { options: actions, destructiveButtonIndex: 2, cancelButtonIndex: 4 },
-        handle
+        {
+          options: [...items.map((item) => item.label), 'Cancel'],
+          destructiveButtonIndex: items.findIndex((item) => item.destructive),
+          cancelButtonIndex: items.length,
+        },
+        (index) => items[index]?.run()
       );
     } else {
       // Simple fallback for non-iOS dev targets.
       Alert.alert('Options', undefined, [
-        { text: 'View profile', onPress: () => handle(0) },
-        { text: 'Report', onPress: () => handle(1) },
-        { text: 'Block', style: 'destructive', onPress: () => handle(2) },
-        { text: 'Leave chat', style: 'destructive', onPress: () => handle(3) },
-        { text: 'Cancel', style: 'cancel' },
+        ...items.map((item) => ({
+          text: item.label,
+          style: item.destructive ? ('destructive' as const) : undefined,
+          onPress: item.run,
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
       ]);
     }
   };
 
+  // Where the name at the top of the screen goes, or null when it goes
+  // nowhere. A business reading its own inbox is the null case: the name
+  // belongs to a traveler, and a traveler's profile is not a screen a
+  // business account has. It stays a plain heading, which is honest.
+  const openIdentity = viewerIsBusiness
+    ? null
+    : isPlace
+      ? placeId != null
+        ? () => router.push({ pathname: '/place/[id]', params: { id: placeId } })
+        : null
+      : () => router.push(`/profile/${chat.other_user_id}`);
+
   return (
     <View style={styles.header}>
       <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={isPlace ? `About ${chat.title ?? 'this business'}` : 'View profile'}
-        disabled={isPlace && placeId == null}
-        onPress={() =>
-          isPlace
-            ? placeId && router.push({ pathname: '/place/[id]', params: { id: placeId } })
-            : router.push(`/profile/${chat.other_user_id}`)
+        accessibilityRole={openIdentity ? 'button' : 'header'}
+        accessibilityLabel={
+          openIdentity
+            ? isPlace
+              ? `About ${chat.title ?? 'this business'}`
+              : 'View profile'
+            : undefined
         }
+        disabled={openIdentity == null}
+        onPress={openIdentity ?? undefined}
         style={styles.headerIdentity}>
         <View style={[styles.headerAvatar, { backgroundColor: theme.backgroundElement }]}>
           {photoUrl ? (
@@ -216,6 +273,11 @@ function SocialsCard({ userId }: { userId: string }) {
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const ownUserId = useOwnUserId();
+  // §7 rule 4, as the business build tightened it: a chat with a business
+  // never unlocks anybody's personal handles, in either direction. So for a
+  // business reader this card can only ever come back empty, and asking is a
+  // round trip for a promise the database already keeps.
+  const viewerIsBusiness = useIsBusiness();
   const chatsQuery = useMyChats();
   // Both lists. Archiving a conversation used to make it unreadable: the
   // Archived screen still linked to it, and the thread it opened said "Chat
@@ -305,7 +367,9 @@ export default function ChatScreen() {
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <KeyboardFloor>
           <ChatHeader chat={chat} />
-          {chat.other_user_id ? <SocialsCard userId={chat.other_user_id} /> : null}
+          {chat.other_user_id && !viewerIsBusiness ? (
+            <SocialsCard userId={chat.other_user_id} />
+          ) : null}
           {/* The chat row can be served from cache while the messages call
               fails, and then the conversation reads as empty rather than as
               unloaded. */}

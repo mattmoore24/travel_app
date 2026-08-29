@@ -35,7 +35,7 @@ import {
   useUnsendMessage,
 } from '@/features/rooms/hooks';
 import { addDays, formatDateRange, toISODate } from '@/features/trips/dates';
-import { useBusinessForChat, useOwnBusiness } from '@/features/business/hooks';
+import { useBusinessForChat, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
 import { Composer } from '@/features/chat/composer';
 import { closeDayLabel, finiteDate, useHasGroupClosed } from '@/features/groups/closing';
 import { useTheme } from '@/hooks/use-theme';
@@ -76,12 +76,13 @@ export default function RoomScreen() {
     [chatsQuery.data, archivedQuery.data, id]
   );
   const isMember = membership != null;
+  // A business never joins a room — not another business's, and not its own.
+  // The founder's rule, and since 20260829190000 the database's too. This is
+  // what stops the button being offered in the first place.
+  const viewerIsBusiness = useIsBusiness();
   // Only asked when you are NOT already a member: my_chats already answers
   // for everybody else, and a second round trip for a name you have is waste.
   const { data: info } = useRoomInfo(isMember ? null : (id ?? null));
-  // Only a member has anything to mark: a visitor previewing a public room
-  // has no chat_prefs row and the RPC would refuse them.
-  useMarkReadWhileOpen(isMember ? (id ?? null) : null, messages[0]?.created_at ?? null);
   // A traveler group, as opposed to a hostel's room. Null for the latter,
   // which is exactly what tells the two apart on this screen.
   const { data: group } = useGroup(membership?.kind === 'room' ? (id ?? null) : null);
@@ -93,15 +94,37 @@ export default function RoomScreen() {
   // so anything that offers a write has to know — otherwise the refusal
   // arrives as a raw row-level-security sentence in an alert.
   const closed = useHasGroupClosed(isGroup ? (group.max_stay_until ?? null) : null);
-  const isModerator = membership?.my_role === 'admin';
   // A place's room, as opposed to a traveler group. `business_for_chat`
   // answers only for the first, so a null here IS the distinction — and it
   // is what gives a traveler a way back to the hours, the address and the
   // rating they joined from. Without it, joining from the map was one-way:
   // the only route back to the place was finding the chip again.
-  const { data: placeId } = useBusinessForChat(isGroup ? null : (id ?? null));
-  const ownBusinessId = useOwnBusiness().data?.id ?? null;
-  const isOwnPlace = placeId != null && placeId === ownBusinessId;
+  const { data: chatPlaceId } = useBusinessForChat(isGroup ? null : (id ?? null));
+  const ownBusiness = useOwnBusiness().data ?? null;
+  // The room this account RUNS, answered without a round trip.
+  // `business_for_chat` cannot answer it: that function matches
+  // `kind = 'business'`, which is a DM, and a business's public room is
+  // `kind = 'room'` — so `chatPlaceId` was null here for everybody and the
+  // owner fell through every branch as an ordinary visitor. my_business
+  // already carries the chat id, and it is the owner's own row.
+  const isOwnRoom = ownBusiness?.chat_id != null && ownBusiness.chat_id === id;
+  const placeId = isOwnRoom ? (ownBusiness?.id ?? null) : (chatPlaceId ?? null);
+  // The owner has no room_members row — the database refuses one — so
+  // `my_role` is null for them and the person who runs the chat was handed
+  // "Report" where "Remove" belongs and no pin control at all, while
+  // is_room_moderator has answered true for them server-side since
+  // 20260827160000.
+  const isModerator = membership?.my_role === 'admin' || isOwnRoom;
+  // A member has something to mark, and so does the owner of the room:
+  // mark_chat_read admits is_room_moderator, which answers true for them.
+  // Gated on `isMember` alone, opening the room the business RUNS marked
+  // nothing, so the Chat tab's badge counted its own room's messages and
+  // never came down. A visitor previewing a public room is still excluded -
+  // they have nothing to read up to and the RPC would refuse them.
+  useMarkReadWhileOpen(
+    isMember || isOwnRoom ? (id ?? null) : null,
+    messages[0]?.created_at ?? null
+  );
 
   // The shared thread speaks MessageRow. A room row carries three things it
   // does not — who sent it by name, their photo, and whether a moderator took
@@ -200,7 +223,7 @@ export default function RoomScreen() {
                       tintColor={theme.text}
                     />
                   </Pressable>
-                  {isMember && !isOwnPlace ? (
+                  {isMember && !isOwnRoom ? (
                     <Pressable accessibilityRole="button" onPress={confirmLeave} hitSlop={8}>
                       <ThemedText type="footnote" themeColor="textSecondary">
                         Leave
@@ -208,7 +231,11 @@ export default function RoomScreen() {
                     </Pressable>
                   ) : null}
                 </View>
-              ) : isMember ? (
+              ) : /* A business never joins a room, so it can never have one
+                     to leave. The owner of this one reads it above; anybody
+                     else holding a business account reaching this branch
+                     would be looking at a control that can only fail. */
+              isMember && !viewerIsBusiness ? (
                 <Pressable accessibilityRole="button" onPress={confirmLeave} hitSlop={8}>
                   <ThemedText type="footnote" themeColor="textSecondary">
                     Leave
@@ -220,7 +247,17 @@ export default function RoomScreen() {
                 after a group is created, since creating one invalidates it —
                 say nothing rather than "anyone can read this chat", which is
                 both wrong and alarming for a private group. */}
-            {chatsQuery.isPending ? null : isMember && membership?.expires_at ? (
+            {chatsQuery.isPending ? null : isOwnRoom ? (
+              // The owner has no room_members row — the database refuses one
+              // — so without this branch the person who runs the place was
+              // told to "join in to post" in their own chat. The count comes
+              // off my_chats, which already carries it for a member; room_info
+              // is only fetched for people who are not in the room.
+              <ThemedText type="footnote" themeColor="textSecondary">
+                {countOf(membership?.member_count ?? info?.member_count ?? 0, 'person', 'people')}{' '}
+                here · you run this chat
+              </ThemedText>
+            ) : isMember && membership?.expires_at ? (
               <ThemedText type="footnote" themeColor="textSecondary">
                 {countOf(membership.member_count ?? 0, 'person', 'people')} here
                 {/* A private group is not readable by passers-by, and saying
@@ -240,18 +277,15 @@ export default function RoomScreen() {
                     )}`
                   : ''}
               </ThemedText>
-            ) : isOwnPlace ? (
-              // The owner has no room_members row — the database refuses one
-              // — so without this branch the person who runs the place was
-              // told to "join in to post" in their own chat.
-              <ThemedText type="footnote" themeColor="textSecondary">
-                {info ? `${countOf(info.member_count, 'person', 'people')} here · ` : ''}
-                you run this chat
-              </ThemedText>
             ) : (
               <ThemedText type="footnote" themeColor="textSecondary">
                 {info ? `${countOf(info.member_count, 'guest')} here. ` : ''}
-                Anyone can read this chat. Join in to post.
+                {/* "Join in to post" is an instruction a business can never
+                    follow, so in somebody else's room the sentence stops at
+                    what it can do. */}
+                {viewerIsBusiness
+                  ? 'Anyone can read this chat.'
+                  : 'Anyone can read this chat. Join in to post.'}
               </ThemedText>
             )}
           </View>
@@ -322,8 +356,13 @@ export default function RoomScreen() {
             // onboarded, so the route does not exist for them and the push
             // would be a tap that is allowed to do nothing. Passing nothing
             // leaves the face a plain view, which is honest.
+            //
+            // And not for a business, which fails the same guard for the same
+            // structural reason. That one was worse: it was suppressed for
+            // guests only, so in the room a business RUNS every avatar was
+            // tappable for the owner and every tap did nothing.
             onOpenSender={
-              isGuest
+              isGuest || viewerIsBusiness
                 ? undefined
                 : (senderId) =>
                     router.push({
@@ -496,6 +535,19 @@ export default function RoomScreen() {
                   }
                 }}
               />
+            </View>
+          ) : viewerIsBusiness ? (
+            <View style={styles.footer}>
+              {/* Not a join prompt with the button taken out: a business is
+                  not a guest of a room, so there is nothing here to say no
+                  to. Reading stays open, which is what a room is for. And it
+                  says where the owner's own room is, because "yours is on
+                  your business page" stopped being the whole truth the day
+                  the Chat tab started listing it. */}
+              <ThemedText type="footnote" themeColor="textSecondary">
+                Rooms are for travelers. You can read this one. Yours is at the top of your Chat
+                tab.
+              </ThemedText>
             </View>
           ) : (
             <View style={styles.footer}>

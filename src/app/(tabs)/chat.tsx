@@ -654,6 +654,41 @@ function ChatRowLink({ chat, last = false }: { chat: ChatListRow; last?: boolean
   );
 }
 
+/**
+ * The room a business runs, in its own inbox.
+ *
+ * Not a `ChatRowLink`: pin and archive are traveler housekeeping for a list
+ * of many conversations, and in a section that holds exactly one row they are
+ * two controls that change nothing anybody can see. Mute is real — the owner
+ * of a busy room has a reason to want it quiet — so mute is what is here.
+ */
+function OwnRoomRow({ chat }: { chat: ChatListRow }) {
+  const pref = useChatPref();
+  return (
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={
+        chat.unread_count > 0
+          ? `${chat.title ?? 'Your room'}, ${countOf(chat.unread_count, 'new message')}`
+          : (chat.title ?? 'Your room')
+      }
+      accessibilityHint="Press and hold to mute"
+      scaleTo={0.995}
+      onPress={() => router.push(`/room/${chat.chat_id}`)}
+      onLongPress={() =>
+        Alert.alert(chat.title ?? 'Your room', undefined, [
+          {
+            text: chat.muted ? 'Unmute' : 'Mute',
+            onPress: () => pref.mutate({ chatId: chat.chat_id, muted: !chat.muted }),
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ])
+      }>
+      <ChatRow chat={chat} last />
+    </PressableScale>
+  );
+}
+
 type Tab = 'individual' | 'groups';
 
 const TAB_LABELS: { value: Tab; label: string }[] = [
@@ -731,10 +766,19 @@ export default function ChatScreen() {
   const isBusiness = useOwnBusiness().data != null;
   const theme = useTheme();
 
+  // A business is in exactly one room, the one it runs, and my_chats hands it
+  // back like any other row. The Chats/Groups switch is a traveler control, so
+  // `tab` never leaves 'individual' for a business — and the kind filter under
+  // it was throwing that room away on the very screen whose tab badge counts
+  // the unread messages in it. The badge pointed at "No chats yet". So: no
+  // switch, one list, two headings.
+  const ownRoom = isBusiness ? chats.filter((c) => c.kind === 'room') : [];
   // One-to-one conversations and group rooms are different things people
   // look for at different moments, so they get a switch rather than one
   // scroll that mixes them.
-  const inTab = chats.filter((c) => (tab === 'groups' ? c.kind === 'room' : c.kind !== 'room'));
+  const inTab = isBusiness
+    ? chats.filter((c) => c.kind !== 'room')
+    : chats.filter((c) => (tab === 'groups' ? c.kind === 'room' : c.kind !== 'room'));
   // A guest's whole chat life: the groups they were invited to. They cannot
   // have a one-to-one chat at all, since saying hi to a stranger is refused.
   const myGroups = chats.filter((c) => c.kind === 'room');
@@ -902,7 +946,27 @@ export default function ChatScreen() {
           <AvatarButton />
         </View>
 
-        {requests.length > 0 && tab === 'individual' ? (
+        {/* A business's own room, above its inbox. It is the one place
+            travelers gather around the business, and until now the only way
+            back into it was the map. */}
+        {ownRoom.length > 0 ? (
+          <>
+            <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
+              Your room
+            </ThemedText>
+            <View style={styles.list}>
+              {ownRoom.map((chat) => (
+                <OwnRoomRow key={chat.chat_id} chat={chat} />
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {/* Nobody says hi to a business: travelers write in through
+            message_business, which makes a conversation rather than a hello
+            waiting on an answer. Both halves of that loop are traveler-only,
+            and a business reading its inbox should not carry either heading. */}
+        {requests.length > 0 && tab === 'individual' && !isBusiness ? (
           <>
             <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
               Waiting on you
@@ -927,7 +991,7 @@ export default function ChatScreen() {
 
         {/* Your side of the loop. Only the ones still waiting: once somebody
             answers, the hello IS the chat and lives in the list below. */}
-        {tab === 'individual' && waitingOnThem.length > 0 ? (
+        {tab === 'individual' && waitingOnThem.length > 0 && !isBusiness ? (
           <>
             <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
               You said hi
@@ -962,9 +1026,9 @@ export default function ChatScreen() {
             {/* Only a heading when there is something above it to be
                 separated from. The segment already says "Chats"; repeating
                 it directly underneath is a label labelling itself. */}
-            {requests.length > 0 || pinned.length > 0 ? (
+            {requests.length > 0 || pinned.length > 0 || ownRoom.length > 0 ? (
               <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
-                {tab === 'groups' ? 'Groups' : 'Chats'}
+                {isBusiness ? 'From travelers' : tab === 'groups' ? 'Groups' : 'Chats'}
               </ThemedText>
             ) : null}
             <View style={styles.list}>
@@ -982,7 +1046,10 @@ export default function ChatScreen() {
         ) : null}
         {/* Same for the hellos waiting on you: silence here used to let "No
             chats yet" render over people who were actually waiting. */}
-        {requestsQuery.isError && !chatsQuery.isError ? (
+        {/* Never to a business: nobody says hi to one, so an error about the
+            hellos waiting on it is a sentence about a feature it does not
+            have. */}
+        {requestsQuery.isError && !chatsQuery.isError && !isBusiness ? (
           <LoadError
             compact
             what="the hellos waiting on you"
@@ -1007,7 +1074,7 @@ export default function ChatScreen() {
         (tab === 'groups' || (requests.length === 0 && waitingOnThem.length === 0)) ? (
           <ThemedView type="backgroundElement" style={styles.emptyCard}>
             <ThemedText type="callout">
-              {tab === 'groups' ? 'No groups yet' : 'No chats yet'}
+              {isBusiness ? 'No messages yet' : tab === 'groups' ? 'No groups yet' : 'No chats yet'}
             </ThemedText>
             <ThemedText type="footnote" themeColor="textSecondary">
               {isBusiness

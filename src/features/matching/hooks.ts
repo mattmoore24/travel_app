@@ -14,6 +14,7 @@ import {
   respondToRequest,
   sendMessageRequest,
 } from '@/features/matching/api';
+import { useIsBusiness } from '@/features/business/hooks';
 import { waitingTotal } from '@/features/chat/unread';
 import { usePushPrimer } from '@/features/notifications/primer-store';
 import { useOwnUserId } from '@/features/profile/hooks';
@@ -32,10 +33,16 @@ export function useMatches() {
 
 export function useSentRequests() {
   const userId = useOwnUserId();
+  // Never for a business. A hello is a traveler asking a traveler, and
+  // message_requests_refuse_business refuses one from this account either
+  // way, so this was two round trips per focus that could not come back with
+  // a row. While the account kind is still settling the answer is "not a
+  // business", so a traveler's list is never held up waiting for it.
+  const isBusiness = useIsBusiness();
   return useQuery({
     queryKey: ['sent-requests', userId],
     queryFn: fetchSentRequests,
-    enabled: isSupabaseConfigured && userId != null,
+    enabled: isSupabaseConfigured && userId != null && !isBusiness,
   });
 }
 
@@ -140,10 +147,14 @@ export function useSendRequest() {
 
 export function useIncomingRequests() {
   const userId = useOwnUserId();
+  // Same reason as the sent side: nobody says hi to a business. A traveler
+  // who wants one writes through message_business, which opens a
+  // conversation rather than a request.
+  const isBusiness = useIsBusiness();
   return useQuery({
     queryKey: ['incoming-requests', userId],
     queryFn: fetchIncomingRequests,
-    enabled: isSupabaseConfigured && userId != null,
+    enabled: isSupabaseConfigured && userId != null && !isBusiness,
   });
 }
 
