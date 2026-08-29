@@ -3,6 +3,105 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **A plan anyone can join, and the people you already know** (2026-08-29)
+
+Four asks in one message from the founder, three of which turned out to be
+the same missing idea: the app knew who you had met and never used it.
+
+### A pin can be open
+
+Until now a pin had one door: read it, say hi, wait to be accepted. That is
+the right door for meeting one person and the wrong one for "I'm at this bar
+at 9, come along". So the pin form asks how people come along — **Anyone can
+join** (the new default) or **Message me first** (exactly what existed) — and
+an open pin arrives carrying a group chat. One tap puts you in it.
+
+Four decisions in that, each of which could have gone the other way:
+
+- **The link points from the group at the pin, not the other way round.**
+  `groups.pin_id ... on delete set null`. Pins are hard deleted — the 15-minute
+  `expire_pins` cron, a poster taking one down, the 72-hour ceiling that is §7
+  rule 3 — so a `chat_id` on `pins` would take the conversation with it. The
+  founder's call, in their words: the chat lives on, the pin disappears. From
+  that moment it is an ordinary group with no end date.
+- **The poster keeps the pin.** Joiners are members; the pinner is the group's
+  admin and `pins.user_id` never moves. That is what decides who may SEE the
+  pin, and it is the founder's other rule: a pin posted by a verified man is on
+  the map of everyone whose audience admits a verified man, whoever has since
+  joined. There is a pgTAP assertion whose only job is to fail if a later
+  change re-keys that to the joiners.
+- **Joining borrows the pin's visibility, not the group's.** No token. If you
+  can see it you can join it; if you cannot, the id tells you nothing — every
+  refusal is the same sentence.
+- **Its own daily budget.** `create_group` refuses a sixth group in 24 hours
+  because a group row is durable and carries an invite link. An open pin makes
+  one too, so it is counted — in its own bucket, with its own sentence, because
+  "You have started a few groups today already" is a baffling thing to be told
+  by a map.
+
+`city_pins` and `public_city_pins` were DROPped and recreated with `chat_id`
+and `crew` (the trap in AGENTS.md; grants restated, `public_city_pins` keeps
+anon). An open pin's marker carries a small people badge — a badge and not a
+third marker colour, because the map is deliberately two colours and a third
+would need a legend. Its sheet shows the faces of whoever is already in.
+
+### People you already know
+
+The other three asks. Adding somebody to a group meant sending a link: leave
+the app, find their phone number, paste. Messaging somebody meant saying hi and
+waiting, even when you had been talking in the same group all day.
+
+One idea, written down once: **you know somebody if you share an active direct
+chat or an active traveler group with them.** Never a venue's open room — that
+is open to anybody signed in, so free messaging out of one would be a
+stranger-messaging channel with the say-hi gate removed. Never a guest, who can
+talk in the group they were let into and nothing else.
+
+Three doors hang off it: `people_you_know` (search), `add_to_group` (any
+member, not only the admin — a link was always copyable by everyone, so
+"admins only" was never true, just slower), and `open_direct_chat`.
+
+On the client: a member row opens the person now, and so does a face in the
+thread. The admin's role and remove tools moved to the button on the right of
+the row, where the ellipsis already was. A profile you share a chat with offers
+**Message** and **Add to a group**. And a group's page finally has **Leave**,
+which it simply did not have — the room screen offers it for a venue's chat and
+not for a group, so the only way out of a group was to be removed from one.
+
+### Two §7 rules that needed care, and were kept
+
+**Handles are never visible before an accept.** These chats have no accept
+anywhere, and a direct chat with two participant rows is exactly what unlocks
+handles. So the gate moved rather than widened: `chats.opened_from_room`, and
+the `social_handles` policy now reads `handles_unlocked_for`, which for a
+room-opened chat requires **both** people to have spoken. That is stricter than
+the single tap it stands in for, and no chat that exists today is affected.
+`has_accepted_chat` is deliberately untouched — its six other callers ask "do
+these two have a conversation", and the answer to that is yes.
+
+**Every first message passes moderation.** There is no accept step to hold a
+bad first message behind, so `open_direct_chat` screens it with
+`screen_first_message` and a blocked one creates nothing at all. That is the
+shape `message_business` already uses, for the same reason.
+
+### The audience setting is the first thing on a profile
+
+It was a ghost button below the fold, and the map carried a second, weaker copy
+of it. "Verified travelers only" is gone from the filters: it narrowed what you
+saw without narrowing who saw you, so somebody could tick it, believe they were
+hidden, and not be. Signup asks the question outright now, as its own step
+before photos (seven steps, not six).
+
+**One honest constraint for the founder to rule on.** `set_visibility` refuses
+any narrowed audience without a verified badge, and a brand-new account is
+never verified. So the signup step shows the four narrowed rows greyed with the
+reason and says the setting lives at the top of the profile once the badge
+lands. Relaxing that rule would let an unverified account pick "verified women
+only" and be invisible to everyone until it verified — a real choice, not an
+oversight, so it stays as it is until asked.
+
+Database: **757** pgTAP assertions. Client: **370** unit tests.
+
 ## Current: **Eleven things from a group chat** (2026-08-28)
 
 The founder tested the app while actually using it — texting a group, sending

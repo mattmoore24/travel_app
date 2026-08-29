@@ -662,6 +662,97 @@ Joining clamps the stay-until date to the group's maximum server-side.
 refuses to add an OUT column to an existing `RETURNS TABLE`, and the grants
 have to be restated after the drop.
 
+## A pin that carries a group (2026-08-29)
+
+A joinable pin is a pin that has a `groups` row pointing at it. That is the
+whole of it — from the group's side it is an ordinary traveler group, with the
+same messages, reactions, admin tools, invite link and moderation.
+
+**The link points from the group AT the pin**: `groups.pin_id uuid references
+public.pins (id) on delete set null`, with a partial unique index. It has to
+be this direction. Pins are hard deleted — by `expire_pins` on its 15-minute
+cron, by the poster taking one down, and at 72 hours because §7 rule 3 says so
+— and a `chat_id` column on `pins` would take the conversation with it. On
+`groups`, the pin burns out and the chat is still there, with `pin_id` null:
+an ordinary group with no end date, reachable from the Chat tab and by invite
+and no longer joinable from the map, because there is no longer a pin to tap.
+That is the founder's explicit call.
+
+**`post_joinable_pin` is one transaction, not two calls.** The client could
+insert the pin (it holds the per-column grant) and then ask for a group, but a
+failure between the two leaves a pin whose author ticked "anyone can join" and
+which nobody can join — the one outcome with nothing honest to say about it.
+Being SECURITY DEFINER bypasses the pins RLS policies, so `user_id` and
+`seeded` are set explicitly rather than trusted; every BEFORE INSERT trigger
+still fires, because a trigger does not care who is running the insert, which
+is why none of `validate_pin`, `throttle_pins`, `guests_do_not_broadcast` or
+the business refusal is restated there.
+
+**Visibility stays keyed to the pin's OWNER.** `pins_select_visible` and
+`city_pins` decide by `p.user_id`, and `join_pin_chat` asks the same question:
+the pin is live, and `discovery_pair_ok(you, the owner)` holds with no block in
+either direction. A joiner outside your audience therefore never removes a pin
+from your map, and cannot. Founder's rule; there is a pgTAP assertion whose
+only job is to fail if a later change re-keys it to the joiners.
+
+**Its own daily budget.** `create_group` caps a person at five groups per 24
+hours because a group row is durable and carries an invite link. An open pin
+makes one too, so it is counted — in its own bucket (`pin_id is not null`, five
+per 24 hours) with its own sentence, because `create_group`'s message is a
+baffling thing to be told by a map. The pin ceilings (10 live, 30 created per
+24h) apply on top.
+
+`city_pins` and `public_city_pins` were DROPped and recreated with `chat_id`
+and `crew`; both grants restated, and `public_city_pins` keeps `anon`. They
+read the group through two small SECURITY DEFINER helpers (`pin_chat`,
+`pin_chat_size`) rather than joining `groups`, because `city_pins` is
+deliberately SECURITY INVOKER and `groups` is readable only by its members —
+an invoker join would show a joinable pin as unjoinable to exactly the people
+who have not joined yet.
+
+## People you already know (2026-08-29)
+
+One predicate, three doors. You **know** somebody if you share an active direct
+chat (`has_accepted_chat`) or an active traveler group (`shares_group_with`).
+Both are caller-scoped like every other relationship helper here: they bind
+`auth.uid()` inside rather than taking a viewer, so no client can walk the
+who-knows-whom graph.
+
+Two exclusions are load-bearing:
+
+- **Venue rooms are not groups.** Every predicate joins `groups`, not just
+  `room_members`. A venue's room is open to anybody signed in, so "we are in
+  the same room" there means only "we both tapped the same bar", and free
+  direct messages out of one would be a stranger-messaging channel with the
+  say-hi gate removed.
+- **Guests are neither end of it.** An anonymous account can talk in a group it
+  was let into and that is all: it cannot be searched, added to a second group,
+  or open or receive a one-to-one chat. Same reasoning as
+  `message_requests_no_guests`.
+
+The doors are `people_you_know(query)`, `add_to_group(chat, user)` — any
+member, not only the admin, because the invite link was always copyable by
+everyone — and `open_direct_chat(user, first_message)`.
+
+### The two §7 rules this touches
+
+**Rule 4, handles never visible pre-accept.** There is no accept on this path,
+and a direct chat with two `chat_participants` rows is precisely what unlocks
+handles. So the gate moved rather than widening. `chats.opened_from_room` marks
+a chat opened this way, and the `social_handles` policy now calls
+`handles_unlocked_for`, which for those chats additionally requires **both**
+people to have sent a message. That is stricter than the single tap it replaces
+— accepting a request is one person tapping once — and every chat that exists
+today has `opened_from_room = false` and is unaffected. `has_accepted_chat` is
+deliberately left alone: its other callers ask "do these two already have a
+conversation", and for a room-opened chat the honest answer is yes.
+
+**Rule 5, every first message passes moderation.** With no accept step to hold
+a bad first message behind, `open_direct_chat` runs `screen_first_message`
+synchronously and a blocked verdict creates nothing at all — no chat, no
+participants, nothing to release later. That is exactly `message_business`'s
+shape, for exactly the same reason.
+
 ## Support (Phase 10)
 
 The in-app contact form writes into `support_messages` and the row is the
