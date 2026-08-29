@@ -10,7 +10,11 @@ import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { Type } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store';
-import { useConfirmBusinessEmail, useRequestBusinessEmailCode } from '@/features/business/hooks';
+import {
+  useBusinessCodeStatus,
+  useConfirmBusinessEmail,
+  useRequestBusinessEmailCode,
+} from '@/features/business/hooks';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 
@@ -52,6 +56,13 @@ export default function BusinessEmailScreen() {
   // journey with the listing left dark.
   const [changing, setChanging] = useState(false);
   const [draft, setDraft] = useState('');
+  // Whether the mail actually left. Asked while somebody is looking at an
+  // empty six-digit box, because that is exactly the minute in which "we sent
+  // it" turning out to be false is worth knowing. The founder waited for a
+  // code that a provider had already refused to carry, and this screen went on
+  // saying it had been sent.
+  const { data: delivery } = useBusinessCodeStatus(!changing);
+  const bounced = delivery?.failed === true;
   // Whoever routed here knows the address; storage is only the fallback for a
   // second visit, so the handed value always wins rather than being copied
   // into state and then argued with.
@@ -128,11 +139,15 @@ export default function BusinessEmailScreen() {
 
   return (
     <StepScreen
-      title="Check your email"
+      title={bounced ? 'That address bounced' : 'Check your email'}
       subtitle={
-        address
-          ? `We sent a six-digit code to ${address}. It lasts twenty minutes.`
-          : 'We sent a six-digit code to your business email. It lasts twenty minutes.'
+        bounced
+          ? address
+            ? `We could not deliver to ${address}. Try another address and we will send a fresh code.`
+            : 'We could not deliver that one. Try another address and we will send a fresh code.'
+          : address
+            ? `We sent a six-digit code to ${address}. It lasts twenty minutes.`
+            : 'We sent a six-digit code to your business email. It lasts twenty minutes.'
       }
       continueLabel="Put my business on the map"
       continueDisabled={code.length !== CODE_LENGTH}
@@ -182,11 +197,13 @@ export default function BusinessEmailScreen() {
                 onPress={() => sendAgain()}
               />
             ) : null}
-            {/* Always. A typo at signup, or a work address nobody reads, is
-                the common way this screen becomes a dead end, and typing a
-                different one is the only fix that does not need a person. */}
+            {/* Always. A typo at signup, a work address nobody reads, or a
+                sending domain the provider will not carry, are the ways this
+                screen becomes a dead end, and typing a different address is
+                the only fix that does not need a person. It leads when we
+                already know the last one bounced. */}
             <PrimaryButton
-              variant="ghost"
+              variant={bounced ? 'filled' : 'ghost'}
               label={address ? 'Use a different address' : 'Send me a code'}
               accessibilityLabel="Send the code to a different address"
               onPress={() => {

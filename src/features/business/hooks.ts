@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/features/auth/store';
 import {
   archiveBusinessPost,
+  businessCodeStatus,
   confirmBusinessEmail,
   fetchBusinessForChat,
   fetchBusinessDetail,
@@ -139,7 +140,35 @@ export function useBusinessDetail(businessId: string | null) {
 }
 
 export function useRequestBusinessEmailCode() {
-  return useMutation({ mutationFn: requestBusinessEmailCode });
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: requestBusinessEmailCode,
+    onSuccess: () => {
+      // A fresh code means a fresh queue row, and the old row's verdict is
+      // about mail nobody is waiting for any more.
+      queryClient.invalidateQueries({ queryKey: ['business-code-status'] });
+    },
+  });
+}
+
+/**
+ * Whether the last code actually went out.
+ *
+ * Polled while somebody is looking at an empty six-digit box, because that is
+ * exactly the minute in which "we sent it" turning out to be false is worth
+ * knowing. Stops polling once the answer is in: delivered is the end of the
+ * story, and so is failed.
+ */
+export function useBusinessCodeStatus(enabled: boolean) {
+  return useQuery({
+    queryKey: ['business-code-status'],
+    queryFn: businessCodeStatus,
+    enabled: isSupabaseConfigured && enabled,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return data?.delivered || data?.failed ? false : 10_000;
+    },
+  });
 }
 
 export function useConfirmBusinessEmail() {

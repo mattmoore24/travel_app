@@ -109,6 +109,30 @@ export async function requestBusinessEmailCode(email: string) {
   }
 }
 
+export type CodeDelivery = {
+  sent_at?: string;
+  delivered?: boolean;
+  attempts?: number;
+  /** The mailer tried and the mail did not go. A different address is the fix. */
+  failed?: boolean;
+};
+
+/**
+ * Did the code actually leave?
+ *
+ * The mailer has always recorded a refusal and nothing ever read it, so a
+ * screen went on saying "check your inbox" about mail a provider had already
+ * declined to carry. The server hands back four facts and never the
+ * provider's own error text.
+ */
+export async function businessCodeStatus(): Promise<CodeDelivery> {
+  const { data, error } = await supabase.rpc('my_business_code_status');
+  if (error) {
+    throw error;
+  }
+  return (data ?? {}) as CodeDelivery;
+}
+
 /**
  * `first_time` false means the code had already been used.
  *

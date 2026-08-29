@@ -184,3 +184,24 @@
              as a group they hold a link for: that is a membership row somebody
              can see and an admin can remove, and it is capped at ten. Same OUT
              columns, so create-or-replace; grant restated anyway.
+2026-08-29 — deploy: 20260829150000_a_code_that_never_arrives_says_so.sql.
+             The founder was told a business code had been sent and never
+             received one; a second address on another provider worked. That is
+             Resend's sandbox rule, which this project has been bitten by once
+             already (the backoff comment in support-mailer records it): with no
+             verified sending domain, onboarding@resend.dev may only deliver to
+             the Resend account's own address. The mailer recorded the refusal
+             in outbound_mail.delivery_error faithfully and NOTHING HAS EVER
+             READ IT, so the screen went on saying "we sent a code" about mail
+             that was never going anywhere. my_business_code_status() is that
+             read: scoped to the caller's own business, to the address
+             currently on file, to the single newest code, and it never returns
+             the provider's error text. The screen now says "That address
+             bounced" and leads with "Use a different address".
+             Also: poke_worker's allowlist gains 'support-mailer'.
+             invoke_edge_worker already had it; only poke_worker's mirror of
+             that list was missing it, so a code sat waiting up to five minutes
+             for a cron tick out of the twenty minutes it is alive for.
+             FOUNDER ACTION, and the real fix: verify a domain in Resend and
+             set SUPPORT_FROM to an address on it. Until that is done no
+             business but the founder's own can receive a code at all.

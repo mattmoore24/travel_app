@@ -4,7 +4,7 @@
 -- listing that is dark shows NOTHING, and the verified badge cannot be
 -- obtained by any route except two photos of a real storefront.
 begin;
-select plan(47);
+select plan(53);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a2', 'ana@example.com'),
@@ -119,6 +119,59 @@ select is(
   1,
   'and the code goes out as queued mail, not as a direct send'
 );
+-- WHETHER THE CODE ACTUALLY LEFT ---------------------------------------------
+--
+-- The founder was told a code had been sent and never received one, because
+-- the mailer's refusal was recorded and nothing read it. This is the read.
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000b2');
+select is(
+  (public.my_business_code_status() ->> 'delivered'),
+  'false',
+  'a code just queued has not been delivered yet'
+);
+select is(
+  (public.my_business_code_status() ->> 'failed'),
+  'false',
+  'and is not a failure either: nothing has tried yet'
+);
+
+select pg_temp.admin();
+update public.outbound_mail
+   set delivery_attempts = 1,
+       delivery_error = 'resend 403: you can only send to your own address'
+ where kind = 'business_email_code';
+select pg_temp.login('00000000-0000-0000-0000-0000000000b2');
+select is(
+  (public.my_business_code_status() ->> 'failed'),
+  'true',
+  'an attempt that did not deliver is reported as failed, so the screen can say so'
+);
+select isnt(
+  (public.my_business_code_status() ->> 'sent_at'),
+  null,
+  'and it says when it was queued'
+);
+-- The provider's own words are a third party's, and they name domains and
+-- API internals. They stay on the server.
+select is(
+  (public.my_business_code_status() ? 'delivery_error'),
+  false,
+  'the provider error text is never handed to a client'
+);
+
+-- Somebody else's business is nobody else's business.
+select pg_temp.login('00000000-0000-0000-0000-0000000000a2');
+select is(
+  public.my_business_code_status(),
+  '{}'::jsonb,
+  'an account that runs no business is told nothing at all'
+);
+
+select pg_temp.admin();
+update public.outbound_mail set delivery_attempts = 0, delivery_error = null
+ where kind = 'business_email_code';
+
 select pg_temp.login('00000000-0000-0000-0000-0000000000b2');
 -- The code is hashed and never returned, so holding this row is not holding
 -- the code. Everything below has to go through the compare.

@@ -1389,6 +1389,15 @@ export type Database = {
         Args: { p_chat_id: string; p_user_id: string };
         Returns: undefined;
       };
+      my_business_code_status: {
+        Args: Record<string, never>;
+        Returns: {
+          sent_at?: string;
+          delivered?: boolean;
+          attempts?: number;
+          failed?: boolean;
+        };
+      };
       city_pins: {
         Args: { p_city_id: number };
         Returns: CityPinRow[];
