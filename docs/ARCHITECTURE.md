@@ -775,6 +775,45 @@ synchronously and a blocked verdict creates nothing at all — no chat, no
 participants, nothing to release later. That is exactly `message_business`'s
 shape, for exactly the same reason.
 
+## A business is not a traveler, on both sides (2026-08-30)
+
+Two migrations, two days apart, carry the whole of §7 rule 8 for a business
+account. Before them the rule lived in the screens, and the anon key is in the
+app bundle, so a hidden button was never a rule.
+
+**`assert_not_business(p_what text)`** (20260829190000) is the single refusal
+point for DOING a traveler thing. It is called from `join_room`,
+`join_pin_chat`, `create_group`, `post_joinable_pin`, `set_visibility` and
+`open_direct_chat`, and a `pins_owner_is_a_traveler` BEFORE INSERT trigger
+covers the table itself. The message names the act, so a refusal that does
+reach somebody reads as a sentence rather than as a stack trace. The departure
+date the founder objected to is `join_room`'s second argument, so guarding the
+join is what removes the question.
+
+**`viewer_is_business()`** (20260830000000) is the single refusal point for
+READING a traveler. It sits in the WHERE clause of `city_pins`,
+`traveler_trips`, `pin_crew` and `featured_traveler`, each of which returned a
+traveler's identity to any authenticated caller. All four now return zero rows
+to a business, which is why the client points a business at
+`public_city_pins`: the faceless feed is what a business is meant to read, and
+the server no longer has an identity-carrying one to offer it.
+
+Deliberately left open: `heat_cells`, which carries no identities and never
+draws a cell under the k-threshold. How busy a street is on a Friday is a fair
+question for the business whose street it is. And `get_matches`,
+`daily_spotlight` and `people_you_know`, which all start from the caller's own
+trips, chats or groups — a business has none of those, so a predicate there
+would be a comment pretending to be a guard.
+
+The same migration answers two questions the room screen could only guess at.
+`business_for_chat` matched `kind = 'business'`, the DM a traveler opens from a
+listing, so a business's own PUBLIC room (`kind = 'room'`) resolved to nothing
+and the screen could not tell the owner they were in their own chat. And
+`my_chats` set `my_role` off a `groups` row, which a business room does not
+have, while `is_room_moderator` had answered true for the owner since
+20260827160000 — so the one person who runs a room was handed "Report" where
+"Remove" belongs. Both are answered server-side now rather than derived.
+
 ## Support (Phase 10)
 
 The in-app contact form writes into `support_messages` and the row is the

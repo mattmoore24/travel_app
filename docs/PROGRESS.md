@@ -3,6 +3,79 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **The business account, audited surface by surface** (2026-08-30)
+
+The founder tested the app as a business and wrote that the build was
+"extremely clunky and completely unacceptable for business users expecting a
+tailored experience". Four defects by name, and a demand for a full audit.
+
+Eleven reviewers read every screen a signed-in business can reach, and the
+findings were verified adversarially before anything was written. Fifty-five
+defects fixed across the map, the chat surfaces, the business's own tabs, the
+invite link, and the database.
+
+### The four the founder named
+
+**Deleting the account left the phone signed in.** The server had always done
+its job: `delete-account` empties five storage buckets, deletes the chats, the
+listing and the auth user. The client fired it without awaiting and never
+signed out, and this page sits outside every route guard, so it survived its
+own sign-out still showing a deleted business's name. It now awaits the
+delete, shows a spinner while it runs, awaits the sign-out and replaces to the
+create-an-account screen. The traveler branch had the same three faults.
+
+**A business was offered joins it could never make.** The map's pin card
+offered "Join this plan" on any traveler's open pin, and the map's place sheet
+offered "Join the chat" and "Message" on every business chip, including the
+owner's own. `assert_not_business` refuses all of it in the database, so each
+was a button that failed in the app's internal words. The buttons are gone,
+and each surface says what it is for instead.
+
+**A business was offered its own chat to join.** Same sheet, same cause: the
+sheet never asked whose listing it was drawing. It leads with the owner's own
+ringed chip now, and one button into My business.
+
+**A business was asked when it was leaving.** The departure date is
+`join_room`'s second argument, so guarding the join removed it everywhere the
+room screen shows it. The other door was the group invite link, which is
+registered outside every guard: a business tapping one got the whole traveler
+flow, "Stay in the group until" and a date picker included.
+
+### What the audit found beyond that
+
+The map was serving a business the identity-carrying traveler feed: names,
+ages, faces and verified badges for every discoverable traveler in the city,
+plus the roster of up to twenty people on any open plan. That is §7 rule 8
+broken in the one place nobody had looked. A business now reads the same
+faceless feed a guest does, and `city_pins`, `traveler_trips`, `pin_crew` and
+`featured_traveler` return it zero rows regardless.
+
+The Chat tab counted unread messages in the business's own room and then
+filtered that room out of the only list it could draw, so the badge pointed at
+a screen saying "No chats yet". The owner of a room had no moderation controls
+in it, because `my_chats` reads a role off a `groups` row a business room does
+not have. "Leave chat" in a customer thread called `unmatch_chat`, which
+hard-deletes the conversation for the traveler too.
+
+And a failed `my_business` fetch was read as "not a business", which handed
+`owesOnboarding` a false and mounted the TRAVELER onboarding stack: a bar
+owner on bad wifi asked for their first name, their age and their photos.
+
+### Verified
+
+Client: **503** unit tests, 50 files. Database: **804** pgTAP assertions, 29
+files. Typecheck, lint and format clean. The E2E business tour now relaunches
+after registering, which lands on the business tabs, and photographs My
+business, the map, chat and the account page for the first time.
+
+### Still open, honestly
+
+`business_staff` is not wired to anything, and when it is, `add-to-group` will
+list a business room as a group to add somebody to. The unread count for an
+owner's own room falls back to the first message, so a first launch shows a
+large number. And the last screens past the photo wall in signup remain
+unphotographed while the iOS picker stays flaky in CI.
+
 ## Current: **Onboarding, both kinds, and the business bugs** (2026-08-29)
 
 The founder listed four things after trying to list a business, and two of
