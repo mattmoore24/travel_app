@@ -205,3 +205,26 @@
              FOUNDER ACTION, and the real fix: verify a domain in Resend and
              set SUPPORT_FROM to an address on it. Until that is done no
              business but the founder's own can receive a code at all.
+2026-08-29 — deploy: 20260829160000_a_business_says_where_it_is.sql.
+             businesses gains `address` (<=160, screened, in the public select
+             grant and the owner's update grant) so the founder's "enter an
+             address and confirm the pin location" has somewhere to live that
+             is NOT place_label — place_label is the finding-the-door note
+             ("blue door") that travelers already read under Getting there, and
+             an address written into it would delete the more useful of the
+             two. Two columns is also the only way "keep the address I typed
+             while I move the marker" can be true.
+             AND THE GEOFENCE, which nobody asked for and which matters more:
+             there wasn't one. haversine_km had exactly one caller in the whole
+             schema (validate_pin), register_business validated the caller and
+             nothing about geography, and businesses.city_id references cities
+             rather than launch_cities — so a marker could sit anywhere on
+             earth while the listing claimed Bangkok, and business-signup's own
+             comment said the server refused exactly that. register_business
+             DROPped and recreated (a defaulted parameter is an OVERLOAD, not a
+             replacement) with the address and the radius check; grants
+             restated. update_business_location is the only way to move a
+             marker afterwards — lat/lng are withheld from the client grant on
+             purpose — and it re-runs the geofence and leaves the typed address
+             alone. business_detail DROPped and recreated with `address`.
+             771 pgTAP assertions, 7 new and about exactly this.

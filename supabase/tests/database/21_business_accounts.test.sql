@@ -7,7 +7,7 @@
 -- somebody can replace. So every assertion below acts AS the business and
 -- expects to be refused.
 begin;
-select plan(34);
+select plan(41);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a1', 'traveler@example.com'),
@@ -88,6 +88,61 @@ select throws_ok(
 );
 select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
 
+-- THE GEOFENCE, which did not exist until 20260829160000. A marker can sit
+-- anywhere inside the plain -90..90 CHECKs, and until now nothing stopped a
+-- listing claiming Lisbon from a marker in Porto — while the signup screen's
+-- own comment said the server refused exactly that.
+select pg_temp.admin();
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-0000000000f1', 'porto@example.com');
+select pg_temp.login('00000000-0000-0000-0000-0000000000f1');
+select throws_ok(
+  $$ select public.register_business('Porto Bar', 'bar',
+       (select id from public.cities where name = 'Lisbon' and country_code = 'PT'),
+       41.1496, -8.6109) $$,
+  '23514',
+  null,
+  'a business marker outside the city radius is refused, like a pin'
+);
+select lives_ok(
+  $$ select public.register_business('Bairro Bar', 'bar',
+       (select id from public.cities where name = 'Lisbon' and country_code = 'PT'),
+       38.7130, -9.1450, 'Rua da Rosa 12') $$,
+  'and one inside it goes through, carrying the address it typed'
+);
+select pg_temp.admin();
+select is(
+  (select address from public.businesses where name = 'Bairro Bar'),
+  'Rua da Rosa 12',
+  'the address is stored as typed'
+);
+select is(
+  (select place_label from public.businesses where name = 'Bairro Bar'),
+  null,
+  'and it did not go into place_label, which is the finding-the-door note'
+);
+
+-- Moving the marker is not an ordinary edit: the column grant withholds
+-- lat/lng, so it goes through a function that re-runs the geofence.
+select pg_temp.login('00000000-0000-0000-0000-0000000000f1');
+select throws_ok(
+  $$ select public.update_business_location(41.1496, -8.6109) $$,
+  '23514',
+  null,
+  'and moving it out of the city is refused too'
+);
+select lives_ok(
+  $$ select public.update_business_location(38.7100, -9.1390) $$,
+  'moving it within the city is fine'
+);
+select pg_temp.admin();
+select is(
+  (select address from public.businesses where name = 'Bairro Bar'),
+  'Rua da Rosa 12',
+  'and moving the marker leaves the typed address exactly as it was'
+);
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
 select throws_ok(
   $$ select public.register_business('Second Place', 'bar',
        (select id from public.cities where name = 'Lisbon' and country_code = 'PT'),
