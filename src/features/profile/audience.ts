@@ -74,4 +74,5 @@ export const AUDIENCE_GENDER_NOTE =
   'Verified means they passed the selfie check. The three gendered options go by the gender on a profile, so anyone who has not set one is in none of them.';
 
 /** Why the narrowed options are inert until the badge exists. */
-export const AUDIENCE_NEEDS_BADGE = 'You need the badge before you can ask other people for one.';
+export const AUDIENCE_NEEDS_BADGE =
+  'These are for verified travelers. Get your badge and they turn on.';

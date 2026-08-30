@@ -17,12 +17,22 @@ export const PHOTOS_MAX = 9;
  */
 export const GALLERY_TARGET = 6;
 
+/**
+ * Length the way Postgres counts it. `char_length` counts codepoints, while
+ * a JS string's `.length` counts UTF-16 units — an emoji costs 2 there and 1
+ * in the DB, so counting units cut a non-BMP writer off at as few as half
+ * the promised cap and told them the wrong number.
+ */
+export function codepointLength(value: string): number {
+  return [...value].length;
+}
+
 export function validateDisplayName(value: string): string | null {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
     return 'Add the name you go by.';
   }
-  if (trimmed.length > NAME_MAX) {
+  if (codepointLength(trimmed) > NAME_MAX) {
     return `Keep it under ${NAME_MAX} characters.`;
   }
   return null;
@@ -43,7 +53,7 @@ export function validateAge(value: string): string | null {
 }
 
 export function validateBio(value: string): string | null {
-  if (value.length > BIO_MAX) {
+  if (codepointLength(value) > BIO_MAX) {
     return `Bios are capped at ${BIO_MAX} characters.`;
   }
   return null;

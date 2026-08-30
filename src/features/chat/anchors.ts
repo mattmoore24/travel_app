@@ -22,6 +22,7 @@ export type Anchor =
   | { kind: 'languages' }
   | { kind: 'home' }
   | { kind: 'bio' }
+  | { kind: 'priority' }
   | { kind: 'prompt'; promptKey: string }
   | { kind: 'pin'; venue: string | null };
 
@@ -49,6 +50,11 @@ export function parseAnchor(element: string): Anchor {
   if (element.startsWith('pin:')) {
     const venue = element.slice('pin:'.length).trim();
     return { kind: 'pin', venue: venue.length > 0 ? venue : null };
+  }
+  // Before the bio fallback, or a hello anchored on somebody's top priority
+  // is announced as being about their bio — which they may not even have.
+  if (element === 'priority' || element.startsWith('priority:')) {
+    return { kind: 'priority' };
   }
   return { kind: 'bio' };
 }
@@ -78,6 +84,8 @@ export function anchorStartedFrom(element: string, name: string | null): string 
       return `Started from ${whose} answer to "${promptLabelInline(anchor.promptKey)}"`;
     case 'pin':
       return anchor.venue ? `Started from a pin at ${anchor.venue}` : 'Started from a pin';
+    case 'priority':
+      return `Started from something on ${whose} list`;
     default:
       return `Started from ${whose} bio`;
   }
@@ -131,6 +139,8 @@ export function anchorAboutYours(element: string): string {
       return `your answer to "${promptLabelInline(anchor.promptKey)}"`;
     case 'pin':
       return anchor.venue ? `your pin at ${anchor.venue}` : 'your pin';
+    case 'priority':
+      return 'something on your list';
     default:
       return 'your bio';
   }

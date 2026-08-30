@@ -597,8 +597,10 @@ export default function RoomScreen() {
                 scaleTo={0.98}
                 onPress={() => setPickingDeparture((open) => !open)}
                 style={[styles.dateField, { backgroundColor: theme.surfaceSunken }]}>
+                {/* Title case, matching the app-wide retirement of all-caps
+                    labels (DESIGN.md). */}
                 <ThemedText type="caption" themeColor="textSecondary">
-                  CHECKING OUT
+                  Checking out
                 </ThemedText>
                 <ThemedText type="callout">
                   {formatDateRange(toISODate(departure), toISODate(departure))}

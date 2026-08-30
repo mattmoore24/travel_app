@@ -992,7 +992,7 @@ function BusinessEditForm({
       `${what} and come off the map?`,
       `Travelers stop seeing ${business.name} until you type a new email code, and the check goes with it.`,
       [
-        { text: 'Leave it as it is', style: 'cancel' },
+        { text: 'Keep it as it is', style: 'cancel' },
         { text: 'Go ahead', style: 'destructive', onPress: () => void commit() },
       ]
     );
@@ -1003,9 +1003,11 @@ function BusinessEditForm({
       router.back();
       return;
     }
-    Alert.alert('Drop your changes?', "You'll lose what you just typed.", [
+    // "Discard", matching edit-profile: "drop" is the create-a-pin verb
+    // everywhere else in the product.
+    Alert.alert('Discard your changes?', "You'll lose what you just typed.", [
       { text: 'Keep editing', style: 'cancel' },
-      { text: 'Drop them', style: 'destructive', onPress: () => router.back() },
+      { text: 'Discard', style: 'destructive', onPress: () => router.back() },
     ]);
   };
 

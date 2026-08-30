@@ -21,21 +21,39 @@ export function AudiencePicker({
   verified,
   disabled = false,
   onChange,
+  onLockedPress,
 }: {
   value: ProfileAudience;
   /**
-   * Whether this account has the badge. The narrowed options are inert
-   * without it — the server refuses them too, and a row that is simply not
-   * live beats one that tells you off after you tap it.
+   * Whether this account has the badge. The narrowed options cannot be
+   * picked without it — the server refuses them too. A locked row is not
+   * inert though: where the screen can route to verification it does
+   * (onLockedPress), which is not telling anyone off, it is opening the
+   * door the row is locked behind.
    */
   verified: boolean;
   disabled?: boolean;
   onChange: (next: ProfileAudience) => void;
+  /**
+   * What a tap on a locked row does. The picker screen routes to
+   * verification; onboarding passes nothing because the verification route
+   * is not registered yet at that point in the stack.
+   */
+  onLockedPress?: () => void;
 }) {
   const theme = useTheme();
 
   const pick = (next: ProfileAudience) => {
-    if (next === value || disabled || (next !== 'everyone' && !verified)) {
+    if (disabled) {
+      return;
+    }
+    if (next !== 'everyone' && !verified) {
+      // Never a silent nothing: a dimmed row that swallows the tap reads as
+      // a broken app to the person the women-only filter exists for.
+      onLockedPress?.();
+      return;
+    }
+    if (next === value) {
       return;
     }
     haptics.selection();
@@ -52,18 +70,30 @@ export function AudiencePicker({
             key={option.value}
             accessibilityRole="radio"
             accessibilityState={{ selected: active, disabled: locked || disabled }}
-            accessibilityLabel={`${AUDIENCE_LABEL[option.value]}. ${option.detail}`}
+            accessibilityLabel={`${AUDIENCE_LABEL[option.value]}. ${option.detail}${
+              // "Opens verification" is only true where a handler exists:
+              // onboarding renders this picker with none (the route is
+              // guarded there), and a spoken promise a tap cannot keep is
+              // the exact silent-nothing this row was rebuilt to remove.
+              locked
+                ? `. Needs the verified badge.${onLockedPress ? ' Opens verification.' : ''}`
+                : ''
+            }`}
             scaleTo={locked ? 1 : 0.985}
             onPress={() => pick(option.value)}
+            // Colour says locked, never opacity: fading a row dims its text
+            // and its ground in the same proportion, so the contrast between
+            // them collapses (~3.3:1 title, ~2.4:1 detail at 0.45 on this
+            // ground) while textSecondary on surfaceSunken holds 6.6:1. The
+            // traps skill records this class of bug in full.
             style={[
               styles.row,
-              {
-                backgroundColor: active ? theme.accentSoft : theme.surfaceSunken,
-                opacity: locked ? 0.45 : 1,
-              },
+              { backgroundColor: active ? theme.accentSoft : theme.surfaceSunken },
             ]}>
             <View style={styles.rowText}>
-              <ThemedText type="callout">{AUDIENCE_LABEL[option.value]}</ThemedText>
+              <ThemedText type="callout" themeColor={locked ? 'textSecondary' : 'text'}>
+                {AUDIENCE_LABEL[option.value]}
+              </ThemedText>
               <ThemedText type="footnote" themeColor="textSecondary">
                 {option.detail}
               </ThemedText>
@@ -73,6 +103,12 @@ export function AudiencePicker({
                 name={{ ios: 'checkmark', android: 'check', web: 'check' }}
                 size={16}
                 tintColor={theme.accent}
+              />
+            ) : locked ? (
+              <SymbolView
+                name={{ ios: 'lock', android: 'lock', web: 'lock' }}
+                size={16}
+                tintColor={theme.textTertiary}
               />
             ) : null}
           </PressableScale>
@@ -140,8 +176,12 @@ export function AudienceCard({
           />
         </View>
         <View style={styles.cardText}>
+          {/* Title case, not caps: DESIGN.md retired ALL-CAPS labels, and
+              this card was the profile's last holdout against the four Title
+              Case headers under it. Matches the title of the screen it
+              opens. */}
           <ThemedText type="caption" themeColor="textSecondary">
-            WHO YOU SEE, AND WHO SEES YOU
+            Who you see, and who sees you
           </ThemedText>
           <ThemedText type="headline">{AUDIENCE_LABEL[audience]}</ThemedText>
         </View>

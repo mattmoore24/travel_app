@@ -64,7 +64,7 @@ describe('ProfileView with no photo', () => {
 
   it('offers nothing to reply to when there is no photo', () => {
     renderProfile({ onRespondTo: jest.fn() });
-    expect(screen.queryByLabelText('Reply to this photo')).toBeNull();
+    expect(screen.queryByLabelText('Say hi about this photo')).toBeNull();
   });
 });
 
@@ -87,9 +87,9 @@ describe('ProfileView with a photo', () => {
     expect(screen.queryByLabelText('Add a photo')).toBeNull();
   });
 
-  it('lets a visitor reply to the photo', () => {
+  it('lets a visitor say hi about the photo', () => {
     renderProfile({ photos: [photo], onRespondTo: jest.fn() });
-    expect(screen.getByLabelText('Reply to this photo')).toBeTruthy();
+    expect(screen.getByLabelText('Say hi about this photo')).toBeTruthy();
   });
 });
 

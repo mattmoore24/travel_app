@@ -5,6 +5,7 @@ import {
   footerAnchor,
   parseAnchor,
 } from '@/features/chat/anchors';
+import { ELEMENT_OPTIONS } from '@/app/compose-request';
 
 describe('parseAnchor', () => {
   it('reads every anchor the composer can emit', () => {
@@ -13,11 +14,31 @@ describe('parseAnchor', () => {
     expect(parseAnchor('languages')).toEqual({ kind: 'languages' });
     expect(parseAnchor('home')).toEqual({ kind: 'home' });
     expect(parseAnchor('bio')).toEqual({ kind: 'bio' });
+    expect(parseAnchor('priority')).toEqual({ kind: 'priority' });
+    expect(parseAnchor('priority:2')).toEqual({ kind: 'priority' });
     expect(parseAnchor('prompt:always_pack')).toEqual({
       kind: 'prompt',
       promptKey: 'always_pack',
     });
     expect(parseAnchor('pin:Rooftop bar')).toEqual({ kind: 'pin', venue: 'Rooftop bar' });
+  });
+
+  // The title above says "every anchor the composer can emit" and used to
+  // assert a completeness that was false: the composer offered 'priority'
+  // while the parser fell through to 'bio' for it, so a hello about a plan
+  // was announced as being about a bio the person may not even have. This
+  // reads the composer's own option list, so a new chip value with no branch
+  // fails here rather than shipping as a silent misattribution.
+  it('never reads a composer option as the bio fallback', () => {
+    for (const option of ELEMENT_OPTIONS) {
+      if (option.value === 'bio') {
+        continue;
+      }
+      expect({ value: option.value, kind: parseAnchor(option.value).kind }).not.toEqual({
+        value: option.value,
+        kind: 'bio',
+      });
+    }
   });
 
   it('falls back to the bio for anything it does not recognise', () => {
@@ -52,6 +73,11 @@ describe('anchorStartedFrom', () => {
     expect(anchorStartedFrom('pin:Rooftop bar', 'Theo')).toBe('Started from a pin at Rooftop bar');
     expect(anchorStartedFrom('pin:', 'Theo')).toBe('Started from a pin');
   });
+
+  it('names the list for a priority, which used to be announced as the bio', () => {
+    expect(anchorStartedFrom('priority', 'Theo')).toBe("Started from something on Theo's list");
+    expect(anchorStartedFrom('priority:2', null)).toBe('Started from something on their list');
+  });
 });
 
 describe('anchorAboutYours', () => {
@@ -71,6 +97,11 @@ describe('anchorAboutYours', () => {
   it('falls back to the bio, same as the other renderer', () => {
     expect(anchorAboutYours('constellation')).toBe('your bio');
   });
+
+  it('says the list for a priority, never the bio', () => {
+    expect(anchorAboutYours('priority')).toBe('something on your list');
+    expect(anchorAboutYours('priority:4')).toBe('something on your list');
+  });
 });
 
 describe('anchorTheyStartedFrom', () => {
@@ -79,6 +110,7 @@ describe('anchorTheyStartedFrom', () => {
     expect(anchorTheyStartedFrom('trip')).toBe('Started from your travel plans');
     expect(anchorTheyStartedFrom('home')).toBe('Started from where you are from');
     expect(anchorTheyStartedFrom('pin:Rooftop bar')).toBe('Started from your pin at Rooftop bar');
+    expect(anchorTheyStartedFrom('priority:1')).toBe('Started from something on your list');
   });
 });
 

@@ -59,6 +59,13 @@ describe('priorityPlaceholder', () => {
     expect(priorityPlaceholder(MAX_PRIORITIES)).toBe(priorityPlaceholder(0));
   });
 
+  // The first placeholder is what every account sees, whoever they are and
+  // wherever they are going, so it cannot name a city. "day trip to Sintra"
+  // sat at index 0 and was photographed on a Bangkok-only account.
+  it('leads with a city-neutral example', () => {
+    expect(priorityPlaceholder(0)).toBe('rooftop for the sunset');
+  });
+
   // Placeholders are shown inside a field capped at PRIORITY_MAX, so one
   // that could not itself be typed would be an example of the wrong thing.
   it('only suggests entries that would themselves pass', () => {

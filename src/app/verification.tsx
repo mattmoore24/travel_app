@@ -75,7 +75,13 @@ export default function VerificationScreen() {
     try {
       await submit.mutateAsync(selfieUri);
       haptics.success();
-      Alert.alert('Selfie submitted', 'Your badge shows up once it clears.');
+      // "A few minutes" matches the in-review card below; the worker runs
+      // every minute (schedule_workers.sql) plus the vision check, so do not
+      // promise less.
+      Alert.alert(
+        'Selfie sent',
+        'We check it in a few minutes. Your badge appears on your profile as soon as it passes.'
+      );
       router.back();
     } catch {
       // Surfaced by the global mutation error alert; stay on the screen.
@@ -93,7 +99,7 @@ export default function VerificationScreen() {
   return (
     <StepScreen
       title="Get your badge"
-      subtitle="One selfie, taken right now. It proves your photos are you. Nobody sees it, and we delete it after the check. No ID needed."
+      subtitle="One selfie, taken right now. It proves your photos are you. Nobody sees it, and we delete it after the check. No ID needed. It also unlocks who can see you, so you can choose verified travelers only, or verified women only."
       continueLabel={continueLabel}
       continueLoading={submit.isPending}
       // Without this the first-run state's only button says "Take a selfie",
@@ -114,7 +120,7 @@ export default function VerificationScreen() {
         </ThemedView>
       ) : pending ? (
         <ThemedView type="backgroundElement" style={styles.card}>
-          <ThemedText type="smallBold">Selfie in review</ThemedText>
+          <ThemedText type="smallBold">Checking your selfie</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             Usually takes a few minutes.
           </ThemedText>

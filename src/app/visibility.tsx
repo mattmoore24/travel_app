@@ -37,11 +37,20 @@ export default function VisibilityScreen() {
       subtitle={AUDIENCE_BOTH_WAYS}
       continueLabel="Done"
       onContinue={() => router.back()}>
+      {/* ABOVE the rows, not below them. It used to render last, where the
+          StepScreen footer is a SIBLING of the scroll view — so the sentence
+          was clipped mid-word at the scroll viewport edge behind Done, and
+          no amount of bottom padding could fix a line the viewport cuts. */}
+      <ThemedText type="footnote" themeColor="textSecondary">
+        {AUDIENCE_GENDER_NOTE}
+      </ThemedText>
+
       <AudiencePicker
         value={audience}
         verified={verified}
         disabled={save.isPending}
         onChange={(next) => save.mutate(next)}
+        onLockedPress={() => router.push('/verification')}
       />
 
       {/* The consequence, said before it is discovered. A narrowed audience
@@ -69,14 +78,6 @@ export default function VisibilityScreen() {
           />
         </>
       )}
-
-      {/* Unconditional, and last: it explains rather than acts. The both-ways
-          rule used to live in here inside the `verified` branch, which hid it
-          from exactly the person deciding whether the badge is worth a
-          selfie. */}
-      <ThemedText type="footnote" themeColor="textSecondary">
-        {AUDIENCE_GENDER_NOTE}
-      </ThemedText>
     </StepScreen>
   );
 }

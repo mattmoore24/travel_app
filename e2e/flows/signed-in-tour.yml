@@ -171,6 +171,16 @@ appId: com.mattmoore.samewhere
     timeout: 3000
 - assertVisible: 'Say hi'
 - assertVisible: '(Last one for now|One more on your dates in .*|[0-9]+ more on your dates in .*)'
+# ONE VERB FOR SAYING HI. The chip beside 'Travel plans' prints 'About this'
+# now, not 'Reply' — but a Pressable carrying its own accessibilityLabel
+# hides its printed text from Maestro (see traps), so what is asserted is
+# the spoken label, which carries the same verb.
+- scrollUntilVisible:
+    element:
+      text: 'About this. Say hi about their travel plans.'
+    direction: DOWN
+    timeout: 10000
+- assertVisible: 'About this. Say hi about their travel plans.'
 # A PASS IS RECOVERABLE. Tap the Next pill (its spoken label — the pill's own
 # accessibilityLabel hides the printed word from Maestro, see traps) and the
 # undo bar names who was moved past. The name depends on live supply, so the
@@ -226,6 +236,20 @@ appId: com.mattmoore.samewhere
     visible: 'Verified non-binary.*'
     timeout: 15000
 - takeScreenshot: 18b-who-can-see-you
+# A LOCKED ROW IS A DOOR, NOT A DEAD END. This account is unverified, so
+# 'Verified women' cannot be picked — tapping it must open verification
+# rather than swallow the tap, which is what the dimmed rows used to do.
+# The label pattern closes over the appended '. Needs the verified badge.
+# Opens verification.' suffix.
+- tapOn: 'Verified women.*'
+- extendedWaitUntil:
+    visible: 'Get your badge'
+    timeout: 15000
+- takeScreenshot: 18c-get-your-badge
+- tapOn: 'Close'
+- extendedWaitUntil:
+    visible: 'Verified non-binary.*'
+    timeout: 15000
 - tapOn: 'Done'
 
 # HOUSE RULES AND THE CONTACT FORM

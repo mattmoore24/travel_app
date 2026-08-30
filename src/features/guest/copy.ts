@@ -11,6 +11,17 @@ import { countOf, isAre } from '@/lib/plural';
  * arrive).
  */
 
+/**
+ * The 30-day sweep, stated once as a fact. The rule is real and lives in
+ * `stale_guest_ids` (20260823060000_guests_can_chat.sql: anonymous, 30 days
+ * old, no live membership, nothing said in 30 days) and the guest-janitor
+ * worker, whose delete cascades to the guest's messages. One sentence, no
+ * countdown and no nag — the screen it sits on is meant to convert, not
+ * threaten.
+ */
+export const GUEST_SWEEP_LINE =
+  'Guest names and chats are removed after a month without use. A profile keeps them.';
+
 /** The sign-up card's reason line. */
 export function guestGateReason(
   featuredName: string | null | undefined,

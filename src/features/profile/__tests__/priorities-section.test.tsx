@@ -65,6 +65,21 @@ describe('Top priorities on somebody else', () => {
     });
   });
 
+  // WCAG 2.5.3: the chip in the section header displays "I'm in", so its
+  // spoken name must contain those words — it used to display 'Reply' while
+  // announcing "Say you're in", a name the button never showed.
+  it("names the header chip I'm in, out loud and in print", () => {
+    const onRespondTo = jest.fn();
+    renderProfile({ priorities: LIST, onRespondTo });
+    expect(screen.getByText("I'm in")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("I'm in. day trip to Sintra."));
+    expect(onRespondTo).toHaveBeenCalledWith({
+      key: 'priority',
+      label: 'something on their list',
+      quote: 'day trip to Sintra',
+    });
+  });
+
   it('says nothing at all when the list is empty', () => {
     renderProfile({ priorities: [] });
     expect(screen.queryByText('Top priorities')).toBeNull();

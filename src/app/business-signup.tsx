@@ -805,8 +805,10 @@ export default function BusinessSignupScreen() {
       onBack={() => go(11)}
       onContinue={sendCode}>
       <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
+        {/* Title case, matching the app-wide retirement of all-caps labels
+            (DESIGN.md). */}
         <ThemedText type="caption" themeColor="textSecondary">
-          SENDING IT TO
+          Sending it to
         </ThemedText>
         <ThemedText type="headline">{email.trim()}</ThemedText>
       </View>

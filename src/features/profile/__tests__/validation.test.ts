@@ -27,6 +27,18 @@ describe('profile validation (client mirror of DB CHECK constraints)', () => {
     expect(validateBio('x'.repeat(501))).not.toBeNull();
   });
 
+  // The DB counts codepoints (`char_length`); a JS string's .length counts
+  // UTF-16 units, where an emoji costs 2. The client must pass everything
+  // the DB would pass, or an emoji writer is cut off at 250 and told 500.
+  it('counts codepoints, matching char_length, so emoji cost 1 not 2', () => {
+    expect(validateBio('🌍'.repeat(500))).toBeNull();
+    expect(validateBio('🌍'.repeat(501))).not.toBeNull();
+    // Non-BMP CJK (𠀀 is U+20000, .length 2, char_length 1).
+    expect(validateBio('𠀀'.repeat(500))).toBeNull();
+    expect(validateDisplayName('🌍'.repeat(50))).toBeNull();
+    expect(validateDisplayName('🌍'.repeat(51))).not.toBeNull();
+  });
+
   it('normalizes handles the way they are stored (bare, lowercase)', () => {
     expect(normalizeHandle('@Alice.Travels ')).toBe('alice.travels');
     expect(normalizeHandle('@@double')).toBe('double');

@@ -22,9 +22,18 @@ import { haptics } from '@/lib/haptics';
 
 const MESSAGE_MAX = 500;
 
+/**
+ * Codepoints, the way the DB's `char_length` check counts (an emoji is 1
+ * here and 2 in `.length`), so the counter and the cap agree with the row
+ * constraint on message_requests.
+ */
+const messageLength = (value: string) => [...value].length;
+
 // Hinge-style: the first message is anchored to something specific on the
 // recipient's profile, and it clears moderation before it can be delivered.
-const ELEMENT_OPTIONS = [
+// Exported for the anchors test's completeness guard: every value here must
+// parse to its own anchor kind, never fall through to 'bio'.
+export const ELEMENT_OPTIONS = [
   // The dates you share come first: it is the fact that put the two of you
   // in front of each other, and it is the one anchor that always exists.
   { value: 'trip', label: 'Your dates together' },
@@ -56,7 +65,10 @@ export default function ComposeRequestScreen() {
   const sendRequest = useSendRequest();
 
   const source = params.source === 'pin' ? ('pin' as const) : ('trip_match' as const);
-  const [element, setElement] = useState<string>(params.element ?? 'bio');
+  // 'trip', not 'bio': the dates you share are the one anchor that always
+  // exists (see ELEMENT_OPTIONS above), while defaulting to a bio claimed a
+  // hello came from a field the recipient may never have filled in.
+  const [element, setElement] = useState<string>(params.element ?? 'trip');
   const [message, setMessage] = useState(params.draft ?? '');
   const [blockedNotice, setBlockedNotice] = useState(false);
   // The exact text the server refused. The quiet finish-line card below may
@@ -214,7 +226,7 @@ export default function ComposeRequestScreen() {
         title={`Say hi to ${params.name ?? 'this traveler'}`}
         subtitle="They see this and your profile. If they reply, your chat opens."
         continueLabel="Send"
-        continueDisabled={message.trim().length === 0 || message.length > MESSAGE_MAX}
+        continueDisabled={message.trim().length === 0 || messageLength(message) > MESSAGE_MAX}
         continueLoading={sendRequest.isPending}
         onContinue={submit}>
         <View style={styles.recipientRow}>
@@ -232,7 +244,7 @@ export default function ComposeRequestScreen() {
           </ThemedText>
         ) : pickingElement ? (
           <>
-            <ThemedText type="smallBold">What are you replying to?</ThemedText>
+            <ThemedText type="smallBold">What are you saying hi about?</ThemedText>
             <ChipRow
               options={ELEMENT_OPTIONS}
               selected={[element]}
@@ -250,7 +262,7 @@ export default function ComposeRequestScreen() {
             ) : null}
             <View style={styles.targetText}>
               <ThemedText type="caption" themeColor="textSecondary">
-                Replying to {params.targetLabel ?? ''}
+                Saying hi about {params.targetLabel ?? ''}
               </ThemedText>
               {params.targetQuote ? (
                 <ThemedText type="small" numberOfLines={3}>
@@ -260,7 +272,7 @@ export default function ComposeRequestScreen() {
             </View>
             <PressableScale
               accessibilityRole="button"
-              accessibilityLabel="Reply to something else"
+              accessibilityLabel="Say hi about something else"
               haptic="light"
               scaleTo={0.94}
               onPress={() => setPickingElement(true)}>
@@ -286,7 +298,7 @@ export default function ComposeRequestScreen() {
         />
         <View style={styles.countRow}>
           <ThemedText type="small" themeColor="textSecondary">
-            {message.length}/{MESSAGE_MAX}
+            {messageLength(message)}/{MESSAGE_MAX}
           </ThemedText>
           {/* Shown only near the limit. Every hello is capped, but a person on
             their second of eight does not need to be told about it. */}

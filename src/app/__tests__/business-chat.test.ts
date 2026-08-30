@@ -175,7 +175,7 @@ describe('the room a business runs', () => {
     const code = src(ROOM);
     const guard = code.indexOf(') : viewerIsBusiness ? (');
     const question = code.indexOf('When do you check out?');
-    const picker = code.indexOf('CHECKING OUT');
+    const picker = code.indexOf('Checking out');
     const join = code.indexOf('label="Join this room"');
     expect(guard).toBeGreaterThan(-1);
     // All three are downstream of the branch that turns a business away.

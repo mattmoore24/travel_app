@@ -15,6 +15,12 @@ import Animated, { FadeIn, FadeInDown, FadeOutDown } from 'react-native-reanimat
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AvatarButton } from '@/components/ui/avatar-button';
+import {
+  ACTION_BUTTON,
+  BAR_SCALE_CAP,
+  DockedActionBar,
+  dockedActionBarHeight,
+} from '@/components/ui/docked-action-bar';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -461,116 +467,68 @@ function TravelerPage({
         />
       </ScrollView>
 
-      {/* The bar floats over a scrolling photo-and-text page, so it needs a
-          ground of its own or the words behind it compete with the words on
-          it. Two inert layers: a SOLID plate exactly as tall as the bar, and
-          a short ramp fading down to it from above. The single gradient this
-          replaces reached full opacity 55% of the way down its own height,
-          which landed roughly 60pt below the top of the buttons — so the
-          whole button row sat on a half-transparent wash and another trip's
-          dates read through beside the primary action. */}
-      <View
-        style={[
-          styles.actionBackdrop,
-          { height: actionBarHeight(insets.bottom), backgroundColor: theme.background },
-        ]}
-        pointerEvents="none"
+      {/* The floating action bar, extracted to components/ui/docked-action-bar
+          so the map's pin-reached profile docks the same chrome. The plate,
+          the ramp, and the hit-testing rules all live there now. */}
+      <DockedActionBar
+        bottomInset={tabDockBottom(insets.bottom)}
+        // PrimaryButton renders disabled as a surfaceSunken fill with a
+        // textSecondary label (8.2:1), not a fade, so "No hellos left
+        // today" stays legible while it says not-now. Opening an existing
+        // chat is not a hello, so the cap never touches that state.
+        primaryLabel={
+          chatId
+            ? 'Open chat'
+            : requested
+              ? 'Message sent'
+              : helloCapped
+                ? 'No hellos left today'
+                : 'Say hi'
+        }
+        disabled={!chatId && (requested || helloCapped)}
+        onPrimary={onSayHi}
+        secondary={
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Next traveler"
+            haptic="light"
+            scaleTo={0.94}
+            onPress={onNext}
+            style={[
+              styles.nextButton,
+              // `border`, not `hairline`: this is an edge a user must see on a
+              // control, and hairline is the token the theme reserves for
+              // decorative dividers (1.41:1 here).
+              { backgroundColor: theme.surfaceSunken, borderColor: theme.border },
+            ]}>
+            <SymbolView
+              name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }}
+              size={18}
+              tintColor={theme.text}
+            />
+            <ThemedText
+              type="caption"
+              themeColor="textSecondary"
+              maxFontSizeMultiplier={BAR_SCALE_CAP}>
+              Next
+            </ThemedText>
+          </PressableScale>
+        }
       />
-      <LinearGradient
-        colors={['transparent', theme.background]}
-        locations={[0, 1]}
-        style={[
-          styles.actionRamp,
-          { height: ACTION_BAR_RAMP, bottom: actionBarHeight(insets.bottom) },
-        ]}
-        pointerEvents="none"
-      />
-      <View
-        style={[styles.actionBar, { paddingBottom: tabDockBottom(insets.bottom) }]}
-        pointerEvents="box-none">
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel="Next traveler"
-          haptic="light"
-          scaleTo={0.94}
-          onPress={onNext}
-          style={[
-            styles.nextButton,
-            // `border`, not `hairline`: this is an edge a user must see on a
-            // control, and hairline is the token the theme reserves for
-            // decorative dividers (1.41:1 here).
-            { backgroundColor: theme.surfaceSunken, borderColor: theme.border },
-          ]}>
-          <SymbolView
-            name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }}
-            size={18}
-            tintColor={theme.text}
-          />
-          <ThemedText
-            type="caption"
-            themeColor="textSecondary"
-            maxFontSizeMultiplier={BAR_SCALE_CAP}>
-            Next
-          </ThemedText>
-        </PressableScale>
-        <View style={styles.sayHiWrap}>
-          {/* PrimaryButton renders disabled as a surfaceSunken fill with a
-              textSecondary label (8.2:1), not a fade, so "No hellos left
-              today" stays legible while it says not-now. Opening an existing
-              chat is not a hello, so the cap never touches that state. */}
-          <PrimaryButton
-            label={
-              chatId
-                ? 'Open chat'
-                : requested
-                  ? 'Message sent'
-                  : helloCapped
-                    ? 'No hellos left today'
-                    : 'Say hi'
-            }
-            disabled={!chatId && (requested || helloCapped)}
-            maxFontSizeMultiplier={BAR_SCALE_CAP}
-            onPress={onSayHi}
-          />
-        </View>
-      </View>
     </View>
   );
 }
 
 /**
- * Dynamic Type cap for the two labels inside the action bar, same value as
- * the message menu's ACTION_SCALE_CAP: the bar's height is the constant
- * actionBarHeight() builds on, so an uncapped label outgrows the 52pt
- * buttons and lifts them off the opaque plate onto the translucent ramp,
- * the exact defect this bar exists to prevent.
- */
-const BAR_SCALE_CAP = 1.4;
-
-/** The Say hi button's height, and the Next pill's. */
-export const ACTION_BUTTON = 52;
-
-/**
- * How tall the bar actually is — and therefore how tall its opaque plate is
- * and where the scroll clearance comes from. The backdrop used to be given a
- * magic clearance constant instead, which is 30pt taller — so the fade
- * started a line and a half ABOVE the bar and dissolved whatever was there.
- * On a traveler with one trip that is exactly where "Both there Aug 23 - 28"
- * lands: the one fact that explains why this person is on your screen,
- * sliced in half at rest (run 44). Scrolling recovered it; nothing told you
- * to scroll.
- *
- * Defined ON tabDockBottom so this bar and the Map's "Drop a pin" pill can
- * never again sit at two heights on one phone (the old expression halved the
- * safe-area inset, a 17pt drift).
+ * How tall the bar actually is — and therefore where the scroll clearance
+ * comes from. Defined ON tabDockBottom so this bar and the Map's "Drop a
+ * pin" pill can never again sit at two heights on one phone (the old
+ * expression halved the safe-area inset, a 17pt drift). The base formula
+ * lives with the bar in components/ui/docked-action-bar.
  */
 export function actionBarHeight(bottomInset: number) {
-  return Space.sm + ACTION_BUTTON + tabDockBottom(bottomInset);
+  return dockedActionBarHeight(tabDockBottom(bottomInset));
 }
-
-/** Ramp above the bar. Long enough to read as a fade, short enough that it
- *  starts at the bar rather than over the content. */
-const ACTION_BAR_RAMP = Space.xxl;
 
 /**
  * The way to your own profile, on this tab too.
@@ -939,7 +897,11 @@ export default function TravelersScreen() {
                       overlap.end
                     )}`,
                   }
-                : { key: 'bio', label: 'their bio' },
+                : // Still the trip, not the bio: both people are there by
+                  // definition of the match even when formatDateRange has no
+                  // computed overlap to quote — and a bio anchor claimed a
+                  // hello came from a field that may be empty.
+                  { key: 'trip', label: 'your dates together' },
             });
           }}
         />
@@ -1031,28 +993,6 @@ const styles = StyleSheet.create({
     gap: Space.md,
     paddingHorizontal: Space.lg,
   },
-  actionBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  actionRamp: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-  },
-  actionBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Space.md,
-    paddingHorizontal: Space.lg,
-    paddingTop: Space.sm,
-  },
   nextButton: {
     // A pill with a word on it, not an unlabelled arrow floating in space:
     // the circle it replaces was surfaceSunken on canvas (1.15:1) outlined
@@ -1066,9 +1006,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-  },
-  sayHiWrap: {
-    flex: 1,
   },
   undoDock: {
     position: 'absolute',

@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
@@ -25,6 +25,7 @@ import {
 import { AudienceCard } from '@/features/profile/audience-picker';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { useOwnBusiness } from '@/features/business/hooks';
+import { GUEST_SWEEP_LINE } from '@/features/guest/copy';
 import { useIsGuest, useIsGuestAccount } from '@/features/guest/hooks';
 import { useMyTrips } from '@/features/trips/hooks';
 import { useTheme } from '@/hooks/use-theme';
@@ -41,6 +42,7 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 function GuestProfile({ guestName }: { guestName: string | null }) {
   return (
     <ThemedView style={styles.root}>
+      <Stack.Screen options={{ headerTitle: 'Your profile' }} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.guestContent}>
         <View style={styles.guestHero}>
           <Image
@@ -65,10 +67,18 @@ function GuestProfile({ guestName }: { guestName: string | null }) {
           {guestName ? `${guestName}, you are in guest mode` : 'Browsing as a guest'}
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.guestText}>
+          {/* Verb-led, parallel with the anonymous line below it. The old
+              sentence ("A profile adds pins, trips and meeting people")
+              broke its own list halfway through. */}
           {guestName
-            ? 'Chats only for now. A profile adds pins, trips and meeting people, and your chats come with you.'
+            ? 'Chats only for now. With a profile you can drop pins, post trips and meet people, and your chats come with you.'
             : 'Say hi, drop pins, join the open chats. Takes a minute.'}
         </ThemedText>
+        {guestName ? (
+          <ThemedText themeColor="textSecondary" style={styles.guestText}>
+            {GUEST_SWEEP_LINE}
+          </ThemedText>
+        ) : null}
         {/* The founder's "click your own icon to change your name": the
             avatar in every header lands here, so this is that icon. */}
         {guestName ? (
@@ -79,13 +89,20 @@ function GuestProfile({ guestName }: { guestName: string | null }) {
           />
         ) : null}
         <PrimaryButton label="Make my profile" onPress={() => router.push('/join')} />
-        {guestName ? null : (
-          <PrimaryButton
-            variant="ghost"
-            label="I already have an account"
-            onPress={() => router.push('/email')}
-          />
-        )}
+        {/* The sign-in door renders for BOTH kinds of guest. It used to be
+            hidden from a named guest — exactly the person most likely to
+            remember mid-flow that their real account holds their trips and
+            chats — who was offered only making a second one. */}
+        {guestName ? (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.guestText}>
+            Signing in leaves this guest name behind. Making a profile brings your chats with you.
+          </ThemedText>
+        ) : null}
+        <PrimaryButton
+          variant="ghost"
+          label="I already have an account"
+          onPress={() => router.push('/email')}
+        />
         <PrimaryButton
           variant="ghost"
           label="House rules"
@@ -118,6 +135,7 @@ function BusinessAccount({ name }: { name: string | null }) {
 
   return (
     <ThemedView style={styles.root}>
+      <Stack.Screen options={{ headerTitle: 'Your profile' }} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.guestContent}>
         <ThemedText type="title" style={styles.guestText}>
           {name ?? 'Your account'}
@@ -263,7 +281,11 @@ export default function ProfileScreen() {
   }
 
   if (!profile) {
-    return <ThemedView style={styles.root} />;
+    return (
+      <ThemedView style={styles.root}>
+        <Stack.Screen options={{ headerTitle: 'Your profile' }} />
+      </ThemedView>
+    );
   }
 
   const profileTrips: ProfileTrip[] = trips.map((trip) => ({
@@ -276,6 +298,11 @@ export default function ProfileScreen() {
 
   return (
     <ThemedView style={styles.root}>
+      {/* Name the screen. The layout forces headerTitle '' (the bar is
+          shared with pages that draw their own title); 'Your profile' over
+          the person's own name because they know who they are — the value
+          of the bar is saying which screen this is. */}
+      <Stack.Screen options={{ headerTitle: 'Your profile' }} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.pageContent}>
         {/* First thing on the page, before the profile itself.
             Founder: "make the selection of which users you want to see and
@@ -488,5 +515,9 @@ const styles = StyleSheet.create({
   // The profile draws its own padding; the scroll view only adds the tail.
   pageContent: {
     paddingBottom: Space.xxxl,
+    // Air between the audience card and the identity band under it: in the
+    // same fill and flush, the setting read as part of the profile rather
+    // than as its own object.
+    gap: Space.md,
   },
 });

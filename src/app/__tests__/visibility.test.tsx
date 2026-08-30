@@ -69,7 +69,18 @@ describe('an unverified traveler', () => {
     fireEvent.press(row('Verified women'));
     expect(mockMutate).not.toHaveBeenCalled();
     expect(row('Verified women').props.accessibilityState.disabled).toBe(true);
-    expect(screen.getByText(/need the badge/i)).toBeTruthy();
+    expect(screen.getByText(/Get your badge and they turn on/i)).toBeTruthy();
+  });
+
+  // A locked row must never swallow the tap in silence. On this screen it
+  // opens verification — the door the row is locked behind — which the
+  // spoken label also announces.
+  it('is routed to verification by a tap on a locked row', () => {
+    const { router } = jest.requireMock('expo-router');
+    show();
+    fireEvent.press(row('Verified women'));
+    expect(router.push).toHaveBeenCalledWith('/verification');
+    expect(mockMutate).not.toHaveBeenCalled();
   });
 
   it('can still stay on the default without being blocked by its own rule', () => {

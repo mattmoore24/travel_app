@@ -51,6 +51,27 @@ appId: com.mattmoore.samewhere
 - takeScreenshot: 02-map-tab
 - tapOn: 'Travelers'
 - takeScreenshot: 03-travelers-guest
+# The guest account screen, through the header avatar. The sign-in door
+# ('I already have an account') now renders for BOTH kinds of guest; the
+# named-guest branch (the 30-day sweep line) needs a guest named through a
+# join-group invite link, which this suite cannot drive, so only the
+# anonymous branch is walked here.
+- tapOn: 'Your profile'
+- extendedWaitUntil:
+    visible: 'Browsing as a guest'
+    timeout: 15000
+- assertVisible: 'I already have an account'
+- takeScreenshot: 03a-guest-account
+# profile-me carries the default native header, so the system back chevron
+# is there and answers to its standard spoken label.
+# First tap on the native minimal back chevron anywhere in the suite: its
+# spoken label is expected to be 'Back' but is unverified on a device (run 28
+# once died on a back tap in the other flow). If this step fails, reset via
+# the tab bar instead of going back.
+- tapOn: 'Back'
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 10000
 - tapOn: 'Chat'
 # Same fade as the member Chat tab: wait it out or the shot is mid-fade.
 - waitForAnimationToEnd:

@@ -19,10 +19,14 @@ import {
 // finished typing wants neither.
 
 describe('KeyboardDoneBar', () => {
-  it('offers a labelled Done, not a bare glyph', () => {
+  // "Hide keyboard", not "Done": "Done" is the StepScreen commit vocabulary
+  // (continueLabel's default), and the priorities editor had both on screen
+  // at once, 68pt apart, doing different things.
+  it('offers a labelled Hide keyboard, not a bare glyph and not "Done"', () => {
     render(<KeyboardDoneBar />);
-    expect(screen.getByLabelText('Done editing')).toBeTruthy();
-    expect(screen.getByText('Done')).toBeTruthy();
+    expect(screen.getByLabelText('Hide keyboard')).toBeTruthy();
+    expect(screen.getByText('Hide keyboard')).toBeTruthy();
+    expect(screen.queryByText('Done')).toBeNull();
   });
 
   it('hands fields the id it registers under, so the two cannot drift', () => {

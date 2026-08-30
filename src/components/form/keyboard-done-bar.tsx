@@ -60,12 +60,15 @@ export function KeyboardDoneBar() {
       <View style={[styles.bar, { backgroundColor: theme.surface }]}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Done editing"
+          accessibilityLabel="Hide keyboard"
           hitSlop={10}
           // Blurs whatever is focused without needing a ref to it.
           onPress={() => Keyboard.dismiss()}>
+          {/* Not "Done": that word is reserved for controls that commit
+              (StepScreen's continueLabel), and this bar only puts the
+              keyboard away. */}
           <ThemedText type="smallBold" themeColor="accent">
-            Done
+            Hide keyboard
           </ThemedText>
         </Pressable>
       </View>

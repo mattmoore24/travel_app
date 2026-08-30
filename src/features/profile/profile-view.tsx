@@ -12,6 +12,7 @@ import {
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
+import { Skeleton } from '@/components/ui/skeleton';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { languageLabel } from '@/constants/languages';
@@ -68,10 +69,18 @@ function Photo({ path, style }: { path: string; style?: object }) {
 /** The affordance itself: a bubble you tap to answer one specific thing. */
 function ReplyButton({
   label,
+  text = 'About this',
   onPress,
   onPhoto = false,
 }: {
   label: string;
+  /**
+   * The visible chip text. Not 'Reply' — a stranger who has said nothing is
+   * not being replied to — and not 'Say hi' either: the primary on the same
+   * card already reads 'Say hi', and two differently-scoped controls must
+   * not carry identical text.
+   */
+  text?: string;
   onPress: () => void;
   /** Sitting on an image, where it needs its own ground to stay legible. */
   onPhoto?: boolean;
@@ -99,21 +108,22 @@ function ReplyButton({
       />
       {onPhoto ? null : (
         <ThemedText type="footnote" themeColor="accent">
-          Reply
+          {text}
         </ThemedText>
       )}
     </PressableScale>
   );
 }
 
-/** What "reply to this section" is called out loud, per section. */
+/** What "say hi about this section" is called out loud, per section. */
 const REPLY_LABELS: Record<string, string> = {
-  About: 'Reply to their bio',
-  Details: 'Reply to their details',
-  'Travel plans': 'Reply to their travel plans',
-  // Not "Reply to top priorities". The control names what the traveler is
-  // actually doing, and what they are doing is joining a plan.
-  'Top priorities': "Say you're in",
+  // The chip prints "About this", so the spoken name starts with it: Voice
+  // Control matches commands against the accessible name, and a visible
+  // label missing from it strands "tap About this" (WCAG 2.5.3) — the same
+  // rule the priorities chip follows with "I'm in".
+  About: 'About this. Say hi about their bio.',
+  Details: 'About this. Say hi about their details.',
+  'Travel plans': 'About this. Say hi about their travel plans.',
 };
 
 function SectionHeader({
@@ -121,12 +131,18 @@ function SectionHeader({
   icon,
   onEdit,
   onReply,
+  replyText,
+  replyLabel,
 }: {
   title: string;
   icon: SymbolViewProps['name'];
   onEdit?: () => void;
   /** Visitors get this where the owner gets Edit; never both. */
   onReply?: () => void;
+  /** Overrides the chip's visible text (default 'About this'). */
+  replyText?: string;
+  /** Overrides the spoken label. Must contain the visible text (WCAG 2.5.3). */
+  replyLabel?: string;
 }) {
   const theme = useTheme();
   return (
@@ -153,10 +169,13 @@ function SectionHeader({
         </PressableScale>
       ) : onReply ? (
         <ReplyButton
-          // Not `Reply to their ${title.toLowerCase()}`: that produced "Reply
-          // to their about", which is not a sentence. The section names read
-          // as things in some cases and not others, so they are mapped.
-          label={REPLY_LABELS[title] ?? `Reply to ${title.toLowerCase()}`}
+          // Not `Say hi about their ${title.toLowerCase()}`: that produced
+          // "about their about", which is not a sentence. The section names
+          // read as things in some cases and not others, so they are mapped.
+          label={
+            replyLabel ?? REPLY_LABELS[title] ?? `About this. Say hi about ${title.toLowerCase()}.`
+          }
+          text={replyText}
           onPress={onReply}
         />
       ) : null}
@@ -202,6 +221,11 @@ function PrioritiesSection({
         title="Top priorities"
         icon={{ ios: 'list.star', android: 'checklist', web: 'checklist' }}
         onEdit={owner && onEdit ? () => onEdit(null) : undefined}
+        // "I'm in", because joining a plan is what the tap does — and the
+        // spoken label carries the same words, so what VoiceOver announces
+        // is the name the chip displays (WCAG 2.5.3).
+        replyText="I'm in"
+        replyLabel={priorities.length > 0 ? `I'm in. ${priorities[0].text}.` : undefined}
         onReply={
           onRespondTo && priorities.length > 0
             ? () =>
@@ -327,7 +351,7 @@ function PromptCard({
           </PressableScale>
         ) : onRespondTo ? (
           <ReplyButton
-            label={`Reply to "${promptLabelInline(prompt.prompt_key)}"`}
+            label={`Say hi about "${promptLabelInline(prompt.prompt_key)}"`}
             onPress={() =>
               onRespondTo({
                 key: `prompt:${prompt.prompt_key}`,
@@ -364,7 +388,7 @@ function WovenPhoto({
       {onRespondTo ? (
         <ReplyButton
           onPhoto
-          label={`Reply to photo ${index + 2}`}
+          label={`Say hi about photo ${index + 2}`}
           onPress={() =>
             onRespondTo({
               key: `photo:${photo.position}`,
@@ -382,6 +406,7 @@ function WovenPhoto({
 function TripsSection({
   trips,
   owner,
+  pending = false,
   heroOverlapTripId,
   onEditTrip,
   onAddTrip,
@@ -389,6 +414,8 @@ function TripsSection({
 }: {
   trips: ProfileTrip[];
   owner: boolean;
+  /** The trips query has not answered (still in flight, or failed). */
+  pending?: boolean;
   /** The trip whose overlap window the hero already carries, if any. */
   heroOverlapTripId?: string;
   onEditTrip: (trip: ProfileTrip) => void;
@@ -404,7 +431,12 @@ function TripsSection({
         onReply={onReply}
         icon={{ ios: 'airplane', android: 'flight', web: 'flight' }}
       />
-      {trips.length === 0 ? (
+      {trips.length === 0 && pending ? (
+        // A fetch that failed (or has not landed) must never be rendered as
+        // an absence: "No trips yet." on a real person's page is the one
+        // thing that makes them look like a fake one.
+        <Skeleton height={72} radius={Radius.lg} />
+      ) : trips.length === 0 ? (
         <View style={[styles.emptyTrips, { backgroundColor: theme.surfaceSunken }]}>
           <ThemedText themeColor="textSecondary">
             {owner ? "Add a trip and you'll see who else is there." : 'No trips yet.'}
@@ -648,6 +680,7 @@ export function ProfileView({
   trips,
   handles,
   photosPending = false,
+  tripsPending = false,
   owner,
   connected = false,
   actions,
@@ -674,6 +707,12 @@ export function ProfileView({
    * screen already did before the band existed.
    */
   photosPending?: boolean;
+  /**
+   * The trips query has not answered yet, or failed. Same rule as photos: a
+   * failed fetch must never render as "No trips yet." — an absence this page
+   * cannot actually claim.
+   */
+  tripsPending?: boolean;
   trips: ProfileTrip[];
   handles: SocialHandleRow[];
   owner: boolean;
@@ -799,7 +838,7 @@ export function ProfileView({
             {onRespondTo && main ? (
               <ReplyButton
                 onPhoto
-                label="Reply to this photo"
+                label="Say hi about this photo"
                 onPress={() =>
                   onRespondTo({
                     key: 'photo:0',
@@ -864,6 +903,7 @@ export function ProfileView({
           <TripsSection
             trips={trips}
             owner={owner}
+            pending={tripsPending}
             heroOverlapTripId={overlapTrip?.id}
             onEditTrip={(trip) =>
               setEditingTrip({

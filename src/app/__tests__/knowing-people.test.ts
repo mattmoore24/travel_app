@@ -78,8 +78,10 @@ describe('messaging somebody you already share a chat with', () => {
   });
 
   it('drops the say-hi bubbles once you share a group, not only once connected', () => {
-    // They are a slower way to open a conversation you can already have.
-    expect(profile).toContain('known || !userId');
+    // They are a slower way to open a conversation you can already have —
+    // and once a hello is already on its way, every bubble would route into
+    // the same unique-constraint refusal.
+    expect(profile).toContain('known || alreadySaidHi || !userId');
   });
 });
 

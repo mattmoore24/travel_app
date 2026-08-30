@@ -84,7 +84,7 @@ import {
 } from '@/features/pins/filters';
 import { crewLabel } from '@/features/pins/crew';
 import { FilterButton, MapFilterSheet } from '@/features/pins/map-filter-sheet';
-import { useMyChats } from '@/features/matching/hooks';
+import { useMyChats, useSentRequests, useFirstMessageBudget } from '@/features/matching/hooks';
 import { useOwnUserId, useOwnVisibility, usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
@@ -111,6 +111,11 @@ function PinCard({
    */
   onNeedsAccount: () => void;
 }) {
+  // The same cap the Travelers bar and the stranger profile render:
+  // identical chrome must not offer a live "Say hi" the composer would
+  // immediately full-stop.
+  const budget = useFirstMessageBudget();
+  const helloCapped = budget.data != null && budget.data.used >= budget.data.allowed;
   const theme = useTheme();
   const ownUserId = useOwnUserId();
   const { data: photoUrl } = usePhotoUrl(pin.photo_path);
@@ -125,6 +130,13 @@ function PinCard({
   // A business never joins a plan. The map is not that for them.
   const viewerIsBusiness = useIsBusiness();
   const { data: chats = [] } = useMyChats();
+  // Whether a hello to this pinner is already on its way. 'sent' also covers
+  // pending moderation and a silent decline, so the button never routes into
+  // the unique-constraint refusal that destroys the message.
+  const { data: sentRequests = [] } = useSentRequests();
+  const alreadySaidHi =
+    pin.user_id != null &&
+    sentRequests.some((r) => r.recipient_id === pin.user_id && r.state === 'sent');
   const openToJoin = pin.chat_id != null;
   const alreadyIn = openToJoin && chats.some((chat) => chat.chat_id === pin.chat_id);
   // pin_crew is granted to `authenticated` only — a guest account included,
@@ -443,10 +455,22 @@ function PinCard({
               This is how travelers meet each other. When one wants to reach you, they message your
               business and it arrives in your Chat tab.
             </ThemedText>
+          ) : alreadySaidHi ? (
+            // The same not-now rendering the Travelers bar uses: a colour
+            // change (surfaceSunken fill, textSecondary label), never a
+            // fade, and never a live button that routes into the
+            // unique-constraint rejection.
+            <>
+              <PrimaryButton label="Message sent" disabled onPress={() => {}} />
+              <ThemedText type="footnote" themeColor="textSecondary" style={styles.joinNote}>
+                You said hi. It&apos;ll be in Chat if they answer.
+              </ThemedText>
+            </>
           ) : (
             <>
               <PrimaryButton
-                label="Say hi"
+                label={helloCapped ? 'No hellos left today' : 'Say hi'}
+                disabled={helloCapped}
                 onPress={() =>
                   leaveThen(() =>
                     router.push({
