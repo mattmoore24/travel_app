@@ -944,6 +944,57 @@ and the policy has to change with it.
   owner and no block either way — not on overlap. Upcoming trips are part of a
   profile; finished ones are private.
 
+## The URL space the app claims (2026-08-30)
+
+`ios.associatedDomains: ["applinks:link.samewhere.io"]` means iOS hands the
+app every path the association file declares, for the life of every install.
+expo-router registers `prefixes: []`, has no `getStateFromPath`, no
+`+native-intent`, and route groups compile to optional segments — so an https
+URL is reduced to a bare path and matched against `src/app` with NO host
+check. The association file is the only gate, and an unmatched path lands on
+`+not-found`.
+
+So the two lists must agree, and there is a test that says so
+(`src/app/__tests__/invite-links.test.ts`):
+
+| Declared | Route                                                        | Page               |
+| -------- | ------------------------------------------------------------ | ------------------ |
+| `/i/*`   | `src/app/i/[token].tsx` (the join-group screen, re-exported) | `web/i/index.html` |
+
+The route re-exports the join screen rather than redirecting to it: a
+`router.replace` from a focus effect is exactly the navigation the root hold
+loses when it unmounts the stack (src/features/auth/routing.ts), and a route
+that IS the destination cannot be lost that way. `src/app/i/index.tsx`
+answers the bare `/i`, which `/i/*` also matches and a dynamic segment does
+not.
+
+`/b/*`, `/c/*` and `/u/*` were declared ahead of their features and dropped
+before the first build claimed the domain. Adding one later is an AASA edit
+plus a JS route — an over-the-air update, never a new build — so nothing was
+lost. `/u/*` also stays out until the §7 rule 4 question is answered: a
+public profile page may never render social handles.
+
+`/reset*` is deliberately absent. `PASSWORD_RESET_REDIRECT` is
+`samewhere://reset-password`, so Supabase's `/auth/v1/verify` 302 hands the
+tokens straight to the app; `link.samewhere.io/reset` is not on that path at
+all. Declaring it would only fire for a forwarded URL or a link-rewriting
+mail gateway, and there it would replace a working Safari bounce with a
+burned single-use token. `parseRecoveryLink` is widened to recognise the
+hosted `/reset` spelling anyway, as the net under exactly that window — a
+stale association file on Apple's CDN, a forwarded mail — so a token that
+does arrive that way is spent on a working reset instead of on +not-found.
+
+`applinks:` is iOS only. Android needs its own two pieces before an invite
+can open the app there: `web/.well-known/assetlinks.json` naming the release
+signing certificate's SHA-256 fingerprint, and `android.intentFilters` in
+`app.json` (`{"action": "VIEW", "autoVerify": true, "data": [{"scheme":
+"https", "host": "link.samewhere.io", "pathPrefix": "/i/"}], "category":
+["BROWSABLE", "DEFAULT"]}`). Until both exist, an Android invite opens
+Chrome and the only way in is the "Open in Samewhere" anchor on
+web/i/index.html — the paste fallback does not help there either, because
+`Alert.prompt` is iOS-only and the Android branch shows an alert with no
+input.
+
 ## Technical flags (raised to founder, non-blocking)
 
 1. **`expo-router/unstable-native-tabs`** — the native tabs API is new in the SDK 5x line and

@@ -210,14 +210,21 @@ existing inbox for free, and forwarding is fine for launch.
    environment for builds. The update workflows now pass them; a publish without
    the key warns in the run summary rather than failing, because analytics being
    absent must never block shipping a fix.
-6. **Hosting.** Serve [`web/`](../web/README.md) at `samewhere.io`. The
-   `apple-app-site-association` file needs the real Apple Team ID substituted
-   before it does anything.
-7. **Then the app:** `associatedDomains` in `app.json`, flip
-   `UNIVERSAL_LINKS_LIVE` in `src/constants/links.ts`, add
-   `https://samewhere.io/reset` to Supabase's Auth redirect allowlist, and spend
-   an EAS build. Not before the AASA file is live: doing it early replaces a
-   reset link that works on the phone with one that opens Safari and 404s.
+6. **Hosting.** DONE: [`web/`](../web/README.md) is served at
+   `link.samewhere.io` — the subdomain, not the apex, which stays on
+   Squarespace with the Workspace mail records. The association file is live
+   and verified: 200, `application/json`, zero redirects, real Team ID.
+7. **Then the app:** DONE in code — `ios.associatedDomains:
+["applinks:link.samewhere.io"]` in `app.json` AND the route
+   `src/app/i/[token].tsx`, in one commit. The route is not optional: a
+   declared path with no route opens the app on +not-found, which is worse
+   than the Safari page it replaced. What remains is the EAS build, and
+   before submitting it, the Apple CDN check in web/README.md §3. Leave
+   `UNIVERSAL_LINKS_LIVE` **false** — the reset link already reaches the app
+   through Supabase's own 302 to `samewhere://reset-password`, the allowlist
+   holds both spellings, and the association file deliberately does not claim
+   `/reset*`. See the header of `src/constants/links.ts` for the four things
+   that have to be true before that flag can move.
 
 Proof for step 2: sign up a business on an address that is **not** the Resend
 account's own and confirm the code arrives, then

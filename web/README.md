@@ -44,19 +44,51 @@ handles.
 
 ## 3. Then, in the app
 
-Only after the AASA file is live:
+Only after the AASA file is live and verified — 200, `application/json`, zero
+redirects:
 
-1. `app.json` → `ios.associatedDomains: ["applinks:link.samewhere.io"]`
-2. `src/constants/links.ts` → flip `UNIVERSAL_LINKS_LIVE` to `true`
-3. Supabase → Auth → URL Configuration → redirect allowlist. DONE: it holds
-   `https://link.samewhere.io/reset` and `samewhere://reset-password`. Keep
-   BOTH until every install in the wild is past the build that sends the
-   scheme.
-4. An **EAS build**, because `associatedDomains` is native config and cannot
-   ship over the air
+1. `app.json` → `ios.associatedDomains: ["applinks:link.samewhere.io"]` AND
+   the route `src/app/i/[token].tsx`, in the SAME commit. iOS routes an https
+   link by PATH alone (expo-router registers `prefixes: []` and does no host
+   check), so a declared pattern with no route under `src/app` opens the app
+   on +not-found. That screen says the link expired, which is a lie, and it
+   also stops the page under `/i/` from ever rendering on a phone that has
+   the app. DONE.
+2. An **EAS build**, because `associatedDomains` is native config and cannot
+   ship over the air. Before submitting it, check the copy iOS actually
+   reads, not just the origin:
 
-Doing step 2 before the file is live replaces a reset link that works on the
-phone with one that opens Safari and 404s. That is why the flag exists.
+   ```
+   curl -sS https://app-site-association.cdn-apple.com/a/v1/link.samewhere.io
+   ```
+
+   must show exactly one component, `/i/*`. A 404 means Apple has never
+   crawled the file, which is also fine. Five components means Apple cached
+   the old file; wait for the cache to turn over (up to a day) before
+   submitting, or every install claims paths the app cannot answer for the
+   life of that cache.
+
+Leave `UNIVERSAL_LINKS_LIVE` in `src/constants/links.ts` **false**. The
+recovery mail's own 302 already hands `samewhere://reset-password` to the
+app with the fragment intact; that works with or without universal links,
+and `/reset*` is deliberately not in the association file. Flipping the flag
+needs four things at once, listed in the header of `src/constants/links.ts`.
+A recovery token is single use, so getting it wrong spends somebody's reset
+rather than bouncing them.
+
+Supabase → Auth → URL Configuration → redirect allowlist holds
+`https://link.samewhere.io/reset` and `samewhere://reset-password`. Keep
+BOTH: anything not on that list is silently replaced by the Site URL.
+
+### The paths the association file declares
+
+One: `/i/*`. `/b/*`, `/c/*` and `/u/*` were dropped on 2026-08-30 — no page
+under `web/`, no route under `src/app`, and no city screen exists in any
+form. Pre-declaring them bought nothing: `associatedDomains` is per-DOMAIN,
+so a path added later is an AASA edit plus a JS route, which is an
+over-the-air update and never a new build.
+`src/app/__tests__/invite-links.test.ts` asserts the list, so adding a
+pattern means adding its route in the same commit.
 
 ## 4. Routing: `_redirects`, `404.html`, and the not-found trap
 

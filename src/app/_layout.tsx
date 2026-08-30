@@ -375,6 +375,14 @@ function RootNavigator() {
         name="join-group/[token]"
         options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
       />
+      {/* The https spelling of the same invite, the one iOS hands over for
+          link.samewhere.io/i/<token>. Same screen, same options: the root
+          defaults to headerShown false, and on a cold start the header is
+          where the back chevron lives. */}
+      <Stack.Screen
+        name="i/[token]"
+        options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+      />
     </Stack>
   );
 }

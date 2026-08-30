@@ -3,6 +3,47 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **The domain went live, and the app now answers for it** (2026-08-30)
+
+`link.samewhere.io` is live on Cloudflare Pages — the subdomain, not the apex,
+which stays on Squarespace with the Workspace mail records. The association
+file is verified (200, `application/json`, zero redirects, real Team ID), mail
+sends from `hello@samewhere.io` through Resend with Google receiving, and the
+Supabase reset allowlist holds both spellings of the reset redirect.
+
+Two bugs came out of making it real:
+
+- **Cloudflare rejected both `_redirects` rules at deploy time** — a rewrite
+  targeting `/i/index.html` is canonicalised back to `/i/`, re-matches `/i/*`,
+  and is dropped as an infinite loop ("Parsed 0 valid redirect rules"). Fixed
+  by targeting the directory, plus a real `404.html`; both verified live.
+- **Every shared invite was a `samewhere://` scheme link** — dead for the one
+  audience an invite exists for, somebody without the app. Invites and the
+  lobby QR now use `https://link.samewhere.io/i/<token>`; the association file
+  was trimmed to the one pattern the route tree answers (`/i/*` — `/b/*`,
+  `/c/*`, `/u/*` and `/reset*` all resolved to +not-found and are dropped, see
+  `ARCHITECTURE.md`, "The URL space the app claims"); `src/app/i/[token].tsx`
+  answers the path in the app; the paste fallback now digs the token out of a
+  whole pasted message and exists for guests, who are the people the invite
+  page sends to it; and `parseRecoveryLink` recognises the hosted `/reset`
+  spelling so a rerouted recovery token is spent on a reset instead of on
+  +not-found.
+
+The App Store ID is filled in across `web/` (id6802889254, read out of App
+Store Connect; the store URL 404s until release, which is expected).
+
+### Waiting on the founder
+
+1. **An EAS build** — `associatedDomains` is native config. Before submitting
+   it, the Apple CDN check in `web/README.md` §3.
+2. **The legal items** stand: no legal entity yet (the forcing function is
+   Apple's DSA trader status for EU distribution more than GDPR), and the
+   privacy policy's biometric paragraph still needs a lawyer. One of its three
+   orange markers is now answerable: the Supabase region is eu-central-1,
+   Frankfurt.
+
+---
+
 ## Current: **The audit finished, and the plan that comes out of it** (2026-08-30)
 
 The founder asked for the audit to be completed to the last item, and for a plan

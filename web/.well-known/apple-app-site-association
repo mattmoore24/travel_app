@@ -3,13 +3,7 @@
     "details": [
       {
         "appIDs": ["9GSR77B4U5.com.mattmoore.samewhere"],
-        "components": [
-          { "/": "/i/*", "comment": "group invite" },
-          { "/": "/b/*", "comment": "business listing" },
-          { "/": "/c/*", "comment": "city" },
-          { "/": "/u/*", "comment": "traveler profile" },
-          { "/": "/reset*", "comment": "password reset" }
-        ]
+        "components": [{ "/": "/i/*", "comment": "group invite" }]
       }
     ]
   }

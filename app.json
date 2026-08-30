@@ -11,6 +11,7 @@
       "bundleIdentifier": "com.mattmoore.samewhere",
       "supportsTablet": false,
       "usesAppleSignIn": true,
+      "associatedDomains": ["applinks:link.samewhere.io"],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

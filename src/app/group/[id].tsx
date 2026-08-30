@@ -1,6 +1,5 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Image } from 'expo-image';
-import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
@@ -15,6 +14,7 @@ import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
+import { WebLinks } from '@/constants/links';
 import { HitTarget, MaxContentWidth, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { uploadGroupPhoto } from '@/features/groups/api';
 import {
@@ -36,9 +36,19 @@ import { useTheme } from '@/hooks/use-theme';
 import { pickImage } from '@/lib/pick-image';
 import type { GroupMemberRow, GroupSpeaking } from '@/lib/database.types';
 
-/** One link, whether it is being scanned, shared or pasted. */
+/**
+ * One link, whether it is being scanned, shared or pasted.
+ *
+ * It is an https link because the person receiving it does not have the app
+ * yet — that is the whole point of an invite. A scheme link is not made
+ * tappable by most messengers, so it arrived as grey text, and a camera
+ * pointed at a QR of it had nothing to offer a phone without the app. The
+ * https form opens link.samewhere.io/i/<token>, which shows the invite and
+ * hands the app the deep link; on a phone that has a build claiming the
+ * domain, iOS skips the page and opens the app directly.
+ */
 function inviteUrl(token: string): string {
-  return Linking.createURL(`/join-group/${token}`);
+  return WebLinks.invite(token);
 }
 
 const SPEAKING_OPTIONS: { value: GroupSpeaking; label: string }[] = [

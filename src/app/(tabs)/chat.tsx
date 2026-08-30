@@ -26,6 +26,7 @@ import { ChatRowSkeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useIsPlaceChat, useOwnBusiness } from '@/features/business/hooks';
 import { finiteDate } from '@/features/groups/closing';
+import { inviteTokenFrom } from '@/features/groups/invite-token';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
@@ -741,23 +742,27 @@ function tabsWithCounts(chats: ChatListRow[], requests: number) {
 }
 
 /**
- * A samewhere:// link is not tappable in every text message app, so the code
- * inside it is a first-class way in rather than a fallback nobody mentions.
+ * A link is not tappable in every text message app, so pasting it here is a
+ * first-class way in rather than a fallback nobody mentions. Most people
+ * paste the whole message, not the bare code, and inviteTokenFrom finds the
+ * token wherever it is in the paste.
  */
 function promptForInvite() {
   const open = (code: string | undefined) => {
-    const token = (code ?? '').trim();
+    const token = inviteTokenFrom(code ?? '');
     if (token.length > 0) {
       router.push(`/join-group/${encodeURIComponent(token)}`);
     }
   };
   if (Platform.OS === 'ios' && Alert.prompt) {
-    Alert.prompt('Invite code', 'Open the invite link you were sent.', [
+    Alert.prompt('Invite link', 'Paste the link you were sent, or the code from it.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Join', onPress: open },
     ]);
   } else {
-    Alert.alert('Invite code', 'Open the invite link you were sent to join the group.');
+    // No text field on this branch (Alert.prompt is iOS-only), so it must
+    // not ask for a paste it cannot take.
+    Alert.alert('Invite link', 'Open the invite link you were sent. It opens the group here.');
   }
 }
 
@@ -889,6 +894,25 @@ export default function ChatScreen() {
               <ThemedText type="footnote" themeColor="textSecondary">
                 Businesses you stay at run open chats. Have a look before you join.
               </ThemedText>
+              {/* The invite landing page tells somebody who has just
+                  installed to come here and paste the code. They have no
+                  account yet, so they are a guest by every definition this
+                  app uses — and this row lived only in the member branch,
+                  which made that instruction false for the one person it
+                  was written for. join-group already answers a signed-out
+                  arrival with "Join with a name". */}
+              <View style={styles.list}>
+                <PlainRow
+                  title="Have an invite?"
+                  detail="Paste the link or the code somebody sent you."
+                  glyph={{ ios: 'link', android: 'link', web: 'link' }}
+                  tint="quiet"
+                  chevron
+                  last
+                  accessibilityLabel="Join a group with an invite link or code"
+                  onPress={promptForInvite}
+                />
+              </View>
               <RoomDiscovery cityId={cityId} />
               <SignUpGate
                 reason={
@@ -1137,12 +1161,12 @@ export default function ChatScreen() {
             <View style={styles.list}>
               <PlainRow
                 title="Have an invite?"
-                detail="Paste the code somebody sent you."
+                detail="Paste the link or the code somebody sent you."
                 glyph={{ ios: 'link', android: 'link', web: 'link' }}
                 tint="quiet"
                 chevron
                 last
-                accessibilityLabel="Join a group with an invite code"
+                accessibilityLabel="Join a group with an invite link or code"
                 onPress={promptForInvite}
               />
             </View>

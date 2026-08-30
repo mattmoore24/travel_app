@@ -101,6 +101,19 @@ serving a single path.** `/i/<token>` invite, `/b/<id>` business, `/c/<city>` ci
 of an EAS build. One constraint carried over from §7 rule 4: a public profile page must
 never render social handles. High confidence.
 
+**Resolved 2026-08-30, partly against this recommendation.** Only `/i/*` is
+declared. `/b/*`, `/c/*` and `/u/*` were dropped from
+`web/.well-known/apple-app-site-association` before the first build claimed the
+domain. The "server change instead of an EAS build" argument does not hold:
+`ios.associatedDomains` is per-DOMAIN, so a path added later is an AASA edit
+plus a JS route under `src/app`, which is an over-the-air update and never a
+new build. Nothing was bought by pre-declaring, and `/u/*` in particular
+pre-authorised a traveler-profile URL space for the life of every install
+before the §7 rule 4 review of a public profile page had happened. Adding a
+pattern back means adding its route in the same commit; that pairing is
+asserted by `src/app/__tests__/invite-links.test.ts`. See
+`docs/ARCHITECTURE.md`, "The URL space the app claims".
+
 **What it unblocks:** universal links, the shareable business listing, the QR that works,
 laptop password reset, App Store submission, and business email to anybody but you.
 

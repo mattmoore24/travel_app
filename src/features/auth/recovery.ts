@@ -39,7 +39,16 @@ function paramsFrom(url: string): URLSearchParams {
  * deep links into the app, which must pass through untouched.
  */
 export function parseRecoveryLink(url: string | null | undefined): RecoveryLink | null {
-  if (!url || !/reset-password/.test(url)) {
+  // Both spellings, deliberately. The scheme link is samewhere://reset-password;
+  // the hosted page is link.samewhere.io/reset, with no `-password` in it. This
+  // hook sees the raw URL before the router does, so if a universal link ever
+  // hands the app the hosted spelling — a forwarded mail, a link-rewriting
+  // gateway, a stale copy of the association file on Apple's CDN — the token
+  // is caught here instead of being spent on +not-found. A recovery token is
+  // single use: a link this function fails to recognise is not bounced, it is
+  // burned. The trailing class keeps `/reset` from matching a path that merely
+  // starts with those letters.
+  if (!url || !/\/reset(-password)?(?:[/#?]|$)/.test(url)) {
     return null;
   }
   const params = paramsFrom(url);
