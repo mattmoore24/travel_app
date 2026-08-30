@@ -15,8 +15,8 @@ Three rules, and getting any of them wrong makes it fail silently:
 - **No `.json` extension.** The file is named exactly `apple-app-site-association`.
 - Served as `Content-Type: application/json`, over TLS, with **no redirect**.
   A 301 to `www.` is the most common way this breaks.
-- `TEAMID` must be replaced with the real Apple Team ID (App Store Connect →
-  Membership). Until it is, the file is valid JSON that matches nothing.
+- The app ID is `9GSR77B4U5.com.mattmoore.samewhere` (Team ID + bundle ID).
+  A wrong Team ID makes the file valid JSON that matches nothing, silently.
 
 Verify after deploying:
 

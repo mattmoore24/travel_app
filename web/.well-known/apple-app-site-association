@@ -2,7 +2,7 @@
   "applinks": {
     "details": [
       {
-        "appIDs": ["TEAMID.com.mattmoore.samewhere"],
+        "appIDs": ["9GSR77B4U5.com.mattmoore.samewhere"],
         "components": [
           { "/": "/i/*", "comment": "group invite" },
           { "/": "/b/*", "comment": "business listing" },
