@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="stylesheet" href="/_style.css" />
+    <style>
+      mark.todo {
+        background: #4a1f12;
+        color: #ff9a5a;
+        padding: 2px 7px;
+        border-radius: 5px;
+        font-weight: 600;
+      }
+    </style>
+    <title>Privacy Policy · Samewhere</title>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="mark"><img class="flame" src="/_mark.svg" alt="" /><span>Samewhere</span></div>
+      <h1>Privacy Policy</h1>
+      <p><em>Last updated: 2026-08-30</em></p>
+      <p>
+        <strong>Samewhere</strong> ("we") helps travelers make friends. This policy explains what we
+        collect, why, and your choices.
+      </p>
+      <h2>What we collect</h2>
+      <ul>
+        <li>
+          <strong>Account</strong>: email address; authentication is handled by Supabase Auth.
+        </li>
+        <li>
+          <strong>Profile you build</strong>: display name, age, gender, home city/country,
+          languages, bio, photos, and social media handles you choose to add.
+        </li>
+        <li>
+          <strong>Travel intent you share</strong>: trip city and date ranges; map pins (a venue
+          name, category, and date). Pins expire and are permanently deleted within 72 hours.
+        </li>
+        <li>
+          <strong>Messages</strong>: first-message requests and chats with people who accepted.
+        </li>
+        <li>
+          <strong>Verification selfie</strong> (optional): a
+          <strong>biometric face comparison</strong>. The selfie is compared automatically against
+          your profile photos to check they are of the same person, which is what awards the
+          verified badge. The selfie is <strong>deleted after review</strong>, and the comparison
+          result is the only thing kept. Under GDPR this is Article 9 special-category data and we
+          process it only with your explicit consent, given by choosing to start the check; it is
+          optional, and nothing else in the app is withheld if you skip it. Apple classifies it as
+          Sensitive Info, so it must also be declared on the App Store privacy card.
+          <mark class="todo">NEEDS LEGAL REVIEW - biometric disclosure added 2026-08-30</mark>
+        </li>
+        <li>
+          <strong>Usage analytics</strong>: app events (screens viewed, features used) via PostHog,
+          tied to your user ID.
+        </li>
+      </ul>
+      <h2>What we deliberately do NOT collect</h2>
+      <ul>
+        <li>
+          <strong>Your device location. Never.</strong> The app has no location permission. The map
+          shows only venue-level future plans you type in yourself.
+        </li>
+        <li>
+          Your birthdate (we store an age number only), contacts, or photos beyond the ones you
+          pick.
+        </li>
+      </ul>
+      <h2>How your information is shared with other users</h2>
+      <ul>
+        <li>
+          Your profile (name, age, photos, bio, languages, verified badge) is visible to any
+          signed-in traveler who can reach it: someone whose trip overlaps yours, someone who taps
+          one of your pins, or someone opening your profile from a chat or a group you share.
+        </li>
+        <li>
+          <strong
+            >Your social handles are hidden until you and another traveler both accept a
+            chat.</strong
+          >
+          This is enforced by the database, not just by the app.
+        </li>
+        <li>
+          Your upcoming trips are part of your profile, so any signed-in traveler who can open your
+          profile can see them. Trips that have finished are private to you.
+        </li>
+        <li>
+          <strong>One traveler at a time is shown to signed-out visitors.</strong> The Travelers tab
+          shows a single featured card — name, age, photo, bio, languages, city and dates — to
+          people who have not made an account, chosen automatically from whoever in that city other
+          travelers are messaging most. Posting a trip is what makes you eligible. Nobody can
+          message you without an account, and there is currently no way to opt out of being
+          featured; if you would rather not be, delete your trip or your account.
+        </li>
+        <li>
+          Heatmap data is aggregated and anonymous; areas with very few pins are never shown to
+          others.
+        </li>
+      </ul>
+      <h2>Content moderation</h2>
+      <p>
+        To keep the app safe, first messages, photos, and verification selfies are screened
+        automatically (including by an AI classifier run server-side via Anthropic's API).
+        Moderation decisions and reports are logged. We never use your content to train AI models.
+      </p>
+      <h2>Where your data lives</h2>
+      <p>
+        Data is stored with Supabase (Postgres + storage) in the EU (<mark class="todo"
+          >REGION - confirm in the Supabase dashboard</mark
+        >). Push notifications are delivered via Expo and Apple.
+      </p>
+      <h2>Retention &amp; deletion</h2>
+      <ul>
+        <li>Pins: deleted within 72 hours, always.</li>
+        <li>Verification selfies: deleted once reviewed.</li>
+        <li>
+          <strong>Delete your account any time</strong> in Profile → Delete account: your profile,
+          photos, trips, pins, requests, and chats (for both sides) are permanently deleted.
+          Anonymized moderation records (with your identity removed) are retained as required for
+          safety.
+        </li>
+      </ul>
+      <h2>Your rights</h2>
+      <p>
+        Depending on where you live (including the EU/GDPR), you may have rights to access, correct,
+        export, or delete your data. Use <strong>Contact us</strong> in the app, or write to the
+        support address on our App Store listing.
+      </p>
+      <h2>Children</h2>
+      <p>This app is for adults 18+. We remove underage accounts.</p>
+      <h2>Changes</h2>
+      <p>We'll notify you in-app about material changes to this policy.</p>
+      <p>
+        <strong>Contact</strong>: the in-app <strong>Contact us</strong> form, or hello@samewhere.io
+        · <mark class="todo">LEGAL ENTITY NAME AND ADDRESS - required for GDPR</mark>
+      </p>
+      <footer>
+        <p>
+          <a href="/">Samewhere</a> · <a href="/privacy">Privacy</a> ·
+          <a href="/support">Support</a> ·
+          <a href="mailto:hello@samewhere.io">hello@samewhere.io</a>
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

@@ -19,8 +19,17 @@ explains what we collect, why, and your choices.
   name, category, and date). Pins expire and are permanently deleted within
   72 hours.
 - **Messages**: first-message requests and chats with people who accepted.
-- **Verification selfie** (optional): compared automatically against your
-  profile photos to award the verified badge, then **deleted after review**.
+- **Verification selfie** (optional): a **biometric face comparison**. The
+  selfie is compared automatically against your profile photos to check they
+  are of the same person, which is what awards the verified badge. The selfie
+  is **deleted after review**, and the comparison result is the only thing
+  kept. Under GDPR this is Article 9 special-category data and we process it
+  only with your explicit consent, given by choosing to start the check; it is
+  optional, and nothing else in the app is withheld if you skip it. Apple
+  classifies it as Sensitive Info, so it must also be declared on the App Store
+  privacy card. [Added 2026-08-30 after the UX audit found the face comparison
+  was nowhere disclosed. NEEDS LEGAL REVIEW along with the rest of this
+  document.]
 - **Usage analytics**: app events (screens viewed, features used) via
   PostHog, tied to your user ID. [If PostHog is not enabled at launch,
   delete this bullet.]

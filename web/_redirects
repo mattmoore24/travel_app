@@ -1,0 +1,5 @@
+# /i/<token> and /reset are single pages that read the rest of the URL in JS,
+# so every path under them has to reach the same file with a 200 rather than a
+# redirect. A 301 here would also break the association file's path matching.
+/i/*      /i/index.html      200
+/reset/*  /reset/index.html  200

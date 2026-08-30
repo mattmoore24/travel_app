@@ -1,0 +1,8 @@
+# Cloudflare Pages headers.
+#
+# The association file has no extension, so nothing infers its type. iOS
+# refuses to parse it unless it arrives as application/json, and the failure is
+# silent: links simply open Safari and nobody is told why.
+/.well-known/apple-app-site-association
+  Content-Type: application/json
+  Cache-Control: public, max-age=3600
