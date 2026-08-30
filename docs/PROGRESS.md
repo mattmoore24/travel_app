@@ -34,8 +34,15 @@ Store Connect; the store URL 404s until release, which is expected).
 
 ### Waiting on the founder
 
-1. **An EAS build** — `associatedDomains` is native config. Before submitting
-   it, the Apple CDN check in `web/README.md` §3.
+1. **Test build 15 on the phone.** The EAS build shipped (run #58, commit
+   7005e31): Apple's CDN was already serving the trimmed association file, the
+   App ID gained the Associated Domains capability (the first attempt failed
+   at signing without it and burned buildNumber 14), and build 15 was
+   submitted to TestFlight. Once it installs: tap
+   `https://link.samewhere.io/i/<real token>` from Messages — the app should
+   open straight onto the join screen with no Safari — and scan a group QR
+   with the Camera app for the same. The full first-install check needs a
+   device that has never had the app.
 2. **The legal items** stand: no legal entity yet (the forcing function is
    Apple's DSA trader status for EU distribution more than GDPR), and the
    privacy policy's biometric paragraph still needs a lawyer. One of its three
