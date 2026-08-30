@@ -374,7 +374,13 @@ None of it reaches a traveler at the moment she needs it.
   from Phase 2 says the block/unblock UI "ships with the rest of the safety tooling in
   Phase 4". It never did.
 - **A suspended user's only button is Sign out**, though the guidelines promise appeals.
-- **There is no privacy policy or terms link anywhere in the app.**
+- **The privacy policy is not reachable in the app, and is not hosted anywhere.**
+  Correcting an earlier draft of this audit: `src/constants/policies.ts` _does_ bundle the
+  community guidelines, a "Your privacy" paragraph and a support contact, deliberately
+  bundled rather than linked so they are readable offline and before sign-up, and its
+  docblock cites App Review guideline 1.2 as the reason. What is missing is the **full**
+  policy (`docs/legal/PRIVACY_POLICY.md` is never rendered) and, separately, the hosted
+  privacy-policy and support URLs that App Store Connect requires as submission fields.
 - **The four promises that make this app safer than its competitors** — no location ever,
   pins gone in 72 hours, socials hidden until you both agree, every first hello screened —
   appear once, as the fourth of five sections, inside a rulebook reached from a button
@@ -397,7 +403,8 @@ None of it reaches a traveler at the moment she needs it.
    ("They never see where you are. Your handles stay hidden until you both agree.") and
    one slide in the tour. This is the app's strongest differentiator and it is currently
    filed under house rules.
-5. **An appeal path for a suspended account**, and privacy/terms links in Settings.
+5. **An appeal path for a suspended account**, and a Privacy row in Settings that renders
+   the full policy (plus the hosted URLs App Store Connect needs).
 
 ---
 
