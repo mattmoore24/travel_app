@@ -3,6 +3,78 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **The audit finished, and the plan that comes out of it** (2026-08-30)
+
+The founder asked for the audit to be completed to the last item, and for a plan
+they could sign off. Both are done.
+
+### The audit, completed
+
+Seven more lenses were run over the ground a screen-by-screen sweep structurally
+misses: language and localisation, form factor and the extremes of Dynamic Type,
+the account lifecycle, whether §6's own metrics are measurable at all, photos
+from picker to pixel, everything that happens outside the app, and the App Store
+first impression. They found three launch blockers no amount of screen-reading
+would have surfaced.
+
+**436 findings across 22 reports. 435 verified**, by an adversarial pass whose
+only instruction was to refute them: 293 confirmed, 120 corrected in detail, 13
+shown to be recorded founder decisions, 9 refuted outright.
+
+The nine refutations are the reason the pass was worth running. The most serious
+claimed `featured_traveler` ignores the audience setting and is granted to `anon`,
+which would have been a privacy-invariant break. It is false, the design
+anticipated exactly that case, and `17_profile_visibility.test.sql:286` already
+asserts it. Two of the nine were the audit's own earlier errors.
+
+### The plan
+
+Thirteen subsystem planners merged the survivors into **211 work packages**, each
+naming the files it changes, the migration if it needs one, the test that proves
+it, and whether it ships over the air or costs a build. 150 findings were
+deliberately dropped with a reason recorded.
+
+- **58 packages ship this week over the air with nothing to decide.** 33 are under
+  an hour each.
+- **6 decisions block the start**, and one of them is a purchase.
+- **7 launch blockers** gate submission rather than quality.
+
+[`UX_PLAN.md`](UX_PLAN.md) carries the tiered decisions, the blockers and the
+waves. [`UX_PACKAGES.md`](UX_PACKAGES.md) carries every package in full.
+
+### Waiting on the founder
+
+1. **Buy a domain.** This is the big one. `NAMING.md:243` records that
+   `samewhere.com` belongs to someone else; `LAUNCH_RUNBOOK.md` step 2 is headed
+   "Not done. Founder action, and nothing in the repo can do it." It was deferred
+   on 2026-08-29 when it cost one thing. It now gates seven: group invites, the
+   lobby QR, laptop password reset, the App Store privacy-policy URL, the App
+   Store support URL, business confirmation mail, and a support address for the
+   privacy policy. The domain, the Resend DNS records and the
+   `apple-app-site-association` file are one errand.
+2. **Is a profile photo a square or a 4:5 frame?** `photo-grid.tsx:195-200`
+   already concluded "take the square they approved and show it as a square" and
+   the display was never changed.
+3. **May the database write user-facing copy?** Two banned words and an em dash
+   reach an alert today.
+4. **Does business analytics reopen, and does the what's-on list?** Both sit in
+   §10's deferred bucket rather than its refused one.
+5. **Device locale for dates, or English everywhere?** Two date engines currently
+   disagree on one screen.
+6. **Provision the Apple Developer membership and a Sign in with Apple key**, so
+   token revocation on account deletion can be finished.
+
+Thirty-four further decisions are tiered in the plan with a recommendation each,
+and fifteen more have a stated default that proceeds unless overruled.
+
+### Still open, honestly
+
+Nothing in the app changed. This is an audit and a plan, not a diff. The E2E
+suite takes 81 screenshots and still photographs none of the first-hello loop:
+no composer, no connected notice, no blocked hello, no incoming card. That is a
+package in Wave 1, and until it lands the product's own chokepoint is the one
+surface nobody has ever reviewed as a picture.
+
 ## Current: **The whole app, audited with fresh eyes** (2026-08-30)
 
 The founder asked for a full audit of every part of the app, focused on user

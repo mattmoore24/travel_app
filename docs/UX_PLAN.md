@@ -52,3 +52,495 @@ Every package carries the same fields.
 
 Priorities are `now` (cheap and clearly right), `next` (real work, clear payoff) and
 `later` (genuinely optional).
+
+---
+
+# Part 1 — What needs your decision
+
+Thirteen subsystem planners raised sixty-five questions between them. Asking you all of
+them would be a worse plan than having none, so they are tiered. **Tier 1 blocks work
+starting.** Tier 2 shapes a specific package and can be answered when that package comes
+up. Tier 3 has a stated default and will proceed that way unless you say otherwise.
+
+## Tier 1 — answer before anything starts
+
+### D1. Buy a domain
+
+**This is the only item on the list that is a purchase rather than a decision about the
+app, and it gates more than anything else in this document.**
+
+`NAMING.md:243` and `PROGRESS.md:1925` record that `samewhere.com` belongs to somebody
+else, which is why the bundle identifier stayed `com.mattmoore.samewhere`.
+`LAUNCH_RUNBOOK.md` step 2 is headed _"Not done. Founder action, and nothing in the repo
+can do it."_ You deferred it on 2026-08-29: _"I'll verify a domain later closer to
+go-live... For now I'll just keep using my own email to test."_
+
+That was a reasonable call when it cost one thing. It now costs seven:
+
+1. **Group invites.** Every invite is `samewhere:///join-group/<token>`. Messages,
+   WhatsApp and Instagram do not linkify a custom scheme, Safari answers "address is
+   invalid", and there is no App Store redirect. The product's growth mechanism only
+   works for somebody who already has the app.
+2. **The lobby QR code.** `invite-qr.tsx` encodes the same string, so the iOS Camera
+   finds nothing to open, for exactly the people who do not have the app yet.
+3. **Password reset.** `resetPasswordForEmail` redirects to `samewhere://reset-password`.
+   Opened on a laptop it lands nowhere.
+4. **The App Store privacy-policy URL** — a required submission field.
+5. **The App Store support URL** — also required.
+6. **Business confirmation codes.** With no verified Resend domain, the only inbox in the
+   world that can receive one is the Resend account owner's.
+7. **A real support address** for the privacy policy itself (`PROGRESS.md:1362`).
+
+Three subsystems reached this independently, and one made the useful observation that it
+is a single errand: the domain, the DNS records Resend needs, and the
+`apple-app-site-association` file are the same afternoon's work.
+
+**Recommendation: buy one, and design the whole URL space in one sitting rather than
+serving a single path.** `/i/<token>` invite, `/b/<id>` business, `/c/<city>` city,
+`/u/<id>` profile, with a wildcard AASA path so later routes are a server change instead
+of an EAS build. One constraint carried over from §7 rule 4: a public profile page must
+never render social handles. High confidence.
+
+**What it unblocks:** universal links, the shareable business listing, the QR that works,
+laptop password reset, App Store submission, and business email to anybody but you.
+
+### D2. Is a profile photo a square, or a 4:5 frame?
+
+`photo-grid.tsx:195-200` already contains the answer and the code never followed it:
+
+> _"On iOS the system editor is always square, so asking for 4:5 here changed nothing
+> except this file: people framed themselves inside a square and the profile then cropped
+> a further fifth off each side to fill a 4:5 frame, cutting shoulders and, on a close
+> portrait, ears. **Take the square they approved and show it as a square.**"_
+
+The display was never changed. `profile-view.tsx:1247` is still `4/5` and the Travelers
+card at `travelers.tsx:875` is `3/2` — the widest crop in the app, on the one screen whose
+whole job is to prove there is a real person there.
+
+Two honest options, and doing half of either is the bad outcome:
+
+- **(a) Show the square.** Three numbers change. Cheap, and it is what the comment
+  already concluded.
+- **(b) Keep the tall frame and stop taking a square.** Drop `allowsEditing`, build a 4:5
+  in-app cropper. A real project.
+
+**Recommendation: (a) now, revisit (b) only if the square looks wrong in the re-shot
+screenshots.** Everything else in the photo cluster follows from this answer, so it is
+worth settling first.
+
+### D3. May the database write user-facing copy?
+
+`query-client.ts` alerts whatever string Postgres raised, under the heading "Could not
+save". Among the strings shipping today: **"cannot unmatch a closed conversation"** and
+**"request already sent to this traveler"** — both using vocabulary the design brief bans
+by name — plus **"sending too fast — wait a moment"**, which contains an em dash, also
+banned, and **"active trip limit reached (5)"**, a parenthesised integer out of a schema
+file. None is capitalised, none says what to do next.
+
+**Recommendation: no.** Give `failure-message.ts` a written sentence per known failure,
+keyed on a stable `hint` code rather than on English prose (the same message is duplicated
+across seven migrations, so a string-keyed map breaks the day one is reworded), and fall
+back to "Something went wrong. Try that again." rather than the raw string. One nuance
+worth keeping: every relationship failure must return the _same_ sentence, because the
+migrations deliberately avoid an existence oracle. High confidence.
+
+### D4. Does business analytics reopen, and does the what's-on list?
+
+`BUSINESS_ACCOUNTS.md` §10 lists both "business analytics" and "a Places directory tab"
+under _Not in this plan_. The audit found an owner is given no reason to open the app
+again, and that business posts reach nobody because no city-level list exists.
+
+Two things matter here. First, §10's list has a deferred bucket and a refused bucket, and
+both of these sit in **deferred** (written reviews are the one marked refused) — so
+re-opening them is in keeping with the document rather than against it. Second, the cost
+of waiting is asymmetric: the _screen_ can ship whenever, but **nothing is recorded
+today**, so there is no history to show when it does.
+
+**Recommendation: start recording now regardless of when the screen ships, and take the
+smallest honest version of each** — three counters on My business (map taps, page opens,
+chats started, last seven days), and a what's-on list that is the map's own bottom sheet
+rather than a new directory tab. That keeps §10's "no Places directory tab" intact while
+answering the finding. Medium-high confidence; the framing is yours.
+
+### D5. Do dates render in the device's locale, or in English everywhere?
+
+Eleven formatters are pinned to `Intl.DateTimeFormat('en', …)` and six follow the device,
+so a Portuguese phone shows "agosto 2026" as a calendar header and "Aug 30 – Sep 2" in the
+summary directly beneath it. Separately, chat times are locked to 12-hour AM/PM worldwide
+while business hours in the same app are 24-hour. `expo-localization` is a declared
+dependency with zero call sites.
+
+English-only _strings_ are a defensible v1 call and the audit does not argue with it. This
+is the narrower question of whether the app renders the traveler's own data — dates, times,
+week-start — in their conventions.
+
+**Recommendation: one locale helper, device conventions for dates and times, English
+strings.** It removes a visible contradiction rather than starting a translation project.
+High confidence.
+
+### D6. Provision the Apple Developer membership and a Sign in with Apple key
+
+Not a design decision, but it gates a launch blocker and nothing in the repo can do it.
+Revoking an Apple token on account deletion (B2) needs a Sign in with Apple key, and the
+code cannot be finished without one.
+
+**Recommendation: provision the key alongside the membership, and write the code now.** A
+revoke that fails into a log until the secrets land is the correct interim behaviour,
+because a revocation error must never block a deletion somebody asked for.
+
+## Tier 2 — answer when the package comes up
+
+These change what a specific package builds. None blocks anything else, and each has a
+recommendation you can accept by silence.
+
+| #   | Question                                                                                    | Recommendation                                                                                                                                                                                                                                         |
+| --- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D7  | Should curated pins count toward the heatmap's k-threshold?                                 | **No.** Exclude them (`filter (where p.user_id is not null)`). The heat layer's whole value is that it is not a list of our own pins. Let the honest empty state carry day one.                                                                        |
+| D8  | Should a business land on My business instead of the Map tab?                               | **Yes**, but as a one-shot landing navigation beside `PendingInviteHandoff`, never by reordering the NativeTabs triggers, which `app-tabs.tsx:43-49` records as risky.                                                                                 |
+| D9  | Should the web build create pins at all?                                                    | **No.** Delete `drop-pin.tsx` and its route. It is a second, diverging pin composer that still ships the emoji chips and a category step iOS deliberately removed. Keep web read-only.                                                                 |
+| D10 | Should a hand-placed pin's category be settable?                                            | **Not with a chip rail** — that is the control you removed. Fix the inference, and if correction is ever wanted make it a tap on the glyph the sheet already draws.                                                                                    |
+| D11 | Should approximate trip dates ("about a week in September") match at full weight?           | Ship the flag, widen the range, and mark it on the card. Overlap must not silently inflate.                                                                                                                                                            |
+| D12 | Should a sender be able to take back an unanswered hello?                                   | **Not by deleting the row** — `unique (sender_id, recipient_id)` is a recorded anti-pester constraint. Ship the expiry sweep; if a take-back is still wanted, set the status to `expired` so the constraint holds and the sender still learns nothing. |
+| D13 | Should signup step 12 keep four locked audience rows?                                       | **Keep the step** (it is a recorded founder decision) but give it a door: per-row "after the selfie check", a tap that routes to verification, and a lock glyph instead of row-level opacity.                                                          |
+| D14 | Should a signed-out visitor see three travelers or one?                                     | **One for now.** Do the cheap half (stop the screen contradicting itself in an empty city) and hold the rest until there are real travelers to show.                                                                                                   |
+| D15 | Should chats keep auto-archiving after 14 days of silence?                                  | Keep it, but say so where it happens. Silent disappearance is the complaint; the sweep itself is fine.                                                                                                                                                 |
+| D16 | Should a new group still default to "No end date"?                                          | Default to the trip window when one exists. A group that outlives the trip is the one nobody leaves.                                                                                                                                                   |
+| D17 | Should "who can add me to a group" be a setting, and can any member mint the invite link?   | **No setting** — any member may already add, by your own recorded call. Do drop the admin gate on the _link_, so the two doors match.                                                                                                                  |
+| D18 | Should a pin be sendable into a chat as a first-class object?                               | **Yes, eventually.** It closes the product's own loop and both halves exist. Not before launch.                                                                                                                                                        |
+| D19 | Can a report have no human subject (reporting a group)?                                     | Yes. `report.tsx` currently requires a `userId`, so a group cannot be reported at all.                                                                                                                                                                 |
+| D20 | Build data export, or narrow the privacy-policy promise?                                    | **Narrow the promise** for v1 and say what deletion already does, which is genuinely thorough. Revisit if EU volume grows.                                                                                                                             |
+| D21 | Does the verification selfie need a Sensitive Info / biometric declaration?                 | **Yes.** A face comparison is biometric data under Apple's Sensitive Info bucket and GDPR Art. 9, and neither legal doc nor the nutrition-label table mentions it. This one is not really optional.                                                    |
+| D22 | Should a traveler be able to opt out of the signed-out preview?                             | Worth adding, low cost. The audience setting already excludes a narrowed profile, so this is only for `everyone`.                                                                                                                                      |
+| D23 | Should PostHog's `distinct_id` be the raw Supabase auth uid?                                | **No.** Use a salted hash so an analytics export is not a user table.                                                                                                                                                                                  |
+| D24 | iPad, Mac distribution and rotation: opt in, or refuse explicitly?                          | **Refuse explicitly and say so**, rather than leaving `supportsTablet: false` to imply it. Rotation is a real project and portrait-only is defensible.                                                                                                 |
+| D25 | Should the app ask two travelers whether they actually met?                                 | **Yes, but not before launch**, and never under a borrowed name. It is the metric you are most missing and the risk is entirely in the framing.                                                                                                        |
+| D26 | May the app ask about notifications a second time?                                          | **Yes**, capped hard at two asks ever, keyed per reason, and only alongside a Notifications settings row so an explicit tap is always the third path.                                                                                                  |
+| D27 | May the app send a notification that is not a reply, a hello or an account notice?          | **Yes** (pin expiring, trip starting), but change the primer copy in the same release and give the clocks their own opt-out that can never silence a conversation.                                                                                     |
+| D28 | Does joining a plan write a visible line into the plan's chat, or only ring the host?       | **Write the line.** The pin sheet already shows the crew's faces to anyone who can see the pin, so this broadcasts nothing new, and push-only leaves the group not knowing who arrived.                                                                |
+| D29 | Should a prefilter block stop counting toward the strike ladder, and should strikes expire? | **Both**, in that order. Splitting the audit action is the precedent `apply_message_verdict` already sets; a ninety-day window stops "reword it and send again" being a trap.                                                                          |
+| D30 | Should the prefilter keep blocking "hook up" and "sexy"?                                    | **Leave it alone** until `require_llm_moderation` is true in production, because the regex list is currently the only screen a first message gets. If you want it softer sooner, make it a warn-and-confirm in the composer, not a removal.            |
+| D31 | May a rejection sentence be model-written in the user's own language?                       | Yes, but only with an English twin required by the schema and stored in `moderation_events`, so every translated sentence is auditable.                                                                                                                |
+| D32 | Is the rulebook "House rules" or "Community guidelines"?                                    | **"House rules" in every user-facing string**, "Community guidelines" in `docs/legal` and App Store Connect. The app's own voice should win inside the app.                                                                                            |
+| D33 | Are the two bracketed items in the privacy-policy draft settled?                            | Answer both, then ship the in-app summary. If either is genuinely unknown, ship without those two paragraphs rather than delaying the screen.                                                                                                          |
+| D34 | Should an underage report auto-suppress the profile?                                        | **No auto-suppression.** Add the reason, sort it to the front of the queue, and push it to a duty phone so a human sees it in minutes rather than days.                                                                                                |
+| D35 | Should deleting an account require re-authentication?                                       | **Yes**, one system-standard prompt, in the same sitting as the Apple revocation since both touch the delete path.                                                                                                                                     |
+| D36 | Should the app record a day-granularity last-seen?                                          | Lean yes at DATE granularity only, with the privacy policy updated to match. Either way fix the doc, which currently promises a fallback that does not exist.                                                                                          |
+| D37 | Should "intends to list a business" be a column?                                            | **Yes**, and take the guest-hooks change with it so an account waiting to list reads the faceless map feed rather than the traveler directory.                                                                                                         |
+| D38 | Ship the in-app email change now, or hold it for the domain?                                | **Ship the password half now** (it needs no mail at all) and hold the email half until the sending domain lands.                                                                                                                                       |
+| D39 | Keep the last used email in the keychain across an uninstall?                               | **Yes**, cleared explicitly on Delete account and on a global sign-out.                                                                                                                                                                                |
+| D40 | May the intro tour bundle real screenshots of the app?                                      | Yes for the map still, which ages slowly. Compose the traveler and chat stills from placeholder content rather than photographing real screens.                                                                                                        |
+
+## Tier 3 — proceeding this way unless you say otherwise
+
+No answer needed. These are recorded so nothing happens silently.
+
+| Question                                                   | Default                                                                                                                                                                                |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A "keep for later" shelf on Travelers                      | **Not building it.** A control you spend on a person plus a collection of people you did not message is the deck mechanic the brief bans. Making a pass undoable solves the same need. |
+| Red as the label colour of a destructive action            | Keeping it, as a written exception in the design brief. `danger` is already a token; the ban is about romantic red.                                                                    |
+| The `[demo]` marker on seeded bios                         | Keeping the disclosure, moving it out of the bio string into a "Sample profile" chip, and gating the purge in CI rather than in a runbook.                                             |
+| A cluster with real photos drawing three faces             | Keeping it. Collapse only when no photo resolves.                                                                                                                                      |
+| Home city and country as reference data                    | Not before launch. Free text stays.                                                                                                                                                    |
+| The guest Chats tab's centred empty block                  | Top-anchoring it, like every other empty state.                                                                                                                                        |
+| Three glyphs for crew, plan and business room              | Doing it. One house icon for three privacy contracts is the finding.                                                                                                                   |
+| A per-user "words I'd rather not see" list                 | Not now. Moderation already screens every first message.                                                                                                                               |
+| The four-section rules card on the business account page   | Keeping it on the page.                                                                                                                                                                |
+| The `/join` business subtitle                              | Keeping your words.                                                                                                                                                                    |
+| "Nobody in yet" instead of "0 people here"                 | Doing it.                                                                                                                                                                              |
+| Collapsing the two join-mode rows into a segmented control | Only if the re-shot screenshots prove the reorder failed.                                                                                                                              |
+| Spending an EAS build on any single small change           | Batching them. Five packages need native config; they go in one build.                                                                                                                 |
+| Reopening the thirteen-step signup or the mandatory photo  | Not reopening either without you. The reachable win inside that decision is ordering: move the trip step to sit immediately after the photo step.                                      |
+| Auto-suppressing anything on a single report               | Not doing it. A report raises priority; a human decides.                                                                                                                               |
+
+---
+
+# Part 2 — Launch blockers
+
+Separate from the waves, because these gate _submission_ rather than quality. None is
+large. Several are documentation rather than code.
+
+| #   | Blocker                                                         | Why it blocks                                                                                                                                                                                                                                                                                                           | Where                                |
+| --- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| B1  | No hosted privacy-policy URL and no support URL                 | Both are required App Store Connect submission fields. Bundled in-app text does not satisfy a URL field.                                                                                                                                                                                                                | D1                                   |
+| B2  | Sign in with Apple tokens are never revoked on account deletion | An app offering Apple sign-in **and** in-app deletion must call the revocation endpoint. `delete-account/index.ts` has no such call; `app.json` sets `usesAppleSignIn`.                                                                                                                                                 | `supabase/functions/delete-account/` |
+| B3  | The selfie check is a face comparison and nothing declares it   | Biometric data under Apple's Sensitive Info bucket and GDPR Art. 9. Absent from both legal drafts and the nutrition-label table.                                                                                                                                                                                        | `docs/legal/`, App Store Connect     |
+| B4  | The full privacy policy is not readable in the app              | `policies.ts` carries a one-paragraph summary; `docs/legal/PRIVACY_POLICY.md` is never rendered.                                                                                                                                                                                                                        | `src/app/guidelines.tsx`             |
+| B5  | The nutrition-label table under-declares PostHog                | It collects a device identifier and ships to a US host, for a launch that is EU-first.                                                                                                                                                                                                                                  | `docs/APP_STORE.md`                  |
+| B6  | No listing copy exists anywhere in the repo                     | Nothing to paste into the submission.                                                                                                                                                                                                                                                                                   | `docs/APP_STORE.md`                  |
+| B7  | The planned age rating and screenshot set are stale             | `APP_STORE.md:123` expects **17+** and line 129 plans **6.7" and 6.1"** screenshots. Apple has since replaced the 12+/17+ tiers and consolidated the iPhone display classes. **Confirm the current tiers and required sizes in App Store Connect at submission** rather than trusting either this document or that one. | `docs/APP_STORE.md`                  |
+
+**B2 has a wrinkle worth knowing before it is scheduled.** Revocation needs the Apple
+refresh token, and nothing captures it today, so this is two pieces of work: store the
+token at `signInWithIdToken` time, then spend it in the delete function before the auth
+row goes. The revoke call must fail soft, because a revocation error must never block a
+deletion the user asked for, but it must be logged.
+
+**And one that is not a submission blocker but blocks you knowing anything.** No workflow
+passes `EXPO_PUBLIC_POSTHOG_API_KEY`, so `analytics.ts:8` leaves the client null and all
+fifty capture calls are dead in every shipped build. Four of the brief's six §6 metrics are
+PostHog-only. The fix has a trap in it: `testflight.yml:118-127` documents that Metro
+inlines `EXPO_PUBLIC_*` at bundle time _on the update runner_, which is why the Supabase
+pair is passed there explicitly, and why an app once shipped pointed at a host that does
+not exist. Adding the key to `eas.json` alone fixes new builds and then **the next
+over-the-air update silently strips analytics back out.** Both paths, plus the preflight
+guard already in `e2e.yml:91`.
+
+---
+
+# Part 3 — The work
+
+**211 packages**, merged from 436 findings across thirteen subsystems.
+150 ship over the air, 48 need a Supabase deploy alongside,
+7 are database only, and 6 need an EAS build — batch those.
+
+| Wave   | Packages | What it is                                                 |
+| ------ | -------: | ---------------------------------------------------------- |
+| **0**  |       58 | Cheap, clearly right, nothing to decide. Ships this week.  |
+| **0b** |       10 | Also cheap, but each waits on one Tier 1 or Tier 2 answer. |
+| **1**  |      106 | Real work with a clear payoff.                             |
+| **2**  |       37 | Genuinely optional.                                        |
+
+## Wave 0 — ship this week
+
+Nothing here waits on a decision. Thirty-three are under an hour each, and fifty-three of the fifty-eight need no database change at all.
+
+| Package                                                                                           | Area               | Effort | Ships as                       |
+| ------------------------------------------------------------------------------------------------- | ------------------ | :----: | ------------------------------ |
+| Name the city the room list shows, and stop claiming presence                                     | Chat tab           |   M    | over the air                   |
+| Give the invite code a real field on every platform, and move the row                             | Chat tab           |   M    | over the air                   |
+| Rebuild Archived on the shared chat row, with loading and error states                            | Chat tab           |   M    | over the air                   |
+| Make the reaction menu's backdrop actually dim, and hide the message it lifted                    | Design system      |   M    | over the air                   |
+| Stop scrollers cutting their last control off the bottom of the screen                            | Design system      |   M    | over the air                   |
+| Honour Reduce Motion and Reduce Transparency, which DESIGN.md already promises                    | Design system      |   M    | over the air                   |
+| Give the say-hi composer a Close button and a block notice that says which kind of wrong          | First hello        |   M    | over the air + Supabase deploy |
+| The filter sheet draws the markers it filters, and the old pin screen goes                        | Map                |   M    | over the air                   |
+| Make a tapped notification open the thing it is about                                             | Notifications      |   M    | over the air + Supabase deploy |
+| Add one Notifications row to both account pages, reading the live OS state                        | Notifications      |   M    | over the air                   |
+| Instrument every signup step with one ordered event schema                                        | Onboarding         |   M    | over the air                   |
+| Put Gender in the first viewport and stop the footer eating the question                          | Onboarding         |   M    | over the air                   |
+| Make sign out local, take the push token with it, and stop promising what it never set            | Onboarding         |   M    | over the air                   |
+| Make the day, the lifetime and the plan all fit in the pin sheet at once                          | Pin                |   M    | over the air                   |
+| Name the spot under the placement pin before asking anyone to confirm it                          | Pin                |   M    | over the air                   |
+| One event per thing that happened, carrying the property the question needs                       | Platform           |   M    | over the air                   |
+| Give a stranger's profile a docked Say hi, and stop it offering one you already sent              | Profile            |   M    | over the air                   |
+| Make the audience rows readable, unclip the note under them, and name both profile screens        | Profile            |   M    | over the air                   |
+| Hide the source bubble while its menu is open instead of dimming it                               | Thread             |   M    | over the air                   |
+| Give the long-press menu Share and links, split Remove from Report, and let a visitor report      | Thread             |   M    | over the air                   |
+| One word per thing, no presence claims, and an unambiguous date in the inbox                      | Thread             |   M    | over the air                   |
+| Make a brand-new group offer the invite, and stop rejecting the link people paste                 | Thread             |   M    | over the air                   |
+| Give the Say hi bar an opaque ground and make Next a control you can see                          | Travelers          |   M    | over the air                   |
+| Stop the composer destroying a draft, and stop it going quiet when it matters most                | Travelers          |   M    | over the air                   |
+| Make passing a traveler undoable, and make the pass say it happened                               | Travelers          |   M    | over the air                   |
+| Add a +not-found route in the app's own voice                                                     | Account, settings, |   S    | over the air                   |
+| One voice: kill the banned noun, the developer word, and the two-sided facts                      | Business           |   S    | over the air                   |
+| Step 4: grey the blocked Continue, say the launch state, and take a name for city five            | Business           |   S    | over the air                   |
+| Stop the business inbox saying three contradictory things about an empty room                     | Chat tab           |   S    | over the air                   |
+| Scale the fixed preview height with the text size                                                 | Chat tab           |   S    | over the air                   |
+| Give the public profile route the three states every other screen has                             | Design system      |   S    | over the air                   |
+| Stop scrolling from buzzing, and make destructive taps feel destructive                           | Design system      |   S    | over the air                   |
+| Make the Chat header say which segment is on, and say what the plus does                          | Design system      |   S    | over the air                   |
+| Take the em dashes and the word "request" out of the copy Postgres sends                          | First hello        |   S    | Supabase deploy only           |
+| Retire "hello" as a countable noun from every string a person reads                               | First hello        |   S    | over the air                   |
+| Tell a traveler writing to a closed business that the answer may wait                             | First hello        |   S    | over the air                   |
+| One function decides a pin's title, and addresses stop clipping                                   | Map                |   S    | over the air                   |
+| The location picker draws our marker, at a zoom that can answer its own question                  | Map                |   S    | over the air                   |
+| Rewrite the curated pin notes and the moderation push in the app's own voice                      | Map                |   S    | Supabase deploy only           |
+| Take the two present-tense presence claims out of the list subtitles                              | Notifications      |   S    | over the air                   |
+| Make every sign-up gate ask for the same thing                                                    | Onboarding         |   S    | over the air                   |
+| Settle the words on /join and the account-kind rows                                               | Onboarding         |   S    | over the air                   |
+| Turn step 12 into a statement and say what each skip is skipping                                  | Onboarding         |   S    | over the air                   |
+| Say what the pin sheet is waiting for, and stop labelling a plan a location                       | Pin                |   S    | over the air                   |
+| Stop the map polling every minute while somebody is reading a chat                                | Platform           |   S    | over the air                   |
+| Teach the anchor parser about priorities, and use one verb for saying hi                          | Profile            |   S    | over the air                   |
+| Say how long the selfie check takes, and what the badge actually buys                             | Profile            |   S    | over the air                   |
+| Fix the guest pitch, tell guests about the 30-day sweep, and give them a sign-in door             | Profile            |   S    | over the air                   |
+| One discard verb, one Done that commits, a neutral first placeholder, and honest character limits | Profile            |   S    | over the air                   |
+| Make Send express disabled by colour, and give it the app's press feel                            | Thread             |   S    | over the air                   |
+| Stack reaction and delivery status under the bubble, and stop shouting "Sent"                     | Thread             |   S    | over the air                   |
+| Make a tapback and an unsend appear before the network answers                                    | Thread             |   S    | over the air                   |
+| Tell the accepter the hello started from THEIR profile, not the sender's                          | Thread             |   S    | over the air                   |
+| Replace the spotlight's ranking line with the mechanism it describes                              | Travelers          |   S    | over the air                   |
+| Make the accept push say what happened instead of instructing a repeat                            | Travelers          |   S    | Supabase deploy only           |
+| Tell the reader how many people are left, and let them pull to look again                         | Travelers          |   S    | over the air                   |
+| Stop the guest screen contradicting itself in an empty city                                       | Travelers          |   S    | over the air                   |
+| Make the trip skip say what it closes, and make the wall finish that sentence                     | Travelers          |   S    | over the air                   |
+
+## Wave 0b — cheap, but each needs one answer first
+
+The blocking question is named in the package detail in Part 4.
+
+| Package                                                                                                               | Area               | Effort | Ships as                       |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------ | :----: | ------------------------------ |
+| Make joining somebody's plan produce a line in the chat and a push to the host                                        | Notifications      |   L    | over the air + Supabase deploy |
+| Give database failures written copy, and stop banned words reaching an alert                                          | Platform           |   L    | over the air + Supabase deploy |
+| Put a privacy policy in the binary and link it from the screen that creates the account                               | Account, settings, |   M    | over the air                   |
+| Make our markers unmistakable: a silhouette Apple never draws, one disc per photoless cluster, a ring on your own pin | Map                |   M    | over the air                   |
+| Offer a camera on the mandatory photo step, handle a refused permission, and show the square people approved          | Profile            |   M    | over the air                   |
+| Call the rulebook one thing in the app, and stop the friendly errors depending on the old name                        | Account, settings, |   S    | over the air                   |
+| Make the DASHBOARD event inventory match the events the app actually sends                                            | Account, settings, |   S    | over the air                   |
+| Delete the web pin composer and make the web build read-only                                                          | Pin                |   S    | over the air                   |
+| Make the PostHog key reach a build, and fail loudly when it does not                                                  | Platform           |   S    | over the air                   |
+| Show a business owner the two numbers the screen already has                                                          | Platform           |   S    | over the air                   |
+
+## Wave 1 — the real work
+
+Ordered by effort. Several depend on a Wave 0 package landing first; those dependencies are in Part 4.
+
+| Package                                                                                                           | Area               | Effort | Ships as                       |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------ | :----: | ------------------------------ |
+| Revoke the Sign in with Apple token when an account is deleted                                                    | Account, settings, |   L    | over the air + Supabase deploy |
+| Put the real photo grid inside step 7, and count the photo the owner can see                                      | Business           |   L    | over the air                   |
+| Say what the email costs where the email is asked for, and let the code be typed at any point                     | Business           |   L    | over the air                   |
+| Measure the tab bar instead of guessing 50pt, and photograph the app at AX5                                       | Design system      |   L    | over the air                   |
+| A draggable list of what is on in this city, under the map                                                        | Map                |   L    | over the air                   |
+| Three within-trip clocks: trip starts tomorrow, your plan is soon, last call                                      | Notifications      |   L    | over the air + Supabase deploy |
+| Say what happened when a session ends without being asked to                                                      | Onboarding         |   L    | over the air                   |
+| Stop a half-finished listing from turning into traveler onboarding                                                | Onboarding         |   L    | over the air + Supabase deploy |
+| Show the product in the tour and give the choice its own page                                                     | Onboarding         |   L    | over the air                   |
+| Offer the venues under the placement pin, and take their category with them                                       | Pin                |   L    | EAS build                      |
+| Stand up the domain, and put a real page behind every link the app hands out                                      | Platform           |   L    | over the air                   |
+| Write the submission pack: rating questionnaire, screenshots, listing copy, review notes                          | Platform           |   L    | over the air                   |
+| Show the photo you just picked, keep it when the upload fails, and say one thing about a rejected one             | Profile            |   L    | over the air                   |
+| Page a conversation past its first screenful instead of ending silently                                           | Thread             |   L    | over the air + Supabase deploy |
+| Reply to a specific message, with the quoted line above the bubble                                                | Thread             |   L    | over the air + Supabase deploy |
+| Put the city and the dates on the card you decide on, and make declining recoverable                              | Travelers          |   L    | over the air + Supabase deploy |
+| Rename the rulebook in the six Postgres functions whose exception text users read                                 | Account, settings, |   M    | Supabase deploy only           |
+| Give a suspended or banned account the rules and a way to appeal, and say so in the notification                  | Account, settings, |   M    | over the air + Supabase deploy |
+| Say the four safety promises where somebody decides to install and decides to say hi                              | Account, settings, |   M    | over the air                   |
+| Let a report say "they are under 18" and "somebody is in danger"                                                  | Account, settings, |   M    | over the air + Supabase deploy |
+| Say what happens after a report, and let a message say how urgent it is                                           | Account, settings, |   M    | over the air + Supabase deploy |
+| Tell somebody why a photo was refused, and stop calling a timeout a rules breach                                  | Account, settings, |   M    | over the air + Supabase deploy |
+| Make the progress bar speakable, numbered, and honest about how many steps there are                              | Business           |   M    | over the air                   |
+| Stop punishing accuracy: a diacritic or a ten-metre nudge must not cost the check                                 | Business           |   M    | Supabase deploy only           |
+| Give a hostel something to point at: a link, a share sheet and a QR for the counter                               | Business           |   M    | over the air                   |
+| Make My business worth opening on a Tuesday, and turn the account page into settings                              | Business           |   M    | over the air                   |
+| Let a traveler report how a business behaved, not just whether the listing is accurate                            | Business           |   M    | over the air + Supabase deploy |
+| One screen that says what a listing is, that it is free, and who is here                                          | Business           |   M    | over the air                   |
+| Let a post be fixed and put up again instead of only taken down                                                   | Business           |   M    | over the air                   |
+| Un-red the Archive swipe, keep the Archived door visible, announce auto-archives                                  | Chat tab           |   M    | over the air                   |
+| Timestamp the incoming hellos, cap them at two, and put them in the list                                          | Chat tab           |   M    | over the air                   |
+| Give my_chats the plan date and the room's readability, and say both on the row                                   | Chat tab           |   M    | over the air + Supabase deploy |
+| Acknowledge a block, and give it a permanent home                                                                 | Chat tab           |   M    | over the air                   |
+| Virtualize the chat list                                                                                          | Chat tab           |   M    | over the air                   |
+| Let a thread load earlier messages past the first hundred                                                         | Chat tab           |   M    | over the air                   |
+| Pin form: label the day chips, get the expiry slider on screen, and say why Drop it is off                        | Design system      |   M    | over the air                   |
+| Make the type scale real: unshadow title, loosen the clipping line heights, delete the last hardcoded font size   | Design system      |   M    | over the air                   |
+| One EmptyState component, top-anchored, everywhere a list can be empty                                            | Design system      |   M    | over the air                   |
+| Say the state change out loud: loading, empty, failed, and the unread count                                       | Design system      |   M    | over the air                   |
+| Travelers and My business: measure the bar, give it a floor, and label the browse action                          | Design system      |   M    | over the air                   |
+| Cut the token tables out of DESIGN.md and point at theme.ts                                                       | Design system      |   M    | over the air                   |
+| Stop counting a regex guess as a strike, and let strikes decay                                                    | First hello        |   M    | Supabase deploy only           |
+| Keep a message the classifier stopped after sending, and let it be rewritten                                      | First hello        |   M    | over the air + Supabase deploy |
+| Fit the camera to the pins, cluster by screen distance, and give a panned-away map a way home                     | Map                |   M    | over the air                   |
+| Give the heat layer a name, an honest empty state, and a metric that means something                              | Map                |   M    | over the air                   |
+| Re-seed the curated pins by district so a heat cell can actually clear k                                          | Map                |   M    | over the air + Supabase deploy |
+| One message slot above the dock, with a priority order and the moments that matter in it                          | Map                |   M    | over the air                   |
+| Say how many plans survive the filter, and stop covering the map that is meant to prove it                        | Map                |   M    | over the air                   |
+| A business's map opens on its own city, shows why its listing is missing, and has a button on it                  | Map                |   M    | over the air                   |
+| The map opens where you are, and the analytics stop attributing everyone to Bangkok                               | Map                |   M    | over the air + Supabase deploy |
+| "Today" means the browsed city's today, not the reader's                                                          | Map                |   M    | over the air                   |
+| Show the address before the commit, and stop thudding at camera moves the user did not make                       | Map                |   M    | over the air                   |
+| Split venue_name into the place and the plan                                                                      | Map                |   M    | over the air + Supabase deploy |
+| Carry what a guest was doing across the account wall                                                              | Map                |   M    | over the air                   |
+| Put a real number on the home-screen icon, and clear it when the thread is read                                   | Notifications      |   M    | over the air + Supabase deploy |
+| Let the primer ask a second time, at the moment somebody says hi to you                                           | Notifications      |   M    | over the air                   |
+| Carry what the guest was doing through sign-up                                                                    | Onboarding         |   M    | over the air                   |
+| Reopen onboarding on the first step that is actually empty                                                        | Onboarding         |   M    | over the air                   |
+| Let somebody change their email and password without signing out                                                  | Onboarding         |   M    | over the air                   |
+| Offer back the sections onboarding was allowed to skip                                                            | Onboarding         |   M    | over the air                   |
+| Give a pin-born chat room the plan it came from                                                                   | Pin                |   M    | over the air + Supabase deploy |
+| Ship the privacy policy the way the guidelines already ship, and put back the meeting-safety advice               | Platform           |   M    | over the air                   |
+| Rewrite the two legal drafts so they describe the app that exists                                                 | Platform           |   M    | over the air                   |
+| Batch every app.json change into one EAS build                                                                    | Platform           |   M    | EAS build                      |
+| Teach the app that a phone can be offline                                                                         | Platform           |   M    | EAS build                      |
+| Put account type, city and release on every event, and stop re-identifying on every launch                        | Platform           |   M    | over the air                   |
+| Make accept rate answerable by source, by city, and by declined-versus-ignored                                    | Platform           |   M    | over the air + Supabase deploy |
+| Make a low pin rate diagnosable                                                                                   | Platform           |   M    | over the air                   |
+| Three source scans, so the rules hold by construction rather than by vigilance                                    | Platform           |   M    | over the air                   |
+| Stop re-downloading every photo on every cold launch, and refuse one too small to fill the frame                  | Platform           |   M    | over the air                   |
+| Draw the App Store icon as artwork, not as an upscale                                                             | Platform           |   M    | EAS build                      |
+| Make the block the tap target, and stop the trip rows staggering under a finger                                   | Profile            |   M    | over the air                   |
+| Give profile-me a Settings spine instead of a stack of ghost buttons                                              | Profile            |   M    | over the air                   |
+| Let people see their profile as a stranger does, and let onboarding step 13 jump to the step that owns each block | Profile            |   M    | over the air                   |
+| Add a Blocked list with unblock, using the policies that already exist                                            | Profile            |   M    | over the air                   |
+| Show the address the account is under, let people change it, and stop blaming wifi for a closed account           | Profile            |   M    | over the air                   |
+| Put the selfie step inside signup, so the locked audience rows are a door and not a wall                          | Profile            |   M    | over the air                   |
+| Let people reorder photos and choose which one leads, which the database already allows                           | Profile            |   M    | over the air                   |
+| Draw a New line where you stopped reading, and open the thread there                                              | Thread             |   M    | over the air                   |
+| One header row per thread, with the group's own photo on it                                                       | Thread             |   M    | over the air                   |
+| Put Mute where people look for it, and give a group somewhere to be reported                                      | Thread             |   M    | over the air + Supabase deploy |
+| Let any member share the invite link, with the admin keeping the kill switch                                      | Thread             |   M    | over the air + Supabase deploy |
+| Say who added you to a group, and let a person opt out of being added                                             | Thread             |   M    | over the air + Supabase deploy |
+| Replace "0 people here" with the thing a business owner can actually do                                           | Thread             |   M    | over the air                   |
+| Delete the three unreachable button states and give the moment after a hello something to be                      | Travelers          |   M    | over the air                   |
+| Put report and block on the screen where a stranger is first read, and give every control a word                  | Travelers          |   M    | over the air                   |
+| Give an unanswered hello a date and an ending                                                                     | Travelers          |   M    | over the air + Supabase deploy |
+| Say "Hours not set" rather than silently omitting the question a traveler came to answer                          | Business           |   S    | over the air                   |
+| Stop the edit screen promising you only lose what you typed                                                       | Business           |   S    | over the air                   |
+| Replace the one house glyph with a pin, a storefront and a group mark                                             | Chat tab           |   S    | over the air                   |
+| Give the signed-out Chats segment a real empty state                                                              | Chat tab           |   S    | over the air                   |
+| Move the demo disclosure out of the bio prose and onto the card                                                   | Design system      |   S    | over the air                   |
+| Put the say-hi composer in the E2E tour, four frames, without sending anything                                    | First hello        |   S    | over the air                   |
+| Count the drafts the warning stopped, so the creep metric is not measuring its own success                        | First hello        |   S    | over the air                   |
+| The sign-up gate leads with the invitation, not the privacy warning                                               | Map                |   S    | over the air                   |
+| Keep "waiting on backend keys" out of any bundle a person can reach                                               | Map                |   S    | over the air                   |
+| Stop a pull-down from throwing away a plan somebody just wrote                                                    | Pin                |   S    | over the air                   |
+| Guess a hand-placed pin's category from the plan, and show the guess as the marker                                | Pin                |   S    | over the air                   |
+| Prove an invite survives a first launch before building anything for it                                           | Platform           |   S    | over the air                   |
+| Ask the phone what locale it is, and let people search a language by its code                                     | Platform           |   S    | over the air                   |
+| Wire up the in-app browser this project already built                                                             | Platform           |   S    | over the air                   |
+| Give someone a way to say a traveler is under 18                                                                  | Platform           |   S    | over the air + Supabase deploy |
+| Stop the visibility screen promising a gate that group co-membership removes                                      | Profile            |   S    | over the air                   |
+| Search the inbox, reusing the field that already exists one screen away                                           | Thread             |   S    | over the air                   |
+| Have the next traveler's face already downloaded when the card turns                                              | Travelers          |   S    | over the air                   |
+| Show the shared language the match score already spends 18 points on                                              | Travelers          |   S    | over the air                   |
+
+## Wave 2 — optional
+
+Recorded so the decision to skip them is visible rather than silent.
+
+| Package                                                                                      | Area               | Effort | Ships as                       |
+| -------------------------------------------------------------------------------------------- | ------------------ | :----: | ------------------------------ |
+| One ratio for a business photo, and a crop frame that shows it                               | Business           |   L    | over the air                   |
+| Let a post carry the photo the schema and the traveler page already expect                   | Business           |   L    | over the air + Supabase deploy |
+| A Tonight sheet from the map, so a post reaches somebody                                     | Business           |   L    | over the air + Supabase deploy |
+| A per-user muted-word list that collapses a hello rather than deleting it                    | Chat tab           |   L    | over the air + Supabase deploy |
+| Three saved replies an owner writes once and taps into any chat                              | First hello        |   L    | over the air + Supabase deploy |
+| Put counts on the city chips and capture the cities nobody has opened yet                    | Map                |   L    | over the air + Supabase deploy |
+| Give a pin an optional time                                                                  | Map                |   L    | over the air + Supabase deploy |
+| A de-identified "usually busy" layer beneath live heat                                       | Map                |   L    | over the air + Supabase deploy |
+| Record who joined and who left in a group thread                                             | Pin                |   L    | over the air + Supabase deploy |
+| Let a trip say roughly when, so a traveler without exact dates can still be found            | Profile            |   L    | over the air + Supabase deploy |
+| Attach a pin to a message, and let anyone in the thread join it                              | Thread             |   L    | over the air + Supabase deploy |
+| Show a guest three travelers before the wall, not one                                        | Travelers          |   L    | over the air + Supabase deploy |
+| Ask who is holding the phone before deleting the account                                     | Account, settings, |   M    | over the air                   |
+| A settings row showing what became of each report and message you sent                       | Account, settings, |   M    | over the air + Supabase deploy |
+| Give the description, hours and links steps something to look at and somewhere small to edit | Business           |   M    | over the air                   |
+| Let a business choose its cover instead of deleting its way to one                           | Business           |   M    | over the air                   |
+| Close the one moderation gap where deleting the row does not undo the harm                   | Business           |   M    | over the air + Supabase deploy |
+| Let the whole sheet card take the drag, not just the grabber                                 | Design system      |   M    | over the air                   |
+| One chip component, three vocabularies retired                                               | Design system      |   M    | over the air                   |
+| Give the pushed screens a real header title instead of a bare back button on its own row     | Design system      |   M    | over the air                   |
+| Answer a rejected selfie or storefront in the language its owner speaks                      | First hello        |   M    | over the air + Supabase deploy |
+| "Plan to go" from a business page                                                            | Map                |   M    | over the air + Supabase deploy |
+| Date a hello you sent, and let it be taken back                                              | Pin                |   M    | over the air + Supabase deploy |
+| Make the liquidity number countable and keep its history                                     | Pin                |   M    | Supabase deploy only           |
+| One full-screen photo viewer, used from the profile hero, the gallery and the chat bubble    | Profile            |   M    | over the air                   |
+| Make home city reference data, the way trip cities already are                               | Profile            |   M    | over the air + Supabase deploy |
+| Show who reacted, in rooms and groups only                                                   | Thread             |   M    | over the air + Supabase deploy |
+| One LOCALE constant, and every date formatter takes it                                       | Thread             |   M    | over the air                   |
+| Ask, once and privately, whether two travelers actually met                                  | Travelers          |   M    | over the air + Supabase deploy |
+| Pull to refresh on the two business screens that have none                                   | Business           |   S    | over the air                   |
+| One clock: chat times should match the business hours in the same app                        | Business           |   S    | over the air                   |
+| Stop drawing a bordered card inside a sheet at the moment we ask for an account              | Design system      |   S    | over the air                   |
+| Declare expo-notifications in app.json, with an icon that exists                             | Notifications      |   S    | EAS build                      |
+| Land password reset on a web page instead of a custom scheme                                 | Onboarding         |   S    | over the air + Supabase deploy |
+| Put the business account controls above the rulebook, not below it                           | Profile            |   S    | over the air                   |
+| Preload "Pick a day" with the creator's trip end instead of thirty days                      | Thread             |   S    | over the air                   |
+| Ask for a review once, at the accepted-chat moment and nowhere else                          | Travelers          |   S    | EAS build                      |
+
+---
+
+---
+
+Every package in full, and the 114 findings deliberately not being acted on, are in [`UX_PACKAGES.md`](UX_PACKAGES.md). It is long because it is the complete record: each package names the files it touches, the migration if it needs one, and the test that proves it.
