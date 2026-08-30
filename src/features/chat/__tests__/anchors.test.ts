@@ -1,4 +1,10 @@
-import { anchorAboutYours, anchorStartedFrom, parseAnchor } from '@/features/chat/anchors';
+import {
+  anchorAboutYours,
+  anchorStartedFrom,
+  anchorTheyStartedFrom,
+  footerAnchor,
+  parseAnchor,
+} from '@/features/chat/anchors';
 
 describe('parseAnchor', () => {
   it('reads every anchor the composer can emit', () => {
@@ -64,5 +70,42 @@ describe('anchorAboutYours', () => {
 
   it('falls back to the bio, same as the other renderer', () => {
     expect(anchorAboutYours('constellation')).toBe('your bio');
+  });
+});
+
+describe('anchorTheyStartedFrom', () => {
+  it('composes for every kind without a name', () => {
+    expect(anchorTheyStartedFrom('photo:0')).toBe('Started from your photo');
+    expect(anchorTheyStartedFrom('trip')).toBe('Started from your travel plans');
+    expect(anchorTheyStartedFrom('home')).toBe('Started from where you are from');
+    expect(anchorTheyStartedFrom('pin:Rooftop bar')).toBe('Started from your pin at Rooftop bar');
+  });
+});
+
+describe('footerAnchor', () => {
+  const element = 'photo:0';
+
+  it('gives the sender and the accepter DIFFERENT strings for the same hello', () => {
+    // Alex sent a hello about Sam's photo. On Alex's screen the chat is
+    // titled "Sam"; on Sam's it is titled "Alex".
+    const senderReads = footerAnchor(element, 'alex', 'alex', 'Sam');
+    const accepterReads = footerAnchor(element, 'alex', 'sam', 'Alex');
+    expect(senderReads).toBe("Started from Sam's photo");
+    expect(accepterReads).toBe('Started from your photo');
+    expect(senderReads).not.toBe(accepterReads);
+  });
+
+  it("never puts the other person's name in the accepter's anchor", () => {
+    expect(footerAnchor(element, 'alex', 'sam', 'Alex')).not.toContain('Alex');
+    expect(footerAnchor('pin:Rooftop bar', 'alex', 'sam', 'Alex')).not.toContain('Alex');
+  });
+
+  it('treats an unknown sender as not-me only when it knows who me is', () => {
+    // Sender id missing but the session is real: the reader did not send it.
+    expect(footerAnchor(element, null, 'sam', 'Alex')).toBe('Started from your photo');
+    // No session yet: fall back to the third person rather than telling a
+    // still-loading reader the hello was about their profile.
+    expect(footerAnchor(element, null, null, 'Alex')).toBe("Started from Alex's photo");
+    expect(footerAnchor(element, 'alex', null, 'Alex')).toBe("Started from Alex's photo");
   });
 });

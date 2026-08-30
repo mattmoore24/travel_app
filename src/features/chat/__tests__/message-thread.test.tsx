@@ -90,10 +90,21 @@ describe('the reaction menu', () => {
     expect(onToggleReaction).toHaveBeenCalledWith('m1', '❤️', false);
   });
 
-  it('does not open for somebody who cannot react', () => {
+  it('does not open for somebody who cannot react and has nothing to flag', () => {
     renderThread({ canReact: false });
     fireEvent(screen.getByLabelText('First one in'), 'longPress');
     expect(screen.queryByLabelText('Dismiss')).toBeNull();
+  });
+
+  // canReact used to gate reporting too, so a visitor reading a public
+  // business room — the surface most likely to show a stranger's message —
+  // had no way to flag abuse at all.
+  it('opens with Report and no emoji for a reader who cannot react', () => {
+    renderThread({ canReact: false, onReport: jest.fn() });
+    fireEvent(screen.getByLabelText('First one in'), 'longPress');
+    expect(screen.getByLabelText('Report')).toBeTruthy();
+    expect(screen.queryByLabelText('❤️')).toBeNull();
+    expect(screen.queryByLabelText('More reactions')).toBeNull();
   });
 
   // The menu paints a COPY of the pressed bubble above its scrim while the
@@ -163,6 +174,40 @@ describe('what a group needs and a one-to-one chat does not', () => {
     // And there is nothing left to react to.
     fireEvent(screen.getByText('Message removed by the host'), 'longPress');
     expect(screen.queryByLabelText('Dismiss')).toBeNull();
+  });
+});
+
+describe('the menu does the job', () => {
+  // The moderator's menu used to swap Report OUT for Remove, so the person
+  // best placed to spot abuse early had no way to escalate a message they
+  // had to delete. Two actions, two handlers, side by side.
+  it('shows a moderator Remove and Report, calling different handlers', () => {
+    const onRemove = jest.fn();
+    const onReport = jest.fn();
+    renderThread({ onRemove, onReport });
+    fireEvent(screen.getByLabelText('First one in'), 'longPress');
+
+    fireEvent.press(screen.getByLabelText('Remove'));
+    expect(onRemove).toHaveBeenCalledWith('m1');
+    expect(onReport).not.toHaveBeenCalled();
+
+    fireEvent(screen.getByLabelText('First one in'), 'longPress');
+    fireEvent.press(screen.getByLabelText('Report'));
+    expect(onReport).toHaveBeenCalledWith('m1');
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers Share on a message with words in it', () => {
+    renderThread();
+    fireEvent(screen.getByLabelText('First one in'), 'longPress');
+    expect(screen.getByLabelText('Share')).toBeTruthy();
+  });
+
+  it('does not offer Share on a bare photo', () => {
+    renderThread({ messages: [message({ body: null, image_path: 'p.jpg' })] });
+    fireEvent(screen.getByLabelText('Photo'), 'longPress');
+    expect(screen.getByLabelText('Dismiss')).toBeTruthy();
+    expect(screen.queryByLabelText('Share')).toBeNull();
   });
 });
 

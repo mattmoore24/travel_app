@@ -142,8 +142,9 @@ describe('the room a business runs', () => {
     // business room reads NULL - while is_room_moderator returns true for
     // them (20260827160000).
     expect(code).toContain("const isModerator = membership?.my_role === 'admin' || isOwnRoom;");
-    // Which is what decides Remove-versus-Report and whether pinning exists.
-    expect(code).toContain("reportLabel={isModerator ? 'Remove' : 'Report'}");
+    // Which is what decides who can Remove and whether pinning exists.
+    // Remove is its own handler beside Report now, never a relabelling of it.
+    expect(code).toContain('onRemove={\n              isModerator');
   });
 
   it('never offers the owner a way to leave the chat it runs', () => {

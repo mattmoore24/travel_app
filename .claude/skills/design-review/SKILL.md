@@ -131,6 +131,20 @@ Banned, each for a reason already paid for:
   place"), which the founder overturned on 2026-08-28: consistency beats the
   softer word. "Place" is still right where it means a spot on the map, as in
   the drop-a-pin search field.
+- **"here now", "nearby", "near you", and a bare "Here"** — presence claims,
+  every one, in an app whose strongest safety claim is that it never collects
+  your location (§7 rule 2). A member count is chat membership: say
+  "in this chat". A bare "Here" next to a name is exactly where WhatsApp puts
+  "online". The map's heat is "where the plans are", never "plans nearby" —
+  it is scoped to a city chip that may be a continent away. Locative uses
+  about a business ("in the chat here", meaning at the venue) are not
+  presence claims and can stay.
+
+One conversation, one word, and the word is decided: a traveler-made one is a
+**group**, a business-run one is a **room**, and **"chat"** is only ever a
+one-to-one. The same object must never be a group, a room and a chat on one
+screen — this is the 2026-08-28 place-versus-business ruling applied to
+conversations.
 
 A control says exactly what happens, and the confirmation echoes it. Errors
 say what went wrong and what to do — "Nothing by that name in Lisbon. Try the

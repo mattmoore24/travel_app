@@ -13,9 +13,10 @@ import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
+import { Sheet, SHEET_SETTLE_MS, leavingSheet } from '@/components/ui/sheet';
 import { MaxContentWidth, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { useDiscardFailed, useSendMessage, useSendPhoto } from '@/features/chat/hooks';
-import { useIsGuest, useIsGuestAccount } from '@/features/guest/hooks';
+import { useIsGuest, useIsGuestAccount, useIsSignedOut } from '@/features/guest/hooks';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { useGroup } from '@/features/groups/hooks';
 import { useMyChats } from '@/features/matching/hooks';
@@ -46,6 +47,12 @@ export default function RoomScreen() {
   const theme = useTheme();
   const isGuest = useIsGuest();
   const isGuestAccount = useIsGuestAccount();
+  // No session at all, as opposed to a guest account that has one. /report
+  // sits behind Stack.Protected guard={signedIn}, so for a signed-out
+  // visitor the push would do nothing at all; a guest ACCOUNT can report
+  // and keeps the real route.
+  const isSignedOut = useIsSignedOut();
+  const [reportGate, setReportGate] = useState(false);
   const ownId = useOwnUserId();
   const messagesQuery = useRoomMessages(id ?? null);
   const messages = useMemo(() => messagesQuery.data ?? [], [messagesQuery.data]);
@@ -279,7 +286,7 @@ export default function RoomScreen() {
               </ThemedText>
             ) : (
               <ThemedText type="footnote" themeColor="textSecondary">
-                {info ? `${countOf(info.member_count, 'traveler')} in this chat. ` : ''}
+                {info ? `${countOf(info.member_count, 'person', 'people')} in this chat. ` : ''}
                 {/* "Join in to post" is an instruction a business can never
                     follow, so in somebody else's room the sentence stops at
                     what it can do. */}
@@ -382,13 +389,6 @@ export default function RoomScreen() {
                 },
               ])
             }
-            // A moderator takes a message down; everybody else reports it.
-            // Both used to arrive here, so a moderator's button said "Report"
-            // and opened a confirmation headed "Remove this message?" — and,
-            // worse, an ordinary member got no second action at all. A group
-            // is where you meet strangers, so it is exactly where reporting
-            // has to work. From a profile still works too; this is the one
-            // that carries the message with it.
             // Hosts only, and the menu simply does not carry the action for
             // anybody else — an action you can see and cannot perform is
             // worse than one that was never offered.
@@ -410,22 +410,35 @@ export default function RoomScreen() {
                   }
                 : undefined
             }
-            reportLabel={isModerator ? 'Remove' : 'Report'}
-            onReport={
+            // Remove and Report side by side, never one instead of the
+            // other. The moderator's menu used to swap Report OUT for
+            // Remove, which left the person best placed to spot abuse early
+            // with no way to escalate a message they had to delete.
+            onRemove={
               isModerator
                 ? (messageId) =>
-                    Alert.alert(
-                      'Remove this message?',
-                      'It disappears for everyone in the group.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Remove',
-                          style: 'destructive',
-                          onPress: () => removeMessage.mutate(messageId),
-                        },
-                      ]
-                    )
+                    Alert.alert('Remove this message?', 'It disappears for everyone.', [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Remove',
+                        style: 'destructive',
+                        onPress: () => removeMessage.mutate(messageId),
+                      },
+                    ])
+                : undefined
+            }
+            // For every reader, moderator included — a group is where you
+            // meet strangers, so it is exactly where reporting has to work.
+            // A signed-out visitor gets the account gate instead of a push
+            // at a route that is not mounted for them and would do nothing.
+            onReport={
+              isSignedOut
+                ? () => {
+                    // The menu's modal is still dismissing when this runs,
+                    // and iOS silently drops a presentation started during a
+                    // dismissal (see traps) — wait the settle window.
+                    setTimeout(() => setReportGate(true), SHEET_SETTLE_MS);
+                  }
                 : (messageId) => {
                     const sender = byId.get(messageId)?.sender_id;
                     if (!sender) {
@@ -445,7 +458,24 @@ export default function RoomScreen() {
                   error={messagesQuery.error}
                   onRetry={() => messagesQuery.refetch()}
                 />
-              ) : messagesQuery.isPending ? null : (
+              ) : messagesQuery.isPending ? null : isGroup &&
+                !muted &&
+                (membership?.member_count ?? 0) < 2 ? (
+                // The screen straight after the most effortful thing in the
+                // Chat tab: a named group, a photo, a posting rule — and one
+                // person in it. The one thing they need next is getting
+                // anybody else in, so the empty state answers THAT question.
+                // "Go first" belongs to a room that has people to hear it.
+                <View style={styles.emptyThread}>
+                  <ThemedText type="callout" themeColor="textSecondary">
+                    Your group is ready.
+                  </ThemedText>
+                  <PrimaryButton
+                    label="Invite people"
+                    onPress={() => router.push(`/group/${id}`)}
+                  />
+                </View>
+              ) : (
                 <View style={styles.emptyThread}>
                   <ThemedText type="callout" themeColor="textSecondary">
                     {isGroup ? 'Nobody has said anything yet.' : 'Nothing here yet.'}
@@ -493,8 +523,8 @@ export default function RoomScreen() {
               <ThemedView type="backgroundElement" style={styles.mutedNotice}>
                 <ThemedText type="small" themeColor="textSecondary">
                   {closeDayLabel(group?.max_stay_until ?? null)
-                    ? `This chat closed on ${closeDayLabel(group?.max_stay_until ?? null)}. Everything in it is still here to read.`
-                    : 'This chat has closed. Everything in it is still here to read.'}
+                    ? `This group closed on ${closeDayLabel(group?.max_stay_until ?? null)}. Everything in it is still here to read.`
+                    : 'This group has closed. Everything in it is still here to read.'}
                 </ThemedText>
               </ThemedView>
             </View>
@@ -510,7 +540,10 @@ export default function RoomScreen() {
             <View style={styles.composerWrap}>
               <Composer
                 inputTestID="room-composer"
-                placeholder="Message the room…"
+                // One word per thing: a traveler-made one is a group, a
+                // business-run one is a room, and the composer is the last
+                // word the person reads before speaking into it.
+                placeholder={isGroup ? 'Message the group…' : 'Message the room…'}
                 // Not for a guest: messages_guest_limits refuses an
                 // image_path outright, so the button could only ever fail.
                 // Photos cost storage and a vision call apiece and a free
@@ -600,6 +633,20 @@ export default function RoomScreen() {
         {/* Outside the scroller: iOS hosts it in the keyboard's own window,
             so where it sits only decides which fields can reach it. */}
         <KeyboardDoneBar />
+        {/* The account gate for a signed-out visitor who tried to report.
+            /report is behind the signed-in guard, so the alternative was a
+            tap allowed to do nothing on the one control that must never be
+            dead. Navigation out of a presented sheet goes through
+            leavingSheet, or its scrim outlives the push (see traps). */}
+        {reportGate ? (
+          <Sheet onClose={() => setReportGate(false)}>
+            <SignUpGate
+              reason="You need an account to report"
+              where="room-report"
+              onNavigate={leavingSheet(() => setReportGate(false))}
+            />
+          </Sheet>
+        ) : null}
       </SafeAreaView>
     </ThemedView>
   );

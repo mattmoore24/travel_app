@@ -639,7 +639,7 @@ export default function MyBusinessScreen() {
                       icon={{ ios: 'bubble.left', android: 'chat', web: 'chat' }}
                       value={
                         detail && detail.member_count > 0
-                          ? `${countOf(detail.member_count, 'person', 'people')} here`
+                          ? `${countOf(detail.member_count, 'person', 'people')} in your chat`
                           : 'Nobody in yet'
                       }
                       onPress={() => router.push(`/room/${business.chat_id}`)}

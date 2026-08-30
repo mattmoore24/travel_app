@@ -1,11 +1,13 @@
 import { SymbolView } from 'expo-symbols';
 import { Image } from 'expo-image';
+import * as Linking from 'expo-linking';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Keyboard,
   Modal,
+  Share,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -15,9 +17,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { useRegisterNativeModal } from '@/components/ui/sheet';
+import { SHEET_SETTLE_MS, useRegisterNativeModal } from '@/components/ui/sheet';
 import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
+import { splitLinks } from '@/features/chat/links';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { isLocalId, type ThreadMessage } from '@/features/chat/outgoing';
 import { separatorFor } from '@/features/chat/separators';
@@ -258,11 +261,20 @@ function BubbleBody({
   message,
   mine,
   tailed,
+  onSpanLongPress,
 }: {
   message: ThreadMessage;
   mine: boolean;
   /** Last of its group: the corner that gets the tail. */
   tailed: boolean;
+  /**
+   * The bubble's own menu-open handler, forwarded to link spans: a pressable
+   * text fragment claims the touch responder, so the ancestor PressableScale
+   * never arms its long-press for a hold that lands ON the link. Without
+   * this, a message that is entirely a URL (the classic spam shape) has no
+   * reachable menu, and holding it OPENS the link on release.
+   */
+  onSpanLongPress?: () => void;
 }) {
   const theme = useTheme();
   const { data: imageUrl } = useChatPhotoUrl(message.image_path);
@@ -300,7 +312,40 @@ function BubbleBody({
       ) : null}
       {message.body ? (
         <ThemedText style={mine ? { color: theme.onAccentDeep } : undefined}>
-          {message.body}
+          {/* A URL in a message used to be dead grey text, and §7 rule 4
+              means a chat is the only place one can arrive. Nested Text, not
+              `dataDetectorType`: that prop is Android-only on Text (and the
+              TextInput spelling does nothing here either), so on an iOS-first
+              app it reads as a fix and does nothing on a device.
+
+              Underlined AND recoloured, because on your own accentDeep
+              bubble the accent has no contrast — there the underline carries
+              the whole "this is a link" on its own, in onAccentDeep. */}
+          {splitLinks(message.body).map((span, index) =>
+            span.url ? (
+              <ThemedText
+                key={`${index}-${span.text}`}
+                style={[styles.link, { color: mine ? theme.onAccentDeep : theme.accent }]}
+                onLongPress={onSpanLongPress}
+                onPress={() => {
+                  const url = span.url;
+                  if (!url) {
+                    return;
+                  }
+                  try {
+                    // Leaves the app rather than pushing a route, so it is
+                    // safe from inside anything presented (see traps).
+                    Linking.openURL(url).catch(() => {});
+                  } catch {
+                    // A malformed URL is not worth an error screen.
+                  }
+                }}>
+                {span.text}
+              </ThemedText>
+            ) : (
+              span.text
+            )
+          )}
         </ThemedText>
       ) : null}
     </View>
@@ -420,6 +465,68 @@ function Bubble({
 }) {
   const anchor = useRef<View>(null);
 
+  const bodyLinks = message.body ? splitLinks(message.body).filter((span) => span.url) : [];
+  // Hoisted so the link spans inside BubbleBody can arm the same long-press
+  // (see onSpanLongPress there): one handler, whoever's press wins.
+  const openMenu = onOpenMenu
+    ? () => {
+        haptics.soft();
+        // Open FIRST, then refine. This used to happen only
+        // inside measureInWindow's callback, which made the whole
+        // interaction a silent no-op whenever that callback did
+        // not arrive — the press did nothing at all, with no way
+        // to tell that from a press that never registered. A long
+        // press must always produce a menu; where it sits is a
+        // detail the measurement improves a frame later.
+        const open = () => {
+          onOpenMenu(null);
+          anchor.current?.measureInWindow((x, y, width, height) => {
+            if (width > 0 && height > 0) {
+              onOpenMenu({ x, y, width, height });
+            }
+          });
+        };
+
+        if (!Keyboard.isVisible()) {
+          open();
+          return;
+        }
+
+        // The keyboard goes, the way it does in Messages. The
+        // menu has to WAIT for it rather than race it: the thread
+        // stands on a keyboard-sized floor (KeyboardFloor) and an
+        // inverted list is anchored to its own bottom, so every
+        // bubble slides down by the keyboard's height as that
+        // floor collapses. Measuring before the slide would pin
+        // the menu to where the message used to be — off by
+        // roughly a third of the screen.
+        let settled = false;
+        let hidden: { remove: () => void } | null = null;
+        let failsafe: ReturnType<typeof setTimeout> | null = null;
+        const openOnceStill = () => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          hidden?.remove();
+          if (failsafe) {
+            clearTimeout(failsafe);
+          }
+          // Two frames past the event. keyboardDidHide says the
+          // SYSTEM keyboard has finished; the floor above it is a
+          // Reanimated style, and measureInWindow reads whatever
+          // the native view's frame is at that instant.
+          requestAnimationFrame(() => requestAnimationFrame(open));
+        };
+        hidden = Keyboard.addListener('keyboardDidHide', openOnceStill);
+        // A long press must always produce a menu, so a
+        // keyboardDidHide that never lands cannot be the only way
+        // out. Slightly longer than iOS's own 250ms dismissal.
+        failsafe = setTimeout(openOnceStill, 400);
+        Keyboard.dismiss();
+      }
+    : undefined;
+
   return (
     <View
       testID={`bubble-${message.id}`}
@@ -444,70 +551,24 @@ function Bubble({
             accessibilityRole="button"
             accessibilityLabel={message.body ?? 'Photo'}
             accessibilityHint={onOpenMenu ? 'Press and hold to react' : undefined}
+            // VoiceOver collapses the bubble into one element, so the link
+            // spans inside are unreachable by touch there; the URL is offered
+            // as a rotor action instead.
+            accessibilityActions={
+              bodyLinks.length > 0
+                ? [{ name: 'openLink', label: `Open ${bodyLinks[0].text}` }]
+                : undefined
+            }
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'openLink' && bodyLinks[0]?.url) {
+                Linking.openURL(bodyLinks[0].url).catch(() => {});
+              }
+            }}
             haptic="none"
             scaleTo={0.98}
             delayLongPress={220}
-            onLongPress={
-              onOpenMenu
-                ? () => {
-                    haptics.soft();
-                    // Open FIRST, then refine. This used to happen only
-                    // inside measureInWindow's callback, which made the whole
-                    // interaction a silent no-op whenever that callback did
-                    // not arrive — the press did nothing at all, with no way
-                    // to tell that from a press that never registered. A long
-                    // press must always produce a menu; where it sits is a
-                    // detail the measurement improves a frame later.
-                    const open = () => {
-                      onOpenMenu(null);
-                      anchor.current?.measureInWindow((x, y, width, height) => {
-                        if (width > 0 && height > 0) {
-                          onOpenMenu({ x, y, width, height });
-                        }
-                      });
-                    };
-
-                    if (!Keyboard.isVisible()) {
-                      open();
-                      return;
-                    }
-
-                    // The keyboard goes, the way it does in Messages. The
-                    // menu has to WAIT for it rather than race it: the thread
-                    // stands on a keyboard-sized floor (KeyboardFloor) and an
-                    // inverted list is anchored to its own bottom, so every
-                    // bubble slides down by the keyboard's height as that
-                    // floor collapses. Measuring before the slide would pin
-                    // the menu to where the message used to be — off by
-                    // roughly a third of the screen.
-                    let settled = false;
-                    let hidden: { remove: () => void } | null = null;
-                    let failsafe: ReturnType<typeof setTimeout> | null = null;
-                    const openOnceStill = () => {
-                      if (settled) {
-                        return;
-                      }
-                      settled = true;
-                      hidden?.remove();
-                      if (failsafe) {
-                        clearTimeout(failsafe);
-                      }
-                      // Two frames past the event. keyboardDidHide says the
-                      // SYSTEM keyboard has finished; the floor above it is a
-                      // Reanimated style, and measureInWindow reads whatever
-                      // the native view's frame is at that instant.
-                      requestAnimationFrame(() => requestAnimationFrame(open));
-                    };
-                    hidden = Keyboard.addListener('keyboardDidHide', openOnceStill);
-                    // A long press must always produce a menu, so a
-                    // keyboardDidHide that never lands cannot be the only way
-                    // out. Slightly longer than iOS's own 250ms dismissal.
-                    failsafe = setTimeout(openOnceStill, 400);
-                    Keyboard.dismiss();
-                  }
-                : undefined
-            }>
-            <BubbleBody message={message} mine={mine} tailed={last} />
+            onLongPress={openMenu}>
+            <BubbleBody message={message} mine={mine} tailed={last} onSpanLongPress={openMenu} />
           </PressableScale>
         </View>
         {/* The marks under a bubble stack in one column — reaction first,
@@ -585,21 +646,28 @@ function UnsentNote({ mine, otherName }: { mine: boolean; otherName?: string | n
 function MessageMenu({
   target,
   existingEmoji,
+  canReact,
   onPick,
   onPin,
+  onShare,
+  onRemove,
   onUnsend,
   onReport,
-  reportLabel,
   onClose,
 }: {
   target: MenuTarget;
   existingEmoji: string | null;
+  /** False for somebody who may flag a message but not react to it. */
+  canReact: boolean;
   onPick: (emoji: string) => void;
   /** Room hosts only: keep this message at the top of the room. */
   onPin?: () => void;
+  /** The system share sheet — which IS the text/email/copy chooser. */
+  onShare?: () => void;
+  /** Room moderators only: take this message down for everyone. */
+  onRemove?: () => void;
   onUnsend?: () => void;
   onReport?: () => void;
-  reportLabel: string;
   onClose: () => void;
 }) {
   const theme = useTheme();
@@ -619,11 +687,22 @@ function MessageMenu({
   if (onPin) {
     actions.push({ label: 'Pin to the top', run: onPin, destructive: false });
   }
+  // "Share", not "Copy": the system share sheet is where text, email and
+  // copy already live, and a control says exactly what happens.
+  if (onShare) {
+    actions.push({ label: 'Share', run: onShare, destructive: false });
+  }
+  // Remove and Report side by side, never one instead of the other: a
+  // moderator taking a message down is exactly the person who may also need
+  // to escalate it.
+  if (onRemove) {
+    actions.push({ label: 'Remove', run: onRemove, destructive: true });
+  }
   if (onUnsend) {
     actions.push({ label: 'Unsend', run: onUnsend, destructive: true });
   }
   if (onReport) {
-    actions.push({ label: reportLabel, run: onReport, destructive: true });
+    actions.push({ label: 'Report', run: onReport, destructive: true });
   }
 
   const { fontScale, height: windowHeight } = useWindowDimensions();
@@ -644,8 +723,10 @@ function MessageMenu({
   // the home indicator eat.
   const ceiling = insets.top + Space.md;
   const floor = windowHeight - Math.max(insets.bottom, Space.md);
-  // Whichever shape the emoji block is currently in.
-  const pillBlock = grid ? GRID_HEIGHT : PILL_HEIGHT;
+  // Whichever shape the emoji block is currently in — or nothing at all for
+  // a reader who cannot react, whose card must not float a pill's height
+  // away from the message it belongs to.
+  const pillBlock = canReact ? (grid ? GRID_HEIGHT : PILL_HEIGHT) : 0;
   const wantedTop = top - LIFT_GAP - pillBlock - Space.md;
   const wantedBottom = top + target.height + LIFT_GAP + actionsHeight + Space.md;
   let shift = 0;
@@ -690,49 +771,53 @@ function MessageMenu({
         style={StyleSheet.absoluteFill}
       />
 
-      {/* The emoji row, directly above the message. */}
-      <View
-        style={[styles.menuSide, { top: top + shift - LIFT_GAP - pillBlock }, sideOf(mine)]}
-        pointerEvents="box-none">
-        <Animated.View
-          entering={FadeIn.duration(140)}
-          style={[
-            grid ? styles.pillGrid : styles.pill,
-            Elevation.floating,
-            { backgroundColor: theme.surface },
-          ]}>
-          {(grid ? MORE_REACTIONS : QUICK_REACTIONS).map((emoji) => (
-            <PressableScale
-              key={emoji}
-              accessibilityRole="button"
-              accessibilityLabel={emoji}
-              haptic="light"
-              scaleTo={0.85}
-              onPress={() => onPick(emoji)}
-              style={[
-                styles.pillItem,
-                existingEmoji === emoji ? { backgroundColor: theme.accentSoft } : undefined,
-              ]}>
-              <ThemedText type="title">{emoji}</ThemedText>
-            </PressableScale>
-          ))}
-          {grid ? null : (
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel="More reactions"
-              haptic="light"
-              scaleTo={0.85}
-              onPress={() => setGrid(true)}
-              style={[styles.pillItem, { backgroundColor: theme.surfaceSunken }]}>
-              <SymbolView
-                name={{ ios: 'plus', android: 'add', web: 'add' }}
-                size={17}
-                tintColor={theme.textSecondary}
-              />
-            </PressableScale>
-          )}
-        </Animated.View>
-      </View>
+      {/* The emoji row, directly above the message. Not for a reader who
+          cannot react — a visitor previewing a public room gets the card
+          below (Report and nothing else), never controls that would fail. */}
+      {canReact ? (
+        <View
+          style={[styles.menuSide, { top: top + shift - LIFT_GAP - pillBlock }, sideOf(mine)]}
+          pointerEvents="box-none">
+          <Animated.View
+            entering={FadeIn.duration(140)}
+            style={[
+              grid ? styles.pillGrid : styles.pill,
+              Elevation.floating,
+              { backgroundColor: theme.surface },
+            ]}>
+            {(grid ? MORE_REACTIONS : QUICK_REACTIONS).map((emoji) => (
+              <PressableScale
+                key={emoji}
+                accessibilityRole="button"
+                accessibilityLabel={emoji}
+                haptic="light"
+                scaleTo={0.85}
+                onPress={() => onPick(emoji)}
+                style={[
+                  styles.pillItem,
+                  existingEmoji === emoji ? { backgroundColor: theme.accentSoft } : undefined,
+                ]}>
+                <ThemedText type="title">{emoji}</ThemedText>
+              </PressableScale>
+            ))}
+            {grid ? null : (
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="More reactions"
+                haptic="light"
+                scaleTo={0.85}
+                onPress={() => setGrid(true)}
+                style={[styles.pillItem, { backgroundColor: theme.surfaceSunken }]}>
+                <SymbolView
+                  name={{ ios: 'plus', android: 'add', web: 'add' }}
+                  size={17}
+                  tintColor={theme.textSecondary}
+                />
+              </PressableScale>
+            )}
+          </Animated.View>
+        </View>
+      ) : null}
 
       {/* The message itself, lifted out of the dimmed thread. */}
       <View style={[styles.menuSide, { top: top + shift }, sideOf(mine)]} pointerEvents="none">
@@ -794,9 +879,10 @@ export function MessageThread({
   reactions,
   onToggleReaction,
   onPin,
+  onRemove,
   onUnsend,
   onReport,
-  reportLabel = 'Report',
+  canReport = true,
   authorFor,
   avatarFor,
   onOpenSender,
@@ -818,15 +904,17 @@ export function MessageThread({
    * anybody who could not carry it out.
    */
   onPin?: (messageId: string) => void;
+  /**
+   * Room moderators only: take this message down for everyone. Its own
+   * handler, never a relabelled Report — the moderator used to get "Remove"
+   * INSTEAD of "Report", which left the person best placed to spot abuse
+   * early with no way to escalate a message they had to delete.
+   */
+  onRemove?: (messageId: string) => void;
   onUnsend?: (messageId: string) => void;
   onReport?: (messageId: string) => void;
-  /**
-   * What the second action is called. A one-to-one chat and an ordinary room
-   * member are reporting; a room's moderator is removing, and the button used
-   * to say "Report" while the confirmation it opened said "Remove this
-   * message?" — two different acts under one word.
-   */
-  reportLabel?: string;
+  /** False where reporting is offered but this reader may not use it. */
+  canReport?: boolean;
   /**
    * Who sent this, when that is not obvious. A one-to-one chat has exactly
    * two people and needs no labels; a group has to say. Returns the name to
@@ -937,8 +1025,14 @@ export function MessageThread({
           const note = noteFor?.(item) ?? null;
           // A message the server has never seen has no id to hang a reaction
           // or a report off, so the menu stays shut until it lands.
-          const reactable =
-            canReact &&
+          //
+          // Reacting is not the only reason to open the menu: a visitor
+          // reading a public room may not react, but flagging abuse must
+          // never sit behind the same gate — canReact used to conflate the
+          // two, so the surface most likely to show a stranger's message was
+          // the one with no menu at all.
+          const menuable =
+            (canReact || (canReport && onReport != null) || onRemove != null) &&
             !item.id.startsWith('first:') &&
             !isLocalId(item.id) &&
             !unsent &&
@@ -1004,7 +1098,7 @@ export function MessageThread({
                   delivered={item.id === deliveredId}
                   lifted={menu?.message.id === item.id}
                   onOpenMenu={
-                    reactable
+                    menuable
                       ? (rect) =>
                           setMenu(
                             rect
@@ -1048,7 +1142,22 @@ export function MessageThread({
           <MessageMenu
             target={menu}
             existingEmoji={myEmojiOn(menu.message.id)}
-            reportLabel={reportLabel}
+            canReact={canReact}
+            onShare={
+              menu.message.body
+                ? () => {
+                    const body = menu.message.body ?? '';
+                    setMenu(null);
+                    // The share sheet is a native presentation, and iOS
+                    // silently drops one that starts while the menu's modal
+                    // is still dismissing — on Fabric that kills touch for
+                    // the whole app (see traps). Wait the settle window.
+                    setTimeout(() => {
+                      Share.share({ message: body }).catch(() => {});
+                    }, SHEET_SETTLE_MS);
+                  }
+                : undefined
+            }
             onPick={(emoji) => {
               // Tapping the one you already used takes it back; tapping a
               // different one moves yours, since a person gets one reaction.
@@ -1074,8 +1183,17 @@ export function MessageThread({
                   }
                 : undefined
             }
+            onRemove={
+              !menu.mine && onRemove
+                ? () => {
+                    const id = menu.message.id;
+                    setMenu(null);
+                    onRemove(id);
+                  }
+                : undefined
+            }
             onReport={
-              !menu.mine && onReport
+              !menu.mine && canReport && onReport
                 ? () => {
                     const id = menu.message.id;
                     setMenu(null);
@@ -1123,6 +1241,9 @@ const styles = StyleSheet.create({
   },
   bubbleSending: {
     opacity: 0.55,
+  },
+  link: {
+    textDecorationLine: 'underline',
   },
   statusRow: {
     alignSelf: 'flex-end',

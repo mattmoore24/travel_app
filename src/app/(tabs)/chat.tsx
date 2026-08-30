@@ -331,7 +331,7 @@ function RoomDiscovery({
           <PlainRow
             key={room.chat_id}
             title={room.name}
-            detail={`${countOf(room.member_count, 'traveler')} in this chat`}
+            detail={`${countOf(room.member_count, 'person', 'people')} in this chat`}
             glyph={{ ios: 'house.fill', android: 'home', web: 'home' }}
             last={i === rooms.length - 1}
             onPress={() => router.push(`/room/${room.chat_id}`)}

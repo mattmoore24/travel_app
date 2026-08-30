@@ -22,7 +22,7 @@ import {
 } from '@/features/chat/hooks';
 import { MessageThread } from '@/features/chat/message-thread';
 import type { ThreadMessage } from '@/features/chat/outgoing';
-import { anchorStartedFrom } from '@/features/chat/anchors';
+import { footerAnchor } from '@/features/chat/anchors';
 import { useMarkReadWhileOpen } from '@/features/chat/use-mark-read';
 import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
 // Reactions are chat-shaped, not room-shaped: the table and the summary RPC
@@ -405,7 +405,12 @@ export default function ChatScreen() {
                 <View style={styles.anchorRow}>
                   <ThemedView type="backgroundElement" style={styles.anchorCard}>
                     <ThemedText type="caption" themeColor="textSecondary">
-                      {anchorStartedFrom(chat.first_message_element, chat.title)}
+                      {footerAnchor(
+                        chat.first_message_element,
+                        chat.first_message_sender_id,
+                        ownUserId,
+                        chat.title
+                      )}
                     </ThemedText>
                   </ThemedView>
                 </View>

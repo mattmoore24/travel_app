@@ -67,10 +67,13 @@ describe('rowTimestamp', () => {
     expect(rowTimestamp(at.toISOString(), now)).toMatch(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/);
   });
 
-  it('falls back to a date beyond a week', () => {
-    const now = new Date();
-    const at = new Date(now.getTime() - 30 * 24 * HOUR);
-    expect(rowTimestamp(at.toISOString(), now)).toMatch(/^\d{1,2}\/\d{1,2}$/);
+  it('falls back to a worded date beyond a week, never a numeric one', () => {
+    // The exact string, not a wildcard: '3/4' means March 4 to an American
+    // and 3 April to nearly everyone else the app is for. Both dates are
+    // built in local time so the assertion holds in any timezone.
+    const now = new Date(2026, 7, 30, 12, 0, 0);
+    const at = new Date(2026, 2, 4, 12, 0, 0);
+    expect(rowTimestamp(at.toISOString(), now)).toBe('Mar 4');
   });
 
   it('renders nothing at all for a chat with no messages', () => {

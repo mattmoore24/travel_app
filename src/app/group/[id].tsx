@@ -34,7 +34,8 @@ import { closeDayLabel, useHasGroupClosed } from '@/features/groups/closing';
 import { addDays, formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { pickImage } from '@/lib/pick-image';
-import type { GroupMemberRow, GroupSpeaking } from '@/lib/database.types';
+import { SPEAKING_OPTIONS } from '@/features/groups/speaking';
+import type { GroupMemberRow } from '@/lib/database.types';
 
 /**
  * One link, whether it is being scanned, shared or pasted.
@@ -50,11 +51,6 @@ import type { GroupMemberRow, GroupSpeaking } from '@/lib/database.types';
 function inviteUrl(token: string): string {
   return WebLinks.invite(token);
 }
-
-const SPEAKING_OPTIONS: { value: GroupSpeaking; label: string }[] = [
-  { value: 'everyone', label: 'Everyone' },
-  { value: 'granted', label: 'Only who I pick' },
-];
 
 function MemberRow({
   member,
@@ -155,8 +151,12 @@ function MemberRow({
         <ThemedText type="callout">{name}</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
           {/* Null for the admin of a chat with no end date: they never leave,
-              and formatDate would have thrown on the split. */}
-          {member.departure_date ? `Here until ${formatDate(member.departure_date)}` : 'Here'}
+              and formatDate would have thrown on the split. Never a bare
+              "Here" — that is where WhatsApp puts "online", and this app's
+              strongest safety claim is that it never knows where you are. */}
+          {member.departure_date
+            ? `In town until ${formatDate(member.departure_date)}`
+            : 'No leave date'}
         </ThemedText>
       </View>
       {roleLabel ? (
@@ -236,21 +236,30 @@ export default function GroupScreen() {
   const pickerValue = pickerDay(group?.max_stay_until ?? null);
 
   const confirmLeave = () => {
-    Alert.alert('Leave this chat?', 'You stop getting its messages.', [
-      { text: 'Stay', style: 'cancel' },
-      {
-        text: 'Leave',
-        style: 'destructive',
-        onPress: () => {
-          leaveRoom.mutate(undefined, {
-            // Back, not replace: this screen was pushed from the chat, which
-            // was pushed from the list, and both of those are now about a
-            // room this account is no longer in.
-            onSuccess: () => router.dismissAll(),
-          });
+    // The confirmation echoes the control and the footnote under it — the
+    // screen just taught the admin that somebody else takes over, and the
+    // old wording threw that fact away at the moment it mattered.
+    Alert.alert(
+      'Leave this group?',
+      isAdmin
+        ? 'You run this one, so somebody else takes over when you go.'
+        : 'You stop getting its messages. Anyone in the group can add you back.',
+      [
+        { text: 'Stay', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: () => {
+            leaveRoom.mutate(undefined, {
+              // Back, not replace: this screen was pushed from the chat, which
+              // was pushed from the list, and both of those are now about a
+              // room this account is no longer in.
+              onSuccess: () => router.dismissAll(),
+            });
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   if (!group) {
@@ -304,7 +313,14 @@ export default function GroupScreen() {
         // One string, so it lands intact in a text message, an email or the
         // clipboard. The share sheet is already the "text, email or copy"
         // chooser the founder asked for; there is no need to build another.
-        message: `Join "${group.name}" on Samewhere: ${url}\n\nIf that link does not open, put this code into the app: ${inviteToken}`,
+        //
+        // The recipient may never have heard of Samewhere, so the message
+        // says what it is — and the code line speaks to somebody WITHOUT the
+        // app, instead of telling them to put a code "into the app". The
+        // code stays: it is the recovery path when the link fails, and it is
+        // the same secret the URL already carries, so printing it adds no
+        // exposure.
+        message: `Join "${group.name}" on Samewhere, a free app for meeting other travelers: ${url}\n\nNo app yet? Get Samewhere first, then put in this code: ${inviteToken}`,
       });
     } catch {
       // Dismissing the share sheet is not an error.
@@ -387,13 +403,13 @@ export default function GroupScreen() {
 
           <View style={styles.section}>
             <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
-              Chat is active until
+              Group is active until
             </ThemedText>
             {closed ? (
               <ThemedText type="smallBold" style={{ color: theme.warning }}>
                 {closeDayLabel(group.max_stay_until)
-                  ? `This chat closed on ${closeDayLabel(group.max_stay_until)}`
-                  : 'This chat has closed'}
+                  ? `This group closed on ${closeDayLabel(group.max_stay_until)}`
+                  : 'This group has closed'}
               </ThemedText>
             ) : null}
             {isAdmin ? (
@@ -401,7 +417,7 @@ export default function GroupScreen() {
                 {/* Which of the two controls below is the ANSWER, and which is
                     the offer. With no end date set, the picker still has to
                     show a day - it is a date picker - and printing one
-                    straight under "Chat is active until", above a ticked "No
+                    straight under "Group is active until", above a ticked "No
                     end date", is the screen contradicting itself. This line
                     says which one you are reading. */}
                 {group.max_stay_until ? null : (
@@ -455,7 +471,7 @@ export default function GroupScreen() {
                 <PressableScale
                   accessibilityRole="button"
                   accessibilityLabel={
-                    group.max_stay_until ? 'Give this chat no end date' : 'No end date'
+                    group.max_stay_until ? 'Give this group no end date' : 'No end date'
                   }
                   accessibilityState={{ selected: group.max_stay_until == null }}
                   haptic="selection"
@@ -590,12 +606,11 @@ export default function GroupScreen() {
                 tintColor={theme.textSecondary}
               />
             </PressableScale>
-            {isAdmin ? (
-              <ThemedText type="footnote" themeColor="textSecondary">
-                Tap a name to open their profile. The button on the right of a row lets somebody
-                post, or takes them out of the group.
-              </ThemedText>
-            ) : null}
+            {/* No "the button on the right of a row..." paragraph here: it
+                described a control by screen position, described two acts as
+                one button, and in the photographed state no such button was
+                on screen. The ellipsis control carries its own accessible
+                name (`Manage ${name}`) on the row itself. */}
           </View>
 
           {/* A door out, which this screen simply did not have. The room
@@ -604,19 +619,19 @@ export default function GroupScreen() {
           <View style={styles.section}>
             <PressableScale
               accessibilityRole="button"
-              accessibilityLabel="Leave this chat"
+              accessibilityLabel="Leave this group"
               haptic="light"
               scaleTo={0.98}
               onPress={confirmLeave}
               style={styles.leaveRow}>
               <ThemedText type="callout" themeColor="danger">
-                Leave this chat
+                Leave this group
               </ThemedText>
             </PressableScale>
             <ThemedText type="footnote" themeColor="textSecondary">
               {isAdmin
                 ? 'You run this one, so somebody else takes over when you go.'
-                : 'You stop getting messages. Anyone in the group can add you back.'}
+                : 'You stop getting its messages. Anyone in the group can add you back.'}
             </ThemedText>
           </View>
         </ScrollView>

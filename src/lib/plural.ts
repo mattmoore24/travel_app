@@ -1,5 +1,5 @@
 /**
- * "1 traveler in this chat", not "1 travelers in this chat".
+ * "1 person in this chat", not "1 people in this chat".
  *
  * A visible grammar error on a first-touch surface reads as carelessness
  * about everything else, and this app's whole proposition is that a stranger

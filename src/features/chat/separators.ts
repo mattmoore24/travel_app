@@ -48,7 +48,11 @@ export function separatorFor(current: MessageRow, older: MessageRow | undefined)
  * a row can spare.
  */
 const WEEKDAY = new Intl.DateTimeFormat('en', { weekday: 'short' });
-const SHORT_DATE = new Intl.DateTimeFormat('en', { month: 'numeric', day: 'numeric' });
+// 'Mar 4', never '3/4': a numeric date means March 4 to an American and
+// 3 April to nearly everyone else this app is for. Unambiguous in every
+// Latin-script locale, and one or two characters wider in a column already
+// sized for 'Yesterday'.
+const SHORT_DATE = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' });
 
 export function rowTimestamp(iso: string | null, now: Date = new Date()): string {
   if (!iso) {

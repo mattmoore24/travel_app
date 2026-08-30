@@ -14,6 +14,7 @@ import { Segmented } from '@/components/ui/segmented';
 import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { uploadGroupPhoto } from '@/features/groups/api';
 import { useCreateGroup } from '@/features/groups/hooks';
+import { SPEAKING_OPTIONS } from '@/features/groups/speaking';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { addDays, formatDate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
@@ -21,11 +22,6 @@ import { pickImage } from '@/lib/pick-image';
 import type { GroupSpeaking } from '@/lib/database.types';
 
 const NAME_MAX = 60;
-
-const SPEAKING_OPTIONS: { value: GroupSpeaking; label: string }[] = [
-  { value: 'everyone', label: 'Everyone' },
-  { value: 'granted', label: 'Only who I pick' },
-];
 
 /**
  * Start a group. Four decisions, in the order they matter: what it is called,
@@ -159,7 +155,7 @@ export default function NewGroupScreen() {
       </View>
 
       <View style={styles.block}>
-        <ThemedText type="smallBold">Chat is active until</ThemedText>
+        <ThemedText type="smallBold">Group is active until</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
           {maxStay
             ? 'The chat is active through that day and closes the day after. Nobody can pick a later date to stay until.'

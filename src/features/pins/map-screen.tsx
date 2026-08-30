@@ -1456,7 +1456,9 @@ export default function MapScreen() {
           pointerEvents="box-none">
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel="Glowing spots are plans nearby"
+            // Never "nearby": the map is scoped to a city chip that may be a
+            // continent away, and the app never knows where anybody is.
+            accessibilityLabel="Glowing spots are where the plans are"
             accessibilityHint="Dismisses this"
             scaleTo={0.96}
             haptic="light"
@@ -1467,7 +1469,7 @@ export default function MapScreen() {
                 { backgroundColor: theme.surface, borderColor: theme.hairline },
               ]}>
               <View style={[styles.legendDot, { backgroundColor: 'rgba(255, 154, 90, 0.85)' }]} />
-              <ThemedText type="footnote">Glowing spots are plans nearby</ThemedText>
+              <ThemedText type="footnote">Glowing spots are where the plans are</ThemedText>
               <SymbolView
                 name={{ ios: 'xmark', android: 'close', web: 'close' }}
                 size={11}

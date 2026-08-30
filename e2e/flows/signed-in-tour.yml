@@ -270,6 +270,10 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Maestro crew'
     timeout: 20000
+# A brand-new group has one person in it, and the empty state's job is to
+# offer the one thing they need next: getting anybody else in. "Go first"
+# only appears once there are people to hear it.
+- assertVisible: 'Invite people'
 - takeScreenshot: 23-group-created
 # A message to react to.
 - tapOn:
@@ -307,6 +311,9 @@ appId: com.mattmoore.samewhere
       id: 'message-menu'
     timeout: 10000
 - assertVisible: 'Dismiss'
+# The way out for an address or a handle: the share sheet is the system's
+# text/email/copy chooser, and it is on the card under the lifted message.
+- assertVisible: 'Share'
 - takeScreenshot: 25-reaction-menu
 - tapOn: '❤️'
 - waitForAnimationToEnd:
@@ -318,13 +325,13 @@ appId: com.mattmoore.samewhere
     visible: 'WHO CAN POST'
     timeout: 15000
 # The renamed section, and the control that turns the end date off. Asserted
-# rather than merely photographed: "Chat is active until" is a promise the
+# rather than merely photographed: "Group is active until" is a promise the
 # database now keeps, and a screen that silently lost the label would mean the
 # words and the mechanism had come apart again.
-# The rename, asserted. This one passes and is worth keeping: "Chat is active
+# The rename, asserted. This one passes and is worth keeping: "Group is active
 # until" is a promise the database now enforces, and a screen that quietly
 # lost the label would mean the words and the mechanism had come apart.
-- assertVisible: 'Chat is active until'
+- assertVisible: 'Group is active until'
 # The no-end-date control is NOT asserted, and that is a considered stop
 # rather than an omission. Runs 50 and 51 both failed on it — first
 # assertVisible (the control is below the fold), then scrollUntilVisible,

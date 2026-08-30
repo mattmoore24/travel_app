@@ -83,6 +83,38 @@ export function anchorStartedFrom(element: string, name: string | null): string 
   }
 }
 
+/**
+ * Second person, for the line above an opened chat when the READER is the
+ * one the hello was about. No name goes in: for the accepter the name on
+ * the chat row is the sender, and the anchor is about the reader's own
+ * profile, so a name here would attribute their photo to the other person.
+ */
+export function anchorTheyStartedFrom(element: string): string {
+  return `Started from ${anchorAboutYours(element)}`;
+}
+
+/**
+ * Which of the two renderers an opened chat's footer gets.
+ *
+ * The sender reads the third person about the other person's profile; the
+ * accepter reads the second person about their own. A null sender id counts
+ * as "not me" only when we know who "me" is — with no session (still
+ * loading, or a reader the row was never written for) the third-person
+ * string is the safe wrong answer, because it never claims the reader's
+ * profile started anything.
+ */
+export function footerAnchor(
+  element: string,
+  firstMessageSenderId: string | null,
+  ownUserId: string | null,
+  title: string | null
+): string {
+  if (ownUserId != null && firstMessageSenderId !== ownUserId) {
+    return anchorTheyStartedFrom(element);
+  }
+  return anchorStartedFrom(element, title);
+}
+
 /** Second person, for a hello that has just arrived. */
 export function anchorAboutYours(element: string): string {
   const anchor = parseAnchor(element);

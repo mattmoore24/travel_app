@@ -12,9 +12,10 @@ describe('what people actually paste', () => {
   });
 
   it('takes the whole message, which is what copying a bubble gives you', () => {
+    // The exact two-line message group/[id].tsx shares today.
     expect(
       inviteTokenFrom(
-        `Join "Lisbon crew" on Samewhere: https://link.samewhere.io/i/${TOKEN}\n\nIf that link does not open, put this code into the app: ${TOKEN}`
+        `Join "Lisbon crew" on Samewhere, a free app for meeting other travelers: https://link.samewhere.io/i/${TOKEN}\n\nNo app yet? Get Samewhere first, then put in this code: ${TOKEN}`
       )
     ).toBe(TOKEN);
   });

@@ -51,7 +51,9 @@ describe('a face in a chat is a person you can reach', () => {
   });
 
   it('gives a group a way out, which it did not have', () => {
-    expect(group).toContain('Leave this chat');
+    // "group", not "chat": a traveler-made one is a group everywhere it is
+    // named, and "chat" is only ever a one-to-one.
+    expect(group).toContain('Leave this group');
     expect(group).toContain('leaveRoom.mutate');
   });
 });
