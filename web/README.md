@@ -21,8 +21,8 @@ Three rules, and getting any of them wrong makes it fail silently:
 Verify after deploying:
 
 ```
-curl -sI https://samewhere.io/.well-known/apple-app-site-association | head -3
-curl -s  https://samewhere.io/.well-known/apple-app-site-association | jq .
+curl -sI https://link.samewhere.io/.well-known/apple-app-site-association | head -3
+curl -s  https://link.samewhere.io/.well-known/apple-app-site-association | jq .
 ```
 
 Apple's CDN caches this. A change can take a day to reach devices, and a fresh
@@ -46,10 +46,12 @@ handles.
 
 Only after the AASA file is live:
 
-1. `app.json` → `ios.associatedDomains: ["applinks:samewhere.io"]`
+1. `app.json` → `ios.associatedDomains: ["applinks:link.samewhere.io"]`
 2. `src/constants/links.ts` → flip `UNIVERSAL_LINKS_LIVE` to `true`
-3. Supabase → Auth → URL Configuration → add `https://samewhere.io/reset` to
-   the redirect allowlist, or the recovery 302 is refused
+3. Supabase → Auth → URL Configuration → redirect allowlist. DONE: it holds
+   `https://link.samewhere.io/reset` and `samewhere://reset-password`. Keep
+   BOTH until every install in the wild is past the build that sends the
+   scheme.
 4. An **EAS build**, because `associatedDomains` is native config and cannot
    ship over the air
 
@@ -58,46 +60,38 @@ phone with one that opens Safari and 404s. That is why the flag exists.
 
 ## 4. Routing: `_redirects`, `404.html`, and the not-found trap
 
-The live host is **`link.samewhere.io`**, not the apex. `src/constants/links.ts`
-still says `https://samewhere.io`; that constant is wired up separately, once the
-origin is confirmed end to end.
+The live host is **`link.samewhere.io`**, not the apex. Cloudflare refuses an
+apex custom domain unless the whole DNS zone moves to Cloudflare, and moving it
+would have risked the Google Workspace mail records; the apex and `www` stay on
+Squarespace, deliberately.
 
 Two config files are read by the host and are never served as content:
 
-- `_headers` gives the association file its `application/json` type. It is
-  verified working: the file returns 200, the right type, and zero redirects.
+- `_headers` gives the association file its `application/json` type.
 - `_redirects` rewrites `/i/<token>` and `/reset/<anything>` onto their pages
   with a 200, so the token stays in the URL for the page's JS to read.
 
-**The trap.** A static host with an `index.html` in the output root and no
-`404.html` treats the root page as a catch-all: every unmatched path returns it
-with a **200**, not a 404. That is what `a5b4fdd` shipped, and it is why
-`/i/<token>` rendered the home page. `/nope-xyz`, `/nope.json` and
-`/deep/nested/nope` all returned the same 1181-byte root page.
+**The trap, diagnosed from the deploy log.** `a5b4fdd` wrote the rewrite
+targets as `/i/index.html`. Cloudflare canonicalises that path back to `/i/`,
+sees the result re-match `/i/*`, classifies the rule as an infinite loop and
+rejects it **at deploy time**: the build log read `Parsed 0 valid redirect
+rules ... Infinite loop detected in this rule and has been ignored`, and the
+site served with no rewrites at all. In the same block, `Parsed 1 valid header
+rule` is why `_headers` worked while `_redirects` did nothing. On top of that,
+a root `index.html` with no `404.html` made every unmatched path serve the
+root page with a 200.
 
-Two things fix it, and both are in the tree:
+Both fixes shipped in `9abb32c`, verified live, and both are load-bearing:
 
-1. `_redirects` now targets the **directory** (`/i/`), not `/i/index.html`. An
-   asset stored at `i/index.html` is canonically addressed as `/i/`, and a
-   rewrite aimed at the uncanonical path can fail to resolve and fall through to
-   not-found handling.
-2. `404.html` exists, which replaces catch-all-the-root with real 404 handling.
-   It also renders the invite itself when the path looks like `/i/<token>`, so an
-   invite opens even if the rewrite is still not applied. That path costs a 404
-   status the reader never sees, so it is a safety net, not the intended route.
+1. `_redirects` targets the **directory** (`/i/`). The deploy log now reads
+   `Parsed 2 valid redirect rules`. Check that line after any edit here.
+2. `404.html` turns unmatched paths into real 404s. Removing it brings back
+   catch-all 200s regardless of the rewrites. Its invite branch is a safety
+   net that has never needed to run.
 
-Because `curl` does not run JS, the `<title>` says which route actually served a
-request, which is the fastest way to tell these apart:
-
-| Title on `/i/testtoken`             | Meaning                                          |
-| ----------------------------------- | ------------------------------------------------ |
-| `You have been invited · Samewhere` | `_redirects` is working. Intended route.         |
-| `Not found · Samewhere`             | Rewrite still ignored; the safety net caught it. |
-| `Samewhere`                         | Neither change deployed.                         |
-
-If the middle row is what shows, the next step is Pages Functions
-(`functions/i/[[path]].ts`), which run ahead of asset routing and do not depend
-on the rewrite being honoured at all.
+The App Store links on the pages use the real listing ID (`id6802889254`). The
+store URL 404s until the app is released; do not write a check that asserts it
+resolves before launch.
 
 Verify the whole surface after any deploy:
 
@@ -108,8 +102,15 @@ for p in / /privacy /support /i/testtoken /reset /reset/foo /nope-xyz; do
     "https://link.samewhere.io$p"
   curl -s -L "https://link.samewhere.io$p" | grep -o '<title>[^<]*</title>'
 done
-curl -sI https://link.samewhere.io/.well-known/apple-app-site-association | head -3
+curl -s -o /dev/null -w 'aasa no -L: code=%{http_code}\n' \
+  https://link.samewhere.io/.well-known/apple-app-site-association
 ```
+
+Expected: `/i/testtoken` 200 with `You have been invited · Samewhere`,
+`/reset/foo` 200 with `Reset your password · Samewhere`, `/nope-xyz` 404 with
+`Not found · Samewhere`, and the association file 200 **without** `-L` (which
+is what proves zero redirects; a `%{num_redirects}` printed without `-L` is
+always 0 and proves nothing).
 
 `/privacy`, `/support` and `/reset` are live App Store Connect and Supabase
 values. They must keep resolving, and the association file must stay 200 /

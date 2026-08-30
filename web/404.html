@@ -35,7 +35,7 @@
         </p>
         <div class="row">
           <a class="btn" id="open" href="#">Open in Samewhere</a>
-          <a class="btn ghost" href="https://apps.apple.com/app/id0000000000">Get the app</a>
+          <a class="btn ghost" href="https://apps.apple.com/app/id6802889254">Get the app</a>
         </div>
         <div class="card" style="margin-top: 30px">
           <h3 style="margin-top: 0">Already have the app?</h3>
@@ -63,11 +63,12 @@
       //    unmatched path, which is what it does when a site has an index.html
       //    and no 404.html.
       //
-      // 2. It is the safety net for /i/<token>. That path is meant to be rewritten
-      //    to /i/index.html by _redirects; as of a5b4fdd that rewrite was not
-      //    taking effect and invites landed on the root page instead. If the
-      //    rewrite works, nothing here ever runs. If it does not, an invite still
-      //    opens, at the cost of a 404 status the reader never sees. See README.md.
+      // 2. It is the safety net for /i/<token>. That path is rewritten to the
+      //    invite page by _redirects; a5b4fdd shipped a version of that rule
+      //    Cloudflare rejected at deploy time, and invites landed on the root
+      //    page instead. The rule is fixed and verified live, so nothing here
+      //    should ever run. If the rule regresses, an invite still opens, at
+      //    the cost of a 404 status the reader never sees. See README.md.
       (function () {
         var parts = window.location.pathname.split('/').filter(Boolean);
         if (parts.length < 2 || parts[0] !== 'i') {

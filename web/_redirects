@@ -4,9 +4,12 @@
 # every path under them has to reach the same file with a 200 rather than a
 # redirect. A 301 here would also break the association file's path matching.
 #
-# The target is the directory, NOT <dir>/index.html. Cloudflare canonicalises an
-# asset stored at i/index.html to the path /i/, and a rewrite aimed at the
-# uncanonical /i/index.html can fail to resolve and fall through to not-found
-# handling, which is what shipped in a5b4fdd. See README.md.
+# The target MUST be the directory (/i/), never /i/index.html. Cloudflare
+# canonicalises /i/index.html back to /i/, sees the result re-match /i/*, calls
+# the rule an infinite loop and REJECTS IT AT DEPLOY TIME. a5b4fdd shipped that
+# way and its build log reads "Parsed 0 valid redirect rules ... Infinite loop
+# detected in this rule and has been ignored" while the site served with no
+# rewrites at all. After any edit here, check the deploy log says
+# "Parsed 2 valid redirect rules".
 /i/*      /i/      200
 /reset/*  /reset/  200
