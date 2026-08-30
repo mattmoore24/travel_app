@@ -1,4 +1,5 @@
 import {
+  basicsProblem,
   missingOnboardingFields,
   normalizeHandle,
   validateAge,
@@ -49,6 +50,36 @@ describe('profile validation (client mirror of DB CHECK constraints)', () => {
     expect(validateHandle('@')).not.toBeNull();
     expect(validateHandle('has space')).not.toBeNull();
     expect(validateHandle('@ok_handle')).toBeNull();
+  });
+});
+
+describe('step 3 cannot be passed without the gender question being answered', () => {
+  const answered = { name: 'Alice', age: '28', genderTouched: true };
+
+  it('lets a fully answered step through', () => {
+    expect(basicsProblem(answered)).toBeNull();
+  });
+
+  // The case that made this a finding: name and age valid, gender never
+  // touched, and the old expression let Continue through — so the women-only
+  // audience filter filled with the column default 'unspecified' from people
+  // who were never shown the question.
+  it('refuses valid name and age while gender was never touched', () => {
+    const problem = basicsProblem({ ...answered, genderTouched: false });
+    expect(problem).not.toBeNull();
+    expect(problem).toContain('gender');
+  });
+
+  it('names the name and age problems in their own words first', () => {
+    expect(basicsProblem({ ...answered, name: '  ' })).toBe(validateDisplayName('  '));
+    expect(basicsProblem({ ...answered, age: '17' })).toBe(validateAge('17'));
+  });
+
+  it('accepts a deliberate "Rather not say" the same as any answer', () => {
+    // genderTouched is about the TAP, not the value: a deliberate opt-out
+    // writes the same 'unspecified' the default writes, and that is fine —
+    // what the check buys is that nobody reaches the filter unasked.
+    expect(basicsProblem({ name: 'Alice', age: '28', genderTouched: true })).toBeNull();
   });
 });
 

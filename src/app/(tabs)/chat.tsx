@@ -685,7 +685,6 @@ export default function ChatScreen() {
                       : 'Want to join in?'
                   }
                   where="chat-tab"
-                  cta="Make a profile"
                 />
               </>
             ) : (
@@ -693,7 +692,7 @@ export default function ChatScreen() {
                 <ThemedText type="footnote" themeColor="textSecondary">
                   One-to-one chats start when you say hi to someone and they answer.
                 </ThemedText>
-                <SignUpGate reason="Want to join in?" where="chat-tab" cta="Make a profile" />
+                <SignUpGate reason="Want to join in?" where="chat-tab" />
               </View>
             )}
           </Animated.View>

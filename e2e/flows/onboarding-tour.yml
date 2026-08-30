@@ -78,6 +78,23 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'age-input'
 - inputText: '29'
+# Continue with the gender question unanswered is refused, and the shell's
+# note says which answer is outstanding. This is the finding that made the
+# change: name and age valid used to be enough, and the women-only filter's
+# data shipped as 'unspecified' from people who never saw the question.
+- tapOn: 'Continue'
+- assertVisible: 'Pick a gender.*'
+- takeScreenshot: 51b-signup-who-gender-note
+# The select opens the app's own sheet through a native Modal, dismissing the
+# number pad first (select-field.tsx), so wait for the rows to land.
+- tapOn:
+    id: 'gender-select'
+- extendedWaitUntil:
+    visible: 'Woman'
+    timeout: 10000
+- tapOn: 'Woman'
+- waitForAnimationToEnd:
+    timeout: 1500
 - tapOn: 'Continue'
 
 # STEP 4 — where you are from.
@@ -171,12 +188,14 @@ appId: com.mattmoore.samewhere
       - tapOn:
           id: 'finish-photos'
       # STEP 6 — what you do. The first step that may be skipped, so the
-      # first that carries a "Skip for now" under the button. Its absence on
-      # steps 3 to 5 is how somebody can tell those are required.
+      # first that carries a skip under the button — and the skip names its
+      # own subject now, so the person is told what they are passing over.
+      # Its absence on steps 3 to 5 is how somebody can tell those are
+      # required.
       - extendedWaitUntil:
           visible: 'What do you do?'
           timeout: 15000
-      - assertVisible: 'Skip for now'
+      - assertVisible: 'Skip what you do for now'
       - takeScreenshot: 56-signup-occupation
       - tapOn:
           id: 'occupation-input'
@@ -202,12 +221,12 @@ appId: com.mattmoore.samewhere
           visible: 'Answer a prompt'
           timeout: 15000
       - takeScreenshot: 58-signup-prompts
-      - tapOn: 'Skip for now'
+      - tapOn: 'Skip the prompts for now'
       - extendedWaitUntil:
           visible: 'What are you after?'
           timeout: 15000
       - takeScreenshot: 59-signup-priorities
-      - tapOn: 'Skip for now'
+      - tapOn: 'Skip this for now'
       - extendedWaitUntil:
           visible: 'Where are you going?'
           timeout: 15000
@@ -224,16 +243,19 @@ appId: com.mattmoore.samewhere
           timeout: 15000
       - assertVisible: 'Nobody sees these until you are both in a chat.*'
       - takeScreenshot: 71-signup-socials
-      - tapOn: 'Skip for now'
+      - tapOn: 'Skip your socials for now'
       # STEP 12 — audience. No skip, because it has a default rather than
       # because it is compulsory, and the narrowed rows are inert until a
       # badge exists. That is the server's rule, and the step exists so
-      # nobody finishes without learning the setting is there.
+      # nobody finishes without learning the setting is there. For this
+      # unverified account it reads as a statement and the button says
+      # "Got it": nothing here asks for a decision that cannot be made.
       - extendedWaitUntil:
-          visible: 'Who you see, and who sees you'
+          visible: 'Who can see you'
           timeout: 15000
+      - assertVisible: 'Got it'
       - takeScreenshot: 72-signup-audience
-      - tapOn: 'Continue'
+      - tapOn: 'Got it'
       # STEP 13 — THE PROFILE ITSELF, which is the founder's "final look of
       # how your profile appears to other users", rendered by the component a
       # stranger gets. Never once photographed before this run.

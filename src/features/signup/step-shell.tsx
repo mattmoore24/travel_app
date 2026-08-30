@@ -1,6 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, {
   FadeIn,
   FadeInRight,
@@ -78,6 +78,7 @@ export function StepShell({
   skipNote,
 }: StepShellProps) {
   const theme = useTheme();
+  const { height } = useWindowDimensions();
   const progress = useSharedValue(step / total);
 
   useEffect(() => {
@@ -142,12 +143,23 @@ export function StepShell({
             </Animated.View>
           </ScrollView>
 
-          <ThemedView style={styles.footer}>
+          {/* Capped at just under half the window, because the footer had no
+              cap while the scroller above had no floor: step 3's three-control
+              footer grew until the Age field it belonged to was sliced in
+              half, and at AX5 a long note plus a skip plus a footer slot can
+              swallow the whole question. Everything except the button lives
+              in ScrollViews so a squeezed footer scrolls instead of clipping;
+              the PrimaryButton itself stays outside every scroll area, which
+              is the rule in traps — a primary action reachable only by
+              scrolling is buried. */}
+          <ThemedView style={[styles.footer, { maxHeight: height * 0.45 }]}>
             {note ? (
-              <Animated.View entering={FadeIn.duration(160)}>
-                <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
-                  {note}
-                </ThemedText>
+              <Animated.View entering={FadeIn.duration(160)} style={styles.footerShrink}>
+                <ScrollView keyboardShouldPersistTaps="always">
+                  <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
+                    {note}
+                  </ThemedText>
+                </ScrollView>
               </Animated.View>
             ) : null}
             <PrimaryButton
@@ -157,33 +169,40 @@ export function StepShell({
               loading={continueLoading}
               onPress={onContinue}
             />
-            {/* Small, quiet, and only where it belongs. A step with no skip
-                has no skip button, which is how somebody can tell at a glance
-                which questions the app actually needs answered. */}
-            {onSkip ? (
-              <>
-                <PressableScale
-                  accessibilityRole="button"
-                  accessibilityLabel={skipLabel}
-                  haptic="light"
-                  scaleTo={0.98}
-                  onPress={onSkip}
-                  style={styles.skip}>
-                  <ThemedText type="footnote" themeColor="textSecondary">
-                    {skipLabel}
-                  </ThemedText>
-                </PressableScale>
-                {/* The cost of the skip, where the choice is being made. A
-                    wall that arrives later on another screen reads as a
-                    surprise; the same fact here reads as a choice. */}
-                {skipNote ? (
-                  <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
-                    {skipNote}
-                  </ThemedText>
+            {onSkip || footer ? (
+              <ScrollView
+                style={styles.footerShrink}
+                keyboardShouldPersistTaps="always"
+                contentContainerStyle={styles.footerScrollContent}>
+                {/* Small, quiet, and only where it belongs. A step with no
+                    skip has no skip button, which is how somebody can tell at
+                    a glance which questions the app actually needs answered. */}
+                {onSkip ? (
+                  <>
+                    <PressableScale
+                      accessibilityRole="button"
+                      accessibilityLabel={skipLabel}
+                      haptic="light"
+                      scaleTo={0.98}
+                      onPress={onSkip}
+                      style={styles.skip}>
+                      <ThemedText type="footnote" themeColor="textSecondary">
+                        {skipLabel}
+                      </ThemedText>
+                    </PressableScale>
+                    {/* The cost of the skip, where the choice is being made. A
+                        wall that arrives later on another screen reads as a
+                        surprise; the same fact here reads as a choice. */}
+                    {skipNote ? (
+                      <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
+                        {skipNote}
+                      </ThemedText>
+                    ) : null}
+                  </>
                 ) : null}
-              </>
+                {footer}
+              </ScrollView>
             ) : null}
-            {footer}
           </ThemedView>
         </KeyboardFloor>
         {/* Outside the scroller and outside the avoider: iOS hosts this in
@@ -241,6 +260,10 @@ const styles = StyleSheet.create({
     padding: Space.lg,
     paddingTop: Space.sm,
     paddingBottom: Space.xxl,
+    // A floor under the scroll area: a short step distributes its space
+    // instead of pooling all of it above the pinned footer, which was the
+    // ~103pt of dead canvas under join's Email field.
+    flexGrow: 1,
   },
   scene: {
     gap: Space.sm,
@@ -250,8 +273,21 @@ const styles = StyleSheet.create({
     marginTop: Space.lg,
   },
   footer: {
+    // Shrinkable, so the internal scroll regions absorb a keyboard-squeezed
+    // viewport instead of the footer overflowing DOWN under the keyboard with
+    // Continue in it. The button itself keeps shrink 0.
+    flexShrink: 1,
     padding: Space.lg,
     paddingTop: Space.sm,
+    gap: Space.sm,
+  },
+  // Views default to flexShrink 0, so without this the capped footer would
+  // clip its children invisibly instead of letting these regions scroll.
+  footerShrink: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  footerScrollContent: {
     gap: Space.sm,
   },
   skip: {

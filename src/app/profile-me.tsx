@@ -10,7 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { BrandDeep, MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { BUSINESS_RULE_SECTIONS, BUSINESS_ZERO_TOLERANCE } from '@/constants/policies';
-import { signOut } from '@/features/auth/api';
+import { signOut, signOutEverywhere } from '@/features/auth/api';
 import { deleteAccount } from '@/features/profile/api';
 import {
   useOwnUserId,
@@ -407,6 +407,30 @@ export default function ProfileScreen() {
                 onPress={() => {
                   signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
                 }}
+              />
+              {/* The one place the global scope belongs: the standard remedy
+                  after a lost phone. Everywhere else "Sign out" means this
+                  device, which is what the words say. */}
+              <PrimaryButton
+                variant="ghost"
+                label="Sign out on all devices"
+                onPress={() =>
+                  Alert.alert(
+                    'Sign out on all devices?',
+                    'Signs you out here and on every other phone or tablet where you are signed in.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Sign out everywhere',
+                        onPress: () => {
+                          signOutEverywhere().catch(() =>
+                            Alert.alert('Sign out failed', 'Try again.')
+                          );
+                        },
+                      },
+                    ]
+                  )
+                }
               />
               {/* App Review 5.1.1(v): account deletion must be available in-app. */}
               <PrimaryButton

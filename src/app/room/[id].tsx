@@ -508,12 +508,7 @@ export default function RoomScreen() {
                   front door, and a free-to-mint identity posting through it
                   is a different risk. Reading stays open to everyone, which
                   is what the room is for. */}
-              <SignUpGate
-                reason="Join this room to post"
-                where="room"
-                cta="Create an account"
-                compact
-              />
+              <SignUpGate reason="Join this room to post" where="room" compact />
             </View>
           ) : chatsQuery.isPending ? null : closed ? (
             // Ahead of `muted`, deliberately. In a restricted group both are

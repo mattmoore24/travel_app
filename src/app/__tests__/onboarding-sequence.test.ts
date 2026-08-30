@@ -34,7 +34,10 @@ describe('every part of a profile is asked for', () => {
     ['What are you after?', 9],
     ['Where are you going?', 10],
     ['Your socials', 11],
-    ['Who you see, and who sees you', 12],
+    // The statement, not the question: a brand-new account cannot change the
+    // audience (set_visibility refuses without the badge), so the step reads
+    // rather than asks. The question form is the verified branch.
+    ['Who can see you', 12],
     ['Here you are', 13],
   ])('asks "%s" at step %i', (title, step) => {
     const at = code.indexOf(`step={${step}}`);
@@ -66,6 +69,26 @@ describe('skip is only on the steps that may be skipped', () => {
 
   it.each([6, 7, 11])('step %i can be', (step) => {
     expect(shellAt(step)).toContain('onSkip');
+  });
+
+  it('step 12 answers with copy, not a skip', () => {
+    // The audience step has a default rather than an answer, so the cheap
+    // fix — onSkip={() => go(13)} — would hide the setting from exactly the
+    // person the founder added the step for. The statement title and "Got
+    // it" are the fix instead.
+    const shell = shellAt(12);
+    expect(shell).not.toContain('onSkip');
+    expect(shell).toContain('Who can see you');
+    expect(shell).toContain('Got it');
+  });
+
+  it('every skip names what it is skipping', () => {
+    // "Skip for now" told nobody what they were giving up at the moment they
+    // gave it up. Each onSkip travels with its own skipLabel; the shell's
+    // generic default is only a fallback, never what ships here.
+    for (const step of [6, 7, 8, 9, 10, 11]) {
+      expect(shellAt(step)).toContain('skipLabel=');
+    }
   });
 
   it('lets the photo step through only once there is a photo', () => {

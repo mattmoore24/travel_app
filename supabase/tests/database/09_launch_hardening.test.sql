@@ -2,7 +2,7 @@
 -- pruning, storage-object ceilings, admin metrics view privileges, and the
 -- account-deletion cascade (what dies, what survives).
 begin;
-select plan(23);
+select plan(25);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -150,6 +150,31 @@ select is(
   5,
   'token registration prunes beyond 5 devices'
 );
+
+-- The sign-out path deletes the device's OWN row, and only its own — written
+-- as the attack. Nothing in the app had ever exercised push_tokens_delete_own
+-- until sign-out started forgetting the device's token, so prove both halves:
+-- the delete another user aims across the fence silently removes nothing, and
+-- the delete a user aims at their own row lands.
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select public.register_push_token('ExponentPushToken[alice0aaaaaaaaaaaaaaaa]');
+delete from public.push_tokens where token = 'ExponentPushToken[ffffffffffffffffffffff]';
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.push_tokens
+    where user_id = '00000000-0000-0000-0000-00000000000b'),
+  5,
+  'one user cannot delete another user''s push token'
+);
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+delete from public.push_tokens where token = 'ExponentPushToken[alice0aaaaaaaaaaaaaaaa]';
+select is(
+  (select count(*)::int from public.push_tokens
+    where user_id = '00000000-0000-0000-0000-00000000000a'),
+  0,
+  'a device can delete its own token on the way out'
+);
+select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 
 -- Storage ceilings: the verification bucket refuses an 11th object even
 -- though clients cannot SELECT (the counter is a definer helper).

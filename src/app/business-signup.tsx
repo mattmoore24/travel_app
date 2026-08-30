@@ -59,6 +59,31 @@ import { haptics } from '@/lib/haptics';
  */
 const TOTAL_STEPS = 12;
 
+/**
+ * A stable slug per 1-based step, for `business_step_completed` — the same
+ * `{ step_index, step_name }` shape signup_step_completed sends, so one
+ * funnel vocabulary covers both flows. Steps 1 and 2 (email, password) live
+ * on /join and are counted there with `business: true`.
+ */
+const BUSINESS_STEP_NAMES = [
+  'email',
+  'password',
+  'name',
+  'address',
+  'confirm',
+  'contacts',
+  'photos',
+  'description',
+  'hours',
+  'links',
+  'review',
+  'code',
+] as const;
+
+function businessStepName(step: number): string {
+  return BUSINESS_STEP_NAMES[step - 1] ?? `step-${step}`;
+}
+
 /** businesses.address is capped at 160 in the column CHECK. */
 const ADDRESS_MAX = 160;
 
@@ -155,9 +180,21 @@ export default function BusinessSignupScreen() {
   const city = cityId != null ? (launchCities.find((c) => c.city_id === cityId) ?? null) : null;
   const emailOk = EMAIL_PATTERN.test(email.trim());
 
+  // The same funnel treatment traveler signup's go() got: one event from the
+  // one door every step leaves through, covering the ten screens that emitted
+  // nothing between business_registered and business_email_confirmed. Only a
+  // forward move is a completion — onBack routes through here too. Step 12's
+  // own exit is sendCode, whose success is business_email_confirmed on the
+  // code screen.
   const go = (next: number) => {
     haptics.light();
     setTouched(false);
+    if (next > step) {
+      analytics.capture('business_step_completed', {
+        step_index: step,
+        step_name: businessStepName(step),
+      });
+    }
     setStep(next);
   };
 

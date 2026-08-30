@@ -1700,7 +1700,6 @@ export default function MapScreen() {
                 : 'Pins come with your name on them'
             }
             where={gate === 'join' ? 'join-plan' : 'drop-pin'}
-            cta="Make a profile"
             compact
             // Pushing a route from inside a sheet leaves its scrim over the
             // map and every later tap lands on nothing. See components/ui/sheet.
@@ -1806,7 +1805,6 @@ export default function MapScreen() {
             <SignUpGate
               reason="See who's going and say hi"
               where="pin-card"
-              cta="Create an account"
               compact
               onNavigate={leavingSheet(() => setSelectedPinId(null))}
             />

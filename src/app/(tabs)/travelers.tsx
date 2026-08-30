@@ -274,7 +274,6 @@ function GuestTravelers() {
           reason={guestGateReason(featured?.display_name, featured != null, cityName)}
           // Not the reason: that sentence carries a real traveler's name.
           where="travelers-tab"
-          cta="Make a profile"
         />
       </ScrollView>
     </ThemedView>

@@ -52,6 +52,44 @@ export function validateAge(value: string): string | null {
   return null;
 }
 
+/**
+ * Whether step 3 of signup may continue, and if not, why — in the words the
+ * step's note shows.
+ *
+ * A pure function rather than an expression inside the component because of
+ * the bug that made it one: `basicsOk` checked name and age only, gender sat
+ * below the fold behind an autofocused keyboard, and the women-only audience
+ * filter — the brief's differentiator for solo travelers who are women —
+ * filled with the column default 'unspecified' from people who were never
+ * shown the question.
+ *
+ * `genderTouched` rather than the value, because 'unspecified' ("Rather not
+ * say") is both the honest opt-out and the silent default: requiring a
+ * deliberate tap is what separates "chose not to say" from "never asked".
+ */
+export function basicsProblem({
+  name,
+  age,
+  genderTouched,
+}: {
+  name: string;
+  age: string;
+  genderTouched: boolean;
+}): string | null {
+  const nameProblem = validateDisplayName(name);
+  if (nameProblem != null) {
+    return nameProblem;
+  }
+  const ageProblem = validateAge(age);
+  if (ageProblem != null) {
+    return ageProblem;
+  }
+  if (!genderTouched) {
+    return 'Pick a gender. "Rather not say" is an answer too.';
+  }
+  return null;
+}
+
 export function validateBio(value: string): string | null {
   if (codepointLength(value) > BIO_MAX) {
     return `Bios are capped at ${BIO_MAX} characters.`;

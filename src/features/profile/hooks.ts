@@ -189,7 +189,12 @@ export function useUploadPhoto() {
   return useMutation({
     mutationFn: ({ localUri, position }: { localUri: string; position: number }) =>
       uploadPhoto(userId!, localUri, position),
-    onSuccess: () => {
+    onSuccess: (_data, { position }) => {
+      // On the mutation, not in PhotoGrid (which takes no props), so loss
+      // inside the iOS permission chain is separable from loss on signup's
+      // Continue button: a photo that lands emits this even if the person
+      // then quits on the gate.
+      analytics.capture('profile_photo_added', { position });
       queryClient.invalidateQueries({ queryKey: ['photos', userId] });
     },
   });

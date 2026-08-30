@@ -32,6 +32,7 @@ import { SocialHandlesEditor } from '@/features/profile/social-handles-editor';
 import {
   BIO_MAX,
   LANGUAGES_MAX,
+  basicsProblem,
   validateAge,
   validateBio,
   validateDisplayName,
@@ -42,7 +43,7 @@ import { MAX_PRIORITIES } from '@/features/profile/priorities';
 import { useMyTrips } from '@/features/trips/hooks';
 import { formatDateRange } from '@/features/trips/dates';
 import { StepShell } from '@/features/signup/step-shell';
-import { SIGNUP_TOTAL_STEPS } from '@/features/signup/steps';
+import { SIGNUP_TOTAL_STEPS, signupStepName } from '@/features/signup/steps';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 import { useTheme } from '@/hooks/use-theme';
@@ -117,6 +118,21 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   const [name, setName] = useState(profile.display_name ?? '');
   const [age, setAge] = useState(profile.age != null ? String(profile.age) : '');
   const [gender, setGender] = useState<Gender>(profile.gender);
+  // Whether the gender question has ever been ANSWERED, as opposed to left
+  // at its column default. 'unspecified' is both the honest opt-out ("Rather
+  // not say") and the silent default, so the value alone cannot tell "chose
+  // not to say" from "never saw the question" — and the women-only audience
+  // filter was filling with defaults from people who never saw it. A saved
+  // non-default value counts as answered, so backing up to this step never
+  // asks twice.
+  const [genderTouched, setGenderTouched] = useState(
+    // A saved non-default gender proves the question was answered. So do
+    // saved basics: name and age are only ever written by step 3's Continue,
+    // which this very gate refuses until gender is touched — so a person who
+    // picked "Rather not say" (stored as the column default, which the DB
+    // cannot tell from never-asked) is not asked twice after a relaunch.
+    profile.gender !== 'unspecified' || (profile.display_name != null && profile.age != null)
+  );
   const [city, setCity] = useState(profile.home_city ?? '');
   const [country, setCountry] = useState(profile.home_country ?? '');
   const [languages, setLanguages] = useState<string[]>(profile.languages);
@@ -127,27 +143,40 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   const nameError = touched ? validateDisplayName(name) : null;
   const ageError = touched ? validateAge(age) : null;
   const bioError = validateBio(bio);
-  const basicsOk = validateDisplayName(name) == null && validateAge(age) == null;
+  const basicsOk = basicsProblem({ name, age, genderTouched }) == null;
   const homeOk = (city.trim().length > 0 || country.trim().length > 0) && languages.length > 0;
 
-  const go = (next: number) => {
+  // The one door every step leaves through, so the funnel event lives here
+  // and nowhere else. It used to sit in saveAndGo, which only four steps
+  // called: steps advancing through go() alone — including the photo gate
+  // with its three iOS permission dialogs and the trip step that decides
+  // whether a profile is visible to matching at all — emitted nothing
+  // (docs/PRODUCT_BRIEF.md §6 wants day-one metrics). Only a FORWARD move is
+  // a completion; onBack routes through here too. Step 13's exit is
+  // onboarding_completed below, which closes the funnel end to end.
+  const go = (next: number, { skipped = false }: { skipped?: boolean } = {}) => {
     haptics.light();
     setTouched(false);
+    if (next > step) {
+      analytics.capture('signup_step_completed', {
+        step_index: step,
+        step_name: signupStepName(step),
+        skipped,
+      });
+    }
     setStep(next);
   };
 
   // Saved as you pass each step rather than all at the end, so a dropped
   // connection on step six does not cost someone their whole profile.
+  // No capture here: go() owns the event, and a second one in this function
+  // would double-count the four steps that save.
   const saveAndGo = async (
     patch: Parameters<typeof updateProfile.mutateAsync>[0],
     next: number
   ) => {
     try {
       await updateProfile.mutateAsync(patch);
-      // The funnel that creates users was the only surface in the app with
-      // no instrumentation at all, so nobody could say WHICH step people
-      // stopped on (docs/PRODUCT_BRIEF.md §6 wants day-one metrics).
-      analytics.capture('signup_step_completed', { step: next - 1 });
       go(next);
     } catch {
       // Surfaced by the global mutation error alert; stay on the step.
@@ -193,11 +222,20 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         step={3}
         total={SIGNUP_TOTAL_STEPS}
         title="Who are you?"
-        subtitle="The name people will see, and your age."
+        subtitle="The name people will see, your gender, and your age."
         // Deliberately pressable while incomplete: pressing is what marks the
         // fields touched, which is what shows the person WHY it will not go
         // through. A disabled button just sits there.
         continueLoading={updateProfile.isPending}
+        // The one outstanding answer without a field error of its own. Name
+        // and age already turn their fields red; gender is a closed select
+        // that cannot, so the shell's note carries it — the pattern step 4
+        // already uses for its own missing answers.
+        note={
+          touched && nameError == null && ageError == null
+            ? basicsProblem({ name, age, genderTouched })
+            : null
+        }
         footer={businessFooter}
         onContinue={() => {
           setTouched(true);
@@ -209,11 +247,29 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         <FormTextField
           label="Name"
           testID="name-input"
-          autoFocus
+          // No autoFocus any more. There are three answers on this screen
+          // now, and a keyboard that opens on arrival scrolls this field into
+          // view and Gender out of it — which is how the women-only filter's
+          // data was shipping as 'unspecified' from people who never saw the
+          // question. Same reason join.tsx dropped it from Email.
           autoComplete="given-name"
           value={name}
           onChangeText={setName}
           error={nameError}
+        />
+        {/* Above Age, so all three questions sit in the first viewport with
+            the keyboard down. Age used to be second, and the screenshot that
+            made this a finding showed it sliced in half by the footer with
+            Gender nowhere on screen. */}
+        <SelectField
+          label="Gender"
+          testID="gender-select"
+          options={GENDER_OPTIONS}
+          value={gender}
+          onChange={(next) => {
+            setGender(next);
+            setGenderTouched(true);
+          }}
         />
         {/* A number pad draws no return key at all, so before the Done
             bar the only way out of this field was Continue, which commits
@@ -226,13 +282,6 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
           onChangeText={setAge}
           error={ageError}
           {...keyboardDoneProps}
-        />
-        <SelectField
-          label="Gender"
-          testID="gender-select"
-          options={GENDER_OPTIONS}
-          value={gender}
-          onChange={setGender}
         />
       </StepShell>
     );
@@ -319,7 +368,8 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         note={CHANGE_LATER}
         footer={signOutFooter}
         onBack={() => go(5)}
-        onSkip={() => go(7)}
+        onSkip={() => go(7, { skipped: true })}
+        skipLabel="Skip what you do for now"
         onContinue={() => saveAndGo({ occupation: occupation.trim() || null }, 7)}>
         <FormTextField
           label="What you do"
@@ -345,7 +395,8 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         note={CHANGE_LATER}
         footer={signOutFooter}
         onBack={() => go(6)}
-        onSkip={() => go(8)}
+        onSkip={() => go(8, { skipped: true })}
+        skipLabel="Skip the bio for now"
         onContinue={() => saveAndGo({ bio: bio.trim() || null }, 8)}>
         <FormTextField
           multiline
@@ -374,7 +425,8 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         note={CHANGE_LATER}
         footer={signOutFooter}
         onBack={() => go(7)}
-        onSkip={prompts.length > 0 ? undefined : () => go(9)}
+        onSkip={prompts.length > 0 ? undefined : () => go(9, { skipped: true })}
+        skipLabel="Skip the prompts for now"
         onContinue={() => (prompts.length > 0 ? go(9) : router.push('/edit-prompt'))}>
         {prompts.length === 0 ? (
           <PrimaryButton
@@ -419,7 +471,8 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         note={CHANGE_LATER}
         footer={signOutFooter}
         onBack={() => go(8)}
-        onSkip={priorities.length > 0 ? undefined : () => go(10)}
+        onSkip={priorities.length > 0 ? undefined : () => go(10, { skipped: true })}
+        skipLabel="Skip this for now"
         onContinue={() => (priorities.length > 0 ? go(10) : router.push('/edit-priorities'))}>
         {priorities.length === 0 ? (
           <PrimaryButton
@@ -465,7 +518,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         note={CHANGE_LATER}
         footer={signOutFooter}
         onBack={() => go(9)}
-        onSkip={trips.length > 0 ? undefined : () => go(11)}
+        onSkip={trips.length > 0 ? undefined : () => go(11, { skipped: true })}
         skipLabel="I'll add it later"
         // The consequence, named at the moment of choice: travelers.tsx
         // returns the whole tab as a wall whenever trips.length === 0, and
@@ -519,7 +572,8 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         note={CHANGE_LATER}
         footer={signOutFooter}
         onBack={() => go(10)}
-        onSkip={() => go(12)}
+        onSkip={() => go(12, { skipped: true })}
+        skipLabel="Skip your socials for now"
         onContinue={() => go(12)}>
         <SocialHandlesEditor />
       </StepShell>
@@ -531,9 +585,17 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
       <StepShell
         step={12}
         total={SIGNUP_TOTAL_STEPS}
-        title="Who you see, and who sees you"
+        // A statement for a brand-new account, because the step is a reading
+        // screen for them: set_visibility refuses a narrowed audience without
+        // the badge, so every row but Everyone is inert and a question whose
+        // only possible answer is the default is not a question. The question
+        // form comes back the day the account is verified and the choice is
+        // real.
+        title={profile.verified ? 'Who you see, and who sees you' : 'Who can see you'}
         subtitle={AUDIENCE_BOTH_WAYS}
-        continueLabel="Continue"
+        // "Got it" rather than "Continue" for the same reason: the button
+        // acknowledges a fact, it does not submit an answer.
+        continueLabel={profile.verified ? 'Continue' : 'Got it'}
         footer={signOutFooter}
         onBack={() => go(11)}
         onContinue={() => go(13)}>
@@ -543,6 +605,13 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
             account never has one. Showing the locked rows anyway is the whole
             point of the step — somebody who never learns the setting exists
             is exactly who the founder wanted this step for. */}
+        {/* WHY the rows below are locked, read before they are tapped rather
+            than discovered after. */}
+        {profile.verified ? null : (
+          <ThemedText type="footnote" themeColor="textSecondary">
+            {AUDIENCE_NEEDS_BADGE} The selfie check lives on your profile once you are in.
+          </ThemedText>
+        )}
         <AudiencePicker
           value={audience}
           verified={profile.verified}
@@ -552,11 +621,6 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         <ThemedText type="footnote" themeColor="textSecondary">
           {AUDIENCE_GENDER_NOTE}
         </ThemedText>
-        {profile.verified ? null : (
-          <ThemedText type="footnote" themeColor="textSecondary">
-            {AUDIENCE_NEEDS_BADGE} The selfie check lives on your profile once you are in.
-          </ThemedText>
-        )}
         {/* Said plainly, because a setting that feels permanent is one people
             get wrong and then live with. */}
         <ThemedText type="footnote" themeColor="textSecondary">

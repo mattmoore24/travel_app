@@ -124,6 +124,26 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2000
 
+# The pin-card gate, which no flow had ever photographed. Which marker is on
+# screen depends on the seeded city's data, so every step is optional and the
+# tap goes by the "open to join" suffix every joinable pin's spoken label
+# carries — the assertion inside the sheet is the point: one gate, one
+# wording, the same "Make a profile" the drop-pin gate below leads with.
+- tapOn:
+    text: '.*open to join.*'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- runFlow:
+    when:
+      visible: "See who's going and say hi"
+    commands:
+      - assertVisible: 'Make a profile'
+      - takeScreenshot: 05d-pin-card-gate
+      - tapOn: 'Close'
+      - waitForAnimationToEnd:
+          timeout: 2000
+
 # The account-kind choice, photographed. Founder, 2026-08-28: "it should be
 # clear right from the start if you are creating or signing into a business
 # account or an individual account." That question now sits above the email

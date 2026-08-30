@@ -14,10 +14,19 @@ import { analytics } from '@/lib/analytics';
  * anything they could already see (docs/DESIGN.md, "ask for nothing until you
  * must").
  */
+/**
+ * One call to action, everywhere, and no prop to drift it. A guest could meet
+ * two gates in one session and be asked to do two apparently different
+ * things — "Make a profile" at Drop a pin, "Create an account" one tap later
+ * on a pin's card — when both push the same /join. The gate's reasons are
+ * about the profile ("Pins come with your name on them"), and "account" is
+ * the word the business flow keeps for itself.
+ */
+const CTA = 'Make a profile';
+
 export function SignUpGate({
   reason,
   where,
-  cta = 'Create an account',
   compact = false,
   onNavigate = (go) => go(),
 }: {
@@ -31,7 +40,6 @@ export function SignUpGate({
    * one gate into two lines on the chart.
    */
   where: string;
-  cta?: string;
   compact?: boolean;
   /**
    * How to run the jump to sign-up. A caller that renders this INSIDE a sheet
@@ -56,7 +64,7 @@ export function SignUpGate({
           Takes a minute. Always free.
         </ThemedText>
         <PrimaryButton
-          label={cta}
+          label={CTA}
           onPress={() => {
             analytics.capture('gate_tapped', { where });
             onNavigate(() => router.push('/join'));

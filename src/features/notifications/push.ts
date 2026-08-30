@@ -40,6 +40,15 @@ export function pushPossible(): boolean {
   return isSupabaseConfigured && Platform.OS !== 'web' && Device.isDevice && projectId() != null;
 }
 
+/**
+ * The token this device registered, remembered so sign-out never has to ask
+ * the network for it. getExpoPushTokenAsync is two network calls (APNs, then
+ * Expo's service) and on unreachable APNs the promise can simply NEVER
+ * settle — a hang no try/catch can catch — which held the Sign out button
+ * shut on exactly the hostel wifi it must survive.
+ */
+let registeredToken: string | null = null;
+
 async function storeToken(): Promise<Registration> {
   const id = projectId();
   if (!id) {
@@ -47,6 +56,7 @@ async function storeToken(): Promise<Registration> {
   }
   const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId: id });
   await supabase.rpc('register_push_token', { p_token: token, p_platform: Platform.OS });
+  registeredToken = token;
   return 'registered';
 }
 
@@ -82,6 +92,41 @@ export async function refreshPushToken(): Promise<void> {
     await storeToken();
   } catch {
     // Never let bookkeeping break a launch.
+  }
+}
+
+/**
+ * Unbind THIS DEVICE's push token from the account on the way out of it.
+ *
+ * Nothing ever called the delete-own policy on push_tokens
+ * (20260816220000_chat_realtime.sql), so a signed-out phone kept its row and
+ * went on showing a real sender's name on the lock screen — the one place in
+ * this app where a name reaches somebody who is not signed in. Worse, the
+ * next account on the same phone re-registered the same token, so the
+ * previous owner's messages could land on the wrong person's lock screen.
+ *
+ * Must run while the session is live (the policy checks auth.uid()), so
+ * callers do it BEFORE supabase.auth.signOut. Deletes by token value, not by
+ * user, which is exactly the "this device leaves" semantic. And it must
+ * never block the sign out: catch and continue, the way refreshPushToken
+ * already does.
+ */
+export async function forgetPushToken(): Promise<void> {
+  if (!pushPossible() || registeredToken == null) {
+    // A cold cache (this launch never registered) means there is nothing we
+    // can delete without asking the network for the token, and asking the
+    // network is the hang this function exists to avoid. The row is merely
+    // orphaned: register_push_token deletes by token value before inserting,
+    // so the next account holding this device re-fences it.
+    return;
+  }
+  try {
+    await supabase.from('push_tokens').delete().eq('token', registeredToken);
+    registeredToken = null;
+  } catch {
+    // A token we could not delete must never hold the door shut on the way
+    // out. The row is orphaned, not leaked: delivery to it stops mattering
+    // the moment the next account registers the same token over it.
   }
 }
 

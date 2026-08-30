@@ -207,7 +207,6 @@ export default function JoinGroupScreen() {
           <SignUpGate
             reason="Rather have a full profile?"
             where="group-invite"
-            cta="Make a profile"
             onNavigate={leaveForAccount}
           />
           {/* Nobody has to answer this to use the app. The link is somebody

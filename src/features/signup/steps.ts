@@ -25,3 +25,31 @@ export const SIGNUP_TOTAL_STEPS = 13;
 
 /** The last one, which is the profile itself. Named so nothing hardcodes 13. */
 export const SIGNUP_REVIEW_STEP = SIGNUP_TOTAL_STEPS;
+
+/**
+ * A stable slug per 1-based step, for analytics. `signup_step_completed`
+ * sends `{ step_index, step_name, skipped }`: the index is what a PostHog
+ * funnel orders by (six of the thirteen steps used to emit nothing, and the
+ * two that did sent a string where the rest sent an integer, so no funnel
+ * chart could be drawn at all), and the name is what a human reads on it.
+ * The slugs are part of the event schema — renaming one orphans its history.
+ */
+const SIGNUP_STEP_NAMES = [
+  'email',
+  'password',
+  'who',
+  'home',
+  'photo',
+  'occupation',
+  'bio',
+  'prompts',
+  'priorities',
+  'trip',
+  'socials',
+  'audience',
+  'review',
+] as const;
+
+export function signupStepName(step: number): string {
+  return SIGNUP_STEP_NAMES[step - 1] ?? `step-${step}`;
+}

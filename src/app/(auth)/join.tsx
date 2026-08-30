@@ -1,13 +1,14 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { Space } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { signUpWithEmail, upgradeGuestToAccount } from '@/features/auth/api';
-import { AppleSignInButton } from '@/features/auth/apple-button';
+import { AppleSignInButton, useAppleSignInAvailable } from '@/features/auth/apple-button';
 import { ConsentNote } from '@/features/auth/consent-note';
 import { AccountKindChoice, type AccountKind } from '@/features/auth/account-kind';
 import { useAuthStore } from '@/features/auth/store';
@@ -27,7 +28,9 @@ const PASSWORD_MIN = 8;
  * of it (that is what swaps the app from the auth stack to onboarding).
  */
 export default function JoinScreen() {
+  const theme = useTheme();
   const isGuestAccount = useIsGuestAccount();
+  const appleAvailable = useAppleSignInAvailable();
   const listingStarted = useAuthStore((s) => s.listingStarted);
   const listingDone = useAuthStore((s) => s.listingDone);
 
@@ -64,6 +67,19 @@ export default function JoinScreen() {
   const emailOk = EMAIL_PATTERN.test(email.trim());
   const passwordOk = password.length >= PASSWORD_MIN;
 
+  // The denominator for the largest drop-off in the product: arriving here
+  // and leaving without touching anything. Once, on arrival — the ref rather
+  // than an empty dep array so the lint rule is satisfied without the event
+  // re-firing when the kind rows flip `forBusiness`.
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (startedRef.current) {
+      return;
+    }
+    startedRef.current = true;
+    analytics.capture('signup_started', { business: forBusiness });
+  }, [forBusiness]);
+
   const submitEmail = () => {
     setTouched(true);
     if (!emailOk) {
@@ -71,7 +87,7 @@ export default function JoinScreen() {
     }
     haptics.light();
     setTouched(false);
-    analytics.capture('signup_step_completed', { step: 'email' });
+    analytics.capture('signup_step_completed', { step_index: 1, step_name: 'email' });
     setStep(2);
   };
 
@@ -94,7 +110,11 @@ export default function JoinScreen() {
         await signUpWithEmail(email.trim(), password);
       }
       haptics.success();
-      analytics.capture('signup_step_completed', { step: 'password', business: forBusiness });
+      analytics.capture('signup_step_completed', {
+        step_index: 2,
+        step_name: 'password',
+        business: forBusiness,
+      });
       // The root guard swaps to the profile steps on the auth event. For a
       // place we jump straight past them: `business-signup` sits outside the
       // onboarded guard precisely so it can be reached by an account that
@@ -127,7 +147,12 @@ export default function JoinScreen() {
       <StepShell
         step={1}
         total={SIGNUP_TOTAL_STEPS}
-        title="What is your email?"
+        // A statement, not "What is your email?". The old question was
+        // answered by a full-width Apple pill that skips the email entirely,
+        // so the heading contradicted its own loudest action. "Make your
+        // account" covers all three things on this screen: the account-kind
+        // rows, the Apple button and the email field.
+        title="Make your account"
         // Founder's words, both of them. The old pair told people what the
         // email is NOT for, which invites the question, and the business one
         // promised a second email nobody had asked about yet. These say the
@@ -136,7 +161,7 @@ export default function JoinScreen() {
         // customers will actually call goes instead.
         subtitle={
           forBusiness
-            ? 'This email is just for signing in. You will enter your contact information where customers can reach you when creating your profile.'
+            ? 'This email is just for signing in. You will enter your contact information where customers can reach you when you build your listing.'
             : 'Your email is never shown to other users.'
         }
         continueLabel="Continue"
@@ -176,6 +201,19 @@ export default function JoinScreen() {
             <AppleSignInButton label="signup" />
           </View>
         )}
+        {/* Apple and the email field are ALTERNATIVES, and stacked with
+            nothing between them they read as a sequence — tap the pill, then
+            fill in the field. Only while the pill actually rendered: a
+            divider with nothing above it is a stray line. */}
+        {!isGuestAccount && appleAvailable ? (
+          <View style={styles.orRow}>
+            <View style={[styles.orLine, { backgroundColor: theme.hairline }]} />
+            <ThemedText type="footnote" themeColor="textSecondary">
+              or
+            </ThemedText>
+            <View style={[styles.orLine, { backgroundColor: theme.hairline }]} />
+          </View>
+        ) : null}
         <FormTextField
           label="Email"
           testID="email-input"
@@ -286,6 +324,16 @@ const styles = StyleSheet.create({
   },
   appleRow: {
     paddingBottom: Space.sm,
+  },
+  orRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    paddingBottom: Space.sm,
+  },
+  orLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
   },
   footer: {
     gap: Space.md,
