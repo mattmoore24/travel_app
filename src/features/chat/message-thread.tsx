@@ -1,5 +1,4 @@
 import { SymbolView } from 'expo-symbols';
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Image } from 'expo-image';
 import { useRef, useState } from 'react';
 import {
@@ -108,56 +107,34 @@ const UNMEASURED_HEIGHT = 80;
 /** Breathing room between the lifted message and the things around it. */
 const LIFT_GAP = 10;
 
-/**
- * The menu's own scrim, darker than theme.scrim.
- *
- * theme.scrim is tuned for a sheet, which covers most of the screen and is
- * its own bright surface — a light touch is enough there. Here the dimmed
- * thing sits directly around the menu, and rgba(6,7,16,0.62) over the dark
- * theme's #0E1020 lands on #090A16: a real change on paper and no change at
- * all to look at, so the menu read as a pill floating over a live thread and
- * the date separator underneath stayed perfectly legible. Screenshot 25 of
- * E2E run 35 is that, photographed.
- *
- * 0.86 was still not enough. Run 37 showed the thread's own date separator
- * reading clearly THROUGH the scrim, landing between the lifted message and
- * the Unsend card — so the menu appeared to contain a stray line of text. The
- * lifted copy sits above the original (the group shifts up to fit the actions
- * underneath), which is what puts the separator in the gap. At 0.95 the thread
- * behind is a hint of depth rather than legible content.
- *
- * Not a theme token, because every sheet in the app uses that one and none of
- * them asked for this.
- */
-/**
- * The backdrop behind a lifted message.
- *
- * Blurred where iOS can blur, which is what Messages does and what makes the
- * lifted bubble read as ABOVE the thread rather than pasted over a black
- * rectangle. The tint is on the glass rather than instead of it: a blur
- * alone does not dim, and this menu's whole job is to say "only this
- * message matters right now".
- *
- * No new native module — expo-glass-effect already ships in the binary
- * (docs/DESIGN.md), so this reaches the founder's phone over the air rather
- * than costing an EAS build.
- *
- * The flat value is the fallback and is deliberately near-opaque: a
- * translucent scrim over a dark thread did not read at all, which is the bug
- * this menu has already been fixed for once.
- */
+/** The face at the foot of somebody's run in a group thread, in points. */
 const RUN_AVATAR = 26;
 /**
- * The dim behind a lifted message. Opaque enough that the thread, the header
- * and the composer all read as BEHIND the menu rather than beside it.
+ * The dim behind a lifted message, darker than theme.scrim.
+ *
+ * Before reaching for a different opacity, know what the last three values
+ * bought. This climbed 0.62 → 0.86 → 0.88-with-a-GlassView-blur chasing
+ * content that kept reading through, and the worst of that content was the
+ * pressed MESSAGE itself: the overlay paints a lifted COPY of the bubble
+ * while the original stays mounted in the thread underneath, so any scrim
+ * thin enough to leave the thread as depth left the original as a legible
+ * double directly under the copy. No opacity wins that fight. The real fix
+ * is Bubble's `lifted` prop, which blanks the source row while its copy is
+ * up — the same trick Messages uses.
+ *
+ * With the ghost gone, the scrim's remaining job is the chrome: the header,
+ * the composer and the day separators must read as BEHIND the menu, not
+ * beside it. Near-opaque because run 37 photographed a day separator legible
+ * through 0.86. The GlassView blur went out with the opacity ladder: on iOS
+ * 26.2, where Liquid Glass IS available, it rendered nothing anybody could
+ * see — a dim that depends on a GPU effect being present and effective is
+ * not a dim — and under a near-opaque scrim a blur is a GPU effect nobody
+ * can see by construction.
+ *
+ * Not a theme token, because every sheet in the app uses theme.scrim and
+ * none of them asked for this.
  */
-const MENU_SCRIM = 'rgba(2,3,9,0.88)';
-/**
- * The glass laid over that scrim where the platform has it. Much lighter
- * than the scrim it used to replace, because it is now an enhancement on top
- * rather than the only thing doing the work.
- */
-const MENU_GLASS_OVER_SCRIM = 'rgba(2,3,9,0.18)';
+const MENU_SCRIM = 'rgba(2,3,9,0.95)';
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -169,9 +146,13 @@ type MenuTarget = Rect & {
 
 function Reactions({
   rows,
+  mine,
   onToggle,
 }: {
   rows: ReactionSummaryRow[];
+  /** On your own right-aligned bubble the chip hangs off the bubble's own
+   * trailing edge rather than drifting to the column's far side. */
+  mine: boolean;
   onToggle: (emoji: string, on: boolean) => void;
 }) {
   const theme = useTheme();
@@ -179,7 +160,7 @@ function Reactions({
     return null;
   }
   return (
-    <View style={styles.reactionRow}>
+    <View style={[styles.reactionRow, { alignSelf: mine ? 'flex-end' : 'flex-start' }]}>
       {rows.map((row) => (
         <PressableScale
           key={row.emoji}
@@ -397,6 +378,7 @@ function Bubble({
   avatarName,
   onOpenSender,
   delivered = false,
+  lifted = false,
 }: {
   message: ThreadMessage;
   mine: boolean;
@@ -425,15 +407,30 @@ function Bubble({
    * question you were asking.
    */
   delivered?: boolean;
+  /**
+   * The long-press menu is open on THIS message, and the copy it paints
+   * above its scrim is standing in for it. Blank the row (opacity, never
+   * `display: 'none'` and never a conditional return: the measureInWindow
+   * rect the menu was positioned from must stay valid, and the row's height
+   * must stay in the layout or the list reflows under the open menu) so the
+   * words appear once, not as a ghost under the lifted copy — which no scrim
+   * opacity could hide, and which is what Messages blanks too.
+   */
+  lifted?: boolean;
 }) {
   const anchor = useRef<View>(null);
 
   return (
     <View
+      testID={`bubble-${message.id}`}
       style={[
         styles.bubbleRow,
         mine ? styles.rowMine : styles.rowTheirs,
         { marginTop: grouped ? 2 : Space.sm },
+        // A view at opacity 0 is skipped by UIKit hit-testing (traps), which
+        // is harmless here: the menu's modal is over the whole screen for as
+        // long as this is blank.
+        lifted && styles.rowLifted,
       ]}>
       {avatarPath !== undefined && !mine ? (
         <RunAvatar path={avatarPath} name={avatarName ?? null} onPress={onOpenSender} />
@@ -513,6 +510,10 @@ function Bubble({
             <BubbleBody message={message} mine={mine} tailed={last} />
           </PressableScale>
         </View>
+        {/* The marks under a bubble stack in one column — reaction first,
+            delivery status beneath it — so both read as marks ON the message
+            above rather than a two-column row of unrelated controls. */}
+        <Reactions rows={reactions} mine={mine} onToggle={onToggleReaction} />
         {/* The delivery ladder, in full: Sending, then Sent, or Not sent with
             the way out. "Sending" is honest about the pause the first-message
             moderation check creates; "Sent" is the confirmation the founder
@@ -542,8 +543,11 @@ function Bubble({
             hitSlop={message.local === 'failed' ? { top: 8, bottom: 14, left: 16, right: 8 } : 0}
             onPress={message.local === 'failed' ? onRetry : undefined}
             style={styles.statusRow}>
+            {/* footnote, not caption: 13/400 reads as a quiet status, where
+                caption's 11pt-semibold-letterspaced voice is a section
+                heading and shouted louder than the message above it. */}
             <ThemedText
-              type="caption"
+              type="footnote"
               themeColor={message.local === 'failed' ? 'danger' : 'textSecondary'}>
               {message.local === 'failed'
                 ? 'Not sent. Tap to try again.'
@@ -553,7 +557,6 @@ function Bubble({
             </ThemedText>
           </PressableScale>
         ) : null}
-        <Reactions rows={reactions} onToggle={onToggleReaction} />
       </View>
     </View>
   );
@@ -671,25 +674,12 @@ function MessageMenu({
       entering={FadeIn.duration(120)}
       // No exiting animation: the modal below unmounts this subtree the
       // instant `visible` flips, so an exit would have nothing to play on.
-      // ALWAYS the scrim, with the glass over it rather than instead of it.
-      // This used to hand the whole job to GlassView wherever Liquid Glass
-      // was available — and on iOS 26.2 it IS available and rendered nothing
-      // anybody could see: a simulator run photographed the menu open with
-      // the composer at full brightness beside it, which is the founder's
-      // original complaint arriving back by a different route. A dim that
-      // depends on a GPU effect being both present and effective is not a
-      // dim. The tint drops now that it is layered, so the two together land
-      // where the scrim alone used to.
+      // The flat scrim is the whole dim, on purpose — MENU_SCRIM's comment
+      // holds the history of the glass blur that used to sit here and why it
+      // left. The message the person pressed is not fighting this layer any
+      // more either: the thread blanks the source row (Bubble's `lifted`)
+      // while the copy above this scrim stands in for it.
       style={[styles.menuLayer, { backgroundColor: MENU_SCRIM }]}>
-      {isLiquidGlassAvailable() ? (
-        <GlassView
-          glassEffectStyle="regular"
-          colorScheme="dark"
-          tintColor={MENU_GLASS_OVER_SCRIM}
-          pointerEvents="none"
-          style={StyleSheet.absoluteFill}
-        />
-      ) : null}
       <PressableScale
         accessibilityRole="button"
         accessibilityLabel="Dismiss"
@@ -897,6 +887,11 @@ export function MessageThread({
         inverted
         data={messages}
         keyExtractor={(m) => m.id}
+        // The inline renderItem closes over `menu`, which USUALLY forces a
+        // re-render; extraData is the guarantee VirtualizedList re-renders
+        // the cells when the menu opens and closes, so the blanked source row
+        // (Bubble's `lifted`) tracks the menu rather than trailing it.
+        extraData={menu?.message.id}
         contentContainerStyle={styles.list}
         keyboardDismissMode="interactive"
         // WITHOUT THIS, A LONG PRESS ON A BUBBLE DOES NOTHING while the
@@ -1007,6 +1002,7 @@ export function MessageThread({
                   onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
                   onRetry={item.local === 'failed' && onRetry ? () => onRetry(item) : undefined}
                   delivered={item.id === deliveredId}
+                  lifted={menu?.message.id === item.id}
                   onOpenMenu={
                     reactable
                       ? (rect) =>
@@ -1142,6 +1138,11 @@ const styles = StyleSheet.create({
   rowTheirs: {
     justifyContent: 'flex-start',
   },
+  // Blank but present: the row keeps its measured height and window rect
+  // while the menu's lifted copy stands in for it.
+  rowLifted: {
+    opacity: 0,
+  },
   bubbleColumn: {
     maxWidth: '80%',
   },
@@ -1187,7 +1188,10 @@ const styles = StyleSheet.create({
   reactionRow: {
     flexDirection: 'row',
     gap: Space.xs,
-    marginTop: -6,
+    // A small positive gap, not the old -6 overlap: the negative pull was
+    // tuned for a chip hanging alone under the bubble and stopped working
+    // once the delivery status shared the band beneath it.
+    marginTop: 2,
     marginHorizontal: Space.sm,
   },
   reactionChip: {

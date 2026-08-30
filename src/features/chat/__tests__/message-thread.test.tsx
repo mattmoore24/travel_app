@@ -95,6 +95,23 @@ describe('the reaction menu', () => {
     fireEvent(screen.getByLabelText('First one in'), 'longPress');
     expect(screen.queryByLabelText('Dismiss')).toBeNull();
   });
+
+  // The menu paints a COPY of the pressed bubble above its scrim while the
+  // original stays mounted in the thread. Unless the source row is blanked,
+  // the words appear twice — a ghost no scrim opacity could hide, which is
+  // what runs 35 and 37 photographed. Blanked with opacity, not unmounted:
+  // the row must keep its measured height or the list reflows under the
+  // open menu.
+  it('blanks the source row while its copy is lifted, and restores it on dismiss', () => {
+    renderThread();
+    const rowStyle = () => flattenStyle(screen.getByTestId('bubble-m1').props.style);
+
+    expect(rowStyle().opacity).toBeUndefined();
+    fireEvent(screen.getByLabelText('First one in'), 'longPress');
+    expect(rowStyle().opacity).toBe(0);
+    fireEvent.press(screen.getByLabelText('Dismiss'));
+    expect(rowStyle().opacity).toBeUndefined();
+  });
 });
 
 describe('what a group needs and a one-to-one chat does not', () => {
@@ -146,6 +163,29 @@ describe('what a group needs and a one-to-one chat does not', () => {
     // And there is nothing left to react to.
     fireEvent(screen.getByText('Message removed by the host'), 'longPress');
     expect(screen.queryByLabelText('Dismiss')).toBeNull();
+  });
+});
+
+describe('the marks under a bubble read as one column', () => {
+  // Screenshot 26 of the E2E suite showed the tapback and "Sent" at almost
+  // the same height on OPPOSITE sides of an empty gap - two unrelated
+  // controls, not marks on the message above. The order is bubble, reaction,
+  // status; and the status speaks in footnote (13/400), not caption's
+  // 11pt-semibold section-heading voice.
+  it('stacks reaction above status, and keeps "Sent" quiet', () => {
+    renderThread({
+      messages: [message({ sender_id: 'me', body: 'On my way' })],
+      reactions: [{ message_id: 'm1', emoji: '❤️', count: 1, reacted_by_me: false }],
+    });
+
+    const sent = screen.getByText('Sent');
+    expect(flattenStyle(sent.props.style).fontSize).toBe(13);
+
+    // Child order inside the bubble column: the reaction chip renders before
+    // the delivery status. The serialized tree preserves render order.
+    const tree = JSON.stringify(screen.toJSON());
+    expect(tree.indexOf('❤️')).toBeGreaterThan(-1);
+    expect(tree.indexOf('❤️')).toBeLessThan(tree.indexOf('Sent'));
   });
 });
 
@@ -230,8 +270,12 @@ describe('the action card colours only what destroys', () => {
   });
 });
 
+function flattenStyle(style: unknown): Record<string, unknown> {
+  return Array.isArray(style)
+    ? Object.assign({}, ...style.flat(Infinity).filter(Boolean))
+    : ((style as Record<string, unknown>) ?? {});
+}
+
 function colorOf(node: ReturnType<typeof screen.getByText>): unknown {
-  const style = node.props.style;
-  const flat = Array.isArray(style) ? Object.assign({}, ...style.flat(Infinity)) : style;
-  return flat?.color;
+  return flattenStyle(node.props.style).color;
 }

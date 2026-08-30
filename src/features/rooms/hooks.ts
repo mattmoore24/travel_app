@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { carryFailed, type RoomThreadMessage } from '@/features/chat/outgoing';
+import { carryFailed, type RoomThreadMessage, type ThreadMessage } from '@/features/chat/outgoing';
 import { useOwnUserId } from '@/features/profile/hooks';
 import {
   setReaction,
@@ -20,7 +20,9 @@ import {
   unpinMessage,
   subscribeToRoomMessages,
 } from '@/features/rooms/api';
+import { applyToggle } from '@/features/rooms/reactions';
 import { analytics } from '@/lib/analytics';
+import type { ReactionSummaryRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export function useCityRooms(cityId: number | null) {
@@ -161,6 +163,12 @@ export function useReactions(chatId: string | null) {
 /**
  * `on: false` takes your reaction back; `on: true` sets it, replacing
  * whichever emoji you had on that message before. Nobody stacks six.
+ *
+ * Optimistic, the way useSendMessage already is: the chip lands the instant
+ * the emoji is picked, not after set_reaction AND the summary refetch have
+ * crossed hostel wifi. Nothing here fights realtime — no channel writes the
+ * ['reactions', chatId] cache; it only ever changes by fetch or by this
+ * setQueryData, and both use fetchReactions' row shape.
  */
 export function useToggleReaction(chatId: string) {
   const userId = useOwnUserId();
@@ -168,7 +176,26 @@ export function useToggleReaction(chatId: string) {
   return useMutation({
     mutationFn: ({ messageId, emoji, on }: { messageId: string; emoji: string; on: boolean }) =>
       on ? setReaction(messageId, emoji) : removeReaction(messageId, userId!),
-    onSuccess: () => {
+    onMutate: async ({ messageId, emoji, on }) => {
+      // Stop an in-flight refetch (staleTime is 0, so there often is one)
+      // from landing after this write and putting the old rows back.
+      await queryClient.cancelQueries({ queryKey: ['reactions', chatId] });
+      const previous = queryClient.getQueryData<ReactionSummaryRow[]>(['reactions', chatId]);
+      queryClient.setQueryData<ReactionSummaryRow[]>(['reactions', chatId], (rows = []) =>
+        applyToggle(rows, { messageId, emoji, on, userId })
+      );
+      return { previous };
+    },
+    // No `instanceof Error` guard here on purpose: PostgrestError is not an
+    // Error, and React Query hands whatever was thrown straight through.
+    onError: (_error, _input, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(['reactions', chatId], context.previous);
+      }
+    },
+    // Settled, not success: after a rollback the server is still the
+    // authority on what the rows really are.
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['reactions', chatId] });
     },
   });
@@ -178,6 +205,52 @@ export function useUnsendMessage(chatId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (messageId: string) => unsendMessage(messageId),
+    // The thread already renders `unsent_at != null` as the UnsentNote, so
+    // stamping it locally swaps the bubble the moment the person confirms
+    // instead of leaving their message on screen until five invalidated
+    // queries land. Only one of the two message caches exists for any given
+    // thread; stamping whichever is there keeps this hook ignorant of which
+    // kind it serves, the same way the invalidations below are.
+    //
+    // The realtime paths tolerate the early write: the direct-chat channel
+    // merges rows by id (the server's UPDATE arrives with the real
+    // unsent_at), and the room channel invalidates, which refetches.
+    onMutate: async (messageId) => {
+      // Same race useToggleReaction cancels: these caches run staleTime 0,
+      // so a refetch is often in flight, and one landing after this write
+      // would put the un-stamped row back until the server answered.
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] });
+      await queryClient.cancelQueries({ queryKey: ['room-messages', chatId] });
+      const unsentAt = new Date().toISOString();
+      const stamp = <T extends { id: string; unsent_at?: string | null }>(rows: T[] | undefined) =>
+        rows?.map((row) => (row.id === messageId ? { ...row, unsent_at: unsentAt } : row));
+      const direct = queryClient.getQueryData<ThreadMessage[]>(['messages', chatId]);
+      const room = queryClient.getQueryData<RoomThreadMessage[]>(['room-messages', chatId]);
+      queryClient.setQueryData(['messages', chatId], stamp(direct));
+      queryClient.setQueryData(['room-messages', chatId], stamp(room));
+      // The rollback restores the one stamped ROW, never the whole array: a
+      // peer's message that arrives while the unsend is in flight lives in
+      // the current array only (the direct channel merges each row exactly
+      // once), and a snapshot rollback would erase it for good.
+      return {
+        directRow: direct?.find((row) => row.id === messageId),
+        roomRow: room?.find((row) => row.id === messageId),
+      };
+    },
+    // PostgrestError is not an Error — no `instanceof` guard, ever, or every
+    // database refusal is silently swallowed and the rollback never runs.
+    onError: (_error, messageId, context) => {
+      if (context?.directRow !== undefined) {
+        queryClient.setQueryData<ThreadMessage[]>(['messages', chatId], (rows) =>
+          rows?.map((row) => (row.id === messageId ? context.directRow! : row))
+        );
+      }
+      if (context?.roomRow !== undefined) {
+        queryClient.setQueryData<RoomThreadMessage[]>(['room-messages', chatId], (rows) =>
+          rows?.map((row) => (row.id === messageId ? context.roomRow! : row))
+        );
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['messages', chatId] });
       queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
