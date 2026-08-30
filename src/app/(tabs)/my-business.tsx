@@ -20,6 +20,7 @@ import {
   MaxContentWidth,
   Radius,
   Space,
+  tabDockBottom,
   type ThemeColor,
 } from '@/constants/theme';
 import {
@@ -741,7 +742,7 @@ export default function MyBusinessScreen() {
           pointerEvents="none"
         />
         <View
-          style={[styles.dock, { paddingBottom: BottomTabInset + insets.bottom / 2 + Space.sm }]}
+          style={[styles.dock, { paddingBottom: tabDockBottom(insets.bottom) }]}
           pointerEvents="box-none">
           <PrimaryButton label={next.label} accessibilityLabel={next.hint} onPress={next.onPress} />
         </View>
@@ -756,7 +757,10 @@ export default function MyBusinessScreen() {
  * what dissolved the last line of a traveler's trip dates on run 44.
  */
 function dockHeight(bottomInset: number) {
-  return Space.sm + DOCK_BUTTON + Space.sm + BottomTabInset + bottomInset / 2;
+  // The same one formula every docked bar uses (see tabDockBottom): the old
+  // expression halved the safe-area inset, a 17pt drift against the Map's
+  // pill on the same phone.
+  return Space.sm + DOCK_BUTTON + tabDockBottom(bottomInset);
 }
 
 const styles = StyleSheet.create({

@@ -132,13 +132,19 @@ export function useSendRequest() {
       analytics.capture('request_sent', {
         source: input.source,
         delivered: result.delivered,
+        // Without this the §6 funnel goes blind the moment moderation holds
+        // a hello: queued is the delivered of the moderated path.
+        queued: result.queued,
         blocked: result.blocked,
       });
       queryClient.invalidateQueries({ queryKey: ['sent-requests', userId] });
       queryClient.invalidateQueries({ queryKey: ['first-message-budget', userId] });
       // The first moment there is an answer worth waiting for. The primer
-      // decides for itself whether there is anything left to ask.
-      if (result.delivered) {
+      // decides for itself whether there is anything left to ask. `queued`
+      // counts: with require_llm_moderation on, EVERY hello is queued rather
+      // than delivered, and gating on delivered alone silently switched the
+      // ask off on the one flow it was built for.
+      if (result.delivered || result.queued) {
         usePushPrimer.getState().ask('hello-sent');
       }
     },

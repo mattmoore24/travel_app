@@ -211,9 +211,13 @@ appId: com.mattmoore.samewhere
       - extendedWaitUntil:
           visible: 'Where are you going?'
           timeout: 15000
-      - assertVisible: 'I have not booked anything yet'
+      # The skip and the line naming what it closes. Both exact: the note is
+      # the whole point of the step's redesign — the wall on the Travelers
+      # tab is the second half of this sentence.
+      - assertVisible: "I'll add it later"
+      - assertVisible: 'Travelers stays closed until you do. The map does not.'
       - takeScreenshot: 70-signup-trips
-      - tapOn: 'I have not booked anything yet'
+      - tapOn: "I'll add it later"
       # STEP 11 — socials, and the §7 promise about them said out loud.
       - extendedWaitUntil:
           visible: 'Your socials'

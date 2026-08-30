@@ -44,6 +44,13 @@ type StepShellProps = {
    */
   onSkip?: () => void;
   skipLabel?: string;
+  /**
+   * What skipping actually closes, stated right under the skip. Only for a
+   * step whose skip has a consequence elsewhere in the app; most skips cost
+   * nothing and should not carry one. Renders only while the skip itself
+   * does.
+   */
+  skipNote?: string;
 };
 
 /**
@@ -68,6 +75,7 @@ export function StepShell({
   continueTestID,
   onSkip,
   skipLabel = 'Skip for now',
+  skipNote,
 }: StepShellProps) {
   const theme = useTheme();
   const progress = useSharedValue(step / total);
@@ -153,17 +161,27 @@ export function StepShell({
                 has no skip button, which is how somebody can tell at a glance
                 which questions the app actually needs answered. */}
             {onSkip ? (
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel={skipLabel}
-                haptic="light"
-                scaleTo={0.98}
-                onPress={onSkip}
-                style={styles.skip}>
-                <ThemedText type="footnote" themeColor="textSecondary">
-                  {skipLabel}
-                </ThemedText>
-              </PressableScale>
+              <>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={skipLabel}
+                  haptic="light"
+                  scaleTo={0.98}
+                  onPress={onSkip}
+                  style={styles.skip}>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    {skipLabel}
+                  </ThemedText>
+                </PressableScale>
+                {/* The cost of the skip, where the choice is being made. A
+                    wall that arrives later on another screen reads as a
+                    surprise; the same fact here reads as a choice. */}
+                {skipNote ? (
+                  <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
+                    {skipNote}
+                  </ThemedText>
+                ) : null}
+              </>
             ) : null}
             {footer}
           </ThemedView>

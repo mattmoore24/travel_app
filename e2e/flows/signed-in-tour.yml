@@ -148,6 +148,38 @@ appId: com.mattmoore.samewhere
 - assertNotVisible: 'Rooftop hello from Maestro'
 - tapOn: 'Travelers'
 - takeScreenshot: 17-travelers-signed-in
+# THE QUEUE HAS SCOPE NOW. The header line above the hero says how many
+# people are behind this one. The count depends on live supply, so the
+# pattern covers the three wordings the helper can produce — but nothing
+# else: a screen without the line fails here, naming it.
+- assertVisible: '(Last one for now|One more on your dates in .*|[0-9]+ more on your dates in .*)'
+# Pull to refresh must refresh, not navigate or blank the page. The swipe
+# starts on the hero; afterwards the same traveler page (its primary action)
+# must still be on screen.
+- swipe:
+    start: 50%, 35%
+    end: 50%, 75%
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertVisible: 'Say hi'
+- assertVisible: '(Last one for now|One more on your dates in .*|[0-9]+ more on your dates in .*)'
+# A PASS IS RECOVERABLE. Tap the Next pill (its spoken label — the pill's own
+# accessibilityLabel hides the printed word from Maestro, see traps) and the
+# undo bar names who was moved past. The name depends on live supply, so the
+# pattern closes over the exact demo roster and nothing else; the copied text
+# is what lets the flow prove Undo brings back the SAME person rather than
+# whoever sorts first. All of this happens inside the bar's 5-second window,
+# so the copy and the eval come before the screenshot.
+- tapOn: 'Next traveler'
+- copyTextFrom: 'Moved past (Maya|Dev|Sofia|Priya|Nora|Theo|Marcus|Tomas|Ines|Kai|Freja|Luca)'
+- evalScript: ${output.passedName = maestro.copiedText.replace('Moved past ', '')}
+- takeScreenshot: 17a-passed-undo
+- tapOn: 'Undo'
+- waitForAnimationToEnd:
+    timeout: 3000
+# The person who was just passed is back on top, by name.
+- assertVisible: ${output.passedName}
+- assertNotVisible: 'Moved past .*'
 - tapOn: 'Map'
 - extendedWaitUntil:
     visible: 'Drop a pin'

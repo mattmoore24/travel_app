@@ -1,10 +1,17 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useRef } from 'react';
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import Animated, { FadeIn, FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AvatarButton } from '@/components/ui/avatar-button';
@@ -13,7 +20,13 @@ import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
-import { useFeaturedPhoto, useFeaturedTraveler, useIsGuest } from '@/features/guest/hooks';
+import { guestEmptyCityLine, guestGateReason } from '@/features/guest/copy';
+import {
+  useFeaturedPhoto,
+  useFeaturedTraveler,
+  useIsGuest,
+  useMapPins,
+} from '@/features/guest/hooks';
 import { useLaunchCities } from '@/features/pins/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
@@ -24,18 +37,22 @@ import {
   Elevation,
   HitTarget,
   MaxContentWidth,
+  Motion,
   Radius,
   Space,
   Spacing,
   Type,
+  tabDockBottom,
 } from '@/constants/theme';
 import {
   useDailySpotlight,
+  useFirstMessageBudget,
   useMatches,
   useMyChats,
   useSentRequests,
 } from '@/features/matching/hooks';
 import { usePassedTravelers } from '@/features/matching/passed';
+import { remainingLine } from '@/features/matching/queue-copy';
 import { sharedTodayNote } from '@/features/matching/spotlight';
 import { AUDIENCE_LABEL, audienceInSentence } from '@/features/profile/audience';
 import {
@@ -52,6 +69,7 @@ import { useMyTrips, useTravelerTrips } from '@/features/trips/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
+import { countOf } from '@/lib/plural';
 import type { MatchRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -72,8 +90,13 @@ function GuestTravelers() {
   const launchCitiesQuery = useLaunchCities();
   const launchCities = launchCitiesQuery.data ?? [];
   const cityId = launchCities[0]?.city_id ?? null;
+  const cityName = launchCities[0]?.cities?.name ?? null;
   const featuredQuery = useFeaturedTraveler(cityId);
   const { data: featured, isPending } = featuredQuery;
+  // Evidence for the empty branch: the same faceless rows the guest map
+  // already serves, counted. Never individual pins — a real traveler's venue
+  // plus date is not guest content.
+  const { data: cityPins = [] } = useMapPins(cityId);
   // Not usePhotoUrl: that signs the path with the caller's own credentials,
   // and a guest has none the storage layer will accept. See useFeaturedPhoto.
   const { data: photoUrl } = useFeaturedPhoto(cityId, featured?.photo_path != null);
@@ -172,10 +195,14 @@ function GuestTravelers() {
                     bar. */}
                 {photoUrl ? (
                   <View style={styles.cardHero}>
+                    {/* Top-weighted: the frame is 3:2 landscape and the photo
+                        is usually a portrait selfie whose face sits high, so
+                        the default centre crop lost the top of the head. */}
                     <Image
                       source={{ uri: photoUrl }}
                       style={StyleSheet.absoluteFill}
                       contentFit="cover"
+                      contentPosition="top"
                     />
                     <LinearGradient
                       colors={['transparent', 'rgba(2,3,9,0.85)']}
@@ -230,14 +257,15 @@ function GuestTravelers() {
             </PressableScale>
           </>
         ) : (
-          <ThemedText themeColor="textSecondary">Nobody in town this week.</ThemedText>
+          <ThemedText themeColor="textSecondary">
+            {guestEmptyCityLine(cityPins.length, cityName)}
+          </ThemedText>
         )}
         <SignUpGate
-          reason={
-            featured
-              ? `Make a profile to say hi to ${featured.display_name ?? 'them'}`
-              : 'See everyone else in town'
-          }
+          // Both branches come from one function of `featured`, so the empty
+          // branch can never again promise "everyone else" under a line that
+          // just said there is nobody.
+          reason={guestGateReason(featured?.display_name, featured != null, cityName)}
           // Not the reason: that sentence carries a real traveler's name.
           where="travelers-tab"
           cta="Make a profile"
@@ -261,6 +289,10 @@ function TravelerPage({
   chatId,
   requested,
   isSpotlight,
+  helloCapped,
+  remaining,
+  refreshing,
+  onRefresh,
 }: {
   candidate: Candidate;
   width: number;
@@ -271,10 +303,16 @@ function TravelerPage({
    * the parent where nothing about it looked like copy.
    */
   isSpotlight?: boolean;
+  /** How many people are behind this one in the queue. */
+  remaining: number;
+  refreshing: boolean;
+  onRefresh: () => void;
   onSayHi: () => void;
   onNext: () => void;
   chatId: string | undefined;
   requested: boolean;
+  /** No hellos left today — the Say hi button says so instead of opening. */
+  helloCapped: boolean;
 }) {
   // Nothing left to open once a message is out or a chat exists.
   const canOpen = chatId == null && !requested;
@@ -343,21 +381,14 @@ function TravelerPage({
 
   return (
     <View style={[styles.page, { width }]}>
-      <ScrollView
-        // Headroom for the notch. This screen has no navigation header, so
-        // without it the hero photo starts at y=0 and the top of every
-        // traveler's face is clipped by the status bar.
-        contentContainerStyle={{
-          paddingTop: insets.top + Space.sm,
-          // Clearance for the floating Say hi bar AND the tab bar under it.
-          // 120 was measured against neither: the last lines of a bio ran
-          // straight through the buttons, which is the one place in the app
-          // where text and a primary action share pixels.
-          paddingBottom: BottomTabInset + ACTION_BAR_CLEARANCE,
-        }}
-        showsVerticalScrollIndicator={false}>
+      {/* A fixed header, outside the scroller, so the scope of the queue is
+          readable on every traveler and does not scroll away with the page.
+          Headroom for the notch: this screen has no navigation header, so
+          without the inset the first line starts at y=0 under the status
+          bar. */}
+      <View style={[styles.queueHeader, { paddingTop: insets.top + Space.sm }]}>
         {isSpotlight ? (
-          <View style={styles.spotlightRow}>
+          <>
             <View style={[styles.spotlightChip, { backgroundColor: theme.accentSoft }]}>
               <SymbolView
                 name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
@@ -377,8 +408,34 @@ function TravelerPage({
             <ThemedText type="footnote" themeColor="textSecondary" style={styles.sharedTodayNote}>
               {sharedTodayNote(shown.display_name)}
             </ThemedText>
-          </View>
+          </>
         ) : null}
+        {/* The scope of the queue, not of the city: this count is already
+            filtered by passes, chats, hellos sent and the viewer's own
+            audience setting, and the words are careful to claim no more. */}
+        <ThemedText type="footnote" themeColor="textSecondary" style={styles.sharedTodayNote}>
+          {remainingLine(remaining, candidate.match.city_name)}
+        </ThemedText>
+      </View>
+      <ScrollView
+        refreshControl={
+          // The one gesture people reflexively make at the top of a feed,
+          // and the recovery for a queue that emptied while you read it.
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.textSecondary}
+          />
+        }
+        contentContainerStyle={{
+          paddingTop: Space.sm,
+          // Clearance for the floating Say hi bar AND the tab bar under it,
+          // DERIVED from the bar's real height so it cannot silently go
+          // short the moment the bar grows. The magic 148 this replaces was
+          // double-counting BottomTabInset (198 of padding for a 135pt bar).
+          paddingBottom: actionBarHeight(insets.bottom) + Space.xl,
+        }}
+        showsVerticalScrollIndicator={false}>
         <ProfileView
           profile={shown}
           photos={shownPhotos}
@@ -406,19 +463,30 @@ function TravelerPage({
 
       {/* The bar floats over a scrolling photo-and-text page, so it needs a
           ground of its own or the words behind it compete with the words on
-          it. Transparent to canvas, tall enough to cover the bar and the tab
-          bar below it, and inert to touch. */}
-      <LinearGradient
-        colors={['transparent', theme.background]}
-        locations={[0, 0.55]}
+          it. Two inert layers: a SOLID plate exactly as tall as the bar, and
+          a short ramp fading down to it from above. The single gradient this
+          replaces reached full opacity 55% of the way down its own height,
+          which landed roughly 60pt below the top of the buttons — so the
+          whole button row sat on a half-transparent wash and another trip's
+          dates read through beside the primary action. */}
+      <View
         style={[
           styles.actionBackdrop,
-          { height: actionBarHeight(insets.bottom) + ACTION_BAR_RAMP },
+          { height: actionBarHeight(insets.bottom), backgroundColor: theme.background },
+        ]}
+        pointerEvents="none"
+      />
+      <LinearGradient
+        colors={['transparent', theme.background]}
+        locations={[0, 1]}
+        style={[
+          styles.actionRamp,
+          { height: ACTION_BAR_RAMP, bottom: actionBarHeight(insets.bottom) },
         ]}
         pointerEvents="none"
       />
       <View
-        style={[styles.actionBar, { paddingBottom: BottomTabInset + insets.bottom / 2 + Space.sm }]}
+        style={[styles.actionBar, { paddingBottom: tabDockBottom(insets.bottom) }]}
         pointerEvents="box-none">
         <PressableScale
           accessibilityRole="button"
@@ -428,18 +496,40 @@ function TravelerPage({
           onPress={onNext}
           style={[
             styles.nextButton,
-            { backgroundColor: theme.surfaceSunken, borderColor: theme.hairline },
+            // `border`, not `hairline`: this is an edge a user must see on a
+            // control, and hairline is the token the theme reserves for
+            // decorative dividers (1.41:1 here).
+            { backgroundColor: theme.surfaceSunken, borderColor: theme.border },
           ]}>
           <SymbolView
             name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }}
             size={18}
             tintColor={theme.text}
           />
+          <ThemedText
+            type="caption"
+            themeColor="textSecondary"
+            maxFontSizeMultiplier={BAR_SCALE_CAP}>
+            Next
+          </ThemedText>
         </PressableScale>
         <View style={styles.sayHiWrap}>
+          {/* PrimaryButton renders disabled as a surfaceSunken fill with a
+              textSecondary label (8.2:1), not a fade, so "No hellos left
+              today" stays legible while it says not-now. Opening an existing
+              chat is not a hello, so the cap never touches that state. */}
           <PrimaryButton
-            label={chatId ? 'Open chat' : requested ? 'Message sent' : 'Say hi'}
-            disabled={requested && !chatId}
+            label={
+              chatId
+                ? 'Open chat'
+                : requested
+                  ? 'Message sent'
+                  : helloCapped
+                    ? 'No hellos left today'
+                    : 'Say hi'
+            }
+            disabled={!chatId && (requested || helloCapped)}
+            maxFontSizeMultiplier={BAR_SCALE_CAP}
             onPress={onSayHi}
           />
         </View>
@@ -449,26 +539,33 @@ function TravelerPage({
 }
 
 /**
- * Room under the scroll for the floating Say hi bar and the tab bar beneath
- * it, so anything at the very bottom of a profile can still be scrolled into
- * the clear.
+ * Dynamic Type cap for the two labels inside the action bar, same value as
+ * the message menu's ACTION_SCALE_CAP: the bar's height is the constant
+ * actionBarHeight() builds on, so an uncapped label outgrows the 52pt
+ * buttons and lifts them off the opaque plate onto the translucent ramp,
+ * the exact defect this bar exists to prevent.
  */
-const ACTION_BAR_CLEARANCE = 148;
+const BAR_SCALE_CAP = 1.4;
 
-/** The Say hi button's diameter, and the Next circle's. */
-const ACTION_BUTTON = 52;
+/** The Say hi button's height, and the Next pill's. */
+export const ACTION_BUTTON = 52;
 
 /**
- * How tall the bar actually is. The backdrop used to be given
- * ACTION_BAR_CLEARANCE instead, which is 30pt taller — so the fade started
- * a line and a half ABOVE the bar and dissolved whatever was there. On a
- * traveler with one trip that is exactly where "Both there Aug 23 - 28"
+ * How tall the bar actually is — and therefore how tall its opaque plate is
+ * and where the scroll clearance comes from. The backdrop used to be given a
+ * magic clearance constant instead, which is 30pt taller — so the fade
+ * started a line and a half ABOVE the bar and dissolved whatever was there.
+ * On a traveler with one trip that is exactly where "Both there Aug 23 - 28"
  * lands: the one fact that explains why this person is on your screen,
  * sliced in half at rest (run 44). Scrolling recovered it; nothing told you
  * to scroll.
+ *
+ * Defined ON tabDockBottom so this bar and the Map's "Drop a pin" pill can
+ * never again sit at two heights on one phone (the old expression halved the
+ * safe-area inset, a 17pt drift).
  */
-function actionBarHeight(bottomInset: number) {
-  return Space.sm + ACTION_BUTTON + Space.sm + BottomTabInset + bottomInset / 2;
+export function actionBarHeight(bottomInset: number) {
+  return Space.sm + ACTION_BUTTON + tabDockBottom(bottomInset);
 }
 
 /** Ramp above the bar. Long enough to read as a fade, short enough that it
@@ -504,10 +601,43 @@ export default function TravelersScreen() {
   const { data: chats = [] } = useMyChats();
   const passed = usePassedTravelers();
   const { data: spotlight } = useDailySpotlight();
+  // Today's hello budget, so the Say hi button can say "none left" instead
+  // of opening a composer that cannot send (see compose-request's own guard).
+  const budget = useFirstMessageBudget();
+  // The undo for a mis-tapped Next: who was just passed (for the bar) and
+  // who was just brought back (so the queue re-opens on them, not on
+  // whoever happens to sort first). Declared with the other hooks, above
+  // every early return, so hook order stays stable.
+  const [undo, setUndo] = useState<{ id: string; name: string } | null>(null);
+  const [restoredId, setRestoredId] = useState<string | null>(null);
+  // Held in a ref and cleared on unmount and on the next pass, so a timer
+  // never outlives the screen or dismisses the wrong bar.
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (undoTimer.current) {
+        clearTimeout(undoTimer.current);
+      }
+    },
+    []
+  );
   // Above every early return, so hook order stays stable. This screen used
   // to have no idea the setting existed, which is why an empty queue said
   // "that's everyone" whatever the reason.
   const { data: audience = 'everyone' } = useOwnVisibility();
+
+  // Destructured because a query RESULT is a new object every render while
+  // its refetch is stable — same pattern as chat.tsx, for the same reason.
+  const { refetch: refetchTrips } = tripsQuery;
+  const { refetch: refetchMatches } = matchesQuery;
+  const refresh = useCallback(() => {
+    refetchTrips();
+    refetchMatches();
+  }, [refetchTrips, refetchMatches]);
+  // The queue changes while this tab is off-stage: trips get added, people
+  // arrive, hellos get answered. Without this a queue that emptied stayed
+  // empty until a force-quit, on the one screen with no other way back in.
+  useFocusEffect(refresh);
 
   useEffect(() => {
     analytics.capture('travelers_viewed');
@@ -573,6 +703,17 @@ export default function TravelersScreen() {
       queue.unshift(...queue.splice(at, 1));
     }
   }
+  // An undone pass outranks the spotlight (hence after it): Undo has to
+  // return the person you just passed, not whoever happens to sort first.
+  // The id is cleared on the next pass; while they are current the hoist is
+  // a no-op, and once they leave the queue (passed again, said hi) the
+  // findIndex misses and nothing moves.
+  if (restoredId) {
+    const at = queue.findIndex((candidate) => candidate.userId === restoredId);
+    if (at > 0) {
+      queue.unshift(...queue.splice(at, 1));
+    }
+  }
   // No cursor: passing someone removes them from the queue, so the next
   // person slides into the same slot. Advancing an index as well is what
   // would skip every second traveler.
@@ -620,8 +761,12 @@ export default function TravelersScreen() {
       <ThemedView style={styles.root}>
         <ProfileCorner />
         <View style={[styles.empty, { paddingTop: insets.top + Space.xxl }]}>
+          {/* The second half of the sentence signup started. Step 10's skip
+              says "Travelers stays closed until you do.", so the wall echoes
+              those words instead of arriving as a surprise with no memory
+              that the skip was a choice. */}
           <ThemedText type="title" style={styles.emptyText}>
-            Add a trip first
+            Travelers opens once you add a trip
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.emptyText}>
             You&apos;ll see who&apos;s in town on your dates.
@@ -693,7 +838,26 @@ export default function TravelersScreen() {
             onPress={() => router.push('/add-trip')}
           />
           {passed.count > 0 ? (
-            <PrimaryButton variant="ghost" label="See them again" onPress={() => passed.reset()} />
+            // All-or-nothing is right when the queue is already empty, but
+            // the count belongs in the sentence: an unnumbered "them" made
+            // this read like a rewind of everything rather than the small,
+            // specific act it is.
+            <PrimaryButton
+              variant="ghost"
+              label={`Show the ${countOf(passed.count, 'person', 'people')} you skipped`}
+              onPress={() => {
+                // The undo bar outlives the queue: passing the LAST person
+                // empties the deck-free list while the 5s window still runs,
+                // and reset() would re-render the main return with a bar for
+                // a pass this very tap already restored.
+                if (undoTimer.current) {
+                  clearTimeout(undoTimer.current);
+                  undoTimer.current = null;
+                }
+                setUndo(null);
+                passed.reset();
+              }}
+            />
           ) : null}
         </View>
       </ThemedView>
@@ -704,6 +868,23 @@ export default function TravelersScreen() {
   const chatId =
     chatByUser.get(current.userId) ??
     (sent?.state === 'accepted' ? (sent.chat_id ?? undefined) : undefined);
+  // Out of hellos for today. Opening an existing chat is not a hello, so
+  // the cap never touches the Open chat state.
+  const helloCapped = budget.data != null && budget.data.used >= budget.data.allowed;
+
+  const undoPass = () => {
+    if (!undo) {
+      return;
+    }
+    if (undoTimer.current) {
+      clearTimeout(undoTimer.current);
+      undoTimer.current = null;
+    }
+    haptics.selection();
+    passed.remove(undo.id);
+    setRestoredId(undo.id);
+    setUndo(null);
+  };
 
   return (
     <ThemedView style={styles.root}>
@@ -713,11 +894,24 @@ export default function TravelersScreen() {
           isSpotlight={current.userId === spotlightId}
           candidate={current}
           width={Math.min(width, MaxContentWidth)}
+          remaining={queue.length - 1}
+          refreshing={matchesQuery.isFetching}
+          onRefresh={refresh}
           chatId={chatId}
           requested={sent?.state === 'sent'}
+          helloCapped={helloCapped}
           onNext={() => {
             haptics.selection();
+            // Name first: after passed.add the candidate leaves the queue,
+            // and the bar has to say who it was about.
+            const name = current.match.display_name ?? 'them';
             passed.add(current.userId);
+            setRestoredId(null);
+            if (undoTimer.current) {
+              clearTimeout(undoTimer.current);
+            }
+            setUndo({ id: current.userId, name });
+            undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS);
           }}
           onSayHi={() => {
             if (chatId) {
@@ -750,9 +944,45 @@ export default function TravelersScreen() {
           }}
         />
       </Animated.View>
+      {undo ? (
+        // A sibling of the deck, not a child of TravelerPage, so it survives
+        // the key={current.userId} remount when the next face slides in. It
+        // floats over a scrolling page, so it carries its own opaque surface
+        // (the exact defect the action bar's plate exists to fix), and it
+        // deliberately does not grow the scroll padding: a 5-second bar that
+        // reflows the page mid-read is worse than one floating above it.
+        <Animated.View
+          entering={FadeInDown.duration(Motion.standard)}
+          exiting={FadeOutDown.duration(Motion.quick)}
+          style={[styles.undoDock, { bottom: actionBarHeight(insets.bottom) }]}
+          pointerEvents="box-none">
+          <ThemedView type="surface" style={[styles.undoCard, Elevation.floating]}>
+            <ThemedText type="footnote" numberOfLines={1} style={styles.undoText}>
+              {`Moved past ${undo.name}`}
+            </ThemedText>
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Undo"
+              haptic="light"
+              scaleTo={0.96}
+              onPress={undoPass}
+              style={styles.undoButton}>
+              <ThemedText type="smallBold" themeColor="accent">
+                Undo
+              </ThemedText>
+            </PressableScale>
+          </ThemedView>
+        </Animated.View>
+      ) : null}
     </ThemedView>
   );
 }
+
+/**
+ * How long the undo bar stands. Long enough to read and reach, short enough
+ * that it never becomes furniture; the next pass dismisses it early.
+ */
+const UNDO_MS = 5000;
 
 const styles = StyleSheet.create({
   deck: {
@@ -768,7 +998,7 @@ const styles = StyleSheet.create({
     right: Space.lg,
     zIndex: 5,
   },
-  spotlightRow: {
+  queueHeader: {
     alignItems: 'center',
     gap: Space.xs,
     paddingBottom: Space.md,
@@ -807,6 +1037,11 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
+  actionRamp: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
   actionBar: {
     position: 'absolute',
     left: 0,
@@ -819,17 +1054,46 @@ const styles = StyleSheet.create({
     paddingTop: Space.sm,
   },
   nextButton: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    // A pill with a word on it, not an unlabelled arrow floating in space:
+    // the circle it replaces was surfaceSunken on canvas (1.15:1) outlined
+    // in hairlineWidth hairline, with no visible word at all.
+    height: ACTION_BUTTON,
+    paddingHorizontal: Space.lg,
+    borderRadius: Radius.pill,
+    flexDirection: 'row',
+    gap: Space.xs,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    // Themed, not the warm brown it carried over from the pre-Nocturne
-    // palette, which read as a mud-coloured smudge beside the blue button.
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
   },
   sayHiWrap: {
     flex: 1,
+  },
+  undoDock: {
+    position: 'absolute',
+    left: Space.lg,
+    right: Space.lg,
+    alignItems: 'center',
+    // Above the action bar's plate and ramp, which carry none.
+    zIndex: 10,
+  },
+  undoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    maxWidth: MaxContentWidth,
+    paddingLeft: Space.lg,
+    paddingRight: Space.xs,
+    borderRadius: Radius.pill,
+  },
+  undoText: {
+    flexShrink: 1,
+  },
+  undoButton: {
+    minHeight: HitTarget,
+    justifyContent: 'center',
+    paddingHorizontal: Space.md,
   },
   empty: {
     flex: 1,

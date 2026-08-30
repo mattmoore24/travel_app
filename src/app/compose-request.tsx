@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Keyboard, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 
 import { ChipRow } from '@/components/form/chip-row';
@@ -59,12 +59,27 @@ export default function ComposeRequestScreen() {
   const [element, setElement] = useState<string>(params.element ?? 'bio');
   const [message, setMessage] = useState(params.draft ?? '');
   const [blockedNotice, setBlockedNotice] = useState(false);
+  // The exact text the server refused. The quiet finish-line card below may
+  // only appear once the draft actually DIFFERS from this: `risky` needs 12+
+  // characters and a debounced preview, so on its own it goes false for an
+  // emptied box, a one-character edit, and anything the preview never saw,
+  // and the card would bless the refused message itself.
+  const refusedText = useRef<string | null>(null);
+  // Whether anything was ever typed here. The at-the-door cap card may only
+  // replace the composer BEFORE writing starts: after "Keep my message", the
+  // budget refetch says capped, and clearing the box to reword would
+  // otherwise swap the whole screen out from under the person mid-edit.
+  const wrote = useRef(false);
   const [capped, setCapped] = useState<number | null>(null);
   const budget = useFirstMessageBudget();
   // Asked while the sentence is still being written, so a message that would
   // be stopped becomes a reword rather than a rejection. Advisory only: the
-  // send path runs the same check server-side either way.
-  const risky = useDraftWarning(message, !blockedNotice);
+  // send path runs the same check server-side either way. Always on — it
+  // used to switch off the moment a send was refused, which left the person
+  // rewriting a blocked message typing with no guidance and manufacturing
+  // the second strike by pressing Send to find out. The preview RPC is
+  // read-only and swallows its own errors, so leaving it on costs nothing.
+  const risky = useDraftWarning(message, true);
   // The composer's own confirmation. Sending used to dismiss the screen with
   // no acknowledgement at all: the same nothing you get from a failed tap.
   const [sent, setSent] = useState(false);
@@ -98,11 +113,17 @@ export default function ComposeRequestScreen() {
       });
       if (result.capped) {
         haptics.error();
+        // The overlay is a sibling in this tree, so nothing unmounts the
+        // focused input for us: without this the keyboard stays up, covers
+        // the overlay's buttons, and keystrokes keep editing the invisible
+        // draft underneath.
+        Keyboard.dismiss();
         setCapped(result.allowed ?? 8);
         return;
       }
       if (result.blocked) {
         haptics.error();
+        refusedText.current = message.trim();
         setBlockedNotice(true);
         // The notice renders at the bottom of a form that is usually taller
         // than the screen, so without this the app answers a refusal by
@@ -125,10 +146,21 @@ export default function ComposeRequestScreen() {
     }
   };
 
-  // The cap gets its own screen rather than a red line under the box. It is
-  // not a rejection of what was written — the words are fine, there are just
-  // no more hellos today — so it reads as a full stop, not a correction.
-  if (capped != null) {
+  // The cap reads as a full stop, not a correction: it is not a rejection of
+  // what was written, there are just no more hellos today. Two ways in:
+  //
+  // At the door — the budget was already spent before this screen opened, so
+  // say so before anybody writes into a box that cannot send. Gated on the
+  // query having LOADED (never a flash over an undefined answer) and on the
+  // box being empty, so a draft that survived the mid-session overlay below
+  // is never destroyed by this branch on the next render.
+  if (
+    capped == null &&
+    budget.data != null &&
+    budget.data.used >= budget.data.allowed &&
+    message.trim().length === 0 &&
+    !wrote.current
+  ) {
     return (
       <ThemedView style={styles.sentRoot}>
         <View style={[styles.sentMark, { backgroundColor: theme.surfaceSunken }]}>
@@ -140,7 +172,7 @@ export default function ComposeRequestScreen() {
         </View>
         <View style={styles.sentText}>
           <ThemedText type="subtitle" style={styles.centred}>
-            That is your {capped} for today
+            That is your {budget.data.allowed} for today
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centred}>
             More tomorrow. A few good hellos beat a pile of forgettable ones.
@@ -176,109 +208,172 @@ export default function ComposeRequestScreen() {
   }
 
   return (
-    <StepScreen
-      scrollRef={scrollRef}
-      title={`Say hi to ${params.name ?? 'this traveler'}`}
-      subtitle="They see this and your profile. If they reply, your chat opens."
-      continueLabel="Send"
-      continueDisabled={message.trim().length === 0 || message.length > MESSAGE_MAX}
-      continueLoading={sendRequest.isPending}
-      onContinue={submit}>
-      <View style={styles.recipientRow}>
-        <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
-          {photoUrl ? (
-            <Image source={{ uri: photoUrl }} style={styles.avatarImage} contentFit="cover" />
-          ) : null}
-        </View>
-        <ThemedText type="smallBold">{params.name ?? 'Traveler'}</ThemedText>
-      </View>
-
-      {source === 'pin' ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          About their pin{params.element ? `: ${params.element.replace(/^pin:/, '')}` : ''}
-        </ThemedText>
-      ) : pickingElement ? (
-        <>
-          <ThemedText type="smallBold">What are you replying to?</ThemedText>
-          <ChipRow
-            options={ELEMENT_OPTIONS}
-            selected={[element]}
-            onToggle={(value) => setElement(value)}
-          />
-        </>
-      ) : (
-        <ThemedView type="backgroundElement" style={styles.targetCard}>
-          {targetPhotoUrl ? (
-            <Image source={{ uri: targetPhotoUrl }} style={styles.targetPhoto} contentFit="cover" />
-          ) : null}
-          <View style={styles.targetText}>
-            <ThemedText type="caption" themeColor="textSecondary">
-              Replying to {params.targetLabel ?? ''}
-            </ThemedText>
-            {params.targetQuote ? (
-              <ThemedText type="small" numberOfLines={3}>
-                {params.targetQuote}
-              </ThemedText>
+    <View style={styles.composerRoot}>
+      <StepScreen
+        scrollRef={scrollRef}
+        title={`Say hi to ${params.name ?? 'this traveler'}`}
+        subtitle="They see this and your profile. If they reply, your chat opens."
+        continueLabel="Send"
+        continueDisabled={message.trim().length === 0 || message.length > MESSAGE_MAX}
+        continueLoading={sendRequest.isPending}
+        onContinue={submit}>
+        <View style={styles.recipientRow}>
+          <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
+            {photoUrl ? (
+              <Image source={{ uri: photoUrl }} style={styles.avatarImage} contentFit="cover" />
             ) : null}
           </View>
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel="Reply to something else"
-            haptic="light"
-            scaleTo={0.94}
-            onPress={() => setPickingElement(true)}>
-            <ThemedText type="footnote" themeColor="accent">
-              Change
-            </ThemedText>
-          </PressableScale>
-        </ThemedView>
-      )}
+          <ThemedText type="smallBold">{params.name ?? 'Traveler'}</ThemedText>
+        </View>
 
-      <FormTextField
-        label="Your first message"
-        multiline
-        numberOfLines={4}
-        style={styles.messageInput}
-        placeholder="Say something they can actually reply to."
-        value={message}
-        onChangeText={setMessage}
-        {...keyboardDoneProps}
-      />
-      <View style={styles.countRow}>
-        <ThemedText type="small" themeColor="textSecondary">
-          {message.length}/{MESSAGE_MAX}
-        </ThemedText>
-        {/* Shown only near the limit. Every hello is capped, but a person on
+        {source === 'pin' ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            About their pin{params.element ? `: ${params.element.replace(/^pin:/, '')}` : ''}
+          </ThemedText>
+        ) : pickingElement ? (
+          <>
+            <ThemedText type="smallBold">What are you replying to?</ThemedText>
+            <ChipRow
+              options={ELEMENT_OPTIONS}
+              selected={[element]}
+              onToggle={(value) => setElement(value)}
+            />
+          </>
+        ) : (
+          <ThemedView type="backgroundElement" style={styles.targetCard}>
+            {targetPhotoUrl ? (
+              <Image
+                source={{ uri: targetPhotoUrl }}
+                style={styles.targetPhoto}
+                contentFit="cover"
+              />
+            ) : null}
+            <View style={styles.targetText}>
+              <ThemedText type="caption" themeColor="textSecondary">
+                Replying to {params.targetLabel ?? ''}
+              </ThemedText>
+              {params.targetQuote ? (
+                <ThemedText type="small" numberOfLines={3}>
+                  {params.targetQuote}
+                </ThemedText>
+              ) : null}
+            </View>
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Reply to something else"
+              haptic="light"
+              scaleTo={0.94}
+              onPress={() => setPickingElement(true)}>
+              <ThemedText type="footnote" themeColor="accent">
+                Change
+              </ThemedText>
+            </PressableScale>
+          </ThemedView>
+        )}
+
+        <FormTextField
+          label="Your first message"
+          multiline
+          numberOfLines={4}
+          style={styles.messageInput}
+          placeholder="Say something they can actually reply to."
+          value={message}
+          onChangeText={(text) => {
+            wrote.current = true;
+            setMessage(text);
+          }}
+          {...keyboardDoneProps}
+        />
+        <View style={styles.countRow}>
+          <ThemedText type="small" themeColor="textSecondary">
+            {message.length}/{MESSAGE_MAX}
+          </ThemedText>
+          {/* Shown only near the limit. Every hello is capped, but a person on
             their second of eight does not need to be told about it. */}
-        {budget.data && budget.data.allowed - budget.data.used <= 3 ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            {countOf(Math.max(budget.data.allowed - budget.data.used, 0), 'hello')} left today
-          </ThemedText>
+          {budget.data && budget.data.allowed - budget.data.used <= 3 ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              {countOf(Math.max(budget.data.allowed - budget.data.used, 0), 'hello')} left today
+            </ThemedText>
+          ) : null}
+        </View>
+
+        {/* Three branches of one advisory, driven by `risky` (the live
+          preview) and `blockedNotice` (a send was refused). A rewrite after
+          a refusal keeps the red card while the draft still reads blocked,
+          and gets a visible finish line once it does not — without ever
+          promising delivery, because the preview only runs the regex
+          prefilter and cannot predict the LLM verdict. */}
+        {risky && !blockedNotice ? (
+          <ThemedView type="backgroundElement" style={styles.blockedCard}>
+            <ThemedText type="smallBold" style={{ color: theme.highlight }}>
+              This might not go through
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Explicit messages are not delivered. Reword it and it goes straight out.
+            </ThemedText>
+          </ThemedView>
         ) : null}
-      </View>
 
-      {risky && !blockedNotice ? (
-        <ThemedView type="backgroundElement" style={styles.blockedCard}>
-          <ThemedText type="smallBold" style={{ color: theme.highlight }}>
-            This might not go through
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            Explicit messages are not delivered. Reword it and it goes straight out.
-          </ThemedText>
-        </ThemedView>
-      ) : null}
+        {blockedNotice && (risky || message.trim() === refusedText.current) ? (
+          <ThemedView type="backgroundElement" style={styles.blockedCard}>
+            <ThemedText type="smallBold" style={{ color: theme.danger }}>
+              That message can&apos;t be sent
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              That came across as explicit. Reword it and send again.
+            </ThemedText>
+          </ThemedView>
+        ) : null}
 
-      {blockedNotice ? (
-        <ThemedView type="backgroundElement" style={styles.blockedCard}>
-          <ThemedText type="smallBold" style={{ color: theme.danger }}>
-            That message can&apos;t be sent
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            That came across as explicit. Reword it and send again.
-          </ThemedText>
-        </ThemedView>
+        {blockedNotice &&
+        !risky &&
+        message.trim().length > 0 &&
+        message.trim() !== refusedText.current ? (
+          <ThemedView type="backgroundElement" style={styles.blockedCard}>
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              That reads better. Send when you&apos;re ready.
+            </ThemedText>
+          </ThemedView>
+        ) : null}
+      </StepScreen>
+
+      {/* Mid-session: the cap fired on Send, after two minutes of writing.
+          An OPAQUE overlay in the same tree, not an early return and not a
+          <Sheet>: the early return unmounted the composer and destroyed the
+          draft, and a Modal presented from a screen that is already a
+          presented route is the dead-app race the traps file documents. The
+          message state lives on underneath, so "Keep my message" is just
+          lifting the overlay. */}
+      {capped != null ? (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            styles.capOverlay,
+            { backgroundColor: theme.background },
+          ]}>
+          <View style={[styles.sentMark, { backgroundColor: theme.surfaceSunken }]}>
+            <SymbolView
+              name={{ ios: 'moon.zzz.fill', android: 'bedtime', web: 'bedtime' }}
+              size={30}
+              tintColor={theme.textSecondary}
+            />
+          </View>
+          <View style={styles.sentText}>
+            <ThemedText type="subtitle" style={styles.centred}>
+              That is your {capped} for today
+            </ThemedText>
+            <ThemedText themeColor="textSecondary" style={styles.centred}>
+              More tomorrow. A few good hellos beat a pile of forgettable ones. Yours is kept right
+              here.
+            </ThemedText>
+          </View>
+          <View style={styles.capActions}>
+            <PrimaryButton label="Keep my message" onPress={() => setCapped(null)} />
+            <PrimaryButton variant="ghost" label="Fair enough" onPress={() => router.back()} />
+          </View>
+        </View>
       ) : null}
-    </StepScreen>
+    </View>
   );
 }
 
@@ -286,6 +381,19 @@ export default function ComposeRequestScreen() {
 const CONFIRM_MS = 1100;
 
 const styles = StyleSheet.create({
+  composerRoot: {
+    flex: 1,
+  },
+  capOverlay: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.four,
+    padding: Spacing.four,
+  },
+  capActions: {
+    alignSelf: 'stretch',
+    gap: Spacing.two,
+  },
   sentRoot: {
     flex: 1,
     alignItems: 'center',

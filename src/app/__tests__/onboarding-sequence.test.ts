@@ -73,6 +73,25 @@ describe('skip is only on the steps that may be skipped', () => {
     // photos" used to satisfy a screen headed "Add a photo".
     expect(shellAt(5)).toContain('continueDisabled={!hasProfilePhoto}');
   });
+
+  it('the trip skip names its cost, and only while there is no trip', () => {
+    const shell = shellAt(10);
+    // The label and its note travel together, inside the same no-trips
+    // branch: the skip itself only renders when trips.length === 0, and
+    // StepShell renders skipNote only while onSkip exists.
+    expect(shell).toContain("I'll add it later");
+    expect(shell).toContain('Travelers stays closed until you do. The map does not.');
+    expect(shell).toContain('onSkip={trips.length > 0 ? undefined');
+    const stepShell = stripped('..', 'features', 'signup', 'step-shell.tsx');
+    const skipBlock = stepShell.slice(stepShell.indexOf('{onSkip ? ('));
+    expect(skipBlock).toContain('skipNote');
+  });
+
+  it('the Travelers wall finishes the sentence the skip started', () => {
+    const travelers = stripped('(tabs)', 'travelers.tsx');
+    expect(travelers).toContain('Travelers opens once you add a trip');
+    expect(travelers).not.toContain('Add a trip first');
+  });
 });
 
 describe('the last step is the profile, not a summary of it', () => {

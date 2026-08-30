@@ -466,7 +466,12 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         footer={signOutFooter}
         onBack={() => go(9)}
         onSkip={trips.length > 0 ? undefined : () => go(11)}
-        skipLabel="I have not booked anything yet"
+        skipLabel="I'll add it later"
+        // The consequence, named at the moment of choice: travelers.tsx
+        // returns the whole tab as a wall whenever trips.length === 0, and
+        // that wall used to arrive later, on a different screen, with no
+        // memory that skipping was a choice this person made.
+        skipNote="Travelers stays closed until you do. The map does not."
         onContinue={() => (trips.length > 0 ? go(11) : router.push('/add-trip'))}>
         {trips.length === 0 ? (
           <>

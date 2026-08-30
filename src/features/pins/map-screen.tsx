@@ -29,6 +29,7 @@ import {
   Radius,
   Space,
   Spacing,
+  tabDockBottom,
 } from '@/constants/theme';
 import { useDeletePin, useJoinPinChat, useLaunchCities, usePinCrew } from '@/features/pins/hooks';
 import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker';
@@ -1374,7 +1375,7 @@ export default function MapScreen() {
         <Animated.View
           entering={FadeInUp.duration(Motion.standard)}
           exiting={FadeOut.duration(Motion.quick)}
-          style={[styles.dock, { bottom: BottomTabInset + insets.bottom + Space.sm }]}
+          style={[styles.dock, { bottom: tabDockBottom(insets.bottom) }]}
           pointerEvents="box-none">
           {/* Blue, not amber. Amber now belongs to the pins themselves, and
               two warm things on one screen means neither reads as the
@@ -1400,7 +1401,7 @@ export default function MapScreen() {
         <Animated.View
           entering={FadeInUp.duration(Motion.standard)}
           exiting={FadeOut.duration(Motion.quick)}
-          style={[styles.dock, { bottom: BottomTabInset + insets.bottom + Space.sm }]}
+          style={[styles.dock, { bottom: tabDockBottom(insets.bottom) }]}
           pointerEvents="box-none">
           <View style={styles.confirmBar}>
             <PrimaryButton

@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, Elevation, Motion, Radius, Space } from '@/constants/theme';
+import { Elevation, Motion, Radius, Space, tabDockBottom } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import type { AcceptedMatch } from '@/features/matching/use-accepted-celebration';
@@ -53,7 +53,7 @@ export function ConnectedNotice({
     <Animated.View
       entering={FadeInDown.duration(Motion.standard)}
       exiting={FadeOutDown.duration(Motion.quick)}
-      style={[styles.dock, { bottom: BottomTabInset + insets.bottom + Space.sm }]}
+      style={[styles.dock, { bottom: tabDockBottom(insets.bottom) }]}
       pointerEvents="box-none">
       <ThemedView type="surface" style={[styles.card, Elevation.floating]}>
         <View style={styles.row}>

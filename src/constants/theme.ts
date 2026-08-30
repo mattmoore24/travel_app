@@ -247,4 +247,15 @@ export const Spacing = {
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80, web: 72 }) ?? 0;
+
+/**
+ * Where a floating dock sits above the tab bar, and what a docked bar pads
+ * its bottom with. ONE formula on purpose: two tabs used to compute the same
+ * clearance with two different expressions (one halved the safe-area inset),
+ * so the same chrome sat at two heights on one phone.
+ */
+export function tabDockBottom(bottomInset: number) {
+  return BottomTabInset + bottomInset + Space.sm;
+}
+
 export const MaxContentWidth = 800;
