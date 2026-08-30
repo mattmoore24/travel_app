@@ -59,7 +59,7 @@
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
           "locationWhenInUsePermission": false,
-          "motionUsagePermission": false
+          "motionUsagePermission": "Samewhere does not track motion. Apple requires this notice because a software library the app is built with refers to the motion tools."
         }
       ]
     ],
