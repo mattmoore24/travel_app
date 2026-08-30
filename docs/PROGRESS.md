@@ -3,6 +3,78 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **The whole app, audited with fresh eyes** (2026-08-30)
+
+The founder asked for a full audit of every part of the app, focused on user
+experience and benchmarked against the most popular apps with similar
+features. The result is [`UX_AUDIT.md`](UX_AUDIT.md) and an artifact the
+founder can read on a phone.
+
+Fifteen auditors: seven read one product area each across every dimension,
+six read one dimension each across the whole app, two did nothing but
+research reference apps and come back. Every one of them read source AND
+opened the 94 screenshots from the last simulator run, because the design
+brief says to critique pictures. Then fifteen adversarial verifiers, whose
+instructions were to refute what the auditors had written.
+
+**321 findings. All 138 critical and high ones were verified: 94 confirmed,
+34 corrected in detail, 7 shown to be recorded founder decisions, 3 refuted
+outright.** The refutations and the founder decisions stayed in the table
+rather than being deleted, so the record shows what was checked.
+
+### The eight structural themes, by leverage
+
+1. **The map answers "where are some pins", not "what's on tonight".** No
+   list anywhere in the app, nothing on a marker carries a date, a pin has a
+   date but no _time_, the camera never frames its own pins, and the heatmap
+   has never rendered in any of the 94 screenshots (`heat_k` is 3 distinct
+   posters per ~550m cell; at seeded density that is met in one cell, in
+   Lisbon).
+2. **The funnel charges everything up front, then forgets you.** 22 screens
+   and ~119 typed characters from cold launch to greeting somebody; joining
+   a plan with an account is 2 screens, 3 taps, zero typing. Signup drops
+   the pin you tapped, the person you wanted to greet and the city you were
+   browsing.
+3. **The thread is missing the half of iMessage that handles coming back.**
+   No reply, no copy, no unread divider, no restore-position, and the
+   long-press overlay does not dim.
+4. **Nothing brings anyone back.** A push opens the app and nothing else,
+   joining a plan is silent, and all thirteen cron jobs are janitorial.
+5. **The business side asks for everything and gives nothing legible back.**
+   No proposition on the first screen, a photo gate that forgets the photo
+   just added, and no return of any kind.
+6. **Safety is enforced in Postgres and never felt.** No settings screen, no
+   unblock anywhere, and the four promises that make this app safer than its
+   competitors live behind a button labelled "House rules and help".
+7. **Two design systems wearing one palette.** `type="title"` renders at
+   display size, so the documented 24pt role is unreachable in 19 places,
+   and `docs/DESIGN.md` still describes a palette that does not ship.
+8. **The app waits where it should feel instant.** Optimistic exactly once,
+   and no concept of being offline at all.
+
+Plus the biggest single product opportunity: the map and the chat never
+touch, so an app built on "I want to go to X on Y" cannot send X on Y into a
+conversation.
+
+### The audit is a document, not a diff
+
+Nothing in the app changed. `UX_AUDIT.md` carries the eight themes, the
+counted funnels, a guardrails section listing the fixes that would break a
+§7 rule or reverse a recorded founder decision, a suggested sequence, and
+the full 321-finding table with evidence and verdict per row.
+
+### Founder decisions the audit is waiting on
+
+- Splitting onboarding so a pin can be dropped before the profile is
+  finished. `ONBOARDING.md` records the founder asking for the opposite.
+- Lowering `heat_k` so the heatmap can render at all.
+- Defaulting the map to Today, and a business to My business.
+- Whether "You're top of their list too." stays. The sentence is **true**
+  (`daily_spotlights` is a symmetric pair, scored with no appearance input),
+  so the only question is whether its grammar sits too close to the
+  see-who-liked-you mechanic the brief bans.
+- Reopening business analytics, which `BUSINESS_ACCOUNTS.md` §10 defers.
+
 ## Current: **The business account, audited surface by surface** (2026-08-30)
 
 The founder tested the app as a business and wrote that the build was
