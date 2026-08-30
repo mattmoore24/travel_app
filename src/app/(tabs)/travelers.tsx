@@ -36,6 +36,7 @@ import {
   useSentRequests,
 } from '@/features/matching/hooks';
 import { usePassedTravelers } from '@/features/matching/passed';
+import { sharedTodayNote } from '@/features/matching/spotlight';
 import { AUDIENCE_LABEL, audienceInSentence } from '@/features/profile/audience';
 import {
   useOwnVisibility,
@@ -130,7 +131,7 @@ function GuestTravelers() {
             <ThemedText type="footnote" themeColor="textSecondary">
               {featured.their_start > toISODate(new Date())
                 ? `In ${featured.city_name} from ${formatDate(featured.their_start)}`
-                : `In ${featured.city_name} right now`}
+                : `In ${featured.city_name} this week`}
             </ThemedText>
             {/* Compact on purpose. This is a teaser with a sign-up card
                 under it, and a full-height photo pushed that card off the
@@ -259,12 +260,17 @@ function TravelerPage({
   onNext,
   chatId,
   requested,
-  spotlight,
+  isSpotlight,
 }: {
   candidate: Candidate;
   width: number;
-  /** Ribbon copy when this is today's mutual spotlight; null otherwise. */
-  spotlight?: string | null;
+  /**
+   * True when this is today's mutual spotlight. The ribbon copy is built HERE
+   * rather than passed in, because the note names the traveler and a prepared
+   * string let the old ceremony line ("You're top of their list too.") sit in
+   * the parent where nothing about it looked like copy.
+   */
+  isSpotlight?: boolean;
   onSayHi: () => void;
   onNext: () => void;
   chatId: string | undefined;
@@ -350,7 +356,7 @@ function TravelerPage({
           paddingBottom: BottomTabInset + ACTION_BAR_CLEARANCE,
         }}
         showsVerticalScrollIndicator={false}>
-        {spotlight ? (
+        {isSpotlight ? (
           <View style={styles.spotlightRow}>
             <View style={[styles.spotlightChip, { backgroundColor: theme.accentSoft }]}>
               <SymbolView
@@ -359,11 +365,17 @@ function TravelerPage({
                 tintColor={theme.accent}
               />
               <ThemedText type="caption" themeColor="accent">
-                {spotlight}
+                {`Today in ${candidate.match.city_name}`}
               </ThemedText>
             </View>
-            <ThemedText type="footnote" themeColor="textSecondary" style={styles.spotlightNote}>
-              You&apos;re top of their list too.
+            {/* States the mechanism, not a ranking. daily_spotlights is a
+                canonically ordered pair with one row per person per day, so
+                "shown to you and them" is exactly what the table guarantees.
+                The line it replaced ("You're top of their list too.") claimed
+                a named stranger had ranked the reader, which is the
+                reciprocal-interest reveal the product exists to avoid. */}
+            <ThemedText type="footnote" themeColor="textSecondary" style={styles.sharedTodayNote}>
+              {sharedTodayNote(shown.display_name)}
             </ThemedText>
           </View>
         ) : null}
@@ -698,7 +710,7 @@ export default function TravelersScreen() {
       <ProfileCorner />
       <Animated.View entering={FadeIn.duration(200)} style={styles.deck} key={current.userId}>
         <TravelerPage
-          spotlight={current.userId === spotlightId ? `Today in ${current.match.city_name}` : null}
+          isSpotlight={current.userId === spotlightId}
           candidate={current}
           width={Math.min(width, MaxContentWidth)}
           chatId={chatId}
@@ -760,6 +772,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Space.xs,
     paddingBottom: Space.md,
+    // The row sat flush to both edges, so at larger Dynamic Type the centred
+    // note ran under the absolutely-positioned ProfileCorner avatar.
+    paddingHorizontal: Space.lg,
+    paddingRight: HitTarget + Space.lg,
   },
   spotlightChip: {
     flexDirection: 'row',
@@ -769,7 +785,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: Radius.pill,
   },
-  spotlightNote: {
+  sharedTodayNote: {
     textAlign: 'center',
   },
   loading: {

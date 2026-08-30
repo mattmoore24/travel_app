@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoButton } from '@/components/ui/photo-button';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { Fonts, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -135,23 +136,36 @@ export function Composer({
           // nothing on screen says.
           {...keyboardDoneProps}
         />
-        <Pressable
+        {/* Disabled is expressed by COLOUR, never by opacity. `opacity: 0.4`
+            dims the label and the ground together and lands at 2.35:1 on this
+            canvas, under the 3:1 floor for a control, while still looking
+            completely tappable — the trap this repo has already measured once
+            in PrimaryButton. The arrow's tint has to move with the fill or the
+            same collapse comes back at a different value.
+
+            Layout goes on containerStyle and paint on style, because
+            PressableScale scales an INNER view: sizing only the inner one
+            shrinks the touch target mid-press and drops taps. */}
+        <PressableScale
           accessibilityRole="button"
           accessibilityLabel="Send"
           // 40pt drawn, 44pt to hit.
           hitSlop={2}
+          scaleTo={0.9}
+          haptic="soft"
           onPress={submit}
           disabled={!canSend}
+          containerStyle={styles.sendTarget}
           style={[
             styles.sendButton,
-            { backgroundColor: theme.accentDeep, opacity: canSend ? 1 : 0.4 },
+            { backgroundColor: canSend ? theme.accentDeep : theme.surfaceSunken },
           ]}>
           <SymbolView
             name={{ ios: 'arrow.up', android: 'arrow_upward', web: 'arrow_upward' }}
             size={18}
-            tintColor={theme.onAccentDeep}
+            tintColor={canSend ? theme.onAccentDeep : theme.textSecondary}
           />
-        </Pressable>
+        </PressableScale>
       </View>
     </View>
   );
@@ -173,6 +187,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     fontSize: 15,
+  },
+  sendTarget: {
+    width: 40,
+    height: 40,
   },
   sendButton: {
     width: 40,

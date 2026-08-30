@@ -183,3 +183,43 @@ or pin** in city #1.
 | Bad actor                           | `select admin_resolve_report(<id>, 'ban');` or `'shadowban'`                                                                                                 |
 | Heat too revealing in a sparse city | `update launch_cities set heat_k = 5 where city_id = ...;`                                                                                                   |
 | Bad migration                       | Fix forward: new migration + trigger a deploy (never edit an applied one)                                                                                    |
+
+## 2b. The domain, and everything behind it
+
+`samewhere.io` exists as of 2026-08-30, with `hello@samewhere.io`. That one
+purchase unblocks seven things, and they need doing in this order.
+
+**Resend only sends. It does not give you an inbox.** Verifying the domain lets
+the app send _from_ `hello@samewhere.io`; it does not make that address receive
+anything. `SUPPORT_INBOX` is where support mail and every business report lands,
+so set up receiving first — Cloudflare Email Routing or ImprovMX forwards to an
+existing inbox for free, and forwarding is fine for launch.
+
+1. **Receiving.** Publish the forwarder's MX records. Send yourself a test.
+2. **Sending.** Resend → Domains → add `samewhere.io`, publish the SPF, DKIM and
+   return-path records, wait for all three green. Keep Resend's return path on a
+   subdomain (`send.samewhere.io`) so it cannot collide with the forwarder's MX.
+3. **DMARC**, recommended: `_dmarc.samewhere.io` TXT
+   `v=DMARC1; p=none; rua=mailto:hello@samewhere.io`. Start at `p=none`.
+4. **Secrets:** `SUPPORT_FROM` = `Samewhere <hello@samewhere.io>`,
+   `SUPPORT_INBOX` = `hello@samewhere.io`, plus `RESEND_API_KEY`. Then
+   Actions → **Supabase deploy**.
+5. **Analytics secrets**, unrelated to mail but on the same checklist because
+   nothing measures anything until they exist: `EXPO_PUBLIC_POSTHOG_API_KEY` and
+   `EXPO_PUBLIC_POSTHOG_HOST` as repo secrets, and the same pair in the EAS
+   environment for builds. The update workflows now pass them; a publish without
+   the key warns in the run summary rather than failing, because analytics being
+   absent must never block shipping a fix.
+6. **Hosting.** Serve [`web/`](../web/README.md) at `samewhere.io`. The
+   `apple-app-site-association` file needs the real Apple Team ID substituted
+   before it does anything.
+7. **Then the app:** `associatedDomains` in `app.json`, flip
+   `UNIVERSAL_LINKS_LIVE` in `src/constants/links.ts`, add
+   `https://samewhere.io/reset` to Supabase's Auth redirect allowlist, and spend
+   an EAS build. Not before the AASA file is live: doing it early replaces a
+   reset link that works on the phone with one that opens Safari and 404s.
+
+Proof for step 2: sign up a business on an address that is **not** the Resend
+account's own and confirm the code arrives, then
+`select * from outbound_mail order by created_at desc limit 5;` — every row
+should carry `sent_at` and a null `delivery_error`.

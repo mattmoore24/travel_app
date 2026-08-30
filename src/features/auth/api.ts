@@ -1,6 +1,7 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Platform } from 'react-native';
 
+import { PASSWORD_RESET_REDIRECT } from '@/constants/links';
 import { supabase } from '@/lib/supabase';
 
 export async function signInWithEmail(email: string, password: string) {
@@ -77,7 +78,7 @@ export async function signUpWithEmail(email: string, password: string) {
  */
 export async function requestPasswordReset(email: string) {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: 'samewhere://reset-password',
+    redirectTo: PASSWORD_RESET_REDIRECT,
   });
   if (error) {
     throw error;

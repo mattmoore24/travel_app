@@ -42,7 +42,19 @@ describe('the chat list is a list, not a stack of cards', () => {
   it('reserves both preview lines so every row is the same height', () => {
     // A list whose rows change height as messages arrive cannot be scanned by
     // position, and the ragged column of timestamps is what reads as ugly.
-    expect(code).toMatch(/rowPreview: \{\s*height: 40,/);
+    expect(code).toMatch(/rowPreview: \{\s*height: PREVIEW_LINES \* Type\.callout\.lineHeight,/);
+    expect(code).toContain('const PREVIEW_LINES = 2;');
+  });
+
+  it('scales the reserved preview height with the reader text size', () => {
+    // The unscaled product is exactly two callout lines at the DEFAULT text
+    // size, with no slack, so a fixed 40 clipped the second line at the first
+    // Dynamic Type step up — and the second line is where the message is.
+    expect(code).toContain('PREVIEW_LINES * Type.callout.lineHeight * fontScale');
+    // Every row that draws a preview has to spend the scaled value, not the style.
+    expect(
+      code.match(/style=\{\[styles\.rowPreview, \{ height: previewHeight \}\]\}/g)
+    ).toHaveLength(3);
   });
 
   it('puts the unread mark outside the text column', () => {

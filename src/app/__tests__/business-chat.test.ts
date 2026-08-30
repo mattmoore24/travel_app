@@ -60,8 +60,18 @@ describe('the chat list a business reads', () => {
     expect(code).toContain('requestsQuery.isError && !chatsQuery.isError && !isBusiness ? (');
   });
 
-  it('says messages, not chats, when the inbox is empty', () => {
-    expect(src(CHAT_TAB)).toContain("? 'No messages yet'");
+  it('offers the owner of an empty inbox something to do about it', () => {
+    const code = src(CHAT_TAB);
+    // The old card said "No messages yet" and stopped. An owner looking at an
+    // empty inbox had no action on the screen, while the row above it stamped
+    // a time on a room nobody had spoken in and called it "0 people here".
+    expect(code).toContain("? 'Nobody has dropped in yet'");
+    expect(code).toContain("router.push('/business-post')");
+    // A room with nothing said in it has no honest timestamp: created_at is
+    // when the listing registered, not when anybody wrote.
+    expect(code).toContain('isRoom && chat.last_message_at == null');
+    // ...and no membership line either, rather than "0 people here".
+    expect(code).toContain('chat.member_count != null && chat.member_count > 0');
   });
 });
 

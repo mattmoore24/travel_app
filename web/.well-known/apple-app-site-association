@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.com.mattmoore.samewhere"],
+        "components": [
+          { "/": "/i/*", "comment": "group invite" },
+          { "/": "/b/*", "comment": "business listing" },
+          { "/": "/c/*", "comment": "city" },
+          { "/": "/u/*", "comment": "traveler profile" },
+          { "/": "/reset*", "comment": "password reset" }
+        ]
+      }
+    ]
+  }
+}

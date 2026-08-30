@@ -9,6 +9,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import ReanimatedSwipeable, {
@@ -44,6 +45,7 @@ import {
   Radius,
   Space,
   Spacing,
+  Type,
 } from '@/constants/theme';
 import {
   useIncomingRequests,
@@ -227,7 +229,24 @@ function RequestCard({ request }: { request: IncomingRequestRow }) {
  * flat 'sent' (rules 4 and 5), and this row keeps that promise: one label,
  * unchanging, until it becomes a real conversation.
  */
+/**
+ * The preview block is pinned to this many lines so the list stays scannable by
+ * position rather than reflowing as messages arrive. It is spent as
+ * `PREVIEW_LINES * Type.callout.lineHeight * fontScale` at every call site: the
+ * unscaled product is 40, which is EXACTLY two lines at the default text size,
+ * so without the reader's own scale the second line clips at the first Dynamic
+ * Type step above default. Do not shave it.
+ */
+const PREVIEW_LINES = 2;
+
+/** Two preview lines at the reader's text size, not at the default one. */
+function usePreviewHeight() {
+  const { fontScale } = useWindowDimensions();
+  return PREVIEW_LINES * Type.callout.lineHeight * fontScale;
+}
+
 function SentHelloRow({ request, last = false }: { request: SentRequestRow; last?: boolean }) {
+  const previewHeight = usePreviewHeight();
   const theme = useTheme();
   const { data: profile } = usePublicProfile(request.recipient_id);
   const { data: photos = [] } = usePublicPhotos(request.recipient_id);
@@ -256,7 +275,7 @@ function SentHelloRow({ request, last = false }: { request: SentRequestRow; last
             type="callout"
             themeColor="textSecondary"
             numberOfLines={2}
-            style={styles.rowPreview}>
+            style={[styles.rowPreview, { height: previewHeight }]}>
             You: {request.first_message}
           </ThemedText>
         </View>
@@ -290,6 +309,7 @@ function SentHelloRow({ request, last = false }: { request: SentRequestRow; last
  * to name.
  */
 function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: boolean }) {
+  const previewHeight = usePreviewHeight();
   const theme = useTheme();
   const isRoom = chat.kind === 'room';
   // A conversation with a BUSINESS carries the business's cover photo, which
@@ -299,7 +319,16 @@ function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: boolean }) 
   // photo is the TRAVELER's, it did the reverse. See useIsPlaceChat.
   const isPlace = useIsPlaceChat(chat.kind);
   const unread = chat.unread_count > 0;
-  const stamp = rowTimestamp(chat.last_message_at ?? chat.created_at);
+  // A room is created with the listing, so `created_at` is when the business
+  // registered, not when anybody spoke. Falling back to it stamped an empty
+  // room with a time, and the row then said three things that could not all be
+  // true at once: a timestamp, "0 people here", and "No messages yet" below.
+  // The fallback stays right for a direct chat, where created_at IS the first
+  // message. rowTrailing already guards on an empty string.
+  const stamp =
+    isRoom && chat.last_message_at == null
+      ? ''
+      : rowTimestamp(chat.last_message_at ?? chat.created_at);
   const closed = chat.chat_status !== 'active';
   // A group with nothing said in it yet has no preview to show, so the row
   // says who is in it instead of sitting empty. Once somebody writes, the
@@ -313,7 +342,7 @@ function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: boolean }) 
   const preview =
     chat.last_message ??
     chat.first_message ??
-    (isRoom && chat.member_count != null
+    (isRoom && chat.member_count != null && chat.member_count > 0
       ? `${countOf(chat.member_count, 'person', 'people')} here` +
         (leaveOn
           ? ` · you leave ${leaveOn.toLocaleDateString(undefined, {
@@ -379,7 +408,7 @@ function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: boolean }) 
           type="callout"
           themeColor={unread ? 'text' : 'textSecondary'}
           numberOfLines={2}
-          style={styles.rowPreview}>
+          style={[styles.rowPreview, { height: previewHeight }]}>
           {preview ?? ''}
         </ThemedText>
       </View>
@@ -447,6 +476,7 @@ function PlainRow({
   accessibilityLabel?: string;
   onPress: () => void;
 }) {
+  const previewHeight = usePreviewHeight();
   const theme = useTheme();
   const accented = tint !== 'quiet';
   return (
@@ -477,7 +507,7 @@ function PlainRow({
             type="callout"
             themeColor="textSecondary"
             numberOfLines={2}
-            style={styles.rowPreview}>
+            style={[styles.rowPreview, { height: previewHeight }]}>
             {detail}
           </ThemedText>
         </View>
@@ -512,7 +542,7 @@ function RoomDiscovery({ cityId }: { cityId: number | null }) {
           <PlainRow
             key={room.chat_id}
             title={room.name}
-            detail={`${countOf(room.member_count, 'guest')} here now`}
+            detail={`${countOf(room.member_count, 'guest')} staying`}
             glyph={{ ios: 'house.fill', android: 'home', web: 'home' }}
             last={i === rooms.length - 1}
             onPress={() => router.push(`/room/${room.chat_id}`)}
@@ -1074,11 +1104,15 @@ export default function ChatScreen() {
         (tab === 'groups' || (requests.length === 0 && waitingOnThem.length === 0)) ? (
           <ThemedView type="backgroundElement" style={styles.emptyCard}>
             <ThemedText type="callout">
-              {isBusiness ? 'No messages yet' : tab === 'groups' ? 'No groups yet' : 'No chats yet'}
+              {isBusiness
+                ? 'Nobody has dropped in yet'
+                : tab === 'groups'
+                  ? 'No groups yet'
+                  : 'No chats yet'}
             </ThemedText>
             <ThemedText type="footnote" themeColor="textSecondary">
               {isBusiness
-                ? 'Travelers who find you on the map can write to you here.'
+                ? 'Put up what is on this week, and travelers who find you on the map can join.'
                 : tab === 'groups'
                   ? 'Join an open chat below, or start your own.'
                   : 'Say hi to someone going your way. The chat opens when they answer.'}
@@ -1088,6 +1122,12 @@ export default function ChatScreen() {
                 not do anything. */}
             {tab === 'individual' && !isBusiness ? (
               <PrimaryButton label="Find travelers" onPress={() => router.push('/travelers')} />
+            ) : null}
+            {/* An owner looking at an empty inbox had nothing to do about it.
+                "Post something" is the title of the screen it opens, so the
+                control says exactly what happens. */}
+            {isBusiness ? (
+              <PrimaryButton label="Post something" onPress={() => router.push('/business-post')} />
             ) : null}
           </ThemedView>
         ) : null}
@@ -1294,9 +1334,13 @@ const styles = StyleSheet.create({
   /* Always two lines tall, whether or not there are two. A list whose rows
      change height as messages arrive cannot be scanned by position, and the
      ragged column of timestamps is what reads as "ugly" without anybody
-     being able to name it. */
+     being able to name it.
+
+     40 is 2 x Type.callout.lineHeight (20) with NO slack, so the base must be
+     multiplied by the reader's fontScale at every call site or the second line
+     clips at the first Dynamic Type step above default. Do not shave it. */
   rowPreview: {
-    height: 40,
+    height: PREVIEW_LINES * Type.callout.lineHeight,
   },
   /* Stretched, so the stamp sits on the name's line while the avatar stays
      centred against the whole row. */

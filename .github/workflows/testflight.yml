@@ -127,8 +127,24 @@ jobs:
           # them; this step never did.
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          # Same reasoning as the pair above, and the same failure mode. A BUILD
+          # gets these from the EAS environment named in eas.json; an UPDATE gets
+          # only what this step hands it. src/lib/analytics.ts is
+          # `const client = apiKey ? new PostHog(...) : null`, so without the key
+          # every capture() in the app is a silent no-op and four of the six §6
+          # metrics have no source at all. Adding the key to the EAS environment
+          # alone fixes builds and then the next update strips it back out.
+          EXPO_PUBLIC_POSTHOG_API_KEY: ${{ secrets.EXPO_PUBLIC_POSTHOG_API_KEY }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ secrets.EXPO_PUBLIC_POSTHOG_HOST }}
         run: |
           set -o pipefail
+          # Warned, not failed, and the choice is deliberate: analytics being
+          # absent must never block shipping a fix to people who are using the
+          # app. It is loud in the run summary instead, and LAUNCH_RUNBOOK.md
+          # carries it as a checklist item.
+          if [ -z "${EXPO_PUBLIC_POSTHOG_API_KEY:-}" ]; then
+            echo "::warning title=No analytics in this update::EXPO_PUBLIC_POSTHOG_API_KEY is unset, so this bundle ships with analytics disabled and every capture() is a no-op. Set the repo secret to fix it."
+          fi
 
           # Prove the bundle before it goes anywhere. A build is verified
           # below and an update was not, which is backwards: an update reaches
