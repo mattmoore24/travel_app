@@ -1,5 +1,12 @@
-# /i/<token> and /reset are single pages that read the rest of the URL in JS,
-# so every path under them has to reach the same file with a 200 rather than a
+# Cloudflare Pages redirects.
+#
+# /i/<token> and /reset are single pages that read the rest of the URL in JS, so
+# every path under them has to reach the same file with a 200 rather than a
 # redirect. A 301 here would also break the association file's path matching.
-/i/*      /i/index.html      200
-/reset/*  /reset/index.html  200
+#
+# The target is the directory, NOT <dir>/index.html. Cloudflare canonicalises an
+# asset stored at i/index.html to the path /i/, and a rewrite aimed at the
+# uncanonical /i/index.html can fail to resolve and fall through to not-found
+# handling, which is what shipped in a5b4fdd. See README.md.
+/i/*      /i/      200
+/reset/*  /reset/  200
