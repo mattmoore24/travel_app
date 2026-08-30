@@ -255,11 +255,11 @@ export default function RoomScreen() {
               // is only fetched for people who are not in the room.
               <ThemedText type="footnote" themeColor="textSecondary">
                 {countOf(membership?.member_count ?? info?.member_count ?? 0, 'person', 'people')}{' '}
-                here · you run this chat
+                in this chat · you run it
               </ThemedText>
             ) : isMember && membership?.expires_at ? (
               <ThemedText type="footnote" themeColor="textSecondary">
-                {countOf(membership.member_count ?? 0, 'person', 'people')} here
+                {countOf(membership.member_count ?? 0, 'person', 'people')} in this chat
                 {/* A private group is not readable by passers-by, and saying
                     it is would be worse than saying nothing. */}
                 {isGroup ? '' : ' · anyone can read'}
@@ -279,7 +279,7 @@ export default function RoomScreen() {
               </ThemedText>
             ) : (
               <ThemedText type="footnote" themeColor="textSecondary">
-                {info ? `${countOf(info.member_count, 'guest')} here. ` : ''}
+                {info ? `${countOf(info.member_count, 'traveler')} in this chat. ` : ''}
                 {/* "Join in to post" is an instruction a business can never
                     follow, so in somebody else's room the sentence stops at
                     what it can do. */}

@@ -68,10 +68,12 @@ describe('the chat list a business reads', () => {
     expect(code).toContain("? 'Nobody has dropped in yet'");
     expect(code).toContain("router.push('/business-post')");
     // A room with nothing said in it has no honest timestamp: created_at is
-    // when the listing registered, not when anybody wrote.
-    expect(code).toContain('isRoom && chat.last_message_at == null');
-    // ...and no membership line either, rather than "0 people here".
-    expect(code).toContain('chat.member_count != null && chat.member_count > 0');
+    // when the listing registered, not when anybody wrote. The row lives in
+    // the shared module now (features/chat/chat-row.tsx), so read it there.
+    const rowModule = src('src/features/chat/chat-row.tsx');
+    expect(rowModule).toContain('isRoom && chat.last_message_at == null');
+    // ...and no membership line either, rather than a "0 people" claim.
+    expect(rowModule).toContain('chat.member_count != null && chat.member_count > 0');
   });
 });
 
@@ -153,7 +155,9 @@ describe('the room a business runs', () => {
   it('tells the owner they run the room instead of telling them to join in', () => {
     const code = src(ROOM);
     expect(code).toContain('{chatsQuery.isPending ? null : isOwnRoom ? (');
-    expect(code).toContain('here · you run this chat');
+    // "in this chat", not "here": the count is chat membership, and "here"
+    // read as presence in the app that promises never to know it.
+    expect(code).toContain('in this chat · you run it');
     // And in somebody else's room a business is not told to join in either.
     expect(code).toContain("? 'Anyone can read this chat.'");
     expect(code).toContain(": 'Anyone can read this chat. Join in to post.'");

@@ -51,9 +51,29 @@ describe('an invite survives leaving the app', () => {
     // "Have an invite?". A fresh installer has no account, so they are a
     // guest, and the guest branch of the Chat tab returns early — the row
     // has to be in both branches or the page's instruction is false for the
-    // one person it was written for.
+    // one person it was written for. Both rows open the invite sheet, and
+    // both branches actually mount it.
     const code = read('(tabs)', 'chat.tsx');
-    expect((code.match(/onPress=\{promptForInvite\}/g) ?? []).length).toBe(2);
+    expect((code.match(/onPress=\{\(\) => setInviteOpen\(true\)\}/g) ?? []).length).toBe(2);
+    expect(
+      (code.match(/accessibilityLabel="Join a group with an invite link or code"/g) ?? []).length
+    ).toBe(2);
+    expect(
+      (code.match(/<InviteCodeSheet onClose=\{\(\) => setInviteOpen\(false\)\} \/>/g) ?? []).length
+    ).toBe(2);
+  });
+
+  it('digs the token out of whatever was pasted, not just a bare code', () => {
+    // People paste links and whole message bubbles, not bare codes: the
+    // bubble carries the https link AND the fallback line, and long-pressing
+    // a message copies all of it. The sheet's Join must run the paste
+    // through inviteTokenFrom or a pasted link joins nothing.
+    const sheet = read('..', 'features', 'chat', 'invite-code-sheet.tsx');
+    expect(sheet).toContain('inviteTokenFrom(pasted)');
+    expect(sheet).toContain('/join-group/${encodeURIComponent(token)}');
+    // Navigating out from under a presented sheet strands its scrim over the
+    // screen you come back to; the push has to go through leavingSheet.
+    expect(sheet).toContain('leavingSheet(onClose)(');
   });
 
   it('promises iOS nothing the route tree cannot answer', () => {

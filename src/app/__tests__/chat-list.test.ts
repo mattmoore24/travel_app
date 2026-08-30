@@ -23,18 +23,24 @@ const source = (...parts: string[]): string =>
 
 describe('the chat list is a list, not a stack of cards', () => {
   const code = source('(tabs)', 'chat.tsx');
+  // The row itself lives in one shared module now, so the archive cannot
+  // diverge from the inbox again — the geometry assertions read it there.
+  const rowModule = source('..', 'features', 'chat', 'chat-row.tsx');
 
   it('draws conversations as flush rows with an inset separator', () => {
-    expect(code).toContain('styles.separator');
+    expect(rowModule).toContain('styles.separator');
     // Inset to where the text starts, so the avatars read as one column.
-    expect(code).toContain('left: Space.lg + 10 + Space.md');
+    expect(rowModule).toContain('left: Space.lg + 10 + Space.md');
     // And the rows themselves cancel the scroller's gutter rather than
     // sitting inside it as cards.
-    expect(code).toContain('marginHorizontal: -Spacing.four');
+    expect(rowModule).toContain('marginHorizontal: -Spacing.four');
   });
 
   it('never gives a conversation row a card radius or fill', () => {
-    const row = code.slice(code.indexOf('  row: {'), code.indexOf('  unreadGutter: {'));
+    const row = rowModule.slice(
+      rowModule.indexOf('  row: {'),
+      rowModule.indexOf('  unreadGutter: {')
+    );
     expect(row).not.toContain('borderRadius');
     expect(row).not.toContain('backgroundColor');
   });
@@ -42,24 +48,39 @@ describe('the chat list is a list, not a stack of cards', () => {
   it('reserves both preview lines so every row is the same height', () => {
     // A list whose rows change height as messages arrive cannot be scanned by
     // position, and the ragged column of timestamps is what reads as ugly.
-    expect(code).toMatch(/rowPreview: \{\s*height: PREVIEW_LINES \* Type\.callout\.lineHeight,/);
-    expect(code).toContain('const PREVIEW_LINES = 2;');
+    expect(rowModule).toMatch(
+      /rowPreview: \{\s*height: PREVIEW_LINES \* Type\.callout\.lineHeight,/
+    );
+    expect(rowModule).toContain('export const PREVIEW_LINES = 2;');
   });
 
   it('scales the reserved preview height with the reader text size', () => {
     // The unscaled product is exactly two callout lines at the DEFAULT text
     // size, with no slack, so a fixed 40 clipped the second line at the first
     // Dynamic Type step up — and the second line is where the message is.
-    expect(code).toContain('PREVIEW_LINES * Type.callout.lineHeight * fontScale');
-    // Every row that draws a preview has to spend the scaled value, not the style.
+    expect(rowModule).toContain('PREVIEW_LINES * Type.callout.lineHeight * fontScale');
+    // Every row that draws a preview has to spend the scaled value, not the
+    // style: ChatRow in the module, SentHelloRow and PlainRow in the screen.
     expect(
-      code.match(/style=\{\[styles\.rowPreview, \{ height: previewHeight \}\]\}/g)
-    ).toHaveLength(3);
+      rowModule.match(/style=\{\[styles\.rowPreview, \{ height: previewHeight \}\]\}/g)
+    ).toHaveLength(1);
+    expect(
+      code.match(/style=\{\[rowStyles\.rowPreview, \{ height: previewHeight \}\]\}/g)
+    ).toHaveLength(2);
   });
 
   it('puts the unread mark outside the text column', () => {
-    expect(code).toContain('styles.unreadGutter');
-    expect(code).toMatch(/unreadGutter: \{\s*width: 10,/);
+    expect(rowModule).toContain('styles.unreadGutter');
+    expect(rowModule).toMatch(/unreadGutter: \{\s*width: 10,/);
+  });
+
+  it('gives the archive the same row, not a divergent copy', () => {
+    const archived = source('archived-chats.tsx');
+    expect(archived).toContain("from '@/features/chat/chat-row'");
+    expect(archived).toContain('<ChatRow chat={chat} last={last} />');
+    // Its scroller pads Space.lg, not the inbox's Spacing.four, so it must
+    // cancel ITS own gutter or the separators run off the screen edge.
+    expect(archived).toMatch(/list: \{\s*marginHorizontal: -Space\.lg,/);
   });
 
   it('draws the destinations as rows too, not as cards among rows', () => {
@@ -75,12 +96,63 @@ describe('the chat list is a list, not a stack of cards', () => {
     expect(code).toContain('chevron\n');
   });
 
-  it('always starts a chat from the plus button, on either segment', () => {
+  it('names the browsing city instead of claiming the rooms are near anybody', () => {
+    // The heading is derived from a trip the traveler typed, via
+    // useBrowsingCity — never launchCities[0], which listed whatever city
+    // came first in the launch table as "near you".
+    expect(code).toContain('const { cityId, cityName } = useBrowsingCity();');
+    expect(code).toContain('Rooms in ${cityName}');
+  });
+
+  it('keeps the plus button doing one thing, on either segment, and saying so', () => {
     // It used to change under the person's hand: a new group on Groups, the
     // Travelers tab on Chats. Founder: "The plus button should always operate
-    // in the same way as it does when I have groups selected."
-    expect(code).toContain('accessibilityLabel="Start a chat"');
+    // in the same way as it does when I have groups selected." And its label
+    // now names the destination — it said "Start a chat" while opening
+    // /new-group, on a screen that cannot start a one-to-one chat at all.
+    expect(code).toContain('accessibilityLabel="New group"');
     expect(code).toContain("onPress={() => router.push('/new-group')}");
     expect(code).not.toContain("tab === 'groups' ? '/new-group' : '/travelers'");
+  });
+});
+
+/**
+ * §7 rule 2 as vocabulary: the app never knows where anybody is, so no chat
+ * surface may SAY it does. "1 guest here now" and "Rooms near you" both
+ * shipped, in the app whose loudest promise is that it never collects or
+ * displays location. Counts are chat membership ("in this chat"), and the
+ * room list is titled with a city the traveler typed a trip to.
+ *
+ * Two blocks so a failure names which banned phrase came back. Comments are
+ * stripped by source(), so prose about the old strings stays legal.
+ */
+describe('the chat surfaces never claim presence', () => {
+  const walk = (dir: string): string[] =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        return entry.name === '__tests__' ? [] : walk(full);
+      }
+      return /\.(ts|tsx)$/.test(entry.name) ? [full] : [];
+    });
+
+  const surfaces: [string, string][] = [
+    ['src/app/(tabs)/chat.tsx', source('(tabs)', 'chat.tsx')],
+    ['src/app/room/[id].tsx', source('room', '[id].tsx')],
+    ...walk(path.join(__dirname, '..', '..', 'features', 'chat')).map((file): [string, string] => [
+      path.relative(path.join(__dirname, '..', '..', '..'), file),
+      fs
+        .readFileSync(file, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, ''),
+    ]),
+  ];
+
+  it.each(surfaces)('%s never says "here now"', (_file, code) => {
+    expect(code).not.toMatch(/here now/i);
+  });
+
+  it.each(surfaces)('%s never says "near you"', (_file, code) => {
+    expect(code).not.toMatch(/near you/i);
   });
 });

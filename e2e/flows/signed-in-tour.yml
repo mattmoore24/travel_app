@@ -244,11 +244,15 @@ appId: com.mattmoore.samewhere
     timeout: 15000
 - takeScreenshot: 20-chat-individual
 - tapOn: 'Groups'
+# The tab body fades in over Motion.quick; an unwaited screenshot catches a
+# semi-transparent, mid-fade list.
+- waitForAnimationToEnd:
+    timeout: 2000
 - takeScreenshot: 21-chat-groups
-# "Start a chat" on both segments now, not "Start a group" on one of them:
-# the '+' used to change under the person's hand, which is the thing the
-# founder could not learn.
-- tapOn: 'Start a chat'
+# The '+' goes to /new-group on both segments and now SAYS so: its spoken
+# label is 'New group'. A Pressable with its own accessibilityLabel hides the
+# text inside it from Maestro, so this taps the spoken label, not a glyph.
+- tapOn: 'New group'
 # Wait on the field, not the title: the screen's heading and the button that
 # opened it are the same words, so a text match would pass before it opened.
 - extendedWaitUntil:
@@ -382,6 +386,60 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2000
 - takeScreenshot: 27a-chat-list-with-a-row
+
+# THE INVITE SHEET — a real field on every platform now, not an iOS-only
+# Alert.prompt whose Android arm was an alert with no input at all. The row
+# is addressed by its spoken label: a Pressable with its own
+# accessibilityLabel hides the text inside it from Maestro. The row sits
+# below the open rooms, so scroll to it rather than assuming it is on screen.
+- scrollUntilVisible:
+    element: 'Join a group with an invite link or code'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Join a group with an invite link or code'
+# The exact label on the field, asserted before the screenshot so a sheet
+# that does not open fails HERE, naming the sheet. Never loosen this to a
+# wildcard.
+- extendedWaitUntil:
+    visible: 'Invite code'
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 27e-invite-sheet
+- tapOn: 'Cancel'
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# THE ARCHIVE, as a conversation list. Archived was the one list that never
+# got the redesign — floating cards, no avatar, no timestamp — and it now
+# renders the inbox's own ChatRow. Archive the crew group, walk into the
+# archive, photograph it, and put the group back so the run leaves no state.
+- scrollUntilVisible:
+    element: 'Maestro crew'
+    direction: UP
+    timeout: 10000
+- longPressOn: 'Maestro crew'
+- tapOn: 'Archive'
+# The door to the archive appears once something is archived; it sits below
+# the rooms and the invite row.
+- scrollUntilVisible:
+    element: 'Archived'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Archived'
+- extendedWaitUntil:
+    visible: 'Maestro crew'
+    timeout: 15000
+- takeScreenshot: 27d-archived
+# Un-archiving uses the inbox's own vocabulary: the long-press menu (the
+# swipe exists too, but a long press is dependable under Maestro). No
+# assertion on 'Nothing archived.' afterwards: archive_idle_chats archives
+# any chat idle 14 days, so an account that has run this flow before may
+# legitimately hold older archived groups.
+- longPressOn: 'Maestro crew'
+- tapOn: 'Put back'
+- waitForAnimationToEnd:
+    timeout: 2000
 
 # ─────────────────────────────────────────────────────────────────────────
 # PLACES AND TOP PRIORITIES — the surface built on 2026-08-27, never yet

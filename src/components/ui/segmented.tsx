@@ -125,7 +125,12 @@ const styles = StyleSheet.create({
   },
   thumb: {
     position: 'absolute',
-    borderWidth: StyleSheet.hairlineWidth,
+    // 1.5pt, not a hairline. The thumb fill is #20243D on #171A2E — 1.13:1,
+    // nothing anyone can see — so this edge is the control's primary signal,
+    // and a 3.4:1 colour drawn 0.33pt wide at 3x was a sub-pixel whisper on
+    // the tab people switch most. The contrast is spent on the edge because
+    // no fill in the palette clears the 3:1 floor without shouting.
+    borderWidth: 1.5,
     top: INSET,
     left: INSET,
     bottom: INSET,
