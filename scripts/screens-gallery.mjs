@@ -47,7 +47,7 @@ const CAPTIONS = {
   '12-place-mode': ['Placing a pin', 'The map moves under a fixed pin.'],
   '13-place-after-pan': ['Panned', 'The pin lifts and settles as the map moves.'],
   '14-pin-form': ['What is the plan?', 'Name, the street it sits on, details.'],
-  '15-pin-form-filled': ['Filled in', 'Drop it stays above the keyboard.'],
+  '15-pin-form-filled': ['Filled in', 'Put it on the map stays above the keyboard.'],
   '16-pin-posted': ['Posted', 'The plan, the street, and how long it has left.'],
   '17-travelers-signed-in': [
     'Travelers',

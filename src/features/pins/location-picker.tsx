@@ -1,9 +1,17 @@
+import { useEffect, useRef, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polygon, PROVIDER_DEFAULT } from 'react-native-maps';
 
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Motion, Radius, Spacing } from '@/constants/theme';
 import { MAP_WASH, QUIET_BASEMAP, SHOW_POINTS_OF_INTEREST, washBox } from '@/features/pins/basemap';
+
+/**
+ * Centred, matching business-marker.tsx's CHIP_ANCHOR: a chip has no tail,
+ * so the marker IS the point, and a default anchor would sit it half a chip
+ * off the door.
+ */
+const MARKER_CHILD_ANCHOR = { x: 0.5, y: 0.5 };
 
 type LocationPickerProps = {
   centerLat: number;
@@ -11,6 +19,13 @@ type LocationPickerProps = {
   lat: number;
   lng: number;
   onChange: (lat: number, lng: number) => void;
+  /**
+   * What to draw at the point. Without one, MapKit draws its default
+   * red-coral balloon — the one colour §7 bans as a UI colour — and the
+   * wrong object besides: an owner would drag a red balloon and get a navy
+   * chip. The callers pass the chip a traveler will actually tap.
+   */
+  marker?: ReactNode;
   /**
    * Whether `lat`/`lng` are a real choice or just somewhere to look.
    *
@@ -39,12 +54,33 @@ export function LocationPicker({
   lat,
   lng,
   onChange,
+  marker,
   placed = true,
   delta = 0.06,
 }: LocationPickerProps) {
+  const mapRef = useRef<MapView>(null);
+  // A drag hands the new coords to the caller, which hands them back as the
+  // centre; without this flag the effect below would answer every marker
+  // nudge by sliding the map underneath the person doing the nudging.
+  const fromDrag = useRef(false);
+  // The centre and delta are props but initialRegion is read once, so when a
+  // geocoded address moves them (signup's address step goes city-wide to
+  // street-level) the map flies there instead of staying on the city centre
+  // under an instruction to check a door it is not showing.
+  useEffect(() => {
+    if (fromDrag.current) {
+      fromDrag.current = false;
+      return;
+    }
+    mapRef.current?.animateToRegion(
+      { latitude: centerLat, longitude: centerLng, latitudeDelta: delta, longitudeDelta: delta },
+      Motion.slow
+    );
+  }, [centerLat, centerLng, delta]);
   return (
     <View style={styles.container}>
       <MapView
+        ref={mapRef}
         style={styles.map}
         provider={PROVIDER_DEFAULT}
         initialRegion={{
@@ -78,12 +114,15 @@ export function LocationPicker({
         {placed ? (
           <Marker
             coordinate={{ latitude: lat, longitude: lng }}
+            anchor={marker ? MARKER_CHILD_ANCHOR : undefined}
             draggable
             onDragEnd={(event) => {
               const { latitude, longitude } = event.nativeEvent.coordinate;
+              fromDrag.current = true;
               onChange(latitude, longitude);
-            }}
-          />
+            }}>
+            {marker}
+          </Marker>
         ) : null}
       </MapView>
       <ThemedText type="small" themeColor="textSecondary">
@@ -98,7 +137,9 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   map: {
-    height: 220,
+    // 280, up from 220: this map hosts a drag task, and 220pt was small for
+    // one — especially with a 26pt chip as the grab handle.
+    height: 280,
     borderRadius: Radius.lg,
     overflow: 'hidden',
   },

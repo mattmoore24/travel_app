@@ -64,12 +64,12 @@ export default function ComposeRequestScreen() {
   // characters and a debounced preview, so on its own it goes false for an
   // emptied box, a one-character edit, and anything the preview never saw,
   // and the card would bless the refused message itself.
-  const refusedText = useRef<string | null>(null);
+  const [refusedText, setRefusedText] = useState<string | null>(null);
   // Whether anything was ever typed here. The at-the-door cap card may only
   // replace the composer BEFORE writing starts: after "Keep my message", the
   // budget refetch says capped, and clearing the box to reword would
   // otherwise swap the whole screen out from under the person mid-edit.
-  const wrote = useRef(false);
+  const [wrote, setWrote] = useState(false);
   const [capped, setCapped] = useState<number | null>(null);
   const budget = useFirstMessageBudget();
   // Asked while the sentence is still being written, so a message that would
@@ -123,7 +123,7 @@ export default function ComposeRequestScreen() {
       }
       if (result.blocked) {
         haptics.error();
-        refusedText.current = message.trim();
+        setRefusedText(message.trim());
         setBlockedNotice(true);
         // The notice renders at the bottom of a form that is usually taller
         // than the screen, so without this the app answers a refusal by
@@ -159,7 +159,7 @@ export default function ComposeRequestScreen() {
     budget.data != null &&
     budget.data.used >= budget.data.allowed &&
     message.trim().length === 0 &&
-    !wrote.current
+    !wrote
   ) {
     return (
       <ThemedView style={styles.sentRoot}>
@@ -279,7 +279,7 @@ export default function ComposeRequestScreen() {
           placeholder="Say something they can actually reply to."
           value={message}
           onChangeText={(text) => {
-            wrote.current = true;
+            setWrote(true);
             setMessage(text);
           }}
           {...keyboardDoneProps}
@@ -314,7 +314,7 @@ export default function ComposeRequestScreen() {
           </ThemedView>
         ) : null}
 
-        {blockedNotice && (risky || message.trim() === refusedText.current) ? (
+        {blockedNotice && (risky || message.trim() === refusedText) ? (
           <ThemedView type="backgroundElement" style={styles.blockedCard}>
             <ThemedText type="smallBold" style={{ color: theme.danger }}>
               That message can&apos;t be sent
@@ -325,10 +325,7 @@ export default function ComposeRequestScreen() {
           </ThemedView>
         ) : null}
 
-        {blockedNotice &&
-        !risky &&
-        message.trim().length > 0 &&
-        message.trim() !== refusedText.current ? (
+        {blockedNotice && !risky && message.trim().length > 0 && message.trim() !== refusedText ? (
           <ThemedView type="backgroundElement" style={styles.blockedCard}>
             <ThemedText type="smallBold" themeColor="textSecondary">
               That reads better. Send when you&apos;re ready.

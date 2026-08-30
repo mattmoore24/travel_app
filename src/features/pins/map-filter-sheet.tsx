@@ -18,6 +18,7 @@ import {
   type MarkerKind,
 } from '@/features/pins/filters';
 import { PIN_CATEGORIES } from '@/features/pins/pin-helpers';
+import { PinGlyph } from '@/features/pins/pin-marker';
 import { addDays } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -194,11 +195,15 @@ export function MapFilterSheet({
                 : 'Only travelers’ plans. Businesses are filtered above.'
             }>
             <View style={styles.chips}>
+              {/* The marker's own disc and glyph, so the picker and the thing
+                  it picks share a vocabulary. Emoji here contradicted the map
+                  twice (Museum, Sights) and put a red pushpin on screen. */}
               {PIN_CATEGORIES.map((category) => (
                 <Chip
                   key={category.value}
                   testID={`filter-category-${category.value}`}
-                  label={`${category.emoji}  ${category.label}`}
+                  label={category.label}
+                  leading={<PinGlyph category={category.value} size={18} />}
                   selected={filters.categories.includes(category.value)}
                   onPress={() =>
                     onChange({
@@ -246,18 +251,23 @@ function Group({
 
 function Chip({
   label,
+  leading,
   selected,
   onPress,
   testID,
 }: {
   label: string;
+  /** Drawn before the label — the category chips put the marker's glyph here. */
+  leading?: React.ReactNode;
   selected: boolean;
   onPress: () => void;
   /**
-   * For the simulator suite. A category chip's label leads with an emoji, so
-   * Maestro's full-string match on "Bar" can never hit it — run 72 failed on
-   * exactly that. An id is what the rest of the suite uses for anything whose
-   * visible text is not a clean handle.
+   * For the simulator suite. A category chip's label used to lead with an
+   * emoji, so Maestro's full-string match on "Bar" could never hit it — run
+   * 72 failed on exactly that, and guest-tour.yml still selects by this id.
+   * An id is what the rest of the suite uses for anything whose visible text
+   * is not a clean handle, and it survives the glyph now sitting beside the
+   * words.
    */
   testID?: string;
 }) {
@@ -279,6 +289,7 @@ function Chip({
             borderColor: selected ? 'transparent' : theme.hairline,
           },
         ]}>
+        {leading}
         <ThemedText
           type="footnote"
           style={selected ? { color: theme.onAccent, fontWeight: '700' } : undefined}>
@@ -419,7 +430,10 @@ const styles = StyleSheet.create({
   },
   chip: {
     height: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
+    gap: Space.xs,
     paddingHorizontal: Space.md,
     borderRadius: Radius.pill,
     borderCurve: 'continuous',

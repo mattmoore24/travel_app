@@ -1,14 +1,13 @@
-import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
-import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useCityPins, useLaunchCities } from '@/features/pins/hooks';
-import { categoryEmoji, intentLabel } from '@/features/pins/pin-helpers';
+import { intentLabel } from '@/features/pins/pin-helpers';
+import { PinGlyph } from '@/features/pins/pin-marker';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 // react-native-maps has no web implementation; web is a dev convenience, so
@@ -44,7 +43,7 @@ export default function MapScreenWeb() {
         </ThemedText>
         {pins.map((pin) => (
           <ThemedView key={pin.id} type="backgroundElement" style={styles.row}>
-            <Text style={styles.emoji}>{categoryEmoji(pin.category, pin.seeded)}</Text>
+            <PinGlyph category={pin.category} seeded={pin.seeded} size={20} />
             <View style={styles.rowText}>
               <ThemedText type="smallBold">{pin.venue_name}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
@@ -54,10 +53,11 @@ export default function MapScreenWeb() {
             </View>
           </ThemedView>
         ))}
-        <PrimaryButton
-          label="Drop a pin"
-          onPress={() => router.push({ pathname: '/drop-pin', params: { cityId: city.city_id } })}
-        />
+        {/* Read-only on purpose: the old web composer wrote real pins at the
+            city centroid with no join mode. Pin creation lives on the phone. */}
+        <ThemedText type="small" themeColor="textSecondary">
+          Pins are dropped from the iOS app.
+        </ThemedText>
       </ScrollView>
     </ThemedView>
   );
@@ -83,9 +83,6 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     padding: Spacing.three,
     borderRadius: Radius.lg,
-  },
-  emoji: {
-    fontSize: 20,
   },
   rowText: {
     flex: 1,

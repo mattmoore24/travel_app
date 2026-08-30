@@ -14,6 +14,7 @@ import { Radius, Space } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store';
 import { replaceBusinessContacts, type ContactKind } from '@/features/business/api';
 import { BusinessAddressField, addressFrom } from '@/features/business/address-field';
+import { PlaceGlyph } from '@/features/business/business-marker';
 import {
   useBusinessDetail,
   useOwnBusiness,
@@ -420,14 +421,22 @@ export default function BusinessSignupScreen() {
                   // once, through initialRegion, so without this the map keeps
                   // showing the city that was chosen first.
                   key={city.city_id}
-                  centerLat={city.cities.lat}
-                  centerLng={city.cities.lng}
+                  // Once the address geocodes, the map flies to it at street
+                  // level: "check the marker is on your door" cannot be
+                  // answered by seven kilometres of city. With nothing
+                  // geocoded it stays on the city at city scale.
+                  centerLat={coords?.lat ?? city.cities.lat}
+                  centerLng={coords?.lng ?? city.cities.lng}
+                  delta={coords != null ? 0.004 : 0.06}
                   lat={coords?.lat ?? city.cities.lat}
                   lng={coords?.lng ?? city.cities.lng}
                   // No marker until there is one to draw. It used to sit on
                   // the city centre, so the screen showed a marker, refused
                   // Continue, and asked for a marker.
                   placed={coords != null}
+                  // The chip a traveler will actually tap, not MapKit's red
+                  // balloon. Category is picked a step before this map.
+                  marker={category ? <PlaceGlyph category={category} /> : undefined}
                   // Only the marker. The address stays exactly as typed, which
                   // is the founder's rule and the reason these are two fields.
                   onChange={(lat, lng) => setCoords({ lat, lng })}
@@ -488,6 +497,9 @@ export default function BusinessSignupScreen() {
             // whether the marker is on the door, and the city-wide default
             // cannot answer it.
             delta={0.004}
+            // "Is this right?" previews the chip a traveler sees, not a red
+            // balloon they never will.
+            marker={category ? <PlaceGlyph category={category} /> : undefined}
             onChange={(lat, lng) => setCoords({ lat, lng })}
           />
         ) : null}

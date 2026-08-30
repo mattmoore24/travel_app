@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -25,7 +25,9 @@ export function ChipRail<T extends string>({
   label,
 }: ChipRailProps<T>) {
   const theme = useTheme();
-  return (
+  // The label is drawn as well as spoken. It used to be accessibility-only,
+  // which left the Today/Tomorrow chips floating with no heading at all.
+  const rail = (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
@@ -54,9 +56,21 @@ export function ChipRail<T extends string>({
       })}
     </ScrollView>
   );
+  if (!label) {
+    return rail;
+  }
+  return (
+    <View style={styles.labelled}>
+      <ThemedText type="smallBold">{label}</ThemedText>
+      {rail}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
+  labelled: {
+    gap: Space.xs,
+  },
   row: {
     gap: Space.sm,
     paddingRight: Space.lg,

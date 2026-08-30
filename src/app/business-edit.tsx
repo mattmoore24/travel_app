@@ -28,6 +28,7 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { BusinessAddressField, addressFrom } from '@/features/business/address-field';
 import { BUSINESS_PHOTO_BUCKET } from '@/features/business/api';
+import { PlaceGlyph } from '@/features/business/business-marker';
 import {
   useOwnBusiness,
   useUpdateBusinessLocation,
@@ -1169,6 +1170,9 @@ function BusinessEditForm({
             // Street level. The question is whether the marker is on the door,
             // and a city-wide view cannot answer it.
             delta={0.004}
+            // The chip travelers tap, not MapKit's red balloon — the one
+            // colour the palette bans outside destructive actions.
+            marker={<PlaceGlyph category={business.category} />}
             onChange={(lat, lng) => setCoords({ lat, lng })}
           />
           <ThemedText type="footnote" themeColor={markerMoved ? 'warning' : 'textSecondary'}>

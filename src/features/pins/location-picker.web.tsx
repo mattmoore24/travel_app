@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Spacing } from '@/constants/theme';
@@ -9,6 +11,10 @@ type LocationPickerProps = {
   lat: number;
   lng: number;
   onChange: (lat: number, lng: number) => void;
+  /** Mirrors the native picker so shared call sites typecheck. */
+  marker?: ReactNode;
+  placed?: boolean;
+  delta?: number;
 };
 
 // Web dev fallback: no native map — the pin lands at the city center.

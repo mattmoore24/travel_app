@@ -287,7 +287,6 @@ function RootNavigator() {
         <Stack.Screen name="verification" options={{ presentation: 'modal' }} />
         <Stack.Screen name="visibility" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compose-request" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="drop-pin" options={{ presentation: 'modal' }} />
         <Stack.Screen
           name="profile/[userId]"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}

@@ -13,6 +13,9 @@ import {
   intentDateOptions,
   intentLabel,
   minHoursForIntent,
+  pinSubtitle,
+  pinTitle,
+  shouldGeocode,
   validDurations,
 } from '../pin-helpers';
 
@@ -197,5 +200,58 @@ describe('filterDates', () => {
     const midday = new Date(2026, 7, 22, 12, 0, 0);
     const dates = filterDates('today', midday);
     expect(dates).toContain('2026-08-22');
+  });
+});
+
+describe('shouldGeocode (the place pill throttle)', () => {
+  const bkk = { lat: 13.7563, lng: 100.5018 };
+  // ~200m north of bkk: one degree of latitude is ~111km.
+  const farther = { lat: 13.7563 + 0.0018, lng: 100.5018 };
+  // ~5m north: same street, same answer.
+  const nudge = { lat: 13.7563 + 0.000045, lng: 100.5018 };
+
+  it('refuses inside the 800ms floor', () => {
+    expect(shouldGeocode({ last: bkk, next: farther, lastAtMs: 1_000, nowMs: 1_500 })).toBe(false);
+  });
+
+  it('refuses a centre within 15m of the last geocoded one', () => {
+    expect(shouldGeocode({ last: bkk, next: nudge, lastAtMs: 0, nowMs: 10_000 })).toBe(false);
+  });
+
+  it('allows a real move once the floor has passed', () => {
+    expect(shouldGeocode({ last: bkk, next: farther, lastAtMs: 1_000, nowMs: 2_000 })).toBe(true);
+  });
+
+  it('allows the very first geocode', () => {
+    expect(shouldGeocode({ last: null, next: bkk, lastAtMs: 0, nowMs: 900 })).toBe(true);
+  });
+});
+
+describe('pinTitle / pinSubtitle (one voice for a pin, everywhere)', () => {
+  it('titles a pin by its venue, never by its note', () => {
+    expect(pinTitle({ venue_name: 'Sky Bar' })).toBe('Sky Bar');
+    // The note has no say: the type does not even accept one.
+    expect(
+      pinTitle({ venue_name: 'Sky Bar', note: 'Sunset drinks' } as { venue_name: string })
+    ).toBe('Sky Bar');
+  });
+
+  it('subtitles a pin with its trimmed plan text', () => {
+    expect(pinSubtitle({ note: '  Sunset drinks  ' })).toBe('Sunset drinks');
+  });
+
+  it('returns null for a missing, empty or whitespace note', () => {
+    expect(pinSubtitle({ note: null })).toBeNull();
+    expect(pinSubtitle({ note: '' })).toBeNull();
+    expect(pinSubtitle({ note: '   ' })).toBeNull();
+  });
+});
+
+describe('avatar initials outside the BMP', () => {
+  it('Array.from yields one whole grapheme where slice would split the surrogate pair', () => {
+    const name = '😀 Sam';
+    expect(Array.from(name)[0]).toBe('😀');
+    // The bug being prevented: a UTF-16 slice cuts the pair in half.
+    expect(name.slice(0, 1)).not.toBe('😀');
   });
 });

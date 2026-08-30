@@ -1,4 +1,7 @@
 import { Image } from 'expo-image';
+// Only ever geocoding: typed text to coordinates and back. Nothing here may
+// read the device's position.
+import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -62,7 +65,14 @@ import { PinFormSheet } from '@/features/pins/pin-form-sheet';
 import { PinSearchField } from '@/features/pins/pin-search-field';
 import type { LocalSearchResult } from '@/modules/local-search';
 import { PlacePinOverlay } from '@/features/pins/place-pin-overlay';
-import { burnOutLabel, intentLabel } from '@/features/pins/pin-helpers';
+import {
+  GEOCODE_FLOOR_MS,
+  burnOutLabel,
+  intentLabel,
+  pinSubtitle,
+  pinTitle,
+  shouldGeocode,
+} from '@/features/pins/pin-helpers';
 import {
   DEFAULT_FILTERS,
   daysFor,
@@ -172,7 +182,7 @@ function PinCard({
             />
             <View style={styles.heroText} pointerEvents="none">
               <Text style={styles.heroTitle} numberOfLines={2}>
-                {pin.note?.trim() || pin.venue_name}
+                {pinSubtitle(pin) ?? pinTitle(pin)}
               </Text>
               <View style={styles.nameRow}>
                 <Text style={styles.heroName}>
@@ -199,21 +209,24 @@ function PinCard({
           </Animated.View>
         )}
         <View style={styles.pinCardTitle}>
+          {/* Two lines, not one: a one-line cap truncated the very venue the
+              person is deciding whether to walk to — the same Bangkok address
+              the pin form already paid for and fixed. */}
           {hero ? null : (
-            <ThemedText type="headline" numberOfLines={1}>
-              {pin.venue_name}
+            <ThemedText type="headline" numberOfLines={2}>
+              {pinTitle(pin)}
             </ThemedText>
           )}
           {hero ? (
-            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
-              {pin.venue_name}
+            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
+              {pinTitle(pin)}
             </ThemedText>
           ) : null}
           <ThemedText type="footnote" themeColor="textSecondary">
             {intentLabel(pin.intent_date)} · {burnOutLabel(pin.expires_at)}
           </ThemedText>
           {pin.place_label ? (
-            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
               {pin.place_label}
             </ThemedText>
           ) : null}
@@ -250,7 +263,7 @@ function PinCard({
         </Pressable>
       </View>
 
-      {pin.note && !hero ? <ThemedText type="body">{pin.note}</ThemedText> : null}
+      {!hero && pinSubtitle(pin) ? <ThemedText type="body">{pinSubtitle(pin)}</ThemedText> : null}
 
       {pin.seeded ? (
         <>
@@ -515,7 +528,9 @@ function CrewFace({ person, first }: { person: PinCrewRow; first: boolean }) {
         <Image source={{ uri: url }} style={styles.fill} contentFit="cover" />
       ) : (
         <ThemedText type="caption" themeColor="textSecondary">
-          {(person.display_name ?? '?').slice(0, 1).toUpperCase()}
+          {/* Array.from splits on code points, not UTF-16 units: charAt/slice
+              on an emoji-leading name rendered a lone surrogate in the disc. */}
+          {(Array.from((person.display_name ?? '?').trim())[0] ?? '?').toUpperCase()}
         </ThemedText>
       )}
     </View>
@@ -762,7 +777,75 @@ export default function MapScreen() {
   const [lifted, setLifted] = useState(false);
   const [placeCoords, setPlaceCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [searchedPlace, setSearchedPlace] = useState<LocalSearchResult | null>(null);
+  // What the map can call the spot under the placement pin, so the pill can
+  // name it BEFORE "Pin here" asks anyone to commit to it. Reverse-geocoding
+  // a coordinate the user chose on a map reads nobody's position (§7 rule 2):
+  // no permission is requested, and this is the same call the pin form
+  // already makes today, just before the commit instead of after.
+  const [placeLabel, setPlaceLabel] = useState<string | null>(null);
+  // Guards on the geocoder, because CLGeocoder rate-limits and starts
+  // failing under rapid panning: a seq counter drops any response that is
+  // not the newest (the use-place-search pattern), and shouldGeocode holds
+  // the 800ms floor and the 15m distance rule.
+  const geocodeSeq = useRef(0);
+  const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastGeocoded = useRef<{ lat: number; lng: number } | null>(null);
+  const lastGeocodeAt = useRef(0);
   const lastRegion = useRef<Region | null>(null);
+
+  // `new Date().getTime()`, matching how the rest of this codebase reads the
+  // clock in event paths — these run from map events and timers, never during
+  // render.
+  const namePlaceCentre = (lat: number, lng: number) => {
+    if (
+      !shouldGeocode({
+        last: lastGeocoded.current,
+        next: { lat, lng },
+        lastAtMs: lastGeocodeAt.current,
+        nowMs: new Date().getTime(),
+      })
+    ) {
+      return;
+    }
+    const mine = ++geocodeSeq.current;
+    lastGeocoded.current = { lat, lng };
+    lastGeocodeAt.current = new Date().getTime();
+    Location.reverseGeocodeAsync({ latitude: lat, longitude: lng })
+      .then((places) => {
+        if (mine !== geocodeSeq.current) {
+          return;
+        }
+        const place = places[0];
+        const label = place
+          ? [place.name ?? place.street, place.district ?? place.city].filter(Boolean).join(', ')
+          : '';
+        setPlaceLabel(label || null);
+      })
+      .catch(() => {
+        // No name is fine; the pill falls back to its own words. But clear
+        // the distance memory: leaving the stamp would refuse every retry
+        // within 15m of this spot forever, so one offline moment pinned the
+        // pill to "Drop it here" until the person panned away. The time
+        // floor still applies.
+        lastGeocoded.current = null;
+      });
+  };
+
+  const stopNamingPlaceCentre = () => {
+    if (geocodeTimer.current) {
+      clearTimeout(geocodeTimer.current);
+      geocodeTimer.current = null;
+    }
+    geocodeSeq.current += 1;
+    lastGeocoded.current = null;
+    lastGeocodeAt.current = 0;
+  };
+
+  // The tab can unmount with a geocode timer armed; the cleanup drops it and
+  // bumps the seq so an in-flight response is discarded.
+  useEffect(() => {
+    return () => stopNamingPlaceCentre();
+  }, []);
 
   const pins = useMemo(
     () => allPins.filter((pin) => pinPasses(pin, filters, filterSet)),
@@ -843,6 +926,8 @@ export default function MapScreen() {
     haptics.light();
     setSelectedPinId(null);
     setSearchedPlace(null);
+    setPlaceLabel(null);
+    stopNamingPlaceCentre();
     const region = lastRegion.current;
     setPlaceCoords({
       lat: region?.latitude ?? activeCity.cities.lat,
@@ -864,10 +949,15 @@ export default function MapScreen() {
   const exitPlaceMode = () => {
     setMode('browse');
     setLifted(false);
+    setPlaceLabel(null);
+    stopNamingPlaceCentre();
   };
 
   const flyTo = (place: LocalSearchResult) => {
     setSearchedPlace(place);
+    // The search result carries a better name than any reverse geocode.
+    setPlaceLabel(null);
+    stopNamingPlaceCentre();
     setPlaceCoords({ lat: place.latitude, lng: place.longitude });
     mapRef.current?.animateToRegion(
       {
@@ -932,13 +1022,32 @@ export default function MapScreen() {
               // that place. Without this the form would fill itself in with
               // the address of a venue the pin is no longer on. The fly-to
               // animation lands within metres of the target, so it survives.
-              setSearchedPlace((place) =>
-                place != null &&
-                metersBetween(place.latitude, place.longitude, region.latitude, region.longitude) >
-                  PLACE_DRIFT_M
-                  ? null
-                  : place
-              );
+              const stillSearched =
+                searchedPlace != null &&
+                metersBetween(
+                  searchedPlace.latitude,
+                  searchedPlace.longitude,
+                  region.latitude,
+                  region.longitude
+                ) <= PLACE_DRIFT_M;
+              if (!stillSearched) {
+                setSearchedPlace(null);
+                // Name the settled centre for the pill, debounced past the
+                // rate-limit floor so a fast series of settles becomes one
+                // call for the newest centre. The search result already
+                // carries a better name, so only geocode once it is gone.
+                if (geocodeTimer.current) {
+                  clearTimeout(geocodeTimer.current);
+                }
+                const wait = Math.max(
+                  0,
+                  GEOCODE_FLOOR_MS - (new Date().getTime() - lastGeocodeAt.current)
+                );
+                geocodeTimer.current = setTimeout(
+                  () => namePlaceCentre(region.latitude, region.longitude),
+                  wait
+                );
+              }
             }
           }}>
           {/* A light ink wash over the cartography, under everything of
@@ -1403,12 +1512,33 @@ export default function MapScreen() {
           exiting={FadeOut.duration(Motion.quick)}
           style={[styles.dock, { bottom: tabDockBottom(insets.bottom) }]}
           pointerEvents="box-none">
+          {/* The spot's name, BEFORE the commitment: the reverse geocode the
+              form used to run one screen too late now feeds this pill. A
+              surface and a shadow, matching the search field above — not
+              glass, which is a finish and never the thing carrying contrast.
+              Kept mounted at one height and only dimmed while the map is
+              moving: a pill that appears and vanishes on every drag is worse
+              motion than a pill that goes quiet. */}
+          <View
+            style={[styles.placeNamePill, Elevation.floating, { backgroundColor: theme.surface }]}>
+            <ThemedText
+              type="footnote"
+              numberOfLines={1}
+              themeColor={lifted ? 'textSecondary' : undefined}>
+              {searchedPlace?.name ?? placeLabel ?? 'Drop it here'}
+            </ThemedText>
+          </View>
           <View style={styles.confirmBar}>
             <PrimaryButton
               label="Pin here"
               disabled={placeCoords == null || lifted}
               onPress={() => {
                 haptics.light();
+                // Kill the debounced geocode: a timer armed by the last pan
+                // settling could otherwise fire into the OPEN form, change
+                // its initialLabel prop, cancel its own fallback fetch and
+                // reseed its label mid-edit.
+                stopNamingPlaceCentre();
                 setMode('detail');
               }}
             />
@@ -1422,10 +1552,13 @@ export default function MapScreen() {
           cityName={activeCity.cities.name}
           coords={placeCoords}
           initialPlace={searchedPlace}
+          initialLabel={placeLabel}
           onClose={() => setMode('place')}
           onPosted={(pinId) => {
             setMode('browse');
             setLifted(false);
+            setPlaceLabel(null);
+            stopNamingPlaceCentre();
             // The form lets you pin for tomorrow — at a beach, unverified —
             // while the map is filtered to today's bars, and both the markers
             // and the confirmation card read from the FILTERED list, so the
@@ -1614,8 +1747,10 @@ export default function MapScreen() {
                 }}>
                 <ThemedView type="surfaceSunken" style={styles.venueRow}>
                   <View style={styles.venueRowText}>
+                    {/* The same decider as the hero this row opens, so a row
+                        and its card agree on the pin's name. */}
                     <ThemedText type="callout" numberOfLines={1}>
-                      {pin.note?.trim() || pin.venue_name}
+                      {pinSubtitle(pin) ?? pinTitle(pin)}
                     </ThemedText>
                     <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
                       {[pin.display_name, intentLabel(pin.intent_date)].filter(Boolean).join(' · ')}
@@ -1905,6 +2040,17 @@ const styles = StyleSheet.create({
   confirmBar: {
     alignSelf: 'stretch',
     paddingHorizontal: Spacing.four,
+  },
+  placeNamePill: {
+    minHeight: 34,
+    maxWidth: '84%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.pill,
+    borderCurve: 'continuous',
+    marginBottom: Space.sm,
   },
   pinCard: {
     gap: Space.md,

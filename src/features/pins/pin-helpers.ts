@@ -1,25 +1,38 @@
+import { metersBetween } from '@/features/pins/cluster';
 import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
 import type { PinCategory } from '@/lib/database.types';
 
-export const PIN_CATEGORIES: { value: PinCategory; label: string; emoji: string }[] = [
-  { value: 'bar', label: 'Bar', emoji: '🍸' },
-  { value: 'restaurant', label: 'Food', emoji: '🍜' },
-  { value: 'club', label: 'Club', emoji: '🪩' },
-  { value: 'museum', label: 'Museum', emoji: '🖼️' },
-  { value: 'monument', label: 'Sights', emoji: '🏛️' },
-  { value: 'beach', label: 'Beach', emoji: '🏖️' },
-  { value: 'hike', label: 'Hike', emoji: '🥾' },
-  { value: 'other', label: 'Other', emoji: '📍' },
-];
-
-export const SEEDED_EMOJI = '⭐';
-
-export function categoryEmoji(category: PinCategory, seeded: boolean): string {
-  if (seeded) {
-    return SEEDED_EMOJI;
-  }
-  return PIN_CATEGORIES.find((c) => c.value === category)?.emoji ?? '📍';
+/**
+ * ONE answer to "what is this pin called", wherever it is met. The card, the
+ * cluster row and the hero used to each decide for themselves, so tapping a
+ * stack, reading a row and opening the card gave two names for one object.
+ * The title is the venue; the subtitle is the plan, when there is one. If
+ * the venue/plan column split ever changes the definition, it changes here.
+ */
+export function pinTitle(pin: { venue_name: string }): string {
+  return pin.venue_name;
 }
+
+/** The plan text, or null when there is none worth showing. */
+export function pinSubtitle(pin: { note: string | null }): string | null {
+  const note = pin.note?.trim();
+  return note ? note : null;
+}
+
+// No emoji field, deliberately: every surface that shows a category draws
+// the marker's own glyph (PinGlyph), so the picker and the map share one
+// vocabulary. The emoji labels contradicted the map's glyphs twice and put
+// a red pushpin on screen; the reasoning is written out in pin-marker.tsx.
+export const PIN_CATEGORIES: { value: PinCategory; label: string }[] = [
+  { value: 'bar', label: 'Bar' },
+  { value: 'restaurant', label: 'Food' },
+  { value: 'club', label: 'Club' },
+  { value: 'museum', label: 'Museum' },
+  { value: 'monument', label: 'Sights' },
+  { value: 'beach', label: 'Beach' },
+  { value: 'hike', label: 'Hike' },
+  { value: 'other', label: 'Other' },
+];
 
 export const MAX_PIN_HOURS = 72;
 
@@ -232,6 +245,41 @@ export function intentLabel(intentISO: string, now = new Date()): string {
   return new Intl.DateTimeFormat('en', { weekday: 'long', month: 'short', day: 'numeric' }).format(
     parseISODate(intentISO)
   );
+}
+
+/** iOS CLGeocoder rate-limits: never reverse-geocode more often than this. */
+export const GEOCODE_FLOOR_MS = 800;
+
+/** Closer than this to the last geocoded centre is the same answer. */
+export const GEOCODE_MIN_MOVE_M = 15;
+
+/**
+ * Whether the place-mode pill may ask CLGeocoder to name the map's centre.
+ *
+ * Two refusals, both because iOS rate-limits reverse geocoding and starts
+ * returning errors under rapid panning: a hard floor since the last call,
+ * and a skip when the map has barely moved (the answer would be the same
+ * street). Pure, so the throttling is unit-testable instead of living
+ * inside a map callback.
+ */
+export function shouldGeocode({
+  last,
+  next,
+  lastAtMs,
+  nowMs,
+}: {
+  last: { lat: number; lng: number } | null;
+  next: { lat: number; lng: number };
+  lastAtMs: number;
+  nowMs: number;
+}): boolean {
+  if (nowMs - lastAtMs < GEOCODE_FLOOR_MS) {
+    return false;
+  }
+  if (last != null && metersBetween(last.lat, last.lng, next.lat, next.lng) < GEOCODE_MIN_MOVE_M) {
+    return false;
+  }
+  return true;
 }
 
 /**

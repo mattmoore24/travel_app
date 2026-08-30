@@ -74,6 +74,9 @@ appId: com.mattmoore.samewhere
 - takeScreenshot: 13-place-after-pan
 - tapOn: 'Pin here'
 - takeScreenshot: 14-pin-form
+# The button is grey here and the footnote says why. Asserted before typing,
+# so the disabled reason is proved rather than only photographed.
+- assertVisible: 'Say what the plan is first.'
 - tapOn:
     id: 'venue-input'
 - inputText: 'Rooftop hello from Maestro'
@@ -114,10 +117,15 @@ appId: com.mattmoore.samewhere
 # scrollUntilVisible: the whole claim is that no scrolling is needed.
 - assertVisible: 'Anyone can join.*'
 - assertVisible: 'Message me first.*'
+# THE DAY AND THE LIFETIME. Same reasoning as the join rows above:
+# assertVisible, not scrollUntilVisible, because the whole claim is that the
+# two controls that define what a pin IS need no scrolling to reach.
+- assertVisible: 'When'
+- assertVisible: 'Disappears after.*'
 - takeScreenshot: 15b-pin-join-mode
-# 'Drop it' sits outside the form's scroll area and the sheet lifts with the
-# keyboard, so it is reachable with the keyboard still up.
-- tapOn: 'Drop it'
+# 'Put it on the map' sits outside the form's scroll area and the sheet lifts
+# with the keyboard, so it is reachable with the keyboard still up.
+- tapOn: 'Put it on the map'
 # Exact, deliberately: a loose match here passed a run in which the details
 # had been appended to the name.
 - extendedWaitUntil:
