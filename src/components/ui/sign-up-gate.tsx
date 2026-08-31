@@ -5,6 +5,7 @@ import { StyleSheet, View } from 'react-native';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { GlassSurface } from '@/components/ui/glass-surface';
+import { SIGN_UP_GATE_NOTE } from '@/constants/policies';
 import { Radius, Space } from '@/constants/theme';
 import { analytics } from '@/lib/analytics';
 
@@ -81,8 +82,12 @@ export function SignUpGate({
             {detail}
           </ThemedText>
         ) : null}
+        {/* The one line every gate in the app shows: the map, travelers,
+            chat, a business, a room, a group invite. It carries the strongest
+            promise the product makes, because this is the moment somebody
+            decides whether to hand over an email. */}
         <ThemedText type="footnote" themeColor="textSecondary">
-          Takes a minute. Always free.
+          {SIGN_UP_GATE_NOTE}
         </ThemedText>
         <PrimaryButton
           label={CTA}

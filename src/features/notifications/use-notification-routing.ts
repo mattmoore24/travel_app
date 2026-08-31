@@ -49,6 +49,12 @@ export function routeForPayload(
       return '/verification';
     case 'support':
       return '/contact';
+    case 'report':
+      // Deliberately nowhere. An urgent report wakes whoever is on support
+      // duty, and there is no in-app review queue for them to open: the
+      // reviewer works in the dashboard (docs/DASHBOARD.md). Opening the app
+      // is the honest answer; a screen that cannot act on the report is not.
+      return null;
     default:
       return null;
   }

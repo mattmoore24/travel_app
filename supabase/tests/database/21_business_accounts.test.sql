@@ -285,7 +285,7 @@ select throws_ok(
 select throws_ok(
   $$ update public.businesses set description = 'you are so sexy'
       where name = 'Home Lisbon Hostel' $$,
-  'that text breaks our community guidelines',
+  'that text breaks our house rules',
   'business text is screened like a bio'
 );
 

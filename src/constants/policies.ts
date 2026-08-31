@@ -48,6 +48,38 @@ export const GUIDELINE_SECTIONS = [
 ] as const;
 
 /**
+ * The four safety promises, at the two moments they decide something.
+ *
+ * The reason somebody picks this over GAFFL, Couchsurfing or Bumble BFF is
+ * that it collects no location, expires pins within 72 hours, hides socials
+ * until both sides are chatting, and screens every first message. All four
+ * are true and enforced in Postgres, and until now all four lived in the
+ * fourth section of a rulebook behind a button nobody opens: the product's
+ * whole differentiator was invisible at the moment it decides an install.
+ *
+ * These are exported rather than typed into each screen so the intro tour,
+ * the sign-up gate and GUIDELINE_SECTIONS cannot drift apart. The body is the
+ * 'Your privacy' section's first three sentences, said in the second person.
+ */
+export const SAFETY_PROMISE_TITLE = 'We never ask where you are';
+
+export const SAFETY_PROMISE_BODY =
+  'Pins are plans you type, and they are gone within 72 hours. Your socials only show once you are both chatting.';
+
+/**
+ * The line under every sign-up gate in the app: the map, travelers, chat, a
+ * business, a room, a group invite. One string, six moments.
+ */
+export const SIGN_UP_GATE_NOTE = 'Takes a minute. Always free, and we never ask where you are.';
+
+/**
+ * What a stranger is told where somebody's socials would be. The gate is
+ * enforced by RLS (hard rule 4), so this says what the database does, not
+ * what we intend.
+ */
+export const SOCIALS_HIDDEN_NOTE = 'Your socials stay hidden until you are both chatting.';
+
+/**
  * The privacy policy, distilled from docs/legal/PRIVACY_POLICY.md for the
  * /privacy screen. Nothing bracketed in that draft is claimed here: the exact
  * Supabase region and the legal entity are still founder and lawyer answers,
@@ -78,7 +110,7 @@ export const PRIVACY_SECTIONS = [
   {
     title: 'What we collect',
     source: 'What we collect',
-    body: 'Your email address, and the profile you build: name, age, gender, home city, languages, bio, photos and any socials you add. Trips are a city and dates. Pins are a venue, a category and a day, and they are permanently deleted within 72 hours. Messages you send are stored so both sides of a chat can read them. We also record which screens get opened, so we can tell which parts of the app are working.',
+    body: 'Your email address, and the profile you build: name, age, gender, home city, languages, bio, photos and any socials you add. Trips are a city and dates. Pins are a venue, a category and a day, and they are permanently deleted within 72 hours. Messages you send are stored so both sides of a chat can read them. If you sign in with Apple, we also keep one token Apple gives us, for the single purpose of telling Apple to forget your account when you delete it; nobody can read it and it is destroyed with your account. We also record which screens get opened, so we can tell which parts of the app are working.',
   },
   {
     title: 'The selfie check',
@@ -108,7 +140,7 @@ export const PRIVACY_SECTIONS = [
   {
     title: 'Deleting your account',
     source: 'Retention and deletion',
-    body: 'Delete your account any time from your profile. Your profile, photos, trips, pins and chats are permanently deleted, for both sides of every chat. Moderation records are kept with your identity removed, because safety reports have to outlive the accounts they are about.',
+    body: 'Delete your account any time from your profile. Your profile, photos, trips, pins and chats are permanently deleted, for both sides of every chat. If you signed in with Apple, we tell Apple to forget the account as part of the same deletion. Moderation records are kept with your identity removed, because safety reports have to outlive the accounts they are about.',
   },
   {
     title: 'Your rights',

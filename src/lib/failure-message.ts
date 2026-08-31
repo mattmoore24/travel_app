@@ -118,9 +118,11 @@ const DB_COPY: Record<string, string> = {
   'sending too fast — wait a moment': HINT_COPY.message_throttle,
   'sending too fast, give it a moment': HINT_COPY.message_throttle,
   'trip is entirely in the past': 'That trip has already finished.',
-  // Both phrasings, so the database rename (the one-name-for-the-rules
-  // migration) can deploy before or after this ships without either order
-  // showing anyone the raw Postgres sentence.
+  // Both phrasings, as the BELT under the hint. Every live definition of the
+  // six screening functions now raises with hint = 'guidelines' (the
+  // one-name-for-the-rules migration), so the resolution above is by code and
+  // survives the next rewording. These two keys are here for what is still
+  // deployed until that migration lands, in either deploy order.
   'that text breaks our community guidelines': HINT_COPY.guidelines,
   'that text breaks our house rules': HINT_COPY.guidelines,
   // Lowercase sentences promoted rather than dropped to the generic (the

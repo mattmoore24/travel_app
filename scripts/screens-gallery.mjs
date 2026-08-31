@@ -36,7 +36,11 @@ const CAPTIONS = {
   '00-welcome': ['Welcome', 'The splash dissolves into this. The mark never moves.'],
   '00a-tour-map': ['Tour: the map', 'The mark has docked; pages parallax under it.'],
   '00b-tour-travelers': ['Tour: travelers', 'Same dates, same city.'],
-  '00c-tour-choice': ['Tour: the choice', 'Make a profile, or keep looking.'],
+  '00c-tour-chat': ['Tour: saying hi', 'Send a first message; they accept, the chat opens.'],
+  '00d-tour-privacy': [
+    'Tour: the promise, and the choice',
+    'We never ask where you are. Make a profile, or keep looking.',
+  ],
   '01-cold-start': ['Straight to the map', 'Dismissing the tour lands on the app itself.'],
   '02-map-tab': ['Map, as a guest', 'Plain glyphs: no faces until you have an account.'],
   '03-travelers-guest': ['Travelers, as a guest', 'One real person, then the gate.'],

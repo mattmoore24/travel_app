@@ -100,7 +100,7 @@ select throws_ok(
 select throws_ok(
   $$ update public.profile_priorities set text = 'you are so sexy'
       where user_id = '00000000-0000-0000-0000-00000000000a' and slot = 1 $$,
-  'that text breaks our community guidelines',
+  'that text breaks our house rules',
   'the list is not a hole around profile screening'
 );
 -- On INSERT too, and on the caller's own row: writing blocked text into
@@ -112,7 +112,7 @@ delete from public.profile_priorities
 select throws_ok(
   $$ insert into public.profile_priorities (user_id, slot, text)
      values ('00000000-0000-0000-0000-00000000000a', 5, 'you are so sexy') $$,
-  'that text breaks our community guidelines',
+  'that text breaks our house rules',
   'and screening runs on insert as well as update'
 );
 select lives_ok(

@@ -5,7 +5,7 @@
 -- who can read an invite token, and whether a shared group counts as a
 -- connection for the social-handle gate (hard rule 4 — it must not).
 begin;
-select plan(101);
+select plan(112);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -682,6 +682,106 @@ select is(
   (select count(*)::int from public.push_queue where title = 'Support: typo@example.com'),
   0,
   'and simply wakes nobody'
+);
+
+-- SAYING HOW URGENT IT IS ---------------------------------------------------
+--
+-- The category is the sender's own triage hint. Two things have to hold: it
+-- must reach the lock screen ahead of the address, so a one-person queue can
+-- sort without opening anything; and the two-argument call must keep working,
+-- because an installed build that predates the chip row is still calling it
+-- through the whole OTA gap. That second one is the deploy risk this file
+-- exists to catch - an overload rather than a replace answers "function is
+-- not unique" on the app's only route to a human.
+
+select pg_temp.admin();
+update public.app_config
+   set value = jsonb_build_array('Bob@Example.com')
+ where key = 'support_notify_recipients';
+
+select pg_temp.guest();
+select lives_ok(
+  $$select public.submit_support_message('plain@example.com', 'Written by an old bundle.')$$,
+  'the two-argument call still resolves: an installed build keeps working'
+);
+select pg_temp.admin();
+select is(
+  (select category from public.support_messages where reply_to = 'plain@example.com'),
+  null,
+  'and lands with no category rather than failing'
+);
+select is(
+  (select count(*)::int from public.push_queue where title = 'Support: plain@example.com'),
+  1,
+  'its push reads exactly as it did before'
+);
+
+select pg_temp.guest();
+select lives_ok(
+  $$select public.submit_support_message('urgent@example.com', 'Somebody followed me back.', 'safety')$$,
+  'and a message can say what it is about'
+);
+select pg_temp.admin();
+select is(
+  (select category from public.support_messages where reply_to = 'urgent@example.com'),
+  'safety',
+  'the category is kept on the row'
+);
+select is(
+  (select count(*)::int from public.push_queue where title = 'Safety: urgent@example.com'),
+  1,
+  'and leads the push, so triage happens from the lock screen'
+);
+select pg_temp.guest();
+select lives_ok(
+  $$select public.submit_support_message('acct@example.com', 'I cannot get back in.', 'account')$$,
+  'an account message goes in the same way'
+);
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.push_queue where title = 'Account: acct@example.com'),
+  1,
+  'with its own word on the lock screen'
+);
+
+-- THE APPEAL ROUTE ----------------------------------------------------------
+--
+-- The whole way back from a suspended or closed account runs through this
+-- one insert. docs/legal/COMMUNITY_GUIDELINES.md promises an appeal "from
+-- Contact us in the app, which is open even when you cannot sign in", so a
+-- standing check anywhere on this path would turn that promise into a lie
+-- and the gate screen's Appeal this button into a dead control. There is
+-- deliberately none: support_messages_insert checks authorship and nothing
+-- else. This is the assertion that keeps it that way.
+select pg_temp.admin();
+update public.users set status = 'suspended', suspended_until = now() + interval '7 days'
+ where id = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select lives_ok(
+  $$select public.submit_support_message('appeal@example.com',
+      'Appeal: account paused. I think this was a mistake.', 'account')$$,
+  'a suspended account can still appeal: the way back has no standing check'
+);
+select pg_temp.admin();
+update public.users set status = 'banned', suspended_until = null
+ where id = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select lives_ok(
+  $$select public.submit_support_message('closed@example.com',
+      'Appeal: account closed. Please look at this again.', 'account')$$,
+  'and so can a closed one, which is the account with nowhere else to go'
+);
+select pg_temp.admin();
+update public.users set status = 'active' where id = '00000000-0000-0000-0000-00000000000c';
+
+-- The check constraint, as the attack: the category is user-declared, so a
+-- client can send anything, and anything is exactly what must not be stored.
+select pg_temp.guest();
+select throws_ok(
+  $$select public.submit_support_message('junk@example.com', 'Marking my own homework.', 'critical')$$,
+  '23514',
+  null,
+  'a category the database does not know is refused, not stored'
 );
 
 -- A misconfigured mailer must not be able to abandon somebody's message.

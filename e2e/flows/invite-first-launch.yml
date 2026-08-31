@@ -55,7 +55,7 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2000
 
-# Skip rather than the four-page walk: the guest tour already photographs the
+# Skip rather than the five-page walk: the guest tour already photographs the
 # pages, and what matters here is what is underneath when the tour goes.
 - tapOn: 'Skip'
 - waitForAnimationToEnd:

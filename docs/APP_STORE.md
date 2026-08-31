@@ -13,6 +13,7 @@ blocking so nothing discovers it on submission day.
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
 | Bundle id `com.mattmoore.samewhere`                    | done, in app.json (locked before first submission)                                           |
 | In-app account deletion (5.1.1(v))                     | done, Profile then Delete account (Edge Function)                                            |
+| **Sign in with Apple token revocation (5.1.1(v))**     | **BLOCKING** - code shipped, needs the .p8 key below; a logged no-op until then              |
 | UGC safety set (1.2): report/block/moderate            | done, phases 4 to 5, DB-enforced                                                             |
 | UGC terms agreement + in-app house rules (1.2)         | done, welcome screen consent + `/guidelines` and `/privacy` screens                          |
 | Published developer contact (1.2)                      | done, <https://link.samewhere.io/support> plus the in-app Contact us form                    |
@@ -52,6 +53,40 @@ fact. The update workflows fail their preflight without the matching repo
 secret for the same reason. Create the PostHog project in the **EU region**
 (`https://eu.i.posthog.com`) — the privacy policy promises EU data residency,
 and a US-cloud key does not answer on the EU host.
+
+## Sign in with Apple: the revocation key (5.1.1(v))
+
+An app that offers **both** Sign in with Apple and in-app account deletion
+must call Apple's revoke endpoint when the account goes. Apple has rejected
+apps for exactly this since 2022, and this app ships both halves
+(`usesAppleSignIn` in app.json, the button on the join and email screens).
+
+The code is written and deployed: `store-apple-token` captures the
+authorization code at sign-in and exchanges it for a refresh token into
+`public.apple_refresh_tokens` (service role only), and `delete-account` spends
+that token on `https://appleid.apple.com/auth/revoke` before it removes the
+auth row. Until the key below exists, both degrade to a **logged no-op** —
+grep the function logs for `apple revoke:` to see which branch was taken.
+
+Create the key once the membership exists: Certificates, Identifiers &
+Profiles → Keys → **+**, enable **Sign in with Apple**, download the `.p8`
+(Apple lets you download it exactly once), and note the Key ID and Team ID.
+
+```bash
+supabase secrets set APPLE_TEAM_ID=ABCDE12345
+supabase secrets set APPLE_KEY_ID=FGHIJ67890
+supabase secrets set APPLE_CLIENT_ID=com.mattmoore.samewhere
+supabase secrets set APPLE_PRIVATE_KEY="$(cat AuthKey_FGHIJ67890.p8)"
+```
+
+`APPLE_CLIENT_ID` is the **bundle id**, not a Services ID: the Services ID is
+for a web sign-in flow this app does not have. The `.p8` never enters the repo
+or the app bundle; it lives only in function secrets.
+
+Then verify once, by hand, against a real TestFlight account: sign in with
+Apple, delete the account from Profile, and confirm the function log says
+`apple revoke: ok (200)` and that the app is gone from **Settings → your name
+→ Sign in with Apple**. Record the run in `docs/PROGRESS.md`.
 
 ## TestFlight via EAS (once the Apple membership exists)
 
@@ -103,6 +138,13 @@ Two things to re-check at submission, because both have moved before:
 - If the verification pipeline ever changes to compute an embedding or a face
   template, the Sensitive Info row and the privacy policy's Verification
   section are both wrong the same day.
+- **The Sign in with Apple refresh token** (`public.apple_refresh_tokens`,
+  added 2026-08-31) is stored against the user id for the life of the account.
+  It is a credential against Apple rather than one of Apple's own label
+  categories, so whether it is declared at all — and if so, whether under
+  Identifiers — is a question for the lawyer reviewing the policy. The privacy
+  policy names it outright either way, in **What we collect** and in
+  **Retention and deletion**, so the two cannot disagree by accident.
 
 ## Shipping changes without spending a build
 

@@ -60,6 +60,15 @@ export type ProfilePhotoRow = {
   position: number;
   moderation_status: ModerationStatus;
   moderation_attempts: number;
+  /**
+   * Why a rejected photo was rejected, and which engine decided. Both null
+   * until a verdict lands, and both null on an approved photo: only the
+   * rejection branch of apply_photo_verdict writes them. `moderation_engine`
+   * is 'failsafe' when the check gave up, which is NOT a rules breach - see
+   * src/constants/moderation.ts.
+   */
+  moderation_category: string | null;
+  moderation_engine: string | null;
   created_at: string;
 };
 
@@ -671,6 +680,7 @@ export type ReportReason =
   | 'safety_concern'
   | 'impersonation'
   | 'underage'
+  | 'immediate_danger'
   | 'other';
 
 export type SendRequestResult = {
@@ -727,7 +737,20 @@ export type PushPayload =
   | { type: 'request' }
   | { type: 'moderation' }
   | { type: 'verification' }
-  | { type: 'support' };
+  | { type: 'support' }
+  /**
+   * An urgent report (underage or immediate danger), raised to whoever is on
+   * support duty by log_report — see
+   * 20260901120100_an_urgent_report_wakes_somebody.sql.
+   *
+   * routeForPayload returns null for this one ON PURPOSE, and that is why it
+   * is written here rather than left to fall through the default: there is no
+   * in-app review queue to open. The reviewer works in the dashboard
+   * (docs/DASHBOARD.md), so the tap opens the app rather than dropping
+   * somebody on a screen that cannot help. `report_id` is carried for the
+   * reviewer's own copy-paste, not for routing.
+   */
+  | { type: 'report'; report_id: string };
 
 export type VerificationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -935,6 +958,8 @@ export type Database = {
           storage_path: string;
           position: number;
           moderation_status: 'pending' | 'approved' | 'rejected';
+          moderation_category: string | null;
+          moderation_engine: string | null;
           created_at: string;
         };
         Insert: { business_id: string; storage_path: string; position: number };
@@ -1505,7 +1530,9 @@ export type Database = {
         Returns: undefined;
       };
       submit_support_message: {
-        Args: { p_reply_to: string; p_body: string };
+        // p_category defaults to null in the database, so a build that
+        // predates the chip row keeps working through the OTA gap.
+        Args: { p_reply_to: string; p_body: string; p_category?: string };
         Returns: string;
       };
       support_message_status: {

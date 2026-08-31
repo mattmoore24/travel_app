@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { languageLabel } from '@/constants/languages';
+import { SOCIALS_HIDDEN_NOTE } from '@/constants/policies';
 import { MaxContentWidth, Motion, Radius, Space } from '@/constants/theme';
 import { overlapSentence } from '@/features/matching/overlap';
 import { usePhotoUrl } from '@/features/profile/hooks';
@@ -556,8 +557,13 @@ function SocialsSection({
           title="Socials"
           icon={{ ios: 'at', android: 'alternate_email', web: 'alternate_email' }}
         />
+        {/* The strongest of the four safety promises, said where a stranger
+            actually looks for somebody's Instagram. Strengthened from
+            "Shared once you're chatting." because that reads as a delay and
+            this reads as a rule - which is what it is: RLS refuses the row
+            (hard rule 4), so nothing about it is a client courtesy. */}
         <ThemedText type="footnote" themeColor="textSecondary">
-          Shared once you&apos;re chatting.
+          {SOCIALS_HIDDEN_NOTE}
         </ThemedText>
       </View>
     );

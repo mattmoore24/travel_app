@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import {
@@ -15,6 +16,8 @@ import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { Sheet, leavingSheet } from '@/components/ui/sheet';
+import { photoRejection } from '@/constants/moderation';
 import { Radius, Space } from '@/constants/theme';
 import {
   useDeletePhoto,
@@ -47,18 +50,82 @@ const RATIO = 1;
 /** Past this font scale the tile-plus-side-caption row becomes a column. */
 const CAPTION_STACK_SCALE = 1.3;
 
-function StatusChip({ status }: { status: ProfilePhotoRow['moderation_status'] }) {
+/**
+ * What happened to this photo, and - when something did - why.
+ *
+ * The old version drew one word on danger red for every non-approved photo,
+ * which said "you broke the rules" to somebody whose photo had merely timed
+ * out. Two states now: a failsafe hold is 'Try again' on warning, a rules
+ * rejection is 'Removed' on danger, and both open a sheet naming the reason
+ * in copy this app owns (src/constants/moderation.ts), because a reason you
+ * cannot read is a reason you cannot act on.
+ */
+function StatusChip({ photo }: { photo: ProfilePhotoRow }) {
   const theme = useTheme();
-  if (status === 'approved') {
+  const router = useRouter();
+  const [explaining, setExplaining] = useState(false);
+
+  if (photo.moderation_status === 'approved') {
     return null;
   }
-  const rejected = status === 'rejected';
+  if (photo.moderation_status !== 'rejected') {
+    return (
+      <View style={[styles.statusAnchor, styles.statusChip, { backgroundColor: theme.surface }]}>
+        <ThemedText type="caption">In review</ThemedText>
+      </View>
+    );
+  }
+
+  const why = photoRejection(photo.moderation_category, photo.moderation_engine);
+  const close = () => setExplaining(false);
+  // Navigating out from under a presented Sheet leaves its scrim over the
+  // screen and kills every tap behind it. Dismiss first, push after.
+  const leave = leavingSheet(close);
+
   return (
-    <View style={[styles.statusChip, { backgroundColor: rejected ? theme.danger : theme.surface }]}>
-      <ThemedText type="caption" style={rejected ? { color: theme.onAccent } : undefined}>
-        {rejected ? 'Removed' : 'In review'}
-      </ThemedText>
-    </View>
+    <>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel={
+          why.failsafe
+            ? 'This photo could not be checked. Tap to find out what to do.'
+            : 'This photo was removed. Tap to find out why.'
+        }
+        haptic="light"
+        scaleTo={0.94}
+        hitSlop={10}
+        onPress={() => setExplaining(true)}
+        containerStyle={styles.statusAnchor}
+        style={[
+          styles.statusChip,
+          { backgroundColor: why.failsafe ? theme.warning : theme.danger },
+        ]}>
+        <ThemedText type="caption" style={{ color: theme.onHighlight }}>
+          {why.chip}
+        </ThemedText>
+      </PressableScale>
+      {explaining ? (
+        <Sheet onClose={close}>
+          <View style={styles.whyBody}>
+            <ThemedText type="title">{why.title}</ThemedText>
+            <ThemedText type="body" themeColor="textSecondary">
+              {why.body}
+            </ThemedText>
+          </View>
+          <View style={styles.whyActions}>
+            {why.failsafe ? null : (
+              <PrimaryButton
+                variant="ghost"
+                label="Contact us"
+                accessibilityLabel="Contact us about this photo"
+                onPress={() => leave(() => router.push('/contact'))}
+              />
+            )}
+            <PrimaryButton label="Done" accessibilityLabel="Done" onPress={close} />
+          </View>
+        </Sheet>
+      ) : null}
+    </>
   );
 }
 
@@ -114,7 +181,7 @@ function FilledPhoto({
       layout={LinearTransition.springify()}
       style={[styles.tile, { width, height, backgroundColor: theme.surfaceSunken }]}>
       {url ? <Image source={{ uri: url }} style={styles.fill} contentFit="cover" /> : null}
-      <StatusChip status={photo.moderation_status} />
+      <StatusChip photo={photo} />
       <RemoveButton onPress={confirmDelete} />
     </Animated.View>
   );
@@ -395,13 +462,29 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  statusChip: {
+  statusAnchor: {
     position: 'absolute',
     left: Space.sm,
     bottom: Space.sm,
+  },
+  statusChip: {
     borderRadius: Radius.sm,
     paddingHorizontal: Space.sm,
     paddingVertical: 2,
+    // 10 + 24 + 10 = 44, the same arithmetic the remove dot on this tile
+    // uses. The chip is a CONTROL now - it opens the sheet naming the reason
+    // - and caption type on two points of padding is a 19pt box, so even with
+    // hitSlop it came to 39 against a 44 floor. The minimum grows the box by
+    // five points and centres the word in it; nothing else on the tile moves.
+    minHeight: 24,
+    justifyContent: 'center',
+  },
+  whyBody: {
+    gap: Space.sm,
+    paddingBottom: Space.lg,
+  },
+  whyActions: {
+    gap: Space.sm,
   },
   removeAnchor: {
     position: 'absolute',

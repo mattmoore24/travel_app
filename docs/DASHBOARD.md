@@ -31,9 +31,20 @@ select * from admin_liquidity;        -- THE number: distinct users w/ live trip
 select * from admin_request_funnel;   -- last 30d: delivered, accepted, accept %
 select * from admin_moderation_stats; -- last 30d: attempts, blocked, % blocked (creep alarm)
 select * from admin_pin_stats;        -- live pins + seeded share per city
-select * from admin_report_queue;     -- open reports w/ strike context (Phase 5)
+select * from admin_report_queue;     -- open reports, URGENT FIRST then oldest (see below)
 select * from admin_ops_health;       -- queue depths: are the workers alive?
 ```
+
+**`admin_report_queue` is ordered by urgency, not by age.** A report whose
+reason is `underage` or `immediate_danger` sorts ahead of everything else,
+however old the rest are, and then the remainder sorts oldest first. Those two
+reasons also raise a push to whoever is named in
+`app_config.support_notify_recipients`, titled `Report: under 18` or
+`Report: somebody in danger` - so an urgent report reaches a phone rather than
+waiting for somebody to open this page. Neither does anything else: decision
+D34 keeps suppression a moderator action, so the reported account is untouched
+until a person acts on it. Read the top of this queue first and take the
+priority at face value; it is not a proxy for age.
 
 **`admin_ops_health` is the daily smoke test.** `oldest_held_message_minutes`
 or `oldest_unsent_push_minutes` climbing past ~10 means a worker schedule is

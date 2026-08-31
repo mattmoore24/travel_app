@@ -60,7 +60,7 @@ select throws_ok(
   $$ insert into public.profile_prompts (user_id, slot, prompt_key, answer)
      values ('00000000-0000-0000-0000-00000000000a', 1, 'perfect_day',
              'you are so sexy') $$,
-  'that text breaks our community guidelines',
+  'that text breaks our house rules',
   'a prompt is not a hole around profile screening'
 );
 

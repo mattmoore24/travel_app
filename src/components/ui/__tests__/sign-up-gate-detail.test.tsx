@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { SignUpGate } from '@/components/ui/sign-up-gate';
+import { SIGN_UP_GATE_NOTE } from '@/constants/policies';
 
 /**
  * The gate leads with the invitation. `reason` carries what you get, in the
@@ -28,7 +29,11 @@ describe('SignUpGate', () => {
         'Your name and photo go on the pin, so people know who they are meeting. It disappears within three days.'
       )
     ).toBeTruthy();
-    expect(screen.getByText('Takes a minute. Always free.')).toBeTruthy();
+    // The one line every gate shows, and it now carries the promise the
+    // product is chosen for. Asserted from the constant so the gate, the
+    // intro tour and the house rules cannot drift apart.
+    expect(screen.getByText(SIGN_UP_GATE_NOTE)).toBeTruthy();
+    expect(SIGN_UP_GATE_NOTE).toContain('we never ask where you are');
   });
 
   it('renders no detail row when none is given', () => {

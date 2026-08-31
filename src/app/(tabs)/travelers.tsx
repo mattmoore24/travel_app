@@ -420,6 +420,8 @@ function TravelerPage({
               position: 0,
               moderation_status: 'approved' as const,
               moderation_attempts: 0,
+              moderation_category: null,
+              moderation_engine: null,
               created_at: '',
             },
           ]

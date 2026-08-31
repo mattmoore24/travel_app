@@ -8,6 +8,7 @@ import { BuildStamp } from '@/components/ui/build-stamp';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { heldPhotoNotice } from '@/constants/moderation';
 import { BrandDeep, MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { BUSINESS_RULE_SECTIONS, BUSINESS_ZERO_TOLERANCE } from '@/constants/policies';
 import { signOut, signOutEverywhere } from '@/features/auth/api';
@@ -263,7 +264,26 @@ export default function ProfileScreen() {
   // so the removal notification and the page disagreed and the page won.
   const visiblePhotos = photos.filter((photo) => photo.moderation_status === 'approved');
   const heldBack = photos.length - visiblePhotos.length;
-  const rejected = photos.some((photo) => photo.moderation_status === 'rejected');
+  // A check that gave up is NOT a rules breach - the database records
+  // photo_rejected_failsafe and no strike is counted - so it must not be
+  // announced in the same sentence and the same red as one.
+  //
+  // The two are COUNTED rather than flagged, because somebody can hold one of
+  // each. A pair of booleans read failsafe-first told that person the whole
+  // thing was a timeout and invited them to upload again, which sends the
+  // photo that really was refused back through the check and costs a second
+  // strike. The rules rejection wins the sentence and the colour; the tile
+  // chips still say which of the two each individual photo was.
+  const rejectedPhotos = photos.filter((photo) => photo.moderation_status === 'rejected');
+  const photoFailsafeCount = rejectedPhotos.filter(
+    (photo) => photo.moderation_engine === 'failsafe'
+  ).length;
+  const photoRuleRejectedCount = rejectedPhotos.length - photoFailsafeCount;
+  const photoNotice = heldPhotoNotice({
+    heldBack,
+    rejected: photoRuleRejectedCount,
+    failsafe: photoFailsafeCount,
+  });
   const { data: handles = [] } = useOwnSocialHandles();
   const { data: verification } = useLatestVerification();
   const { data: prompts = [] } = useProfilePrompts(useOwnUserId());
@@ -329,17 +349,30 @@ export default function ProfileScreen() {
         {/* Exactly the page a stranger gets, with edit affordances on top —
             the only way to know what your profile actually looks like. */}
         {heldBack > 0 ? (
+          /* The label is the sentence itself, not "Manage your photos". A
+             Pressable's own accessibilityLabel REPLACES its children, so the
+             static label meant the one reader who cannot see the notice never
+             heard why a photo was held, which is its entire content. Built
+             from the same helper so the two can never say different things;
+             the hint carries what tapping does. */
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Manage your photos"
+            accessibilityLabel={photoNotice}
+            accessibilityHint="Opens your photos."
             onPress={() =>
               router.push({ pathname: '/edit-profile', params: { section: 'photos' } })
             }
             style={styles.photoNotice}>
-            <ThemedText type="footnote" themeColor={rejected ? 'danger' : 'textSecondary'}>
-              {rejected
-                ? `${heldBack === 1 ? 'One photo was' : `${heldBack} photos were`} removed and nobody else can see ${heldBack === 1 ? 'it' : 'them'}. Tap to manage your photos.`
-                : `${heldBack === 1 ? 'One photo is' : `${heldBack} photos are`} still being checked, so nobody else can see ${heldBack === 1 ? 'it' : 'them'} yet.`}
+            <ThemedText
+              type="footnote"
+              themeColor={
+                photoRuleRejectedCount > 0
+                  ? 'danger'
+                  : photoFailsafeCount > 0
+                    ? 'warning'
+                    : 'textSecondary'
+              }>
+              {photoNotice}
             </ThemedText>
           </Pressable>
         ) : null}

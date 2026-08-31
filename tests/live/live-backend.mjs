@@ -449,6 +449,32 @@ try {
   const { data: supportRows } = await brit.client.from('support_messages').select('*').limit(1);
   check('the support inbox itself stays unreadable', (supportRows ?? []).length === 0);
 
+  // DECLARED DEVIATION: no live case for "a suspended account can still
+  // appeal".
+  //
+  // The spec for acct-a-way-back-from-the-gate asked for one here, and this
+  // suite cannot write it. `users.status` is server-owned - stripped from
+  // every client column grant, with no policy that would let a client set it
+  // - so with the anon key, which is the whole contract of this file ("these
+  // tests hold exactly the power a phone does"), there is no way to suspend
+  // an account and no way to lift it afterwards. The by-hand alternative the
+  // spec pairs with the screenshot step (suspend a test account from the SQL
+  // editor) needs the service role, and a failed run would leave a suspended
+  // row behind on the live project with nothing in this file able to undo it.
+  //
+  // What stands in for it: the "THE APPEAL ROUTE" block in
+  // supabase/tests/database/11_groups_support.test.sql, which suspends a real
+  // user, calls submit_support_message as that user, bans them, and calls it
+  // again. The claim is a negative about a policy - support_messages_insert
+  // checks authorship and nothing else, so there is no standing check on the
+  // one insert the whole appeal route runs through - and a policy claim is
+  // what pgTAP is for. The screenshot half of the spec still needs a person.
+  console.log(
+    'note DEVIATION: the suspended-account appeal is not asserted here (no ' +
+      'anon-key way to suspend an account); covered by pgTAP ' +
+      '11_groups_support.test.sql, "THE APPEAL ROUTE"'
+  );
+
   // --- the spotlight cannot reach past a block ----------------------------
   //
   // Worth doing HERE rather than only in pgTAP. daily_spotlight() is SECURITY
@@ -767,6 +793,22 @@ try {
       typeof capShape?.[0]?.used === 'number' &&
       typeof capShape?.[0]?.allowed === 'number',
     capErr?.message
+  );
+
+  // --- the Apple refresh token is server-only, in production too ----------
+  //
+  // apple_refresh_tokens holds a credential against somebody's Apple account,
+  // kept only so delete-account can revoke it. pgTAP proves the grants on a
+  // throwaway cluster; this proves the deployed project agrees, from a client
+  // holding exactly what a phone holds. A signed-in user must not be able to
+  // read it, not even their own row.
+  const { data: appleRows, error: appleErr } = await alex.client
+    .from('apple_refresh_tokens')
+    .select('user_id');
+  check(
+    'apple_refresh_tokens is unreadable with an anon key',
+    Boolean(appleErr) && (appleRows ?? []).length === 0,
+    appleErr ? '' : 'the table answered a client'
   );
 } catch (e) {
   failed += 1;

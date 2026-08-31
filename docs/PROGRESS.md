@@ -85,22 +85,32 @@ the cleanup when their own package lands).
 
 ### Next
 
-1. Supabase deploy (five migrations), then the live-backend suite - a green
-   functions deploy is not evidence the workers run.
+1. **Supabase deploy FIRST, the over-the-air update SECOND, and in that order.**
+   Seven migrations in the tree plus the `store-apple-token` Edge Function and
+   the four `APPLE_*` secrets (docs/APP_STORE.md). The ordering is not a
+   preference: `20260901110000_a_message_says_how_urgent.sql` gives
+   `submit_support_message` a third, defaulted parameter, which buys the
+   old-bundle-against-a-new-database direction only. The new bundle's contact
+   form requires the category chip before Send is available, so it ALWAYS
+   sends three arguments, and shipping the JS to a project that has not taken
+   the migration breaks the app's only route to a human, which is also the
+   appeal route for a suspended or closed account. Then the live-backend
+   suite: a green functions deploy is not evidence the workers run.
 2. The simulator suite for the ~40 pending screenshot re-shoots, then the
    screens gallery for the founder.
 3. On-device checks that need a person: build 16's universal-link test, the
    haptics walk, Reduce Motion, AX5 on the smallest screen.
-4. **Owed: per-decision automation disclosure in the five moderation push
-   bodies.** DSA Art. 17(3)(c) asks whether a decision was taken by automated
-   means, and the five notifications (message not delivered, photo removed,
-   guidelines warning, account suspended, account banned) say what and on what
-   ground but never that the screening was automatic. The house rules and the
-   privacy policy now disclose the automation generally, which is what ships;
-   the per-decision line needs a migration, so it belongs with the
-   moderation-copy packages rather than in this batch. Whether the general
-   disclosure satisfies 17(3)(c) on its own is a question for the founder's
-   lawyer, bracketed in docs/legal/COMMUNITY_GUIDELINES.md.
+4. **Owed: per-decision automation disclosure in ONE remaining moderation
+   push body.** DSA Art. 17(3)(c) asks whether a decision was taken by
+   automated means. Four of the five notifications now say so: both photo
+   bodies (20260901100000, which also splits the failsafe hold from a rules
+   breach) and the warning, pause and closure bodies (20260901130000). The
+   fifth, "Message not delivered", lives in `apply_message_verdict` and was
+   left alone rather than copied verbatim into a photo migration for the sake
+   of one sentence; it belongs with a messaging-copy package. Whether the
+   general disclosure in the house rules and the privacy policy satisfies
+   17(3)(c) on its own is still a question for the founder's lawyer,
+   bracketed in docs/legal/COMMUNITY_GUIDELINES.md.
 5. **Owed: a Report action for a group ITSELF.** The whole reporting path is
    per-person (`reports.reported_user_id` is NOT NULL), so a traveler-made
    group can only be reported one message at a time. The house rules, the two

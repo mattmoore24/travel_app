@@ -25,6 +25,8 @@ import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { Sheet, leavingSheet } from '@/components/ui/sheet';
+import { photoRejection } from '@/constants/moderation';
 import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { BusinessAddressField, addressFrom } from '@/features/business/address-field';
 import { BUSINESS_PHOTO_BUCKET } from '@/features/business/api';
@@ -451,6 +453,16 @@ function PhotoTile({
   const theme = useTheme();
   const { data: url } = useBusinessPhotoUrl(photo.storage_path);
   const rejected = photo.moderation_status === 'rejected';
+  // Same two-state treatment the profile grid got, from the same copy: a
+  // check that gave up is 'Try again' on warning and is explicitly not a
+  // rules breach, a real rejection is 'Removed' on danger and names the
+  // category. "Didn't pass" said neither, so an owner could only guess.
+  const why = photoRejection(photo.moderation_category, photo.moderation_engine);
+  const [explaining, setExplaining] = useState(false);
+  const closeWhy = () => setExplaining(false);
+  // Navigating out from under a presented Sheet strands its scrim over the
+  // screen. Dismiss first, push after.
+  const leaveWhy = leavingSheet(closeWhy);
 
   return (
     <Animated.View
@@ -459,17 +471,56 @@ function PhotoTile({
       layout={LinearTransition.springify()}
       style={[styles.tile, { width: size, height: size, backgroundColor: theme.surfaceSunken }]}>
       {url ? <Image source={{ uri: url }} style={styles.fill} contentFit="cover" /> : null}
-      {photo.moderation_status !== 'approved' ? (
-        <View
-          style={[styles.tileChip, { backgroundColor: rejected ? theme.warning : theme.surface }]}>
-          <ThemedText type="caption" style={rejected ? { color: theme.onHighlight } : undefined}>
-            {rejected ? "Didn't pass" : 'In review'}
+      {rejected ? (
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={
+            why.failsafe
+              ? 'This photo could not be checked. Tap to find out what to do.'
+              : 'This photo was removed. Tap to find out why.'
+          }
+          haptic="light"
+          scaleTo={0.94}
+          hitSlop={10}
+          onPress={() => setExplaining(true)}
+          containerStyle={styles.tileChipAnchor}
+          style={[
+            styles.tileChip,
+            { backgroundColor: why.failsafe ? theme.warning : theme.danger },
+          ]}>
+          <ThemedText type="caption" style={{ color: theme.onHighlight }}>
+            {why.chip}
           </ThemedText>
+        </PressableScale>
+      ) : photo.moderation_status !== 'approved' ? (
+        <View style={[styles.tileChipAnchor, styles.tileChip, { backgroundColor: theme.surface }]}>
+          <ThemedText type="caption">In review</ThemedText>
         </View>
       ) : cover ? (
-        <View style={[styles.tileChip, { backgroundColor: theme.surface }]}>
+        <View style={[styles.tileChipAnchor, styles.tileChip, { backgroundColor: theme.surface }]}>
           <ThemedText type="caption">Cover</ThemedText>
         </View>
+      ) : null}
+      {explaining ? (
+        <Sheet onClose={closeWhy}>
+          <View style={styles.whyBody}>
+            <ThemedText type="title">{why.title}</ThemedText>
+            <ThemedText type="body" themeColor="textSecondary">
+              {why.body}
+            </ThemedText>
+          </View>
+          <View style={styles.whyActions}>
+            {why.failsafe ? null : (
+              <PrimaryButton
+                variant="ghost"
+                label="Contact us"
+                accessibilityLabel="Contact us about this photo"
+                onPress={() => leaveWhy(() => router.push('/contact'))}
+              />
+            )}
+            <PrimaryButton label="Done" accessibilityLabel="Done" onPress={closeWhy} />
+          </View>
+        </Sheet>
       ) : null}
       <PressableScale
         accessibilityRole="button"
@@ -1426,13 +1477,29 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  tileChip: {
+  tileChipAnchor: {
     position: 'absolute',
     left: Space.sm,
     bottom: Space.sm,
+  },
+  tileChip: {
     borderRadius: Radius.sm,
     paddingHorizontal: Space.sm,
     paddingVertical: 2,
+    // 10 + 24 + 10 = 44, the same arithmetic the remove dot on this tile
+    // uses. The chip is a CONTROL now - it opens the sheet naming the reason
+    // - and caption type on two points of padding is a 19pt box, so even with
+    // hitSlop it came to 39 against a 44 floor. The minimum grows the box by
+    // five points and centres the word in it; nothing else on the tile moves.
+    minHeight: 24,
+    justifyContent: 'center',
+  },
+  whyBody: {
+    gap: Space.sm,
+    paddingBottom: Space.lg,
+  },
+  whyActions: {
+    gap: Space.sm,
   },
   removeAnchor: {
     position: 'absolute',

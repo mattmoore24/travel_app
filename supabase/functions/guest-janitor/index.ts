@@ -14,6 +14,15 @@
 // intent, not a side effect: a throwaway identity is not a place to keep
 // somebody's words forever.
 //
+// No Apple revoke here, on purpose. delete-account calls
+// https://appleid.apple.com/auth/revoke before it removes the auth row; this
+// sweep does not, because a guest is an anonymous account and can never hold
+// an Apple identity - signInAnonymously mints the row, and the moment somebody
+// signs in with Apple they are not a guest. apple_refresh_tokens is therefore
+// always empty for every id this function touches, and a call that can only
+// ever be a no-op is worse than a comment saying why there is none. If guests
+// ever gain a way to attach an Apple identity, this becomes a real omission.
+//
 // Deploy:   supabase functions deploy guest-janitor
 // Schedule: pg_cron, daily (see 20260823060000_guests_can_chat.sql)
 import { createClient } from 'jsr:@supabase/supabase-js@2';

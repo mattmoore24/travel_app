@@ -1,12 +1,13 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { useState, type ReactNode } from 'react';
 
 // Side effect: installs the foreground notification handler at module scope,
 // so it exists from launch rather than whenever the tabs happen to pull the
 // module in through the push primer.
 import '@/features/notifications/push';
-import { StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
@@ -15,14 +16,17 @@ import { useIntroState } from '@/features/intro/store';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Colors, Spacing, SplashField } from '@/constants/theme';
+import { Colors, MaxContentWidth, Spacing, SplashField } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
 import { ResetPasswordScreen } from '@/features/auth/reset-password-screen';
 import { owesOnboarding, rootIsReady } from '@/features/auth/routing';
+import { gateCopy, type GateView } from '@/features/auth/gate-copy';
 import { useAuthListener } from '@/features/auth/use-auth-listener';
 import { useOwnBusiness } from '@/features/business/hooks';
 import { useAccountStanding, useOwnProfile } from '@/features/profile/hooks';
+import { ContactForm } from '@/features/support/contact-form';
+import { GuidelinesBody } from '@/features/support/guidelines-body';
 import { queryClient } from '@/lib/query-client';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -41,6 +45,34 @@ SplashScreen.preventAutoHideAsync();
  */
 export const unstable_settings = { anchor: '(tabs)' };
 
+/**
+ * The centred column both root-level dead ends are drawn in: the load error
+ * and the account gate.
+ *
+ * It SCROLLS, and that is the whole point of it being a component. A centred
+ * View was right while the gate held a title, one line of body and a single
+ * Sign out. The gate now holds a title, a paragraph, and three buttons — and
+ * at the larger Dynamic Type sizes the last of them, Appeal this, fell off
+ * the bottom of the one screen in the app whose entire purpose is giving a
+ * suspended or closed account a way back. Nothing scrolled, so there was no
+ * way to reach it: on that screen the appeal route did not exist.
+ *
+ * flexGrow: 1 with a centred content container is the pairing that serves
+ * both: the short case stays vertically centred and the tall case scrolls.
+ * The padding and the gap live on the content container rather than the
+ * static style for the same reason — on a ScrollView they belong to the
+ * content, not to the frame.
+ */
+function CenteredPage({ children }: { children: ReactNode }) {
+  return (
+    <ThemedView style={styles.errorRoot}>
+      <SafeAreaView style={styles.errorContent}>
+        <ScrollView contentContainerStyle={styles.errorScroll}>{children}</ScrollView>
+      </SafeAreaView>
+    </ThemedView>
+  );
+}
+
 // Shown when we're signed in but a fetch the router depends on failed
 // (offline cold start, server error) — without it, users would be routed into
 // a blank onboarding stack with no way out.
@@ -54,26 +86,24 @@ function AccountLoadError({
   retrying: boolean;
 }) {
   return (
-    <ThemedView style={styles.errorRoot}>
-      <SafeAreaView style={styles.errorContent}>
-        <ThemedText type="title" style={styles.errorText}>
-          {title}
-        </ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.errorText}>
-          Check your connection and try again.
-        </ThemedText>
-        {/* The same words as the body copy above it. "Retry" is a
-            developer's word, and two labels for one act is one too many. */}
-        <PrimaryButton label="Try again" loading={retrying} onPress={onRetry} />
-        <PrimaryButton
-          variant="ghost"
-          label="Sign out"
-          onPress={() => {
-            signOut().catch(() => {});
-          }}
-        />
-      </SafeAreaView>
-    </ThemedView>
+    <CenteredPage>
+      <ThemedText type="title" style={styles.errorText}>
+        {title}
+      </ThemedText>
+      <ThemedText themeColor="textSecondary" style={styles.errorText}>
+        Check your connection and try again.
+      </ThemedText>
+      {/* The same words as the body copy above it. "Retry" is a
+          developer's word, and two labels for one act is one too many. */}
+      <PrimaryButton label="Try again" loading={retrying} onPress={onRetry} />
+      <PrimaryButton
+        variant="ghost"
+        label="Sign out"
+        onPress={() => {
+          signOut().catch(() => {});
+        }}
+      />
+    </CenteredPage>
   );
 }
 
@@ -82,6 +112,24 @@ function AccountLoadError({
 // other writes are merely invisible to others via the visibility helpers.
 // This screen tells the user what happened instead of surfacing permission
 // errors — it is UX, not the enforcement layer.
+
+/**
+ * The one screen a suspended or closed account can reach, and until now the
+ * only button on it was Sign out.
+ *
+ * docs/legal/COMMUNITY_GUIDELINES.md promises an appeal "from Contact us in
+ * the app, which is open even when you cannot sign in", and the app had
+ * hidden that from exactly this person: `guidelines` and `contact` are
+ * declared inside the <Stack> this component is returned INSTEAD OF, so
+ * router.push to either is a silent no-op here. That is why these are view
+ * modes rather than navigation, and why the two bodies are components.
+ *
+ * Moving the gate inside the Stack as a Stack.Protected group is the
+ * tempting alternative and it is a trap: it means adding `&& !gated` to every
+ * other guard in this file and getting initial-route resolution right on a
+ * cold start, in the one file whose comments already record four routing bugs
+ * paid for in full.
+ */
 function AccountGate({
   status,
   suspendedUntil,
@@ -89,30 +137,65 @@ function AccountGate({
   status: string;
   suspendedUntil: string | null;
 }) {
-  const suspended = status === 'suspended';
-  const until = suspendedUntil ? new Date(suspendedUntil) : null;
+  const [view, setView] = useState<GateView>('gate');
+  const copy = gateCopy(status, suspendedUntil);
+
+  if (view === 'rules') {
+    return (
+      <ThemedView style={styles.gateRoot}>
+        <SafeAreaView style={styles.gatePage}>
+          <GuidelinesBody onContact={() => setView('appeal')} />
+          <View style={styles.gateFooter}>
+            <PrimaryButton label="Back" onPress={() => setView('gate')} />
+          </View>
+        </SafeAreaView>
+      </ThemedView>
+    );
+  }
+
+  if (view === 'appeal') {
+    return (
+      <ThemedView style={styles.gateRoot}>
+        {/* Top edge only. StepScreen's own SafeAreaView is edges={['bottom']}
+            because every other thing that renders one is a modal route with a
+            native header over it — and this one is returned INSTEAD OF the
+            <Stack>, so there is no header and no modal card. Bare, the form's
+            title drew under the status bar and into the notch. The bottom
+            stays StepScreen's, which is where its docked Send button is. */}
+        <SafeAreaView style={styles.gatePage} edges={['top']}>
+          <ContactForm
+            initialBody={copy.appeal}
+            showReportHint={false}
+            onDone={() => setView('gate')}
+            onClose={() => setView('gate')}
+          />
+        </SafeAreaView>
+      </ThemedView>
+    );
+  }
+
   return (
-    <ThemedView style={styles.errorRoot}>
-      <SafeAreaView style={styles.errorContent}>
-        <ThemedText type="title" style={styles.errorText}>
-          {suspended ? 'Account suspended' : 'Account banned'}
-        </ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.errorText}>
-          {suspended
-            ? `Your account is suspended${
-                until ? ` until ${until.toLocaleDateString()}` : ''
-              } for breaking our house rules.`
-            : 'Your account is closed for repeatedly breaking our house rules.'}
-        </ThemedText>
-        <PrimaryButton
-          variant="ghost"
-          label="Sign out"
-          onPress={() => {
-            signOut().catch(() => {});
-          }}
-        />
-      </SafeAreaView>
-    </ThemedView>
+    <CenteredPage>
+      <ThemedText type="title" style={styles.errorText}>
+        {copy.title}
+      </ThemedText>
+      <ThemedText themeColor="textSecondary" style={styles.errorText}>
+        {copy.body}
+      </ThemedText>
+      <PrimaryButton
+        variant="ghost"
+        label="Read the house rules"
+        onPress={() => setView('rules')}
+      />
+      <PrimaryButton variant="ghost" label="Appeal this" onPress={() => setView('appeal')} />
+      <PrimaryButton
+        variant="ghost"
+        label="Sign out"
+        onPress={() => {
+          signOut().catch(() => {});
+        }}
+      />
+    </CenteredPage>
   );
 }
 
@@ -437,6 +520,21 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
+  // The rules, read from behind the gate. Same shape as the /guidelines
+  // screen, minus the router it cannot use.
+  gateRoot: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  gatePage: {
+    flex: 1,
+    maxWidth: MaxContentWidth,
+  },
+  gateFooter: {
+    padding: Spacing.four,
+    paddingTop: Spacing.two,
+  },
   // Must equal the native splash background, for the same reason the splash
   // overlay does (components/animated-icon.tsx).
   bootHold: {
@@ -451,6 +549,11 @@ const styles = StyleSheet.create({
   errorContent: {
     flex: 1,
     maxWidth: 480,
+  },
+  // The content container, not the frame: a ScrollView centres its children
+  // through flexGrow on this, and pads and spaces them here too.
+  errorScroll: {
+    flexGrow: 1,
     alignItems: 'stretch',
     justifyContent: 'center',
     gap: Spacing.three,

@@ -41,7 +41,16 @@ we collect, why, who touches it, and what you can ask us to do about it.
   in-app analytics opt-out today; if that changes, this paragraph changes
   with it.
 - **Support messages**: if you write to us from Contact us, we keep your
-  message and the address you asked us to reply to.
+  message and the address you asked us to reply to, along with the one word
+  you picked for what it is about, so an urgent message can be answered first.
+- **A Sign in with Apple token** (only if you sign in with Apple): Apple
+  issues a refresh token once, at your first sign-in, and we keep it for the
+  life of your account for exactly one purpose. When you delete your account
+  we have to tell Apple to forget it too, and this token is the only thing
+  that can make that call. It is held on our server where no app, browser or
+  signed-in user can read it, including you; it is never sent anywhere except
+  to Apple, and it is destroyed with your account. If you signed up with an
+  email address, this does not exist for you.
 
 ## What we deliberately do NOT collect
 
@@ -207,6 +216,10 @@ retained by us beyond the verdict.
   profile, photos, trips, pins, first messages and chats (for both sides) are
   permanently deleted, and a business listing goes with the account that runs
   it. It is immediate and it cannot be undone.
+- **The Sign in with Apple token** is spent and then destroyed as part of that
+  deletion: we call Apple to revoke your sign-in before the account row goes,
+  so Apple stops treating this app as one you have signed into. Nothing about
+  it survives the deletion.
 - **Moderation records** are kept with your identity removed. Safety records
   have to outlive the accounts they are about, or a banned account is a fresh
   start.

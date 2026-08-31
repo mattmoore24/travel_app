@@ -221,7 +221,7 @@ select lives_ok(
 select throws_ok(
   $$ update public.profiles set bio = 'DTF, hit me up'
      where user_id = '00000000-0000-0000-0000-00000000000a' $$,
-  'that text breaks our community guidelines',
+  'that text breaks our house rules',
   'flirtatious bio text is refused at write time'
 );
 select pg_temp.admin();

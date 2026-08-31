@@ -1,0 +1,14 @@
+-- A report can say "somebody is in danger".
+--
+-- 20260831200000 gave the form a way to say a profile belongs to a minor.
+-- This is the other reason that must never queue behind a spam complaint: a
+-- traveler who has just met somebody from this app and is frightened. The
+-- product puts strangers in the same city on purpose, so the one category
+-- worth waking a phone for is the one that says the meeting went wrong.
+--
+-- ONE STATEMENT IN THIS FILE, for the same reason 20260831200000 carries one:
+-- Postgres refuses to USE a new enum label in the transaction that added it.
+-- Everything that names 'immediate_danger' lives in 20260901120100, and the
+-- two files must never be merged - merging them fails the deploy AFTER the
+-- label has already been added, leaving the database half migrated.
+alter type public.report_reason add value if not exists 'immediate_danger';

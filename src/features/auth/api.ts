@@ -161,6 +161,33 @@ export async function appleSignInAvailable(): Promise<boolean> {
   }
 }
 
+/**
+ * Hand the authorization code to the server, which exchanges it for the
+ * refresh token that lets delete-account call Apple's revoke endpoint.
+ *
+ * Fire and log, never throw. Apple gives the code once per sign-in and it is
+ * good for five minutes, so this is the only moment it can be captured — but
+ * an account that could not be signed in is worse than one whose revoke has
+ * to be done by hand later, and the store call must never reach the sign-in
+ * path's error handler. Until the Sign in with Apple key is provisioned the
+ * function answers `stored: false` and this is a logged no-op.
+ */
+async function storeAppleAuthorizationCode(code: string | null) {
+  if (!code) {
+    return;
+  }
+  try {
+    const { error } = await supabase.functions.invoke('store-apple-token', {
+      body: { code },
+    });
+    if (error) {
+      console.warn('Could not store the Apple token:', error.message);
+    }
+  } catch (e) {
+    console.warn('Could not store the Apple token:', e);
+  }
+}
+
 export async function signInWithApple() {
   const credential = await AppleAuthentication.signInAsync({
     requestedScopes: [
@@ -178,4 +205,8 @@ export async function signInWithApple() {
   if (error) {
     throw error;
   }
+  // After the session exists, so the edge function can authenticate the
+  // caller, and deliberately not awaited: nothing about signing in waits on a
+  // round trip to Apple.
+  void storeAppleAuthorizationCode(credential.authorizationCode);
 }

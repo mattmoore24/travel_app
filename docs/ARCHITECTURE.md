@@ -623,11 +623,39 @@ is the guard; two screens rendered "you leave Invalid Date" without it.
   for both workers and pg_cron). App-behavior metrics stay in PostHog; the
   mapping is docs/DASHBOARD.md.
 - **Account deletion** (App Review 5.1.1(v)) is `supabase/functions/
-delete-account`: verifies the caller's JWT, clears both storage buckets,
-  hard-deletes their chats for both members (unmatch semantics), then deletes
-  the auth user — the FK graph cascades the rest, while `moderation_events`
-  survive with `subject_user_id` nulled so the audit spine isn't erasable by
-  deleting an account. Proven in `09_launch_hardening.test.sql`.
+delete-account`, and the step ORDER is load-bearing: verify the caller's JWT,
+  clear both storage buckets, hard-delete their chats for both members
+  (unmatch semantics), delete a business listing if they run one, **tell Apple
+  to forget the account**, and only then delete the auth user — the FK graph
+  cascades the rest, while `moderation_events` survive with
+  `subject_user_id` nulled so the audit spine isn't erasable by deleting an
+  account. Proven in `09_launch_hardening.test.sql`.
+- **Sign in with Apple revocation** (App Review 5.1.1(v) again — an app that
+  offers both Sign in with Apple and in-app deletion and never calls
+  `appleid.apple.com/auth/revoke` is rejected). Apple hands out an
+  authorization code exactly once per sign-in, good for five minutes and one
+  exchange, so the refresh token has to be bought at sign-in and kept:
+  - `public.apple_refresh_tokens` (`user_id` primary key, referencing
+    `public.users` and cascading on delete) is **service-role only**: RLS on
+    with deliberately no policies,
+    and every grant revoked on top, because the row is a credential against
+    somebody else's identity provider. Attacked in
+    `35_apple_tokens_are_server_only.test.sql` and again from the live anon
+    key in `tests/live/live-backend.mjs`.
+  - `supabase/functions/store-apple-token` is the buyer: the app posts the
+    authorization code, the function resolves the caller from their own JWT
+    (never a user id in the body), signs the client-secret JWT with the .p8,
+    exchanges the code, and upserts the refresh token with the service role.
+    It fails soft with `stored:false` — a sign-in must not fail because a
+    founder task is outstanding.
+  - **The revoke must precede the auth delete.** `apple_refresh_tokens`
+    cascades off `public.users`, so once the auth user goes there is nothing
+    left to spend and the grant stays live under iOS Settings forever. It fails soft
+    and logs which branch it took: a right to delete an account cannot depend
+    on another company's endpoint being up.
+  - The user-visible half: Apple returns a name and an email only on the
+    FIRST authorization, so an account deleted without a revoke comes back on
+    the next sign-up with neither, and no address to recover with.
 - **In-app policy surface** (App Review 1.2): bundled community guidelines at
   `/guidelines` (readable before sign-up), a consent line on the welcome
   screen, and a support contact. Text lives in `src/constants/policies.ts`;
@@ -929,6 +957,13 @@ everybody else the same way whatever the truth is — the rule
   belong there. **RLS is the security boundary, not key secrecy.**
 - Server secrets (ANTHROPIC_API_KEY, service role) exist only as Supabase Edge Function
   secrets; they never appear in this repo or the app bundle.
+- **Sign in with Apple adds four**, same rule and the same place (set them with
+  `supabase secrets set`, recipe in docs/APP_STORE.md): `APPLE_TEAM_ID`,
+  `APPLE_KEY_ID`, `APPLE_CLIENT_ID` (the **bundle id** — the Services ID is
+  for the web) and `APPLE_PRIVATE_KEY` (the .p8 contents). Read by
+  `supabase/functions/_shared/apple.ts` and by nothing else; `appleConfig()`
+  returns null when any is missing, which is what makes both Apple functions
+  degrade instead of throwing.
 - `.env` is gitignored; `.env.example` is the committed template.
 
 ## The app's public-facing surface

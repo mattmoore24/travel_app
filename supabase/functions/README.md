@@ -1,10 +1,11 @@
 # Edge Functions
 
-| Function            | Purpose                                                         | Trigger                         |
-| ------------------- | --------------------------------------------------------------- | ------------------------------- |
-| `push-worker`       | Drains `public.push_queue` → Expo push API; prunes dead tokens  | Schedule (~1/min) after deploy  |
-| `moderation-worker` | Claude moderation: held first messages, photos, selfie likeness | Schedule (~1/min) after deploy  |
-| `delete-account`    | In-app account deletion (storage + chats + auth user, 5.1.1(v)) | Called by the app (no schedule) |
+| Function            | Purpose                                                              | Trigger                         |
+| ------------------- | -------------------------------------------------------------------- | ------------------------------- |
+| `push-worker`       | Drains `public.push_queue` → Expo push API; prunes dead tokens       | Schedule (~1/min) after deploy  |
+| `moderation-worker` | Claude moderation: held first messages, photos, selfie likeness      | Schedule (~1/min) after deploy  |
+| `delete-account`    | In-app account deletion (storage + chats + auth user, 5.1.1(v))      | Called by the app (no schedule) |
+| `store-apple-token` | Exchanges the Apple authorization code for a revocable refresh token | Called by the app at sign-in    |
 
 Deploy (after `supabase link`):
 
@@ -12,8 +13,15 @@ Deploy (after `supabase link`):
 supabase functions deploy push-worker
 supabase functions deploy moderation-worker
 supabase functions deploy delete-account
+supabase functions deploy store-apple-token
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-...   # moderation-worker only
 ```
+
+`_shared/apple.ts` is imported by both `store-apple-token` and
+`delete-account`; the CLI bundles a relative import with whichever function
+pulls it in, so it needs no deploy of its own. Both degrade to a logged no-op
+until the four `APPLE_*` secrets exist — see the Sign in with Apple section of
+`docs/APP_STORE.md`.
 
 Scheduling is **not** a dashboard step. `20260817230000_schedule_workers.sql` creates
 pg_cron jobs that invoke both workers every minute via `public.invoke_edge_worker`, so the

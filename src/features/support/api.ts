@@ -14,10 +14,20 @@ import { supabase } from '@/lib/supabase';
  * The row is the durable record and delivery is only the notification: it
  * lands even if the mailer is unconfigured or Resend is down.
  */
-export async function sendSupportMessage(input: { replyTo: string; body: string }) {
+export async function sendSupportMessage(input: {
+  replyTo: string;
+  body: string;
+  /**
+   * The sender's own triage hint: 'safety' | 'account' | 'other'. Optional in
+   * the database (an older bundle sends two arguments and the defaulted third
+   * parameter keeps that call working), so it is optional here too.
+   */
+  category?: string | null;
+}) {
   const { data, error } = await supabase.rpc('submit_support_message', {
     p_reply_to: input.replyTo,
     p_body: input.body,
+    p_category: input.category ?? undefined,
   });
   if (error) {
     throw error;

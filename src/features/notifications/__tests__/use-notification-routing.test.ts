@@ -62,6 +62,9 @@ describe('routeForPayload', () => {
     [{ type: 'moderation' }, '/guidelines'],
     [{ type: 'verification' }, '/verification'],
     [{ type: 'support' }, '/contact'],
+    // An urgent report names no screen on purpose: there is no in-app review
+    // queue, so the tap opens the app rather than a screen that cannot help.
+    [{ type: 'report', report_id: 'r1' }, null],
     // The oldest builds sent no payload at all.
     [{}, null],
     [{ type: 'something-newer-than-this-build' }, null],

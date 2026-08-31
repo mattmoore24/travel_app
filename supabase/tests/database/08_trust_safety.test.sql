@@ -3,7 +3,7 @@
 -- standing gates on suspended/banned senders, the photo moderation flag, the
 -- selfie verification flow, and the admin report queue.
 begin;
-select plan(79);
+select plan(82);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -397,9 +397,19 @@ select is(
 select is(
   (select count(*)::int from public.push_queue
     where user_id = '00000000-0000-0000-0000-00000000000e'
-      and title = 'Community guidelines warning'),
+      and title = 'House rules warning'),
   1,
-  'warning is pushed to the user'
+  'warning is pushed to the user, under the one name the rulebook has (D32)'
+);
+-- The exact sentence, not a substring. A notice that closes a door has to
+-- name the rulebook the app calls it, say a machine made the call (DSA Art.
+-- 17(3)(c)), and use the same word for the consequence the gate screen uses.
+select is(
+  (select body from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000e'
+      and title = 'House rules warning'),
+  'Recent messages or photos broke our house rules, on an automatic check. More of it will pause your account.',
+  'and it says a machine decided, and calls the next rung a pause'
 );
 insert into public.moderation_events (subject_user_id, entity_type, entity_id, action, source)
   values ('00000000-0000-0000-0000-00000000000e', 'user',
@@ -418,6 +428,13 @@ select is(
     where id = '00000000-0000-0000-0000-00000000000e'),
   true,
   'suspension carries an expiry timestamp'
+);
+select is(
+  (select body from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000e'
+      and title = 'Account paused'),
+  'Your account is paused for 7 days for repeated house rules breaches. Our checks are automatic, so if that is wrong, open the app and tap Appeal this.',
+  'and the notification names the way back, which is the button the gate now has'
 );
 
 -- Suspended accounts are cut off at the DB layer.
@@ -488,6 +505,13 @@ select is(
       and action = 'banned'),
   1,
   'ban is audit-logged'
+);
+select is(
+  (select body from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000e'
+      and title = 'Account closed'),
+  'Your account is closed for repeated house rules breaches. Our checks are automatic, so if that is wrong, open the app and tap Appeal this.',
+  'and the last notice anybody gets still points at an appeal'
 );
 
 -- Photo moderation flag: uploads hold at pending until a verdict.

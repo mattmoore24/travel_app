@@ -326,12 +326,47 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     notVisible: 'Said hi to .*'
     timeout: 20000
-- tapOn: 'Map'
+
+# WHAT THE REPORT FORM LETS SOMEBODY SAY. The chip order IS the triage order
+# a frightened person reads, so the two urgent reasons have to be in the
+# picture and they have to be at the top of it. Both are new: the form had no
+# way to say either, so a traveler certain the man she is chatting with is 15,
+# or one who has just been followed back to her hostel, had to file it as
+# 'Other' and land behind a spam complaint.
+- tapOn: 'More about .*'
 - extendedWaitUntil:
-    visible: 'Drop a pin'
+    visible: 'Report'
+    timeout: 10000
+- tapOn: 'Report'
+- extendedWaitUntil:
+    visible: 'What happened?'
     timeout: 15000
+- assertVisible: 'Somebody here is in danger'
+- assertVisible: 'They are under 18'
+- takeScreenshot: 17d-report-reasons
+# Relaunch rather than `back`: this screen is a modal with no close control
+# (nothing is sent, and a report form should not carry a stray Done), and the
+# flow already relies on a relaunch to reset - it keeps the session, which
+# lives in the keychain rather than the data container, and lands on the Map
+# tab. Do NOT add clearState - see the note at the top of this file.
+#
+# And then WAIT ON THE TAB BAR, NOT ON THE MAP. After a mid-flow launchApp
+# nothing on the map screen is matchable - not the legend chip's printed
+# words, not its accessibility label, not a marker, not 'Drop a pin'. Runs 64
+# and 66 both died exactly there, on screenshots that plainly show the thing
+# being asserted (the long note further down this file has the whole finding).
+# So this mirrors the three relaunches in this flow that DO work: wait for the
+# tab bar's own 'Travelers' label, tap it, and carry on from a screen Maestro
+# can read.
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+- tapOn: 'Travelers'
 # The avatar's first tap is the regression under test here; the name is
-# the above-the-fold proof the profile actually opened.
+# the above-the-fold proof the profile actually opened. The header avatar is
+# the same AvatarButton on Travelers as on the Map, so the regression is
+# still the one under test - it is only reached from a tab that answers.
 - tapOn: 'Your profile'
 - extendedWaitUntil:
     visible: 'Maestro Test.*'
@@ -430,6 +465,11 @@ appId: com.mattmoore.samewhere
       id: 'contact-message'
     timeout: 15000
 - takeScreenshot: 19a-contact-form
+# WHICH KIND OF MESSAGE THIS IS. One box used to serve an appeal against a
+# closed account, a bug report, and somebody being followed back to their
+# hostel, and nothing let a one-person queue tell them apart. The chip is
+# required, so this tap is also what makes Send available.
+- tapOn: 'Something happened'
 - tapOn:
     id: 'contact-message'
 - inputText: 'Checking the form works. Nothing to answer.'

@@ -4,7 +4,7 @@
 -- listing that is dark shows NOTHING, and the verified badge cannot be
 -- obtained by any route except two photos of a real storefront.
 begin;
-select plan(53);
+select plan(54);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a2', 'ana@example.com'),
@@ -242,7 +242,7 @@ select throws_ok(
   $$ insert into public.business_links (business_id, kind, label, value)
      select id, 'website', 'you are so sexy', 'https://casaazul.example' from public.businesses
       where name = 'Casa Azul' $$,
-  'that text breaks our community guidelines',
+  'that text breaks our house rules',
   'and a link label is screened like any other broadcast text'
 );
 
@@ -265,6 +265,20 @@ select throws_ok(
      select id, 'Fourth' from public.businesses where name = 'Casa Azul' $$,
   'you have as many posts up as you can have at once',
   'but an unverified business stops at three live posts'
+);
+
+-- A post is broadcast text, so it goes through the same screen every other
+-- free-text field does - and the sentence it is refused with is the one name
+-- the rulebook has (D32). Asserted in full, not as a substring: this string
+-- reaches the owner verbatim through the client's global alert, and a
+-- loosened assertion is how a screen with two concatenated fields passed
+-- review here once.
+select throws_ok(
+  $$ insert into public.business_posts (business_id, title, body)
+     select id, 'Tonight', 'you are so sexy' from public.businesses
+      where name = 'Casa Azul' $$,
+  'that text breaks our house rules',
+  'and a post is screened like every other broadcast text'
 );
 
 -- The founder's rule: expiry is the business's choice, including never.

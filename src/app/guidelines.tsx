@@ -1,69 +1,31 @@
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
-import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Radius, MaxContentWidth, Spacing } from '@/constants/theme';
-import { GUIDELINE_SECTIONS, ZERO_TOLERANCE } from '@/constants/policies';
-import { useTheme } from '@/hooks/use-theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { GuidelinesBody } from '@/features/support/guidelines-body';
 
 /**
  * The house rules + support contact, readable before sign-up and from the
  * profile tab (App Review 1.2 requires both for user-generated content).
  * 'House rules' is the one user-facing name for the rulebook (decision D32);
  * docs/legal/COMMUNITY_GUIDELINES.md keeps its filename for App Review.
+ *
+ * The body lives in features/support/guidelines-body because a suspended or
+ * closed account never reaches this route: the root layout renders the gate
+ * instead of the navigator, so the account gate mounts the same component
+ * directly.
  */
 export default function GuidelinesScreen() {
-  const theme = useTheme();
-
   return (
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.content}>
-          <ThemedText type="title">House rules</ThemedText>
-          <ThemedView type="backgroundElement" style={styles.card}>
-            <ThemedText type="smallBold" style={{ color: theme.tint }}>
-              {ZERO_TOLERANCE}
-            </ThemedText>
-          </ThemedView>
-
-          {GUIDELINE_SECTIONS.map((section) => (
-            <View key={section.title} style={styles.section}>
-              <ThemedText type="smallBold">{section.title}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {section.body}
-              </ThemedText>
-            </View>
-          ))}
-
-          {/* The two documents point at each other, so a person who opened
-              one is never told to go and find the other. */}
-          <View style={styles.section}>
-            <ThemedText type="smallBold">Privacy</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              What we collect, what we never collect, and what happens to your selfie.
-            </ThemedText>
-            <PrimaryButton
-              variant="ghost"
-              label="Privacy policy"
-              onPress={() => router.push('/privacy')}
-            />
-          </View>
-
-          <View style={styles.section}>
-            <ThemedText type="smallBold">Contact us</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              Questions, appeals, anything that feels off. We read every message.
-            </ThemedText>
-            <PrimaryButton
-              variant="ghost"
-              label="Send us a message"
-              onPress={() => router.push('/contact')}
-            />
-          </View>
-        </ScrollView>
+        <GuidelinesBody
+          onContact={() => router.push('/contact')}
+          onPrivacy={() => router.push('/privacy')}
+        />
         <View style={styles.footer}>
           <PrimaryButton label="Done" onPress={() => router.back()} />
         </View>
@@ -81,17 +43,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     maxWidth: MaxContentWidth,
-  },
-  content: {
-    gap: Spacing.three,
-    padding: Spacing.four,
-  },
-  card: {
-    padding: Spacing.three,
-    borderRadius: Radius.lg,
-  },
-  section: {
-    gap: Spacing.one,
   },
   footer: {
     padding: Spacing.four,

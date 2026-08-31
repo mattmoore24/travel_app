@@ -76,6 +76,8 @@ describe('ProfileView with a photo', () => {
     position: 0,
     moderation_status: 'approved',
     moderation_attempts: 0,
+    moderation_category: null,
+    moderation_engine: null,
     created_at: '',
   };
 

@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import {
   FAILURE_COPY_VALUES,
   GENERIC_SAVE_FAILURE,
@@ -103,6 +106,45 @@ describe('the D3 rule: the database may not write user-facing copy', () => {
     expect(saveFailureMessage({ message: 'make an account to post a trip' })).toBe(
       'Make an account to do that.'
     );
+  });
+
+  it('answers both names for the rulebook, so the deploy order cannot matter', () => {
+    // 20260901140000_the_rules_have_one_name.sql renames the sentence six
+    // live functions raise. An installed build reading the NEW text and a
+    // new build reading the OLD one both happen during the OTA gap, and in
+    // neither case may anybody be shown the raw Postgres sentence.
+    const rules = 'That breaks our house rules. Reword it and try again.';
+    expect(saveFailureMessage({ message: 'that text breaks our community guidelines' })).toBe(
+      rules
+    );
+    expect(saveFailureMessage({ message: 'that text breaks our house rules' })).toBe(rules);
+    // And the hint beats both, which is what all six now send.
+    expect(saveFailureMessage({ message: 'anything at all', hint: 'guidelines' })).toBe(rules);
+  });
+
+  it('makes that migration send the CODE, not just the new prose', () => {
+    // The failure D3 exists to stop, on the day the prose changed: five of
+    // the six reworded raises carried no hint, so the only way this module
+    // could recognise them was by matching an English sentence the same
+    // migration was in the middle of rewriting. A hint survives a rewording;
+    // a prose key does not.
+    const sql = fs.readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'supabase',
+        'migrations',
+        '20260901140000_the_rules_have_one_name.sql'
+      ),
+      'utf8'
+    );
+    const raises = sql.match(/raise exception 'that text breaks our house rules'[^;]*;/g) ?? [];
+    expect(raises).toHaveLength(6);
+    for (const raise of raises) {
+      expect(raise).toContain("hint = 'guidelines'");
+    }
   });
 
   it('ships no banned vocabulary and no em dash in any sentence of its own', () => {

@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { SAFETY_PROMISE_BODY, SAFETY_PROMISE_TITLE } from '@/constants/policies';
 import { Fonts, Radius, Space, SplashField, Type } from '@/constants/theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
@@ -67,7 +68,7 @@ type Page = {
   body: string;
 };
 
-/** Three tabs, three sentences. Anything longer does not get read. */
+/** One sentence a page. Anything longer does not get read. */
 const PAGES: Page[] = [
   {
     icon: { ios: 'map.fill', android: 'map', web: 'map' },
@@ -90,9 +91,24 @@ const PAGES: Page[] = [
     title: 'Say hi, then make plans',
     body: 'Send a first message. If they accept, your chat opens.',
   },
+  {
+    // The differentiator, said last so it sits directly above the choice.
+    //
+    // The three pages before this one describe the tabs. None of them says
+    // the thing that actually decides an install for a woman comparing this
+    // with GAFFL, Couchsurfing or Bumble BFF: no location, pins that expire,
+    // socials that stay hidden, first messages screened. All four are
+    // enforced in Postgres and all four lived behind a button nobody opens.
+    //
+    // The words come from src/constants/policies so this page, the sign-up
+    // gate and the house rules cannot drift apart.
+    icon: { ios: 'lock.fill', android: 'lock', web: 'lock' },
+    title: SAFETY_PROMISE_TITLE,
+    body: SAFETY_PROMISE_BODY,
+  },
 ];
 
-/** Welcome + the three explainers; the last explainer carries the choice. */
+/** Welcome + the explainers; the last explainer carries the choice. */
 const PAGE_COUNT = PAGES.length + 1;
 
 /**

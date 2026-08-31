@@ -13,19 +13,27 @@ import type { ReportReason } from '@/lib/database.types';
 /**
  * What a reporter can say, in their words.
  *
- * 'They are under 18' is here because the app had no way to say it at all,
- * while the privacy policy promised we remove underage accounts. It is
- * phrased as an observation rather than an accusation, like the other five,
- * and it does NOT suppress anybody by itself: it sorts the report to the
- * front of the review queue and a person decides (decision D34).
+ * THE ORDER IS THE TRIAGE ORDER. The two urgent reasons lead because the chip
+ * row is read top to bottom by somebody who is upset, and because putting
+ * "Somebody here is in danger" below "Spam" says something about how
+ * seriously it is taken.
+ *
+ * Both were added because the app had no way to say either at all: the
+ * privacy policy promised we remove underage accounts through a mechanism
+ * that did not exist, and a traveler who had just been followed home had to
+ * file it as "Other". Each is phrased as an observation rather than an
+ * accusation, and neither suppresses anybody by itself: they sort the report
+ * to the front of the review queue and wake the phone of whoever is on duty,
+ * and a person decides (decision D34).
  */
 export const REASON_OPTIONS: { value: ReportReason; label: string }[] = [
-  { value: 'flirtation_or_sexual', label: 'Explicit or sexual' },
-  { value: 'harassment', label: 'Harassment' },
-  { value: 'spam', label: 'Spam' },
-  { value: 'fake_profile', label: 'Fake profile' },
-  { value: 'safety_concern', label: 'Safety concern' },
+  { value: 'immediate_danger', label: 'Somebody here is in danger' },
   { value: 'underage', label: 'They are under 18' },
+  { value: 'harassment', label: 'Harassment' },
+  { value: 'flirtation_or_sexual', label: 'Explicit or sexual' },
+  { value: 'safety_concern', label: 'Safety concern' },
+  { value: 'fake_profile', label: 'Fake profile' },
+  { value: 'spam', label: 'Spam' },
   { value: 'other', label: 'Other' },
 ];
 
@@ -75,7 +83,7 @@ export default function ReportScreen() {
       // go and find out how.
       Alert.alert(
         'Report received',
-        'Thanks. A real person reads every report, and they will not know it was you.',
+        'We look at it within a day. If we act, we never tell them who reported it. You will not hear back unless we need more from you.',
         [
           {
             text: 'Block them too',
