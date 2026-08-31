@@ -3,7 +3,34 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current: **The "upload hang" was a read that lied** (2026-08-31)
+## Current: **e2e run 96 is green end to end** (2026-08-31)
+
+The first fully green simulator run since 89 — and 89 never checked that a
+photo landed, where 96 gates on it twice. The full arc, for the record:
+
+- Run 92's stage-named timeouts disproved the "hung upload" theory: uploads
+  succeed; the business grid's read-back was answering `permission denied`
+  (the ungranted-column bug below). Grant deployed (#72), live suite 68/68.
+- Run 93 photographed the alert naming its stage — "stuck while preparing
+  it" — which measured the real variable: expo-image-manipulator takes 16
+  to 90+ seconds on a cold CI simulator for what a phone does in 1 to 3.
+  Prepare budgets went 20s to 45s (a bound ends hangs; it should not race
+  slow hardware).
+- Run 94 passed the business tour end to end (the grant fix proven where it
+  broke) and lost signup to PHPicker swallowing a tap that landed while its
+  remote grid was still waking; the subflow re-taps when the sheet visibly
+  stayed open.
+- Run 95 showed the flows' patience was still wrong: a 60s wait and an
+  alert check ten seconds after the pick, against a pipeline whose own
+  contract is "landed or alerted within 150s". Both tours now wait that
+  budget out on the success signal, recover once through the app's own
+  try-again, then gate hard; the drive job got 55 minutes so a slow run
+  still publishes its screenshots.
+- Run 96: everything green. Production carries the same JS over the air
+  (update #62): bounded stages, the stage-named error, the grid's LoadError
+  state.
+
+## **The "upload hang" was a read that lied** (2026-08-31)
 
 e2e runs 90 to 92 watched the business photo tile spin and land back on
 "0 of 10", five throwaway accounts in a row, and the working theory was a hung
