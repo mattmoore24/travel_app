@@ -56,8 +56,13 @@ describe('rowTimestamp', () => {
   });
 
   it('names yesterday rather than dating it', () => {
+    // Yesterday at noon, built on the CALENDAR, not by subtracting hours:
+    // "26 hours ago" stops being yesterday for the first two hours after
+    // every midnight, and this test flaked at exactly 00:0x for that reason.
     const now = new Date();
-    const at = new Date(now.getTime() - 26 * HOUR);
+    const at = new Date(now);
+    at.setDate(at.getDate() - 1);
+    at.setHours(12, 0, 0, 0);
     expect(rowTimestamp(at.toISOString(), now)).toBe('Yesterday');
   });
 

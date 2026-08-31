@@ -158,10 +158,11 @@ export default function JoinScreen() {
         // promised a second email nobody had asked about yet. These say the
         // thing somebody actually wants to know: nobody sees it, and — for a
         // business, whose whole point is being reachable — where the number
-        // customers will actually call goes instead.
+        // travelers will actually call goes instead. "Travelers", not
+        // "customers": one word for the people on the other side, everywhere.
         subtitle={
           forBusiness
-            ? 'This email is just for signing in. You will enter your contact information where customers can reach you when you build your listing.'
+            ? 'This email is just for signing in. You will enter your contact information where travelers can reach you when you build your listing.'
             : 'Your email is never shown to other users.'
         }
         continueLabel="Continue"

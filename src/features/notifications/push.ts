@@ -76,6 +76,21 @@ export async function pushPermissionGranted(): Promise<boolean> {
   }
 }
 
+export type PushPermission = 'granted' | 'denied' | 'undetermined';
+
+/**
+ * What iOS currently holds, as three states the settings row can render.
+ * Reads, never prompts. The AsyncStorage primer flag is NOT this: the flag
+ * records that we asked, and says nothing about the OS answer today.
+ */
+export async function pushPermissionState(): Promise<PushPermission> {
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status === 'granted') {
+    return 'granted';
+  }
+  return status === 'denied' ? 'denied' : 'undetermined';
+}
+
 /**
  * Keep an already-granted token fresh. Safe to call on every launch: it reads
  * the permission rather than requesting it, so it can never raise a dialog.

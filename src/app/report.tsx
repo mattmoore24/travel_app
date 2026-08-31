@@ -45,17 +45,21 @@ export default function ReportScreen() {
       // Somebody who has just reported a person is the likeliest person in
       // the app to want them gone, and "you can block them too" left them to
       // go and find out how.
-      Alert.alert('Report received', 'Thanks. A real person reads every report.', [
-        {
-          text: 'Block them too',
-          style: 'destructive',
-          onPress: () => {
-            block.mutate(params.userId);
-            router.back();
+      Alert.alert(
+        'Report received',
+        'Thanks. A real person reads every report, and they will not know it was you.',
+        [
+          {
+            text: 'Block them too',
+            style: 'destructive',
+            onPress: () => {
+              block.mutate(params.userId);
+              router.back();
+            },
           },
-        },
-        { text: 'Done', onPress: () => router.back() },
-      ]);
+          { text: 'Done', onPress: () => router.back() },
+        ]
+      );
     } catch {
       // Surfaced by the global mutation error alert.
     }
@@ -64,7 +68,10 @@ export default function ReportScreen() {
   return (
     <StepScreen
       title="Report someone"
-      subtitle="A real person reads every report."
+      // The same anonymity promise the lower-stakes business report already
+      // makes. Reporting a person is the report where being named back is the
+      // fear, and the form that omitted the promise was this one.
+      subtitle="A real person reads every report. They are never told who reported them."
       continueLabel="Send report"
       continueDisabled={reason == null}
       continueLoading={report.isPending}

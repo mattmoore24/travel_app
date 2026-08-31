@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, Space } from '@/constants/theme';
 import { useBusinessDetail, useMessageBusiness } from '@/features/business/hooks';
+import { waitNote } from '@/features/business/vocabulary';
 import { useDraftWarning } from '@/features/matching/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
@@ -28,10 +29,13 @@ export default function MessagePlaceScreen() {
   const theme = useTheme();
   const params = useLocalSearchParams<{ id?: string; businessId?: string; name?: string }>();
   const businessId = params.id ?? params.businessId ?? null;
-  // Only when the caller did not bring the name. It is the title of this
-  // screen, so it is the one thing that cannot be missing.
-  const { data: place } = useBusinessDetail(params.name ? null : businessId);
+  // Unconditional: the ordinary path arrives from the business page, so this
+  // is a cache read - and the detail carries the hours the wait note reads.
+  const { data: place } = useBusinessDetail(businessId);
   const name = params.name ?? place?.name ?? null;
+  // "Closed right now" only when the business's own hours say so, in the
+  // business's own time. Unknown hours say nothing at all.
+  const wait = place ? waitNote(place.hours, new Date(), place.lng) : null;
 
   const messagePlace = useMessageBusiness();
   const [message, setMessage] = useState('');
@@ -77,6 +81,11 @@ export default function MessagePlaceScreen() {
       continueLoading={messagePlace.isPending}
       onClose={() => router.back()}
       onContinue={submit}>
+      {wait ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {wait}
+        </ThemedText>
+      ) : null}
       <FormTextField
         label="Your message"
         multiline

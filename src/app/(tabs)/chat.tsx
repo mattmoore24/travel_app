@@ -331,7 +331,12 @@ function RoomDiscovery({
           <PlainRow
             key={room.chat_id}
             title={room.name}
-            detail={`${countOf(room.member_count, 'person', 'people')} in this chat`}
+            detail={
+              // Same words My business uses about the same empty room.
+              room.member_count > 0
+                ? `${countOf(room.member_count, 'person', 'people')} in this chat`
+                : 'Nobody in yet'
+            }
             glyph={{ ios: 'house.fill', android: 'home', web: 'home' }}
             last={i === rooms.length - 1}
             onPress={() => router.push(`/room/${room.chat_id}`)}
@@ -755,7 +760,7 @@ export default function ChatScreen() {
               // a one-to-one chat at all — the hint is the only place a
               // VoiceOver user can learn that from this screen.
               accessibilityLabel="New group"
-              accessibilityHint="One-to-one chats open when someone answers your hello"
+              accessibilityHint="One-to-one chats open when someone answers your first message"
               haptic="light"
               scaleTo={0.92}
               onPress={() => router.push('/new-group')}
@@ -886,7 +891,7 @@ export default function ChatScreen() {
           {requestsQuery.isError && !chatsQuery.isError && !isBusiness ? (
             <LoadError
               compact
-              what="the hellos waiting on you"
+              what="the first messages waiting on you"
               error={requestsQuery.error}
               onRetry={refresh}
             />

@@ -1,4 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
+import { useIsFocused } from 'expo-router';
+
+import { useRefetchOnRefocus } from '@/hooks/use-refetch-on-refocus';
 
 import { useAuthStore } from '@/features/auth/store';
 import { useIsBusiness } from '@/features/business/hooks';
@@ -60,7 +63,8 @@ export function useMapPins(cityId: number | null) {
   const isGuest = useIsGuest();
   const isBusiness = useIsBusiness();
   const anonymous = isGuest || isBusiness;
-  return useQuery({
+  const focused = useIsFocused();
+  const query = useQuery({
     // The DOOR, not the account kind, and a word rather than a boolean. Two
     // kinds of account now share the anonymous feed, so `isGuest` in the key
     // would have let a business's faceless rows be served to a traveler who
@@ -85,19 +89,23 @@ export function useMapPins(cityId: number | null) {
       })) as CityPinRow[];
     },
     enabled: isSupabaseConfigured && cityId != null,
-    // The map tab stays mounted for the whole foreground session, so without
-    // polling a pin that burned out at 22:00 was still drawn at 22:30 —
-    // tappable, with a card offering to message somebody about a plan that is
-    // over. useCityPins (the web list) already carried this; the native map,
-    // which is what anyone actually uses, did not.
+    // Poll only while the Map tab is the one being looked at. The tab stays
+    // mounted for the whole foreground session, so without polling a pin that
+    // burned out at 22:00 was still drawn at 22:30 — but an unconditional
+    // interval kept paying that request-a-minute from inside a chat too. The
+    // short the refocus hook refetches the moment the tab comes back, which is the
+    // only moment lingering could be seen.
     staleTime: 20_000,
-    refetchInterval: 60_000,
+    refetchInterval: focused ? 60_000 : false,
   });
+  useRefetchOnRefocus(focused, query);
+  return query;
 }
 
 export function useMapHeat(cityId: number | null, date: string | null) {
   const isGuest = useIsGuest();
-  return useQuery({
+  const focused = useIsFocused();
+  const query = useQuery({
     queryKey: ['map-heat', cityId, date, isGuest],
     queryFn: async () => {
       const rpc = isGuest ? 'public_heat_cells' : 'heat_cells';
@@ -111,11 +119,13 @@ export function useMapHeat(cityId: number | null, date: string | null) {
       return (data ?? []) as HeatCellRow[];
     },
     enabled: isSupabaseConfigured && cityId != null,
-    // Same reason as the pins it sits under: the heat has to cool as pins
-    // burn out, not at the next cold start.
+    // Same reason and same tab-scoping as the pins it sits under: the heat
+    // has to cool as pins burn out, but only while anyone is watching it.
     staleTime: 20_000,
-    refetchInterval: 60_000,
+    refetchInterval: focused ? 60_000 : false,
   });
+  useRefetchOnRefocus(focused, query);
+  return query;
 }
 
 /**

@@ -291,7 +291,7 @@ export default function PublicProfileScreen() {
               {connected && handlesQuery.isError ? (
                 <PrimaryButton
                   variant="ghost"
-                  label="Socials didn't load. Retry"
+                  label="Socials didn't load. Try again"
                   onPress={() => handlesQuery.refetch()}
                 />
               ) : null}
@@ -319,7 +319,7 @@ export default function PublicProfileScreen() {
             alreadySaidHi
               ? 'Message sent'
               : helloCapped
-                ? 'No hellos left today'
+                ? 'No first messages left today'
                 : `Say hi to ${name}`
           }
           disabled={alreadySaidHi || helloCapped}

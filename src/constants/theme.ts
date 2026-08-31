@@ -6,6 +6,7 @@
 import '@/global.css';
 
 import { Platform } from 'react-native';
+import { ReduceMotion } from 'react-native-reanimated';
 
 /**
  * "Nocturne" — a traveler's map at night.
@@ -219,14 +220,25 @@ export const Motion = {
  * without overshoot; `drop` lands with one crisp bounce; `pop` celebrates.
  */
 export const Springs = {
-  press: { damping: 30, stiffness: 500 },
-  release: { damping: 15, stiffness: 350 },
-  gentle: { damping: 22, stiffness: 220 },
-  bouncy: { damping: 12, stiffness: 200 },
-  sheet: { mass: 1, stiffness: 130, damping: 19 },
-  snap: { duration: 350, dampingRatio: 0.92, overshootClamping: true },
-  drop: { mass: 1, damping: 14, stiffness: 260 },
-  pop: { duration: 550, dampingRatio: 0.75 },
+  // `reduceMotion: ReduceMotion.System` on every preset: Reanimated then
+  // skips the travel and lands each spring at its end value when the OS
+  // Reduce Motion switch is on. Belt-and-braces (the library honours the
+  // flag for withSpring by default) and the one place all eight presets can
+  // promise it at once. It does NOT belong on `Motion` above - that is a
+  // duration map whose values are passed straight through as numbers.
+  press: { damping: 30, stiffness: 500, reduceMotion: ReduceMotion.System },
+  release: { damping: 15, stiffness: 350, reduceMotion: ReduceMotion.System },
+  gentle: { damping: 22, stiffness: 220, reduceMotion: ReduceMotion.System },
+  bouncy: { damping: 12, stiffness: 200, reduceMotion: ReduceMotion.System },
+  sheet: { mass: 1, stiffness: 130, damping: 19, reduceMotion: ReduceMotion.System },
+  snap: {
+    duration: 350,
+    dampingRatio: 0.92,
+    overshootClamping: true,
+    reduceMotion: ReduceMotion.System,
+  },
+  drop: { mass: 1, damping: 14, stiffness: 260, reduceMotion: ReduceMotion.System },
+  pop: { duration: 550, dampingRatio: 0.75, reduceMotion: ReduceMotion.System },
 } as const;
 
 /** Minimum tappable area (Apple HIG). */

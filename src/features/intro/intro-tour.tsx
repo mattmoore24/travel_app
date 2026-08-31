@@ -13,6 +13,7 @@ import Animated, {
   useAnimatedRef,
   useAnimatedScrollHandler,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withRepeat,
   withTiming,
@@ -150,15 +151,22 @@ function TourMark({
   const rise = height / 2 - topInset - EMBLEM_CENTER;
 
   // The glow breathes on the welcome page like a fire does, then hands its
-  // light off as the mark departs.
+  // light off as the mark departs. Unless Reduce Motion is on: this is the
+  // very first screen anyone sees, and one of the app's only two infinite
+  // loops, so it holds a steady mid glow instead.
   const breath = useSharedValue(0.55);
+  const reduceMotion = useReducedMotion();
   useEffect(() => {
+    if (reduceMotion) {
+      breath.value = 0.75;
+      return;
+    }
     breath.value = withRepeat(
       withTiming(0.95, { duration: 2600, easing: Easing.inOut(Easing.quad) }),
       -1,
       true
     );
-  }, [breath]);
+  }, [breath, reduceMotion]);
 
   const glowStyle = useAnimatedStyle(() => ({
     opacity:

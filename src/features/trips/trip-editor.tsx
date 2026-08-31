@@ -128,16 +128,43 @@ export function TripEditor({
   };
 
   return (
-    <Sheet onClose={onClose} avoidKeyboard>
+    // `scrolls`: the calendar and the suggestion rows give way and scroll,
+    // while the submit stays pinned in the footer below - a primary action
+    // inside a ScrollView is reachable only by scrolling (traps).
+    <Sheet
+      onClose={onClose}
+      avoidKeyboard
+      scrolls
+      footer={
+        <>
+          <PrimaryButton
+            label={trip ? 'Save changes' : 'Add trip'}
+            testID="save-trip"
+            disabled={!city || !end || rangeError != null || busy}
+            loading={busy}
+            onPress={save}
+          />
+          {trip ? (
+            <PrimaryButton variant="danger" label="Delete this trip" onPress={remove} />
+          ) : null}
+        </>
+      }>
       <ThemedText type="headline">{trip ? 'Edit this trip' : 'Add a trip'}</ThemedText>
 
       {city ? (
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel={`Change city, currently ${city.label}`}
-          haptic="light"
+          // "none", not "light": this row lives inside a sheet that scrolls
+          // when the form is tall, and PressableScale fires its haptic on
+          // touch-DOWN, so a flick over the row buzzed. The tap's feedback
+          // moves into onPress, where it means the action actually fired.
+          haptic="none"
           scaleTo={0.985}
-          onPress={() => setCity(null)}
+          onPress={() => {
+            haptics.light();
+            setCity(null);
+          }}
           style={[styles.row, { backgroundColor: theme.accentSoft }]}>
           <SymbolView
             name={{ ios: 'mappin.and.ellipse', android: 'place', web: 'place' }}
@@ -174,7 +201,8 @@ export function TripEditor({
             <PressableScale
               key={row.id}
               accessibilityRole="button"
-              haptic="selection"
+              // Same scroller rule; pickCity fires haptics.selection() itself.
+              haptic="none"
               scaleTo={0.985}
               onPress={() => pickCity(row)}
               style={[styles.row, { backgroundColor: theme.surfaceSunken }]}>
@@ -198,8 +226,10 @@ export function TripEditor({
         <ThemedText type="footnote" themeColor="textSecondary">
           {end ? 'Tap any day to start again.' : 'Now tap the day you leave.'}
         </ThemedText>
+        {/* No `scroll`: the Sheet's own scroller carries this now, and the
+            calendar's doc is explicit that two stacked vertical scrollers
+            freeze each other. Full height inside the outer scroll. */}
         <TripCalendar
-          scroll
           start={start}
           end={end}
           minISO={minISO}
@@ -215,15 +245,6 @@ export function TripEditor({
           {rangeError}
         </ThemedText>
       ) : null}
-
-      <PrimaryButton
-        label={trip ? 'Save changes' : 'Add trip'}
-        testID="save-trip"
-        disabled={!city || !end || rangeError != null || busy}
-        loading={busy}
-        onPress={save}
-      />
-      {trip ? <PrimaryButton variant="danger" label="Delete this trip" onPress={remove} /> : null}
     </Sheet>
   );
 }
@@ -246,10 +267,5 @@ const styles = StyleSheet.create({
   },
   dates: {
     gap: Space.xs,
-    // The sheet is capped to the screen and its buttons sit under this block,
-    // so this is the one part that gives way. Without it fourteen months of
-    // calendar laid out at full height and pushed "Add trip" clean off the
-    // bottom edge, with no scroller anywhere to reach it.
-    flexShrink: 1,
   },
 });

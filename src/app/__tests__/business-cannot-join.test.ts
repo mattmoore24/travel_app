@@ -37,7 +37,7 @@ const GATED: { what: string; file: string; guard: string; control: string }[] = 
     what: 'saying hi to a traveler from the map',
     file: 'src/features/pins/map-screen.tsx',
     guard: ') : viewerIsBusiness ? (',
-    control: "label={helloCapped ? 'No hellos left today' : 'Say hi'}",
+    control: "label={helloCapped ? 'No first messages left today' : 'Say hi'}",
   },
   {
     what: 'joining a room',

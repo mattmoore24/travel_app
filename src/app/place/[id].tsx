@@ -525,13 +525,13 @@ export default function PlaceScreen() {
                     hitSlop={12}
                     onPress={() =>
                       Alert.alert(
-                        'Report this place',
+                        'Report this business',
                         'Make an account first, so we can come back to you about it.'
                       )
                     }
                     style={styles.quietAction}>
                     <ThemedText type="footnote" themeColor="textSecondary">
-                      Report this place
+                      Report this business
                     </ThemedText>
                   </Pressable>
                 </View>
@@ -628,7 +628,7 @@ export default function PlaceScreen() {
                     }
                     style={styles.quietAction}>
                     <ThemedText type="footnote" themeColor="textSecondary">
-                      Report this place
+                      Report this business
                     </ThemedText>
                   </Pressable>
                 </View>

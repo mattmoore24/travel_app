@@ -72,8 +72,10 @@ describe('the chat list a business reads', () => {
     // the shared module now (features/chat/chat-row.tsx), so read it there.
     const rowModule = src('src/features/chat/chat-row.tsx');
     expect(rowModule).toContain('isRoom && chat.last_message_at == null');
-    // ...and no membership line either, rather than a "0 people" claim.
-    expect(rowModule).toContain('chat.member_count != null && chat.member_count > 0');
+    // ...and at zero members the row says what My business says about the
+    // same room, rather than a "0 people" claim. One first day, one voice.
+    expect(rowModule).toContain('chat.member_count > 0');
+    expect(rowModule).toContain(": 'Nobody in yet'");
   });
 });
 

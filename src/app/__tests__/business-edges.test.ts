@@ -84,6 +84,9 @@ describe('the listing steps read as a business', () => {
     // reads.
     expect(code).toContain('title="Show your business"');
     expect(code).not.toContain('Show the place');
+    // The traveler side of the same listing: the report action named the
+    // banned noun three times, and disagreed with the screen it opens.
+    expect(src('src/app/place/[id].tsx')).not.toContain('Report this place');
   });
 
   it('every docked button says what pressing it does', () => {
@@ -106,5 +109,24 @@ describe('the listing steps read as a business', () => {
     // Continue and "Skip for now" both went to step 11, with a ghost "Add a
     // link" between them.
     expect(code).not.toContain('onContinue={() => go(11)}');
+  });
+
+  it('greys the blocked Continue on Where is it, instead of a note that lies', () => {
+    const code = src(SIGNUP);
+    // A full-brightness Continue that silently swallows the tap is the one
+    // pattern every other step avoids. The grey button carries "not yet";
+    // the note is free to talk about the street and the marker.
+    expect(code).toContain('continueDisabled={city == null || coords == null}');
+    expect(code).not.toContain('Pick your city first.');
+  });
+
+  it('says the launch state instead of leaving four bare chips', () => {
+    const code = src(SIGNUP);
+    // Derived from the list, not hardcoded "four", so city five keeps it true.
+    expect(code).toContain('so far. Pick yours above and the map shows up.');
+    // And the door for city five, so a hostel in Porto becomes a signal
+    // instead of a silent quit.
+    expect(code).toContain('Somewhere else? Tell us where.');
+    expect(code).toContain("onPress={() => router.push('/contact')}");
   });
 });

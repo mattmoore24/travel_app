@@ -57,7 +57,9 @@ function AccountLoadError({
         <ThemedText themeColor="textSecondary" style={styles.errorText}>
           Check your connection and try again.
         </ThemedText>
-        <PrimaryButton label="Retry" loading={retrying} onPress={onRetry} />
+        {/* The same words as the body copy above it. "Retry" is a
+            developer's word, and two labels for one act is one too many. */}
+        <PrimaryButton label="Try again" loading={retrying} onPress={onRetry} />
         <PrimaryButton
           variant="ghost"
           label="Sign out"

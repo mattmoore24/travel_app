@@ -25,6 +25,7 @@ import {
 import { AudienceCard } from '@/features/profile/audience-picker';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { useOwnBusiness } from '@/features/business/hooks';
+import { NotificationsRow } from '@/features/notifications/notifications-row';
 import { GUEST_SWEEP_LINE } from '@/features/guest/copy';
 import { useIsGuest, useIsGuestAccount } from '@/features/guest/hooks';
 import { useMyTrips } from '@/features/trips/hooks';
@@ -152,6 +153,9 @@ function BusinessAccount({ name }: { name: string | null }) {
           label="Manage your business"
           onPress={() => router.navigate('/(tabs)/my-business')}
         />
+        {/* The undo for the one-time push primer - the same row travelers
+            get, because a reply to a room lands the same way. */}
+        <NotificationsRow />
         {/* The rules a business is actually held to, on the page rather than
             behind a button: it is four short lines, and the button it
             replaces opened the traveler rulebook, which talks about pins and
@@ -367,6 +371,9 @@ export default function ProfileScreen() {
                   onPress={() => router.push('/verification')}
                 />
               ) : null}
+              {/* The undo for the one-time push primer. Reads the OS, and
+                  renders nothing where push can never work. */}
+              <NotificationsRow />
               {/* No "Who you see, and who sees you" here any more. It is the
                   card at the top of this page: a setting this consequential
                   should not be the fourth ghost button under the fold. */}

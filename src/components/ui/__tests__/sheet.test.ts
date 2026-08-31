@@ -53,4 +53,24 @@ describe('Sheet presentation', () => {
     expect(SHEET_EXIT_MS).toBeGreaterThan(200);
     expect(SHEET_SETTLE_MS).toBeGreaterThan(SHEET_EXIT_MS);
   });
+
+  it('mounts its scroller only when a caller opts in with `scrolls`', () => {
+    // Opt-in is what keeps the blast radius small: pin-form-sheet and
+    // place-sheet own their scrollers already, and a second one around them
+    // would be the stacked-scroller freeze.
+    expect(code).toContain('scrolls = false');
+    const branch = code.indexOf('{scrolls ? (');
+    const scroller = code.indexOf('<ScrollView');
+    expect(branch).toBeGreaterThan(-1);
+    expect(scroller).toBeGreaterThan(branch);
+    // One scroller, inside that branch only.
+    expect(code.match(/<ScrollView/g)).toHaveLength(1);
+    // The pin-form recipe, kept: a tap on the next field is not eaten while
+    // one has focus, dragging dismisses the keyboard, and the scroller
+    // shrinks rather than overflowing the capped sheet.
+    const body = code.slice(branch, code.indexOf('</ScrollView>'));
+    expect(body).toContain('keyboardShouldPersistTaps="always"');
+    expect(body).toContain('keyboardDismissMode="interactive"');
+    expect(code).toMatch(/scroll: \{[^}]*flexShrink: 1/);
+  });
 });

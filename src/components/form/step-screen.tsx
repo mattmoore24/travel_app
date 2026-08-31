@@ -159,6 +159,13 @@ const styles = StyleSheet.create({
   content: {
     gap: Spacing.three,
     padding: Spacing.four,
+    // Tail room so the last field clears the docked footer, which is a real
+    // sibling of this scroller: without it the Age field drew as an open
+    // rectangle sliced by the scroll edge under the keyboard. NOT
+    // automaticallyAdjustKeyboardInsets - KeyboardFloor already pads the
+    // parent by the keyboard height, and the ScrollView's own inset would
+    // double-count it.
+    paddingBottom: Spacing.four + HitTarget,
   },
   footer: {
     padding: Spacing.four,

@@ -263,6 +263,28 @@ export function openLine(
 }
 
 /**
+ * One line for the composer: the answer may wait, because the door is shut.
+ *
+ * Inherits openLine's caution exactly. `isOpenNow` returning null means we
+ * genuinely do not know, and the note must say nothing at all rather than
+ * default to "closed" - otherwise every business with no hours filled in
+ * tells travelers it is shut. And it promises no time: the city clock is
+ * approximate (see cityNow), so "when they open" is the strongest claim the
+ * app can keep.
+ */
+export function waitNote(
+  hours: BusinessHourJson[],
+  clock: Date,
+  lng: number | null = null
+): string | null {
+  const open = isOpenNow(hours, cityNow(clock, lng));
+  if (open !== false) {
+    return null;
+  }
+  return 'Closed right now. They will probably answer when they open.';
+}
+
+/**
  * Where a new place sits in your own list, as a binary search over the
  * comparisons you have already answered.
  *

@@ -55,7 +55,7 @@ export default function MessageScreen() {
   return (
     <StepScreen
       title={`Message ${who}`}
-      subtitle="You are in a group together, so this goes straight through. No hello to be accepted."
+      subtitle="You are in a group together, so this goes straight through. Nothing to accept."
       continueLabel="Send"
       continueDisabled={message.trim().length === 0}
       continueLoading={openChat.isPending}

@@ -6,6 +6,7 @@ import {
   isOpenNow,
   openLine,
   startComparison,
+  waitNote,
 } from '@/features/business/vocabulary';
 import type { BusinessHourJson, MyRatingRow, RatingBucket } from '@/lib/database.types';
 
@@ -94,6 +95,36 @@ describe('openLine', () => {
 
   it('says nothing at all when the hours are unknown', () => {
     expect(openLine([], at(WED, 12))).toBeNull();
+  });
+});
+
+describe('waitNote', () => {
+  const nineToFive = [hour(WED, '09:00:00', '17:00:00')];
+
+  it('says nothing while the business is open', () => {
+    expect(waitNote(nineToFive, at(WED, 12))).toBeNull();
+  });
+
+  // Unknown is not closed. Defaulting to "closed" here would have every
+  // business with no hours filled in telling travelers it is shut.
+  it('says nothing when the hours are unknown', () => {
+    expect(waitNote([], at(WED, 12))).toBeNull();
+  });
+
+  it('sets the expectation when the business is closed', () => {
+    expect(waitNote(nineToFive, at(WED, 8))).toBe(
+      'Closed right now. They will probably answer when they open.'
+    );
+    expect(waitNote(nineToFive, at(THU, 12))).toBe(
+      'Closed right now. They will probably answer when they open.'
+    );
+  });
+
+  it('judges closed against the city clock, not the reader clock', () => {
+    // Weekday 3: a Bangkok bar, open 20:00-02:00. 15:00 UTC is 22:00-ish there.
+    const bangkokNight = [{ weekday: 3, opens: '20:00:00', closes: '02:00:00' }];
+    const duringOpening = new Date('2026-08-26T15:00:00Z');
+    expect(waitNote(bangkokNight, duringOpening, 100.5)).toBeNull();
   });
 });
 

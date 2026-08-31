@@ -86,6 +86,7 @@ import { crewLabel } from '@/features/pins/crew';
 import { FilterButton, MapFilterSheet } from '@/features/pins/map-filter-sheet';
 import { useMyChats, useSentRequests, useFirstMessageBudget } from '@/features/matching/hooks';
 import { useOwnUserId, useOwnVisibility, usePhotoUrl } from '@/features/profile/hooks';
+import { useAccessibilitySettings } from '@/hooks/use-accessibility-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
@@ -395,6 +396,10 @@ function PinCard({
                       text: 'Take it down',
                       style: 'destructive',
                       onPress: () => {
+                        // The haptic vocabulary's word for a destructive
+                        // confirmation. Feedback only: the §7-rule-3 expiry
+                        // path itself is untouched.
+                        haptics.warning();
                         deletePin.mutate(pin.id);
                         onClose();
                       },
@@ -469,7 +474,7 @@ function PinCard({
           ) : (
             <>
               <PrimaryButton
-                label={helloCapped ? 'No hellos left today' : 'Say hi'}
+                label={helloCapped ? 'No first messages left today' : 'Say hi'}
                 disabled={helloCapped}
                 onPress={() =>
                   leaveThen(() =>
@@ -720,6 +725,9 @@ export default function MapScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
+  // MapKit's camera is outside Reanimated's reach, so Reduce Motion is
+  // honoured by hand on the two long flights (city switch, address search).
+  const { reduceMotion } = useAccessibilitySettings();
   // Only so the points of interest can be turned off in a later commit than
   // the map type. See features/pins/basemap.
   const launchCitiesQuery = useLaunchCities();
@@ -924,6 +932,9 @@ export default function MapScreen() {
     setSelectedPlaceId(null);
     const city = launchCities.find((c) => c.city_id === id);
     if (city) {
+      // A city switch is the longest flight the camera makes, and Reanimated
+      // never sees it - so Reduce Motion is honoured here by hand: the same
+      // region, arrived at instantly.
       mapRef.current?.animateToRegion(
         {
           latitude: city.cities.lat,
@@ -931,7 +942,7 @@ export default function MapScreen() {
           latitudeDelta: 0.09,
           longitudeDelta: 0.09,
         },
-        350
+        reduceMotion ? 0 : 350
       );
     }
   };
@@ -983,6 +994,8 @@ export default function MapScreen() {
     setPlaceLabel(null);
     stopNamingPlaceCentre();
     setPlaceCoords({ lat: place.latitude, lng: place.longitude });
+    // Address search is the other cross-city flight Reduce Motion turns into
+    // a cut. The marker still lands on the spot, which is the information.
     mapRef.current?.animateToRegion(
       {
         latitude: place.latitude,
@@ -990,7 +1003,7 @@ export default function MapScreen() {
         latitudeDelta: 0.012,
         longitudeDelta: 0.012,
       },
-      Motion.slow
+      reduceMotion ? 0 : Motion.slow
     );
   };
 
@@ -1125,6 +1138,8 @@ export default function MapScreen() {
               category={pins[0].category}
               onPress={() => {
                 haptics.light();
+                // The same city-wide flight the chip triggers, so the same
+                // Reduce Motion gate.
                 mapRef.current?.animateToRegion(
                   {
                     latitude: activeCity.cities.lat,
@@ -1132,7 +1147,7 @@ export default function MapScreen() {
                     latitudeDelta: 0.09,
                     longitudeDelta: 0.09,
                   },
-                  350
+                  reduceMotion ? 0 : 350
                 );
               }}
             />
@@ -1758,7 +1773,10 @@ export default function MapScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`${pin.venue_name}, ${pin.display_name ?? 'a traveler'}`}
                 scaleTo={0.98}
-                haptic="soft"
+                // Inside the venue stack's ScrollView, which is capped at 260
+                // and genuinely scrolls - a touch-down haptic would buzz on
+                // every flick past a row.
+                haptic="none"
                 onPress={() => {
                   setVenueKey(null);
                   setSelectedPinId(pin.id);

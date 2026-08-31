@@ -425,13 +425,13 @@ const JOIN_MODES = [
   {
     open: true,
     label: 'Anyone can join',
-    detail: 'One tap and they are in a group chat with you. No hello to answer.',
+    detail: 'One tap and they are in a group chat with you. Nothing to accept.',
     glyph: { ios: 'person.3.fill', android: 'group', web: 'group' },
   },
   {
     open: false,
     label: 'Message me first',
-    detail: 'They send a hello and you decide, one person at a time.',
+    detail: 'They send a first message and you decide, one person at a time.',
     glyph: { ios: 'envelope.fill', android: 'mail', web: 'mail' },
   },
 ] as const;

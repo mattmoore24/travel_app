@@ -172,7 +172,10 @@ function GuestTravelers() {
               accessibilityRole="button"
               accessibilityLabel={`Say hi to ${featured.display_name ?? 'this traveler'}`}
               scaleTo={0.98}
-              haptic="soft"
+              // Inside a scroller: a touch-down haptic fires on a flick past
+              // the card, and scrolling must not buzz. PressableScale's own
+              // doc comment states the rule.
+              haptic="none"
               // Brings the gate to them rather than pushing the full profile.
               // The profile route needs an account (its data is not readable
               // signed-out, and widening that to anon would hand every bio in
@@ -481,7 +484,7 @@ function TravelerPage({
             : requested
               ? 'Message sent'
               : helloCapped
-                ? 'No hellos left today'
+                ? 'No first messages left today'
                 : 'Say hi'
         }
         disabled={!chatId && (requested || helloCapped)}

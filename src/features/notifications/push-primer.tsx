@@ -23,7 +23,7 @@ import { useTheme } from '@/hooks/use-theme';
 const COPY: Record<PrimerReason, { title: string; body: string }> = {
   'hello-sent': {
     title: 'Want to know when they answer?',
-    body: 'Replies, hellos, and anything about your account. Nothing else, ever.',
+    body: 'Replies, first messages, and anything about your account. Nothing else, ever.',
   },
   'pin-posted': {
     title: 'Want to know if somebody is in?',
@@ -88,7 +88,18 @@ export function PushPrimer() {
   const copy = COPY[reason];
 
   return (
-    <Sheet onClose={decline}>
+    // `scrolls` with both buttons in the footer: at the largest text sizes
+    // the question grew past the screen and pushed its own answers off the
+    // bottom, with no way to reach them.
+    <Sheet
+      onClose={decline}
+      scrolls
+      footer={
+        <View style={styles.footer}>
+          <PrimaryButton label="Notify me" loading={busy} onPress={accept} />
+          <PrimaryButton variant="ghost" label="Not now" disabled={busy} onPress={decline} />
+        </View>
+      }>
       <View style={styles.body}>
         <View style={[styles.glyph, { backgroundColor: theme.accentSoft }]}>
           <SymbolView
@@ -103,8 +114,6 @@ export function PushPrimer() {
         <ThemedText themeColor="textSecondary" style={styles.center}>
           {copy.body}
         </ThemedText>
-        <PrimaryButton label="Notify me" loading={busy} onPress={accept} />
-        <PrimaryButton variant="ghost" label="Not now" disabled={busy} onPress={decline} />
       </View>
     </Sheet>
   );
@@ -126,5 +135,8 @@ const styles = StyleSheet.create({
   },
   center: {
     textAlign: 'center',
+  },
+  footer: {
+    gap: Space.md,
   },
 });

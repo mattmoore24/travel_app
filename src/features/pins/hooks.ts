@@ -1,4 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useIsFocused } from 'expo-router';
+
+import { useRefetchOnRefocus } from '@/hooks/use-refetch-on-refocus';
 
 import {
   createPin,
@@ -26,25 +29,37 @@ export function useLaunchCities() {
 }
 
 export function useCityPins(cityId: number | null) {
-  return useQuery({
+  // Tab-scoped polling. NativeTabs keeps the Map tab mounted, so an
+  // unconditional interval kept firing while somebody read a chat — a request
+  // a minute, on roaming data, for a screen nobody was looking at. Coming
+  // back is refetched BY HAND below: re-arming refetchInterval never fires an
+  // immediate tick, and a kept-mounted tab emits nothing React Query listens
+  // to, so without it expired pins sat tappable for up to a minute after
+  // every tab return.
+  const focused = useIsFocused();
+  const query = useQuery({
     queryKey: ['city-pins', cityId],
     queryFn: () => fetchCityPins(cityId!),
     enabled: isSupabaseConfigured && cityId != null,
     staleTime: 20_000,
-    // The map tab stays mounted; without polling, expired pins would linger
-    // until an app background/foreground cycle.
-    refetchInterval: 60_000,
+    refetchInterval: focused ? 60_000 : false,
   });
+  useRefetchOnRefocus(focused, query);
+  return query;
 }
 
 export function useHeatCells(cityId: number | null, date: string | null) {
-  return useQuery({
+  // Same tab-scoping, and the same by-hand refocus refetch, as useCityPins.
+  const focused = useIsFocused();
+  const query = useQuery({
     queryKey: ['heat-cells', cityId, date],
     queryFn: () => fetchHeatCells(cityId!, date),
     enabled: isSupabaseConfigured && cityId != null,
     staleTime: 60_000,
-    refetchInterval: 120_000,
+    refetchInterval: focused ? 120_000 : false,
   });
+  useRefetchOnRefocus(focused, query);
+  return query;
 }
 
 export type NewPin = {

@@ -154,8 +154,13 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
   const preview =
     chat.last_message ??
     chat.first_message ??
-    (isRoom && chat.member_count != null && chat.member_count > 0
-      ? `${countOf(chat.member_count, 'person', 'people')} in this chat` +
+    (isRoom && chat.member_count != null
+      ? // Zero says what My business says about the same room. Two screens
+        // describing one first day in two voices ("0 people here" against
+        // "Nobody in yet") read as two facts.
+        (chat.member_count > 0
+          ? `${countOf(chat.member_count, 'person', 'people')} in this chat`
+          : 'Nobody in yet') +
         (leaveOn
           ? ` · you leave ${leaveOn.toLocaleDateString(undefined, {
               day: 'numeric',

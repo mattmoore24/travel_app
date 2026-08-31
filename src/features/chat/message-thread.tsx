@@ -1179,6 +1179,9 @@ export function MessageThread({
                 ? () => {
                     const id = menu.message.id;
                     setMenu(null);
+                    // The vocabulary's destructive word, at the destructive
+                    // act. Unsend completed with no feedback at all.
+                    haptics.warning();
                     onUnsend(id);
                   }
                 : undefined

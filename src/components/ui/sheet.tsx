@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
-import { Modal, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
@@ -124,12 +124,28 @@ export function Sheet({
   dimmed = true,
   avoidKeyboard = false,
   inline = false,
+  scrolls = false,
+  footer,
 }: {
   children: ReactNode;
   onClose: () => void;
   dimmed?: boolean;
   /** Lift the sheet above the keyboard — for sheets that contain inputs. */
   avoidKeyboard?: boolean;
+  /**
+   * Give the children a scroller of their own. The sheet caps its height at
+   * the screen, but flexShrink defaults to 0, so a sheet whose children do
+   * not shrink runs its overflow off the BOTTOM of the screen — and the drag
+   * gesture is down-only, so there is no way to pull it back. Opt-in rather
+   * than default: pin-form-sheet and place-sheet own their scrollers already
+   * and must not gain a second one.
+   */
+  scrolls?: boolean;
+  /**
+   * Rendered as a sibling BELOW the scroller, so a primary action is never
+   * reachable only by scrolling (the traps rule). Only read when `scrolls`.
+   */
+  footer?: ReactNode;
   /**
    * Render WITHOUT the Modal wrapper, so whatever is behind the sheet stays
    * live to touch.
@@ -267,7 +283,23 @@ export function Sheet({
             <View style={[styles.grabber, { backgroundColor: theme.hairline }]} />
           </View>
         </GestureDetector>
-        {children}
+        {scrolls ? (
+          <>
+            {/* Same recipe as pin-form-sheet's scroller: shrinks rather than
+                overflows, "always" so a tap on the next field is not eaten
+                while one has focus, and dragging dismisses the keyboard. */}
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="always"
+              keyboardDismissMode="interactive">
+              {children}
+            </ScrollView>
+            {footer}
+          </>
+        ) : (
+          children
+        )}
       </Animated.View>
       {/* A sheet presented through a Modal is hosted in its OWN window, so
           the bar the screen underneath mounted cannot be reached from a field
@@ -322,5 +354,14 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
     alignSelf: 'center',
+  },
+  scroll: {
+    // Shrinks rather than overflows: the sheet is capped to the screen and
+    // grows a keyboard-sized floor, so this is what gives way.
+    flexShrink: 1,
+  },
+  scrollContent: {
+    // The gap the sheet's own column would have put between these children.
+    gap: Space.md,
   },
 });

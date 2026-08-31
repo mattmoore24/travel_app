@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { Elevation, Radius } from '@/constants/theme';
+import { useAccessibilitySettings } from '@/hooks/use-accessibility-settings';
 import { useTheme } from '@/hooks/use-theme';
 
 type GlassSurfaceProps = {
@@ -36,9 +37,13 @@ export function GlassSurface({
   pointerEvents,
 }: GlassSurfaceProps) {
   const theme = useTheme();
+  const { reduceTransparency } = useAccessibilitySettings();
   const shape = [{ borderRadius: radius }, Elevation.floating, style];
 
-  if (isLiquidGlassAvailable()) {
+  // Two reasons to take the opaque branch: the OS cannot draw glass, or the
+  // person asked it not to. Reduce Transparency is exactly a request for the
+  // solid fallback DESIGN.md already promises every glass surface has.
+  if (isLiquidGlassAvailable() && !reduceTransparency) {
     return (
       <GlassView
         glassEffectStyle={variant}

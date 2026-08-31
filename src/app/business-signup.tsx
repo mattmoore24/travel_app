@@ -10,7 +10,7 @@ import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Radius, Space } from '@/constants/theme';
+import { HitTarget, Radius, Space } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store';
 import { replaceBusinessContacts, type ContactKind } from '@/features/business/api';
 import { BusinessAddressField, addressFrom } from '@/features/business/address-field';
@@ -58,6 +58,16 @@ import { haptics } from '@/lib/haptics';
  * starts at three. See docs/ONBOARDING.md §4.
  */
 const TOTAL_STEPS = 12;
+
+/**
+ * "four cities", spelled out the way a sentence says it. Digits past nine,
+ * by which point the sentence will have been rewritten anyway.
+ */
+function cityCountWord(count: number): string {
+  const words = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  const word = words[count] ?? String(count);
+  return count === 1 ? `${word} city` : `${word} cities`;
+}
 
 /**
  * A stable slug per 1-based step, for `business_step_completed` — the same
@@ -381,14 +391,17 @@ export default function BusinessSignupScreen() {
         total={TOTAL_STEPS}
         title="Where is it?"
         subtitle="Type your address, then check the marker is on your door."
+        // Greyed while the answer is missing, like every other blocked step.
+        // It rendered full accent blue and swallowed the tap silently; the
+        // note alone carried "pick your city", and only before a city was
+        // picked. The grey button now says "not yet" the whole way.
+        continueDisabled={city == null || coords == null}
         note={
-          city == null
-            ? 'Pick your city first.'
-            : addressFocused
-              ? 'Pick your street from the list.'
-              : coords == null
-                ? 'Pick your street above, or tap the map on your door.'
-                : null
+          addressFocused
+            ? 'Pick your street from the list.'
+            : city != null && coords == null
+              ? 'Pick your street above, or tap the map on your door.'
+              : null
         }
         onBack={() => go(3)}
         continueTestID="business-place-continue"
@@ -406,7 +419,7 @@ export default function BusinessSignupScreen() {
           launchCitiesQuery.isError ? (
             <PrimaryButton
               variant="ghost"
-              label="Try loading the cities again"
+              label="Try again"
               onPress={() => launchCitiesQuery.refetch()}
             />
           ) : undefined
@@ -430,6 +443,21 @@ export default function BusinessSignupScreen() {
                 setAddress('');
               }}
             />
+            {/* The door for city five. A hostel in Porto used to hit a wall
+                here, quit, and the app never learned it existed - exactly the
+                demand signal that picks the next launch city. /contact
+                carries it with zero schema. */}
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Somewhere else? Tell us where."
+              haptic="light"
+              scaleTo={0.98}
+              onPress={() => router.push('/contact')}
+              style={styles.elsewhere}>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                Somewhere else? Tell us where.
+              </ThemedText>
+            </PressableScale>
           </View>
         ) : null}
         {city ? (
@@ -491,9 +519,10 @@ export default function BusinessSignupScreen() {
             {launchCitiesQuery.isError
               ? 'The map could not load the cities. Check your connection and try again.'
               : launchCities.length > 0
-                ? // Nothing is loading here. The screen is waiting on a tap,
-                  // and it used to say "Getting the map ready" while doing it.
-                  'Pick your city above and the map will show up.'
+                ? // The launch state, said plainly, and derived from the list
+                  // so it stays true when city five lands. Nothing is loading
+                  // here: the screen is waiting on a tap.
+                  `We're in ${cityCountWord(launchCities.length)} so far. Pick yours above and the map shows up.`
                 : 'Getting the cities.'}
           </ThemedText>
         )}
@@ -1017,6 +1046,11 @@ const styles = StyleSheet.create({
   },
   block: {
     gap: Space.sm,
+  },
+  // A quiet full-height row: 44pt to tap, footnote-sized to read.
+  elsewhere: {
+    minHeight: HitTarget,
+    justifyContent: 'center',
   },
   confirmCard: {
     gap: Space.xs,

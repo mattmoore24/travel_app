@@ -67,7 +67,10 @@ export function LanguageField({
       return;
     }
     if (atMax) {
-      haptics.warning();
+      // A limit, not a destruction. `warning` is the destructive-confirmation
+      // word (unsend, leave, take a pin down), and refusing an eighth
+      // language is not that.
+      haptics.selection();
       return;
     }
     haptics.selection();

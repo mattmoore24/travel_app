@@ -30,6 +30,7 @@ import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { useLeaveRoom } from '@/features/rooms/hooks';
 import { InviteQr } from '@/features/groups/invite-qr';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
+import { haptics } from '@/lib/haptics';
 import { closeDayLabel, useHasGroupClosed } from '@/features/groups/closing';
 import { addDays, formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
@@ -250,6 +251,8 @@ export default function GroupScreen() {
           text: 'Leave',
           style: 'destructive',
           onPress: () => {
+            // Destructive confirmation gets the destructive haptic.
+            haptics.warning();
             leaveRoom.mutate(undefined, {
               // Back, not replace: this screen was pushed from the chat, which
               // was pushed from the list, and both of those are now about a

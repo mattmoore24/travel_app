@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useIsFocused } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -18,6 +18,7 @@ import {
   BottomTabInset,
   HitTarget,
   MaxContentWidth,
+  Motion,
   Radius,
   Space,
   tabDockBottom,
@@ -35,6 +36,10 @@ import { CATEGORY_ICON, CATEGORY_LABEL, TAG_LABEL, openLine } from '@/features/b
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { dayLabel } from '@/features/chat/separators';
 import { usePushPrimer } from '@/features/notifications/primer-store';
+import {
+  notificationValueLine,
+  useNotificationPermission,
+} from '@/features/notifications/notifications-row';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import type { BusinessPostJson, MyBusinessRow } from '@/lib/database.types';
@@ -225,17 +230,21 @@ function DetailRow({
   onPress?: () => void;
 }) {
   const theme = useTheme();
+  // Neither a section nor a handler: the row is information, and it renders
+  // inert - no scale, no haptic, no button role. A full press affordance
+  // that silently does nothing is the pattern this screen exists to remove.
+  const press =
+    onPress ??
+    (section ? () => router.push({ pathname: '/business-edit', params: { section } }) : undefined);
   return (
     <PressableScale
-      accessibilityRole="button"
-      accessibilityLabel={onPress ? label : `Edit ${label.toLowerCase()}`}
+      accessibilityRole={press ? 'button' : 'text'}
+      accessibilityLabel={onPress ? label : section ? `Edit ${label.toLowerCase()}` : label}
       accessibilityHint={value}
-      haptic="light"
-      scaleTo={0.98}
-      onPress={
-        onPress ??
-        (() => router.push({ pathname: '/business-edit', params: { section: section! } }))
-      }
+      haptic={press ? 'light' : 'none'}
+      scaleTo={press ? 0.98 : 1}
+      disabled={press == null}
+      onPress={press ?? (() => {})}
       style={[styles.row, { backgroundColor: theme.surface }]}>
       <SymbolView name={icon} size={16} tintColor={theme.textSecondary} />
       <View style={styles.rowText}>
@@ -282,6 +291,9 @@ export default function MyBusinessScreen() {
   const delivery = useBusinessCodeStatus(business?.state === 'unconfirmed').data;
   const codeRunOut = useCodeRunOut(delivery?.sent_at);
   const codeBounced = delivery?.failed === true;
+  // The live OS state for the Notifications row below. Same hook as the
+  // account pages, so the two renderings can never disagree.
+  const { state: pushState, enable: enablePush } = useNotificationPermission();
 
   // One reading of the clock per data change rather than one per render, so
   // the Hours row cannot flip from open to closed mid-scroll.
@@ -434,7 +446,7 @@ export default function MyBusinessScreen() {
                   source={{ uri: cover.data }}
                   style={StyleSheet.absoluteFill}
                   contentFit="cover"
-                  transition={180}
+                  transition={Motion.standard}
                 />
                 {/* This tab carries no navigation header, so the cover runs
                     under the status bar and the clock lands on whatever the
@@ -710,6 +722,31 @@ export default function MyBusinessScreen() {
                     value="Sign out, delete, how this works"
                     onPress={() => router.push('/profile-me')}
                   />
+                  {pushState != null ? (
+                    <DetailRow
+                      label="Notifications"
+                      icon={{
+                        ios: 'bell.badge',
+                        android: 'notifications',
+                        web: 'notifications',
+                      }}
+                      value={notificationValueLine(pushState)}
+                      // The same three-state action as the account pages:
+                      // never been asked goes straight to the OS dialog
+                      // (Settings has no Samewhere entry yet), a denial goes
+                      // to Settings, and On passes NO handler at all, so the
+                      // row renders inert instead of swallowing the tap.
+                      onPress={
+                        pushState === 'granted'
+                          ? undefined
+                          : pushState === 'undetermined'
+                            ? enablePush
+                            : () => {
+                                Linking.openSettings().catch(() => {});
+                              }
+                      }
+                    />
+                  ) : null}
                 </Section>
               </>
             )}

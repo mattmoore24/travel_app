@@ -1,6 +1,7 @@
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import Animated, {
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withRepeat,
   withTiming,
@@ -42,10 +43,17 @@ export function Skeleton({
 }) {
   const theme = useTheme();
   const pulse = useSharedValue(0.5);
+  // One of the app's only two infinite loops. With Reduce Motion on it holds
+  // still at its mid point instead of pulsing forever.
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reduceMotion) {
+      pulse.value = 0.75;
+      return;
+    }
     pulse.value = withRepeat(withTiming(1, { duration: 900 }), -1, true);
-  }, [pulse]);
+  }, [pulse, reduceMotion]);
 
   const animated = useAnimatedStyle(() => ({ opacity: pulse.value }));
 

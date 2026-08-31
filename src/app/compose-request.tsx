@@ -187,7 +187,7 @@ export default function ComposeRequestScreen() {
             That is your {budget.data.allowed} for today
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centred}>
-            More tomorrow. A few good hellos beat a pile of forgettable ones.
+            More tomorrow. A few good ones beat a pile of forgettable ones.
           </ThemedText>
         </View>
         <PrimaryButton label="Fair enough" onPress={() => router.back()} />
@@ -304,7 +304,8 @@ export default function ComposeRequestScreen() {
             their second of eight does not need to be told about it. */}
           {budget.data && budget.data.allowed - budget.data.used <= 3 ? (
             <ThemedText type="small" themeColor="textSecondary">
-              {countOf(Math.max(budget.data.allowed - budget.data.used, 0), 'hello')} left today
+              {countOf(Math.max(budget.data.allowed - budget.data.used, 0), 'first message')} left
+              today
             </ThemedText>
           ) : null}
         </View>
@@ -372,7 +373,7 @@ export default function ComposeRequestScreen() {
               That is your {capped} for today
             </ThemedText>
             <ThemedText themeColor="textSecondary" style={styles.centred}>
-              More tomorrow. A few good hellos beat a pile of forgettable ones. Yours is kept right
+              More tomorrow. A few good ones beat a pile of forgettable ones. Yours is kept right
               here.
             </ThemedText>
           </View>

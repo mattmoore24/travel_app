@@ -69,6 +69,11 @@ jest.mock('react-native-reanimated', () => {
     withSequence: (to) => to,
     interpolate: (value) => value,
     runOnJS: (fn) => fn,
+    // Reduce Motion: the enum theme.ts stamps on every Springs preset, and
+    // the hook the two infinite loops (skeleton, intro glow) gate on. The
+    // test that flips the hook to true supplies its own per-file mock.
+    ReduceMotion: { System: 'system', Always: 'always', Never: 'never' },
+    useReducedMotion: () => false,
   };
 });
 

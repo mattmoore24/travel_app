@@ -174,7 +174,7 @@ export default function BusinessStorefrontScreen() {
       continueLoading={submit.isPending}
       note={
         business == null && !settled
-          ? 'Getting your business.'
+          ? 'Finding your business.'
           : !settled && wideUri != null && closeUri == null
             ? 'Take the close one now, while you are still standing there.'
             : null
