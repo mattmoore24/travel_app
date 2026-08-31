@@ -235,6 +235,23 @@ try {
       !pinErr && (pins ?? []).every((x) => !('user_id' in x)),
       pinErr?.message
     );
+    // The curated-pin copy rule, proven on the LIVE rows a traveler reads:
+    // 20260830030000 rewrote the sixteen seeded notes and swept the
+    // already-seeded ones, and only this surface shows whether the sweep ran
+    // where it matters. Every visible text field rides in — the rule is "no
+    // em dash reaches a map", not "no em dash survives in one column".
+    const seededPins = (pins ?? []).filter((x) => x.seeded);
+    check(
+      'curated pins are live and no visible pin text holds an em dash',
+      seededPins.length > 0 &&
+        (pins ?? []).every(
+          (x) =>
+            !`${x.venue_name ?? ''}${x.note ?? ''}${x.seed_note ?? ''}${x.place_label ?? ''}`.includes(
+              '—'
+            )
+        ),
+      `${seededPins.length} seeded of ${(pins ?? []).length} pins`
+    );
   }
   const { data: guestProfiles } = await guest.from('profiles').select('*').limit(1);
   check('guest CANNOT read profiles table', (guestProfiles ?? []).length === 0);
