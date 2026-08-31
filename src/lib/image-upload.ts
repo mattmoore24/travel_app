@@ -84,9 +84,14 @@ export async function processAndUploadImage(bucket: string, userId: string, loca
   if (width == null || width > MAX_DIMENSION) {
     context.resize({ width: MAX_DIMENSION });
   }
-  const rendered = await within(20_000, 'preparing it', context.renderAsync());
+  // 45s, not the 20s these started at: e2e run 93 photographed a WORKING
+  // render being killed at 20s — a cold CI simulator takes 16-60s over what a
+  // phone does in 1-3s, and the bound exists to end hangs, not to race slow
+  // hardware. A budget this size still turns an infinite spinner into an
+  // error with a retry, which is its whole job.
+  const rendered = await within(45_000, 'preparing it', context.renderAsync());
   const result = await within(
-    20_000,
+    45_000,
     'preparing it',
     rendered.saveAsync({ compress: 0.8, format: SaveFormat.JPEG })
   );

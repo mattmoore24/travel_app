@@ -179,6 +179,22 @@ appId: com.mattmoore.samewhere
 - runFlow: ../subflows/pick-a-photo.yml
 - waitForAnimationToEnd:
     timeout: 4000
+# The pipeline's bounded stages end a stalled upload with "Could not save …
+# so try again" — and that alert covering the screen is what run 93's first
+# attempt died on: the gate text below it read as gone, the conditional
+# entered, and finish-photos was behind the alert. Dismiss and retry the way
+# a person would; the second render runs warm.
+- runFlow:
+    when:
+      visible: 'Could not save'
+    commands:
+      - tapOn: 'OK'
+      - tapOn:
+          text: 'Add your profile photo'
+          optional: true
+      - runFlow: ../subflows/pick-a-photo.yml
+      - waitForAnimationToEnd:
+          timeout: 4000
 - takeScreenshot: 55-signup-photo-added
 
 - runFlow:

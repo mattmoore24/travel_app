@@ -185,6 +185,22 @@ appId: com.mattmoore.samewhere
 - runFlow: ../subflows/pick-a-photo.yml
 - waitForAnimationToEnd:
     timeout: 3000
+# The app's own recovery, driven the way a person would: the bounded pipeline
+# turns a stalled stage into "Could not save … so try again", and run 93
+# photographed exactly that when a cold runner's image render outran its
+# budget. Trying again is the designed answer, and the second render runs
+# warm.
+- runFlow:
+    when:
+      visible: 'Could not save'
+    commands:
+      - tapOn: 'OK'
+      - tapOn:
+          text: 'Add your cover photo'
+          optional: true
+      - runFlow: ../subflows/pick-a-photo.yml
+      - waitForAnimationToEnd:
+          timeout: 3000
 - takeScreenshot: 49-business-photo-added
 # The photo has to COME BACK before Save: '1 of 10' is the grid's own
 # read-back of the row, not a local echo of the picker. That is exactly the
