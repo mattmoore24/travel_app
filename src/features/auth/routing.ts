@@ -17,7 +17,8 @@ import type { Session } from '@supabase/supabase-js';
 export function owesOnboarding(
   session: Session | null,
   onboardedAt: string | null | undefined,
-  isBusiness = false
+  isBusiness = false,
+  wantsBusiness = false
 ) {
   if (session == null) {
     // A visitor with no account browses the app. That is guest mode, and it
@@ -36,6 +37,20 @@ export function owesOnboarding(
     // be one. Without this branch the expression below would read that
     // permanent null as "unfinished" and hold every business in a traveler
     // onboarding flow it can never complete.
+    return false;
+  }
+  if (wantsBusiness) {
+    // The same trap a third time, and the only one where the account kind is
+    // still being decided. Somebody part way through listing a business is
+    // not a traveler who has not finished: register_business REFUSES an
+    // account that carries onboarding_completed_at, so walking them through
+    // traveler onboarding is walking them into a locked door.
+    //
+    // False, which mounts the tabs, and mounting the tabs is the point:
+    // steps 4 to 11 of the listing form had no exit at all, so it is the tabs
+    // that give somebody backing out of it somewhere to back out TO.
+    // Returning a third value and mounting business-signup as the stack would
+    // leave the back button with nowhere to go, which is the bug this closes.
     return false;
   }
   return onboardedAt == null;
@@ -71,6 +86,13 @@ export function rootIsReady(opts: {
    * the traveler tabs on every cold start.
    */
   businessSettled: boolean;
+  /**
+   * Whether "is this account part way through listing a business" has
+   * answered. Held for the same reason as the other three, and the cost of
+   * committing early is the highest of the four: a bar owner is dropped into
+   * traveler onboarding, whose last step the server refuses forever.
+   */
+  listingSettled: boolean;
 }) {
   if (!opts.initialized) {
     return false;
@@ -81,5 +103,5 @@ export function rootIsReady(opts: {
   if (opts.session.user.is_anonymous === true) {
     return true;
   }
-  return opts.profileSettled && opts.standingSettled && opts.businessSettled;
+  return opts.profileSettled && opts.standingSettled && opts.businessSettled && opts.listingSettled;
 }

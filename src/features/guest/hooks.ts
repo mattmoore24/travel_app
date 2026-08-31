@@ -4,7 +4,7 @@ import { useIsFocused } from 'expo-router';
 import { useRefetchOnRefocus } from '@/hooks/use-refetch-on-refocus';
 
 import { useAuthStore } from '@/features/auth/store';
-import { useIsBusiness } from '@/features/business/hooks';
+import { useIsBusiness, useListingIntent } from '@/features/business/hooks';
 import type {
   CityPinRow,
   FeaturedTravelerRow,
@@ -29,6 +29,19 @@ import { isSupabaseConfigured, supabase } from '@/lib/supabase';
  */
 export function useIsGuest() {
   return useAuthStore((s) => s.session == null || s.session.user.is_anonymous === true);
+}
+
+/**
+ * Part way through listing a business, from either half of the answer.
+ *
+ * The auth store's flag is right within one sitting; the column survives a
+ * cold start. Both, because the column is written a beat after the chooser
+ * and the store is empty after a relaunch.
+ */
+export function useWantsBusiness() {
+  const listingIntent = useAuthStore((s) => s.listingIntent);
+  const { data } = useListingIntent();
+  return listingIntent || data === true;
 }
 
 /**
@@ -58,11 +71,18 @@ export function useIsGuestAccount() {
  * offered to them and nobody consented to (§7 rule 8: a business never reads
  * a traveler discovery surface). Same door as a guest, for the same reason:
  * the rows have no identities in them at all.
+ *
+ * THREE kinds now, not two. An account part way through listing a business is
+ * about to be covered by that same rule, and mounting the tabs for it (which
+ * is what gives somebody backing out of the listing form somewhere to go) is
+ * what put it in front of this feed at all. There is no reason to hand it
+ * names while it waits.
  */
 export function useMapPins(cityId: number | null) {
   const isGuest = useIsGuest();
   const isBusiness = useIsBusiness();
-  const anonymous = isGuest || isBusiness;
+  const wantsBusiness = useWantsBusiness();
+  const anonymous = isGuest || isBusiness || wantsBusiness;
   const focused = useIsFocused();
   const query = useQuery({
     // The DOOR, not the account kind, and a word rather than a boolean. Two

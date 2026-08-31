@@ -38,6 +38,34 @@ export async function fetchOwnBusiness() {
   return ((data ?? []) as MyBusinessRow[])[0] ?? null;
 }
 
+/**
+ * Whether this account is part way through listing a business.
+ *
+ * A definer function rather than a column read: `wants_business` carries no
+ * grant at all, because profiles_select_visible lets any authenticated
+ * account read a visible traveler's row and a granted column would have told
+ * every reader who is in the middle of putting a bar on the map.
+ */
+export async function fetchListingIntent() {
+  const { data, error } = await supabase.rpc('listing_intent');
+  if (error) {
+    throw error;
+  }
+  return data === true;
+}
+
+/**
+ * Say it, or take it back. Scoped to auth.uid() server-side: there is no
+ * parameter for whose flag to set.
+ */
+export async function setListingIntent(wants: boolean) {
+  const { data, error } = await supabase.rpc('set_listing_intent', { p_wants: wants });
+  if (error) {
+    throw error;
+  }
+  return data === true;
+}
+
 export async function registerBusiness(input: {
   name: string;
   category: BusinessCategory;

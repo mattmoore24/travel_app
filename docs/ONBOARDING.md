@@ -220,6 +220,77 @@ once already (`support-mailer`'s backoff comment records it). Two things follow:
    RPC can tell the code screen "that address bounced" instead of leaving
    somebody staring at "Check your email".
 
+## 6a. Changing the address or the password afterwards
+
+Added 2026-08-31 (decision D38). Until then the only route to a password
+change was "Forgot your password?" on the **signed out** screen, so using it
+meant giving up the session first, and there was no route to an email change
+at all: losing an inbox was the same as losing the account.
+
+**D38 said hold the email half, and it shipped anyway. Here is why, so the
+decision list is not quietly rewritten.** D38 reads: "Ship the password half
+now (it needs no mail at all) and hold the email half until the sending domain
+lands." The condition it names has since been met — the sending domain is live
+and verified (`link.samewhere.io` through Resend), `SUPPORT_INBOX` and
+`SUPPORT_FROM` are set to `hello@samewhere.io`, and the deploy that wired them
+is green. The reset-password flow already depends on that same GoTrue mailer in
+production, so the email change is not a new dependency, only a second caller
+of one that is already carrying live traffic. The call to ship both halves was
+Claude's, not the founder's, on that reading of the condition; if the premise
+is wrong the remedy is to hide the email view, and the failure it would cause
+is the one section 6 already documents once — a confirmation link that never
+arrives, leaving somebody on "Check your inbox" for a change that cannot
+complete.
+
+`account-credentials` is one modal with four views, reachable from a
+row on the traveler profile and on the business account page. It is registered
+under `guard={signedIn}` rather than `signedIn && onboarded`, because a
+business account never satisfies `onboarded` by design and an owner needs this
+as much as a traveler does.
+
+- **Password.** `updateUser({ password })` does not check the old one, so
+  `changePassword` re-signs in with the session's own address first. That is a
+  real sign-in attempt, so a few wrong tries hit the rate limiter and the error
+  copy has to read as "wait", never as "wrong password". A success then calls
+  `signOut({ scope: 'others' })`, which is what makes the change a remedy after
+  a phone goes missing rather than a preference.
+- **Email.** `updateUser({ email })` starts a confirmation round trip and the
+  address does not move until the link is opened. Nothing writes the new
+  address anywhere in the meantime, including `last-email`.
+- **Which address is live when.** Whether a link also goes to the CURRENT
+  address is Supabase's "Secure email change" project setting, which no code in
+  this repo sets. The copy therefore says a second link _may_ arrive, and says
+  plainly that the old address keeps signing you in until the change finishes.
+  Asserting a project setting we do not control is the mistake
+  `reset-password-screen` already made once about other sessions.
+- **An Apple account** has no password of ours. The screen renders one sentence
+  saying so instead of a form that cannot succeed, read from
+  `session.user.app_metadata.provider`.
+
+## 6b. The second ask, after the funnel
+
+Added 2026-08-31. Steps 6 to 11 are six one-tap skips by design (section 2,
+rule 2), and that stays. What was missing was the second ask: nothing anywhere
+noticed that a profile had no prompt, no priorities and no bio, while the
+Travelers screen is built to show all three. Somebody who skipped everything
+ended with a photo and a name and was never told.
+
+`src/features/profile/completion.ts` is the one answer to "what is a complete
+profile": `profileGaps` returns the unanswered sections in order, trips first
+because the matching runs on them. Two surfaces spend it and neither decides
+for itself:
+
+- **`finish-card.tsx`**, at the top of the owner's own profile. Every row hands
+  over to the editor that already owns that section, which are the same routes
+  onboarding pushes to. It is dismissible for the session (in memory, back on
+  the next launch) and it draws nothing at all once the last gap closes.
+- **`profile-view.tsx`**, under the first prompt on somebody ELSE's page, when
+  the reader has none of their own. That is the moment a prompt argues for
+  itself. The trigger is there and the definition is in `completion.ts`.
+
+The photo and the name are deliberately never offered back: they are required
+steps with no skip, so an account that reached the app has them.
+
 ## 7. What this does not change
 
 - The §7 hard rules, all of them.

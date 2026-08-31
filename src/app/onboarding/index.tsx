@@ -43,6 +43,7 @@ import { MAX_PRIORITIES } from '@/features/profile/priorities';
 import { useMyTrips } from '@/features/trips/hooks';
 import { formatDateRange } from '@/features/trips/dates';
 import { StepShell } from '@/features/signup/step-shell';
+import { resumeStep } from '@/features/signup/resume';
 import { SIGNUP_TOTAL_STEPS, signupStepName } from '@/features/signup/steps';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
@@ -67,7 +68,20 @@ const GENDER_OPTIONS: { value: Gender; label: string }[] = [
 ];
 
 export default function OnboardingScreen() {
-  const { data: profile } = useOwnProfile();
+  const profileQuery = useOwnProfile();
+  const profile = profileQuery.data;
+  // The four queries the resumed step number is derived from. They are read
+  // HERE, one level above the steps, because ProfileSteps seeds its step from
+  // them in a useState initialiser: a query that lands after that first render
+  // is a step number that changes under the person's finger. Same hold
+  // rootIsReady already takes for profile, standing and business, and the
+  // queries are the very ones ProfileSteps goes on to use, so react-query
+  // serves both reads from one fetch.
+  const userId = useOwnUserId();
+  const photosQuery = useOwnPhotos();
+  const promptsQuery = useProfilePrompts(userId);
+  const prioritiesQuery = useProfilePriorities(userId);
+  const tripsQuery = useMyTrips();
   // Somebody who signed up through "Run a business? Put it on the map" belongs
   // in the listing form, and the replace that was supposed to take them there
   // is dispatched while the root's readiness hold has the navigator unmounted,
@@ -80,9 +94,19 @@ export default function OnboardingScreen() {
   if (listingIntent) {
     return <Redirect href="/business-signup" />;
   }
-  if (!profile) {
+  // An error counts as settled, exactly as it does in rootIsReady: a fetch
+  // that failed is a reason to open at step 3, never a reason to hold a
+  // brand-new account on a blank screen forever.
+  const settled = [photosQuery, promptsQuery, prioritiesQuery, tripsQuery].every(
+    (query) => query.isSuccess || query.isError
+  );
+  if (!profile || !settled) {
     return null;
   }
+  // ProfileSteps reads the same four queries itself, for the live values it
+  // renders. It gets them from the cache on its very first render because of
+  // the hold above, which is the whole point: the step it seeds from them is
+  // decided once and never moves.
   return <ProfileSteps profile={profile} />;
 }
 
@@ -114,7 +138,16 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
     endDate: trip.end_date,
   }));
 
-  const [step, setStep] = useState(3);
+  // Not `useState(3)`. Every field on every screen is prefilled from the saved
+  // profile and saveAndGo writes on the way past each step, so nothing was
+  // ever lost by quitting — but the position was thrown away, and somebody who
+  // stopped at the photo step came back to "Who are you?" and had to re-confirm
+  // four screens that each showed their own answer already in the box. An
+  // initialiser, so it is decided once from data the parent has already
+  // waited for.
+  const [step, setStep] = useState(() =>
+    resumeStep({ profile, hasProfilePhoto, prompts, priorities, trips })
+  );
   const [name, setName] = useState(profile.display_name ?? '');
   const [age, setAge] = useState(profile.age != null ? String(profile.age) : '');
   const [gender, setGender] = useState<Gender>(profile.gender);

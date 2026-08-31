@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 
 import { useAuthStore } from '@/features/auth/store';
 import {
@@ -9,6 +10,8 @@ import {
   fetchBusinessDetail,
   fetchCityBusinesses,
   fetchLatestStorefrontCheck,
+  fetchListingIntent,
+  setListingIntent,
   fetchMyRatings,
   fetchOwnBusiness,
   fetchRatingSummary,
@@ -46,6 +49,77 @@ export function useOwnBusiness() {
 }
 
 /**
+ * Whether this account is part way through listing a business, from the
+ * database rather than from memory.
+ *
+ * The in-memory flag in the auth store is still the fast path within one
+ * sitting; this is what survives a cold start. Steps 4 to 11 of the listing
+ * form had no exit at all, so the real abandonment was killing the app, and
+ * the flag went with it: the account came back reading as a traveler who had
+ * not finished, and the bar owner was asked for their first name in the one
+ * flow a business must never complete.
+ *
+ * Same shape and same guard as useOwnBusiness above, because the router asks
+ * both before it decides which stack to mount.
+ */
+export function useListingIntent() {
+  const userId = useAuthStore((s) => s.session?.user.id ?? null);
+  const anonymous = useAuthStore((s) => s.session?.user.is_anonymous === true);
+  return useQuery({
+    queryKey: ['listing-intent', userId],
+    queryFn: fetchListingIntent,
+    enabled: isSupabaseConfigured && userId != null && !anonymous,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Write the listing intent AND repair the cache that gates on it.
+ *
+ * The bare api call is not enough anywhere, and the failure is invisible in
+ * testing. useListingIntent is enabled the instant a new session lands —
+ * which is inside the awaited signUpWithEmail — so the read races the write,
+ * frequently answers against a pre-write snapshot, and then caches `false`
+ * for five minutes with nothing to invalidate it. The router reads that
+ * false, decides the account is an unfinished traveler, and filters `(tabs)`
+ * out of the navigator; the listing form's own "Finish this later" then
+ * replaces to a route that is not mounted and silently does nothing, which
+ * is the dead-button trap the traps skill names. Seeding the cache from the
+ * write is what closes it: the write is the newer truth, so it does not need
+ * to be re-read to be believed.
+ */
+export function useRecordListingIntent() {
+  const queryClient = useQueryClient();
+  return useCallback(
+    async (wants: boolean) => {
+      await setListingIntent(wants);
+      const userId = useAuthStore.getState().session?.user.id ?? null;
+      queryClient.setQueryData(['listing-intent', userId], wants);
+    },
+    [queryClient]
+  );
+}
+
+/**
+ * Put the listing intent down for good.
+ *
+ * The flag is otherwise one-way: it keeps the tabs mounted, traveler
+ * onboarding is never asked for again, and the profile keeps offering a form
+ * the person has decided against. Invalidates its own query so the row
+ * disappears without a relaunch.
+ */
+export function useDropListingIntent() {
+  const queryClient = useQueryClient();
+  const userId = useAuthStore((s) => s.session?.user.id ?? null);
+  return useMutation({
+    mutationFn: () => setListingIntent(false),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['listing-intent', userId] });
+    },
+  });
+}
+
+/**
  * Whether this account runs a business.
  *
  * One name for the question every surface was asking as
@@ -72,6 +146,17 @@ export function useRegisterBusiness() {
       // with it. Anything less than a refetch leaves a fresh business sitting
       // in the traveler tabs.
       queryClient.invalidateQueries({ queryKey: ['my-business', userId] });
+      // The listing is no longer an INTENT, so the flag comes down. Without
+      // this nothing ever lowers it for a business that succeeded: the
+      // profile row offering to drop it renders only in the traveler branch,
+      // which a registered business never reaches. The column would come to
+      // mean "has ever started a listing" instead of what its own comment
+      // and its pgTAP assertion say it means. Best effort and not awaited:
+      // isBusiness already outranks it everywhere it is read, so a failed
+      // write costs nothing today and self-corrects on the next attempt.
+      void setListingIntent(false)
+        .then(() => queryClient.setQueryData(['listing-intent', userId], false))
+        .catch(() => {});
     },
   });
 }

@@ -74,6 +74,40 @@ appId: com.mattmoore.samewhere
 - pressKey: Enter
 - tapOn: 'Cafe'
 - takeScreenshot: 41-business-name
+
+# THE WAY OUT, before going any further.
+#
+# Steps 4 to 11 of this form had no exit at all, and step 3's evaluated to
+# undefined whenever canGoBack was false - which is the normal case, because
+# this screen is reached by a replace. So abandoning a half-finished listing
+# meant killing the app, and killing the app lost the in-memory flag: the
+# account came back reading as a traveler who had not finished, and the owner
+# was asked for their first name in the one flow a business must never finish.
+# The map is what the exit lands on, and "Drop a pin" is the proof it is the
+# real tabs rather than onboarding.
+- tapOn: 'Finish this later'
+- extendedWaitUntil:
+    visible: 'Drop a pin'
+    timeout: 20000
+- takeScreenshot: 40a-business-exit-lands-on-the-map
+# ...and back in, through the row the profile now offers instead of telling a
+# half-listed account to sign out.
+- tapOn: 'Your profile'
+- scrollUntilVisible:
+    element:
+      text: 'Finish listing your business'
+    direction: DOWN
+    timeout: 12000
+- takeScreenshot: 40b-business-resume-row
+- tapOn: 'Finish listing your business'
+- extendedWaitUntil:
+    visible: "What's your business called?"
+    timeout: 20000
+- tapOn:
+    id: 'business-name-input'
+- inputText: 'Maestro Cafe'
+- pressKey: Enter
+- tapOn: 'Cafe'
 - tapOn:
     id: 'business-name-continue'
 

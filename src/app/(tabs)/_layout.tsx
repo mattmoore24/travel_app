@@ -117,9 +117,45 @@ function PendingIntentHandoff() {
     if (intent.kind !== 'traveler') {
       return;
     }
+    const { userId } = intent;
     intentHandled();
     router.navigate('/(tabs)/travelers');
+    // The whole promise of the gate was "Make a profile to say hi to Dev", so
+    // landing on the tab is not spending the intent — for a brand-new account
+    // with no trips the tab early-returns its empty state and Dev is nowhere.
+    // The recorded userId is the person they came back for. A push rather
+    // than a replace, and a plain screen rather than a modal, so Back lands
+    // on Travelers instead of leaving the tabs.
+    if (userId != null) {
+      router.push(`/profile/${userId}`);
+    }
   }, [isGuest, intent, listingIntent, viewerIsBusiness, intentHandled]);
+
+  return null;
+}
+
+/**
+ * Opens the sign-in door for somebody who took it from the forced-sign-out
+ * notice.
+ *
+ * That notice is rendered INSTEAD OF the stack (see app/_layout), so there is
+ * no navigator to push onto while it is up, and clearing it remounts the
+ * stack at its anchor. Same shape as the invite above, and for the same
+ * documented reason: park the destination, spend it at the first moment there
+ * is a mounted stack. Cleared BEFORE the push, so backing out of sign-in does
+ * not put it straight back on.
+ */
+function SignInHandoff() {
+  const wanted = useAuthStore((s) => s.pendingSignIn);
+  const signInHandled = useAuthStore((s) => s.signInHandled);
+
+  useEffect(() => {
+    if (!wanted) {
+      return;
+    }
+    signInHandled();
+    router.push('/email');
+  }, [wanted, signInHandled]);
 
   return null;
 }
@@ -150,8 +186,18 @@ export default function TabsLayout() {
           nothing until something asks it to. */}
       <PushPrimer />
       <BusinessLanding />
-      <PendingInviteHandoff />
+      {/* ORDER IS LOAD-BEARING, and it is the arbitration between these two.
+          A guest can hold an invite AND an intent at once (open a link, then
+          take the Travelers gate), and both of these fire in the same commit
+          on a freshly mounted stack. React runs sibling effects in order, so
+          the intent goes first and spends itself selecting a TAB, and the
+          invite then pushes its screen on top of it. The other way round the
+          push landed first and the tab navigate popped it, which is two
+          navigations racing to the top of one stack - the coin toss
+          PendingInviteHandoff's own comment describes. */}
       <PendingIntentHandoff />
+      <PendingInviteHandoff />
+      <SignInHandoff />
       <NotificationRouting />
     </>
   );

@@ -18,6 +18,7 @@ import { PlaceGlyph } from '@/features/business/business-marker';
 import {
   useBusinessDetail,
   useOwnBusiness,
+  useRecordListingIntent,
   useRegisterBusiness,
   useRequestBusinessEmailCode,
   useUpdateBusinessLocation,
@@ -140,9 +141,17 @@ export default function BusinessSignupScreen() {
   // out of this form would land in onboarding and be forwarded straight back,
   // which is a trap rather than a rescue. See features/auth/store.
   const listingDone = useAuthStore((s) => s.listingDone);
+  const recordListingIntent = useRecordListingIntent();
   useEffect(() => {
     listingDone();
-  }, [listingDone]);
+    // Being on this screen IS the listing intent, so this is the one place
+    // that can record it for every route in: the password signup, the Apple
+    // one-tap that never reaches submitPassword, and a relaunch straight
+    // back into the form. Best effort, because the in-memory flag is already
+    // holding the person here and a failed write must not block the listing;
+    // it is retried on every mount of this screen, which is every step.
+    void recordListingIntent(true).catch(() => {});
+  }, [listingDone, recordListingIntent]);
 
   const launchCitiesQuery = useLaunchCities();
   const launchCities = launchCitiesQuery.data ?? [];
@@ -196,6 +205,29 @@ export default function BusinessSignupScreen() {
   // forward move is a completion — onBack routes through here too. Step 12's
   // own exit is sendCode, whose success is business_email_confirmed on the
   // code screen.
+  /**
+   * The way out, on every step of the form.
+   *
+   * Steps 4 to 11 had no exit at all and step 3's evaluated to undefined
+   * whenever canGoBack was false, which is the NORMAL case here: this screen
+   * is reached by a replace. So the only way to abandon a half-finished
+   * listing was to kill the app, and killing the app was what lost the
+   * in-memory flag and dropped a bar owner into traveler onboarding.
+   *
+   * A replace to the tabs rather than a guarded back, deliberately: there is
+   * usually nothing behind this screen, and the tabs are the one destination
+   * that always exists. That is why this file is exempt from the
+   * canGoBack rule the other replace-to-tabs screens follow; see
+   * app/__tests__/business-exits.test.ts, which writes the reason down.
+   */
+  const leaveFooter = (
+    <PrimaryButton
+      variant="ghost"
+      label="Finish this later"
+      onPress={() => router.replace('/(tabs)')}
+    />
+  );
+
   const go = (next: number) => {
     haptics.light();
     setTouched(false);
@@ -351,6 +383,7 @@ export default function BusinessSignupScreen() {
       <StepShell
         step={3}
         total={TOTAL_STEPS}
+        footer={leaveFooter}
         title="What's your business called?"
         subtitle="The name over the door, and what kind of business it is."
         note={category == null ? 'Pick what kind of business it is.' : null}
@@ -416,13 +449,16 @@ export default function BusinessSignupScreen() {
           go(5);
         }}
         footer={
-          launchCitiesQuery.isError ? (
-            <PrimaryButton
-              variant="ghost"
-              label="Try again"
-              onPress={() => launchCitiesQuery.refetch()}
-            />
-          ) : undefined
+          <>
+            {launchCitiesQuery.isError ? (
+              <PrimaryButton
+                variant="ghost"
+                label="Try again"
+                onPress={() => launchCitiesQuery.refetch()}
+              />
+            ) : null}
+            {leaveFooter}
+          </>
         }>
         {launchCities.length > 0 && !addressFocused ? (
           <View style={styles.block}>
@@ -535,6 +571,7 @@ export default function BusinessSignupScreen() {
       <StepShell
         step={5}
         total={TOTAL_STEPS}
+        footer={leaveFooter}
         title="Is this right?"
         subtitle="This is what a traveler sees when they tap you on the map."
         continueLabel="Yes, that's us"
@@ -583,6 +620,7 @@ export default function BusinessSignupScreen() {
       <StepShell
         step={6}
         total={TOTAL_STEPS}
+        footer={leaveFooter}
         title="How do people reach you?"
         subtitle="The email is the one we need. The rest is up to you."
         continueTestID="business-contact-continue"
@@ -686,6 +724,7 @@ export default function BusinessSignupScreen() {
       <StepShell
         step={7}
         total={TOTAL_STEPS}
+        footer={leaveFooter}
         title="Show your business"
         subtitle="Photos of the business, not of a person. The first one is your cover, and it is the thing travelers see on the map."
         continueLabel={photoCount > 0 ? 'Continue' : 'Add photos'}
@@ -720,6 +759,7 @@ export default function BusinessSignupScreen() {
       <StepShell
         step={8}
         total={TOTAL_STEPS}
+        footer={leaveFooter}
         title="What is it like?"
         subtitle="A couple of lines a traveler would actually want to read. Not a menu, not an advert."
         continueTestID="business-description-continue"
@@ -762,6 +802,7 @@ export default function BusinessSignupScreen() {
       <StepShell
         step={9}
         total={TOTAL_STEPS}
+        footer={leaveFooter}
         title="When are you open?"
         subtitle="Past midnight is fine. 20:00 to 2:00 reads as one night."
         continueTestID="business-hours-continue"
@@ -800,6 +841,7 @@ export default function BusinessSignupScreen() {
       <StepShell
         step={10}
         total={TOTAL_STEPS}
+        footer={leaveFooter}
         title="Anywhere else to send people?"
         subtitle="A menu, a booking page, your Instagram. One list for links, socials and contact."
         continueTestID="business-links-continue"
@@ -833,6 +875,7 @@ export default function BusinessSignupScreen() {
       <StepShell
         step={11}
         total={TOTAL_STEPS}
+        footer={leaveFooter}
         title="Here it is"
         subtitle="Exactly what a traveler sees when they tap you. Step back to change anything."
         continueLabel="Looks right"

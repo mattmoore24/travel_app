@@ -98,6 +98,19 @@ describe('every origin writes, every replay clears first', () => {
     expect(navigated).toBeGreaterThan(handled);
   });
 
+  it('the intent is spent before the invite, so two navigations cannot race', () => {
+    // A guest can hold both: open an invite link, then take the Travelers
+    // gate, then sign up. Both handoffs fire in the same commit on a freshly
+    // mounted stack, and React runs sibling effects in order. The intent goes
+    // first because it only selects a TAB; the invite then pushes on top of
+    // it. Reversed, the push landed first and the tab navigate popped it.
+    const layout = src('src/app/(tabs)/_layout.tsx');
+    const intent = layout.indexOf('<PendingIntentHandoff />');
+    const invite = layout.indexOf('<PendingInviteHandoff />');
+    expect(intent).toBeGreaterThan(-1);
+    expect(invite).toBeGreaterThan(intent);
+  });
+
   it('a replayed pin that has expired degrades silently to the city', () => {
     const map = src('src/features/pins/map-screen.tsx');
     // The pin half waits for the rows, consumes itself either way, and shows

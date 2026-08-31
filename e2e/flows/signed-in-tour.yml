@@ -372,6 +372,18 @@ appId: com.mattmoore.samewhere
     visible: 'Maestro Test.*'
     timeout: 15000
 - takeScreenshot: 18-profile-me
+# THE SECOND ASK, when this account has anything left to answer.
+#
+# Steps 6 to 11 of signup are one-tap skips, and nothing used to notice
+# afterwards. Conditional on purpose: the card draws nothing at all on a
+# complete profile, and that empty case is the one the jest table pins. So
+# this photographs it when it is there and says nothing when it is not,
+# rather than asserting a state the account may legitimately not be in.
+- runFlow:
+    when:
+      visible: 'Finish your profile'
+    commands:
+      - takeScreenshot: 18a-finish-your-profile
 
 # WHO YOU SEE, AND WHO SEES YOU
 #
@@ -432,6 +444,29 @@ appId: com.mattmoore.samewhere
     timeout: 15000
 - takeScreenshot: 19c-privacy
 - tapOn: 'Done'
+
+# EMAIL AND PASSWORD - the two changes that used to need a signed-OUT screen.
+#
+# Nothing is submitted: a live backend would really change the password, and a
+# screenshot is what this step is for. The account this suite signs in as is an
+# email account, so the two password fields are the ones that must be on
+# screen; an Apple account draws a sentence in their place instead.
+- scrollUntilVisible:
+    element:
+      text: 'Email and password'
+    direction: DOWN
+    timeout: 12000
+- tapOn: 'Email and password'
+- extendedWaitUntil:
+    visible: 'Current password'
+    timeout: 15000
+- takeScreenshot: 19d-email-and-password
+- tapOn: 'Change your email'
+- extendedWaitUntil:
+    visible: 'New email'
+    timeout: 15000
+- takeScreenshot: 19e-change-your-email
+- tapOn: 'Close'
 
 # HOUSE RULES AND THE CONTACT FORM
 #
@@ -571,6 +606,31 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2000
 - takeScreenshot: 26-reacted
+# ANSWERING ONE MESSAGE RATHER THAN THE ROOM.
+#
+# In a group of six discussing three plans for tonight, "I'm in" carries no
+# information on its own, and the app's own five-minute grouping window welds
+# it to whatever came before it. Reply leads the card, ahead of Pin, so this
+# also photographs the order.
+#
+# The keyboard is up when the press lands, deliberately: that is the case that
+# was broken for a real finger (run 34), and a sacrificial tap here would hide
+# it again.
+- longPressOn: 'First one in'
+- extendedWaitUntil:
+    visible: 'Reply'
+    timeout: 10000
+- tapOn: 'Reply'
+- tapOn:
+    id: 'room-composer'
+- inputText: 'Second one in'
+# The composer is multiline, so Return would add a line rather than send.
+- tapOn: 'Send'
+- extendedWaitUntil:
+    visible: 'Second one in'
+    timeout: 15000
+# The evidence is the picture: the quoted line above the new bubble.
+- takeScreenshot: 26b-reply
 # The group's own page: who is in it, who may post, and the invite link.
 - tapOn: 'Group details'
 - extendedWaitUntil:
@@ -594,6 +654,17 @@ appId: com.mattmoore.samewhere
 # control exists and is the default.
 - scroll
 - takeScreenshot: 27-group-settings
+# A room that has gone bad had no exit that told anybody: the whole reporting
+# path was per-person, and picking one person to blame for a group is a guess.
+# Asserted as a DOOR rather than walked through: /report is a pushed screen and
+# Maestro's `back` on iOS does not reliably pop one here (runs 28, 46 and 47),
+# so opening it would cost this flow a relaunch to get back to the group.
+- scrollUntilVisible:
+    element:
+      text: 'Report this group'
+    direction: DOWN
+    timeout: 10000
+- takeScreenshot: 27c-group-report-and-leave
 
 # ADDING SOMEBODY WITHOUT LEAVING THE APP, and a door out of a group.
 #

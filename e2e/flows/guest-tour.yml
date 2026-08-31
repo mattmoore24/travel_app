@@ -1,10 +1,10 @@
 # The guest ladder, walked by a robot: cold start with no account must land
 # on the tabs, and each tab must render something real from the live backend.
-# The first-run tour is part of the ladder now — this flow walks all five
-# pages (welcome, the three tabs, and the safety promise that carries the
-# choice) and dismisses through the real "Just looking for now" button, so
-# the welcome scene and the transitions are in the screenshot record. (The
-# signed-in flow still covers the Skip path.)
+# The first-run tour is part of the ladder now — this flow walks all SIX
+# pages (welcome, the three tabs, the safety promise, and the account choice
+# on a page of its own) and dismisses through the real "Just looking for now"
+# button, so the welcome scene and the transitions are in the screenshot
+# record. (The signed-in flow still covers the Skip path.)
 appId: com.mattmoore.samewhere
 ---
 # State is reset by the workflow before this flow runs, not by Maestro's
@@ -46,22 +46,35 @@ appId: com.mattmoore.samewhere
 - takeScreenshot: 00c-tour-chat
 # THE FOURTH PAGE, AND THE REASON ANYBODY INSTALLS THIS. The three pages
 # before it describe the tabs; this one says the thing that decides an
-# install against GAFFL, Couchsurfing or Bumble BFF. It is deliberately last,
-# so it sits directly above the account choice rather than three swipes away
-# from it, and the choice now lands here rather than under a heading about
-# chat. The tour is the one composition in the app that does not scroll, so
-# the picture is the evidence: read it at the 1.2x Dynamic Type cap before
-# believing the exit code.
+# install against GAFFL, Couchsurfing or Bumble BFF. It is deliberately last
+# of the explainers, so it sits directly above the account choice rather than
+# three swipes away from it. The tour is the one composition in the app that
+# does not scroll, so the picture is the evidence: read it at the 1.2x
+# Dynamic Type cap before believing the exit code.
 - swipe:
     start: 85%, 50%
     end: 15%, 50%
 - extendedWaitUntil:
     visible: 'We never ask where you are'
     timeout: 5000
-- assertVisible: 'Just looking for now'
 - waitForAnimationToEnd:
     timeout: 2000
 - takeScreenshot: 00d-tour-privacy
+# THE FIFTH PAGE: the choice, on a page of its own. It used to be bolted onto
+# the page above, so four controls stacked under a heading about something
+# else. Asserting the heading as well as the button is what proves the split
+# actually happened rather than the buttons simply moving down.
+- swipe:
+    start: 85%, 50%
+    end: 15%, 50%
+- extendedWaitUntil:
+    visible: 'Ready when you are'
+    timeout: 5000
+- assertVisible: 'Just looking for now'
+- assertVisible: 'Run a business? Put it on the map'
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 00e-tour-choice
 - tapOn: 'Just looking for now'
 - takeScreenshot: 01-cold-start
 - extendedWaitUntil:

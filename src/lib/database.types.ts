@@ -1648,6 +1648,20 @@ export type Database = {
         Args: { p_audience: ProfileAudience };
         Returns: ProfileAudience;
       };
+      /**
+       * The listing-intent pair. `profiles.wants_business` carries no column
+       * grant at all (profiles_select_visible would otherwise publish it to
+       * every reader), so these two definer functions are the only door, and
+       * neither takes a user id.
+       */
+      listing_intent: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      set_listing_intent: {
+        Args: { p_wants: boolean };
+        Returns: boolean;
+      };
     };
     Enums: {
       user_status: UserStatus;

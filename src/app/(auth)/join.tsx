@@ -11,6 +11,7 @@ import { signUpWithEmail, upgradeGuestToAccount } from '@/features/auth/api';
 import { AppleSignInButton, useAppleSignInAvailable } from '@/features/auth/apple-button';
 import { ConsentNote } from '@/features/auth/consent-note';
 import { AccountKindChoice, type AccountKind } from '@/features/auth/account-kind';
+import { useRecordListingIntent } from '@/features/business/hooks';
 import { useAuthStore } from '@/features/auth/store';
 import { useIsGuestAccount } from '@/features/guest/hooks';
 import { StepShell } from '@/features/signup/step-shell';
@@ -33,11 +34,20 @@ export default function JoinScreen() {
   const appleAvailable = useAppleSignInAvailable();
   const listingStarted = useAuthStore((s) => s.listingStarted);
   const listingDone = useAuthStore((s) => s.listingDone);
+  const recordListingIntent = useRecordListingIntent();
 
-  // The flag follows the chooser rather than the submit, so the Apple button
-  // carries the answer too. Signing in through Apple never reaches
-  // `submitPassword`, and without this a place owner who took the one-tap
-  // option landed in traveler onboarding just as before.
+  // In-memory ONLY. The durable flag is written when the account is actually
+  // committed, never on a selection tap, and the difference is a real bug:
+  // a guest HAS a session, so a durable write from here succeeds. Somebody
+  // browsing as a guest who taps "A business" out of curiosity, backs out,
+  // comes back later and signs up as a traveller never taps the traveller
+  // row again (it is the default), so nothing ever takes the flag down — and
+  // a brand-new traveller account with wants_business true is read as
+  // already-onboarded and never gets onboarding at all, landing on the tabs
+  // with an empty profile and every editor missing from the navigator.
+  //
+  // The Apple path, which never reaches submitPassword, is covered where it
+  // actually belongs: business-signup writes the flag on mount.
   const chooseKind = (next: AccountKind) => {
     setKind(next);
     if (next === 'business') {
@@ -125,6 +135,15 @@ export default function JoinScreen() {
       // the hold unmounts the navigator, and a queued navigation with nothing
       // mounted is dropped. Onboarding reads the flag and forwards. See
       // features/auth/store.
+      // The durable half of the same answer, written at COMMIT and for both
+      // branches. Awaited, because this is the write that has to survive the
+      // app being killed on step 7 of a form whose steps 4 to 11 had no exit
+      // at all. Both branches, because a false written here is what corrects
+      // an account that touched the business row earlier and changed its
+      // mind. recordListingIntent seeds the query cache the router gates on,
+      // so the read that fires from inside signUpWithEmail cannot win the
+      // race with a stale false.
+      await recordListingIntent(forBusiness).catch(() => {});
       if (forBusiness) {
         listingStarted();
         router.replace('/business-signup');

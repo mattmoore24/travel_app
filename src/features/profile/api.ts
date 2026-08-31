@@ -9,7 +9,9 @@ import {
   type VerificationRequestRow,
 } from '@/lib/database.types';
 import { tightenSlots } from '@/features/profile/slots';
+import { forgetAppleUser } from '@/lib/apple-user';
 import { processAndUploadImage, removeUploadedImage } from '@/lib/image-upload';
+import { forgetLastEmail } from '@/lib/last-email';
 import { supabase } from '@/lib/supabase';
 
 export const PHOTO_BUCKET = 'profile-photos';
@@ -302,6 +304,12 @@ export async function deleteAccount() {
   if (error) {
     throw error;
   }
+  // The remembered address is kept across an uninstall on purpose (founder
+  // decision D39), so the one thing that must clear it is the person saying
+  // this account is gone. Here rather than at the two call sites, so both
+  // the traveler branch and the business branch get it.
+  await forgetLastEmail();
+  await forgetAppleUser();
   return data as { deleted: boolean };
 }
 

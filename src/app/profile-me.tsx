@@ -12,6 +12,7 @@ import { heldPhotoNotice } from '@/constants/moderation';
 import { BrandDeep, MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { BUSINESS_RULE_SECTIONS, BUSINESS_ZERO_TOLERANCE } from '@/constants/policies';
 import { signOut, signOutEverywhere } from '@/features/auth/api';
+import { useAuthStore } from '@/features/auth/store';
 import { deleteAccount } from '@/features/profile/api';
 import {
   useOwnUserId,
@@ -25,10 +26,11 @@ import {
 } from '@/features/profile/hooks';
 import { AudienceCard } from '@/features/profile/audience-picker';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
-import { useOwnBusiness } from '@/features/business/hooks';
+import { useDropListingIntent, useOwnBusiness } from '@/features/business/hooks';
 import { NotificationsRow } from '@/features/notifications/notifications-row';
 import { GUEST_SWEEP_LINE } from '@/features/guest/copy';
-import { useIsGuest, useIsGuestAccount } from '@/features/guest/hooks';
+import { FinishYourProfileCard } from '@/features/profile/finish-card';
+import { useIsGuest, useIsGuestAccount, useWantsBusiness } from '@/features/guest/hooks';
 import { useMyTrips } from '@/features/trips/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -173,6 +175,14 @@ function BusinessAccount({ name }: { name: string | null }) {
             </View>
           ))}
         </View>
+        {/* An owner is as likely as a traveler to lose an inbox or a phone,
+            and until now the only route to either change was the signed-out
+            "Forgot your password?" screen. */}
+        <PrimaryButton
+          variant="ghost"
+          label="Email and password"
+          onPress={() => router.push('/account-credentials')}
+        />
         {/* The way to a human, which used to be two taps inside the traveler
             guidelines. Nobody looking for help should have to read a rulebook
             written for somebody else to find it. */}
@@ -254,6 +264,12 @@ export default function ProfileScreen() {
   const isGuest = useIsGuest();
   const isGuestAccount = useIsGuestAccount();
   const ownBusiness = useOwnBusiness();
+  // Part way through listing a business, from the database rather than from
+  // memory. It is what turns the "Run a business?" explanation into a door
+  // back into the form somebody has already started.
+  const wantsBusiness = useWantsBusiness();
+  const dropListingIntent = useDropListingIntent();
+  const listingDone = useAuthStore((s) => s.listingDone);
   const { data: profile } = useOwnProfile();
   const { data: audience = 'everyone' } = useOwnVisibility();
   const ownPhotos = useOwnPhotos();
@@ -346,6 +362,26 @@ export default function ProfileScreen() {
             that does not say what it is set to is a link, not a selector. */}
         <AudienceCard audience={audience} onPress={() => router.push('/visibility')} />
 
+        {/* The second ask for the six sections signup let people skip.
+            Nothing anywhere used to notice that a profile had no prompt, no
+            priorities and no bio, while the Travelers screen is built to show
+            all three - so somebody who skipped everything ended with a photo
+            and a name and was never told. It draws nothing at all once the
+            last gap closes, and it can be put away for the session. */}
+        {/* Never to an account part way through listing a business. It is on
+            this page only because the tabs are mounted for it, and asking a
+            bar owner for a trip and a bio is asking them to finish the one
+            flow register_business refuses. */}
+        {wantsBusiness ? null : (
+          <FinishYourProfileCard
+            profile={profile}
+            prompts={prompts}
+            priorities={priorities}
+            trips={trips}
+            handles={handles}
+          />
+        )}
+
         {/* Exactly the page a stranger gets, with edit affordances on top —
             the only way to know what your profile actually looks like. */}
         {heldBack > 0 ? (
@@ -413,6 +449,15 @@ export default function ProfileScreen() {
               {/* The undo for the one-time push primer. Reads the OS, and
                   renders nothing where push can never work. */}
               <NotificationsRow />
+              {/* The remedy after a phone goes missing, and the only route to
+                  a new address. Both used to live on the SIGNED OUT screen
+                  behind "Forgot your password?", so using either meant giving
+                  up the session first. */}
+              <PrimaryButton
+                variant="ghost"
+                label="Email and password"
+                onPress={() => router.push('/account-credentials')}
+              />
               {/* No "Who you see, and who sees you" here any more. It is the
                   card at the top of this page: a setting this consequential
                   should not be the fourth ghost button under the fold. */}
@@ -428,32 +473,66 @@ export default function ProfileScreen() {
                 label="Privacy"
                 onPress={() => router.push('/privacy')}
               />
-              {/* Without this the answer is a dead end. A business is its own
-                  account by design (decision 5), and register_business refuses
-                  an account that has already finished a traveler profile, so
-                  somebody who onboarded first and THEN wants to list their bar
-                  has no route at all from inside the app. Saying it plainly and
-                  offering the one step that works beats leaving them to guess
-                  that signing out is the answer. */}
-              <PrimaryButton
-                variant="ghost"
-                label="Run a business?"
-                onPress={() =>
-                  Alert.alert(
-                    'A business gets its own account',
-                    "Yours is a traveler account, and the two work differently, so a business needs one of its own. It's free. Sign out, make a new account, and the offer is on the first screen.",
-                    [
-                      { text: 'Not now', style: 'cancel' },
-                      {
-                        text: 'Sign out',
-                        onPress: () => {
-                          signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
+              {/* Two different people, and telling them apart is the whole
+                  point. An account carrying the listing flag has already
+                  started: it needs the door back into the form, not a lecture
+                  about signing out. Everyone else gets the explanation,
+                  because a business is its own account by design (decision 5)
+                  and register_business refuses an account that has already
+                  finished a traveler profile. */}
+              {wantsBusiness ? (
+                <PrimaryButton
+                  variant="ghost"
+                  label="Finish listing your business"
+                  onPress={() => router.push('/business-signup')}
+                />
+              ) : (
+                <PrimaryButton
+                  variant="ghost"
+                  label="Run a business?"
+                  onPress={() =>
+                    Alert.alert(
+                      'A business gets its own account',
+                      "Yours is a traveler account, and the two work differently, so a business needs one of its own. It's free. Sign out, make a new account, and the offer is on the first screen.",
+                      [
+                        { text: 'Not now', style: 'cancel' },
+                        {
+                          text: 'Sign out',
+                          onPress: () => {
+                            signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
+                          },
                         },
-                      },
-                    ]
-                  )
-                }
-              />
+                      ]
+                    )
+                  }
+                />
+              )}
+              {/* And the way to say the listing is off. Without it the flag is
+                  one-way: the tabs stay mounted, traveler onboarding is never
+                  asked for again, and the row above offers a form the person
+                  has decided against. */}
+              {wantsBusiness ? (
+                <PrimaryButton
+                  variant="ghost"
+                  label="Not listing a business after all"
+                  onPress={() =>
+                    Alert.alert(
+                      'Drop the listing?',
+                      'You will finish a traveler profile instead, starting now. Listing a business later needs its own separate account, so this one cannot go back.',
+                      [
+                        { text: 'Keep it', style: 'cancel' },
+                        {
+                          text: 'Drop it',
+                          onPress: () => {
+                            listingDone();
+                            dropListingIntent.mutate();
+                          },
+                        },
+                      ]
+                    )
+                  }
+                />
+              ) : null}
               <PrimaryButton
                 variant="ghost"
                 label="Sign out"

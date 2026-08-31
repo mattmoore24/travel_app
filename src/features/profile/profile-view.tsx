@@ -734,6 +734,7 @@ export function ProfileView({
   onEditPrompt,
   onEditPriorities,
   onRespondTo,
+  onAnswerYourOwnPrompt,
 }: {
   profile: ProfileRow;
   photos: ProfilePhotoRow[];
@@ -787,6 +788,16 @@ export function ProfileView({
    * message is about one specific thing instead of about nothing.
    */
   onRespondTo?: (target: RespondTarget) => void;
+  /**
+   * Reader only, and only when the READER'S own profile has no prompt.
+   *
+   * Reading somebody else's answer is the moment a prompt's value is
+   * obvious: it is the one thing on the page that gives a stranger something
+   * specific to say hi about. Supplied by the screen, which asks
+   * `profileGaps` - the trigger lives here, what counts as a gap lives
+   * there, so there is one component that knows what a complete profile is.
+   */
+  onAnswerYourOwnPrompt?: () => void;
 }) {
   const theme = useTheme();
   const { width } = useWindowDimensions();
@@ -1045,6 +1056,33 @@ export function ProfileView({
               onEdit={onEditPrompt ? () => onEditPrompt(prompts[0].slot) : undefined}
               onRespondTo={onRespondTo}
             />
+          ) : null}
+
+          {/* The second ask, at the moment it argues for itself. Under the
+              FIRST prompt only: repeating it under all three would be a
+              lecture on somebody else's page. */}
+          {!owner && prompts[0] && onAnswerYourOwnPrompt ? (
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Your profile has no prompts. Answer one."
+              accessibilityHint="Opens your own prompts."
+              haptic="light"
+              scaleTo={0.98}
+              onPress={onAnswerYourOwnPrompt}>
+              <View style={[styles.promptEmpty, { borderColor: theme.hairline }]}>
+                <SymbolView
+                  name={{ ios: 'plus.bubble', android: 'add_comment', web: 'add_comment' }}
+                  size={18}
+                  tintColor={theme.accent}
+                />
+                <View style={styles.promptEmptyText}>
+                  <ThemedText type="callout">Your profile has none of these</ThemedText>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    Answer one and people have something to reply to.
+                  </ThemedText>
+                </View>
+              </View>
+            </PressableScale>
           ) : null}
 
           {woven[1] ? <WovenPhoto photo={woven[1]} index={1} onRespondTo={onRespondTo} /> : null}

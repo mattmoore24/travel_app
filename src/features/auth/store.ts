@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js';
 import { create } from 'zustand';
 
+import type { SignedOutReason } from '@/features/auth/signed-out-reason';
 import type { Region } from '@/features/pins/camera';
 
 /**
@@ -89,6 +90,27 @@ type AuthState = {
    * and a value still in the store would push it straight back on.
    */
   pendingIntent: PendingIntent | null;
+  /**
+   * The session ended and nobody on this device asked for it.
+   *
+   * supabase-js emits the same SIGNED_OUT event for a tapped Sign out and for
+   * a refresh token the server has thrown away, so the app used to answer a
+   * forced sign-out by silently becoming the signed-out app: the chats, the
+   * pins and the avatar all went with no word said. Top-level state rather
+   * than a route for the same reason `recovery` is: it has to pre-empt the
+   * whole navigator, and there is no stack to push onto at the moment it
+   * arrives. Cleared by the screen that shows it.
+   */
+  signedOutNotice: { reason: SignedOutReason } | null;
+  /**
+   * Somebody took Sign in from that notice.
+   *
+   * Clearing the notice remounts the navigator at its anchor, so a
+   * `router.push` from the notice screen would be dispatched into a container
+   * with nothing in it and dropped. Parked here and spent by the tabs, the
+   * same shape as `pendingInvite` and for the same documented reason.
+   */
+  pendingSignIn: boolean;
   setSession: (session: Session | null) => void;
   setInitialized: () => void;
   recoveryStarted: () => void;
@@ -101,6 +123,10 @@ type AuthState = {
   inviteHandled: () => void;
   intentRemembered: (intent: PendingIntent) => void;
   intentHandled: () => void;
+  signedOutUnasked: (reason: SignedOutReason) => void;
+  signedOutNoticeSeen: () => void;
+  signInWanted: () => void;
+  signInHandled: () => void;
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -110,6 +136,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   listingIntent: false,
   pendingInvite: null,
   pendingIntent: null,
+  signedOutNotice: null,
+  pendingSignIn: false,
   setSession: (session) => set({ session }),
   setInitialized: () => set({ initialized: true }),
   recoveryStarted: () => set({ recovery: { status: 'establishing', message: null } }),
@@ -122,4 +150,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   inviteHandled: () => set({ pendingInvite: null }),
   intentRemembered: (intent) => set({ pendingIntent: intent }),
   intentHandled: () => set({ pendingIntent: null }),
+  signedOutUnasked: (reason) => set({ signedOutNotice: { reason } }),
+  signedOutNoticeSeen: () => set({ signedOutNotice: null }),
+  signInWanted: () => set({ pendingSignIn: true }),
+  signInHandled: () => set({ pendingSignIn: false }),
 }));

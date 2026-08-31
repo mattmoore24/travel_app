@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { FormTextField } from '@/components/form/form-text-field';
@@ -13,6 +13,7 @@ import { AppleSignInButton } from '@/features/auth/apple-button';
 import { ConsentNote } from '@/features/auth/consent-note';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
+import { readLastEmail } from '@/lib/last-email';
 
 /**
  * Sign in, and only sign in. Making an account is its own sequence at
@@ -32,6 +33,25 @@ export default function SignInScreen() {
   // does not reliably move focus on iOS — that is how a sign-in attempt came
   // back with the password box still empty.
   const passwordField = useRef<TextInput>(null);
+
+  // The address this device last signed in with. This screen deliberately
+  // refuses to say whether the address or the password was wrong, which is
+  // right for an account oracle and leaves somebody who cannot remember which
+  // of their two addresses they used with nothing to go on. Seeded once, and
+  // never over anything already typed: the read is a keychain round trip and
+  // it must not land on top of a person's fingers.
+  useEffect(() => {
+    let active = true;
+    readLastEmail().then((remembered) => {
+      if (!active || !remembered) {
+        return;
+      }
+      setEmail((current) => (current.length === 0 ? remembered : current));
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const canSubmit = email.trim().length > 3 && password.length > 0;
   const canReset = email.trim().length > 3;

@@ -382,6 +382,14 @@ function TravelerPage({
   const { data: trips = [] } = useTravelerTrips(candidate.userId);
   const { data: prompts = [] } = useProfilePrompts(candidate.userId);
   const { data: priorities = [] } = useProfilePriorities(candidate.userId);
+  // The READER'S own prompts, for the nudge below. Travelers is the reading
+  // surface the design brief gives to "one person, full page", so it is where
+  // most people meet somebody else's answers; wiring the nudge only to
+  // /profile/[userId] (reached from a chat header or a pin card) meant most
+  // readers would never see it. Gated on isSuccess, never on the defaulted
+  // empty array, so it cannot flash at somebody who has answered them all.
+  const ownUserId = useAuthStore((st) => st.session?.user.id ?? null);
+  const ownPromptsQuery = useProfilePrompts(ownUserId);
 
   // Fall back to what the match row already carries, so the page has a name
   // and a photo before the profile query lands.
@@ -514,6 +522,11 @@ function TravelerPage({
           trips={profileTrips}
           handles={[]}
           owner={false}
+          onAnswerYourOwnPrompt={
+            ownUserId != null && ownPromptsQuery.isSuccess && ownPromptsQuery.data.length === 0
+              ? () => router.push('/edit-prompt')
+              : undefined
+          }
           // Always open. The queue filter drops everybody already written to
           // and everybody already in a chat BEFORE a card is chosen, so the
           // three states this used to branch on could not reach the screen:

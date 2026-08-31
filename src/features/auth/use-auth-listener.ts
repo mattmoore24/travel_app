@@ -1,7 +1,10 @@
 import * as Linking from 'expo-linking';
 import { useEffect } from 'react';
 
+import { consumeDeliberateSignOut, signOutWasDeliberate } from '@/features/auth/api';
+import { appleCredentialSnapshot } from '@/features/auth/apple-revoke';
 import { parseRecoveryLink } from '@/features/auth/recovery';
+import { signedOutReason } from '@/features/auth/signed-out-reason';
 import { useAuthStore } from '@/features/auth/store';
 import { refreshPushToken } from '@/features/notifications/push';
 import { analytics } from '@/lib/analytics';
@@ -19,6 +22,7 @@ export function useAuthListener() {
   const recoveryStarted = useAuthStore((s) => s.recoveryStarted);
   const recoveryReady = useAuthStore((s) => s.recoveryReady);
   const recoveryFailed = useAuthStore((s) => s.recoveryFailed);
+  const signedOutUnasked = useAuthStore((s) => s.signedOutUnasked);
 
   // Password-recovery links, which nothing else would pick up: the client
   // runs with detectSessionInUrl:false (correct for a native app — there is
@@ -108,6 +112,22 @@ export function useAuthListener() {
       if (event === 'SIGNED_OUT') {
         analytics.reset();
         queryClient.clear();
+        // ...and say so when nobody on this device asked. supabase-js emits
+        // this same event for a tapped Sign out, for a refresh token the
+        // server has thrown away, for a global sign-out from another device,
+        // and for the guest janitor's sweep. Only the first of those is
+        // something the person already knows about; the rest used to be the
+        // app silently becoming the signed-out app, chats and pins and all.
+        const wasDeliberate = signOutWasDeliberate();
+        // Consume before deciding anything else: this is the one event the
+        // flag was raised for, and lowering it here is what makes the flag
+        // survive a slow /logout without also surviving into the NEXT
+        // sign-out, which may be a real one.
+        consumeDeliberateSignOut();
+        const reason = signedOutReason(event, wasDeliberate, appleCredentialSnapshot());
+        if (reason != null) {
+          signedOutUnasked(reason);
+        }
       }
     });
 
@@ -115,5 +135,5 @@ export function useAuthListener() {
       active = false;
       subscription.subscription.unsubscribe();
     };
-  }, [setSession, setInitialized, recoveryReady]);
+  }, [setSession, setInitialized, recoveryReady, signedOutUnasked]);
 }

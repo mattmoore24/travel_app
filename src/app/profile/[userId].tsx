@@ -23,6 +23,7 @@ import { openReply } from '@/features/matching/respond';
 import { presentMenu, travelerMenuItems } from '@/features/profile/actions-menu';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import {
+  useOwnUserId,
   useProfilePriorities,
   useProfilePrompts,
   usePublicPhotos,
@@ -46,6 +47,16 @@ export default function PublicProfileScreen() {
   const photosQuery = usePublicPhotos(userId ?? null);
   const { data: prompts = [] } = useProfilePrompts(userId);
   const { data: priorities = [] } = useProfilePriorities(userId);
+  // The reader's own prompts, for the nudge below. Reading somebody else's
+  // answer is the moment a prompt argues for itself, and until now nothing
+  // anywhere noticed that the person reading it had none.
+  const ownUserId = useOwnUserId();
+  // The whole QUERY, not its defaulted data: `[]` while a query is still
+  // pending is indistinguishable from "answered none", and this reader may
+  // well arrive here without profile-me ever having been opened this session
+  // (from a push, or from a map pin). Gating on the default flashed "Your
+  // profile has none of these" at somebody who has answered all of them.
+  const ownPromptsQuery = useProfilePrompts(ownUserId);
   const photos = photosQuery.data ?? [];
   const tripsQuery = useTravelerTrips(userId ?? null);
   const trips = tripsQuery.data ?? [];
@@ -212,6 +223,13 @@ export default function PublicProfileScreen() {
           handles={handlesQuery.data ?? []}
           owner={false}
           connected={connected}
+          // Only when they have none of their own, and never on their own
+          // page: `owner` is false here by construction.
+          onAnswerYourOwnPrompt={
+            ownUserId != null && ownPromptsQuery.isSuccess && ownPromptsQuery.data.length === 0
+              ? () => router.push('/edit-prompt')
+              : undefined
+          }
           // Only while there is still a conversation to start. Once you are
           // connected, the reply bubbles would just be a slower way to open
           // a chat you already have.

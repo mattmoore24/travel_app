@@ -78,7 +78,11 @@ describe('a business is never offered a traveler on the map', () => {
 
   it('the pins feed a business reads is the anonymous one', () => {
     const code = src(FEED);
-    expect(code).toContain('const anonymous = isGuest || isBusiness;');
+    // Three kinds now, not two. An account part way through listing a
+    // business has the tabs mounted for it - that is what gives somebody
+    // backing out of the listing form somewhere to go - so it reaches this
+    // feed, and there is no reason to hand it names while it waits.
+    expect(code).toContain('const anonymous = isGuest || isBusiness || wantsBusiness;');
     expect(code).toContain("const rpc = anonymous ? 'public_city_pins' : 'city_pins';");
     // Two doors, two cache entries. Keyed on `isGuest` alone, one account
     // kind's rows could be served to the other on the same device.

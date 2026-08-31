@@ -50,6 +50,14 @@ describe('no screen replaces the root without checking it can go back', () => {
   // successful confirmation has to be a replace: "back" from a listing that
   // just went live would land on the submitted form that created it. What
   // makes that replace safe is the presentation, asserted above.
+  // business-signup.tsx is the second exemption, and for the opposite reason
+  // to business-email's. Its nine steps now each carry a "Finish this later"
+  // that replaces to the tabs UNGUARDED, on purpose: this screen is reached by
+  // a `replace` from join, so canGoBack is false in the normal case and a
+  // guarded exit would evaluate to nothing at all. That is exactly what steps
+  // 4 to 11 had before - no exit whatsoever - which made killing the app the
+  // only way to abandon a half-finished listing, and killing the app lost the
+  // in-memory flag that kept the account out of traveler onboarding.
   it.each(['profile-me.tsx', 'contact.tsx', 'guest-name.tsx'])('%s guards its exit', (file) => {
     const lines = source(file).split('\n');
     lines.forEach((line, index) => {
@@ -59,5 +67,16 @@ describe('no screen replaces the root without checking it can go back', () => {
       const window = lines.slice(Math.max(0, index - 6), index + 1).join('\n');
       expect(window).toContain('canGoBack');
     });
+  });
+
+  it('business-signup keeps an unguarded exit on every step of the form', () => {
+    const code = source('business-signup.tsx');
+    // One shared element, so the nine steps cannot drift apart.
+    expect(code).toContain("router.replace('/(tabs)')");
+    expect(code).toContain('const leaveFooter =');
+    // Steps 3 to 11. Step 12 is the code screen's own hand-off and has its
+    // own footer; steps 1 and 2 live in the auth stack.
+    const uses = code.match(/leaveFooter/g) ?? [];
+    expect(uses.length).toBeGreaterThanOrEqual(10);
   });
 });

@@ -18,12 +18,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors, MaxContentWidth, Spacing, SplashField } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
+import { useAppleRevokeWatch } from '@/features/auth/apple-revoke';
+import { signedOutNoticeCopy, type SignedOutReason } from '@/features/auth/signed-out-reason';
 import { useAuthStore } from '@/features/auth/store';
 import { ResetPasswordScreen } from '@/features/auth/reset-password-screen';
 import { owesOnboarding, rootIsReady } from '@/features/auth/routing';
 import { gateCopy, type GateView } from '@/features/auth/gate-copy';
 import { useAuthListener } from '@/features/auth/use-auth-listener';
-import { useOwnBusiness } from '@/features/business/hooks';
+import { useListingIntent, useOwnBusiness } from '@/features/business/hooks';
 import { useAccountStanding, useOwnProfile } from '@/features/profile/hooks';
 import { ContactForm } from '@/features/support/contact-form';
 import { GuidelinesBody } from '@/features/support/guidelines-body';
@@ -199,15 +201,68 @@ function AccountGate({
   );
 }
 
+/**
+ * The session ended and nobody here asked for it.
+ *
+ * supabase-js emits one SIGNED_OUT event whether the person tapped Sign out
+ * or the server threw the refresh token away, so a revoked session, a global
+ * sign-out from another device, a deleted account and the guest sweep all
+ * used to arrive as the app silently becoming the signed-out app: the chats
+ * gone, the pins gone, the avatar a guest avatar, and nothing said.
+ *
+ * Rendered INSTEAD OF the stack, in the same position the recovery branch
+ * pre-empts everything else, so there is no navigator while it is up. That is
+ * why Sign in parks a flag rather than pushing a route: clearing the notice
+ * remounts the stack at its anchor and any navigation dispatched a tick
+ * earlier is dropped (the root-hold trap this file has already paid for). The
+ * tabs spend the flag the moment they mount, exactly as they do the invite.
+ */
+function SignedOutNotice({ reason }: { reason: SignedOutReason }) {
+  const seen = useAuthStore((s) => s.signedOutNoticeSeen);
+  const signInWanted = useAuthStore((s) => s.signInWanted);
+  const copy = signedOutNoticeCopy(reason);
+
+  return (
+    <CenteredPage>
+      <ThemedText type="title" style={styles.errorText}>
+        {copy.title}
+      </ThemedText>
+      <ThemedText themeColor="textSecondary" style={styles.errorText}>
+        {copy.body}
+      </ThemedText>
+      <PrimaryButton
+        label="Sign in"
+        onPress={() => {
+          signInWanted();
+          seen();
+        }}
+      />
+      <PrimaryButton variant="ghost" label="Not now" onPress={seen} />
+    </CenteredPage>
+  );
+}
+
 function RootNavigator() {
   useAuthListener();
+  // Beside the auth listener because it is the same kind of thing: one watch,
+  // mounted once, that can end a session. It notices somebody telling iOS to
+  // stop using their Apple ID with this app, which nothing did before.
+  useAppleRevokeWatch();
   const session = useAuthStore((s) => s.session);
   const initialized = useAuthStore((s) => s.initialized);
   const recovery = useAuthStore((s) => s.recovery);
+  const signedOutNotice = useAuthStore((s) => s.signedOutNotice);
+  const listingIntent = useAuthStore((s) => s.listingIntent);
   const intro = useIntroState();
   const profileQuery = useOwnProfile();
   const standingQuery = useAccountStanding();
   const businessQuery = useOwnBusiness();
+  // "Part way through listing a business", from the database rather than from
+  // memory. The in-memory flag is lost by a cold start, and losing it is what
+  // put a bar owner into traveler onboarding: the one flow a business must
+  // never finish, because register_business refuses an account that carries
+  // the stamp it ends with.
+  const listingQuery = useListingIntent();
 
   const signedIn = session != null;
   const onboarded = profileQuery.data?.onboarding_completed_at != null;
@@ -216,10 +271,15 @@ function RootNavigator() {
   // A business account is the second kind that can never be onboarded, and
   // for the same structural reason a guest cannot. See features/auth/routing.
   const isBusiness = businessQuery.data != null;
+  // The store's flag OR the column, so the answer is right within a sitting
+  // (the column is written a beat after the chooser) and right after a cold
+  // start (the store is empty and the column is not).
+  const wantsBusiness = listingIntent || listingQuery.data === true;
   const needsProfile = owesOnboarding(
     session,
     profileQuery.data?.onboarding_completed_at,
-    isBusiness
+    isBusiness,
+    wantsBusiness
   );
   // Hold routing until the persisted session is restored and (when signed in)
   // the first profile + standing fetches settle — otherwise users flash
@@ -232,6 +292,7 @@ function RootNavigator() {
     profileSettled: profileQuery.isSuccess || profileQuery.isError,
     standingSettled: standingQuery.isSuccess || standingQuery.isError,
     businessSettled: businessQuery.isSuccess || businessQuery.isError,
+    listingSettled: listingQuery.isSuccess || listingQuery.isError,
   });
 
   if (!ready || intro.seen === null) {
@@ -289,6 +350,13 @@ function RootNavigator() {
   // trip taken specifically to change it.
   if (recovery != null) {
     return <ResetPasswordScreen />;
+  }
+
+  // After recovery (a live recovery session is a sign-in somebody is in the
+  // middle of) and before the tour, which would otherwise greet a person
+  // whose session just died as though they had never opened the app.
+  if (signedOutNotice != null) {
+    return <SignedOutNotice reason={signedOutNotice.reason} />;
   }
 
   // First launch, no account: explain the three tabs before anything else.
@@ -368,6 +436,12 @@ function RootNavigator() {
           name="first-messages"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
+        {/* signedIn, deliberately NOT `signedIn && onboarded`. A business
+            account never satisfies `onboarded` by design (routing.ts), and
+            that is exactly how three other routes ended up doing nothing for
+            them - while an owner is as likely as a traveler to need to change
+            the password on the account their listing hangs off. */}
+        <Stack.Screen name="account-credentials" options={{ presentation: 'modal' }} />
       </Stack.Protected>
       <Stack.Protected guard={signedIn && onboarded}>
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />

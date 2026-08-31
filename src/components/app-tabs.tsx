@@ -3,6 +3,7 @@ import { useColorScheme } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useOwnBusiness } from '@/features/business/hooks';
+import { useWantsBusiness } from '@/features/guest/hooks';
 import { useWaitingCount } from '@/features/matching/hooks';
 
 // Three tabs, in the order people use them (docs/DESIGN.md). Profile lives
@@ -27,6 +28,12 @@ export default function AppTabs() {
   // people learn to ignore, and then real messages go unanswered.
   const waiting = useWaitingCount();
   const isBusiness = useOwnBusiness().data != null;
+  // An account part way through listing is not a business YET, but Travelers
+  // is the wrong room for it either way: the tab's empty state asks a bar
+  // owner to add a trip, which is a step towards the traveler stamp that
+  // register_business refuses forever. The map feed was already closed to
+  // them; this is the other half the same package meant to close.
+  const wantsBusiness = useWantsBusiness();
 
   // Untinted system glass — HIG: never paint the tab bar's background; the
   // accent lives only on the selected item.
@@ -47,7 +54,7 @@ export default function AppTabs() {
           `hidden` also means the route cannot be navigated to at all, which is
           the stronger guarantee here: a business must not reach Travelers by
           any route, deep link included. */}
-      <NativeTabs.Trigger name="travelers" hidden={isBusiness}>
+      <NativeTabs.Trigger name="travelers" hidden={isBusiness || wantsBusiness}>
         <NativeTabs.Trigger.Label>Travelers</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} />
       </NativeTabs.Trigger>
