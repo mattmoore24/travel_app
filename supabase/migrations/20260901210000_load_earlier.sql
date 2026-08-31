@@ -1,5 +1,15 @@
 -- A conversation can be read past its first screenful.
 --
+-- RENUMBERED from 20260901150000. This batch and the onboarding batch were
+-- written in parallel and picked their timestamps independently, so this file
+-- and its sibling sorted BEFORE 20260901170000 while that one reached the
+-- remote database first. `supabase db push` refuses a local migration that
+-- sorts before the last applied one, and rightly: applying history out of
+-- order is how a schema stops matching its own record. Renumbering to sit
+-- after what is already deployed keeps the remote history linear and means no
+-- future deploy has to be forced with --include-all. Nothing here depends on
+-- 170000-200000, or they on this, so the order is only bookkeeping.
+--
 -- room_messages has taken a limit since it was written and no client ever
 -- passed one, so a busy hostel room was silently capped at sixty messages
 -- with nothing on screen to say a limit had been applied. This adds the

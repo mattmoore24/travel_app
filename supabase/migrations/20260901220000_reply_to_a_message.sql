@@ -1,5 +1,8 @@
 -- Answering one message rather than the room.
 --
+-- RENUMBERED from 20260901160000, with load_earlier: see its header. It must
+-- stay AFTER load_earlier, which drops and recreates room_messages first.
+--
 -- In a group of six discussing three plans for tonight, "I'm in" carries no
 -- information, and the five-minute grouping window welds it to whatever came
 -- before it. One column fixes that for every kind of conversation at once:
