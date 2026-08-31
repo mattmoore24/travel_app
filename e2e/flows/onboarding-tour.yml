@@ -179,11 +179,23 @@ appId: com.mattmoore.samewhere
 - runFlow: ../subflows/pick-a-photo.yml
 - waitForAnimationToEnd:
     timeout: 4000
-# The pipeline's bounded stages end a stalled upload with "Could not save …
-# so try again" — and that alert covering the screen is what run 93's first
-# attempt died on: the gate text below it read as gone, the conditional
-# entered, and finish-photos was behind the alert. Dismiss and retry the way
-# a person would; the second render runs warm.
+# The pipeline's bounded stages (image-upload.ts) promise that within 150s a
+# picked photo has either landed — finish-photos appears — or "Could not save
+# … so try again" is on screen. Run 95's first attempt tapped finish-photos
+# ten seconds after the pick, while a render allowed 90s on a cold simulator
+# was still working; run 93's died with the alert covering the gate text. So:
+# wait out the budget when a pick is actually in flight (the gate line gone
+# is what says so), recover through the app's own retry if it ended in the
+# alert, then proceed.
+- runFlow:
+    when:
+      notVisible: 'A profile photo is the one thing we need.'
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: 'finish-photos'
+          timeout: 150000
+          optional: true
 - runFlow:
     when:
       visible: 'Could not save'
@@ -201,6 +213,10 @@ appId: com.mattmoore.samewhere
     when:
       notVisible: 'A profile photo is the one thing we need.'
     commands:
+      - extendedWaitUntil:
+          visible:
+            id: 'finish-photos'
+          timeout: 150000
       - tapOn:
           id: 'finish-photos'
       # STEP 6 — what you do. The first step that may be skipped, so the

@@ -185,11 +185,24 @@ appId: com.mattmoore.samewhere
 - runFlow: ../subflows/pick-a-photo.yml
 - waitForAnimationToEnd:
     timeout: 3000
-# The app's own recovery, driven the way a person would: the bounded pipeline
-# turns a stalled stage into "Could not save … so try again", and run 93
-# photographed exactly that when a cold runner's image render outran its
-# budget. Trying again is the designed answer, and the second render runs
-# warm.
+# The photo has to COME BACK before Save: '1 of 10' is the grid's own
+# read-back of the row, not a local echo of the picker (runs 90 to 92 watched
+# uploads land while this counter sat at zero, an ungranted column having
+# turned the grid's `select *` into `permission denied` —
+# 20260831120000_an_ungranted_column_hid_the_photos.sql).
+#
+# The patience here matches the pipeline's own contract, not a guess: each
+# stage is bounded (image-upload.ts), so within 150s the photo has either
+# come back or "Could not save … so try again" is on screen. Run 95 failed
+# with a 60s wait and an alert check made ten seconds after the pick — the
+# render alone is allowed 90s on a cold simulator, so the check ran before
+# the alert could exist and the wait gave up while the pipeline was still
+# working. Wait out the budget once, recover through the app's own retry if
+# it ended in the alert, then gate hard.
+- extendedWaitUntil:
+    visible: '1 of 10'
+    timeout: 150000
+    optional: true
 - runFlow:
     when:
       visible: 'Could not save'
@@ -202,17 +215,9 @@ appId: com.mattmoore.samewhere
       - waitForAnimationToEnd:
           timeout: 3000
 - takeScreenshot: 49-business-photo-added
-# The photo has to COME BACK before Save: '1 of 10' is the grid's own
-# read-back of the row, not a local echo of the picker. That is exactly the
-# half that can break on its own — runs 90 to 92 watched the upload succeed
-# and this counter sit at '0 of 10' anyway, because an ungranted column had
-# turned the grid's `select *` into `permission denied`
-# (20260831120000_an_ungranted_column_hid_the_photos.sql). The links list
-# above reads '2 of 10' by this point, so the string is unambiguous, and a
-# minute covers a slow runner's storage round trip.
 - extendedWaitUntil:
     visible: '1 of 10'
-    timeout: 60000
+    timeout: 150000
 # Save, not the header's Close. The editor is a long form and by this point it
 # is scrolled to the photo grid, so the X at the top is off screen and cannot
 # be tapped — run 86 sat in the editor for the rest of the flow. Save is

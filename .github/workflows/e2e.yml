@@ -113,7 +113,12 @@ jobs:
     runs-on: macos-15
     permissions:
       contents: write
-    timeout-minutes: 40
+    # Room for the photo waits: the flows now wait out the upload pipeline's
+    # own 150s stage budget (twice, on a retry) rather than guessing shorter,
+    # and a job killed by ITS timeout cancels the publish step — the run's
+    # screenshots die with it, which is the worst outcome a slow runner can
+    # buy. Green runs finish in ~35 minutes regardless.
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
 
