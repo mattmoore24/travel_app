@@ -46,6 +46,23 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2500
 - takeScreenshot: 91-photo-crop
+# PHPicker (the profile-photo path; no crop, no permission sheet) hosts its
+# grid in another process, and a tap that lands while that process is still
+# waking is swallowed with the tap step reporting success — run 94
+# photographed the sheet still open after a COMPLETED cell tap, twice.
+# 'Collections' exists only on that sheet's own header, so its visibility IS
+# the sheet being open: wait a beat and tap the cell again.
+- runFlow:
+    when:
+      visible: 'Collections'
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn:
+          point: '18%,28%'
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2500
 
 # The crop editor's confirm, whichever word it uses.
 - tapOn:
