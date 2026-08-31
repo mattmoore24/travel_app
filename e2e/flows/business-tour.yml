@@ -186,11 +186,14 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 49-business-photo-added
-# The upload has to LAND before Save: run 90 tapped Save with the tile still
-# a spinner at '0 of 10', the editor stayed open, and the 20s wait for the
-# step title timed out. '1 of 10' is the photo counter (the links list above
-# reads '2 of 10' by this point, so the string is unambiguous), and a minute
-# covers a slow runner's storage round trip.
+# The photo has to COME BACK before Save: '1 of 10' is the grid's own
+# read-back of the row, not a local echo of the picker. That is exactly the
+# half that can break on its own — runs 90 to 92 watched the upload succeed
+# and this counter sit at '0 of 10' anyway, because an ungranted column had
+# turned the grid's `select *` into `permission denied`
+# (20260831120000_an_ungranted_column_hid_the_photos.sql). The links list
+# above reads '2 of 10' by this point, so the string is unambiguous, and a
+# minute covers a slow runner's storage round trip.
 - extendedWaitUntil:
     visible: '1 of 10'
     timeout: 60000

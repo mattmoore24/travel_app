@@ -495,7 +495,8 @@ function PhotoTile({
 function BusinessPhotos({ businessId, userId }: { businessId: string; userId: string | null }) {
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const { data: photos = [] } = useBusinessPhotos(businessId);
+  const photosQuery = useBusinessPhotos(businessId);
+  const { data: photos = [] } = photosQuery;
   const [width, setWidth] = useState(0);
 
   const upload = useMutation({
@@ -584,7 +585,17 @@ function BusinessPhotos({ businessId, userId }: { businessId: string; userId: st
       <ThemedText type="footnote" themeColor="textSecondary">
         Photos of the business, not of a person. The first one is your cover.
       </ThemedText>
-      {size > 0 ? (
+      {/* A failed read is not "no photos". This grid answered `permission
+          denied` with an empty add tile for three e2e runs straight — the
+          upload succeeded, the read-back failed, and "0 of 10" was a lie. */}
+      {photosQuery.isError ? (
+        <LoadError
+          compact
+          what="your photos"
+          error={photosQuery.error}
+          onRetry={() => photosQuery.refetch()}
+        />
+      ) : size > 0 ? (
         <View style={[styles.grid, { gap: PHOTO_GAP }]}>
           {photos.map((photo) => (
             <PhotoTile
@@ -633,9 +644,11 @@ function BusinessPhotos({ businessId, userId }: { businessId: string; userId: st
       ) : (
         <View style={[styles.gridPlaceholder, { backgroundColor: theme.surfaceSunken }]} />
       )}
-      <ThemedText type="footnote" themeColor="textSecondary">
-        {photos.length} of {PHOTOS_MAX}
-      </ThemedText>
+      {photosQuery.isError ? null : (
+        <ThemedText type="footnote" themeColor="textSecondary">
+          {photos.length} of {PHOTOS_MAX}
+        </ThemedText>
+      )}
     </View>
   );
 }

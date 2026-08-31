@@ -209,6 +209,17 @@ device does something else.
   screen does it — check policies for enumerability, not just correctness.
 - `PostgrestError` is not an `Error`. `catch (e) { if (e instanceof Error) }`
   silently swallows every database message.
+- **`add column` on a table with column-level grants revokes `select *`.**
+  Postgres refuses a star select unless EVERY column is granted, so a new
+  column on a column-granted table breaks the app's `.select('*')` (and
+  `returning *` via bare `.select()` after insert) with `permission denied` —
+  while the column-listed insert keeps working, so the write half looks fine
+  and the read-back dies. Rendered through a screen that has not opted into
+  `LoadError`, the failure IS the empty state: the business photo grid
+  answered every successful upload with "0 of 10" for three e2e runs
+  (90 to 92) before anything named the cause. Grant the new column in the
+  same migration, and keep `31_select_star_stays_readable.test.sql` listing
+  every table the app star-reads.
 
 **A Postgres Changes subscription filtered to `INSERT` cannot see a verdict.**
 Anything that lands in a pending state and is later cleared by a worker

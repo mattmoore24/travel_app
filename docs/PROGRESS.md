@@ -3,7 +3,37 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
-## Current: **Wave 0 is implemented** (2026-08-31)
+## Current: **The "upload hang" was a read that lied** (2026-08-31)
+
+e2e runs 90 to 92 watched the business photo tile spin and land back on
+"0 of 10", five throwaway accounts in a row, and the working theory was a hung
+upload — bad enough that run 92 shipped stage-named timeouts to make the next
+failure name its own stage. Run 92's pictures then disproved the theory: the
+spinner CLEARS, no error shows, and the count stays at zero. The upload and
+the insert succeed. It is the read-back that fails.
+
+Root cause, proven against the full migration chain on a shadow database:
+`business_photos` is guarded by column-level select grants, and
+`20260829180000` added `moderation_attempts` without granting it — Postgres
+then refuses `select *` outright, so the grid's read has answered
+`permission denied` to the photo's own owner since that migration deployed
+(Aug 29, before run 89; run 89 stayed green only because its flow never
+checked the photo landed). A failed query renders as its empty state, which
+is why three runs of pictures showed "no photos" instead of an error.
+
+Shipped: the one-line grant (`20260831120000`), pgTAP file 31 pinning
+`select *` on every table the app star-reads (831 tests across 31 files), a
+`LoadError` state on the photo grid so a failed read stops impersonating
+"0 of 10", and a `traps` entry for the pattern. The stage-named upload
+timeouts stay — an unsettled promise on hostel wifi deserves an error and a
+retry regardless of what this particular bug turned out to be.
+
+Production impact, corrected from the earlier caution: uploads were never
+broken — profile, chat, verification and business photos all reach storage
+and the database. The only user-visible break was the business editor's
+photo grid never showing what had landed.
+
+## **Wave 0 is implemented** (2026-08-31)
 
 All 58 Wave 0 packages from [`UX_PLAN.md`](UX_PLAN.md) are in the tree: ten in
 the first wave, forty-four across eight batches this weekend, and a handful
