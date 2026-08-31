@@ -718,10 +718,8 @@ export default function TravelersScreen() {
   if (!isSupabaseConfigured) {
     return (
       <PlaceholderScreen
+        configError
         icon={{ ios: 'person.2.fill', android: 'group', web: 'group' }}
-        title="Travelers"
-        phase="waiting on backend keys"
-        description="Add Supabase keys to .env to post trips and browse travelers."
       />
     );
   }

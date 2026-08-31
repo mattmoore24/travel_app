@@ -184,7 +184,10 @@ created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited p
 - **Client**: native map screen (city chips, emoji category markers, heat underlay, pin
   detail card with Say hi / Remove, drop-a-pin FAB), drop-pin modal (venue text + tap/drag
   placement + category + intent day + **user-set duration** ≤72h per brief §1), web fallback
-  list. §6 metrics: `map_viewed`, `heatmap_rendered`, `pin_created`, `pin_tapped`.
+  list. §6 metrics: `map_viewed`, `heatmap_viewed`, `pin_created`, `pin_tapped`.
+  (`heatmap_viewed` replaced `heatmap_rendered` 2026-08-31: a view now requires
+  drawn pixels on an uncovered map rather than heat data arriving, so the
+  series legitimately drops at the rename.)
 - **Venue search**: free-text venue name + manual map placement for v1 — same zero-key
   posture as the cities decision; a places API or curated venue seeds can layer in later
   without schema changes (flagged to founder).

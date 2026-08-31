@@ -266,10 +266,8 @@ export default function ProfileScreen() {
   if (!isSupabaseConfigured) {
     return (
       <PlaceholderScreen
+        configError
         icon={{ ios: 'person.crop.circle', android: 'person', web: 'person' }}
-        title="Profile"
-        phase="waiting on backend keys"
-        description="Copy .env.example to .env with your Supabase keys, restart the dev server, then sign in."
       />
     );
   }

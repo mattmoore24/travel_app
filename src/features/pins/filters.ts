@@ -21,8 +21,13 @@ import type { CityPinRow, PinCategory } from '@/lib/database.types';
 /** Which day's plans to show. A pin can never target more than two days out. */
 export type DayFilter = 'any' | 'today' | 'tomorrow' | 'later';
 
-/** The three families of marker on the map. */
-export type MarkerKind = 'travelers' | 'businesses' | 'picks';
+/**
+ * The three families of marker on the map, plus the heat layer. 'heat' is a
+ * CLIENT-SIDE draw toggle only: it decides whether the already-thresholded
+ * cells are painted, and must never become a parameter to the heat RPCs —
+ * the k-threshold (§7 rule 6) is the server's alone.
+ */
+export type MarkerKind = 'travelers' | 'businesses' | 'picks' | 'heat';
 
 export type MapFilters = {
   day: DayFilter;
@@ -44,7 +49,7 @@ export type MapFilters = {
  * is already addressed with the filter in your profile."
  */
 
-export const ALL_MARKER_KINDS: MarkerKind[] = ['travelers', 'businesses', 'picks'];
+export const ALL_MARKER_KINDS: MarkerKind[] = ['travelers', 'businesses', 'picks', 'heat'];
 
 export const DEFAULT_FILTERS: MapFilters = {
   day: 'any',
@@ -132,4 +137,23 @@ export function pinPasses(pin: CityPinRow, filters: MapFilters, days: Set<string
 /** Whether business markers are drawn at all. There is nothing finer to ask yet. */
 export function showsBusinesses(filters: MapFilters): boolean {
   return filters.kinds.includes('businesses');
+}
+
+/** Whether the heat layer is painted. Defaults on; client-side only. */
+export function showsHeat(filters: MapFilters): boolean {
+  return filters.kinds.includes('heat');
+}
+
+/**
+ * How many markers survive the current filters — the number the filter
+ * sheet prints. MUST be fed the same arrays the markers render (the pins
+ * after pinPasses, the places the business toggle draws), or the number
+ * contradicts the dots the moment Businesses is unticked.
+ */
+export function mapResultCount(
+  filteredPinCount: number,
+  placeCount: number,
+  filters: MapFilters
+): number {
+  return filteredPinCount + (showsBusinesses(filters) ? placeCount : 0);
 }

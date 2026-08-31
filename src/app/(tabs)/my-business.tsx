@@ -348,10 +348,8 @@ export default function MyBusinessScreen() {
   if (!isSupabaseConfigured) {
     return (
       <PlaceholderScreen
+        configError
         icon={{ ios: 'storefront', android: 'storefront', web: 'storefront' }}
-        title="My business"
-        phase="waiting on backend keys"
-        description="Add Supabase keys to .env to put a business on the map."
       />
     );
   }

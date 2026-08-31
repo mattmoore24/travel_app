@@ -54,6 +54,15 @@ type PrimerState = {
    * would recognise. Answer it with accept() or decline() like any other.
    */
   askBusiness: (reason: BusinessPrimerReason) => Promise<boolean>;
+  /**
+   * Whether ask() would actually present anything right now.
+   *
+   * For surfaces that draw their own "Turn on notifications" affordance: a
+   * tap that ask() would silently swallow (already offered, already granted,
+   * push impossible on this device, a question already open) must not be
+   * offered at all. Read-only — records nothing, shows nothing.
+   */
+  canAsk: () => Promise<boolean>;
   accept: () => Promise<void>;
   decline: () => Promise<void>;
 };
@@ -116,6 +125,8 @@ export const usePushPrimer = create<PrimerState>((set, get) => ({
     set({ asking: reason });
     return true;
   },
+
+  canAsk: () => worthAsking(get().asking ?? get().reason),
 
   accept: async () => {
     const reason = get().asking ?? get().reason;

@@ -4,8 +4,10 @@ import {
   daysFor,
   heatDay,
   isDefault,
+  mapResultCount,
   pinPasses,
   showsBusinesses,
+  showsHeat,
   toggle,
   type MapFilters,
 } from '@/features/pins/filters';
@@ -45,6 +47,13 @@ describe('the default is a map with nothing hidden', () => {
     expect(pinPasses(pin(), DEFAULT_FILTERS, null)).toBe(true);
     expect(pinPasses(pin({ seeded: true, user_id: null }), DEFAULT_FILTERS, null)).toBe(true);
     expect(showsBusinesses(DEFAULT_FILTERS)).toBe(true);
+  });
+
+  it('draws the heat layer by default', () => {
+    // Client-side only: the toggle decides whether already-thresholded cells
+    // are painted, never what the server is asked.
+    expect(showsHeat(DEFAULT_FILTERS)).toBe(true);
+    expect(showsHeat(withFilters({ kinds: ['travelers'] }))).toBe(false);
   });
 
   it('asks the heat RPC about no day in particular', () => {
@@ -149,5 +158,15 @@ describe('who and what is on the map', () => {
     const noPlaces = withFilters({ kinds: ['travelers', 'picks'] });
     expect(showsBusinesses(noPlaces)).toBe(false);
     expect(pinPasses(pin(), noPlaces, null)).toBe(true);
+  });
+});
+
+describe('the count the filter sheet prints', () => {
+  it('is the filtered pins plus the places only while businesses are drawn', () => {
+    // The same arithmetic the markers use, or the number contradicts the
+    // dots the moment Businesses is unticked.
+    expect(mapResultCount(3, 4, DEFAULT_FILTERS)).toBe(7);
+    expect(mapResultCount(3, 4, withFilters({ kinds: ['travelers', 'picks'] }))).toBe(3);
+    expect(mapResultCount(0, 0, DEFAULT_FILTERS)).toBe(0);
   });
 });

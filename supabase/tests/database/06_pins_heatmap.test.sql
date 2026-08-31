@@ -1,7 +1,7 @@
 -- Pins: 72h hard expiry (rule 3), geofenced launch cities, immutability,
 -- k-anonymous heatmap (rule 6), seeded pins, pin-source requests.
 begin;
-select plan(31);
+select plan(33);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -163,7 +163,9 @@ select is(
   'k counts DISTINCT pinners, not pins'
 );
 
--- Seeded pins: no user attached, visible, count toward heat, client can't create.
+-- Seeded pins: no user attached, visible, NEVER counted toward heat (founder
+-- decision D7: a heat cell says "people are planning here", and admin rows
+-- say nothing of the kind), client can't create.
 reset role;
 insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date,
                          expires_at, seeded, seed_note)
@@ -179,14 +181,13 @@ select is(
   2,
   'seeded pins are visible to everyone'
 );
--- Five, not four: the three pinners, the seeded pub crawl AND the seeded
--- walking tour. The tour is a monument, and under the old per-category
--- threshold it sat in a bucket of one and never appeared at all.
+-- Three, not five: alice, bob and cara. The two seeded rows sit in the same
+-- cell and add nothing to its count.
 select is(
   (select pin_count from public.heat_cells(pg_temp.lisbon())
    where cell_lat between 38.710 and 38.715),
-  5,
-  'seeded pins count toward heat (cold-start strategy)'
+  3,
+  'seeded pins are on the map but never inflate the heat count (D7)'
 );
 select throws_ok(
   $$ insert into public.pins (user_id, city_id, venue_name, category, lat, lng,
@@ -197,6 +198,34 @@ select throws_ok(
   null,
   'clients cannot create seeded pins'
 );
+
+-- HARD RULE 6 + D7, as the attack: three curated pins in one otherwise-empty
+-- cell must produce NO heat. A glow that represents zero travelers is the
+-- lie the layer exists to never tell — and both doors must agree.
+reset role;
+insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date,
+                         expires_at, seeded, seed_note)
+select null, pg_temp.lisbon(), 'Seed only ' || i, 'bar', 38.7201 + i * 0.0001, -9.1401,
+       current_date, now() + interval '24 hours', true, null
+from generate_series(1, 3) i;
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select is(
+  (select count(*)::int from public.heat_cells(pg_temp.lisbon())
+   where cell_lat between 38.718 and 38.723),
+  0,
+  'three curated pins alone never clear the k-threshold'
+);
+reset role;
+set local role anon;
+select is(
+  (select count(*)::int from public.public_heat_cells(pg_temp.lisbon())
+   where cell_lat between 38.718 and 38.723),
+  0,
+  'and the guest door agrees: a seeded-only cell stays dark'
+);
+reset role;
+delete from public.pins where venue_name like 'Seed only %';
 
 -- The threshold is per CELL, not per (cell, category).
 --
@@ -235,11 +264,13 @@ insert into public.blocks (blocker_id, blocked_id)
   values ('00000000-0000-0000-0000-00000000000b', '00000000-0000-0000-0000-00000000000c');
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
--- Four: alice, cara and the two seeded pins. Bob is blocked and drops out.
+-- Bob is blocked and drops out, which leaves alice and cara: two visible
+-- pinners is below k, so the whole cell goes dark — the blocked pin neither
+-- counts nor leaks. (The two seeded rows in this cell add nothing: D7.)
 select is(
-  (select pin_count from public.heat_cells(pg_temp.lisbon())
+  (select count(*)::int from public.heat_cells(pg_temp.lisbon())
    where cell_lat between 38.710 and 38.715),
-  4,
+  0,
   'blocked-pair pins never count toward the other party''s heat'
 );
 
@@ -347,7 +378,7 @@ reset role;
 delete from public.pins;
 insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date,
                          expires_at, seeded, seed_note)
-values (null, pg_temp.lisbon(), 'LX Factory night market', 'other', 38.7025, -9.1782,
+values (null, pg_temp.lisbon(), 'Time Out Market', 'restaurant', 38.7067, -9.1459,
         current_date - 1, now() + interval '40 hours', true, 'yesterday');
 
 select ok(
@@ -361,7 +392,7 @@ select is(
 );
 select is(
   (select count(*)::int from public.pins
-   where seeded and venue_name = 'LX Factory night market'),
+   where seeded and venue_name = 'Time Out Market'),
   1,
   'and the sweep leaves one of each venue, not two'
 );

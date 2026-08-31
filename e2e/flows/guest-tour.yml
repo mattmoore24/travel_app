@@ -123,6 +123,65 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2000
 
+# The plan list: the peek strip above the dock is the only place the city's
+# plan count is ever stated, and expanding it is the first list-shaped
+# discovery in the app. Tapped by testID (the strip is a Pressable carrying
+# its own accessibility label, so its printed words are not elements on iOS).
+# Every step is optional: a city the seeder has not reached renders no list.
+- tapOn:
+    id: 'plan-list-peek'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 05e-plan-list
+- tapOn:
+    id: 'plan-list-row-0'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+# A seeded row opens the curated pin card; the assertion inside the sheet is
+# the point — the list and the marker share one selection model.
+- runFlow:
+    when:
+      visible: 'One of our picks. Show up.'
+    commands:
+      - takeScreenshot: 05f-plan-list-card
+      - tapOn: 'Close'
+      - waitForAnimationToEnd:
+          timeout: 2000
+# On live-backend state a non-seeded pin can be row 0, and the gated flow
+# above is the only place a card gets closed — so close whatever the row
+# opened (no-op when the seeded branch already did), then collapse the list
+# back to its peek so the pan segment starts on a bare map.
+- tapOn:
+    text: 'Close'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    id: 'plan-list-peek'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Pan away from the city. A blank frame with no pins used to be the whole
+# answer; now the way home is a pill above the dock, asserted by its spoken
+# label (a PressableScale with its own label is one element on iOS). Two
+# swipes: one span is roughly the pill's distance threshold, two clear it.
+- swipe:
+    start: 15%, 45%
+    end: 85%, 45%
+- swipe:
+    start: 15%, 45%
+    end: 85%, 45%
+- extendedWaitUntil:
+    visible: 'Back to Bangkok'
+    timeout: 10000
+- takeScreenshot: 05g-panned-away
+- tapOn: 'Back to Bangkok'
+- waitForAnimationToEnd:
+    timeout: 2000
+
 # The pin-card gate, which no flow had ever photographed. Which marker is on
 # screen depends on the seeded city's data, so every step is optional and the
 # tap goes by the "open to join" suffix every joinable pin's spoken label

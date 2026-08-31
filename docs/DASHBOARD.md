@@ -20,7 +20,7 @@ dead.
 | Map DAU vs matching DAU                  | PostHog: unique users on `map_viewed` / `travelers_viewed`, both filtered `guest = false` |
 | Request → accept rate                    | `select * from admin_request_funnel;` (+ `request_responded` event)                       |
 | % first messages blocked                 | `select * from admin_moderation_stats;`                                                   |
-| Pin creation rate / heatmap views        | PostHog `pin_created`, `heatmap_rendered`; `admin_pin_stats` (live)                       |
+| Pin creation rate / heatmap views        | PostHog `pin_created`, `heatmap_viewed`; `admin_pin_stats` (live)                         |
 | D1/D7 retention **within trip window**   | PostHog retention, cohorted on `trip_created` (caveat below)                              |
 | **Pipeline health** (not in §6, but ops) | `select * from admin_ops_health;`                                                         |
 
@@ -56,7 +56,11 @@ tighten moderation before growing supply.
    be read from the same pair — but a guest browsing is not a DAU, and the
    flag is what keeps the two sides of the ratio honest.
 2. **Pin funnel** — `map_viewed → pin_created` conversion, and
-   `heatmap_rendered` per session.
+   `heatmap_viewed` per session. Renamed from `heatmap_rendered` on
+   2026-08-31 with a real semantic change: the old event fired when heat
+   DATA arrived, the new one requires drawn pixels on an uncovered map
+   (non-empty layer, no sheet over it, not place mode), once per city per
+   session — so the series legitimately drops at the rename.
 3. **Request funnel** — `request_sent` (property `delivered` true/false) →
    `request_responded` (property `accepted`).
    **Derived: second-message rate** — of conversations opened by an accepted
@@ -94,8 +98,9 @@ with `grep -rhoE "analytics[.]capture[(]'[a-z_]+'" src` before adding a chart.
 (All wired; no-op only in a dev build without the key — the publish
 workflows refuse to ship a bundle without it.)
 
-- **Map and pins**: `map_viewed`, `heatmap_rendered`, `pin_created`,
-  `pin_tapped`, `pin_joined`
+- **Map and pins**: `map_viewed`, `heatmap_viewed` (was `heatmap_rendered`;
+  views need drawn pixels on an uncovered map, so the count is honest and
+  lower), `pin_created`, `pin_tapped`, `pin_joined`
 - **Matching and chat**: `travelers_viewed`, `request_sent`,
   `request_responded`, `message_sent`, `direct_chat_opened`, `left_chat`
 - **Trips**: `trip_created`, `trip_cancelled`, `trip_deleted`

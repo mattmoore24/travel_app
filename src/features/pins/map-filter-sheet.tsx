@@ -1,5 +1,5 @@
-import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { SymbolView } from 'expo-symbols';
+import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
@@ -7,6 +7,7 @@ import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet } from '@/components/ui/sheet';
 import { Radius, Space } from '@/constants/theme';
+import { PlaceGlyph } from '@/features/business/business-marker';
 import { useIsBusiness } from '@/features/business/hooks';
 import {
   DEFAULT_FILTERS,
@@ -21,6 +22,7 @@ import { PIN_CATEGORIES } from '@/features/pins/pin-helpers';
 import { PinGlyph } from '@/features/pins/pin-marker';
 import { addDays } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
+import { countOf } from '@/lib/plural';
 
 /**
  * The families of marker, as each kind of account is asked about them.
@@ -31,34 +33,22 @@ import { useTheme } from '@/hooks/use-theme';
  * features/guest/hooks) — so the row says so rather than implying a
  * directory that is not there.
  */
-const TRAVELER_KINDS: [MarkerKind, string, string, SymbolViewProps['name']][] = [
+const TRAVELER_KINDS: [MarkerKind, string, string][] = [
+  ['travelers', 'Travelers', 'Plans other people have pinned.'],
+  ['businesses', 'Businesses', 'Bars, hostels and cafes with a page here.'],
+  ['picks', 'Samewhere picks', 'Spots we put on the map ourselves.'],
+  // Visible even when the layer is empty — which is exactly when somebody
+  // needs to know the layer exists at all. The subtitle is the rule 6
+  // promise in a sentence.
   [
-    'travelers',
-    'Travelers',
-    'Plans other people have pinned.',
-    { ios: 'figure.walk', android: 'hiking', web: 'hiking' },
-  ],
-  [
-    'businesses',
-    'Businesses',
-    'Bars, hostels and cafes with a page here.',
-    { ios: 'storefront.fill', android: 'storefront', web: 'storefront' },
-  ],
-  [
-    'picks',
-    'Samewhere picks',
-    'Spots we put on the map ourselves.',
-    { ios: 'star.fill', android: 'star', web: 'star' },
+    'heat',
+    'Busy areas',
+    "Where plans are clustering. Never shown unless enough people are in on it, and never anyone's name.",
   ],
 ];
 
-const BUSINESS_KINDS: [MarkerKind, string, string, SymbolViewProps['name']][] = [
-  [
-    'travelers',
-    'Traveler plans',
-    'Where people are heading. No names, no faces.',
-    { ios: 'figure.walk', android: 'hiking', web: 'hiking' },
-  ],
+const BUSINESS_KINDS: [MarkerKind, string, string][] = [
+  ['travelers', 'Traveler plans', 'Where people are heading. No names, no faces.'],
   [
     'businesses',
     'Businesses',
@@ -68,13 +58,12 @@ const BUSINESS_KINDS: [MarkerKind, string, string, SymbolViewProps['name']][] = 
     // for it. The legend teaches the ring only when the ring is drawn; this
     // says nothing it cannot keep either.
     'Every business that is live on the map.',
-    { ios: 'storefront.fill', android: 'storefront', web: 'storefront' },
   ],
+  ['picks', 'Samewhere picks', 'Spots we put on the map ourselves.'],
   [
-    'picks',
-    'Samewhere picks',
-    'Spots we put on the map ourselves.',
-    { ios: 'star.fill', android: 'star', web: 'star' },
+    'heat',
+    'Busy areas',
+    "Where plans are clustering. Never shown unless enough people are in on it, and never anyone's name.",
   ],
 ];
 
@@ -95,10 +84,20 @@ const BUSINESS_KINDS: [MarkerKind, string, string, SymbolViewProps['name']][] = 
  */
 export function MapFilterSheet({
   filters,
+  resultCount,
+  totalCount,
   onChange,
   onClose,
 }: {
   filters: MapFilters;
+  /**
+   * How many markers survive right now — computed by the map from the SAME
+   * arrays the markers render (see mapResultCount), or the number would
+   * contradict the dots.
+   */
+  resultCount: number;
+  /** Everything the city has before the filters, for '3 of 11 plans'. */
+  totalCount: number;
   onChange: (next: MapFilters) => void;
   onClose: () => void;
 }) {
@@ -114,13 +113,28 @@ export function MapFilterSheet({
   const laterLabel = new Intl.DateTimeFormat('en', { weekday: 'long' }).format(
     addDays(new Date(), 2)
   );
+  // The cap is what keeps a strip of MAP visible above the sheet: the whole
+  // argument against an Apply button is that you watch the markers answer
+  // every tick, and the un-capped sheet ran to the tab bar and covered the
+  // map it claimed to be updating live.
+  const { height } = useWindowDimensions();
 
   return (
     <Sheet inline dimmed={false} onClose={onClose}>
       <View style={styles.header}>
-        <ThemedText type="headline" accessibilityRole="header">
-          Filters
-        </ThemedText>
+        <View style={styles.headerTitle}>
+          <ThemedText type="headline" accessibilityRole="header">
+            Filters
+          </ThemedText>
+          {/* The size of what was removed, legible at a glance — only when
+              there was anything to remove. '0 of 0 plans' over an empty city
+              reads as a filter problem the sheet cannot fix. */}
+          {totalCount > 0 ? (
+            <ThemedText type="footnote" themeColor="textSecondary">
+              {resultCount} of {countOf(totalCount, 'plan')}
+            </ThemedText>
+          ) : null}
+        </View>
         {/* Only when there is something to clear. A permanently visible
             "Clear all" over a map with nothing filtered is a button that
             implies the map is hiding something. */}
@@ -140,7 +154,7 @@ export function MapFilterSheet({
       </View>
 
       <ScrollView
-        style={styles.scroll}
+        style={[styles.scroll, { maxHeight: height * 0.6 }]}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
         {/* No note. Four chips ending on a weekday two days out say the
@@ -172,18 +186,16 @@ export function MapFilterSheet({
             the last box simply does not take, which is how every filter list
             people already use behaves. */}
         <Group title="What to show">
-          {(viewerIsBusiness ? BUSINESS_KINDS : TRAVELER_KINDS).map(
-            ([value, title, detail, glyph]) => (
-              <CheckRow
-                key={value}
-                title={title}
-                detail={detail}
-                glyph={glyph}
-                checked={filters.kinds.includes(value)}
-                onPress={() => onChange({ ...filters, kinds: toggle(filters.kinds, value, true) })}
-              />
-            )
-          )}
+          {(viewerIsBusiness ? BUSINESS_KINDS : TRAVELER_KINDS).map(([value, title, detail]) => (
+            <CheckRow
+              key={value}
+              title={title}
+              detail={detail}
+              leading={<KindArt kind={value} />}
+              checked={filters.kinds.includes(value)}
+              onPress={() => onChange({ ...filters, kinds: toggle(filters.kinds, value, true) })}
+            />
+          ))}
         </Group>
 
         {viewerIsBusiness ? null : (
@@ -218,6 +230,38 @@ export function MapFilterSheet({
         )}
       </ScrollView>
 
+      {/* What survived, said in words right above the exit — the map has
+          already applied everything, and an over-filtered map must never be
+          mistakable for an empty city. Only when the FILTERS did the
+          emptying, though (the header's own Clear all uses the same test): a
+          genuinely empty city at the defaults has no plans to match and
+          nothing to clear, so it gets the honest sentence instead. */}
+      {resultCount === 0 && !isDefault(filters) ? (
+        <View style={styles.resultEmpty}>
+          <ThemedText type="smallBold" style={styles.resultLine}>
+            No plans match
+          </ThemedText>
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Clear all filters"
+            haptic="light"
+            scaleTo={0.94}
+            hitSlop={8}
+            onPress={() => onChange(DEFAULT_FILTERS)}>
+            <ThemedText type="footnote" themeColor="accent" style={styles.resultLine}>
+              Clear all
+            </ThemedText>
+          </PressableScale>
+        </View>
+      ) : resultCount === 0 ? (
+        <ThemedText type="footnote" themeColor="textSecondary" style={styles.resultLine}>
+          Nothing on the map yet.
+        </ThemedText>
+      ) : (
+        <ThemedText type="footnote" themeColor="textSecondary" style={styles.resultLine}>
+          {countOf(resultCount, 'plan')} on the map
+        </ThemedText>
+      )}
       {/* "Done", not "Apply". Nothing is waiting to be applied — the map has
           been answering every tap behind this sheet the whole time — and a
           button called Apply on a screen that has already applied everything
@@ -300,16 +344,45 @@ function Chip({
   );
 }
 
+/**
+ * The artwork the map actually draws, so these rows double as the map's
+ * permanent legend — the one-shot chips can be dismissed forever, and this
+ * sheet is where a person can always come back to be told what the marker
+ * families are. Generic SF symbols said nothing the map ever showed.
+ */
+function KindArt({ kind }: { kind: MarkerKind }) {
+  switch (kind) {
+    case 'travelers':
+      return <PinGlyph category="other" size={22} />;
+    case 'businesses':
+      return <PlaceGlyph category="bar" live={false} size={22} onSurface />;
+    case 'picks':
+      return <PinGlyph category="other" seeded size={22} />;
+    case 'heat':
+      return <HeatSwatch />;
+  }
+}
+
+/** The glow, as a chip-sized swatch — the heat layer has no marker to borrow. */
+function HeatSwatch() {
+  return (
+    <View style={styles.heatSwatchWrap}>
+      <View style={[styles.heatSwatch, { backgroundColor: 'rgba(255, 154, 90, 0.85)' }]} />
+    </View>
+  );
+}
+
 function CheckRow({
   title,
   detail,
-  glyph,
+  leading,
   checked,
   onPress,
 }: {
   title: string;
   detail: string;
-  glyph: SymbolViewProps['name'];
+  /** The marker artwork this row is about. */
+  leading: React.ReactNode;
   checked: boolean;
   onPress: () => void;
 }) {
@@ -326,11 +399,7 @@ function CheckRow({
       <ThemedView
         type={checked ? 'accentSoft' : 'backgroundElement'}
         style={[styles.row, { borderColor: checked ? theme.accent : 'transparent' }]}>
-        <SymbolView
-          name={glyph}
-          size={18}
-          tintColor={checked ? theme.accent : theme.textSecondary}
-        />
+        {leading}
         <View style={styles.rowText}>
           <ThemedText type="smallBold">{title}</ThemedText>
           <ThemedText type="footnote" themeColor="textSecondary">
@@ -409,6 +478,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Space.md,
   },
+  headerTitle: {
+    gap: 2,
+  },
+  resultLine: {
+    textAlign: 'center',
+  },
+  resultEmpty: {
+    gap: Space.xs,
+  },
   /* Grows to its content and SHRINKS when there is not room. Without the
      shrink, four groups on a small phone push Done off the bottom of a sheet
      that is already at its maximum height. */
@@ -451,6 +529,18 @@ const styles = StyleSheet.create({
   rowText: {
     flex: 1,
     gap: 2,
+  },
+  // The same 22pt box the marker glyphs occupy, so the four rows line up.
+  heatSwatchWrap: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heatSwatch: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
   },
   filterButton: {
     height: 30,

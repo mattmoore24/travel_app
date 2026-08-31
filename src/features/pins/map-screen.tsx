@@ -14,6 +14,7 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Circle, Marker, Polygon, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
@@ -41,17 +42,21 @@ import { useIsGuest, useIsSignedOut, useMapHeat, useMapPins } from '@/features/g
 import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { AudienceChip } from '@/features/pins/audience-chip';
 import { audienceInSentence } from '@/features/profile/audience';
+import { FAR_FROM_CITY_M, anyInRegion, fitRegion } from '@/features/pins/camera';
 import {
   CITY_ZOOM_DELTA,
+  clusterByScreen,
   clusterCategory,
   clusterIntentDate,
   clusterPins,
   clusterTitle,
   metersBetween,
+  screenClusterPins,
   type PinCluster,
+  type ScreenCluster,
 } from '@/features/pins/cluster';
-import { heatRings, mergeHeatCells } from '@/features/pins/heat';
-import { useHeatLegend, usePlacesLegend } from '@/features/pins/heat-legend';
+import { heatRings, heatViewReady, heatWithFallback, mergeHeatCells } from '@/features/pins/heat';
+import { useHeatEmptyLegend, useHeatLegend, usePlacesLegend } from '@/features/pins/heat-legend';
 import {
   CityCountView,
   MARKER_ANCHOR,
@@ -63,6 +68,12 @@ import {
   useMarkerTracking,
 } from '@/features/pins/pin-marker';
 import { openInMaps } from '@/features/pins/open-in-maps';
+import {
+  PLAN_LIST_PEEK,
+  PlanList,
+  listableBusinesses,
+  type PlanListDetent,
+} from '@/features/pins/plan-list';
 import { PinFormSheet } from '@/features/pins/pin-form-sheet';
 import { PinSearchField } from '@/features/pins/pin-search-field';
 import type { LocalSearchResult } from '@/modules/local-search';
@@ -81,17 +92,26 @@ import {
   daysFor,
   heatDay,
   isDefault,
+  mapResultCount,
   pinPasses,
   showsBusinesses,
+  showsHeat,
   type MapFilters,
 } from '@/features/pins/filters';
 import { crewLabel } from '@/features/pins/crew';
 import { FilterButton, MapFilterSheet } from '@/features/pins/map-filter-sheet';
 import { useMyChats, useSentRequests, useFirstMessageBudget } from '@/features/matching/hooks';
-import { useOwnUserId, useOwnVisibility, usePhotoUrl } from '@/features/profile/hooks';
+import { chooseSlot } from '@/features/pins/message-slot';
+import { usePushPrimer } from '@/features/notifications/primer-store';
+import {
+  useOwnProfile,
+  useOwnUserId,
+  useOwnVisibility,
+  usePhotoUrl,
+} from '@/features/profile/hooks';
 import { useAnnounce } from '@/features/chat/use-announce';
 import { useAccessibilitySettings } from '@/hooks/use-accessibility-settings';
-import { useTabBarInset, useTabDockBottom } from '@/hooks/use-tab-bar-inset';
+import { useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
@@ -756,15 +776,69 @@ function ClusterMarker({
   );
 }
 
+/**
+ * Several VENUES merged because the current zoom draws them under one
+ * fingertip: a plain count bubble that splits on tap by zooming toward it.
+ * The venue-level stack (ClusterMarker) keeps the faces; this one is
+ * deliberately faceless — at a zoom where venues collide, who is going is
+ * not answerable on the map.
+ */
+function CountBubbleMarker({ screen, onPress }: { screen: ScreenCluster; onPress: () => void }) {
+  const pins = screenClusterPins(screen);
+  const category = clusterCategory({ key: screen.key, lat: screen.lat, lng: screen.lng, pins });
+  const soonest = pins.reduce(
+    (min, pin) => (pin.intent_date < min ? pin.intent_date : min),
+    pins[0].intent_date
+  );
+  const tracking = useMarkerTracking(`${pins.length}:${category}:${isLaterDay(soonest)}`);
+  return (
+    <Marker
+      coordinate={{ latitude: screen.lat, longitude: screen.lng }}
+      anchor={MARKER_ANCHOR}
+      centerOffset={MARKER_CENTER_OFFSET}
+      displayPriority="required"
+      zIndex={2}
+      tracksViewChanges={tracking}
+      accessibilityRole="button"
+      accessibilityLabel={`${countOf(pins.length, 'plan')} in this area`}
+      accessibilityHint="Zooms in to separate them"
+      onPress={(event) => {
+        event.stopPropagation();
+        onPress();
+      }}>
+      <PinStackView faces={[]} count={pins.length} category={category} intentDate={soonest} />
+    </Marker>
+  );
+}
+
 type MapMode = 'browse' | 'place' | 'detail';
+
+/** When this JS session started, for the first-session strip. */
+const SESSION_START_MS = Date.now();
+/** Clock slack between the server stamping onboarding and this device. */
+const SESSION_GRACE_MS = 10 * 60_000;
+/**
+ * The dock button's height at the default text size — the seed for the
+ * measured height, and the style's minHeight. The button grows with Dynamic
+ * Type, so anything anchored on the bare constant slid under it at the
+ * accessibility sizes.
+ */
+const DOCK_MIN_HEIGHT = 52;
+/**
+ * How far apart a split must land a bubble's widest member pair, in points:
+ * comfortably past SCREEN_CLUSTER_PT, and past 2x it — the greedy screen
+ * pass could still chain two markers each 44pt from a shared seed.
+ */
+const SPLIT_CLEAR_PT = 110;
 
 export default function MapScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   // Measured against Dynamic Type, not the 50pt constant: at the AX sizes
   // the native bar grows upward, and everything anchored on the constant
-  // slid underneath it — including the Drop a pin dock.
-  const tabBarInset = useTabBarInset();
+  // slid underneath it — including the Drop a pin dock. Everything above the
+  // dock now anchors on `messageSlot`, one derived constant, instead of the
+  // two hand-tuned offsets that used to overlap.
   const dockBottom = useTabDockBottom();
   const mapRef = useRef<MapView>(null);
   // MapKit's camera is outside Reanimated's reach, so Reduce Motion is
@@ -790,13 +864,48 @@ export default function MapScreen() {
   const filterSet = useMemo(() => daysFor(filters.day), [filters.day]);
   const pinsQuery = useMapPins(activeCityId);
   const { data: allPins = [], isSuccess: pinsLoaded } = pinsQuery;
-  const { data: heat = [] } = useMapHeat(activeCityId, filterISO);
-  const heatCells = useMemo(() => mergeHeatCells(heat), [heat]);
-  const legend = useHeatLegend(heatCells.length > 0);
+  // Both halves of the heat ask: the day-filtered layer, and the all-days
+  // pool it may fall back to (the same physical query when no day is chosen,
+  // so the keys collide and react-query dedupes). Error and pending are read
+  // off the query — a failed heatmap and a genuinely quiet city used to be
+  // indistinguishable.
+  const heatQuery = useMapHeat(activeCityId, filterISO);
+  const allDaysHeatQuery = useMapHeat(activeCityId, null);
+  const heatShown = showsHeat(filters);
+  const { rows: heatRows, fallback: heatFallback } = heatWithFallback(
+    filterISO != null,
+    heatQuery.data ?? [],
+    allDaysHeatQuery.data ?? []
+  );
+  const heatCells = useMemo(() => mergeHeatCells(heatRows), [heatRows]);
+  // Settled means THIS city's ask settled: on a city switch the new key
+  // starts pending and the empty-state chip must not flash while it does.
+  const heatSettled = heatQuery.isSuccess && (filterISO == null || allDaysHeatQuery.isSuccess);
+  // The glow explanation, only when a glow is actually drawn and drawn
+  // unlabelled — the fallback branch carries its own footnote.
+  const legend = useHeatLegend(heatShown && heatCells.length > 0 && !heatFallback);
+  // And the honest third state: the ask settled and there is nothing to
+  // draw. Its own one-shot key (see heat-legend).
+  const heatEmptyLegend = useHeatEmptyLegend(
+    heatShown && heatSettled && !heatQuery.isError && heatCells.length === 0
+  );
   const isGuest = useIsGuest();
   // A guest has no setting of their own, and the hook is disabled without a
   // user id, so this falls back to 'everyone' for them.
   const { data: audience = 'everyone' } = useOwnVisibility();
+  // For the two moments the message slot now carries: the first-session
+  // strip (keyed on onboarding_completed_at falling inside this session) and
+  // the be-first follow-up on the viewer's own solitary pin.
+  const ownUserId = useOwnUserId();
+  const { data: ownProfile } = useOwnProfile();
+  const askPrimer = usePushPrimer((s) => s.ask);
+  const canAskPrimer = usePushPrimer((s) => s.canAsk);
+  const [firstPinAsked, setFirstPinAsked] = useState(false);
+  // Whether the first-pin banner's "Turn on notifications" action would
+  // actually present anything. useCreatePin already asked on post, so for
+  // exactly the person this banner targets the ask is usually spent — and a
+  // tap the primer store would silently swallow must not be offered.
+  const [firstPinAskable, setFirstPinAskable] = useState(false);
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
   // Places are the third marker family, and they are quiet on purpose:
   // people stack on top of places, which is the right sentence for this app.
@@ -836,7 +945,11 @@ export default function MapScreen() {
   // checkbox, and unticking it empties the map of chips while this legend went
   // on pointing at them.
   const placesLegend = usePlacesLegend(
-    !cityScale && showsBusinesses(filters) && places.length > 0 && !legend.visible
+    !cityScale &&
+      showsBusinesses(filters) &&
+      places.length > 0 &&
+      !legend.visible &&
+      !heatEmptyLegend.visible
   );
   // Whether the owner's own chip is actually drawn, which is not the same as
   // being a business: a listing waiting on its email code is not in
@@ -845,6 +958,14 @@ export default function MapScreen() {
   // exists to avoid.
   const ownChipOnMap = ownBusinessId != null && places.some((p) => p.id === ownBusinessId);
 
+  // The plan list's detent lives HERE, not inside the list: an expanded list
+  // buries whatever the message slot rendered under it, so the slot-clear
+  // condition and the heatmap-view gate both have to see it.
+  const [planDetent, setPlanDetent] = useState<PlanListDetent>('peek');
+  // The dock button's real height. minHeight 52 at the default text size, but
+  // it grows with Dynamic Type, and the plan list's peek used to anchor on
+  // the constant and cover the dock's top edge at the accessibility sizes.
+  const [dockHeight, setDockHeight] = useState(DOCK_MIN_HEIGHT);
   // The drop-a-pin flow lives on this map, not a separate screen: browse →
   // place (map pans under a fixed pin) → detail (form sheet over the map).
   const [mode, setMode] = useState<MapMode>('browse');
@@ -866,6 +987,13 @@ export default function MapScreen() {
   const lastGeocoded = useRef<{ lat: number; lng: number } | null>(null);
   const lastGeocodeAt = useRef(0);
   const lastRegion = useRef<Region | null>(null);
+  // The settled region AS STATE, unlike lastRegion above: the plan list
+  // re-sorts by distance from the centre, the screen-space cluster pass
+  // needs the zoom, and the way-home pill needs the drift — all of which
+  // have to reach React. Only updated once the camera has moved a real
+  // distance or zoomed a real step, so a nudge or a rubber-band settle does
+  // not re-render every marker on the map.
+  const [settledRegion, setSettledRegion] = useState<Region | null>(null);
 
   // `new Date().getTime()`, matching how the rest of this codebase reads the
   // clock in event paths — these run from map events and timers, never during
@@ -933,10 +1061,89 @@ export default function MapScreen() {
   // pinning the same handful of bars — three markers on one building meant
   // two of them were literally under the third and could not be tapped.
   const clusters = useMemo(() => clusterPins(pins), [pins]);
-  const openVenue = useMemo(
-    () => clusters.find((cluster) => cluster.key === venueKey) ?? null,
-    [clusters, venueKey]
+  // Second pass, in screen space: venue clusters that would overlap at the
+  // settled zoom merge into one count bubble. Keyed on member ids, so the
+  // bubbles keep their identity — and their bitmaps — as the camera moves.
+  // Each axis scaled by its own screen dimension: latitudeDelta spans the
+  // HEIGHT (see clusterByScreen).
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const screenClusters = useMemo(
+    () => clusterByScreen(clusters, settledRegion, screenWidth, screenHeight),
+    [clusters, settledRegion, screenWidth, screenHeight]
   );
+  const openVenue = useMemo(() => {
+    const venue = clusters.find((cluster) => cluster.key === venueKey) ?? null;
+    if (venue != null) {
+      return venue;
+    }
+    // A count bubble whose members no zoom can separate (splitBubble's
+    // degenerate fallback) opens as one stack: the same sheet, every plan
+    // the bubble holds.
+    const bubble = venueKey != null ? screenClusters.find((s) => s.key === venueKey) : null;
+    return bubble != null
+      ? { key: bubble.key, lat: bubble.lat, lng: bubble.lng, pins: screenClusterPins(bubble) }
+      : null;
+  }, [clusters, screenClusters, venueKey]);
+  const mapCentre = useMemo(
+    () => (settledRegion ? { lat: settledRegion.latitude, lng: settledRegion.longitude } : null),
+    [settledRegion]
+  );
+  // Everything the markers currently draw, for the camera fit and for the
+  // panned-away check: the pins after the filters, plus the business chips
+  // when they are ticked (they only draw past city scale, matching :1233).
+  const markerPoints = useMemo(
+    () => [
+      ...pins.map((pin) => ({ lat: pin.lat, lng: pin.lng })),
+      ...(showsBusinesses(filters) && !cityScale
+        ? places.map((place) => ({ lat: place.lat, lng: place.lng }))
+        : []),
+    ],
+    [pins, places, filters, cityScale]
+  );
+  // Fit the camera to its own data: on first arrival, on a city switch once
+  // the new city's rows land, and on every filter change — a narrowed map
+  // must re-frame what survived or it reads as an emptied city. Never while
+  // a card is open (the select nudge owns the camera then), never in place
+  // mode (the map is a viewfinder), and never past city scale.
+  const lastFitKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!pinsLoaded || activeCityId == null) {
+      return;
+    }
+    const key = `${activeCityId}:${filters.day}:${filters.kinds.join()}:${filters.categories.join()}`;
+    if (lastFitKey.current === key) {
+      return;
+    }
+    // The key is consumed only once the fit actually runs: a fit occasion
+    // that arrives while a card, a stack, or place mode owns the camera
+    // stays pending until the blocker clears, instead of being marked done
+    // and skipped forever.
+    if (
+      mode !== 'browse' ||
+      selectedPinId != null ||
+      venueKey != null ||
+      selectedPlaceId != null ||
+      cityScale
+    ) {
+      return;
+    }
+    lastFitKey.current = key;
+    const region = fitRegion(markerPoints);
+    if (region) {
+      mapRef.current?.animateToRegion(region, reduceMotion ? 0 : 350);
+    }
+  }, [
+    pinsLoaded,
+    activeCityId,
+    filters,
+    markerPoints,
+    mode,
+    selectedPinId,
+    venueKey,
+    selectedPlaceId,
+    cityScale,
+    reduceMotion,
+  ]);
 
   // §6 metrics: map DAU (every city view, including the initial one) and
   // heatmap views per session. One component serves both audiences, so the
@@ -953,11 +1160,137 @@ export default function MapScreen() {
       analytics.capture('map_viewed', { city_id: activeCityId, guest: isGuest });
     }
   }, [activeCityId, isGuest]);
-  useEffect(() => {
-    if (activeCityId != null && heat.length > 0) {
-      analytics.capture('heatmap_rendered', { city_id: activeCityId, cells: heat.length });
+  // `heatmap_viewed`, not the old `heatmap_rendered`: that one fired when
+  // heat DATA arrived, not when a person saw anything, so the founder metric
+  // read healthy for a layer that had drawn zero pixels. A view needs pixels
+  // on an uncovered map, once per city per session. `cells` stays as an
+  // aggregate count only.
+  const heatViewedCities = useRef<Set<number>>(new Set());
+  // The RESOLVED entities where one exists (selectedPin, openVenue), never
+  // the raw ids: the sheets themselves render off the resolved values, so a
+  // stale id — a venue key surviving a city switch, a pin the filters just
+  // removed — must not count as cover for a sheet that is not on screen.
+  // The place card is handed its bare id (it fetches its own row), so the
+  // raw id is exactly what mounts it.
+  const sheetCovered =
+    selectedPin != null ||
+    openVenue != null ||
+    selectedPlaceId != null ||
+    filtersOpen ||
+    gate != null;
+  // Whether the plan list is on screen at all, and whether it stands past
+  // its peek. Past the peek the list is itself the thing covering the map:
+  // slot content under it is buried, and heat pixels under it are unseen.
+  const planListShown =
+    mode === 'browse' &&
+    activeCity != null &&
+    (pins.length > 0 || listableBusinesses(places, isBusiness, ownBusinessId).length > 0);
+  // Reads sheetCovered, never mapCovered: the fold condition must not read
+  // the expansion it forces, or the list would collapse itself the moment
+  // it opened.
+  const planListCollapsed = sheetCovered;
+  const planListExpanded = planListShown && !planListCollapsed && planDetent !== 'peek';
+  const mapCovered = sheetCovered || planListExpanded;
+
+  // WHO OWNS THE MESSAGE STRIP. Exactly one thing renders in the slot above
+  // the plan list, on one explicit priority (features/pins/message-slot);
+  // every banner and chip below reads `slot` instead of its own gates. The
+  // strip clears entirely while any sheet covers the map.
+  const hasOwnPin = ownUserId != null && allPins.some((pin) => pin.user_id === ownUserId);
+  const onboardedAtMs = ownProfile?.onboarding_completed_at
+    ? Date.parse(ownProfile.onboarding_completed_at)
+    : null;
+  // "Just finished signup", NOT "has finished signup" — the latter is true
+  // forever. Inside this app session, with a little grace for the gap
+  // between the server stamping the row and this device's clock.
+  const firstSession =
+    !isBusiness &&
+    !isGuest &&
+    !hasOwnPin &&
+    onboardedAtMs != null &&
+    onboardedAtMs >= SESSION_START_MS - SESSION_GRACE_MS;
+  // The person who took "Be the first" up on it, alone with their pin. From
+  // allPins, never the filtered array: a filter that leaves only my pin
+  // visible must not assert "You're first" over a non-empty city. Seeded
+  // rows are our picks, not company — hasOwnPin's own exclusion, via their
+  // null user_id. The pin itself is kept so the banner's promise can match
+  // what the pin can actually receive (a join, or a message).
+  const ownOnlyPin = useMemo(() => {
+    if (isBusiness || ownUserId == null) {
+      return null;
     }
-  }, [activeCityId, heat.length]);
+    const travelerPins = allPins.filter((pin) => !pin.seeded);
+    return travelerPins.length === 1 && travelerPins[0].user_id === ownUserId
+      ? travelerPins[0]
+      : null;
+  }, [allPins, isBusiness, ownUserId]);
+  const ownPinIsOnlyPin = ownOnlyPin != null;
+  // Whether the banner's notification action can actually present. Asked of
+  // the primer store each time the banner arms: useCreatePin already asked
+  // on post, and a tap ask() would silently swallow is not offered.
+  useEffect(() => {
+    if (!ownPinIsOnlyPin) {
+      return;
+    }
+    let alive = true;
+    void canAskPrimer().then((worth) => {
+      if (alive) {
+        setFirstPinAskable(worth);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [ownPinIsOnlyPin, canAskPrimer]);
+  const viewportEmpty =
+    settledRegion != null &&
+    pinsLoaded &&
+    markerPoints.length > 0 &&
+    !anyInRegion(markerPoints, settledRegion);
+  const farFromCity =
+    activeCity != null &&
+    mapCentre != null &&
+    metersBetween(mapCentre.lat, mapCentre.lng, activeCity.cities.lat, activeCity.cities.lng) >
+      FAR_FROM_CITY_M;
+  const emptyCity =
+    pinsLoaded &&
+    pins.length === 0 &&
+    // Business chips answering the filters are content; the banner is not.
+    (!isBusiness || !(!cityScale && showsBusinesses(filters) && places.length > 0));
+  const slot =
+    activeCity != null && mode === 'browse' && !mapCovered
+      ? chooseSlot({
+          'pins-error': pinsQuery.isError,
+          'heat-error': heatShown && heatQuery.isError,
+          'empty-city': emptyCity,
+          'viewport-empty': viewportEmpty && !farFromCity,
+          'way-home': farFromCity,
+          'first-session': firstSession,
+          'first-pin': ownPinIsOnlyPin,
+          'heat-fallback': heatShown && heatFallback && heatCells.length > 0,
+          'heat-legend': legend.visible,
+          'heat-empty': heatEmptyLegend.visible,
+          'places-legend': placesLegend.visible,
+        })
+      : null;
+  // The all-days fallback may never appear unlabelled (rule 6 in spirit: an
+  // unlabelled fallback reports "busy tomorrow" from a pool that is not
+  // tomorrow's). It is drawn only while its footnote owns the strip — the
+  // day-filtered layer was empty anyway.
+  const heatFallbackActive = heatFallback && slot === 'heat-fallback';
+  const drawnHeatCells = !heatShown || (heatFallback && !heatFallbackActive) ? [] : heatCells;
+  const drawnHeatCellCount = drawnHeatCells.length;
+  useEffect(() => {
+    if (
+      activeCityId == null ||
+      heatViewedCities.current.has(activeCityId) ||
+      !heatViewReady({ cells: drawnHeatCellCount, covered: mapCovered, placing: mode !== 'browse' })
+    ) {
+      return;
+    }
+    heatViewedCities.current.add(activeCityId);
+    analytics.capture('heatmap_viewed', { city_id: activeCityId, cells: drawnHeatCellCount });
+  }, [activeCityId, drawnHeatCellCount, mapCovered, mode]);
 
   // Say the empty settle out loud: the empty-city banner is a card VoiceOver
   // is never told about, so a quiet city and a map that failed to load were
@@ -982,22 +1315,18 @@ export default function MapScreen() {
   );
 
   if (!isSupabaseConfigured) {
-    return (
-      <PlaceholderScreen
-        icon={{ ios: 'map.fill', android: 'map', web: 'map' }}
-        title="The Map"
-        phase="waiting on backend keys"
-        description="Add Supabase keys to .env to see pins and the heat layer in launch cities."
-      />
-    );
+    return <PlaceholderScreen configError icon={{ ios: 'map.fill', android: 'map', web: 'map' }} />;
   }
 
   const selectCity = (id: number) => {
     setCityId(id);
     setSelectedPinId(null);
-    // The pin card and the venue stack heal themselves — both are looked up
-    // in the city's own list, so they resolve to null the moment the list
-    // reloads. The place card does not: it is handed a bare id and
+    // The venue stack's SHEET heals itself — openVenue resolves to null the
+    // moment the city's list reloads — but the raw key would linger, and the
+    // camera-fit guard reads the raw key: a stale one from the last city
+    // would hold the new city's first fit hostage. Cleared like the others.
+    setVenueKey(null);
+    // The place card does not heal at all: it is handed a bare id and
     // `business-detail` is cached under that id alone, so without this the
     // card for a bar in Bangkok stays parked at the bottom of the Lisbon map,
     // with Join the chat and Message still wired to it.
@@ -1081,6 +1410,135 @@ export default function MapScreen() {
 
   const placing = mode === 'place' || mode === 'detail';
 
+  /**
+   * Nudge the camera so a marker stays visible above the card that is about
+   * to open over the bottom of the map. One function for all three marker
+   * families and the plan list, so every card behaves alike. Skipped when
+   * the marker is already north of the region centre: the card opens at the
+   * bottom, so a marker in the top half already clears it, and animating
+   * anyway would fight the person's own framing.
+   */
+  const nudgeAbove = (lat: number, lng: number) => {
+    const region = lastRegion.current;
+    if (region && lat > region.latitude) {
+      return;
+    }
+    const delta = region?.latitudeDelta ?? 0.05;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: lat - delta * 0.12,
+        longitude: lng,
+        latitudeDelta: delta,
+        longitudeDelta: region?.longitudeDelta ?? delta,
+      },
+      300
+    );
+  };
+
+  /**
+   * A count bubble splits by zooming until its members actually separate on
+   * screen. A third of the span a step where that is enough — but never a
+   * fixed floor: the district-packed curated seeds sit 0.0004-0.0014 degrees
+   * apart, and a floored zoom left them re-merging on every tap, an
+   * unsplittable bubble. The span is computed from the widest member pair;
+   * when even that cannot separate them (members on one spot), the bubble
+   * opens as a venue stack instead.
+   */
+  const splitBubble = (screen: ScreenCluster) => {
+    // The widest per-axis separation the bubble holds, in degrees. Scaled by
+    // the WIDTH for both axes: for a square requested region MapKit anchors
+    // the shorter screen axis, so width-scaling is what the settled camera
+    // actually delivers, and it is the conservative bound either way.
+    let widestDeg = 0;
+    for (let i = 0; i < screen.members.length; i += 1) {
+      for (let j = i + 1; j < screen.members.length; j += 1) {
+        widestDeg = Math.max(
+          widestDeg,
+          Math.abs(screen.members[i].lat - screen.members[j].lat),
+          Math.abs(screen.members[i].lng - screen.members[j].lng)
+        );
+      }
+    }
+    const splitting = (widestDeg * screenWidth) / SPLIT_CLEAR_PT;
+    if (!(splitting > 0) || !Number.isFinite(splitting)) {
+      setSelectedPinId(null);
+      setSelectedPlaceId(null);
+      setVenueKey(screen.key);
+      nudgeAbove(screen.lat, screen.lng);
+      return;
+    }
+    const stepped = (lastRegion.current?.latitudeDelta ?? 0.09) / 3;
+    const delta = Math.min(stepped, splitting);
+    mapRef.current?.animateToRegion(
+      {
+        latitude: screen.lat,
+        longitude: screen.lng,
+        latitudeDelta: delta,
+        longitudeDelta: delta,
+      },
+      reduceMotion ? 0 : 350
+    );
+  };
+
+  /**
+   * The list-originated reveal: rows are sorted by distance, not visibility,
+   * so a tapped row's target can be far off screen in any direction — north
+   * of centre included, exactly where nudgeAbove refuses to move. Fly there
+   * when the target is outside the settled region; on-screen targets keep
+   * the gentle nudge.
+   */
+  const revealFromList = (lat: number, lng: number) => {
+    const region = lastRegion.current;
+    if (region && !anyInRegion([{ lat, lng }], region)) {
+      mapRef.current?.animateToRegion(
+        {
+          latitude: lat - region.latitudeDelta * 0.12,
+          longitude: lng,
+          latitudeDelta: region.latitudeDelta,
+          longitudeDelta: region.longitudeDelta,
+        },
+        reduceMotion ? 0 : 350
+      );
+      return;
+    }
+    nudgeAbove(lat, lng);
+  };
+
+  /** The pin-select path: one selection model for markers and list rows. */
+  const selectPin = (pin: CityPinRow, from?: string) => {
+    if (placing || pin.id === selectedPinId) {
+      return;
+    }
+    haptics.light();
+    setVenueKey(null);
+    setSelectedPlaceId(null);
+    setSelectedPinId(pin.id);
+    // A tapped marker is on screen by definition; a list row's pin may not be.
+    if (from === 'list') {
+      revealFromList(pin.lat, pin.lng);
+    } else {
+      nudgeAbove(pin.lat, pin.lng);
+    }
+    analytics.capture('pin_tapped', {
+      seeded: pin.seeded,
+      category: pin.category,
+      ...(from ? { from } : {}),
+    });
+  };
+
+  // The peek anchors above the Drop-a-pin dock, which it never covers — on
+  // the dock's MEASURED height, because the button grows with Dynamic Type
+  // and the constant left the peek over its top edge at the AX sizes. A
+  // business has no dock, so its list sits on the tab bar clearance itself.
+  // (planListShown / planListCollapsed live up beside mapCovered now: the
+  // slot and the heatmap-view gate read the expanded list as cover.)
+  const planListBottom = isBusiness ? dockBottom : dockBottom + dockHeight + Space.sm;
+  // The one strip of map that carries a message, directly above the plan
+  // list's peek (or the dock, when there is no list). ONE derivation: the
+  // two hand-tuned offsets it replaces overlapped by about a chip's lower
+  // edge — and it composes with the same measured dock height as the peek.
+  const messageSlot = planListShown ? planListBottom + PLAN_LIST_PEEK + Space.sm : planListBottom;
+
   return (
     <View style={styles.root}>
       {activeCity ? (
@@ -1124,6 +1582,14 @@ export default function MapScreen() {
             lastRegion.current = region;
             // Only flips at the threshold, so this is not a per-frame render.
             setCityScale(region.latitudeDelta > CITY_ZOOM_DELTA);
+            setSettledRegion((prev) =>
+              prev &&
+              metersBetween(prev.latitude, prev.longitude, region.latitude, region.longitude) <
+                100 &&
+              Math.abs(prev.latitudeDelta - region.latitudeDelta) / prev.latitudeDelta < 0.15
+                ? prev
+                : region
+            );
             if (mode === 'place') {
               setLifted(false);
               setPlaceCoords({ lat: region.latitude, lng: region.longitude });
@@ -1189,8 +1655,10 @@ export default function MapScreen() {
 
           {/* Merged across categories, then drawn as three concentric rings
               per cell so the glow falls off instead of ending at a hard
-              boundary. See features/pins/heat.ts for both. */}
-          {heatCells.map((cell) =>
+              boundary. See features/pins/heat.ts for both. Gated on the
+              client-side Busy-areas toggle; the k-threshold stays entirely
+              the server's. */}
+          {drawnHeatCells.map((cell) =>
             heatRings(cell).map((ring) => (
               <Circle
                 key={ring.key}
@@ -1246,63 +1714,64 @@ export default function MapScreen() {
                     setSelectedPinId(null);
                     setVenueKey(null);
                     setSelectedPlaceId(place.id);
+                    // The same clear-the-card nudge the pin path makes, so
+                    // all three cards behave alike.
+                    nudgeAbove(place.lat, place.lng);
                   }}
                 />
               ))
             : null}
 
+          {/* Bubbles first: venue clusters the current zoom draws under one
+              fingertip, merged into a count that splits on tap. */}
           {!cityScale &&
-            clusters
-              .filter((cluster) => cluster.pins.length > 1)
-              .map((cluster) => (
-                <ClusterMarker
-                  key={cluster.key}
-                  cluster={cluster}
-                  selected={cluster.key === venueKey}
+            screenClusters
+              .filter((screen) => screen.members.length > 1)
+              .map((screen) => (
+                <CountBubbleMarker
+                  key={screen.key}
+                  screen={screen}
                   onPress={() => {
-                    if (placing || cluster.key === venueKey) {
+                    if (placing) {
                       return;
                     }
                     haptics.light();
-                    setSelectedPinId(null);
-                    setSelectedPlaceId(null);
-                    setVenueKey(cluster.key);
+                    splitBubble(screen);
                   }}
                 />
               ))}
 
           {!cityScale &&
-            clusters
-              .filter((cluster) => cluster.pins.length === 1)
-              .map(({ pins: [pin] }) => (
-                <CityPinMarker
-                  key={pin.id}
-                  pin={pin}
-                  selected={pin.id === selectedPinId}
-                  onPress={() => {
-                    // Guard doubles: marker onPress can fire twice on iOS.
-                    if (placing || pin.id === selectedPinId) {
-                      return;
-                    }
-                    haptics.light();
-                    setVenueKey(null);
-                    setSelectedPlaceId(null);
-                    setSelectedPinId(pin.id);
-                    // Nudge the camera so the pin stays visible above the sheet.
-                    const delta = lastRegion.current?.latitudeDelta ?? 0.05;
-                    mapRef.current?.animateToRegion(
-                      {
-                        latitude: pin.lat - delta * 0.12,
-                        longitude: pin.lng,
-                        latitudeDelta: delta,
-                        longitudeDelta: lastRegion.current?.longitudeDelta ?? delta,
-                      },
-                      300
-                    );
-                    analytics.capture('pin_tapped', { seeded: pin.seeded, category: pin.category });
-                  }}
-                />
-              ))}
+            screenClusters
+              .filter((screen) => screen.members.length === 1)
+              .map(({ members: [cluster] }) =>
+                cluster.pins.length > 1 ? (
+                  <ClusterMarker
+                    key={cluster.key}
+                    cluster={cluster}
+                    selected={cluster.key === venueKey}
+                    onPress={() => {
+                      if (placing || cluster.key === venueKey) {
+                        return;
+                      }
+                      haptics.light();
+                      setSelectedPinId(null);
+                      setSelectedPlaceId(null);
+                      setVenueKey(cluster.key);
+                      nudgeAbove(cluster.lat, cluster.lng);
+                    }}
+                  />
+                ) : (
+                  <CityPinMarker
+                    key={cluster.pins[0].id}
+                    pin={cluster.pins[0]}
+                    selected={cluster.pins[0].id === selectedPinId}
+                    // Guard doubles inside selectPin: marker onPress can fire
+                    // twice on iOS. The camera nudge lives there too.
+                    onPress={() => selectPin(cluster.pins[0])}
+                  />
+                )
+              )}
         </MapView>
       ) : (
         <ThemedView style={StyleSheet.absoluteFill}>
@@ -1338,6 +1807,18 @@ export default function MapScreen() {
 
       {/* Fixed centre pin the map pans underneath while placing. */}
       {placing ? <PlacePinOverlay lifted={lifted} /> : null}
+
+      {/* Dev builds only (the build-stamp precedent): how many heat rows the
+          server returned for the active city and day. The COUNT only — a
+          per-cell population below heat_k must never print anywhere. */}
+      {__DEV__ ? (
+        <ThemedText
+          type="caption"
+          themeColor="textSecondary"
+          style={[styles.devHeatCount, { top: insets.top + Space.xs }]}>
+          heat cells: {heatQuery.data?.length ?? 0}
+        </ThemedText>
+      ) : null}
 
       {/* No entering animation on the browse chrome: on the new architecture
           an ancestor mid-entering can hit-test against a stale rect, and
@@ -1499,9 +1980,8 @@ export default function MapScreen() {
           is quiet OR that the request died, and nothing on the screen told
           anyone which. Every other query on this map already distinguishes the
           two - launchCitiesQuery does it fifteen lines up. */}
-      {activeCity && mode === 'browse' && pinsQuery.isError && !selectedPin ? (
-        <View
-          style={[styles.emptyBanner, { bottom: tabBarInset + insets.bottom + Spacing.five + 64 }]}>
+      {slot === 'pins-error' ? (
+        <View style={[styles.emptyBanner, { bottom: messageSlot }]}>
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
             <LoadError
               what="the pins"
@@ -1512,17 +1992,29 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      {activeCity &&
-      mode === 'browse' &&
-      !isBusiness &&
-      pinsLoaded &&
-      pins.length === 0 &&
-      !selectedPin ? (
+      {/* The heat ask failed on its own: without this, a dead heat layer and
+          a genuinely quiet city rendered identically. Same glass banner, the
+          compact LoadError form; the pins error outranks it in the slot —
+          two stacked failure cards is a pile-up, and pins are the map. */}
+      {slot === 'heat-error' ? (
+        <View style={[styles.emptyBanner, { bottom: messageSlot }]}>
+          <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
+            <LoadError
+              compact
+              what="the busy areas"
+              error={heatQuery.error}
+              onRetry={() => heatQuery.refetch()}
+            />
+          </GlassSurface>
+        </View>
+      ) : null}
+
+      {slot === 'empty-city' && activeCity && !isBusiness ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Be the first to drop a pin"
           onPress={enterPlaceMode}
-          style={[styles.emptyBanner, { bottom: tabBarInset + insets.bottom + Spacing.five + 64 }]}>
+          style={[styles.emptyBanner, { bottom: messageSlot }]}>
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
             {/* The audience wins over the filters, because it is the one
                 with nothing on screen to show it is on. The Filters button
@@ -1549,22 +2041,10 @@ export default function MapScreen() {
           and hiding it left an empty city with nothing at all on it, which
           reads as a map that failed to load rather than as a quiet Tuesday.
           Not pressable, because there is nothing here for them to do. */}
-      {activeCity &&
-      mode === 'browse' &&
-      isBusiness &&
-      pinsLoaded &&
-      pins.length === 0 &&
-      // Business chips are a separate marker family, and "show me only the
-      // businesses" is the obvious thing an owner does with the three
-      // checkboxes they now have. Without this the card said nothing matched
-      // over a map covered in the chips they had asked for.
-      !(!cityScale && showsBusinesses(filters) && places.length > 0) &&
-      !selectedPin ? (
-        <View
-          // The same height as the traveler card, dock or no dock: the two
-          // legends above it are positioned against that number.
-          style={[styles.emptyBanner, { bottom: tabBarInset + insets.bottom + Spacing.five + 64 }]}
-          pointerEvents="none">
+      {/* The chips-answering-the-filters suppression lives in the emptyCity
+          flag the slot reads, beside its siblings. */}
+      {slot === 'empty-city' && activeCity && isBusiness ? (
+        <View style={[styles.emptyBanner, { bottom: messageSlot }]} pointerEvents="none">
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
             <ThemedText type="smallBold">
               {isDefault(filters)
@@ -1578,6 +2058,122 @@ export default function MapScreen() {
                   // posts, on their own tab, and it does not mean this.
                   'Widen them to see traveler plans.'}
             </ThemedText>
+          </GlassSurface>
+        </View>
+      ) : null}
+
+      {/* Panned a little away: the plans exist, they are just not in the
+          frame. Says so instead of impersonating an empty city. */}
+      {slot === 'viewport-empty' && activeCity ? (
+        <View style={[styles.emptyBanner, { bottom: messageSlot }]} pointerEvents="none">
+          <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
+            <ThemedText type="smallBold">No plans over here.</ThemedText>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              {`${activeCity.cities.name}'s are back that way.`}
+            </ThemedText>
+          </GlassSurface>
+        </View>
+      ) : null}
+
+      {/* Panned properly away: a discoverable way home. Tapping the selected
+          city chip also recentres, but nobody guesses a selected chip is a
+          button. Lands on the same 0.09 box the chip lands on. */}
+      {slot === 'way-home' && activeCity ? (
+        <Animated.View
+          entering={FadeInUp.duration(Motion.standard)}
+          exiting={FadeOut.duration(Motion.quick)}
+          style={[styles.legend, { bottom: messageSlot }]}
+          pointerEvents="box-none">
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={`Back to ${activeCity.cities.name}`}
+            haptic="light"
+            scaleTo={0.94}
+            onPress={() =>
+              mapRef.current?.animateToRegion(
+                {
+                  latitude: activeCity.cities.lat,
+                  longitude: activeCity.cities.lng,
+                  latitudeDelta: 0.09,
+                  longitudeDelta: 0.09,
+                },
+                reduceMotion ? 0 : 350
+              )
+            }>
+            <View
+              style={[
+                styles.legendChip,
+                { backgroundColor: theme.surface, borderColor: theme.hairline },
+              ]}>
+              <SymbolView
+                name={{
+                  ios: 'arrow.uturn.backward',
+                  android: 'undo',
+                  web: 'undo',
+                }}
+                size={13}
+                tintColor={theme.accent}
+              />
+              <ThemedText type="footnote">Back to {activeCity.cities.name}</ThemedText>
+            </View>
+          </PressableScale>
+        </Animated.View>
+      ) : null}
+
+      {/* The reward for finishing thirteen signup screens used to be a frame
+          identical to the one the guest already saw. Once, in the session
+          that finished onboarding, until the first pin. */}
+      {slot === 'first-session' ? (
+        <View style={[styles.emptyBanner, { bottom: messageSlot }]} pointerEvents="none">
+          <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
+            <ThemedText type="smallBold">
+              {ownProfile?.display_name
+                ? `You're on the map, ${ownProfile.display_name}.`
+                : "You're on the map."}
+            </ThemedText>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              {"Pin where you're headed and people can join."}
+            </ThemedText>
+          </GlassSurface>
+        </View>
+      ) : null}
+
+      {/* The follow-up for the one person who accepted "Be the first" — on
+          the empty banner's own footprint. The promise is scoped to the
+          pin's ≤72h life, and the ask goes through the push primer, which
+          owns the only safe way to present a sheet on this screen (it waits
+          on the tabs, the modal count, and the settle delay). */}
+      {slot === 'first-pin' && activeCity ? (
+        <View style={[styles.emptyBanner, { bottom: messageSlot }]}>
+          <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
+            <ThemedText type="smallBold">{`You're first in ${activeCity.cities.name}.`}</ThemedText>
+            {/* The promise matches what the pin can receive: a message-first
+                pin (no chat) cannot be joined, and this banner must not say
+                it can. */}
+            <ThemedText type="footnote" themeColor="textSecondary">
+              {ownOnlyPin?.chat_id != null
+                ? "We'll tell you if someone joins while your pin is up."
+                : "We'll tell you if someone messages you while your pin is up."}
+            </ThemedText>
+            {/* Only while the primer can actually present. useCreatePin
+                already asked on post, so for exactly the person this banner
+                targets the ask is usually spent — and a tap the store would
+                silently swallow is worse than no action. The text stands
+                either way. */}
+            {firstPinAsked || !firstPinAskable ? null : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Turn on notifications"
+                hitSlop={8}
+                onPress={() => {
+                  setFirstPinAsked(true);
+                  void askPrimer('pin-posted');
+                }}>
+                <ThemedText type="footnote" themeColor="accent">
+                  Turn on notifications
+                </ThemedText>
+              </Pressable>
+            )}
           </GlassSurface>
         </View>
       ) : null}
@@ -1597,6 +2193,12 @@ export default function MapScreen() {
             scaleTo={0.95}
             haptic="light"
             onPress={enterPlaceMode}
+            // The measured height feeds planListBottom: the button's
+            // minHeight grows with Dynamic Type, and the plan list's peek
+            // used to anchor on the constant and cover the dock's top edge.
+            onLayout={(event) =>
+              setDockHeight(Math.max(DOCK_MIN_HEIGHT, Math.round(event.nativeEvent.layout.height)))
+            }
             style={[styles.dockButton, { backgroundColor: theme.accent }]}>
             <SymbolView
               name={{ ios: 'mappin.and.ellipse', android: 'add_location', web: 'add_location' }}
@@ -1670,6 +2272,10 @@ export default function MapScreen() {
             // had been pinned. Clearing every filter is the only setting
             // guaranteed to contain whatever was just posted.
             setFilters(DEFAULT_FILTERS);
+            // And re-arm the camera fit, so the fresh pin is framed with its
+            // neighbours when the refetched rows land — the filters may
+            // already have been at their default, which alone would not.
+            lastFitKey.current = null;
             // Sheets are presented as modals, and iOS silently drops a
             // presentation that begins while another modal is still
             // dismissing — which left a freshly dropped pin with no
@@ -1680,14 +2286,112 @@ export default function MapScreen() {
         />
       ) : null}
 
-      {/* The heat layer is the only thing on this map with no label, no
-          marker and nothing to tap, so the first time somebody sees it they
-          have to guess. One sentence, once. */}
-      {legend.visible && mode === 'browse' ? (
+      {/* What is on in this city, as a list under the map (founder decision
+          D4: the map's own bottom sheet, never a directory tab). Rows carry
+          no names and no faces for ANY viewer — a guest's and a business's
+          pin feed is identity-stripped server-side, and one row shape for
+          everyone is the simplest thing to keep honest. */}
+      {activeCity && mode === 'browse' ? (
+        <PlanList
+          cityName={activeCity.cities.name}
+          pins={pins}
+          clusters={clusters}
+          places={places}
+          isBusinessViewer={isBusiness}
+          ownBusinessId={ownBusinessId}
+          centre={mapCentre}
+          collapsed={planListCollapsed}
+          detent={planDetent}
+          onDetentChange={setPlanDetent}
+          bottom={planListBottom}
+          onSelectPin={(pin) => selectPin(pin, 'list')}
+          onSelectVenue={(key) => {
+            haptics.light();
+            setSelectedPinId(null);
+            setSelectedPlaceId(null);
+            setVenueKey(key);
+            // Same list-originated rule as a row's pin: the venue can be far
+            // off screen, and the stack sheet about a marker nobody can see
+            // reads as the wrong sheet.
+            const venue = clusters.find((cluster) => cluster.key === key);
+            if (venue) {
+              revealFromList(venue.lat, venue.lng);
+            }
+          }}
+          onSelectBusiness={(id) => {
+            haptics.light();
+            setSelectedPinId(null);
+            setVenueKey(null);
+            setSelectedPlaceId(id);
+          }}
+        />
+      ) : null}
+
+      {/* The day filter emptied the heat and the all-days layer is standing
+          in. NEVER unlabelled, and never through the one-shot dismissible
+          legend (dismissed forever after one read): this footnote is up for
+          exactly as long as the fallback is drawn. */}
+      {slot === 'heat-fallback' ? (
         <Animated.View
           entering={FadeInUp.duration(Motion.standard)}
           exiting={FadeOut.duration(Motion.quick)}
-          style={[styles.legend, { bottom: tabBarInset + insets.bottom + Space.xxxl + Space.xl }]}
+          style={[styles.legend, { bottom: messageSlot }]}
+          pointerEvents="none">
+          <View
+            style={[
+              styles.legendChip,
+              { backgroundColor: theme.surface, borderColor: theme.hairline },
+            ]}>
+            <View style={[styles.legendDot, { backgroundColor: 'rgba(255, 154, 90, 0.85)' }]} />
+            <ThemedText type="footnote">Busy areas shown across the next three days</ThemedText>
+          </View>
+        </Animated.View>
+      ) : null}
+
+      {/* The honest empty state: the ask settled and nothing cleared the
+          threshold. Without it, the one sentence explaining the app's
+          differentiator was gated on the differentiator already being
+          visible. No number on purpose — the k value is the server's. */}
+      {slot === 'heat-empty' ? (
+        <Animated.View
+          entering={FadeInUp.duration(Motion.standard)}
+          exiting={FadeOut.duration(Motion.quick)}
+          style={[styles.legend, { bottom: messageSlot }]}
+          pointerEvents="box-none">
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Not busy enough to show yet. A few people have to be planning the same area."
+            accessibilityHint="Dismisses this"
+            scaleTo={0.96}
+            haptic="light"
+            onPress={heatEmptyLegend.dismiss}>
+            <View
+              style={[
+                styles.legendChip,
+                { backgroundColor: theme.surface, borderColor: theme.hairline },
+              ]}>
+              <View style={[styles.legendDot, { backgroundColor: 'rgba(255, 154, 90, 0.85)' }]} />
+              <ThemedText type="footnote" style={styles.legendText}>
+                Not busy enough to show yet. A few people have to be planning the same area.
+              </ThemedText>
+              <SymbolView
+                name={{ ios: 'xmark', android: 'close', web: 'close' }}
+                size={11}
+                tintColor={theme.textSecondary}
+              />
+            </View>
+          </PressableScale>
+        </Animated.View>
+      ) : null}
+
+      {/* The heat layer is the only thing on this map with no label, no
+          marker and nothing to tap, so the first time somebody sees it they
+          have to guess. One sentence, once. */}
+      {slot === 'heat-legend' ? (
+        <Animated.View
+          entering={FadeInUp.duration(Motion.standard)}
+          exiting={FadeOut.duration(Motion.quick)}
+          style={[styles.legend, { bottom: messageSlot }]}
           pointerEvents="box-none">
           <PressableScale
             accessibilityRole="button"
@@ -1715,11 +2419,11 @@ export default function MapScreen() {
         </Animated.View>
       ) : null}
 
-      {placesLegend.visible && !legend.visible && mode === 'browse' ? (
+      {slot === 'places-legend' ? (
         <Animated.View
           entering={FadeInUp.duration(Motion.standard)}
           exiting={FadeOut.duration(Motion.quick)}
-          style={[styles.legend, { bottom: tabBarInset + insets.bottom + Space.xxxl + Space.xl }]}
+          style={[styles.legend, { bottom: messageSlot }]}
           pointerEvents="box-none">
           <PressableScale
             accessibilityRole="button"
@@ -1793,6 +2497,10 @@ export default function MapScreen() {
       {mode === 'browse' && filtersOpen ? (
         <MapFilterSheet
           filters={filters}
+          // The SAME arrays the markers render, or the number contradicts
+          // the dots the moment Businesses is unticked.
+          resultCount={mapResultCount(pins.length, places.length, filters)}
+          totalCount={allPins.length + places.length}
           onChange={setFilters}
           onClose={() => setFiltersOpen(false)}
         />
@@ -1953,6 +2661,15 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
+  },
+  // Shrinks so the empty-state sentence wraps inside the chip instead of
+  // pushing its close glyph off screen.
+  legendText: {
+    flexShrink: 1,
+  },
+  devHeatCount: {
+    position: 'absolute',
+    left: Space.sm,
   },
   statusScrim: {
     position: 'absolute',
@@ -2125,8 +2842,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Space.sm,
     // min, not fixed: the label scales with Dynamic Type, and a frozen box
-    // around scaling text is the clipping bug the audit named.
-    minHeight: 52,
+    // around scaling text is the clipping bug the audit named. The grown
+    // height is measured by onLayout and feeds planListBottom.
+    minHeight: DOCK_MIN_HEIGHT,
     paddingVertical: Space.sm,
     paddingHorizontal: Space.xl,
     borderRadius: Radius.pill,
