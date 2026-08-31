@@ -897,12 +897,20 @@ export default function MapScreen() {
   );
 
   // §6 metrics: map DAU (every city view, including the initial one) and
-  // heatmap views per session.
+  // heatmap views per session. One component serves both audiences, so the
+  // guest flag rides along — map DAU is `guest = false` on this event
+  // (docs/DASHBOARD.md), and without the tag both sides of the map-versus-
+  // matching ratio are wrong in opposite directions.
+  // Once per CITY, by ref: the deps carry isGuest only to read its current
+  // value, and a guest upgrade flipping it in place must not recount a city
+  // view that already happened.
+  const viewedCities = useRef<Set<number>>(new Set());
   useEffect(() => {
-    if (activeCityId != null) {
-      analytics.capture('map_viewed', { city_id: activeCityId });
+    if (activeCityId != null && !viewedCities.current.has(activeCityId)) {
+      viewedCities.current.add(activeCityId);
+      analytics.capture('map_viewed', { city_id: activeCityId, guest: isGuest });
     }
-  }, [activeCityId]);
+  }, [activeCityId, isGuest]);
   useEffect(() => {
     if (activeCityId != null && heat.length > 0) {
       analytics.capture('heatmap_rendered', { city_id: activeCityId, cells: heat.length });

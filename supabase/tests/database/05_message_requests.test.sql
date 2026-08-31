@@ -1,7 +1,7 @@
 -- Message requests: moderation before delivery (hard rule 5), sender-blind
 -- decline (invariant 4), and accept -> chat -> social-handle unlock.
 begin;
-select plan(27);
+select plan(30);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -166,6 +166,26 @@ select is(
    where user_id = '00000000-0000-0000-0000-00000000000a'),
   1,
   'post-accept: the accepted chat unlocks the handle (hard rule 4 end-to-end)'
+);
+
+-- The accept push goes to the sender and says what happened, in the same
+-- words as the in-app card: 'Connected with {name}. Your chat is open.'
+-- Never 'replied', never an instruction to say hi again.
+reset role;
+select is(
+  (select user_id from public.push_queue where data ->> 'type' = 'accepted' limit 1),
+  '00000000-0000-0000-0000-00000000000a'::uuid,
+  'accept push goes to the sender'
+);
+select is(
+  (select title from public.push_queue where data ->> 'type' = 'accepted' limit 1),
+  'Connected',
+  'accept push title names the event the app already named'
+);
+select is(
+  (select body from public.push_queue where data ->> 'type' = 'accepted' limit 1),
+  'Connected with traveler. Your chat is open.',
+  'accept push body matches the in-app card, no "replied", no "Say hi"'
 );
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');

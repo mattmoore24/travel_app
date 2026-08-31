@@ -109,9 +109,10 @@ function GuestTravelers() {
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
 
-  useEffect(() => {
-    analytics.capture('travelers_viewed', { guest: true });
-  }, []);
+  // No capture here: the parent screen fires travelers_viewed exactly once,
+  // carrying the guest flag, for both audiences. This component used to fire
+  // its own copy, so every guest counted twice and the parent's untagged
+  // event made `guest != true` filters keep them.
 
   // A blank screen, forever, whenever the city list did not load: cityId
   // stayed null, so the featured query never enabled, so isPending never
@@ -599,9 +600,20 @@ export default function TravelersScreen() {
   // empty until a force-quit, on the one screen with no other way back in.
   useFocusEffect(refresh);
 
+  // The one travelers_viewed for both audiences, always tagged: matching DAU
+  // is counted as `guest = false` on this event (docs/DASHBOARD.md), and an
+  // untagged copy would put every guest back into it. Once per MOUNT, by ref:
+  // a guest upgrade flips isGuest in place (updateUser on the same anonymous
+  // session, no sign-out), and a deps-driven refire would count one view as
+  // both audiences.
+  const viewedOnce = useRef(false);
   useEffect(() => {
-    analytics.capture('travelers_viewed');
-  }, []);
+    if (viewedOnce.current) {
+      return;
+    }
+    viewedOnce.current = true;
+    analytics.capture('travelers_viewed', { guest: isGuest });
+  }, [isGuest]);
 
   if (!isSupabaseConfigured) {
     return (

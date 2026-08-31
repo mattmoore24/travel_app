@@ -5,7 +5,7 @@
 -- who can read an invite token, and whether a shared group counts as a
 -- connection for the social-handle gate (hard rule 4 — it must not).
 begin;
-select plan(100);
+select plan(101);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -342,6 +342,12 @@ select is(
     where user_id = '00000000-0000-0000-0000-00000000000c' limit 1),
   'Hostel crew',
   'and the title is the group, not the sender, the way a group reads on a lock screen'
+);
+select is(
+  (select data ->> 'kind' from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000c' limit 1),
+  'room',
+  'a group message push says kind room, so a tap opens /room, not /chat'
 );
 select is(
   (select count(*)::int from public.push_queue

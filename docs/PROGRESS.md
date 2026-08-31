@@ -3,6 +3,40 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## Current: **Wave 0 is implemented** (2026-08-31)
+
+All 58 Wave 0 packages from [`UX_PLAN.md`](UX_PLAN.md) are in the tree: ten in
+the first wave, forty-four across eight batches this weekend, and a handful
+found already satisfied by neighbours when their batch reached them. Every
+batch went through one implementer, two adversarial reviewers, and the full
+gate before its commit; the review pass caught and fixed, among others: a
+sign-out that could hang forever on unreachable APNs, a geocode timer that
+fired into the open pin form, a congratulations card rendered on the exact
+text the server had just refused, a Say hi bar offered where the server would
+refuse the hello after it was written, and a tab-return that silently stopped
+refreshing expired pins.
+
+Five new migrations carry the database's share (push copy, curated pin notes,
+the block-category, tap-routing payload kinds, and a copy-lint gate with an
+allowlist whose stale entries fail the build). pgTAP grew to 820 tests across
+30 files; jest to 757 across 82 suites.
+
+**Deliberately queued, not done:** the five "request"-noun raise strings
+reissued verbatim inside this batch's migrations (rewriting them was outside
+every spec; the copy-lint allowlist pins them and its stale-entry test forces
+the cleanup when their own package lands).
+
+### Next
+
+1. Supabase deploy (five migrations), then the live-backend suite - a green
+   functions deploy is not evidence the workers run.
+2. The simulator suite for the ~40 pending screenshot re-shoots, then the
+   screens gallery for the founder.
+3. On-device checks that need a person: build 16's universal-link test, the
+   haptics walk, Reduce Motion, AX5 on the smallest screen.
+
+---
+
 ## Current: **The domain went live, and the app now answers for it** (2026-08-30)
 
 `link.samewhere.io` is live on Cloudflare Pages — the subdomain, not the apex,

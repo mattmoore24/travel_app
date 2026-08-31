@@ -11,6 +11,7 @@ import { Radius, Space } from '@/constants/theme';
 import { useBusinessDetail, useMessageBusiness } from '@/features/business/hooks';
 import { waitNote } from '@/features/business/vocabulary';
 import { useDraftWarning } from '@/features/matching/hooks';
+import { blockedCopy, riskyCopy } from '@/features/matching/moderation-copy';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 
@@ -40,11 +41,14 @@ export default function MessagePlaceScreen() {
   const messagePlace = useMessageBusiness();
   const [message, setMessage] = useState('');
   const [blockedNotice, setBlockedNotice] = useState(false);
+  // Which kind of wrong the server named for the refusal, so the card can
+  // say it. Never the matched phrase.
+  const [refusedCategory, setRefusedCategory] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   // Asked while the sentence is still being written, so something the
   // prefilter would stop becomes a reword rather than a refusal. Advisory
   // only: the send path runs the same check server-side either way.
-  const risky = useDraftWarning(message, !blockedNotice);
+  const { risky, category: draftCategory } = useDraftWarning(message, !blockedNotice);
 
   const submit = async () => {
     if (!businessId || message.trim().length === 0) {
@@ -55,6 +59,7 @@ export default function MessagePlaceScreen() {
       const result = await messagePlace.mutateAsync({ businessId, body: message.trim() });
       if (result.blocked) {
         haptics.error();
+        setRefusedCategory(result.category ?? null);
         setBlockedNotice(true);
         // The notice renders under a field that is usually taller than what
         // is left of the screen, so without this a refusal looks like a tap
@@ -103,10 +108,10 @@ export default function MessagePlaceScreen() {
       {risky && !blockedNotice ? (
         <ThemedView type="backgroundElement" style={styles.blockedCard}>
           <ThemedText type="smallBold" style={{ color: theme.highlight }}>
-            This might not go through
+            {riskyCopy(draftCategory).title}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            Explicit messages are not delivered. Reword it and it goes straight out.
+            {riskyCopy(draftCategory).body}
           </ThemedText>
         </ThemedView>
       ) : null}
@@ -114,10 +119,13 @@ export default function MessagePlaceScreen() {
       {blockedNotice ? (
         <ThemedView type="backgroundElement" style={styles.blockedCard}>
           <ThemedText type="smallBold" style={{ color: theme.danger }}>
-            That message can&apos;t be sent
+            {/* When the card shows because the PREVIEW flagged a rewrite, speak
+                the rewrite's category, not the old refusal's: a come-on rewritten
+                from something explicit must not be called explicit. */}
+            {blockedCopy(risky && draftCategory != null ? draftCategory : refusedCategory).title}
           </ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            That came across as explicit. Reword it and send again.
+            {blockedCopy(risky && draftCategory != null ? draftCategory : refusedCategory).body}
           </ThemedText>
         </ThemedView>
       ) : null}

@@ -1,6 +1,11 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+
+// Side effect: installs the foreground notification handler at module scope,
+// so it exists from launch rather than whenever the tabs happen to pull the
+// module in through the push primer.
+import '@/features/notifications/push';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 

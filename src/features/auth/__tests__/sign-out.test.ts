@@ -57,6 +57,9 @@ jest.mock('expo-notifications', () => ({
   getExpoPushTokenAsync: jest.fn(async () => ({ data: 'ExponentPushToken[jest]' })),
   getPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
   requestPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  // Importing the push module installs the foreground handler at module
+  // scope (see push-handler.test.ts, which pins that behavior).
+  setNotificationHandler: jest.fn(),
 }));
 
 beforeEach(async () => {

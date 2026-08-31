@@ -5,7 +5,7 @@
 -- moderation queue readable. Hard rule 1 means it must never be sold back,
 -- so the tests care that it is a plain limit with a plain, warm refusal.
 begin;
-select plan(13);
+select plan(15);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -90,7 +90,7 @@ select is(
      public.send_message_request(
        '00000000-0000-0000-0000-00000000000d', 'trip_match',
        'Another one over the line', 'trip')) k),
-  array['allowed','blocked','capped','delivered','queued','request_id','used'],
+  array['allowed','blocked','capped','category','delivered','queued','request_id','used'],
   'a capped answer carries every key the other answers carry'
 );
 select is(
@@ -154,6 +154,25 @@ select is(
 -- machine for finding exactly which words to route around.
 select hasnt_column('public', 'preview_first_message', 'pattern',
   'the preview never hands back the rule that matched');
+
+-- WHICH KIND OF WRONG ------------------------------------------------------
+--
+-- The send path returns the category the prefilter computed, so a message
+-- caught by the flirtation patterns is no longer told it was "explicit".
+-- Only ever on the blocked branch, and only to the sender it belongs to.
+select is(
+  (public.send_message_request(
+     '00000000-0000-0000-0000-00000000000c', 'trip_match',
+     'you look so sexy in that photo', 'photo:0')) ->> 'category',
+  'flirtation',
+  'a blocked hello names the kind of wrong the filter actually saw'
+);
+select ok(
+  (public.send_message_request(
+     '00000000-0000-0000-0000-00000000000c', 'trip_match',
+     'Rewrote it: which market should I not miss?', 'bio')) ->> 'category' is null,
+  'a delivered hello carries no category at all'
+);
 
 select * from finish();
 rollback;

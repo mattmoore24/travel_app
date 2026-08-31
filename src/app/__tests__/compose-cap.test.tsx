@@ -27,7 +27,7 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('@/features/matching/hooks', () => ({
-  useDraftWarning: () => mockRisky,
+  useDraftWarning: () => ({ risky: mockRisky, category: null }),
   useFirstMessageBudget: () => ({ data: mockBudget.data }),
   useSendRequest: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
 }));

@@ -3,7 +3,7 @@
 -- standing gates on suspended/banned senders, the photo moderation flag, the
 -- selfie verification flow, and the admin report queue.
 begin;
-select plan(75);
+select plan(76);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -283,6 +283,13 @@ select is(
       and title = 'Message not delivered'),
   1,
   'sender is notified their message was not delivered'
+);
+select is(
+  (select body from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000c'
+      and title = 'Message not delivered'),
+  'Your message wasn''t delivered. It came across as explicit, so reword it and try again.',
+  'the refusal push is plain sentences, no em dash'
 );
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select is(

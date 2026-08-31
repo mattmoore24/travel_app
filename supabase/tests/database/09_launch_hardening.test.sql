@@ -69,7 +69,7 @@ select throws_ok(
      select chat_id, '00000000-0000-0000-0000-00000000000b', 'one too many'
      from public.chat_participants
      where user_id = '00000000-0000-0000-0000-00000000000b' limit 1 $$,
-  'sending too fast — wait a moment',
+  'sending too fast, give it a moment',
   'the 31st message in a minute is throttled'
 );
 

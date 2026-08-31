@@ -6,15 +6,15 @@ lives. Two sources: **PostHog** (app behavior; needs
 truth straight from Postgres; run in the Supabase SQL editor — they are
 service-role-only and invisible to clients).
 
-| §6 metric                                | Source                                                              |
-| ---------------------------------------- | ------------------------------------------------------------------- |
-| **Liquidity per city** (live trip/pin)   | `select * from admin_liquidity;`                                    |
-| Map DAU vs matching DAU                  | PostHog: unique users on `map_viewed` vs `travelers_viewed`         |
-| Request → accept rate                    | `select * from admin_request_funnel;` (+ `request_responded` event) |
-| % first messages blocked                 | `select * from admin_moderation_stats;`                             |
-| Pin creation rate / heatmap views        | PostHog `pin_created`, `heatmap_rendered`; `admin_pin_stats` (live) |
-| D1/D7 retention **within trip window**   | PostHog retention, cohorted on `trip_created` (caveat below)        |
-| **Pipeline health** (not in §6, but ops) | `select * from admin_ops_health;`                                   |
+| §6 metric                                | Source                                                                                    |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Liquidity per city** (live trip/pin)   | `select * from admin_liquidity;`                                                          |
+| Map DAU vs matching DAU                  | PostHog: unique users on `map_viewed` / `travelers_viewed`, both filtered `guest = false` |
+| Request → accept rate                    | `select * from admin_request_funnel;` (+ `request_responded` event)                       |
+| % first messages blocked                 | `select * from admin_moderation_stats;`                                                   |
+| Pin creation rate / heatmap views        | PostHog `pin_created`, `heatmap_rendered`; `admin_pin_stats` (live)                       |
+| D1/D7 retention **within trip window**   | PostHog retention, cohorted on `trip_created` (caveat below)                              |
+| **Pipeline health** (not in §6, but ops) | `select * from admin_ops_health;`                                                         |
 
 ## Admin query set (SQL editor)
 
@@ -41,11 +41,22 @@ tighten moderation before growing supply.
 ## PostHog insights to create (once the key exists)
 
 1. **Map-led thesis** — trend of unique users: `map_viewed` vs
-   `travelers_viewed`, daily. Map should lead.
+   `travelers_viewed`, daily, **both filtered `guest = false`**. Map should
+   lead. **Map DAU is defined as** unique users on `map_viewed` with
+   `guest = false`; **matching DAU** the same way on `travelers_viewed`. Both
+   events fire for guests too (tagged `guest = true`) so the guest funnel can
+   be read from the same pair — but a guest browsing is not a DAU, and the
+   flag is what keeps the two sides of the ratio honest.
 2. **Pin funnel** — `map_viewed → pin_created` conversion, and
    `heatmap_rendered` per session.
 3. **Request funnel** — `request_sent` (property `delivered` true/false) →
    `request_responded` (property `accepted`).
+   **Derived: second-message rate** — of conversations opened by an accepted
+   hello or a joined pin, the share that reach a second **inbound**
+   `message_sent` (a `message_sent` on the same `chat_id` from the person who
+   did not open it; `surface` says `direct` vs `room`). Accept rate is only a
+   proxy — this is the marketplace-health number it stands in for: did the
+   conversation actually start?
 4. **Trip-window retention** — retention insight, cohort event `trip_created`,
    return event "any event", horizon 7 days. Calendar retention is
    intentionally NOT the metric — travelers churn between trips by design.

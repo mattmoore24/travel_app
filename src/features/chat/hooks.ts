@@ -22,6 +22,7 @@ import {
   withOptimistic,
   type ThreadMessage,
 } from '@/features/chat/outgoing';
+import { captureMessageSent } from '@/features/chat/analytics';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
 import type { MessageRow, ReportReason } from '@/lib/database.types';
@@ -142,7 +143,7 @@ export function useSendMessage(chatId: string | null, kind: 'direct' | 'room' = 
     },
 
     onSuccess: (message, _body, context) => {
-      analytics.capture('message_sent', { chat_id: message.chat_id });
+      captureMessageSent(message.chat_id, 'text', kind);
       if (context?.localMessageId == null) {
         return;
       }
@@ -194,14 +195,14 @@ export function useDiscardFailed(chatId: string | null, kind: 'direct' | 'room' 
  * for a verdict — so "look at this" arrived first and the picture some seconds
  * later, underneath it.
  */
-export function useSendPhoto(chatId: string) {
+export function useSendPhoto(chatId: string, kind: 'direct' | 'room' = 'direct') {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ localUri, body }: { localUri: string; body?: string }) =>
       sendPhotoMessage(chatId, userId!, localUri, body),
     onSuccess: () => {
-      analytics.capture('message_sent', { kind: 'photo' });
+      captureMessageSent(chatId, 'photo', kind);
       queryClient.invalidateQueries({ queryKey: ['messages', chatId] });
       queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
       queryClient.invalidateQueries({ queryKey: ['chats'] });

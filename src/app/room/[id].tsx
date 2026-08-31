@@ -64,7 +64,7 @@ export default function RoomScreen() {
   const leave = useLeaveRoom(id!);
   const send = useSendMessage(id!, 'room');
   const discardFailed = useDiscardFailed(id!, 'room');
-  const sendPhoto = useSendPhoto(id!);
+  const sendPhoto = useSendPhoto(id!, 'room');
   const toggle = useToggleReaction(id!);
   const unsend = useUnsendMessage(id!);
   const removeMessage = useRemoveRoomMessage(id!);

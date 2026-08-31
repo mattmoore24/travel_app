@@ -22,6 +22,23 @@ import { isSupabaseConfigured, supabase } from '@/lib/supabase';
  * being notified about.
  */
 
+/**
+ * Foreground presentation. Without a handler expo-notifications shows
+ * NOTHING while the app is open, so a message arriving while somebody
+ * browses the Map was completely silent. Module scope, and this module is
+ * imported by the root layout, so the handler exists before any
+ * notification can arrive. Field names verified against the installed SDK
+ * 57 types: `shouldShowAlert` is deprecated, split into banner/list.
+ */
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
 type Registration = 'registered' | 'denied' | 'unavailable';
 
 function projectId(): string | undefined {

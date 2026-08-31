@@ -38,6 +38,7 @@ const result = (overrides: Partial<Awaited<ReturnType<typeof sendMessageRequest>
   capped: false,
   allowed: 8,
   used: 1,
+  category: null,
   ...overrides,
 });
 

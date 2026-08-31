@@ -54,18 +54,22 @@ export async function respondToRequest(requestId: string, accept: boolean) {
 }
 
 /**
- * Would this draft be stopped? Read-only, so the composer can offer a reword
- * while the sentence is still being written rather than after it was sent.
+ * Would this draft be stopped, and which kind of wrong is it? Read-only, so
+ * the composer can offer a reword while the sentence is still being written
+ * rather than after it was sent.
  *
- * Returns false on any failure. A network blip must never turn into a
- * warning about somebody's perfectly ordinary message.
+ * Returns wouldBlock false on any failure. A network blip must never turn
+ * into a warning about somebody's perfectly ordinary message.
  */
-export async function previewFirstMessage(text: string): Promise<boolean> {
+export async function previewFirstMessage(
+  text: string
+): Promise<{ wouldBlock: boolean; category: string | null }> {
   const { data, error } = await supabase.rpc('preview_first_message', { p_text: text });
   if (error) {
-    return false;
+    return { wouldBlock: false, category: null };
   }
-  return (data ?? [])[0]?.would_block === true;
+  const row = (data ?? [])[0];
+  return { wouldBlock: row?.would_block === true, category: row?.category ?? null };
 }
 
 /**

@@ -84,11 +84,15 @@ export function useFirstMessageBudget() {
  * still runs the same check server-side, and this only exists so most
  * would-be rejections turn into a reword before anybody presses send.
  */
-export function useDraftWarning(draft: string, enabled: boolean) {
-  // What was FLAGGED, not whether something is. Storing the text itself is
-  // what lets the warning be derived during render: editing a character
-  // clears it immediately, and nothing has to be reset in an effect.
-  const [flagged, setFlagged] = useState<string | null>(null);
+export function useDraftWarning(
+  draft: string,
+  enabled: boolean
+): { risky: boolean; category: string | null } {
+  // What was FLAGGED, not whether something is. Storing the text itself
+  // (with the category the preview named) is what lets the warning be
+  // derived during render: editing a character clears it immediately, and
+  // nothing has to be reset in an effect.
+  const [flagged, setFlagged] = useState<{ text: string; category: string | null } | null>(null);
   const text = draft.trim();
   const checkable = enabled && isSupabaseConfigured && text.length >= DRAFT_CHECK_MIN;
 
@@ -98,9 +102,9 @@ export function useDraftWarning(draft: string, enabled: boolean) {
     }
     let active = true;
     const timer = setTimeout(() => {
-      previewFirstMessage(text).then((wouldBlock) => {
+      previewFirstMessage(text).then(({ wouldBlock, category }) => {
         if (active && wouldBlock) {
-          setFlagged(text);
+          setFlagged({ text, category });
         }
       });
     }, DRAFT_CHECK_DEBOUNCE_MS);
@@ -110,7 +114,8 @@ export function useDraftWarning(draft: string, enabled: boolean) {
     };
   }, [text, checkable]);
 
-  return checkable && flagged === text;
+  const risky = checkable && flagged?.text === text;
+  return { risky, category: risky ? (flagged?.category ?? null) : null };
 }
 
 /** Short enough that nobody is warned about "hi". */

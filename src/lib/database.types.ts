@@ -624,7 +624,36 @@ export type SendRequestResult = {
   allowed: number;
   /** How many of them are spent, including this one. */
   used: number;
+  /**
+   * Which kind of wrong the prefilter named ('sexual', 'flirtation').
+   * Null on every branch except blocked — it exists so the refusal can say
+   * what actually went wrong, and it never names the matched phrase.
+   */
+  category: string | null;
 };
+
+/**
+ * The routing payload every push the database sends carries in `data`. The
+ * union is what lets the tap-routing switch be exhaustive rather than
+ * stringly typed — and old builds sent payloads with none of these keys, so
+ * every consumer must tolerate an empty object too.
+ */
+export type PushPayload =
+  | {
+      type: 'message';
+      chat_id: string;
+      /**
+       * Which screen a chat opens on: 'room' is /room/[id], everything else
+       * is /chat/[id]. Optional because pushes queued by older function
+       * definitions carry no kind.
+       */
+      kind?: 'direct' | 'room';
+    }
+  | { type: 'accepted'; chat_id: string }
+  | { type: 'request' }
+  | { type: 'moderation' }
+  | { type: 'verification' }
+  | { type: 'support' };
 
 export type VerificationStatus = 'pending' | 'approved' | 'rejected';
 

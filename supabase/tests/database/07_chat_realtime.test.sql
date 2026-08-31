@@ -1,7 +1,7 @@
 -- Messaging: member-only, frozen by blocks, deleted by unmatch; reports feed
 -- the audit spine; pushes are queued server-side for the right recipients.
 begin;
-select plan(22);
+select plan(25);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -64,6 +64,20 @@ select is(
   1,
   'acceptance enqueues a push for the sender'
 );
+select is(
+  (select body from public.push_queue
+   where user_id = '00000000-0000-0000-0000-00000000000b'
+     and (data ->> 'type') = 'accepted'),
+  'Connected with Traveler a. Your chat is open.',
+  'accept push says Connected with {name}, same words as the in-app card'
+);
+-- chr(8212) is U+2014; spelled out so this file carries no em dash literal.
+select is(
+  (select count(*)::int from public.push_queue
+   where body like '%' || chr(8212) || '%' or title like '%' || chr(8212) || '%'),
+  0,
+  'no queued push carries an em dash'
+);
 
 -- Messaging.
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
@@ -95,6 +109,13 @@ select is(
      and (data ->> 'type') = 'message'),
   1,
   'a message enqueues a push for the other member only'
+);
+select is(
+  (select data ->> 'kind' from public.push_queue
+   where user_id = '00000000-0000-0000-0000-00000000000b'
+     and (data ->> 'type') = 'message'),
+  'direct',
+  'a direct message push says which kind of conversation it belongs to'
 );
 
 -- Outsiders see nothing.

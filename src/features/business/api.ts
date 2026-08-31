@@ -364,7 +364,13 @@ export async function messageBusiness(businessId: string, firstMessage: string) 
   if (error) {
     throw error;
   }
-  return data as { chat_id?: string; blocked: boolean; existing?: boolean };
+  return data as {
+    chat_id?: string;
+    blocked: boolean;
+    existing?: boolean;
+    /** Which kind of wrong ('sexual', 'flirtation'); only on blocked. */
+    category?: string | null;
+  };
 }
 
 /**

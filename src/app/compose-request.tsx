@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { Keyboard, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Keyboard, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 
 import { ChipRow } from '@/components/form/chip-row';
@@ -16,6 +16,7 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { Radius, Spacing } from '@/constants/theme';
 import { countOf } from '@/lib/plural';
 import { useDraftWarning, useFirstMessageBudget, useSendRequest } from '@/features/matching/hooks';
+import { blockedCopy, riskyCopy } from '@/features/matching/moderation-copy';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
@@ -77,6 +78,10 @@ export default function ComposeRequestScreen() {
   // emptied box, a one-character edit, and anything the preview never saw,
   // and the card would bless the refused message itself.
   const [refusedText, setRefusedText] = useState<string | null>(null);
+  // Which kind of wrong the server named for that refusal ('sexual',
+  // 'flirtation'), so the red card can say what actually went wrong instead
+  // of calling everything explicit. Never the matched phrase.
+  const [refusedCategory, setRefusedCategory] = useState<string | null>(null);
   // Whether anything was ever typed here. The at-the-door cap card may only
   // replace the composer BEFORE writing starts: after "Keep my message", the
   // budget refetch says capped, and clearing the box to reword would
@@ -91,7 +96,7 @@ export default function ComposeRequestScreen() {
   // rewriting a blocked message typing with no guidance and manufacturing
   // the second strike by pressing Send to find out. The preview RPC is
   // read-only and swallows its own errors, so leaving it on costs nothing.
-  const risky = useDraftWarning(message, true);
+  const { risky, category: draftCategory } = useDraftWarning(message, true);
   // The composer's own confirmation. Sending used to dismiss the screen with
   // no acknowledgement at all: the same nothing you get from a failed tap.
   const [sent, setSent] = useState(false);
@@ -110,6 +115,31 @@ export default function ComposeRequestScreen() {
   // already decided and shown. The old chip row stays as the fallback for
   // anyone who got here from the Say hi button instead.
   const [pickingElement, setPickingElement] = useState(!params.targetLabel);
+
+  // The announced way out — the iOS swipe still works, but it was the ONLY
+  // exit, which VoiceOver never announces and the multiline field's scroll
+  // can swallow. Leaving cancels the pop-after-confirmation timer the same
+  // way the unmount effect does, and a non-empty draft asks first.
+  const leave = () => {
+    if (backTimer.current) {
+      clearTimeout(backTimer.current);
+    }
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)');
+    }
+  };
+  const requestClose = () => {
+    if (message.trim().length > 0) {
+      Alert.alert('Throw this away?', undefined, [
+        { text: 'Keep writing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: leave },
+      ]);
+      return;
+    }
+    leave();
+  };
 
   const submit = async () => {
     if (!params.userId || message.trim().length === 0) {
@@ -136,6 +166,7 @@ export default function ComposeRequestScreen() {
       if (result.blocked) {
         haptics.error();
         setRefusedText(message.trim());
+        setRefusedCategory(result.category ?? null);
         setBlockedNotice(true);
         // The notice renders at the bottom of a form that is usually taller
         // than the screen, so without this the app answers a refusal by
@@ -228,6 +259,7 @@ export default function ComposeRequestScreen() {
         continueLabel="Send"
         continueDisabled={message.trim().length === 0 || messageLength(message) > MESSAGE_MAX}
         continueLoading={sendRequest.isPending}
+        onClose={requestClose}
         onContinue={submit}>
         <View style={styles.recipientRow}>
           <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
@@ -285,6 +317,7 @@ export default function ComposeRequestScreen() {
 
         <FormTextField
           label="Your first message"
+          testID="first-message-input"
           multiline
           numberOfLines={4}
           style={styles.messageInput}
@@ -319,10 +352,10 @@ export default function ComposeRequestScreen() {
         {risky && !blockedNotice ? (
           <ThemedView type="backgroundElement" style={styles.blockedCard}>
             <ThemedText type="smallBold" style={{ color: theme.highlight }}>
-              This might not go through
+              {riskyCopy(draftCategory).title}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Explicit messages are not delivered. Reword it and it goes straight out.
+              {riskyCopy(draftCategory).body}
             </ThemedText>
           </ThemedView>
         ) : null}
@@ -330,10 +363,13 @@ export default function ComposeRequestScreen() {
         {blockedNotice && (risky || message.trim() === refusedText) ? (
           <ThemedView type="backgroundElement" style={styles.blockedCard}>
             <ThemedText type="smallBold" style={{ color: theme.danger }}>
-              That message can&apos;t be sent
+              {/* When the card shows because the PREVIEW flagged a rewrite, speak
+                  the rewrite's category, not the old refusal's: a come-on rewritten
+                  from something explicit must not be called explicit. */}
+              {blockedCopy(risky && draftCategory != null ? draftCategory : refusedCategory).title}
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              That came across as explicit. Reword it and send again.
+              {blockedCopy(risky && draftCategory != null ? draftCategory : refusedCategory).body}
             </ThemedText>
           </ThemedView>
         ) : null}

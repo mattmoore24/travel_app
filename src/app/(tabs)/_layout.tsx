@@ -7,6 +7,7 @@ import { useIsBusiness } from '@/features/business/hooks';
 import { ConnectedNotice } from '@/features/matching/connected-notice';
 import { useAcceptedCelebration } from '@/features/matching/use-accepted-celebration';
 import { PushPrimer } from '@/features/notifications/push-primer';
+import { useNotificationRouting } from '@/features/notifications/use-notification-routing';
 
 /**
  * Gives back the invite somebody was holding when they went off to make an
@@ -53,6 +54,18 @@ function PendingInviteHandoff() {
   return null;
 }
 
+/**
+ * A tapped push opens the thing it is about. Render-nothing, mounted here
+ * beside PendingInviteHandoff for exactly the reasons that component
+ * documents: it needs a mounted stack and a live session, and a cold-start
+ * tap read any earlier would be spent on a navigator that cannot show the
+ * screen.
+ */
+function NotificationRouting() {
+  useNotificationRouting();
+  return null;
+}
+
 export default function TabsLayout() {
   // Mounted above the tabs so the moment can land wherever you happen to be
   // when the accept comes through.
@@ -67,6 +80,7 @@ export default function TabsLayout() {
           nothing until something asks it to. */}
       <PushPrimer />
       <PendingInviteHandoff />
+      <NotificationRouting />
     </>
   );
 }
