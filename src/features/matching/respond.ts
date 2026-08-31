@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
 
+import type { SaidHiOrigin } from '@/features/matching/said-hi';
 import type { RespondTarget } from '@/features/profile/profile-view';
 import type { RequestSource } from '@/lib/database.types';
 
@@ -17,6 +18,11 @@ import type { RequestSource } from '@/lib/database.types';
  * used to be hardcoded to 'trip_match', so replying to a photo on a pinner's
  * profile was refused at the last step unless the two also happened to share
  * a trip, which is the whole point of the map not requiring one.
+ *
+ * `origin` is not the same question. `source` says what the SERVER should
+ * check; `origin` says which screen to hand the beat back to. A hello from a
+ * pinner's profile is source 'pin' and origin 'profile', and Travelers must
+ * not paint a strip for it.
  */
 export function openReply(input: {
   userId: string;
@@ -24,6 +30,7 @@ export function openReply(input: {
   photoPath: string | null;
   target: RespondTarget;
   source: RequestSource;
+  origin: SaidHiOrigin;
 }) {
   router.push({
     pathname: '/compose-request',
@@ -32,6 +39,7 @@ export function openReply(input: {
       name: input.name,
       photoPath: input.photoPath ?? '',
       source: input.source,
+      origin: input.origin,
       element: input.target.key,
       targetLabel: input.target.label,
       targetPhoto: input.target.photoPath ?? '',

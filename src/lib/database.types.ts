@@ -439,7 +439,16 @@ export type SupportMessageStatusRow = {
   attempts: number;
 };
 
-/** Row shape returned by incoming_requests(). */
+/**
+ * Row shape returned by incoming_requests().
+ *
+ * The three overlap columns are the shared city and the shared dates, and
+ * they are nullable for a reason: incoming_requests() is SECURITY INVOKER,
+ * so the sender's trips are read under the recipient's own
+ * trips_select_overlap policy. A hello that came from a pin rather than a
+ * trip match has no readable overlap and returns three nulls, which is the
+ * correct answer and not a gap.
+ */
 export type IncomingRequestRow = {
   id: string;
   sender_id: string;
@@ -450,12 +459,29 @@ export type IncomingRequestRow = {
   first_message: string;
   photo_path: string | null;
   created_at: string;
+  overlap_city: string | null;
+  overlap_start: string | null;
+  overlap_end: string | null;
 };
 
 /**
  * Row shape returned by sent_requests(). `state` deliberately collapses
- * pending/declined/expired into 'sent' — the DB never tells a sender they
- * were declined (invariant 4).
+ * pending, declined and expired into 'sent' — the DB never tells a sender
+ * they were declined (invariant 4), and expiry is carried by `expired_at`
+ * rather than by a sixth state.
+ *
+ * That split is not cosmetic. An over-the-air update is never applied on the
+ * launch that downloads it, so for at least one launch every phone runs the
+ * PREVIOUS bundle against the new schema: a state it has never heard of
+ * would drop the sender's own hello out of "You said hi" and, worse, make
+ * `saidHiAlready` answer "nothing is out to this traveler" and offer a
+ * second Say hi the unique constraint refuses. So `state` keeps its
+ * vocabulary and the new fact arrives as an extra nullable column, the same
+ * way the push payload's `kind` key did.
+ *
+ * `expired_at` is null unless the nightly sweep ended the row. It leaks
+ * nothing: the sweep stamps the unanswered rows and the declined ones in one
+ * statement, on a clock read off the SENDER's own trip dates.
  */
 export type SentRequestRow = {
   id: string;
@@ -466,6 +492,8 @@ export type SentRequestRow = {
   state: 'sent' | 'accepted' | 'blocked';
   chat_id: string | null;
   created_at: string;
+  /** When the sweep ended this hello; null while it is still answerable. */
+  expired_at: string | null;
 };
 
 /** Row shape returned by my_chats(), pinned first then by last activity. */

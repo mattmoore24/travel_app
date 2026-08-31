@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useCallback, useRef, useState } from 'react';
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -10,7 +10,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { AvatarButton } from '@/components/ui/avatar-button';
-import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
 import { ChatRowSkeleton } from '@/components/ui/skeleton';
@@ -29,21 +28,16 @@ import { useIsGuest } from '@/features/guest/hooks';
 import { useAnnounce } from '@/features/chat/use-announce';
 import { useBrowsingCity } from '@/features/pins/browsing-city';
 import { useLiveChatList } from '@/features/chat/hooks';
-import { anchorAboutYours } from '@/features/chat/anchors';
+import { rowTimestamp } from '@/features/chat/separators';
 import { waitingInSegment } from '@/features/chat/unread';
 import { useChatPref, useCityRooms } from '@/features/rooms/hooks';
-import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { EmptyState } from '@/components/ui/empty-state';
 import { LoadError } from '@/components/ui/load-error';
 import { HitTarget, MaxContentWidth, Motion, Radius, Spacing } from '@/constants/theme';
-import {
-  useIncomingRequests,
-  useMyChats,
-  useRespondToRequest,
-  useSentRequests,
-} from '@/features/matching/hooks';
+import { useIncomingRequests, useMyChats, useSentRequests } from '@/features/matching/hooks';
+import { IncomingRequestCard } from '@/features/matching/incoming-request-card';
 import { usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
 import { useTabBarInset } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
@@ -56,98 +50,6 @@ import type {
   SentRequestRow,
 } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
-
-function RequestCard({ request }: { request: IncomingRequestRow }) {
-  const theme = useTheme();
-  const respond = useRespondToRequest();
-  const [acting, setActing] = useState<'accept' | 'decline' | null>(null);
-
-  const act = async (accept: boolean) => {
-    setActing(accept ? 'accept' : 'decline');
-    try {
-      const result = await respond.mutateAsync({ requestId: request.id, accept });
-      if (result.accepted && result.chat_id) {
-        haptics.success();
-        router.push(`/chat/${result.chat_id}`);
-      }
-    } catch {
-      // Surfaced by the global mutation error alert.
-    } finally {
-      setActing(null);
-    }
-  };
-
-  return (
-    <ThemedView type="backgroundElement" style={styles.requestCard}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`View ${request.display_name ?? 'traveler'}'s full profile`}
-        onPress={() => router.push(`/profile/${request.sender_id}`)}
-        style={({ pressed }) => [styles.requestHeader, pressed && styles.pressed]}>
-        <Avatar path={request.photo_path} />
-        <View style={styles.requestHeaderText}>
-          <View style={styles.nameRow}>
-            <ThemedText type="smallBold">
-              {request.display_name ?? 'Traveler'}
-              {request.age != null ? `, ${request.age}` : ''}
-            </ThemedText>
-            {request.verified ? (
-              <VerifiedSeal name={request.display_name} age={request.age} />
-            ) : null}
-          </View>
-          <ThemedText type="small" themeColor="textSecondary">
-            {request.profile_element ? `about ${anchorAboutYours(request.profile_element)} · ` : ''}
-            view full profile
-          </ThemedText>
-        </View>
-        <SymbolView
-          name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
-          size={14}
-          tintColor={theme.textSecondary}
-        />
-      </Pressable>
-      <ThemedText>{request.first_message}</ThemedText>
-      {/* The receiver's half of moderation. This is the one screen in the app
-          where a stranger's words arrive unasked-for, and until now the only
-          answers on it were accept and decline — reporting meant going and
-          finding the profile first. Asking the question out loud is also
-          what makes people answer it (Tinder's version lifted reports 46%). */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Report this message"
-        hitSlop={8}
-        onPress={() =>
-          router.push({
-            pathname: '/report',
-            params: { userId: request.sender_id, context: `request:${request.id}` },
-          })
-        }>
-        <ThemedText type="footnote" themeColor="textSecondary" style={styles.feelsOff}>
-          Does this feel off? Tell us.
-        </ThemedText>
-      </Pressable>
-      <View style={styles.requestActions}>
-        <View style={styles.actionButton}>
-          <PrimaryButton
-            variant="ghost"
-            label="Decline"
-            loading={acting === 'decline'}
-            disabled={respond.isPending}
-            onPress={() => act(false)}
-          />
-        </View>
-        <View style={styles.actionButton}>
-          <PrimaryButton
-            label="Accept"
-            loading={acting === 'accept'}
-            disabled={respond.isPending}
-            onPress={() => act(true)}
-          />
-        </View>
-      </View>
-    </ThemedView>
-  );
-}
 
 /**
  * A hello you sent that has not turned into a chat yet.
@@ -197,8 +99,16 @@ function SentHelloRow({ request, last = false }: { request: SentRequestRow; last
           </ThemedText>
         </View>
         <View style={rowStyles.rowTrailing}>
+          {/* WHEN, not what became of it. The row used to print a fixed
+              "Sent", so a hello from three weeks ago in a city you have left
+              looked exactly as live as one from an hour ago - and that is
+              the one thing this column may say. It is the conversation
+              rows' own helper, so the vocabulary matches the list it sits
+              in; it must never become a status, because the row's whole
+              contract is that it never reveals a read, a decline or a
+              moderation stop. */}
           <ThemedText type="footnote" themeColor="textSecondary">
-            Sent
+            {rowTimestamp(request.created_at)}
           </ThemedText>
         </View>
         {last ? null : <View style={[rowStyles.separator, { backgroundColor: theme.hairline }]} />}
@@ -284,6 +194,74 @@ function PlainRow({
           </View>
         ) : null}
         {last ? null : <View style={[rowStyles.separator, { backgroundColor: theme.hairline }]} />}
+      </View>
+    </PressableScale>
+  );
+}
+
+/**
+ * From this many waiting first messages on, they stop being decisions and
+ * become a wall. One or two belong in the inbox; three is already a stack of
+ * cards standing between a returning traveler and the conversations they
+ * came back for.
+ */
+const WAITING_COLLAPSE_AT = 3;
+
+/** Big enough to recognise a face at, small enough for a list row. */
+const FACE = 32;
+
+/**
+ * The whole waiting pile as one row: the faces, the count, and a way in.
+ *
+ * Deliberately a row and not a badge. A number alone says how much work is
+ * waiting; three faces say who it is from, which is the only thing that
+ * makes anybody tap.
+ */
+function WaitingOnYouRow({ requests }: { requests: IncomingRequestRow[] }) {
+  const previewHeight = usePreviewHeight();
+  const theme = useTheme();
+  const faces = requests.slice(0, 3);
+  return (
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={`Read the ${countOf(requests.length, 'first message')} waiting on you`}
+      haptic="light"
+      scaleTo={0.995}
+      onPress={() => router.push('/first-messages')}>
+      <View style={rowStyles.row}>
+        <View style={rowStyles.unreadGutter} />
+        {/* Overlapped with a negative margin rather than absolute offsets:
+            an absolutely-positioned child resolves against its parent's box,
+            and this one has to keep its intrinsic width so the text column
+            starts where every other row's does. */}
+        <View style={styles.faceStack}>
+          {faces.map((request, i) => (
+            <View
+              key={request.id}
+              style={[styles.face, i > 0 && styles.faceOverlap, { borderColor: theme.background }]}>
+              <Avatar path={request.photo_path} size={FACE} />
+            </View>
+          ))}
+        </View>
+        <View style={rowStyles.rowBody}>
+          <ThemedText type="body" style={rowStyles.rowNameRead} numberOfLines={1}>
+            {countOf(requests.length, 'first message')}
+          </ThemedText>
+          <ThemedText
+            type="callout"
+            themeColor="textSecondary"
+            numberOfLines={2}
+            style={[rowStyles.rowPreview, { height: previewHeight }]}>
+            Read them and answer when you are ready.
+          </ThemedText>
+        </View>
+        <View style={rowStyles.rowTrailing}>
+          <SymbolView
+            name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+            size={13}
+            tintColor={theme.textSecondary}
+          />
+        </View>
       </View>
     </PressableScale>
   );
@@ -816,9 +794,15 @@ export default function ChatScreen() {
               <ThemedText type="smallBold" themeColor="textSecondary" style={styles.sectionHeading}>
                 Waiting on you
               </ThemedText>
-              {requests.map((request) => (
-                <RequestCard key={request.id} request={request} />
-              ))}
+              {requests.length >= WAITING_COLLAPSE_AT ? (
+                <View style={rowStyles.list}>
+                  <WaitingOnYouRow requests={requests} />
+                </View>
+              ) : (
+                requests.map((request) => (
+                  <IncomingRequestCard key={request.id} request={request} />
+                ))
+              )}
             </>
           ) : null}
 
@@ -1038,41 +1022,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     gap: Spacing.three,
   },
-  feelsOff: {
-    textDecorationLine: 'underline',
-  },
   /* A flush list needs its headings to sit ON the gutter rather than float
      in the gap between two cards. */
   sectionHeading: {
     paddingTop: Spacing.two,
   },
-  requestCard: {
-    gap: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Radius.lg,
-  },
-  requestHeader: {
+  /* Three faces in the space of one avatar column, so the row's text still
+     starts on the same vertical line as every other row's. */
+  faceStack: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.two,
   },
-  requestHeaderText: {
-    flex: 1,
-    gap: 2,
+  face: {
+    borderRadius: Radius.pill,
+    borderWidth: 2,
   },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.one,
-  },
-  requestActions: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-  },
-  actionButton: {
-    flex: 1,
-  },
-  pressed: {
-    opacity: 0.7,
+  faceOverlap: {
+    marginLeft: -14,
   },
 });

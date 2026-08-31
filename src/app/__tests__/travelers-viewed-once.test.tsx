@@ -61,6 +61,18 @@ jest.mock('@/features/profile/hooks', () => ({
   useProfilePriorities: () => ({ data: [] }),
 }));
 
+// The next two faces are fetched a card early, which needs a live query
+// client this test has no reason to stand up. Not what it is about.
+jest.mock('@/features/matching/prefetch', () => ({
+  useNextTravelersPrefetch: () => {},
+}));
+
+// The card's overflow can block the person on screen, which reaches for the
+// viewer's own id. Not what this test is about.
+jest.mock('@/features/chat/hooks', () => ({
+  useBlockUser: () => ({ mutate: jest.fn() }),
+}));
+
 // Chrome that carries its own data needs: not what this test is about.
 jest.mock('@/components/ui/avatar-button', () => ({ AvatarButton: () => null }));
 jest.mock('@/components/ui/sign-up-gate', () => ({ SignUpGate: () => null }));

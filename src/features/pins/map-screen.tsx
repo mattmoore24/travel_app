@@ -108,6 +108,7 @@ import { crewLabel } from '@/features/pins/crew';
 import { useMyTrips } from '@/features/trips/hooks';
 import { toISODate } from '@/features/trips/dates';
 import { FilterButton, MapFilterSheet } from '@/features/pins/map-filter-sheet';
+import { helloExpired, saidHiAlready } from '@/features/matching/already-sent';
 import { useMyChats, useSentRequests, useFirstMessageBudget } from '@/features/matching/hooks';
 import { chooseSlot } from '@/features/pins/message-slot';
 import { usePushPrimer } from '@/features/notifications/primer-store';
@@ -167,13 +168,17 @@ function PinCard({
   // A business never joins a plan. The map is not that for them.
   const viewerIsBusiness = useIsBusiness();
   const { data: chats = [] } = useMyChats();
-  // Whether a hello to this pinner is already on its way. 'sent' also covers
-  // pending moderation and a silent decline, so the button never routes into
-  // the unique-constraint refusal that destroys the message.
+  // Whether a hello to this pinner is already on its way, or has been and
+  // run out. One predicate for every surface that asks
+  // (features/matching/already-sent), so the button never routes into the
+  // unique-constraint refusal that destroys the message.
   const { data: sentRequests = [] } = useSentRequests();
-  const alreadySaidHi =
-    pin.user_id != null &&
-    sentRequests.some((r) => r.recipient_id === pin.user_id && r.state === 'sent');
+  const alreadySaidHi = saidHiAlready(sentRequests, pin.user_id);
+  // And whether that hello can still be answered. respond_to_message_request
+  // only takes a 'pending' row, so once the nightly sweep has ended it there
+  // is nobody left who could reply and the note below has to stop promising
+  // one. Reads the sweep's stamp, never a state (see already-sent).
+  const helloRanOut = helloExpired(sentRequests, pin.user_id);
   const openToJoin = pin.chat_id != null;
   const alreadyIn = openToJoin && chats.some((chat) => chat.chat_id === pin.chat_id);
   // pin_crew is granted to `authenticated` only — a guest account included,
@@ -504,7 +509,14 @@ function PinCard({
             <>
               <PrimaryButton label="Message sent" disabled onPress={() => {}} />
               <ThemedText type="footnote" themeColor="textSecondary" style={styles.joinNote}>
-                You said hi. It&apos;ll be in Chat if they answer.
+                {helloRanOut
+                  ? // True for both halves of what the sweep ends, and it
+                    // tells the sender nothing about the person: expiry runs
+                    // on their own dates. It says only that this one is over,
+                    // and offers no retry, because one shot per direction is
+                    // for ever.
+                    'You said hi a while back. That one has run out.'
+                  : "You said hi. It'll be in Chat if they answer."}
               </ThemedText>
             </>
           ) : (
@@ -521,6 +533,12 @@ function PinCard({
                         name: pin.display_name ?? 'Traveler',
                         photoPath: pin.photo_path ?? '',
                         source: 'pin',
+                        // Where the beat afterwards belongs. Not Travelers:
+                        // useSendRequest is the app's only send path and its
+                        // said-hi store is cleared by that tab alone, so an
+                        // unstamped hello from here painted a strip there an
+                        // hour later claiming it had just happened.
+                        origin: 'pin',
                         element: `pin:${pin.venue_name.slice(0, 50)}`,
                         // Opens with the question already written, because
                         // "what do I even say" is what stops most people.

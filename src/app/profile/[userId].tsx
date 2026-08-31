@@ -1,14 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import {
-  ActionSheetIOS,
-  Alert,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -26,7 +18,9 @@ import {
   useSentRequests,
   useUnlockedSocialHandles,
 } from '@/features/matching/hooks';
+import { helloExpired, saidHiAlready } from '@/features/matching/already-sent';
 import { openReply } from '@/features/matching/respond';
+import { presentMenu, travelerMenuItems } from '@/features/profile/actions-menu';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import {
   useProfilePriorities,
@@ -69,13 +63,17 @@ export default function PublicProfileScreen() {
   const { data: sharesGroup = false } = useSharesGroupWith(userId ?? null);
   const known = connected || sharesGroup;
 
-  // Whether a hello is already on its way. 'sent' also covers
-  // pending_moderation and a silent decline — the RPC collapses those on
-  // purpose (invariant 4: a sender is never told they were declined) — so a
-  // second hello is never offered where the server would refuse it with a
-  // unique-constraint error that destroys the message.
+  // Whether a hello is already on its way, or has been and run out. One
+  // predicate for every surface that asks (features/matching/already-sent),
+  // so a second hello is never offered where the server would refuse it with
+  // a unique-constraint error that destroys the message.
   const { data: sentRequests = [] } = useSentRequests();
-  const alreadySaidHi = sentRequests.some((r) => r.recipient_id === userId && r.state === 'sent');
+  const alreadySaidHi = saidHiAlready(sentRequests, userId);
+  // And whether that hello can still be answered at all.
+  // respond_to_message_request only takes a 'pending' row, so once the
+  // nightly sweep has ended it the note below cannot keep promising a
+  // reply. Reads the sweep's stamp, never a state (see already-sent).
+  const helloRanOut = helloExpired(sentRequests, userId);
   // The same cap the Travelers bar renders: identical chrome must not offer a
   // live "Say hi" the composer would immediately full-stop.
   const budget = useFirstMessageBudget();
@@ -138,16 +136,16 @@ export default function PublicProfileScreen() {
   // only full-width buttons. Same pattern as the chat header's menu. App
   // Review wants in-app reporting reachable, and it still is in two taps —
   // the overflow lives in the nav bar, which is always on screen.
-  const openMenu = () => {
-    const items: { label: string; destructive?: boolean; run: () => void }[] = [
-      {
-        label: 'Report',
-        run: () => router.push({ pathname: '/report', params: { userId, context: 'profile' } }),
-      },
-      {
-        label: 'Block',
-        destructive: true,
-        run: () =>
+  const openMenu = () =>
+    presentMenu(
+      // The shared builder minus its first item: you are already looking at
+      // the profile it would open. Everything else is the same sheet the
+      // chat header and the Travelers card raise, from one place.
+      travelerMenuItems({
+        userId: userId ?? null,
+        context: 'profile',
+        canViewProfile: false,
+        onBlock: () =>
           Alert.alert(
             `Block ${name}?`,
             "They're gone from the map and Travelers, and can't message you. They're not told.",
@@ -167,29 +165,8 @@ export default function PublicProfileScreen() {
               },
             ]
           ),
-      },
-    ];
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: [...items.map((item) => item.label), 'Cancel'],
-          destructiveButtonIndex: items.findIndex((item) => item.destructive),
-          cancelButtonIndex: items.length,
-        },
-        (index) => items[index]?.run()
-      );
-    } else {
-      // Simple fallback for non-iOS dev targets.
-      Alert.alert('Options', undefined, [
-        ...items.map((item) => ({
-          text: item.label,
-          style: item.destructive ? ('destructive' as const) : undefined,
-          onPress: item.run,
-        })),
-        { text: 'Cancel', style: 'cancel' as const },
-      ]);
-    }
-  };
+      })
+    );
 
   return (
     <ThemedView style={styles.root}>
@@ -253,6 +230,10 @@ export default function PublicProfileScreen() {
                     // a pin, that is the pin; from anywhere else, a shared
                     // trip, which is how this screen is otherwise found.
                     source: from === 'pin' ? 'pin' : 'trip_match',
+                    // And where the beat afterwards belongs: here, not on
+                    // Travelers. Reached from a pin this is still 'profile' —
+                    // the strip is Travelers' own, and this page is not it.
+                    origin: 'profile',
                   })
           }
           actions={
@@ -300,7 +281,14 @@ export default function PublicProfileScreen() {
                   only full-width buttons. */}
               {!known && alreadySaidHi ? (
                 <ThemedText type="footnote" themeColor="textSecondary" style={styles.saidHiNote}>
-                  You said hi. It&apos;ll be in Chat if they answer.
+                  {helloRanOut
+                    ? // True for both halves of what the sweep ends, and it
+                      // tells the sender nothing about the person: expiry
+                      // runs on their own dates. It says only that this one
+                      // is over, and offers no retry, because one shot per
+                      // direction is for ever.
+                      'You said hi a while back. That one has run out.'
+                    : "You said hi. It'll be in Chat if they answer."}
                 </ThemedText>
               ) : null}
             </>
@@ -345,6 +333,7 @@ export default function PublicProfileScreen() {
                       ? { key: 'pin:', label: 'their pin' }
                       : { key: 'trip', label: 'their travel plans' },
                   source: from === 'pin' ? 'pin' : 'trip_match',
+                  origin: 'profile',
                 })
               : undefined
           }

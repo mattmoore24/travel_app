@@ -60,13 +60,35 @@ describe('the chat list is a list, not a stack of cards', () => {
     // Dynamic Type step up — and the second line is where the message is.
     expect(rowModule).toContain('PREVIEW_LINES * Type.callout.lineHeight * fontScale');
     // Every row that draws a preview has to spend the scaled value, not the
-    // style: ChatRow in the module, SentHelloRow and PlainRow in the screen.
+    // style: ChatRow in the module, and SentHelloRow, PlainRow and the
+    // collapsed waiting row in the screen.
     expect(
       rowModule.match(/style=\{\[styles\.rowPreview, \{ height: previewHeight \}\]\}/g)
     ).toHaveLength(1);
     expect(
       code.match(/style=\{\[rowStyles\.rowPreview, \{ height: previewHeight \}\]\}/g)
-    ).toHaveLength(2);
+    ).toHaveLength(3);
+  });
+
+  it('dates a hello you sent instead of labelling it with a status', () => {
+    // The trailing column used to print a fixed "Sent" whatever the row's
+    // age, so a hello from three weeks ago in a city you have left looked
+    // exactly as live as one from an hour ago. It is the conversation rows'
+    // own helper now, so the two vocabularies match.
+    expect(code).toContain('{rowTimestamp(request.created_at)}');
+    expect(code).toMatch(/import \{ rowTimestamp \} from '@\/features\/chat\/separators';/);
+  });
+
+  it('never lets that column become a status', () => {
+    // Rules 4 and 5 live in this one row: a sender may never learn a read, a
+    // decline, or a moderation stop. sent_requests() collapses all three
+    // into a flat 'sent', and the nightly sweep does not even add a word -
+    // it stamps expired_at and leaves the state alone, so that an
+    // over-the-air update meeting an older bundle cannot break it. The
+    // screen has nothing to branch on, and must not try.
+    expect(code).not.toContain("'declined'");
+    expect(code).not.toContain("'expired'");
+    expect(code).not.toContain("'blocked'");
   });
 
   it('puts the unread mark outside the text column', () => {

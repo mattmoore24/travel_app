@@ -252,6 +252,20 @@ appId: com.mattmoore.samewhere
     direction: DOWN
     timeout: 10000
 - assertVisible: 'About this. Say hi about their travel plans.'
+# SAFETY, ON THE CARD YOU READ A STRANGER ON. Travelers is where somebody
+# spends the most time with one stranger at a time, and it carried no report
+# and no block at all: reporting the man on screen meant opening his full
+# profile first and finding the nav bar's overflow. Same sheet, same three
+# items, one builder (features/profile/actions-menu).
+- tapOn: 'More about .*'
+- extendedWaitUntil:
+    visible: 'Report'
+    timeout: 10000
+- assertVisible: 'Block'
+- takeScreenshot: 17c-travelers-safety
+- tapOn: 'Cancel'
+- waitForAnimationToEnd:
+    timeout: 3000
 # A PASS IS RECOVERABLE. Tap the Next pill (its spoken label — the pill's own
 # accessibilityLabel hides the printed word from Maestro, see traps) and the
 # undo bar names who was moved past. The name depends on live supply, so the
@@ -273,6 +287,45 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 3000
 - assertNotVisible: 'Moved past .*'
+# THE BEAT AFTER A HELLO. Saying hi used to end in a face swap nobody asked
+# for: the composer's confirmation popped after about a second, a different
+# stranger had silently taken the page underneath, and Travelers carried no
+# trace that anything had been said. The strip is that trace, and it is a
+# beat rather than a resting state - so both halves are proven here, the
+# arrival and the going.
+#
+# Safe to send for real, and idempotent despite one-shot-per-pair: the run's
+# account is created by `node e2e/account.mjs setup` and destroyed at
+# teardown every run, so the SENDER is a fresh row each time and
+# unique(sender_id, recipient_id) never sees the same pair twice.
+# message_requests cascade with the account, so nothing here burns a demo
+# traveler permanently either.
+#
+# RENUMBERING: hi-the-composer-gets-photographed plans its own composer
+# frames and has to number around 17b/17c here rather than interleave with
+# them. Two flows photographing the same screens under clashing names is a
+# gallery nobody can read.
+- tapOn: 'Say hi'
+- extendedWaitUntil:
+    visible: 'Your first message'
+    timeout: 15000
+- tapOn:
+    id: 'first-message-input'
+- inputText: 'Both in town the same week. Any market worth the walk?'
+- tapOn: 'Send'
+- extendedWaitUntil:
+    visible: 'Sent to .*'
+    timeout: 25000
+# The composer pops itself after its confirmation; the strip is underneath,
+# floating over whoever the queue handed up next.
+- extendedWaitUntil:
+    visible: 'Said hi to .* It.s in Chat under .You said hi..'
+    timeout: 20000
+- takeScreenshot: 17b-said-hi
+# A beat, not a wall. Four seconds of screen time and it clears itself.
+- extendedWaitUntil:
+    notVisible: 'Said hi to .*'
+    timeout: 20000
 - tapOn: 'Map'
 - extendedWaitUntil:
     visible: 'Drop a pin'

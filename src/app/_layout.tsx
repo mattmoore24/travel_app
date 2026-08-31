@@ -276,6 +276,15 @@ function RootNavigator() {
           name="archived-chats"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
         />
+        {/* Where the waiting first messages go once there are too many of
+            them to keep in the inbox. signedIn, not signedIn && onboarded:
+            the same guard the rest of the chat surfaces sit behind, so a
+            route the Chat tab can offer is always a route the navigator
+            has. */}
+        <Stack.Screen
+          name="first-messages"
+          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        />
       </Stack.Protected>
       <Stack.Protected guard={signedIn && onboarded}>
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />

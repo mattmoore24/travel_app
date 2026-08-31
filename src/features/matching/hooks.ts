@@ -16,6 +16,7 @@ import {
 } from '@/features/matching/api';
 import { useIsBusiness } from '@/features/business/hooks';
 import { waitingTotal } from '@/features/chat/unread';
+import { useSaidHi, type SaidHiOrigin } from '@/features/matching/said-hi';
 import { usePushPrimer } from '@/features/notifications/primer-store';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
@@ -128,6 +129,21 @@ export function useSendRequest() {
   return useMutation({
     mutationFn: (input: {
       recipientId: string;
+      /**
+       * Who it went to, carried purely so Travelers can say so afterwards.
+       * The composer is a modal on its own route and `router.back()` carries
+       * nothing, so without this the tab has no way to know a hello just
+       * left it. Never sent to the server.
+       */
+      recipientName: string;
+      /**
+       * Which surface the hello left from. This mutation is the ONLY send
+       * path in the app — the map's pin card and a stranger's profile use
+       * it as well as Travelers — and only Travelers clears the said-hi
+       * store, so without this a hello sent from the map painted a strip on
+       * a tab that had nothing to do with it. Never sent to the server.
+       */
+      origin: SaidHiOrigin;
       source: RequestSource;
       firstMessage: string;
       profileElement: string | null;
@@ -151,6 +167,10 @@ export function useSendRequest() {
       // than delivered, and gating on delivered alone silently switched the
       // ask off on the one flow it was built for.
       if (result.delivered || result.queued) {
+        // The beat Travelers shows over the next traveler's card. Set before
+        // the primer, so the strip is already there when the sheet (if there
+        // is one) comes down.
+        useSaidHi.getState().note(input.recipientName, input.origin);
         usePushPrimer.getState().ask('hello-sent');
       }
     },

@@ -95,6 +95,33 @@ describe('the action bar and its ground share one formula', () => {
     expect(screen).not.toContain('height: ACTION_BUTTON');
   });
 
+  it('the primary action has one label and one reason ever to be off', () => {
+    // Three of this button's four states were unreachable. The queue filter
+    // drops everybody already written to and everybody already in a chat
+    // BEFORE a card is chosen, so `sent` and `chatId` were always undefined
+    // for the rendered traveler: the label was always "Say hi", `disabled`
+    // was always false, and the file described behaviour it could not
+    // produce. The cap is the one real off state left.
+    expect(screen).not.toContain('canOpen');
+    expect(screen).not.toContain("'Open chat'");
+    expect(screen).not.toContain("'Message sent'");
+    expect(screen).toContain(
+      "primaryLabel={helloCapped ? 'No first messages left today' : 'Say hi'}"
+    );
+    expect(screen).toContain('disabled={helloCapped}');
+  });
+
+  it('carries safety on the row where a stranger is decided on', () => {
+    // Travelers is the screen somebody spends the most time on with one
+    // stranger at a time, and it had no report and no block at all. The card
+    // has no header, so the bottom row is the honest anchor.
+    expect(screen).toContain('accessibilityLabel={`More about ${name}`}');
+    expect(screen).toContain('openTravelerMenu({');
+    // Icon only and shrink-proof: at the accessibility sizes this row is Say
+    // hi, Next and this, and the primary is the one that must keep its words.
+    expect(screen).toContain('width: HitTarget,');
+  });
+
   it('a stacked screen does not carry the tab dock', () => {
     // The pin-reached profile sits under a nav header with no tab bar;
     // the tab-bar inset there floats the bar 49pt too high.

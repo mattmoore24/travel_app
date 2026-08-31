@@ -16,6 +16,7 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { Radius, Spacing } from '@/constants/theme';
 import { countOf } from '@/lib/plural';
 import { useDraftWarning, useFirstMessageBudget, useSendRequest } from '@/features/matching/hooks';
+import type { SaidHiOrigin } from '@/features/matching/said-hi';
 import { blockedCopy, riskyCopy } from '@/features/matching/moderation-copy';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
@@ -53,6 +54,11 @@ export default function ComposeRequestScreen() {
     name: string;
     photoPath: string;
     source?: string;
+    /**
+     * Which screen sent you here, so the beat afterwards lands on that one.
+     * Not the same question as `source`, which says what the server checks.
+     */
+    origin?: string;
     element?: string;
     /** What the profile said this element was, for the card below. */
     targetLabel?: string;
@@ -66,6 +72,16 @@ export default function ComposeRequestScreen() {
   const sendRequest = useSendRequest();
 
   const source = params.source === 'pin' ? ('pin' as const) : ('trip_match' as const);
+  // Only Travelers floats a strip after a send, and only it clears the
+  // store, so anything that did not come from Travelers has to say so or a
+  // hello sent from the map paints a stale confirmation on a tab that had
+  // nothing to do with it. Unknown falls back to the surface it came from.
+  const origin: SaidHiOrigin =
+    params.origin === 'travelers' || params.origin === 'profile' || params.origin === 'pin'
+      ? params.origin
+      : source === 'pin'
+        ? 'pin'
+        : 'profile';
   // 'trip', not 'bio': the dates you share are the one anchor that always
   // exists (see ELEMENT_OPTIONS above), while defaulting to a bio claimed a
   // hello came from a field the recipient may never have filled in.
@@ -149,6 +165,8 @@ export default function ComposeRequestScreen() {
     try {
       const result = await sendRequest.mutateAsync({
         recipientId: params.userId,
+        recipientName: params.name || 'them',
+        origin,
         source,
         firstMessage: message.trim(),
         profileElement: element,

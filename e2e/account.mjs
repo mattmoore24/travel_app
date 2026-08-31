@@ -94,7 +94,12 @@ async function setup() {
       age: 27,
       home_city: 'Testville',
       home_country: 'US',
-      languages: ['en'],
+      // Two, and the second is not English on purpose. The travelers card
+      // prints "Also speaks Spanish" only when the pair shares something
+      // other than English (features/matching/shared-language), and half the
+      // demo roster speaks Spanish - so an English-only test account made
+      // that line unphotographable.
+      languages: ['en', 'es'],
       bio: 'Simulator test account, deleted right after the run.',
       occupation: 'Test runner',
       onboarding_completed_at: new Date().toISOString(),

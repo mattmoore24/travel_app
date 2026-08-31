@@ -21,6 +21,7 @@ const src = (file: string): string => fs.readFileSync(path.join(REPO, file), 'ut
 const CHAT_TAB = 'src/app/(tabs)/chat.tsx';
 const CHAT_THREAD = 'src/app/chat/[id].tsx';
 const ROOM = 'src/app/room/[id].tsx';
+const ACTIONS_MENU = 'src/features/profile/actions-menu.ts';
 
 describe('the chat list a business reads', () => {
   it('does not filter a business out of its own room', () => {
@@ -89,12 +90,13 @@ describe('the conversation a business answers', () => {
     expect(code).toContain('const openIdentity = viewerIsBusiness\n    ? null');
     expect(code).toContain('disabled={openIdentity == null}');
     expect(code).toContain('onPress={openIdentity ?? undefined}');
-    const menu = code.indexOf('const openMenu = () => {');
-    const viewProfile = code.indexOf("{ label: 'View profile'");
-    expect(menu).toBeGreaterThan(-1);
-    expect(viewProfile).toBeGreaterThan(menu);
-    // Present, but only on the branch that is not a business.
-    expect(code).toContain('...(viewerIsBusiness\n        ? []');
+    // The sheet is built in one shared place now (three surfaces offer the
+    // same three items), so the business branch is pinned at both ends: the
+    // caller says it cannot view a profile, and the builder honours that.
+    expect(code).toContain('canViewProfile: !viewerIsBusiness');
+    const menu = src(ACTIONS_MENU);
+    expect(menu).toContain("{ label: 'View profile'");
+    expect(menu).toContain('...(canViewProfile && userId');
   });
 
   it('offers Archive rather than an unmatch that deletes the traveler side', () => {
@@ -102,7 +104,7 @@ describe('the conversation a business answers', () => {
     // unmatch_chat hard-deletes the chats row, which takes the conversation
     // away from the traveler too. A business tidying its inbox must not be
     // able to wipe a customer's copy of what it told them.
-    expect(code).toContain("viewerIsBusiness\n        ? { label: 'Archive', run: archiveChat }");
+    expect(code).toContain("viewerIsBusiness\n          ? { label: 'Archive', run: archiveChat }");
     expect(code).toContain('pref.mutate({ chatId: chat.chat_id, archived: true });');
     // And the traveler still has the traveler wording.
     expect(code).toContain("{ label: 'Leave chat', destructive: true, run: confirmLeaveChat }");

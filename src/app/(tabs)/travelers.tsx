@@ -4,6 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -26,6 +27,7 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useAuthStore } from '@/features/auth/store';
+import { useBlockUser } from '@/features/chat/hooks';
 import { guestEmptyCityLine, guestGateReason } from '@/features/guest/copy';
 import {
   useFeaturedPhoto,
@@ -56,11 +58,18 @@ import {
   useMyChats,
   useSentRequests,
 } from '@/features/matching/hooks';
+import { useSaidHi } from '@/features/matching/said-hi';
 import { usePassedTravelers } from '@/features/matching/passed';
+import { useNextTravelersPrefetch } from '@/features/matching/prefetch';
+import { sharedLanguages } from '@/features/matching/shared-language';
+import { overlapSentence } from '@/features/matching/overlap';
 import { remainingLine } from '@/features/matching/queue-copy';
 import { sharedTodayNote } from '@/features/matching/spotlight';
+import { openTravelerMenu } from '@/features/profile/actions-menu';
+import { languageLabel } from '@/constants/languages';
 import { AUDIENCE_LABEL, audienceInSentence } from '@/features/profile/audience';
 import {
+  useOwnProfile,
   useOwnVisibility,
   useProfilePriorities,
   useProfilePrompts,
@@ -330,8 +339,7 @@ function TravelerPage({
   onBarHeight,
   onSayHi,
   onNext,
-  chatId,
-  requested,
+  onMore,
   isSpotlight,
   helloCapped,
   remaining,
@@ -360,13 +368,11 @@ function TravelerPage({
   onRefresh: () => void;
   onSayHi: () => void;
   onNext: () => void;
-  chatId: string | undefined;
-  requested: boolean;
+  /** Report, block, or open the full profile of the person on screen. */
+  onMore: () => void;
   /** No hellos left today — the Say hi button says so instead of opening. */
   helloCapped: boolean;
 }) {
-  // Nothing left to open once a message is out or a chat exists.
-  const canOpen = chatId == null && !requested;
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   // The dock clearance tracks Dynamic Type with the tab bar it stands on.
@@ -395,6 +401,13 @@ function TravelerPage({
     updated_at: '',
   };
   const shown = profile ?? fallback;
+  const name = shown.display_name ?? 'this traveler';
+  // The second-heaviest term in the match score, said out loud instead of
+  // spent entirely on ordering. Never when English is the only thing shared:
+  // that is most pairs, and a line on most cards is a line nobody reads.
+  const { data: mine } = useOwnProfile();
+  const shared = sharedLanguages(mine?.languages, candidate.match.languages);
+  const alsoSpeaks = shared[0] ? `Also speaks ${languageLabel(shared[0])}` : null;
   const shownPhotos =
     photos.length > 0
       ? photos
@@ -492,25 +505,29 @@ function TravelerPage({
         showsVerticalScrollIndicator={false}>
         <ProfileView
           profile={shown}
+          alsoSpeaks={alsoSpeaks}
           photos={shownPhotos}
           prompts={prompts}
           priorities={priorities}
           trips={profileTrips}
           handles={[]}
           owner={false}
-          onRespondTo={
-            canOpen
-              ? (target) =>
-                  openReply({
-                    userId: candidate.userId,
-                    name: shown.display_name ?? 'Traveler',
-                    photoPath: candidate.match.photo_path ?? null,
-                    target,
-                    // This tab only ever shows people whose trip overlaps
-                    // yours, which is exactly what the trip_match check wants.
-                    source: 'trip_match',
-                  })
-              : undefined
+          // Always open. The queue filter drops everybody already written to
+          // and everybody already in a chat BEFORE a card is chosen, so the
+          // three states this used to branch on could not reach the screen:
+          // the file described behaviour it was unable to produce.
+          onRespondTo={(target) =>
+            openReply({
+              userId: candidate.userId,
+              name: shown.display_name ?? 'Traveler',
+              photoPath: candidate.match.photo_path ?? null,
+              target,
+              // This tab only ever shows people whose trip overlaps yours,
+              // which is exactly what the trip_match check wants.
+              source: 'trip_match',
+              // And the beat afterwards belongs here.
+              origin: 'travelers',
+            })
           }
         />
       </ScrollView>
@@ -521,44 +538,66 @@ function TravelerPage({
       <DockedActionBar
         bottomInset={dockBottom}
         onBarHeight={onBarHeight}
-        // PrimaryButton renders disabled as a surfaceSunken fill with a
-        // textSecondary label (8.2:1), not a fade, so "No hellos left
-        // today" stays legible while it says not-now. Opening an existing
-        // chat is not a hello, so the cap never touches that state.
-        primaryLabel={
-          chatId
-            ? 'Open chat'
-            : requested
-              ? 'Message sent'
-              : helloCapped
-                ? 'No first messages left today'
-                : 'Say hi'
-        }
-        disabled={!chatId && (requested || helloCapped)}
+        // Two states, and both are reachable. PrimaryButton renders disabled
+        // as a surfaceSunken fill with a textSecondary label (8.2:1), not a
+        // fade, so "No first messages left today" stays legible while it
+        // says not-now.
+        primaryLabel={helloCapped ? 'No first messages left today' : 'Say hi'}
+        disabled={helloCapped}
         onPrimary={onSayHi}
         secondary={
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel="Next traveler"
-            haptic="light"
-            scaleTo={0.94}
-            onPress={onNext}
-            style={[
-              styles.nextButton,
-              // `border`, not `hairline`: this is an edge a user must see on a
-              // control, and hairline is the token the theme reserves for
-              // decorative dividers (1.41:1 here).
-              { backgroundColor: theme.surfaceSunken, borderColor: theme.border },
-            ]}>
-            <SymbolView
-              name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }}
-              size={18}
-              tintColor={theme.text}
-            />
-            <ThemedText type="caption" themeColor="textSecondary">
-              Next
-            </ThemedText>
-          </PressableScale>
+          <>
+            {/* Safety, on the screen where a stranger is first read.
+                Travelers is where somebody spends the most time with one
+                stranger at a time, and it carried no report and no block at
+                all: to report the man on screen you had to open his full
+                profile and find the nav bar's overflow. Same sheet, same
+                three items, one place they are written.
+
+                The bottom row is the honest anchor because this card has no
+                header — nothing sits above the photo but the spotlight
+                strip. Narrow and shrink-proof on purpose: at the
+                accessibility text sizes this row is Say hi, Next and this,
+                and the primary is the one that must keep its words. */}
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel={`More about ${name}`}
+              haptic="light"
+              scaleTo={0.94}
+              onPress={onMore}
+              style={[
+                styles.moreButton,
+                { backgroundColor: theme.surfaceSunken, borderColor: theme.border },
+              ]}>
+              <SymbolView
+                name={{ ios: 'ellipsis', android: 'more_horiz', web: 'more_horiz' }}
+                size={18}
+                tintColor={theme.text}
+              />
+            </PressableScale>
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Next traveler"
+              haptic="light"
+              scaleTo={0.94}
+              onPress={onNext}
+              style={[
+                styles.nextButton,
+                // `border`, not `hairline`: this is an edge a user must see on a
+                // control, and hairline is the token the theme reserves for
+                // decorative dividers (1.41:1 here).
+                { backgroundColor: theme.surfaceSunken, borderColor: theme.border },
+              ]}>
+              <SymbolView
+                name={{ ios: 'arrow.right', android: 'arrow_forward', web: 'arrow_forward' }}
+                size={18}
+                tintColor={theme.text}
+              />
+              <ThemedText type="caption" themeColor="textSecondary">
+                Next
+              </ThemedText>
+            </PressableScale>
+          </>
         }
       />
     </View>
@@ -579,6 +618,75 @@ function ProfileCorner() {
     <View style={[styles.profileCorner, { top: insets.top + Space.sm }]} pointerEvents="box-none">
       <AvatarButton />
     </View>
+  );
+}
+
+/**
+ * The beat after the highest-intent tap in the product.
+ *
+ * It used to end in a face swap nobody asked for: the composer's
+ * confirmation popped, a different stranger had silently taken the page, and
+ * there was no trace on Travelers that anything had been said.
+ *
+ * A beat, not a resting state. The next traveler is already underneath and
+ * the strip floats over them, because the founder rejected a post-send
+ * screen the reader gets stuck behind.
+ *
+ * No link to the conversation: a hello is a message_request behind the
+ * accept gate and passes moderation before delivery, so there is no chat to
+ * open yet and the link would be dead. Chat is where the record lives, and
+ * that is what this says.
+ *
+ * A component rather than two copies of the block, because it has to render
+ * on BOTH of this screen's branches: saying hi to the last candidate is
+ * exactly what empties the queue, so the branch with no card left is the one
+ * the confirmation matters most on. `bottom` is what differs — the main
+ * branch has a measured action bar to sit above, the empty one has none, so
+ * it stands on the formula instead.
+ */
+function SaidHiStrip({ name, bottom }: { name: string; bottom: number }) {
+  const theme = useTheme();
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(Motion.standard)}
+      exiting={FadeOutDown.duration(Motion.quick)}
+      style={[styles.undoDock, { bottom }]}
+      pointerEvents="box-none">
+      <ThemedView type="surface" style={[styles.undoCard, Elevation.floating]}>
+        {/* No accessibilityLabel on the press: on iOS a labelled Pressable
+            becomes one element and hides the words inside it, and these
+            words are the whole point of the bar. */}
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityHint="Opens your chats"
+          haptic="light"
+          scaleTo={0.99}
+          onPress={() => {
+            useSaidHi.getState().clear();
+            // navigate, not push: pushing a tab route from inside the tabs
+            // stacks a second copy of the navigator.
+            router.navigate('/chat');
+          }}
+          style={styles.saidHiText}>
+          <ThemedText type="footnote" numberOfLines={2}>
+            {`Said hi to ${name}. It's in Chat under "You said hi".`}
+          </ThemedText>
+        </PressableScale>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss"
+          haptic="light"
+          scaleTo={0.96}
+          onPress={() => useSaidHi.getState().clear()}
+          style={styles.undoButton}>
+          <SymbolView
+            name={{ ios: 'xmark', android: 'close', web: 'close' }}
+            size={13}
+            tintColor={theme.textSecondary}
+          />
+        </PressableScale>
+      </ThemedView>
+    </Animated.View>
   );
 }
 
@@ -606,7 +714,7 @@ export default function TravelersScreen() {
   // who was just brought back (so the queue re-opens on them, not on
   // whoever happens to sort first). Declared with the other hooks, above
   // every early return, so hook order stays stable.
-  const [undo, setUndo] = useState<{ id: string; name: string } | null>(null);
+  const [undo, setUndo] = useState<{ id: string; name: string; at: number } | null>(null);
   const [restoredId, setRestoredId] = useState<string | null>(null);
   // Held in a ref and cleared on unmount and on the next pass, so a timer
   // never outlives the screen or dismisses the wrong bar.
@@ -619,10 +727,73 @@ export default function TravelersScreen() {
     },
     []
   );
+  // Who the composer just wrote to. There is no other way to know: the
+  // composer is a modal on its own route, `router.back()` carries nothing,
+  // and the recipient has already been filtered out of the queue by the time
+  // this screen re-renders. See features/matching/said-hi.
+  const saidHiTo = useSaidHi((s) => s.sentTo);
+  // Whether the stamp is still inside its beat, sampled by the effect that
+  // owns the dismissal timer rather than read off the clock during render: a
+  // Date.now() in a render body is impure, and its answer would only change
+  // when the component happened to re-render anyway. It starts false, which
+  // is what makes a stale stamp unpaintable rather than merely short-lived.
+  const [saidHiFresh, setSaidHiFresh] = useState(false);
+  // Focus, not a plain effect: the composer's own confirmation is still up
+  // for a beat after the send, and a timer started under it spends most of
+  // itself behind a modal. This one starts when the strip is actually on
+  // screen, and it spends what is LEFT of the beat when the tab is come back
+  // to, so a strip half-read before a tab switch finishes rather than
+  // starting over.
+  useFocusEffect(
+    useCallback(() => {
+      if (!saidHiTo) {
+        setSaidHiFresh(false);
+        return;
+      }
+      const left = SAID_HI_MS - (Date.now() - saidHiTo.at);
+      if (left <= 0) {
+        // A stamp that was never counted down, because this timer only runs
+        // while the tab is on screen. Saying hi from the map and opening
+        // Travelers an hour later used to paint a confirmation of something
+        // long finished; it is dropped here instead, before it can show.
+        setSaidHiFresh(false);
+        useSaidHi.getState().clear();
+        return;
+      }
+      setSaidHiFresh(true);
+      const timer = setTimeout(() => useSaidHi.getState().clear(), left);
+      return () => clearTimeout(timer);
+    }, [saidHiTo])
+  );
+  // Derived HERE, above every early return, and rendered in both branches
+  // below. Saying hi to the last candidate is precisely what empties the
+  // queue — the send invalidates sent-requests, sentByRecipient drops them,
+  // and queue.length hits 0 — so a strip that only existed under the main
+  // return was missing from the one case it matters most in.
+  const showSaidHi =
+    saidHiTo != null &&
+    // Only this tab's own hellos. useSendRequest is the app's ONLY send
+    // path: the map's pin card and a stranger's profile go through it too,
+    // and nothing but this screen ever clears the store. Unfiltered, a
+    // hello sent from the map an hour ago painted a strip here claiming it
+    // had just happened.
+    saidHiTo.origin === 'travelers' &&
+    // And only while it is still that beat, which the effect above decides
+    // rather than the render: the strip starts false, so a stale stamp
+    // cannot paint even for the frame before that effect runs.
+    saidHiFresh &&
+    // One transient bar at a time, and the newer act owns the slot: both
+    // float on the same number above the action bar, so one landing on top
+    // of the other is the whole failure mode. A comparison in render cannot
+    // get out of step the way two effects cancelling each other would.
+    (undo == null || saidHiTo.at >= undo.at);
   // Above every early return, so hook order stays stable. This screen used
   // to have no idea the setting existed, which is why an empty queue said
   // "that's everyone" whatever the reason.
   const { data: audience = 'everyone' } = useOwnVisibility();
+  // Blocking from the card. Declared with the other hooks, above every early
+  // return, so hook order stays stable.
+  const block = useBlockUser();
 
   // Destructured because a query RESULT is a new object every render while
   // its refetch is stable — same pattern as chat.tsx, for the same reason.
@@ -708,6 +879,15 @@ export default function TravelersScreen() {
       queue.unshift(...queue.splice(at, 1));
     }
   }
+
+  // The next two faces, downloaded before the card turns. Above the early
+  // returns with every other hook; the queue it reads is already computed.
+  useNextTravelersPrefetch(
+    queue.map((candidate) => ({
+      userId: candidate.userId,
+      photoPath: candidate.match.photo_path ?? null,
+    }))
+  );
 
   // Say the settle out loud. VoiceOver heard silence while this screen
   // loaded and silence when it resolved, so empty and loaded were
@@ -892,16 +1072,21 @@ export default function TravelersScreen() {
             ) : null}
           </EmptyState>
         </View>
+        {/* And the confirmation lands HERE too. Saying hi to the last
+            candidate is what empties the queue, so this branch is the one
+            the beat matters most on and it used to be the one branch with no
+            beat at all. There is no action bar under this wall to measure,
+            so the strip stands on the formula the bar would have used. */}
+        {showSaidHi && saidHiTo ? (
+          <SaidHiStrip name={saidHiTo.name} bottom={dockedActionBarHeight(dockBottom)} />
+        ) : null}
       </ThemedView>
     );
   }
 
-  const sent = sentByRecipient.get(current.userId);
-  const chatId =
-    chatByUser.get(current.userId) ??
-    (sent?.state === 'accepted' ? (sent.chat_id ?? undefined) : undefined);
-  // Out of hellos for today. Opening an existing chat is not a hello, so
-  // the cap never touches the Open chat state.
+  // Out of hellos for today, which is the only reason the button ever stops
+  // being "Say hi": everybody with a chat or an unanswered hello is already
+  // out of the queue above.
   const helloCapped = budget.data != null && budget.data.used >= budget.data.allowed;
 
   const undoPass = () => {
@@ -931,27 +1116,46 @@ export default function TravelersScreen() {
           remaining={queue.length - 1}
           refreshing={matchesQuery.isFetching}
           onRefresh={refresh}
-          chatId={chatId}
-          requested={sent?.state === 'sent'}
           helloCapped={helloCapped}
+          // The same three items the chat header and a stranger's profile
+          // raise. The block confirmation is this screen's own, because what
+          // it promises here is what a traveler is promised everywhere: gone
+          // from the map and Travelers, no message, not told.
+          onMore={() =>
+            openTravelerMenu({
+              userId: current.userId,
+              context: 'travelers',
+              onBlock: () =>
+                Alert.alert(
+                  `Block ${current.match.display_name ?? 'this traveler'}?`,
+                  "They're gone from the map and Travelers, and can't message you. They're not told.",
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Block',
+                      style: 'destructive',
+                      onPress: () => block.mutate(current.userId),
+                    },
+                  ]
+                ),
+            })
+          }
           onNext={() => {
             haptics.selection();
             // Name first: after passed.add the candidate leaves the queue,
             // and the bar has to say who it was about.
             const name = current.match.display_name ?? 'them';
+            // The two bars share one slot, so the newer act owns it.
+            useSaidHi.getState().clear();
             passed.add(current.userId);
             setRestoredId(null);
             if (undoTimer.current) {
               clearTimeout(undoTimer.current);
             }
-            setUndo({ id: current.userId, name });
+            setUndo({ id: current.userId, name, at: Date.now() });
             undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS);
           }}
           onSayHi={() => {
-            if (chatId) {
-              router.push(`/chat/${chatId}`);
-              return;
-            }
             // Anchored even on the lazy path. Every hello now opens pointed
             // at something specific, and when nothing on the profile has been
             // tapped the something is the fact that put these two people in
@@ -959,30 +1163,28 @@ export default function TravelersScreen() {
             // with an anchor is easier to write, easier for the recipient to
             // answer, and easier for moderation to read in context.
             const overlap = [...current.overlaps.values()][0];
+            // The one builder, shared with the pill on this very card and
+            // with the chip on the card the recipient answers it from.
+            const quote = overlapSentence(current.match.city_name, overlap?.start, overlap?.end);
             openReply({
               userId: current.userId,
               name: current.match.display_name ?? 'Traveler',
               photoPath: current.match.photo_path ?? null,
               source: 'trip_match',
-              target: overlap
-                ? {
-                    key: 'trip',
-                    label: 'your dates together',
-                    quote: `Both in ${current.match.city_name} ${formatDateRange(
-                      overlap.start,
-                      overlap.end
-                    )}`,
-                  }
+              origin: 'travelers',
+              target: quote
+                ? { key: 'trip', label: 'your dates together', quote }
                 : // Still the trip, not the bio: both people are there by
-                  // definition of the match even when formatDateRange has no
-                  // computed overlap to quote — and a bio anchor claimed a
-                  // hello came from a field that may be empty.
+                  // definition of the match even when there is no computed
+                  // overlap to quote — and a bio anchor claimed a hello came
+                  // from a field that may be empty.
                   { key: 'trip', label: 'your dates together' },
             });
           }}
         />
       </Animated.View>
-      {undo ? (
+      {showSaidHi && saidHiTo ? <SaidHiStrip name={saidHiTo.name} bottom={barHeight} /> : null}
+      {undo && !showSaidHi ? (
         // A sibling of the deck, not a child of TravelerPage, so it survives
         // the key={current.userId} remount when the next face slides in. It
         // floats over a scrolling page, so it carries its own opaque surface
@@ -1021,6 +1223,13 @@ export default function TravelersScreen() {
  * that it never becomes furniture; the next pass dismisses it early.
  */
 const UNDO_MS = 5000;
+
+/**
+ * How long the said-hi strip stands, in screen time. Shorter than the undo
+ * bar because nothing is waiting on a decision: it is an acknowledgement,
+ * and the next traveler is already underneath it.
+ */
+const SAID_HI_MS = 4000;
 
 const styles = StyleSheet.create({
   deck: {
@@ -1069,6 +1278,20 @@ const styles = StyleSheet.create({
     gap: Space.md,
     paddingHorizontal: Space.lg,
   },
+  moreButton: {
+    // Icon only, and never wider than it has to be. The row is Say hi
+    // (flex: 1), Next, and this: at Dynamic Type XXL the primary needs every
+    // point it can get, so this one does not grow with the text and does not
+    // shrink below a 44pt target either.
+    minHeight: ACTION_BUTTON,
+    width: HitTarget,
+    alignSelf: 'stretch',
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    borderWidth: 1,
+  },
   nextButton: {
     // A pill with a word on it, not an unlabelled arrow floating in space:
     // the circle it replaces was surfaceSunken on canvas (1.15:1) outlined
@@ -1106,6 +1329,12 @@ const styles = StyleSheet.create({
   },
   undoText: {
     flexShrink: 1,
+  },
+  saidHiText: {
+    flexShrink: 1,
+    justifyContent: 'center',
+    minHeight: HitTarget,
+    paddingVertical: Space.xs,
   },
   undoButton: {
     minHeight: HitTarget,

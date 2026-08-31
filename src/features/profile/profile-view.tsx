@@ -16,7 +16,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { languageLabel } from '@/constants/languages';
-import { MaxContentWidth, Radius, Space } from '@/constants/theme';
+import { MaxContentWidth, Motion, Radius, Space } from '@/constants/theme';
+import { overlapSentence } from '@/features/matching/overlap';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { SocialLogo } from '@/features/profile/social-logo';
@@ -62,7 +63,18 @@ function Photo({ path, style }: { path: string; style?: object }) {
   const { data: url } = usePhotoUrl(path);
   return (
     <View style={[styles.photoFrame, { backgroundColor: theme.surfaceSunken }, style]}>
-      {url ? <Image source={{ uri: url }} style={styles.fill} contentFit="cover" /> : null}
+      {/* A photo that still arrives late crossfades into the frame instead
+          of snapping into it. The frame is surfaceSunken underneath, so the
+          snap read as a glitch on the one screen whose whole pitch is the
+          face. */}
+      {url ? (
+        <Image
+          source={{ uri: url }}
+          style={styles.fill}
+          contentFit="cover"
+          transition={Motion.quick}
+        />
+      ) : null}
     </View>
   );
 }
@@ -107,11 +119,14 @@ function ReplyButton({
         size={onPhoto ? 17 : 13}
         tintColor={theme.accent}
       />
-      {onPhoto ? null : (
-        <ThemedText type="footnote" themeColor="accent">
-          {text}
-        </ThemedText>
-      )}
+      {/* The word, on the photo too. Travelers offered three routes to the
+          same composer and one of them was an unlabelled glyph floating on a
+          photo, so a first-time reader could not tell whether the bubble did
+          something different from the two controls that read "About this"
+          and "Say hi". It did not. */}
+      <ThemedText type="footnote" themeColor="accent">
+        {text}
+      </ThemedText>
     </PressableScale>
   );
 }
@@ -605,6 +620,7 @@ function Identity({
   profile,
   home,
   overlap,
+  alsoSpeaks,
   onPhoto,
   style,
 }: {
@@ -617,6 +633,13 @@ function Identity({
    * far enough down the page to land under the floating Say hi bar at rest.
    */
   overlap?: string | null;
+  /**
+   * "Also speaks Portuguese", when the two of you share a language that is
+   * not just English. Under the overlap chip and quieter than it: the shared
+   * window is why this person is on the screen, and this is what would make
+   * the first message easy to write.
+   */
+  alsoSpeaks?: string | null;
   onPhoto: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -663,6 +686,21 @@ function Identity({
           </ThemedText>
         </View>
       ) : null}
+      {alsoSpeaks ? (
+        // Supporting the overlap chip, not competing with it: the same pill
+        // geometry in the soft fill, so the eye reads the window first and
+        // this second.
+        <View
+          style={[
+            styles.overlapPill,
+            styles.identityOverlap,
+            { backgroundColor: theme.accentSoft },
+          ]}>
+          <ThemedText type="caption" themeColor="accent">
+            {alsoSpeaks}
+          </ThemedText>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -684,6 +722,7 @@ export function ProfileView({
   tripsPending = false,
   owner,
   connected = false,
+  alsoSpeaks = null,
   actions,
   onEditSection,
   onEditPrompt,
@@ -719,6 +758,13 @@ export function ProfileView({
   owner: boolean;
   /** Viewer mode: true once a chat with this person is open. */
   connected?: boolean;
+  /**
+   * "Also speaks Portuguese" — a language the viewer and this traveler share
+   * that is not just English. The score already weights it (6 points each,
+   * up to 18, second only to the date overlap) and used to spend all of it
+   * on ordering; this is the same fact, said out loud.
+   */
+  alsoSpeaks?: string | null;
   /** Screen-supplied buttons (say hi, report, sign out…). */
   actions?: ReactNode;
   onEditSection?: (section: 'photos' | 'about' | 'details' | 'socials') => void;
@@ -753,15 +799,16 @@ export function ProfileView({
   const home = [profile.home_city, profile.home_country].filter(Boolean).join(', ');
   // The seeded "[demo]" suffix out of the prose, onto a chip (lib/demo-marker).
   const about = splitDemoMarker(profile.bio);
-  // Just the city: cityLabel is "Bangkok, Thailand", and "Both in Bangkok,
-  // Thailand Aug 23 - 28" wraps to two lines on a phone.
+  // One builder for the whole app: the pill here, the anchor Travelers
+  // quotes into a first message, and the chip on the card that hello is
+  // answered on all come from features/matching/overlap, so the same pair of
+  // people can never be told two different sentences about their own dates.
   const overlapTrip = owner ? undefined : trips.find((trip) => trip.overlap);
-  const overlap = overlapTrip?.overlap
-    ? `Both in ${overlapTrip.cityLabel.split(',')[0]} ${formatDateRange(
-        overlapTrip.overlap.start,
-        overlapTrip.overlap.end
-      )}`
-    : null;
+  const overlap = overlapSentence(
+    overlapTrip?.cityLabel,
+    overlapTrip?.overlap?.start,
+    overlapTrip?.overlap?.end
+  );
   const heroWidth = Math.min(width, MaxContentWidth);
   const edit = (section: 'photos' | 'about' | 'details' | 'socials') =>
     onEditSection ? () => onEditSection(section) : undefined;
@@ -817,7 +864,13 @@ export function ProfileView({
                 chat header. VoiceOver announced a button that could not be
                 activated. The wrapper itself still takes no touches. */}
             <View style={styles.heroText} pointerEvents="box-none">
-              <Identity profile={profile} home={home} overlap={overlap} onPhoto />
+              <Identity
+                profile={profile}
+                home={home}
+                overlap={overlap}
+                alsoSpeaks={alsoSpeaks}
+                onPhoto
+              />
             </View>
             {owner && onEditSection ? (
               <PressableScale
@@ -879,6 +932,7 @@ export function ProfileView({
                 profile={profile}
                 home={home}
                 overlap={overlap}
+                alsoSpeaks={alsoSpeaks}
                 onPhoto={false}
                 style={styles.flex}
               />
@@ -1201,11 +1255,16 @@ const styles = StyleSheet.create({
     bottom: Space.md,
   },
   replyOnPhoto: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    // A pill with a word in it now, not a 40pt circle with a glyph. Height
+    // is a minimum so the chip grows with Dynamic Type instead of clipping
+    // its own label.
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Space.xs,
+    minHeight: 40,
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.pill,
   },
   replyInline: {
     flexDirection: 'row',

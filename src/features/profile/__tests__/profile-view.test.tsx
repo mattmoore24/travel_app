@@ -91,6 +91,29 @@ describe('ProfileView with a photo', () => {
     renderProfile({ photos: [photo], onRespondTo: jest.fn() });
     expect(screen.getByLabelText('Say hi about this photo')).toBeTruthy();
   });
+
+  it('prints the word on the photo chip, not just a glyph', () => {
+    // Travelers offers three routes to the same composer, and this one was
+    // an unlabelled bubble on the photo while the other two read "About
+    // this" and "Say hi" - so nobody could tell whether it did something
+    // different. A spoken label is not enough: it is invisible to the eye
+    // and to Maestro alike.
+    renderProfile({ photos: [photo], onRespondTo: jest.fn() });
+    const chip = screen.getByLabelText('Say hi about this photo');
+    expect(chip).toHaveTextContent('About this');
+  });
+});
+
+describe('the language you both speak', () => {
+  it('sits under the name as a second, quieter pill', () => {
+    renderProfile({ alsoSpeaks: 'Also speaks Portuguese' });
+    expect(screen.getByText('Also speaks Portuguese')).toBeTruthy();
+  });
+
+  it('is absent when there is nothing to say', () => {
+    renderProfile();
+    expect(screen.queryByText(/Also speaks/)).toBeNull();
+  });
 });
 
 describe('the overlap window', () => {

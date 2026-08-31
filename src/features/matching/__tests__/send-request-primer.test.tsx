@@ -55,6 +55,8 @@ const sendHello = async () => {
   await act(async () => {
     await hook.result.current.mutateAsync({
       recipientId: 'them',
+      recipientName: 'Ana',
+      origin: 'travelers',
       source: 'trip_match',
       firstMessage: 'Both in Bangkok next week, up for a market run?',
       profileElement: 'trip',

@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { ActionSheetIOS, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
@@ -34,6 +34,7 @@ import {
   useUnsendMessage,
 } from '@/features/rooms/hooks';
 import { useOwnUserId, usePhotoUrl, usePublicProfile } from '@/features/profile/hooks';
+import { openTravelerMenu } from '@/features/profile/actions-menu';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { useTheme } from '@/hooks/use-theme';
 import { useBusinessForChat, useIsBusiness, useIsPlaceChat } from '@/features/business/hooks';
@@ -125,48 +126,22 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
     router.back();
   };
 
-  const openMenu = () => {
-    const items: { label: string; destructive?: boolean; run: () => void }[] = [
-      // A business has no traveler profile to open, and neither does the
-      // route: pushing /profile/[userId] from here was a tap that did
-      // nothing, in the screen a business uses most.
-      ...(viewerIsBusiness
-        ? []
-        : [{ label: 'View profile', run: () => router.push(`/profile/${chat.other_user_id}`) }]),
-      {
-        label: 'Report',
-        run: () =>
-          router.push({
-            pathname: '/report',
-            params: { userId: chat.other_user_id, context: `chat:${chat.chat_id}` },
-          }),
-      },
-      { label: 'Block', destructive: true, run: confirmBlock },
-      viewerIsBusiness
-        ? { label: 'Archive', run: archiveChat }
-        : { label: 'Leave chat', destructive: true, run: confirmLeaveChat },
-    ];
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: [...items.map((item) => item.label), 'Cancel'],
-          destructiveButtonIndex: items.findIndex((item) => item.destructive),
-          cancelButtonIndex: items.length,
-        },
-        (index) => items[index]?.run()
-      );
-    } else {
-      // Simple fallback for non-iOS dev targets.
-      Alert.alert('Options', undefined, [
-        ...items.map((item) => ({
-          text: item.label,
-          style: item.destructive ? ('destructive' as const) : undefined,
-          onPress: item.run,
-        })),
-        { text: 'Cancel', style: 'cancel' as const },
-      ]);
-    }
-  };
+  // View profile / Report / Block come from the shared builder, so the three
+  // surfaces that offer them (here, a stranger's profile, and the Travelers
+  // card) cannot drift. What is local to a thread is the tail: a traveler
+  // can leave the chat, a business archives it.
+  const openMenu = () =>
+    openTravelerMenu({
+      userId: chat.other_user_id,
+      context: `chat:${chat.chat_id}`,
+      canViewProfile: !viewerIsBusiness,
+      onBlock: confirmBlock,
+      extra: [
+        viewerIsBusiness
+          ? { label: 'Archive', run: archiveChat }
+          : { label: 'Leave chat', destructive: true, run: confirmLeaveChat },
+      ],
+    });
 
   // Where the name at the top of the screen goes, or null when it goes
   // nowhere. A business reading its own inbox is the null case: the name
