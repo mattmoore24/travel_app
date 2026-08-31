@@ -80,3 +80,44 @@ describe('no screen replaces the root without checking it can go back', () => {
     expect(uses.length).toBeGreaterThanOrEqual(10);
   });
 });
+
+/**
+ * The gap that crashed the listing flow on its confirm step.
+ *
+ * `owesOnboarding` is false while EITHER isBusiness or wantsBusiness is true,
+ * and register_business flips the first one on while the second one goes off.
+ * If they do not OVERLAP, there is a render where neither holds: the account
+ * reads as an unfinished traveler, `(tabs)` is filtered out of the navigator,
+ * and traveler onboarding mounts underneath the screen the owner is standing
+ * on. E2E caught it as the app on the springboard.
+ *
+ * Held here as source assertions, because the bug is an ORDER between two
+ * awaits rather than a value any pure function returns.
+ */
+describe('registering a business never drops both flags at once', () => {
+  // Read RAW, comments and all: one of the two assertions below is about the
+  // comment that explains the order, and `source` strips those.
+  const hooks = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'features', 'business', 'hooks.ts'),
+    'utf8'
+  );
+
+  it('waits for my-business before taking the listing intent down', () => {
+    const success = hooks.slice(
+      hooks.indexOf('mutationFn: registerBusiness'),
+      hooks.indexOf('mutationFn: registerBusiness') + 2000
+    );
+    const invalidate = success.indexOf("invalidateQueries({ queryKey: ['my-business'");
+    const lower = success.indexOf('setListingIntent(false)');
+    expect(invalidate).toBeGreaterThan(-1);
+    expect(lower).toBeGreaterThan(-1);
+    // The refetch comes first, and it is AWAITED: isBusiness has to be true
+    // before wantsBusiness goes false.
+    expect(invalidate).toBeLessThan(lower);
+    expect(success).toContain("await queryClient.invalidateQueries({ queryKey: ['my-business'");
+  });
+
+  it('states the reason, so the next edit does not reorder it back', () => {
+    expect(hooks).toContain('ORDER IS LOAD-BEARING');
+  });
+});

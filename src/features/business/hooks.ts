@@ -141,19 +141,28 @@ export function useRegisterBusiness() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: registerBusiness,
-    onSuccess: () => {
+    onSuccess: async () => {
       // The account has just changed KIND, so the router's answer has changed
       // with it. Anything less than a refetch leaves a fresh business sitting
       // in the traveler tabs.
-      queryClient.invalidateQueries({ queryKey: ['my-business', userId] });
-      // The listing is no longer an INTENT, so the flag comes down. Without
-      // this nothing ever lowers it for a business that succeeded: the
-      // profile row offering to drop it renders only in the traveler branch,
-      // which a registered business never reaches. The column would come to
-      // mean "has ever started a listing" instead of what its own comment
-      // and its pgTAP assertion say it means. Best effort and not awaited:
-      // isBusiness already outranks it everywhere it is read, so a failed
-      // write costs nothing today and self-corrects on the next attempt.
+      //
+      // ORDER IS LOAD-BEARING, and getting it wrong crashed the listing flow
+      // on the confirm step. `owesOnboarding` is false while EITHER isBusiness
+      // or wantsBusiness is true. Lowering the intent flag first opened a
+      // window where neither was: my-business had not come back yet, so the
+      // account read as an unfinished traveler, `(tabs)` was filtered out of
+      // the navigator, and traveler onboarding was mounted underneath the
+      // screen the owner was standing on. So: WAIT for my-business to answer,
+      // which is what makes isBusiness true, and only then take the intent
+      // down. The two facts overlap rather than leaving a gap between them.
+      await queryClient.invalidateQueries({ queryKey: ['my-business', userId] });
+      // Now it is safe. Without this nothing ever lowers the flag for a
+      // business that succeeded: the profile row offering to drop it renders
+      // only in the traveler branch, which a registered business never
+      // reaches, so the column would come to mean "has ever started a
+      // listing" rather than what its comment and its pgTAP assertion say.
+      // Best effort: isBusiness outranks it everywhere it is read, so a
+      // failed write costs nothing and self-corrects on the next attempt.
       void setListingIntent(false)
         .then(() => queryClient.setQueryData(['listing-intent', userId], false))
         .catch(() => {});

@@ -544,6 +544,35 @@ try {
       detailErr?.message
     );
 
+    // AND that it has something ON it. seed_launch_businesses() is proven
+    // above; seed_launch_business_content() is a SEPARATE call that gives each
+    // venue its opening hours, its Website link and its standing post, and
+    // nothing was watching whether it had ever been run. An e2e run
+    // photographed the answer: the plan list opens on six plans in Denpasar
+    // and no ON TONIGHT section, because that section is gated on
+    // has_live_post, which is an unarchived business_posts row. For real
+    // people that means the first place anybody taps is an empty page and the
+    // brighter "something is happening here" ring never fires anywhere.
+    //
+    // Asserted here rather than fixed in a migration on purpose: the seeders
+    // are deliberately not run inline (a pgTAP fixture uses the same venue
+    // name, so seeding from a migration collides with it), so the remedy is a
+    // one-line call and this is what remembers to ask for it.
+    const placeRow = (detail ?? [])[0];
+    const links = placeRow?.links ?? [];
+    const posts = placeRow?.posts ?? [];
+    check(
+      'and it carries the hours, link and post the content seeder puts there',
+      links.length > 0 && posts.length > 0,
+      'no links or posts on Home Lisbon Hostel — run select seed_launch_business_content();'
+    );
+    const lisbonRow = (places ?? []).find((p) => p.name === 'Home Lisbon Hostel');
+    check(
+      'so the city list can say it has something on',
+      lisbonRow?.has_live_post === true,
+      'has_live_post is false — run select seed_launch_business_content();'
+    );
+
     // --- ratings. Anyone may rate: the founder's call, on the grounds that
     // somebody may have been there without ever entering the trip here.
     const { error: rateErr } = await alex.client.rpc('rate_business', {
