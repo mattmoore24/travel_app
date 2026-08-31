@@ -3,6 +3,7 @@ import { processAndUploadImage } from '@/lib/image-upload';
 import { supabase } from '@/lib/supabase';
 import type {
   GroupInvitePreviewRow,
+  GroupInvitesWho,
   GroupMemberRow,
   GroupRow,
   GroupSpeaking,
@@ -39,6 +40,8 @@ export async function updateGroup(input: {
   chatId: string;
   name?: string;
   speaking?: GroupSpeaking;
+  /** Who may hand out the invite link. Omitted leaves it alone. */
+  invites?: GroupInvitesWho;
   maxStayUntil?: string;
   photoPath?: string | null;
   clearPhoto?: boolean;
@@ -52,6 +55,7 @@ export async function updateGroup(input: {
     p_chat_id: input.chatId,
     p_name: input.name ?? null,
     p_speaking: input.speaking ?? null,
+    p_invites: input.invites ?? null,
     p_max_stay_until: input.maxStayUntil ?? null,
     p_photo_path: input.photoPath ?? null,
     p_clear_photo: input.clearPhoto ?? false,

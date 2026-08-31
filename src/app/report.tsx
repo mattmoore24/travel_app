@@ -56,7 +56,11 @@ export const REASON_NOT_OFFERED: Partial<Record<ReportReason, string>> = {
 };
 
 export default function ReportScreen() {
-  const params = useLocalSearchParams<{ userId: string; context?: string }>();
+  // A report names a person, or a chat, or both. A group that has gone bad is
+  // the case with no person in it: the problem is the room, and picking
+  // somebody to blame would be a guess.
+  const params = useLocalSearchParams<{ userId?: string; chatId?: string; context?: string }>();
+  const aboutAChat = !params.userId && params.chatId != null;
   const report = useReportUser();
   // Nothing preselected. A form that opens on "Harassment" is a form that
   // will be submitted saying "Harassment" by anybody in a hurry, and a
@@ -67,16 +71,27 @@ export default function ReportScreen() {
   const block = useBlockUser();
 
   const submit = async () => {
-    if (!params.userId || reason == null) {
+    if ((!params.userId && !params.chatId) || reason == null) {
       return;
     }
     try {
       await report.mutateAsync({
-        reportedUserId: params.userId,
+        reportedUserId: params.userId ?? null,
+        reportedChatId: params.chatId ?? null,
         reason,
         details: details.trim() || null,
         context: params.context ?? 'profile',
       });
+      if (aboutAChat) {
+        // No "block them too": there is nobody to block when the subject is
+        // the room. The promise is the same one, in the same words.
+        Alert.alert(
+          'Report received',
+          'We look at it within a day. If we act, we never tell anyone who reported it. You will not hear back unless we need more from you.',
+          [{ text: 'Done', onPress: () => router.back() }]
+        );
+        return;
+      }
       // Blocking is offered as a BUTTON rather than mentioned in a sentence.
       // Somebody who has just reported a person is the likeliest person in
       // the app to want them gone, and "you can block them too" left them to
@@ -89,7 +104,9 @@ export default function ReportScreen() {
             text: 'Block them too',
             style: 'destructive',
             onPress: () => {
-              block.mutate(params.userId);
+              if (params.userId) {
+                block.mutate(params.userId);
+              }
               router.back();
             },
           },
@@ -103,11 +120,15 @@ export default function ReportScreen() {
 
   return (
     <StepScreen
-      title="Report someone"
+      title={aboutAChat ? 'Report this group' : 'Report someone'}
       // The same anonymity promise the lower-stakes business report already
       // makes. Reporting a person is the report where being named back is the
       // fear, and the form that omitted the promise was this one.
-      subtitle="A real person reads every report. They are never told who reported them."
+      subtitle={
+        aboutAChat
+          ? 'A real person reads every report. Nobody in the group is told who reported it.'
+          : 'A real person reads every report. They are never told who reported them.'
+      }
       continueLabel="Send report"
       continueDisabled={reason == null}
       continueLoading={report.isPending}

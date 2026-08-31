@@ -187,11 +187,12 @@ feature ships dark over the air and lights up at the next build.
 >    blocked and never reaches the recipient; repeat offenders are warned,
 >    suspended or removed automatically.
 > 2. Report is on every profile, every business listing, every one-to-one
->    chat, and on any single message inside a group or a business room. The
->    one gap, stated plainly: a traveler-made group has no Report action for
->    the group itself yet, so reporting one goes through Contact us, which is
->    open to signed-out users. Block is per person, from a profile or a chat,
->    and it severs visibility both ways immediately.
+>    chat, on any single message inside a group or a business room, and on a
+>    traveler-made group itself, from its group page. A group report does not
+>    have to name a person, because the problem is sometimes the room. Anything
+>    with no Report action of its own, and anything at all from a signed-out
+>    visitor, goes through Contact us. Block is per person, from a profile or a
+>    chat, and it severs visibility both ways immediately.
 > 3. Social handles stay hidden until both people are in a chat together. This
 >    is enforced by row-level security in Postgres, not by the client.
 > 4. The app requests NO location permission and holds none. The map shows only
@@ -254,16 +255,16 @@ be read off the live form in App Store Connect at submission time.
 What matters is that this app has real answers to the questions that decide
 the rating, and they are all evidenced in the code:
 
-| Question the form asks about | The honest answer, and where it lives                                                                                                                                                                                       |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| User-generated content       | Yes: profiles, photos, first messages, chats, business listings.                                                                                                                                                            |
-| Is UGC moderated?            | Yes, and before delivery. Every first message is screened (brief §7 rule 5); photos and business content go through the same worker.                                                                                        |
-| Reporting and blocking       | Yes: every profile, every business listing, every one-to-one chat, and any single message in a group or room. A group itself has no Report action yet, so that one goes through Contact us. Blocking is instant and mutual. |
-| Unrestricted web access      | No. The only web views are a business's own website and menu, opened in an in-app browser from a listing the owner confirmed.                                                                                               |
-| Contests, gambling, ads      | None of it. No ads, no purchases, no paywall.                                                                                                                                                                               |
-| Age restriction              | 18+ enforced in the database: `core_auth_profiles.sql` has `age between 18 and 120`, not a checkbox.                                                                                                                        |
-| Location                     | No permission requested. Venue-level future intent only.                                                                                                                                                                    |
-| Contact between users        | Yes, one to one and in groups, all of it moderated at first contact and reportable after.                                                                                                                                   |
+| Question the form asks about | The honest answer, and where it lives                                                                                                                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| User-generated content       | Yes: profiles, photos, first messages, chats, business listings.                                                                                                                                                         |
+| Is UGC moderated?            | Yes, and before delivery. Every first message is screened (brief §7 rule 5); photos and business content go through the same worker.                                                                                     |
+| Reporting and blocking       | Yes: every profile, every business listing, every one-to-one chat, any single message in a group or room, and a group itself from its group page. A group report need not name a person. Blocking is instant and mutual. |
+| Unrestricted web access      | No. The only web views are a business's own website and menu, opened in an in-app browser from a listing the owner confirmed.                                                                                            |
+| Contests, gambling, ads      | None of it. No ads, no purchases, no paywall.                                                                                                                                                                            |
+| Age restriction              | 18+ enforced in the database: `core_auth_profiles.sql` has `age between 18 and 120`, not a checkbox.                                                                                                                     |
+| Location                     | No permission requested. Venue-level future intent only.                                                                                                                                                                 |
+| Contact between users        | Yes, one to one and in groups, all of it moderated at first contact and reportable after.                                                                                                                                |
 
 **This is the questionnaire's whole argument for a lower tier than
 unmoderated chat earns**, and it is worth spending ten minutes on rather than
@@ -377,7 +378,7 @@ FOR HOSTELS, BARS AND CAFES
 Hostels, bars, cafes and tour operators can claim a listing, put their hours, photos and links on the map, and answer travelers who write in. Travelers rate a business out of ten, anonymously.
 
 SAFETY
-Report a profile, a business listing or any message, and block anybody: blocking is instant and both ways. Verification is one selfie and gives you a badge, and you can choose to be seen only by travelers who have one. Make plans in public places, and tell somebody where you are going.
+Report a profile, a business listing, any message or a whole group, and block anybody: blocking is instant and both ways. Verification is one selfie and gives you a badge, and you can choose to be seen only by travelers who have one. Make plans in public places, and tell somebody where you are going.
 ```
 
 **Promotional text** (170 characters, editable without a review)

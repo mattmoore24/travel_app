@@ -400,7 +400,14 @@ function RootNavigator() {
           sits outside the guards like guidelines does. */}
       <Stack.Screen
         name="room/[id]"
-        options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        // The screen draws its own one-storey header (features/chat/thread-header).
+        // Switched off HERE rather than from inside the screen: a <Stack.Screen>
+        // inside the component applies through setOptions AFTER mount, so the
+        // native stack pushes the route with an empty nav bar and removes it a
+        // frame later - the content jumps by a header's height on every thread
+        // open, which is the two-storey chrome this was meant to delete,
+        // flashing once per push.
+        options={{ headerShown: false }}
       />
       {/* Profile opens from the avatar in the Map/Travelers headers, and it
           is deliberately OUTSIDE the signed-in guard: a guest who taps the
@@ -421,7 +428,14 @@ function RootNavigator() {
       <Stack.Protected guard={signedIn}>
         <Stack.Screen
           name="chat/[id]"
-          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+          // The screen draws its own one-storey header (features/chat/thread-header).
+          // Switched off HERE rather than from inside the screen: a <Stack.Screen>
+          // inside the component applies through setOptions AFTER mount, so the
+          // native stack pushes the route with an empty nav bar and removes it a
+          // frame later - the content jumps by a header's height on every thread
+          // open, which is the two-storey chrome this was meant to delete,
+          // flashing once per push.
+          options={{ headerShown: false }}
         />
         <Stack.Screen
           name="archived-chats"
@@ -474,7 +488,14 @@ function RootNavigator() {
         <Stack.Screen name="message/[userId]" options={{ presentation: 'modal' }} />
         <Stack.Screen
           name="group/[id]"
-          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+          // The screen draws its own one-storey header (features/chat/thread-header).
+          // Switched off HERE rather than from inside the screen: a <Stack.Screen>
+          // inside the component applies through setOptions AFTER mount, so the
+          // native stack pushes the route with an empty nav bar and removes it a
+          // frame later - the content jumps by a header's height on every thread
+          // open, which is the two-storey chrome this was meant to delete,
+          // flashing once per push.
+          options={{ headerShown: false }}
         />
       </Stack.Protected>
       {/* The three editors signup now sends people into, which is why they

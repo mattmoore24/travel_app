@@ -2479,3 +2479,33 @@ dashboard), `bb7`/`bb9`/`bb10`, per-pin audience, a tap target on the heat
 layer, timestamps-on-demand and a typing indicator all remain partial — they
 were confirmed by the refuters and are not done. `bb11`'s Copy action still
 needs `expo-clipboard`, which is a native build.
+
+### Two decisions taken without the founder, and one thing that cannot ship yet
+
+**D17 was overridden.** The recorded recommendation was "no setting" for who
+can add you to a group. The setting was built anyway, and UX_PLAN's D17 row now
+says so rather than reading as though the plan had been followed. The reasoning:
+a per-user control is the only version matching the consent-before-exposure
+grammar the rest of the product keeps, and `visibility.tsx` IS the privacy
+screen, so a second row there is where somebody looks for it. It is enforced in
+the database (`profiles.group_adds`, `set_group_adds`, and a guard inside
+`add_to_group`), never client-side. The link half of D17 was taken as written:
+any member may mint the invite link, the admin keeps the kill switch, and a
+guest member is refused — the same refusal `add_to_group` already makes one RPC
+over, now proven in pgTAP.
+
+**D38's email half shipped early**, on the reading that its stated condition
+(the sending domain) has since been met. Recorded in ONBOARDING.md 6a with the
+evidence, so the decision list is not quietly rewritten.
+
+**A business still has no listing to share, and that is the one thing
+`chat-business-room-has-a-next-action` could not close.** The group invite works
+because `/i/<token>` is a real hosted page with a store fallback; there is no
+equivalent page for a place, and `is_room_moderator` covers establishments and
+their staff rather than businesses, so a business owner cannot mint a room
+invite either. A custom-scheme link is dead for anybody who does not already
+have the app, which is every person a hostel is trying to reach. So the empty
+owner room now ends on the action the owner actually holds — "Say what's on
+tonight", which is what earns the brighter marker `city_businesses.has_live_post`
+draws — and the share half waits on a hosted page for a listing. Founder
+question: is that page worth building, and on which domain?

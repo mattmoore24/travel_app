@@ -1,19 +1,23 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
+import { MESSAGE_PAGE } from '@/features/chat/paging';
 import type { MessageRow, ReportReason } from '@/lib/database.types';
 import { processAndUploadImage, removeUploadedImage } from '@/lib/image-upload';
 import { supabase } from '@/lib/supabase';
 
-const MESSAGE_PAGE = 100;
 export const CHAT_PHOTO_BUCKET = 'chat-photos';
 
-export async function fetchMessages(chatId: string) {
-  const { data, error } = await supabase
-    .from('messages')
-    .select('*')
-    .eq('chat_id', chatId)
-    .order('created_at', { ascending: false })
-    .limit(MESSAGE_PAGE);
+/**
+ * One page of a conversation, newest first.
+ *
+ * `before` is the oldest `created_at` already on screen: the thread pages
+ * BACKWARDS, because a conversation that stopped at a hundred messages simply
+ * ended, with no spinner and nothing to say a limit had been applied.
+ */
+export async function fetchMessages(chatId: string, before?: string | null) {
+  const rows = supabase.from('messages').select('*').eq('chat_id', chatId);
+  const page = before ? rows.lt('created_at', before) : rows;
+  const { data, error } = await page.order('created_at', { ascending: false }).limit(MESSAGE_PAGE);
   if (error) {
     throw error;
   }
@@ -21,10 +25,25 @@ export async function fetchMessages(chatId: string) {
   return (data ?? []) as MessageRow[];
 }
 
-export async function sendMessage(chatId: string, senderId: string, body: string) {
+/**
+ * `replyToMessageId` is the message this one answers, or null for an ordinary
+ * one. The database refuses a parent from another chat outright
+ * (messages_reply_same_chat), so this is a door rather than a lock.
+ */
+export async function sendMessage(
+  chatId: string,
+  senderId: string,
+  body: string,
+  replyToMessageId?: string | null
+) {
   const { data, error } = await supabase
     .from('messages')
-    .insert({ chat_id: chatId, sender_id: senderId, body })
+    .insert({
+      chat_id: chatId,
+      sender_id: senderId,
+      body,
+      ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
+    })
     .select()
     .single();
   if (error) {
@@ -51,7 +70,8 @@ export async function sendPhotoMessage(
   chatId: string,
   senderId: string,
   localUri: string,
-  body?: string
+  body?: string,
+  replyToMessageId?: string | null
 ) {
   const imagePath = await processAndUploadImage(CHAT_PHOTO_BUCKET, senderId, localUri);
   const caption = (body ?? '').trim();
@@ -65,6 +85,7 @@ export async function sendPhotoMessage(
       // defaults to null anyway, and `messages_have_content` is satisfied by
       // the image either way.
       ...(caption.length > 0 ? { body: caption } : {}),
+      ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
     })
     .select()
     .single();
@@ -149,16 +170,28 @@ export async function blockUser(blockerId: string, blockedId: string) {
   }
 }
 
+/**
+ * File a report about a person, a chat, or both.
+ *
+ * A report needs a subject and does not need a PERSON: when the problem is
+ * the room itself rather than one person in it, naming somebody would be a
+ * guess. The database enforces both halves — `reports_has_a_subject` refuses
+ * a report with neither, and the insert policy refuses a chat report from
+ * somebody who is not in that chat, so this cannot become a way to probe
+ * chats you have never been in.
+ */
 export async function reportUser(input: {
   reporterId: string;
-  reportedUserId: string;
+  reportedUserId?: string | null;
+  reportedChatId?: string | null;
   reason: ReportReason;
   details: string | null;
   context: string | null;
 }) {
   const { error } = await supabase.from('reports').insert({
     reporter_id: input.reporterId,
-    reported_user_id: input.reportedUserId,
+    reported_user_id: input.reportedUserId ?? null,
+    reported_chat_id: input.reportedChatId ?? null,
     reason: input.reason,
     details: input.details,
     context: input.context,

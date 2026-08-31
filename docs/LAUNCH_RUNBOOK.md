@@ -178,7 +178,9 @@ Needs the Apple Developer membership.
 Daily, from [`DASHBOARD.md`](DASHBOARD.md): `admin_liquidity` (the number that
 matters), `admin_request_funnel` (accept rate — a collapse means creep),
 `admin_moderation_stats` (blocked % — the early warning), and
-`admin_report_queue` (act on reports with `admin_resolve_report`).
+`admin_report_queue` (act on reports with `admin_resolve_report`). A report may
+name a chat and not a person - act on somebody in the room by their user id, or
+dismiss it; `admin_resolve_report` refuses to guess. See DASHBOARD.md.
 
 Target before opening city #2: **500–1,000 in-season users with a live trip
 or pin** in city #1.

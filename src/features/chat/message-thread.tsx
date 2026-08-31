@@ -1,7 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { Image } from 'expo-image';
 import * as Linking from 'expo-linking';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -23,6 +23,7 @@ import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { splitLinks } from '@/features/chat/links';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { isLocalId, type ThreadMessage } from '@/features/chat/outgoing';
+import type { Quote } from '@/features/chat/reply';
 import { separatorFor } from '@/features/chat/separators';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
@@ -106,6 +107,17 @@ const ACTION_SCALE_CAP = 1.4;
 
 /** Stand-in bubble height before a measurement arrives. */
 const UNMEASURED_HEIGHT = 80;
+
+/**
+ * How far back the thread will jump to put the New line on screen.
+ *
+ * There is no getItemLayout here and bubble heights vary, so a jump is an
+ * estimate that gets less true the further it reaches. Past this many messages
+ * the thread opens where every messaging app opens - at the newest - and the
+ * line is found by scrolling, which is honest. The number is also the count of
+ * unread messages, since that is what the index counts.
+ */
+const UNREAD_JUMP_MAX = 30;
 
 /** Breathing room between the lifted message and the things around it. */
 const LIFT_GAP = 10;
@@ -257,16 +269,54 @@ function RunAvatar({
   );
 }
 
+function QuotedStrip({ quote, mine }: { quote: Quote; mine: boolean }) {
+  const theme = useTheme();
+  return (
+    <View
+      style={[
+        styles.quote,
+        // A leading rule rather than a tinted card: on your own accentDeep
+        // bubble a fill would have to be a third colour, and the rule reads
+        // the same on both sides.
+        { borderLeftColor: mine ? theme.onAccentDeep : theme.accent },
+      ]}>
+      <ThemedText
+        type="caption"
+        style={mine ? { color: theme.onAccentDeep } : undefined}
+        themeColor={mine ? undefined : 'accent'}
+        numberOfLines={1}>
+        {quote.name}
+      </ThemedText>
+      <ThemedText
+        type="footnote"
+        style={mine ? { color: theme.onAccentDeep } : undefined}
+        themeColor={mine ? undefined : 'textSecondary'}
+        numberOfLines={1}>
+        {/* A parent that was taken back or taken down keeps its name and
+            loses its line: nobody goes on reading, inside a quote, something
+            the thread itself has stopped showing. A parent that is merely
+            older than the loaded pages is a different sentence - it still
+            exists, and one more page would show it - so it must never borrow
+            the deletion one. */}
+        {quote.body ?? (quote.state === 'offPage' ? 'Earlier message' : 'Message no longer here')}
+      </ThemedText>
+    </View>
+  );
+}
+
 function BubbleBody({
   message,
   mine,
   tailed,
+  quote,
   onSpanLongPress,
 }: {
   message: ThreadMessage;
   mine: boolean;
   /** Last of its group: the corner that gets the tail. */
   tailed: boolean;
+  /** What this message answers, drawn INSIDE the bubble. */
+  quote?: Quote | null;
   /**
    * The bubble's own menu-open handler, forwarded to link spans: a pressable
    * text fragment claims the touch responder, so the ancestor PressableScale
@@ -294,6 +344,10 @@ function BubbleBody({
         message.local === 'sending' && styles.bubbleSending,
         message.local === 'failed' && { borderWidth: 1, borderColor: theme.danger },
       ]}>
+      {/* Inside the bubble, above the content. Inside, because an inverted
+          list flips a cell's children and a strip emitted as a sibling would
+          land under the message it belongs to (traps). */}
+      {quote ? <QuotedStrip quote={quote} mine={mine} /> : null}
       {/* `checking` rather than `image_path`, because a room MASKS the path
           until a verdict lands — so keying off the path drew nothing at all
           for everybody but the sender, which is the empty bubble people were
@@ -422,11 +476,14 @@ function Bubble({
   avatarPath,
   avatarName,
   onOpenSender,
+  quote,
   delivered = false,
   lifted = false,
 }: {
   message: ThreadMessage;
   mine: boolean;
+  /** What this message answers, or null. */
+  quote?: Quote | null;
   /** Same sender as the message before it, close in time. */
   grouped: boolean;
   /** Last of its group — the one that gets the tail. */
@@ -568,7 +625,13 @@ function Bubble({
             scaleTo={0.98}
             delayLongPress={220}
             onLongPress={openMenu}>
-            <BubbleBody message={message} mine={mine} tailed={last} onSpanLongPress={openMenu} />
+            <BubbleBody
+              message={message}
+              mine={mine}
+              tailed={last}
+              quote={quote}
+              onSpanLongPress={openMenu}
+            />
           </PressableScale>
         </View>
         {/* The marks under a bubble stack in one column — reaction first,
@@ -647,7 +710,9 @@ function MessageMenu({
   target,
   existingEmoji,
   canReact,
+  quote,
   onPick,
+  onReply,
   onPin,
   onShare,
   onRemove,
@@ -659,7 +724,11 @@ function MessageMenu({
   existingEmoji: string | null;
   /** False for somebody who may flag a message but not react to it. */
   canReact: boolean;
+  /** What the lifted message itself answers, so the copy matches the row. */
+  quote?: Quote | null;
   onPick: (emoji: string) => void;
+  /** Answer this one message. First on the card, ahead of everything else. */
+  onReply?: () => void;
   /** Room hosts only: keep this message at the top of the room. */
   onPin?: () => void;
   /** The system share sheet — which IS the text/email/copy chooser. */
@@ -684,6 +753,12 @@ function MessageMenu({
   // Unsend. Red means "this takes something away"; if it means everything it
   // means nothing.
   const actions: { label: string; run: () => void; destructive: boolean }[] = [];
+  // First, ahead of Pin. In a room of six discussing three plans it is the
+  // action people reach for most, and the one that makes the thread readable
+  // for somebody who arrives an hour late.
+  if (onReply) {
+    actions.push({ label: 'Reply', run: onReply, destructive: false });
+  }
   if (onPin) {
     actions.push({ label: 'Pin to the top', run: onPin, destructive: false });
   }
@@ -822,7 +897,7 @@ function MessageMenu({
       {/* The message itself, lifted out of the dimmed thread. */}
       <View style={[styles.menuSide, { top: top + shift }, sideOf(mine)]} pointerEvents="none">
         <View style={styles.liftedWidth}>
-          <BubbleBody message={target.message} mine={mine} tailed />
+          <BubbleBody message={target.message} mine={mine} tailed quote={quote} />
         </View>
       </View>
 
@@ -878,6 +953,8 @@ export function MessageThread({
   otherName,
   reactions,
   onToggleReaction,
+  onReply,
+  quoteFor,
   onPin,
   onRemove,
   onUnsend,
@@ -892,6 +969,9 @@ export function MessageThread({
   emptyState,
   footer,
   onRetry,
+  onEndReached,
+  loadingMore = false,
+  unreadFrom,
 }: {
   messages: ThreadMessage[];
   ownUserId: string | null;
@@ -899,6 +979,17 @@ export function MessageThread({
   otherName?: string | null;
   reactions: ReactionSummaryRow[];
   onToggleReaction: (messageId: string, emoji: string, on: boolean) => void;
+  /**
+   * Answer one message. The caller holds the reply target, because it is the
+   * caller that owns the composer the quoted banner appears above.
+   */
+  onReply?: (messageId: string) => void;
+  /**
+   * What a message answers, resolved by the caller: a direct chat looks the
+   * parent up in the loaded page, a room reads the columns room_messages
+   * joins for it.
+   */
+  quoteFor?: (message: ThreadMessage) => Quote | null;
   /**
    * Room hosts only: keep this message at the top of the room. Absent
    * everywhere else, which is what keeps the action out of the menu for
@@ -957,9 +1048,52 @@ export function MessageThread({
   footer?: React.ReactElement | null;
   /** Re-send a message that failed to leave the device. */
   onRetry?: (message: ThreadMessage) => void;
+  /**
+   * Reaching the oldest loaded message. On an inverted list this fires at the
+   * visual TOP, which is exactly where "earlier" is, so a conversation pages
+   * backwards by being read rather than by a button.
+   */
+  onEndReached?: () => void;
+  /** A page is on its way. Drawn above whatever footer the caller passed. */
+  loadingMore?: boolean;
+  /**
+   * The oldest message this reader has not seen. The New line is drawn above
+   * it, and the thread opens there rather than at the newest message.
+   */
+  unreadFrom?: string | null;
 }) {
   const [menu, setMenu] = useState<MenuTarget | null>(null);
   const { height: windowHeight } = useWindowDimensions();
+  const theme = useTheme();
+  const loadingTint = theme.textSecondary;
+  const list = useRef<FlatList<ThreadMessage>>(null);
+  // The opening jump happens at most once per mount, and never while the
+  // keyboard is moving: the thread stands on a keyboard-sized floor and an
+  // inverted list is anchored to its own bottom, so a measured scroll taken
+  // across a keyboard dismissal is off by a keyboard's height (traps).
+  const jumped = useRef(false);
+  const laidOut = useRef(false);
+  const retriedJump = useRef(false);
+  const [pastAScreen, setPastAScreen] = useState(false);
+
+  const jumpToUnread = () => {
+    if (jumped.current || !laidOut.current || unreadFrom == null) {
+      return;
+    }
+    const index = messages.findIndex((message) => message.id === unreadFrom);
+    // Marked done either way: a boundary too far back to place is a decision,
+    // not something to retry on the next layout pass.
+    jumped.current = true;
+    if (index < 0 || index > UNREAD_JUMP_MAX) {
+      return;
+    }
+    list.current?.scrollToIndex({ index, viewPosition: 0.85, animated: false });
+  };
+
+  // Both doors, because neither alone is enough: the list can lay out before
+  // the first page arrives (nothing to jump to), and data can arrive without
+  // the frame ever changing again (no second onLayout).
+  useEffect(jumpToUnread);
   // This one is a raw <Modal> rather than a Sheet, so it has to declare
   // itself. A count that only knows about Sheets is a count that lies, and
   // the thing waiting on it presents into the collision anyway.
@@ -981,9 +1115,40 @@ export function MessageThread({
   return (
     <View style={styles.flex}>
       <FlatList
+        ref={list}
         style={styles.flex}
         inverted
         data={messages}
+        onLayout={() => {
+          laidOut.current = true;
+          jumpToUnread();
+        }}
+        // No getItemLayout and bubbles of every height, so a jump can miss.
+        // Land on the estimate, then try the real index once on the next
+        // frame, by which time the cells around it have been measured.
+        onScrollToIndexFailed={(info) => {
+          list.current?.scrollToOffset({
+            offset: info.averageItemLength * info.index,
+            animated: false,
+          });
+          if (retriedJump.current) {
+            return;
+          }
+          retriedJump.current = true;
+          requestAnimationFrame(() => {
+            list.current?.scrollToIndex({
+              index: info.index,
+              viewPosition: 0.85,
+              animated: false,
+            });
+          });
+        }}
+        // Inverted, so the offset GROWS as the reader goes back in time.
+        onScroll={(event) => {
+          const past = event.nativeEvent.contentOffset.y > windowHeight;
+          setPastAScreen((current) => (current === past ? current : past));
+        }}
+        scrollEventThrottle={16}
         keyExtractor={(m) => m.id}
         // The inline renderItem closes over `menu`, which USUALLY forces a
         // re-render; extraData is the guarantee VirtualizedList re-renders
@@ -1075,6 +1240,20 @@ export function MessageThread({
                   </ThemedText>
                 </View>
               ) : null}
+              {/* Where reading stopped. INSIDE the same wrapper as the
+                  bubble, under the day separator and above the author line:
+                  an inverted list flips a cell's children, so a line emitted
+                  as a sibling marks the boundary against the wrong message
+                  (traps). */}
+              {item.id === unreadFrom ? (
+                <View style={styles.unreadRow}>
+                  <View style={[styles.unreadRule, { backgroundColor: theme.highlight }]} />
+                  <ThemedText type="caption" style={{ color: theme.highlight }}>
+                    New
+                  </ThemedText>
+                  <View style={[styles.unreadRule, { backgroundColor: theme.highlight }]} />
+                </View>
+              ) : null}
               {author ? (
                 <ThemedText type="caption" themeColor="textSecondary" style={styles.authorLine}>
                   {author}
@@ -1117,6 +1296,7 @@ export function MessageThread({
                       ? () => onOpenSender(item.sender_id)
                       : undefined
                   }
+                  quote={quoteFor?.(item) ?? null}
                   reactions={byMessage.get(item.id) ?? []}
                   onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
                   onRetry={item.local === 'failed' && onRetry ? () => onRetry(item) : undefined}
@@ -1151,8 +1331,51 @@ export function MessageThread({
           );
         }}
         ListEmptyComponent={emptyState}
-        ListFooterComponent={footer}
+        // 0.4 rather than the default 2: the thread is tall, and firing a
+        // page fetch two screens early on a conversation somebody is only
+        // scrolling through spends a round trip nobody asked for.
+        onEndReachedThreshold={0.4}
+        onEndReached={onEndReached}
+        // One element, not two: the footer slot is already taken by the
+        // caller's anchor card, and an inverted list flips a cell's children
+        // (traps), so the spinner and the card have to be ordered inside one
+        // view rather than emitted as siblings.
+        ListFooterComponent={
+          loadingMore || footer ? (
+            <View>
+              {loadingMore ? (
+                <ActivityIndicator style={styles.loadingMore} color={loadingTint} />
+              ) : null}
+              {footer}
+            </View>
+          ) : null
+        }
       />
+
+      {/* The way back to the bottom, and the escape hatch if the opening jump
+          lands somewhere surprising. Shown once the reader is more than a
+          screen back, which on an inverted list means a growing offset. */}
+      {pastAScreen ? (
+        <Animated.View
+          entering={FadeIn.duration(120)}
+          style={styles.jumpWrap}
+          pointerEvents="box-none">
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Jump to the latest message"
+            haptic="light"
+            scaleTo={0.96}
+            onPress={() => list.current?.scrollToOffset({ offset: 0, animated: true })}
+            style={[styles.jump, Elevation.floating, { backgroundColor: theme.surface }]}>
+            <SymbolView
+              name={{ ios: 'chevron.down', android: 'expand_more', web: 'expand_more' }}
+              size={13}
+              tintColor={theme.text}
+            />
+            <ThemedText type="footnote">Jump to latest</ThemedText>
+          </PressableScale>
+        </Animated.View>
+      ) : null}
 
       {/* In a modal, so the scrim covers the header and the composer too. An
           overlay inside this component can only ever dim the thread, which
@@ -1168,6 +1391,19 @@ export function MessageThread({
             target={menu}
             existingEmoji={myEmojiOn(menu.message.id)}
             canReact={canReact}
+            quote={quoteFor?.(menu.message) ?? null}
+            onReply={
+              // Not for a message that has been taken back or taken down, and
+              // not for a reader with no composer: an action that cannot be
+              // carried out is worse than one that was never offered.
+              onReply
+                ? () => {
+                    const id = menu.message.id;
+                    setMenu(null);
+                    onReply(id);
+                  }
+                : undefined
+            }
             onShare={
               menu.message.body
                 ? () => {
@@ -1351,6 +1587,41 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: Radius.pill,
     borderWidth: 1,
+  },
+  quote: {
+    borderLeftWidth: 2,
+    paddingLeft: Space.sm,
+    marginBottom: 2,
+    gap: 1,
+  },
+  loadingMore: {
+    paddingVertical: Space.md,
+  },
+  unreadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    paddingTop: Space.lg,
+    paddingBottom: Space.sm,
+  },
+  unreadRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+  },
+  jumpWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: Space.md,
+    alignItems: 'center',
+  },
+  jump: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+    minHeight: HitTarget,
+    paddingHorizontal: Space.lg,
+    borderRadius: Radius.pill,
   },
   separatorRow: {
     alignItems: 'center',

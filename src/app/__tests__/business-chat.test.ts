@@ -32,9 +32,12 @@ describe('the chat list a business reads', () => {
     expect(code).toContain(
       "const ownRoom = isBusiness ? chats.filter((c) => c.kind === 'room') : [];"
     );
-    expect(code).toContain(
-      "const inTab = isBusiness\n    ? chats.filter((c) => c.kind !== 'room')"
-    );
+    // Asserted as the invariant rather than as one exact line, because the
+    // expression is now wrapped in the inbox search filter. What must not
+    // change is which rows a BUSINESS starts from: everything that is not its
+    // own room, which ownRoom above renders separately.
+    expect(code).toContain("? chats.filter((c) => c.kind !== 'room')");
+    expect(code).toMatch(/const inTab = filterChats\(\s+isBusiness/);
   });
 
   it('gives that room a section of its own', () => {
@@ -88,8 +91,10 @@ describe('the conversation a business answers', () => {
     // mounted for it. Both taps that used to push it are gone: the header
     // name and the menu's first item.
     expect(code).toContain('const openIdentity = viewerIsBusiness\n    ? null');
-    expect(code).toContain('disabled={openIdentity == null}');
-    expect(code).toContain('onPress={openIdentity ?? undefined}');
+    // The header is one shared row now (features/chat/thread-header). A null
+    // here is what makes the name a heading rather than a button, which
+    // thread-header.test.tsx pins from the other end.
+    expect(code).toContain('onPressIdentity={openIdentity}');
     // The sheet is built in one shared place now (three surfaces offer the
     // same three items), so the business branch is pinned at both ends: the
     // caller says it cannot view a profile, and the builder honours that.
@@ -159,7 +164,9 @@ describe('the room a business runs', () => {
 
   it('tells the owner they run the room instead of telling them to join in', () => {
     const code = src(ROOM);
-    expect(code).toContain('{chatsQuery.isPending ? null : isOwnRoom ? (');
+    // The line is computed above the return now (it is the shared header's
+    // subtitle), so the branch reads as an assignment rather than as JSX.
+    expect(code).toContain('const headerLine = chatsQuery.isPending ? null : isOwnRoom ? (');
     // "in this chat", not "here": the count is chat membership, and "here"
     // read as presence in the app that promises never to know it.
     expect(code).toContain('in this chat · you run it');

@@ -1,5 +1,6 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
+import { ROOM_MESSAGE_PAGE } from '@/features/chat/paging';
 import type {
   PinnedMessageRow,
   CityRoomRow,
@@ -76,11 +77,20 @@ export async function fetchCityRooms(cityId: number) {
 }
 
 /**
- * A room's messages. Members and moderators always; everyone else only where
- * the business left the public preview on — the server decides, not us.
+ * A room's messages, newest first. Members and moderators always; everyone
+ * else only where the business left the public preview on — the server
+ * decides, not us.
+ *
+ * `before` pages backwards through a busy room. The RPC has taken a limit
+ * since it was written and this client never passed one, so a hostel room was
+ * silently capped at sixty messages with no way back.
  */
-export async function fetchRoomMessages(chatId: string) {
-  const { data, error } = await supabase.rpc('room_messages', { p_chat_id: chatId });
+export async function fetchRoomMessages(chatId: string, before?: string | null) {
+  const { data, error } = await supabase.rpc('room_messages', {
+    p_chat_id: chatId,
+    p_limit: ROOM_MESSAGE_PAGE,
+    p_before: before ?? null,
+  });
   if (error) {
     throw error;
   }

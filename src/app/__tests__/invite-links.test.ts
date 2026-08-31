@@ -34,9 +34,13 @@ describe('an invite survives leaving the app', () => {
     // invalid". This is the assertion the audit wanted made in Maestro; it
     // cannot be, because there is no copy step to read back (the share sheet
     // is the chooser) and the URL is never printed on screen.
+    //
+    // The share sheet itself now lives in features/share/share-link, which
+    // takes the finished string: what this pins is that the string the group
+    // hands it is built from the https builder and from nothing else.
     const code = read('group', '[id].tsx');
-    expect(code).toContain('const url = inviteUrl(inviteToken)');
-    expect(code).toContain('${url}');
+    expect(code).toContain('const shareMessage = (token: string) =>');
+    expect(code).toContain('${inviteUrl(token)}');
     expect(code).not.toContain('samewhere://');
   });
 

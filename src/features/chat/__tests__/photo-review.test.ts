@@ -31,7 +31,10 @@ const app = (...parts: string[]): string =>
 describe('a photo and its caption are one message', () => {
   it('sends both fields in a single insert', () => {
     const code = source('api.ts');
-    expect(code).toMatch(/sendPhotoMessage\([\s\S]*?body\?: string\s*\)/);
+    // The caption is a parameter of the PHOTO send, not a second call. The
+    // signature has since grown a reply target, so the assertion names the
+    // parameter that matters rather than the end of the argument list.
+    expect(code).toMatch(/sendPhotoMessage\([\s\S]*?body\?: string[\s\S]*?\)\s*\{/);
     expect(code).toContain('...(caption.length > 0 ? { body: caption } : {})');
   });
 
@@ -40,7 +43,7 @@ describe('a photo and its caption are one message', () => {
       // The `return` after the photo send is the whole guarantee: without it
       // the caption goes twice, once attached and once on its own.
       expect(screen).toMatch(
-        /await sendPhoto\.mutateAsync\(\{ localUri: photoUri, body: text \}\)[\s\S]{0,400}?return;/
+        /await sendPhoto\.mutateAsync\(\{[\s\S]{0,200}?body: text,[\s\S]{0,400}?return;/
       );
     }
   });

@@ -50,16 +50,16 @@ Under the EU's Digital Services Act, three things have to be true and are.
 
 **How to report something (Article 16).** Every profile, every business
 listing and every one-to-one chat has a Report action, and so does any single
-message inside a group or a business room. The report carries the context with
+message inside a group or a business room. A group has one of its own, on its
+group page, for when the problem is the room rather than one person in it, and
+that report does not have to name anybody. The report carries the context with
 it, so we can see what you saw. Reporting is anonymous: the person reported is
-never told who reported them.
+never told who reported them, and nobody in a group is told who reported it.
 
-A group itself does not have a Report action yet, only the messages in it. To
-report a whole group, to report anything else you cannot reach a Report action
-for, or to report anything at all while you are not signed in, use **Contact
-us** in the app or write to hello@samewhere.io. It reaches the same people and
-the same queue. Reports that say somebody is under 18 go to the front of that
-queue.
+To report anything you cannot reach a Report action for, or to report anything
+at all while you are not signed in, use **Contact us** in the app or write to
+hello@samewhere.io. It reaches the same people and the same queue. Reports that
+say somebody is under 18 go to the front of that queue.
 
 **What we tell you when we restrict your content (Article 17).** If we block
 a message, remove a photo, refuse a verification or restrict an account, we

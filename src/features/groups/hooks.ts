@@ -19,7 +19,7 @@ import {
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import type { GroupSpeaking } from '@/lib/database.types';
+import type { GroupInvitesWho, GroupSpeaking } from '@/lib/database.types';
 
 export function useGroup(chatId: string | null) {
   return useQuery({
@@ -56,6 +56,7 @@ export function useUpdateGroup(chatId: string) {
     mutationFn: (input: {
       name?: string;
       speaking?: GroupSpeaking;
+      invites?: GroupInvitesWho;
       maxStayUntil?: string;
       clearMaxStay?: boolean;
       photoPath?: string | null;

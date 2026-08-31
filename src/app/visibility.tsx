@@ -1,8 +1,14 @@
 import { router } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
+import { StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
+import { PressableScale } from '@/components/ui/pressable-scale';
+import { Radius, Space } from '@/constants/theme';
+import { GROUP_ADD_OPTIONS, useGroupAdds, useSetGroupAdds } from '@/features/groups/adds';
+import { useTheme } from '@/hooks/use-theme';
 import {
   AUDIENCE_BOTH_WAYS,
   AUDIENCE_GENDER_NOTE,
@@ -26,9 +32,12 @@ import { useOwnProfile, useOwnVisibility, useSetVisibility } from '@/features/pr
  * subtly wrong.
  */
 export default function VisibilityScreen() {
+  const theme = useTheme();
   const { data: profile } = useOwnProfile();
   const { data: audience = 'everyone' } = useOwnVisibility();
   const save = useSetVisibility();
+  const { data: groupAdds = 'known' } = useGroupAdds();
+  const setAdds = useSetGroupAdds();
   const verified = profile?.verified === true;
 
   return (
@@ -78,6 +87,67 @@ export default function VisibilityScreen() {
           />
         </>
       )}
+
+      {/* The second thing this screen decides, and the reason it belongs here:
+          being added to a group is the one place the app's consent-before-
+          exposure grammar used to break, and this is the screen a person looks
+          on for "who can do what to me". Enforced in add_to_group, so it holds
+          for any caller and not only for this one. */}
+      <ThemedText type="smallBold">Who can add you to a group</ThemedText>
+      <View style={styles.addRows}>
+        {GROUP_ADD_OPTIONS.map((option) => {
+          const active = option.value === groupAdds;
+          return (
+            <PressableScale
+              key={option.value}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: active, disabled: setAdds.isPending }}
+              accessibilityLabel={`${option.label}. ${option.detail}`}
+              haptic="selection"
+              scaleTo={0.985}
+              disabled={setAdds.isPending || active}
+              onPress={() => setAdds.mutate(option.value)}
+              style={[
+                styles.addRow,
+                { backgroundColor: active ? theme.accentSoft : theme.surfaceSunken },
+              ]}>
+              <View style={styles.addRowText}>
+                <ThemedText type="callout">{option.label}</ThemedText>
+                {/* The consequence said out loud, the way the audience block
+                    above already says its own. */}
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  {option.detail}
+                </ThemedText>
+              </View>
+              {active ? (
+                <SymbolView
+                  name={{ ios: 'checkmark', android: 'check', web: 'check' }}
+                  size={16}
+                  tintColor={theme.accent}
+                />
+              ) : null}
+            </PressableScale>
+          );
+        })}
+      </View>
     </StepScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  addRows: {
+    gap: Space.sm,
+  },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    padding: Space.md,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
+  addRowText: {
+    flex: 1,
+    gap: 2,
+  },
+});

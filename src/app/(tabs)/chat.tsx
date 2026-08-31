@@ -12,6 +12,8 @@ import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { AvatarButton } from '@/components/ui/avatar-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
+import { FormTextField } from '@/components/form/form-text-field';
+import { filterChats, SEARCH_APPEARS_AT } from '@/features/chat/search';
 import { ChatRowSkeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useOwnBusiness } from '@/features/business/hooks';
@@ -530,6 +532,10 @@ export default function ChatScreen() {
   // Bangkok that Lisbon hostels were nearby). See browsing-city.ts.
   const { cityId, cityName } = useBrowsingCity();
   const [tab, setTab] = useState<Tab>('individual');
+  // Finding "the Lisbon dorm one" in an inbox with a dozen rooms in it. Kept
+  // out of the tab counts on purpose: the Segmented badge answers "what is
+  // waiting", which is not a question a search box should be able to change.
+  const [search, setSearch] = useState('');
   // The invite paste is a real field in a sheet now, on every platform. The
   // Alert.prompt it replaces existed only on iOS; Android and web got an
   // alert with no input at all, which asked for a paste it could not take.
@@ -565,9 +571,12 @@ export default function ChatScreen() {
   // One-to-one conversations and group rooms are different things people
   // look for at different moments, so they get a switch rather than one
   // scroll that mixes them.
-  const inTab = isBusiness
-    ? chats.filter((c) => c.kind !== 'room')
-    : chats.filter((c) => (tab === 'groups' ? c.kind === 'room' : c.kind !== 'room'));
+  const inTab = filterChats(
+    isBusiness
+      ? chats.filter((c) => c.kind !== 'room')
+      : chats.filter((c) => (tab === 'groups' ? c.kind === 'room' : c.kind !== 'room')),
+    search
+  );
   // A guest's whole chat life: the groups they were invited to. They cannot
   // have a one-to-one chat at all, since saying hi to a stranger is refused.
   const myGroups = chats.filter((c) => c.kind === 'room');
@@ -698,6 +707,13 @@ export default function ChatScreen() {
     <ThemedView style={styles.root}>
       <ScrollView
         style={styles.scroll}
+        // A tap on a row while the keyboard is up must OPEN the row, not just
+        // dismiss the keyboard and make the person tap twice. 'always' rather
+        // than 'handled' deliberately: 'handled' asks the responder chain
+        // whether a child wants the touch, and the reaction menu's
+        // capture-phase responder is exactly the kind of thing that answers
+        // wrongly - that bug cost this project weeks once already.
+        keyboardShouldPersistTaps="always"
         // Nothing in the app could be pulled to refresh, on the one screen
         // people reflexively pull.
         refreshControl={
@@ -761,6 +777,25 @@ export default function ChatScreen() {
           )}
           <AvatarButton />
         </View>
+
+        {/* The one field. Under the switch rather than over it, so the tab
+            names stay the first thing read, and always mounted rather than
+            behind a magnifier: a control that has to be found before it can
+            be used is a control most people never find. Its own row, because
+            a search field beside a Segmented at accessibility text sizes
+            leaves neither of them usable. */}
+        {chats.length >= SEARCH_APPEARS_AT ? (
+          <FormTextField
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search your chats"
+            accessibilityLabel="Search your chats"
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+        ) : null}
 
         {/* Keyed on the tab so the list body fades in over the same 150ms the
             segmented thumb spends travelling — without it the content swapped

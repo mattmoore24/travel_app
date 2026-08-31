@@ -415,6 +415,15 @@ export type RoomMessageRow = {
   unsent_at: string | null;
   created_at: string;
   /**
+   * What this message answers, joined by room_messages. The name is the
+   * parent sender's display name and never a handle (hard rule 4), and the
+   * body comes back null once the parent is unsent or removed rather than
+   * preserving a copy of something the reader may no longer be shown.
+   */
+  reply_to_message_id: string | null;
+  reply_to_name: string | null;
+  reply_to_body: string | null;
+  /**
    * Whether there is a photo here and where it has got to.
    *
    * `image_path` above is masked until a verdict lands, which is right — but
@@ -567,12 +576,32 @@ export type GroupRole = 'admin' | 'speaker' | 'member';
 
 export type GroupSpeaking = 'everyone' | 'granted';
 
+/**
+ * Who may hand out a group's invite link. Defaults to 'everyone', including
+ * for groups that existed before the column did: nobody chose admin-only
+ * under the old rule, because the app never offered the choice.
+ */
+export type GroupInvitesWho = 'everyone' | 'admin';
+
+/**
+ * Who may put you in a group. 'known' is anybody you have chatted with, the
+ * rule add_to_group has always enforced; 'link_only' is nobody, and you join
+ * by opening a link instead. Never readable as a column: my_group_adds and
+ * set_group_adds are the whole client surface.
+ */
+export type GroupAddPolicy = 'known' | 'link_only';
+
 export type GroupRow = {
   chat_id: string;
   created_by: string | null;
   name: string;
   photo_path: string | null;
   speaking: GroupSpeaking;
+  /**
+   * Who may mint the invite link. Turning a live link off stays the admin's,
+   * whatever this says (revoke_group_invites is moderator-only).
+   */
+  invites: GroupInvitesWho;
   /**
    * The last day this chat is active; it closes the day after. NULL means no
    * end date, and the chat never closes.
@@ -644,6 +673,12 @@ export type MessageRow = {
    */
   removed_at?: string | null;
   created_at: string;
+  /**
+   * What this message answers, or null for an ordinary one. Direct chats read
+   * `messages` with `select *`, so it arrives free; the quoted line itself is
+   * resolved from the loaded page (features/chat/reply.ts).
+   */
+  reply_to_message_id?: string | null;
   /**
    * Where a photo on this message has got to. Present because direct chats
    * read `messages` with `select *`; a room reads the RPC instead and maps
@@ -1145,6 +1180,11 @@ export type Database = {
           sender_id: string;
           body?: string;
           image_path?: string;
+          /**
+           * What this message answers. The database refuses a parent from
+           * another chat (messages_reply_same_chat), so this is a door.
+           */
+          reply_to_message_id?: string;
         };
         Update: never;
         Relationships: [];
@@ -1153,7 +1193,14 @@ export type Database = {
         Row: {
           id: string;
           reporter_id: string;
-          reported_user_id: string;
+          /**
+           * Null where the subject is the chat itself. A report needs a
+           * subject and does not need a person: `reports_has_a_subject`
+           * refuses one with neither.
+           */
+          reported_user_id: string | null;
+          /** The chat this is about, for a room that has gone bad. */
+          reported_chat_id: string | null;
           reason: ReportReason;
           details: string | null;
           context: string | null;
@@ -1161,7 +1208,8 @@ export type Database = {
         };
         Insert: {
           reporter_id: string;
-          reported_user_id: string;
+          reported_user_id?: string | null;
+          reported_chat_id?: string | null;
           reason: ReportReason;
           details?: string | null;
           context?: string | null;
@@ -1466,7 +1514,16 @@ export type Database = {
         Returns: CityRoomRow[];
       };
       room_messages: {
-        Args: { p_chat_id: string; p_limit?: number };
+        Args: {
+          p_chat_id: string;
+          p_limit?: number;
+          /**
+           * The oldest `created_at` already on screen. A thread is
+           * newest-first, so the next page is OLDER, and null is the first
+           * page.
+           */
+          p_before?: string | null;
+        };
         Returns: RoomMessageRow[];
       };
       message_reaction_summary: {
@@ -1494,6 +1551,8 @@ export type Database = {
           p_clear_photo?: boolean;
           /** Turning the end date OFF, since null already means "leave it". */
           p_clear_max_stay?: boolean;
+          /** Who may hand out the link. Null leaves it alone. */
+          p_invites?: GroupInvitesWho | null;
         };
         Returns: undefined;
       };
@@ -1644,6 +1703,19 @@ export type Database = {
         Args: Record<string, never>;
         Returns: ProfileAudience;
       };
+      my_group_adds: {
+        Args: Record<string, never>;
+        Returns: GroupAddPolicy;
+      };
+      set_group_adds: {
+        Args: { p_policy: GroupAddPolicy };
+        Returns: GroupAddPolicy;
+      };
+      /** The name of whoever added the caller to this chat, or null. */
+      who_added_me: {
+        Args: { p_chat_id: string };
+        Returns: string | null;
+      };
       set_visibility: {
         Args: { p_audience: ProfileAudience };
         Returns: ProfileAudience;
@@ -1669,6 +1741,8 @@ export type Database = {
       moderation_status: ModerationStatus;
       social_platform: SocialPlatform;
       chat_status: ChatStatus;
+      group_invites_who: GroupInvitesWho;
+      group_add_policy: GroupAddPolicy;
       trip_status: TripStatus;
       request_source: RequestSource;
       verification_status: VerificationStatus;

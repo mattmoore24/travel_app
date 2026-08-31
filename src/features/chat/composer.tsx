@@ -33,6 +33,8 @@ export function Composer({
   photoBusy = false,
   disabled = false,
   inputTestID,
+  replyingTo,
+  onCancelReply,
   onSend,
 }: {
   placeholder?: string;
@@ -41,6 +43,12 @@ export function Composer({
   photoBusy?: boolean;
   disabled?: boolean;
   inputTestID?: string;
+  /**
+   * The message this one will answer, shown above the field. The reply itself
+   * is the caller's: this only draws what was picked and offers the way out.
+   */
+  replyingTo?: { name: string; body: string | null } | null;
+  onCancelReply?: () => void;
   /**
    * Send it. Resolve and the staged photo is cleared; throw and it stays put
    * so the same picture can go again without being found a second time.
@@ -100,6 +108,31 @@ export function Composer({
 
   return (
     <View>
+      {replyingTo ? (
+        <View style={[styles.replyBanner, { borderLeftColor: theme.accent }]}>
+          <View style={styles.replyText}>
+            <ThemedText type="caption" themeColor="accent" numberOfLines={1}>
+              {`Replying to ${replyingTo.name}`}
+            </ThemedText>
+            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+              {replyingTo.body ?? 'Message no longer here'}
+            </ThemedText>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            // Says what happens, and names what it lets go of: two identical
+            // "Close" labels on one screen are ambiguous under VoiceOver.
+            accessibilityLabel={`Stop replying to ${replyingTo.name}`}
+            hitSlop={10}
+            onPress={onCancelReply}>
+            <SymbolView
+              name={{ ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' }}
+              size={20}
+              tintColor={theme.textSecondary}
+            />
+          </Pressable>
+        </View>
+      ) : null}
       {attachment ? (
         <View style={styles.attachmentRow}>
           <View style={styles.attachment}>
@@ -211,6 +244,19 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  replyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.two,
+    paddingLeft: Spacing.two,
+    borderLeftWidth: 2,
+  },
+  replyText: {
+    flex: 1,
+    gap: 1,
   },
   attachmentRow: {
     flexDirection: 'row',

@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { ActionSheetIOS, Alert, Platform, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { ActionSheetIOS, Alert, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
@@ -27,14 +27,17 @@ import {
   useUpdateGroup,
 } from '@/features/groups/hooks';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
-import { useLeaveRoom } from '@/features/rooms/hooks';
+import { useChatPref, useLeaveRoom } from '@/features/rooms/hooks';
+import { useMyChats } from '@/features/matching/hooks';
 import { InviteQr } from '@/features/groups/invite-qr';
+import { ThreadHeader } from '@/features/chat/thread-header';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { haptics } from '@/lib/haptics';
 import { closeDayLabel, useHasGroupClosed } from '@/features/groups/closing';
 import { addDays, formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { pickImage } from '@/lib/pick-image';
+import { INVITE_OPTIONS, canInviteToGroup } from '@/features/groups/invites';
 import { SPEAKING_OPTIONS } from '@/features/groups/speaking';
 import type { GroupMemberRow } from '@/lib/database.types';
 
@@ -222,11 +225,25 @@ export default function GroupScreen() {
   const { data: photoUrl } = useChatPhotoUrl(group?.photo_path ?? null);
   const leaveRoom = useLeaveRoom(id!);
 
+  // The chat row, for the one preference this screen can set. Both lists,
+  // the way the room screen reads them: an archived group still has settings.
+  const chatsQuery = useMyChats();
+  const archivedQuery = useMyChats(true);
+  const chatRow =
+    [...(chatsQuery.data ?? []), ...(archivedQuery.data ?? [])].find((c) => c.chat_id === id) ??
+    null;
+  const pref = useChatPref();
+
   const myRole = members.find((m) => m.user_id === ownUserId)?.role ?? null;
   const isAdmin = myRole === 'admin';
   const restricted = group?.speaking === 'granted';
 
-  const { data: inviteToken } = useGroupInviteToken(id ?? null, isAdmin);
+  // Anybody in the group, unless the admin has turned that off. The same rule
+  // group_invite_token enforces, in one place, so the screen and the server
+  // cannot drift into disagreeing.
+  const canInvite = canInviteToGroup({ isAdmin, invites: group?.invites });
+  const inviteTokenQuery = useGroupInviteToken(id ?? null, canInvite);
+  const inviteToken = inviteTokenQuery.data;
 
   const [name, setName] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
@@ -272,17 +289,24 @@ export default function GroupScreen() {
     // the map both had, and the same LoadError fixes it.
     return (
       <ThemedView style={styles.root}>
-        <ScrollView contentContainerStyle={styles.content}>
-          {groupQuery.isError ? (
-            <LoadError
-              what="this group"
-              error={groupQuery.error}
-              onRetry={() => groupQuery.refetch()}
-            />
-          ) : groupQuery.isSuccess ? (
-            <ThemedText themeColor="textSecondary">This group is no longer around.</ThemedText>
-          ) : null}
-        </ScrollView>
+        {/* Two things the success branch has and this one had lost: a back
+            control, and the top inset. With the native header switched off and
+            neither put back, the LoadError headline painted under the status
+            bar and the Dynamic Island with no visible way out of the screen. */}
+        <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+          <ThreadHeader title="Group" />
+          <ScrollView contentContainerStyle={styles.content}>
+            {groupQuery.isError ? (
+              <LoadError
+                what="this group"
+                error={groupQuery.error}
+                onRetry={() => groupQuery.refetch()}
+              />
+            ) : groupQuery.isSuccess ? (
+              <ThemedText themeColor="textSecondary">This group is no longer around.</ThemedText>
+            ) : null}
+          </ScrollView>
+        </SafeAreaView>
       </ThemedView>
     );
   }
@@ -306,33 +330,28 @@ export default function GroupScreen() {
     }
   };
 
-  const share = async () => {
-    if (!inviteToken) {
-      return;
-    }
-    const url = inviteUrl(inviteToken);
-    try {
-      await Share.share({
-        // One string, so it lands intact in a text message, an email or the
-        // clipboard. The share sheet is already the "text, email or copy"
-        // chooser the founder asked for; there is no need to build another.
-        //
-        // The recipient may never have heard of Samewhere, so the message
-        // says what it is — and the code line speaks to somebody WITHOUT the
-        // app, instead of telling them to put a code "into the app". The
-        // code stays: it is the recovery path when the link fails, and it is
-        // the same secret the URL already carries, so printing it adds no
-        // exposure.
-        message: `Join "${group.name}" on Samewhere, a free app for meeting other travelers: ${url}\n\nNo app yet? Get Samewhere first, then put in this code: ${inviteToken}`,
-      });
-    } catch {
-      // Dismissing the share sheet is not an error.
-    }
-  };
+  // One string, so it lands intact in a text message, an email or the
+  // clipboard. The share sheet is already the "text, email or copy" chooser
+  // the founder asked for; there is no need to build another.
+  //
+  // The recipient may never have heard of Samewhere, so the message says what
+  // it is — and the code line speaks to somebody WITHOUT the app, instead of
+  // telling them to put a code "into the app". The code stays: it is the
+  // recovery path when the link fails, and it is the same secret the URL
+  // already carries, so printing it adds no exposure.
+  const shareMessage = (token: string) =>
+    `Join "${group.name}" on Samewhere, a free app for meeting other travelers: ${inviteUrl(token)}\n\nNo app yet? Get Samewhere first, then put in this code: ${token}`;
 
   return (
     <ThemedView style={styles.root}>
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      {/* The settings screen wears the same one-storey header as the thread it
+          was opened from, so its way back is a real control rather than a
+          floating chevron on a row of its own. */}
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        {/* No avatar in this one: the group's photo is the big editable
+            square a few points below it, and the same face twice on one
+            screen is noise. */}
+        <ThreadHeader title={group.name} />
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="always">
           <View style={styles.identity}>
             <PressableScale
@@ -383,6 +402,49 @@ export default function GroupScreen() {
             ) : (
               <ThemedText type="title">{group.name}</ThemedText>
             )}
+          </View>
+
+          {/* Mute, where somebody looks for it. It lives on the row's swipe and
+              its long press in the inbox, so the one place a person goes for
+              "make this quiet" was the one place it was not. */}
+          <View style={styles.section}>
+            <PressableScale
+              accessibilityRole="switch"
+              accessibilityLabel="Mute this group"
+              accessibilityState={{ checked: chatRow?.muted === true }}
+              haptic="selection"
+              scaleTo={0.98}
+              disabled={chatRow == null}
+              onPress={() =>
+                chatRow ? pref.mutate({ chatId: chatRow.chat_id, muted: !chatRow.muted }) : null
+              }>
+              <ThemedView
+                type={chatRow?.muted ? 'accentSoft' : 'backgroundElement'}
+                style={[
+                  styles.noEndRow,
+                  { borderColor: chatRow?.muted ? theme.accent : 'transparent' },
+                ]}>
+                <SymbolView
+                  name={
+                    chatRow?.muted
+                      ? {
+                          ios: 'bell.slash.fill',
+                          android: 'notifications_off',
+                          web: 'notifications_off',
+                        }
+                      : { ios: 'bell', android: 'notifications', web: 'notifications' }
+                  }
+                  size={20}
+                  tintColor={chatRow?.muted ? theme.accent : theme.textSecondary}
+                />
+                <ThemedText style={styles.muteLabel}>Mute this group</ThemedText>
+              </ThemedView>
+            </PressableScale>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              {chatRow?.muted
+                ? 'No notifications from this group. The row keeps its dot, so nothing is hidden.'
+                : 'Turn this on and the group stops interrupting you. You still see it in your chats.'}
+            </ThemedText>
           </View>
 
           <View style={styles.section}>
@@ -531,7 +593,7 @@ export default function GroupScreen() {
             </ThemedText>
           </View>
 
-          {isAdmin ? (
+          {canInvite ? (
             <View style={styles.section}>
               <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
                 Invite
@@ -540,26 +602,64 @@ export default function GroupScreen() {
                   literally this use case: you are standing in front of four
                   people, and "let me get your number so I can send you a
                   link" is three steps where holding up a screen is none. */}
-              {inviteToken ? <InviteQr url={inviteUrl(inviteToken)} /> : null}
-              <PrimaryButton label="Share an invite" disabled={!inviteToken} onPress={share} />
-              <PrimaryButton
-                variant="ghost"
-                label="Turn off the current link"
-                onPress={() =>
-                  Alert.alert(
-                    'Turn off the link?',
-                    'Anyone still holding it will not be able to join. A new link is made the next time you share.',
-                    [
-                      { text: 'Keep it', style: 'cancel' },
-                      {
-                        text: 'Turn it off',
-                        style: 'destructive',
-                        onPress: () => revokeInvites.mutate(),
-                      },
-                    ]
-                  )
-                }
-              />
+              {/* Never a heading over emptiness. Collapsing the whole body on
+                  a null token meant a member on slow wifi, or one whose
+                  group_invite_token call failed (the admin has just switched
+                  to 'admin' and this client's `invites` is still the cached
+                  'everyone', so the server refuses), saw the word "Invite"
+                  with nothing under it and no way to tell which. */}
+              {inviteToken ? (
+                <InviteQr url={inviteUrl(inviteToken)} message={shareMessage(inviteToken)} />
+              ) : inviteTokenQuery.isError ? (
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  Could not get an invite link. Pull down to try again.
+                </ThemedText>
+              ) : (
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  Getting your invite link.
+                </ThemedText>
+              )}
+              {/* Turning a live link off stays the admin's, whatever the
+                  setting above says. It is the kill switch, and it is the
+                  reason handing the link to everybody is safe. */}
+              {isAdmin ? (
+                <PrimaryButton
+                  variant="ghost"
+                  label="Turn off the current link"
+                  onPress={() =>
+                    Alert.alert(
+                      'Turn off the link?',
+                      'Anyone still holding it will not be able to join. A new link is made the next time you share.',
+                      [
+                        { text: 'Keep it', style: 'cancel' },
+                        {
+                          text: 'Turn it off',
+                          style: 'destructive',
+                          onPress: () => revokeInvites.mutate(),
+                        },
+                      ]
+                    )
+                  }
+                />
+              ) : null}
+              {isAdmin ? (
+                <>
+                  <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
+                    Who can invite
+                  </ThemedText>
+                  <Segmented
+                    options={INVITE_OPTIONS}
+                    value={group.invites}
+                    onChange={(invites) => update.mutate({ invites })}
+                    accessibilityLabel="Who can invite people to this group"
+                  />
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    {group.invites === 'admin'
+                      ? 'Only you can hand out the link. Anyone in the group can still add someone they have chatted with.'
+                      : 'Anyone in the group can hand out the link. Turning it off stays yours.'}
+                  </ThemedText>
+                </>
+              ) : null}
             </View>
           ) : null}
 
@@ -636,6 +736,28 @@ export default function GroupScreen() {
                 ? 'You run this one, so somebody else takes over when you go.'
                 : 'You stop getting its messages. Anyone in the group can add you back.'}
             </ThemedText>
+            {/* A room that has gone bad had no exit that told anybody: the
+                whole reporting path was per-person, and picking one person to
+                blame for a group is a guess. */}
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Report this group"
+              haptic="light"
+              scaleTo={0.98}
+              onPress={() =>
+                router.push({
+                  pathname: '/report',
+                  params: { chatId: id!, context: `group:${id}` },
+                })
+              }
+              style={styles.leaveRow}>
+              <ThemedText type="callout" themeColor="danger">
+                Report this group
+              </ThemedText>
+            </PressableScale>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              A real person reads it. Nobody in the group is told who reported it.
+            </ThemedText>
           </View>
         </ScrollView>
         {/* Outside the scroller: iOS hosts it in the keyboard's own window,
@@ -687,6 +809,9 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Space.sm,
+  },
+  muteLabel: {
+    flex: 1,
   },
   leaveRow: {
     minHeight: HitTarget,

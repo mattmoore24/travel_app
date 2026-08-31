@@ -46,6 +46,16 @@ D34 keeps suppression a moderator action, so the reported account is untouched
 until a person acts on it. Read the top of this queue first and take the
 priority at face value; it is not a proxy for age.
 
+**A report may name a chat and not a person.** Since group reporting landed,
+`reports.reported_user_id` is nullable and `admin_report_queue` carries
+`reported_chat_id` and `reported_chat_name` beside the person columns. A row
+with a chat and no person is a report about the ROOM: somebody says the group
+itself has gone bad. `admin_resolve_report(id, 'suspend')` on one of those
+raises `this report names a chat and not a person: act on somebody in it, or
+dismiss` - it is not a bug, it is the queue refusing to guess who you meant.
+Open the room, decide who is doing it, act on that person by their user id, or
+dismiss the report if the room is fine.
+
 **`admin_ops_health` is the daily smoke test.** `oldest_held_message_minutes`
 or `oldest_unsent_push_minutes` climbing past ~10 means a worker schedule is
 broken — messages are failing closed (nothing unscreened is delivered) but

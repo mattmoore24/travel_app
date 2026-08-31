@@ -664,7 +664,7 @@ appId: com.mattmoore.samewhere
       text: 'Report this group'
     direction: DOWN
     timeout: 10000
-- takeScreenshot: 27c-group-report-and-leave
+- takeScreenshot: 27f-group-report-and-leave
 
 # ADDING SOMEBODY WITHOUT LEAVING THE APP, and a door out of a group.
 #

@@ -1,7 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import { carryFailed, type RoomThreadMessage, type ThreadMessage } from '@/features/chat/outgoing';
+import {
+  ROOM_MESSAGE_PAGE,
+  mapEveryPage,
+  nextBefore,
+  type ThreadPages,
+} from '@/features/chat/paging';
 import { useOwnUserId } from '@/features/profile/hooks';
 import {
   setReaction,
@@ -88,18 +94,36 @@ export function useUnpinMessage(chatId: string) {
   });
 }
 
+/**
+ * A room's thread, a page at a time. The RPC has taken a limit since it was
+ * written and nobody passed one, so a busy hostel room stopped at sixty
+ * messages with nothing on screen to say so.
+ *
+ * The realtime subscription keeps invalidating, which refetches every loaded
+ * page rather than merging one row. That is acceptable at these sizes and it
+ * is the only honest option: room_messages joins the sender's name and photo,
+ * which this client cannot synthesise from a raw `messages` row.
+ */
 export function useRoomMessages(chatId: string | null) {
   const queryClient = useQueryClient();
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ['room-messages', chatId],
-    // Failed sends survive the refetch. A room refetches on every realtime
-    // insert, so without this the next thing anybody else posted deleted the
-    // greyed "Not sent" bubble and the sentence inside it.
-    queryFn: async () =>
-      carryFailed<RoomThreadMessage>(
-        queryClient.getQueryData<RoomThreadMessage[]>(['room-messages', chatId]),
-        await fetchRoomMessages(chatId!)
-      ),
+    // Failed sends survive the refetch, and only on the newest page. A room
+    // refetches on every realtime insert, so without this the next thing
+    // anybody else posted deleted the greyed "Not sent" bubble and the
+    // sentence inside it.
+    queryFn: async ({ pageParam }) => {
+      const page = await fetchRoomMessages(chatId!, pageParam);
+      return pageParam == null
+        ? carryFailed<RoomThreadMessage>(
+            queryClient.getQueryData<ThreadPages<RoomThreadMessage>>(['room-messages', chatId])
+              ?.pages[0],
+            page
+          )
+        : page;
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage: RoomThreadMessage[]) => nextBefore(lastPage, ROOM_MESSAGE_PAGE),
     enabled: isSupabaseConfigured && chatId != null,
     // Same reasoning as direct chats: realtime can land between renders, so
     // never serve a stale first paint.
@@ -237,10 +261,19 @@ export function useUnsendMessage(chatId: string) {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] });
       await queryClient.cancelQueries({ queryKey: ['room-messages', chatId] });
       const unsentAt = new Date().toISOString();
-      const stamp = <T extends { id: string; unsent_at?: string | null }>(rows: T[] | undefined) =>
-        rows?.map((row) => (row.id === messageId ? { ...row, unsent_at: unsentAt } : row));
-      const direct = queryClient.getQueryData<ThreadMessage[]>(['messages', chatId]);
-      const room = queryClient.getQueryData<RoomThreadMessage[]>(['room-messages', chatId]);
+      // Every page, not only the newest: a message somebody unsends may be
+      // several pages back by the time they think better of it.
+      const stamp = <T extends { id: string; unsent_at?: string | null }>(
+        pages: ThreadPages<T> | undefined
+      ) =>
+        mapEveryPage(pages, (rows) =>
+          rows.map((row) => (row.id === messageId ? { ...row, unsent_at: unsentAt } : row))
+        );
+      const direct = queryClient.getQueryData<ThreadPages<ThreadMessage>>(['messages', chatId]);
+      const room = queryClient.getQueryData<ThreadPages<RoomThreadMessage>>([
+        'room-messages',
+        chatId,
+      ]);
       queryClient.setQueryData(['messages', chatId], stamp(direct));
       queryClient.setQueryData(['room-messages', chatId], stamp(room));
       // The rollback restores the one stamped ROW, never the whole array: a
@@ -248,21 +281,27 @@ export function useUnsendMessage(chatId: string) {
       // the current array only (the direct channel merges each row exactly
       // once), and a snapshot rollback would erase it for good.
       return {
-        directRow: direct?.find((row) => row.id === messageId),
-        roomRow: room?.find((row) => row.id === messageId),
+        directRow: direct?.pages.flat().find((row) => row.id === messageId),
+        roomRow: room?.pages.flat().find((row) => row.id === messageId),
       };
     },
     // PostgrestError is not an Error — no `instanceof` guard, ever, or every
     // database refusal is silently swallowed and the rollback never runs.
     onError: (_error, messageId, context) => {
       if (context?.directRow !== undefined) {
-        queryClient.setQueryData<ThreadMessage[]>(['messages', chatId], (rows) =>
-          rows?.map((row) => (row.id === messageId ? context.directRow! : row))
+        queryClient.setQueryData<ThreadPages<ThreadMessage>>(['messages', chatId], (pages) =>
+          mapEveryPage(pages, (rows) =>
+            rows.map((row) => (row.id === messageId ? context.directRow! : row))
+          )
         );
       }
       if (context?.roomRow !== undefined) {
-        queryClient.setQueryData<RoomThreadMessage[]>(['room-messages', chatId], (rows) =>
-          rows?.map((row) => (row.id === messageId ? context.roomRow! : row))
+        queryClient.setQueryData<ThreadPages<RoomThreadMessage>>(
+          ['room-messages', chatId],
+          (pages) =>
+            mapEveryPage(pages, (rows) =>
+              rows.map((row) => (row.id === messageId ? context.roomRow! : row))
+            )
         );
       }
     },
