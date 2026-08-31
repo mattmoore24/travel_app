@@ -412,6 +412,12 @@ export type RoomMessageRow = {
    * wait. 'checking' is what the review tile is drawn from.
    */
   photo_state: 'none' | 'ready' | 'checking' | 'blocked';
+  /**
+   * 'said' is a person talking; 'joined' is the room recording an arrival
+   * ("Ana is in"), written by join_pin_chat. The thread renders the second
+   * as a centred line, never as a bubble somebody appears to have typed.
+   */
+  kind: 'said' | 'joined';
 };
 
 export type ReactionSummaryRow = {
@@ -594,6 +600,13 @@ export type MessageRow = {
    * never for deciding who may see a picture.
    */
   moderation_status?: 'pending' | 'approved' | 'rejected';
+  /**
+   * 'said' is a person talking; 'joined' is a room recording an arrival.
+   * Optional because direct chats read the table with `select *` and never
+   * carry a 'joined' row today — the column arrives whether or not a cached
+   * row was fetched before the migration added it.
+   */
+  kind?: 'said' | 'joined';
 };
 
 export type ReportReason =

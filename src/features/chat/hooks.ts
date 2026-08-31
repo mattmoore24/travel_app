@@ -127,6 +127,7 @@ export function useSendMessage(chatId: string | null, kind: 'direct' | 'room' = 
 
   return useMutation({
     mutationFn: (body: string) => sendMessage(chatId!, userId!, body),
+    meta: { failureTitle: "Couldn't send that" },
 
     onMutate: (body: string) => {
       if (chatId == null || userId == null) {
@@ -201,6 +202,7 @@ export function useSendPhoto(chatId: string, kind: 'direct' | 'room' = 'direct')
   return useMutation({
     mutationFn: ({ localUri, body }: { localUri: string; body?: string }) =>
       sendPhotoMessage(chatId, userId!, localUri, body),
+    meta: { failureTitle: "Couldn't send that" },
     onSuccess: () => {
       captureMessageSent(chatId, 'photo', kind);
       queryClient.invalidateQueries({ queryKey: ['messages', chatId] });
@@ -215,6 +217,7 @@ export function useLeaveChat() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (chatId: string) => leaveChat(chatId),
+    meta: { failureTitle: 'Could not leave' },
     onSuccess: () => {
       analytics.capture('left_chat');
       queryClient.invalidateQueries({ queryKey: ['chats', userId] });
@@ -228,6 +231,7 @@ export function useBlockUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (blockedId: string) => blockUser(userId!, blockedId),
+    meta: { failureTitle: 'Could not block them' },
     onSuccess: () => {
       analytics.capture('user_blocked');
       // A block reshapes everything: matches, pins, chats, requests.
@@ -245,6 +249,7 @@ export function useReportUser() {
       details: string | null;
       context: string | null;
     }) => reportUser({ reporterId: userId!, ...input }),
+    meta: { failureTitle: 'Could not send that report' },
     onSuccess: () => {
       analytics.capture('user_reported');
     },

@@ -52,6 +52,16 @@ that. Sources for each research claim are at the bottom.
    already has. Nothing else earns a heart.
 6. **Legible above all.** 4.5:1 minimum on text, 44pt minimum touch targets,
    Dynamic Type respected, and every glass surface has a solid fallback.
+7. **The database may not write user-facing copy** (founder, D3, 2026-08-31).
+   Every raised failure the UI can reach gets a written sentence in
+   `src/lib/failure-message.ts`, keyed on the stable `hint` code the live
+   raise clause carries. The one survivable exception is mechanical: a raise
+   message that starts with a capital letter and ends with `.`, `!` or `?`
+   is treated as a sentence somebody actually wrote and shown verbatim — so
+   a migration author who writes a real sentence ("That date has already
+   passed.") still gets it shown, and a schema fragment ("active trip limit
+   reached (5)") never reaches an alert again. Writing the capital and the
+   full stop is what makes a new database message shippable.
 
 ## Tokens
 

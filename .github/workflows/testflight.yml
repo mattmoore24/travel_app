@@ -83,6 +83,7 @@ jobs:
           A: ${{ secrets.APPLE_TEAM_ID }}
           SU: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           SK: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          PH: ${{ secrets.EXPO_PUBLIC_POSTHOG_API_KEY }}
         run: |
           missing=()
           [ -n "$T" ] || missing+=(EXPO_TOKEN)
@@ -92,6 +93,11 @@ jobs:
           # failure is silent either way.
           [ -n "$SU" ] || missing+=(EXPO_PUBLIC_SUPABASE_URL)
           [ -n "$SK" ] || missing+=(EXPO_PUBLIC_SUPABASE_ANON_KEY)
+          # Analytics is the same shape of silent failure: without the key
+          # every capture() is a no-op, four of the six §6 metrics have no
+          # source, and the launch window cannot be evaluated retrospectively.
+          # Failing here is the loud version the Supabase pair already gets.
+          [ -n "$PH" ] || missing+=(EXPO_PUBLIC_POSTHOG_API_KEY)
           # Signing secrets only matter when an actual build or submit runs.
           if [ "${{ inputs.action }}" != "update" ]; then
             [ -n "$I" ] || missing+=(ASC_ISSUER_ID)
@@ -138,13 +144,10 @@ jobs:
           EXPO_PUBLIC_POSTHOG_HOST: ${{ secrets.EXPO_PUBLIC_POSTHOG_HOST }}
         run: |
           set -o pipefail
-          # Warned, not failed, and the choice is deliberate: analytics being
-          # absent must never block shipping a fix to people who are using the
-          # app. It is loud in the run summary instead, and LAUNCH_RUNBOOK.md
-          # carries it as a checklist item.
-          if [ -z "${EXPO_PUBLIC_POSTHOG_API_KEY:-}" ]; then
-            echo "::warning title=No analytics in this update::EXPO_PUBLIC_POSTHOG_API_KEY is unset, so this bundle ships with analytics disabled and every capture() is a no-op. Set the repo secret to fix it."
-          fi
+          # The key's presence is enforced by 'Check required secrets' above,
+          # which fails the run before anything is bundled — an update
+          # published without it ships analytics dead even when the binary
+          # underneath had a key baked in, and that cannot be un-sent.
 
           # Prove the bundle before it goes anywhere. A build is verified
           # below and an update was not, which is backwards: an update reaches

@@ -14,7 +14,7 @@ import path from 'node:path';
  * off within a week):
  *   1. No U+2014 inside any single-quoted SQL literal in supabase/migrations
  *      or supabase/seed, except the payload of a `comment on` statement.
- *   2. No banned word (swipe, deck, match, request) inside a literal that is
+ *   2. No banned word (swipe, deck, match, unmatch, request) inside a literal that is
  *      part of a push_queue statement — that is lock-screen copy. Bare
  *      machine tokens (e.g. the 'request' in jsonb_build_object('type',
  *      'request')) are exempt: they are payload keys, not copy.
@@ -31,7 +31,9 @@ const MIGRATIONS = path.join(ROOT, 'supabase', 'migrations');
 const SEED = path.join(ROOT, 'supabase', 'seed');
 
 const EM_DASH = '—';
-const BANNED = /\b(swipe|deck|match|request)\b/i;
+// `unmatch` spelled out: \bmatch\b cannot see inside it (no boundary after
+// the n), which let 'cannot unmatch a closed conversation' ship unflagged.
+const BANNED = /\b(swipe|deck|match|unmatch(?:ed)?|request)\b/i;
 const MACHINE_TOKEN = /^[a-z_]+$/;
 
 const sqlFiles = (dir: string): string[] =>

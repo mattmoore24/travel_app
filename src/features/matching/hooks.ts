@@ -133,6 +133,7 @@ export function useSendRequest() {
       profileElement: string | null;
     }) =>
       sendMessageRequest(input.recipientId, input.source, input.firstMessage, input.profileElement),
+    meta: { failureTitle: "Couldn't send that" },
     onSuccess: (result, input) => {
       analytics.capture('request_sent', {
         source: input.source,

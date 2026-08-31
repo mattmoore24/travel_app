@@ -23,6 +23,7 @@ import {
 } from '@/features/profile/priorities';
 import { nextFreeSlot } from '@/features/profile/slots';
 import { useTheme } from '@/hooks/use-theme';
+import { saveFailureMessage } from '@/lib/failure-message';
 import { haptics } from '@/lib/haptics';
 
 /**
@@ -109,9 +110,9 @@ export default function EditPrioritiesScreen() {
       await save.mutateAsync({ slot, text: value });
       setErrors((e) => ({ ...e, [slot]: null }));
     } catch (error) {
-      // The screening trigger speaks in a sentence meant for a person, so it
-      // goes under the row that caused it rather than into an alert.
-      setErrors((e) => ({ ...e, [slot]: messageFor(error) }));
+      // Under the row that caused it rather than into an alert; the words
+      // come from the one vocabulary (src/lib/failure-message.ts).
+      setErrors((e) => ({ ...e, [slot]: saveFailureMessage(error) }));
     }
   };
 
@@ -168,7 +169,7 @@ export default function EditPrioritiesScreen() {
         pendingRef.current?.focus();
       }
     } catch (error) {
-      setPendingError(messageFor(error));
+      setPendingError(saveFailureMessage(error));
     }
   };
 
@@ -269,26 +270,6 @@ export default function EditPrioritiesScreen() {
       </View>
     </StepScreen>
   );
-}
-
-/**
- * The DB speaks in sentences meant for a person; anything else is generic.
- *
- * Duck-typed, NOT `instanceof Error`. supabase-js returns a plain parsed
- * object on the non-throwing path — `PostgrestError` is only constructed
- * under `shouldThrowOnError` — so the instanceof check was always false and
- * this always said "Couldn't save that", underneath a global alert that was
- * simultaneously showing the real sentence. Two explanations at once, one of
- * them wrong.
- */
-function messageFor(error: unknown): string {
-  const message =
-    typeof (error as { message?: unknown } | null)?.message === 'string'
-      ? (error as { message: string }).message
-      : '';
-  return message.includes('community guidelines')
-    ? 'That one breaks our community guidelines.'
-    : "Couldn't save that. Try again.";
 }
 
 const styles = StyleSheet.create({

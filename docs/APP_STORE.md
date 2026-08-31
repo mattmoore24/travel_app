@@ -38,6 +38,14 @@ eas env:create --name EXPO_PUBLIC_POSTHOG_API_KEY --value phc_... --environment 
 Repeat with `--environment preview` for TestFlight-only builds. Plaintext is
 correct here: these are publishable keys, and privacy is enforced by RLS.
 
+The PostHog line is **required, not optional**: a build made without it ships
+with every `analytics.capture()` a silent no-op, four of the six §6 metrics
+have no source at all, and the launch window cannot be measured after the
+fact. The update workflows fail their preflight without the matching repo
+secret for the same reason. Create the PostHog project in the **EU region**
+(`https://eu.i.posthog.com`) — the privacy policy promises EU data residency,
+and a US-cloud key does not answer on the EU host.
+
 ## TestFlight via EAS (once the Apple membership exists)
 
 From any computer (no Mac needed — EAS builds in the cloud):

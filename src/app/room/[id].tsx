@@ -378,6 +378,10 @@ export default function RoomScreen() {
                     })
             }
             noteFor={(m) => (byId.get(m.id)?.removed ? 'Message removed by the host' : null)}
+            // "Ana is in" - the room recording an arrival, centred, no
+            // bubble. The kind lives on the RPC row, so it is looked up the
+            // same way the sender's name is.
+            systemFor={(m) => (byId.get(m.id)?.kind === 'joined' ? m.body : null)}
             onToggleReaction={(messageId, emoji, on) => toggle.mutate({ messageId, emoji, on })}
             onUnsend={(messageId) =>
               Alert.alert('Unsend this message?', 'It disappears for everyone.', [
@@ -392,24 +396,11 @@ export default function RoomScreen() {
             // Hosts only, and the menu simply does not carry the action for
             // anybody else — an action you can see and cannot perform is
             // worse than one that was never offered.
-            onPin={
-              isModerator
-                ? (messageId) => {
-                    pin.mutate(
-                      { messageId },
-                      {
-                        onError: (error) =>
-                          Alert.alert(
-                            'Could not pin that',
-                            /three pins/i.test((error as Error).message ?? '')
-                              ? 'Three is the limit. Unpin one first.'
-                              : 'Try that again in a moment.'
-                          ),
-                      }
-                    );
-                  }
-                : undefined
-            }
+            // No local onError: the global mutation handler answers with the
+            // shared vocabulary ('three pins is the limit' has a written
+            // sentence in src/lib/failure-message.ts), so there is one place
+            // to look for failure copy.
+            onPin={isModerator ? (messageId) => pin.mutate({ messageId }) : undefined}
             // Remove and Report side by side, never one instead of the
             // other. The moderator's menu used to swap Report OUT for
             // Remove, which left the person best placed to spot abuse early

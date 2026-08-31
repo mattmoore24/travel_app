@@ -1,4 +1,10 @@
-import { isOffline, loadFailureMessage, saveFailureMessage } from '@/lib/failure-message';
+import {
+  FAILURE_COPY_VALUES,
+  GENERIC_SAVE_FAILURE,
+  isOffline,
+  loadFailureMessage,
+  saveFailureMessage,
+} from '@/lib/failure-message';
 
 describe('what a person is told when something fails', () => {
   it('recognises a dropped connection however it is dressed', () => {
@@ -19,12 +25,6 @@ describe('what a person is told when something fails', () => {
     );
   });
 
-  it('passes through a sentence the database actually wrote', () => {
-    expect(saveFailureMessage({ message: 'already connected with this traveler' })).toBe(
-      'already connected with this traveler'
-    );
-  });
-
   it('says which thing did not load', () => {
     expect(loadFailureMessage({ message: 'Failed to fetch' }, 'your chats')).toBe(
       'No connection, so your chats could not load.'
@@ -32,5 +32,86 @@ describe('what a person is told when something fails', () => {
     expect(loadFailureMessage({ message: 'boom' }, 'your chats')).toBe(
       'Your chats could not load.'
     );
+  });
+});
+
+describe('the D3 rule: the database may not write user-facing copy', () => {
+  it('answers a stable hint code before reading any prose', () => {
+    // The hint wins even when the message has drifted from every known
+    // fragment — that is the whole point of keying on a code.
+    expect(saveFailureMessage({ message: 'some reworded fragment', hint: 'trip_cap' })).toBe(
+      'Five trips is the most you can have posted at once. Delete one from your profile to add this.'
+    );
+  });
+
+  it('never returns the banned unmatch fragment as itself', () => {
+    const said = saveFailureMessage({ message: 'cannot unmatch a closed conversation' });
+    expect(said).toBe('This chat has already ended.');
+    expect(said).not.toMatch(/unmatch/i);
+  });
+
+  it('answers every relationship failure with the identical sentence', () => {
+    // The database raises ONE message for undiscoverable, blocked, no
+    // overlap and no pin (an existence oracle otherwise); the client must
+    // not fan that back out into different sentences.
+    const byFragment = saveFailureMessage({ message: 'recipient unavailable' });
+    const byHint = saveFailureMessage({
+      message: 'recipient unavailable',
+      hint: 'recipient_unavailable',
+    });
+    expect(byFragment).toBe('You cannot say hi to this traveler right now.');
+    expect(byHint).toBe(byFragment);
+  });
+
+  it('passes a real written sentence through unchanged', () => {
+    expect(saveFailureMessage({ message: 'This chat has ended.' })).toBe('This chat has ended.');
+    expect(saveFailureMessage({ message: 'That date has already passed.' })).toBe(
+      'That date has already passed.'
+    );
+  });
+
+  it('answers an unmapped lowercase fragment with the generic, never itself', () => {
+    const said = saveFailureMessage({ message: 'some internal constraint went sideways' });
+    expect(said).toBe(GENERIC_SAVE_FAILURE);
+  });
+
+  it('maps the schema fragments a screen can actually hit', () => {
+    expect(saveFailureMessage({ message: 'active trip limit reached (5)' })).toBe(
+      'Five trips is the most you can have posted at once. Delete one from your profile to add this.'
+    );
+    expect(saveFailureMessage({ message: 'request already sent to this traveler' })).toBe(
+      'You already said hi. It will be in Chat if they answer.'
+    );
+    expect(saveFailureMessage({ message: 'already connected with this traveler' })).toBe(
+      'You two already have a chat.'
+    );
+    expect(saveFailureMessage({ message: 'sending too fast, give it a moment' })).toBe(
+      'One moment, then try again.'
+    );
+    expect(saveFailureMessage({ message: 'three pins is the limit' })).toBe(
+      'Three pins is the limit. Unpin one first.'
+    );
+  });
+
+  it('answers the whole guest wall family with one door', () => {
+    expect(saveFailureMessage({ message: 'make an account first' })).toBe(
+      'Make an account to do that.'
+    );
+    expect(saveFailureMessage({ message: 'make an account to send photos' })).toBe(
+      'Make an account to do that.'
+    );
+    expect(saveFailureMessage({ message: 'make an account to post a trip' })).toBe(
+      'Make an account to do that.'
+    );
+  });
+
+  it('ships no banned vocabulary and no em dash in any sentence of its own', () => {
+    // The same words src/app/__tests__/copy-lint.test.ts bans in migration
+    // literals, applied to every sentence this module can say.
+    const banned = /\b(swipe|deck|match|unmatch|request)\b/i;
+    for (const sentence of FAILURE_COPY_VALUES) {
+      expect(sentence).not.toMatch(banned);
+      expect(sentence).not.toContain('—');
+    }
   });
 });

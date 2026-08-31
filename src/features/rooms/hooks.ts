@@ -57,6 +57,7 @@ export function usePinMessage(chatId: string) {
   return useMutation({
     mutationFn: (input: { messageId: string; hours?: number }) =>
       pinMessage(input.messageId, input.hours),
+    meta: { failureTitle: 'Could not pin that' },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['room-pins', chatId] });
     },

@@ -9,6 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Space } from '@/constants/theme';
 import { setNewPassword, signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
+import { GENERIC_SAVE_FAILURE, saveFailureMessage } from '@/lib/failure-message';
 import { haptics } from '@/lib/haptics';
 
 const PASSWORD_MIN = 8;
@@ -45,11 +46,20 @@ export function ResetPasswordScreen() {
       // normal one, and the guards take it from here.
       endRecovery();
     } catch (e) {
-      const raw = (e as { message?: unknown })?.message;
+      // saveFailureMessage answers for anything with a real sentence behind
+      // it (Supabase auth writes those). Two failures it cannot know are this
+      // screen's own: a lapsed recovery session surfaces as auth-js's
+      // AuthSessionMissingError, whose 'Auth session missing!' is
+      // capitalised-and-terminated and would pass through verbatim; and an
+      // expired link falls to the generic. Both get the useful sentence.
+      const sessionGone =
+        (e as { name?: string })?.name === 'AuthSessionMissingError' ||
+        /session missing/i.test((e as { message?: string })?.message ?? '');
+      const message = saveFailureMessage(e);
       setError(
-        typeof raw === 'string' && /same.*password|different/i.test(raw)
-          ? 'That is the password you already had. Pick a different one.'
-          : 'Could not save that. The link may have expired, so ask for a new one.'
+        sessionGone || message === GENERIC_SAVE_FAILURE
+          ? 'Could not save that. The link may have expired, so ask for a new one.'
+          : message
       );
     } finally {
       setSaving(false);

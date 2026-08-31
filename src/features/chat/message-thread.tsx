@@ -887,6 +887,7 @@ export function MessageThread({
   avatarFor,
   onOpenSender,
   noteFor,
+  systemFor,
   canReact = true,
   emptyState,
   footer,
@@ -939,6 +940,15 @@ export function MessageThread({
    * a caller whose messages can be taken down by somebody else.
    */
   noteFor?: (message: ThreadMessage) => string | null;
+  /**
+   * A line that belongs to the ROOM, not to anybody in it — "Ana is in",
+   * written by the server when somebody joins a plan. Rendered centred with
+   * no bubble, no author line and no reactions, because a system fact drawn
+   * as a bubble reads as something the person appears to have typed.
+   * Distinct from noteFor, whose line stands in for a message somebody DID
+   * send and so keeps the theirs-side alignment.
+   */
+  systemFor?: (message: ThreadMessage) => string | null;
   /** False for somebody reading a room they have not joined. */
   canReact?: boolean;
   /** Shown when there are no messages at all. */
@@ -1010,19 +1020,26 @@ export function MessageThread({
           const newer = messages[index - 1];
           const mine = mineFor(item);
           const unsent = item.unsent_at != null;
+          // A system line breaks a run in both directions. It carries its
+          // joiner's sender_id, so without this the first thing somebody says
+          // after "X is in" groups against the caption: no author line above
+          // their opening bubble, grouped corners butting a centred line.
+          const olderIsRun = older != null && systemFor?.(older) == null;
+          const newerIsRun = newer != null && systemFor?.(newer) == null;
           const grouped =
-            older != null &&
+            olderIsRun &&
             older.sender_id === item.sender_id &&
             new Date(item.created_at).getTime() - new Date(older.created_at).getTime() <
               GROUP_WINDOW_MS;
           const last =
-            newer == null ||
+            !newerIsRun ||
             newer.sender_id !== item.sender_id ||
             new Date(newer.created_at).getTime() - new Date(item.created_at).getTime() >=
               GROUP_WINDOW_MS;
           // The opening message is carried on the chat row, not the messages
           // table, so there is no id for a reaction to hang off.
           const note = noteFor?.(item) ?? null;
+          const system = systemFor?.(item) ?? null;
           // A message the server has never seen has no id to hang a reaction
           // or a report off, so the menu stays shut until it lands.
           //
@@ -1036,12 +1053,14 @@ export function MessageThread({
             !item.id.startsWith('first:') &&
             !isLocalId(item.id) &&
             !unsent &&
-            note == null;
+            note == null &&
+            system == null;
           const separator = separatorFor(item, older);
           // Only above the first bubble of a run, and never above your own:
           // repeating a name on every bubble is what makes a group thread
-          // unreadable.
-          const author = !mine && !grouped ? (authorFor?.(item) ?? null) : null;
+          // unreadable. A system line has no author at all — the room said
+          // it, and the sentence already carries the name.
+          const author = !mine && !grouped && system == null ? (authorFor?.(item) ?? null) : null;
 
           // One wrapper, not two siblings: an inverted list flips the cell
           // itself, so a fragment's children come out bottom-to-top and the
@@ -1061,7 +1080,13 @@ export function MessageThread({
                   {author}
                 </ThemedText>
               ) : null}
-              {note ? (
+              {system ? (
+                <View style={styles.systemRow}>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    {system}
+                  </ThemedText>
+                </View>
+              ) : note ? (
                 <View style={[styles.bubbleRow, styles.unsentRow, styles.rowTheirs]}>
                   <ThemedText type="caption" themeColor="textSecondary">
                     {note}
@@ -1331,6 +1356,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: Space.lg,
     paddingBottom: Space.sm,
+  },
+  // Centred like a day separator, spaced like a message: a join line belongs
+  // to the room, not to either side of the conversation.
+  systemRow: {
+    alignItems: 'center',
+    paddingVertical: Space.sm,
   },
   menuLayer: {
     position: 'absolute',

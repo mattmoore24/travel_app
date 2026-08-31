@@ -569,15 +569,23 @@ export default function MyBusinessScreen() {
                   title="What's on"
                   icon={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}>
                   {posts.length > 0 ? (
-                    posts.map((post) => (
-                      <PostCard
-                        key={post.id}
-                        post={post}
-                        onTakeDown={() => {
-                          archivePost.mutate(post.id);
-                        }}
-                      />
-                    ))
+                    <>
+                      {/* The first of the two numbers this screen already
+                          holds and never said: how much of yours is live on
+                          the listing right now. */}
+                      <ThemedText type="footnote" themeColor="textSecondary">
+                        {countOf(posts.length, 'post')} live on your listing
+                      </ThemedText>
+                      {posts.map((post) => (
+                        <PostCard
+                          key={post.id}
+                          post={post}
+                          onTakeDown={() => {
+                            archivePost.mutate(post.id);
+                          }}
+                        />
+                      ))}
+                    </>
                   ) : (
                     <ThemedText type="footnote" themeColor="textSecondary">
                       {
@@ -647,14 +655,20 @@ export default function MyBusinessScreen() {
                   <Section
                     title="Your chat"
                     icon={{ ios: 'bubble.left.and.bubble.right', android: 'forum', web: 'forum' }}>
+                    {/* The second number, promoted to the row's own headline:
+                        membership is the closest thing to an audience figure
+                        this screen honestly has. Worded as membership, never
+                        as reach — member_count is who joined the chat, not
+                        who saw the listing, and an owner reading it as views
+                        would be being lied to. */}
                     <DetailRow
-                      label="Open your chat"
-                      icon={{ ios: 'bubble.left', android: 'chat', web: 'chat' }}
-                      value={
+                      label={
                         detail && detail.member_count > 0
-                          ? `${countOf(detail.member_count, 'person', 'people')} in your chat`
+                          ? `${countOf(detail.member_count, 'traveler')} in your chat`
                           : 'Nobody in yet'
                       }
+                      icon={{ ios: 'bubble.left', android: 'chat', web: 'chat' }}
+                      value="Open your chat"
                       onPress={() => router.push(`/room/${business.chat_id}`)}
                     />
                   </Section>

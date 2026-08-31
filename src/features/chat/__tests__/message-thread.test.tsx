@@ -175,6 +175,27 @@ describe('what a group needs and a one-to-one chat does not', () => {
     fireEvent(screen.getByText('Message removed by the host'), 'longPress');
     expect(screen.queryByLabelText('Dismiss')).toBeNull();
   });
+
+  // "Ana is in" is the room recording an arrival, not Ana talking. Drawn as
+  // a bubble under her name it reads as something she typed, which in a
+  // thread that must follow iMessage conventions exactly is a lie.
+  it('prints a join line centred, with no bubble, no author and no menu', () => {
+    renderThread({
+      messages: [message({ body: 'Ana is in' })],
+      systemFor: () => 'Ana is in',
+      authorFor: () => 'Ana',
+    });
+    // The sentence is on screen as plain text…
+    expect(screen.getByText('Ana is in')).toBeTruthy();
+    // …but not as a bubble: a Bubble is a Pressable labelled with its body,
+    // and that element must not exist for a system line.
+    expect(screen.queryByLabelText('Ana is in')).toBeNull();
+    // No author line above it — the sentence already carries the name.
+    expect(screen.queryByText('Ana')).toBeNull();
+    // And nothing to react to.
+    fireEvent(screen.getByText('Ana is in'), 'longPress');
+    expect(screen.queryByLabelText('Dismiss')).toBeNull();
+  });
 });
 
 describe('the menu does the job', () => {

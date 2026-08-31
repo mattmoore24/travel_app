@@ -63,15 +63,10 @@ export default function EditPromptScreen() {
       await save.mutateAsync({ slot, promptKey, answer: trimmed });
       haptics.success();
       router.back();
-    } catch (error) {
-      // The one failure worth naming: the same filter the bio goes through.
-      const raw = (error as { message?: unknown })?.message;
-      Alert.alert(
-        'Could not save that',
-        typeof raw === 'string' && /community guidelines/i.test(raw)
-          ? 'That answer breaks our community guidelines. Reword it and try again.'
-          : 'Check your connection and try again.'
-      );
+    } catch {
+      // The global mutation handler (src/lib/query-client.ts) owns the
+      // message — one vocabulary, one place to look. This catch only keeps
+      // the screen from navigating away on failure.
     }
   };
 

@@ -70,6 +70,8 @@ export function optimisticRoomMessage(input: {
     // Text only. A photo never takes this path — it has an upload to finish
     // before there is anything to show — so there is no state to be in.
     photo_state: 'none',
+    // A person typed this; 'joined' lines are only ever written server-side.
+    kind: 'said',
     local: 'sending',
   };
 }

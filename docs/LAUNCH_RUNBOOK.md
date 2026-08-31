@@ -207,9 +207,11 @@ existing inbox for free, and forwarding is fine for launch.
 5. **Analytics secrets**, unrelated to mail but on the same checklist because
    nothing measures anything until they exist: `EXPO_PUBLIC_POSTHOG_API_KEY` and
    `EXPO_PUBLIC_POSTHOG_HOST` as repo secrets, and the same pair in the EAS
-   environment for builds. The update workflows now pass them; a publish without
-   the key warns in the run summary rather than failing, because analytics being
-   absent must never block shipping a fix.
+   environment for builds. The update workflows pass them and their preflight
+   now FAILS without the key, the same loud check the Supabase pair gets — a
+   bundle published without it ships every capture() as a silent no-op, and the
+   launch window cannot be measured after the fact. Create the PostHog project
+   in the EU region; the privacy policy promises EU data residency.
 6. **Hosting.** DONE: [`web/`](../web/README.md) is served at
    `link.samewhere.io` — the subdomain, not the apex, which stays on
    Squarespace with the Workspace mail records. The association file is live

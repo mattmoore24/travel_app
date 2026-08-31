@@ -6,6 +6,14 @@ lives. Two sources: **PostHog** (app behavior; needs
 truth straight from Postgres; run in the Supabase SQL editor — they are
 service-role-only and invisible to clients).
 
+**Until the PostHog key exists as a repo secret and in the EAS environment
+(docs/APP_STORE.md), every PostHog-derived number on this page reads zero** —
+not "nobody uses the app", but "no key reached a build". The four SQL admin
+views from `20260817150000_launch_hardening.sql` are unaffected: they read
+Postgres truth, not events. The publish workflows fail their preflight while
+the key is missing, so a bundle can no longer ship with analytics silently
+dead.
+
 | §6 metric                                | Source                                                                                    |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------- |
 | **Liquidity per city** (live trip/pin)   | `select * from admin_liquidity;`                                                          |
@@ -66,15 +74,50 @@ tighten moderation before growing supply.
    trip's actual date range, so a trip posted weeks ahead dilutes D1/D7. For
    a true in-window number, filter the insight to users whose
    `trip_created` had `starts_within_days` ≤ 2 (that property is on the
-   event) or read it from the database instead.
+   event). There is no database fallback: in-trip-window retention has **no
+   server-side implementation today** — no migration defines a `last_seen`,
+   `last_active` or `seen_at` column anywhere, so a visit is never recorded
+   in Postgres and nothing can be joined against a trip's date range.
+   Building one means a day-granularity `users.last_seen_on` column written
+   on app open plus an `admin_trip_window_retention` view — which is new
+   personal data collection on an app whose pitch is what it does not store,
+   needs a line in the privacy policy, and sits one join away from a
+   per-user activity history. That is a founder decision, not a footnote;
+   until it is made, the filtered PostHog insight above is the only
+   implementation this metric has.
 5. **Safety pulse** — `user_blocked`, `user_reported`, `request_sent` with
    `delivered=false` over time.
 
-Event inventory (all wired, no-op until the key exists): `map_viewed`,
-`heatmap_rendered`, `pin_created`, `pin_tapped`, `travelers_viewed`,
-`matches_viewed`, `trip_created`, `trip_cancelled`, `request_sent`,
-`request_responded`, `message_sent`, `unmatched`, `user_blocked`,
-`user_reported`.
+Event inventory — every event below is a real `analytics.capture` call in
+`src/` and every capture call in `src/` is listed here; keep the two in step
+with `grep -rhoE "analytics[.]capture[(]'[a-z_]+'" src` before adding a chart.
+(All wired; no-op only in a dev build without the key — the publish
+workflows refuse to ship a bundle without it.)
+
+- **Map and pins**: `map_viewed`, `heatmap_rendered`, `pin_created`,
+  `pin_tapped`, `pin_joined`
+- **Matching and chat**: `travelers_viewed`, `request_sent`,
+  `request_responded`, `message_sent`, `direct_chat_opened`, `left_chat`
+- **Trips**: `trip_created`, `trip_cancelled`, `trip_deleted`
+- **Groups and rooms**: `group_created`, `group_joined`,
+  `group_member_added`, `group_member_removed`, `room_joined`, `room_left`
+- **Guest funnel**: `gate_shown`, `gate_tapped`, `gate_signin_tapped`,
+  `guest_joined`, `intro_completed`
+- **Signup and onboarding**: `signup_started`, `signup_step_completed`,
+  `signup_apple_used`, `onboarding_completed`, `profile_photo_added`,
+  `profile_prompt_saved`, `profile_priority_saved`
+- **Notifications**: `push_primer_shown`, `push_primer_answered`,
+  `push_permission_state`, `push_opened`
+- **Safety and support**: `user_blocked`, `user_reported`,
+  `support_message_sent`
+- **Business**: `business_registered`, `business_step_completed`,
+  `business_email_confirmed`, `business_storefront_submitted`,
+  `business_post_created`, `my_business_viewed`
+
+`matches_viewed` and `unmatched` used to be listed here and exist nowhere in
+`src/` — each would have produced a permanently empty chart, and an empty
+chart reads as "nobody uses matching" rather than "this event was never
+written". Neither name may return: the vocabulary they came from is banned.
 
 ## Launch-city operations
 
