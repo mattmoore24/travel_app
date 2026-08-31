@@ -999,6 +999,52 @@ web/i/index.html — the paste fallback does not help there either, because
 `Alert.prompt` is iOS-only and the Android branch shows an alert with no
 input.
 
+## Language and locale (2026-08-31, decision D5)
+
+**The app's strings are English, everywhere, for v1. The traveler's own dates and times
+are to follow their phone.**
+
+Two different questions were being answered by accident, and the answer to the second one
+was "whatever each formatter's author felt like":
+
+- **Strings** stay English. Four launch markets are not four translations: a v1 with no
+  users does not have the evidence to spend a translation budget, and a half-translated
+  app reads worse than an English one. The App Store LISTING is localised for pt-PT,
+  es-MX, th and id (docs/APP_STORE.md), because listing metadata is per-territory, needs
+  no build, and "travel friends" and "amigos de viagem" are different search markets.
+- **Dates, times and the week's first day are to follow the phone.** Eleven formatters are
+  pinned to `Intl.DateTimeFormat('en', …)` while six follow the device, so a Portuguese
+  phone shows "agosto 2026" as a calendar header and "Aug 30 to Sep 2" in the summary
+  directly beneath it. Chat times are locked to 12-hour AM/PM worldwide while business
+  hours in the same app are 24-hour. That is the rule this decision sets, not a description
+  of the app today.
+
+`src/lib/locale.ts` is where the phone is asked, and the only place it should be:
+`DEVICE_LOCALE`, `DEVICE_LANGUAGE`, `USES_24_HOUR_CLOCK`, `FIRST_WEEKDAY` and
+`DEVICE_TIME_ZONE`, read once at module load from `expo-localization` and frozen for the
+process. Anything that formats a date or a time is to take its locale from there rather
+than naming one.
+
+**What is actually migrated: nothing yet.** The helper has no production call sites. Eleven
+display formatters still name `'en'` — `app/place/[id].tsx:50`,
+`app/(tabs)/my-business.tsx:49`, `features/pins/map-filter-sheet.tsx:121`,
+`features/pins/pin-helpers.ts:66` and `:292`, `features/trips/dates.ts:29` and `:30`,
+`features/chat/separators.ts:6`, `:7`, `:50` and `:55` — and each is a screen a traveler
+reads. A twelfth, `features/pins/pin-helpers.ts:312`, names `'en-US'` on purpose and must
+keep it: `cityClockNow` reads the parts back by name to build a Date, so it is machine
+parsing rather than display, and a locale-dependent format there would be a bug. Moving the
+eleven is its own package; until it lands, this section is a decision and a debt, not a
+description.
+
+**Expiry condition.** Revisit the English-only strings decision when a non-English launch
+city is added, or when a launch market's retention lags the others by enough to suspect the
+language. Until then this is a decision, not an omission, and it does not need re-deriving.
+
+**RTL is not handled.** Every directional style in the app is physical (`marginLeft`,
+`textAlign: 'left'`) rather than logical (`marginStart`, `'start'`). That is harmless while
+no RTL locale is declared and becomes a forty-file retrofit the day one is. Adding Arabic or
+Hebrew to the listing is not a metadata change; it is that retrofit first.
+
 ## Technical flags (raised to founder, non-blocking)
 
 1. **`expo-router/unstable-native-tabs`** — the native tabs API is new in the SDK 5x line and

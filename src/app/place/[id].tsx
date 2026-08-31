@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { openInAppBrowser } from '@/components/external-link';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -35,7 +36,7 @@ import {
   shortTime,
   weekdayLabel,
 } from '@/features/business/vocabulary';
-import { hrefFor } from '@/features/business/links';
+import { hrefFor, opensInAppBrowser } from '@/features/business/links';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { dayLabel } from '@/features/chat/separators';
 import { useIsGuest } from '@/features/guest/hooks';
@@ -201,13 +202,25 @@ function LinkRow({ link }: { link: BusinessLinkJson }) {
   const phone = link.kind === 'phone';
   const email = link.kind === 'email';
   const whatsapp = link.kind === 'whatsapp';
+  // A website and a menu are pure reading, so they come up over the screen
+  // with a Done button and land the reader back exactly here. Everything else
+  // belongs to another app: see opensInAppBrowser for which and why.
+  const inApp = opensInAppBrowser(link.kind);
+
+  // The glyph answers the same question as the hint, so it branches on the
+  // same predicate. The leaving arrow stayed on the website and menu rows
+  // when they stopped leaving, which made the row say two things at once: the
+  // spoken hint promised a Done button and the picture promised Safari. A
+  // chevron is what every other row in this app uses for "opens here".
   const glyph: SymbolViewProps['name'] = phone
     ? { ios: 'phone.fill', android: 'call', web: 'call' }
     : email
       ? { ios: 'envelope.fill', android: 'mail', web: 'mail' }
       : whatsapp
         ? { ios: 'message.fill', android: 'chat', web: 'chat' }
-        : { ios: 'arrow.up.right', android: 'open_in_new', web: 'open_in_new' };
+        : inApp
+          ? { ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }
+          : { ios: 'arrow.up.right', android: 'open_in_new', web: 'open_in_new' };
 
   return (
     <PressableScale
@@ -220,15 +233,25 @@ function LinkRow({ link }: { link: BusinessLinkJson }) {
             ? 'Opens your mail app'
             : whatsapp
               ? 'Opens WhatsApp'
-              : 'Opens outside the app'
+              : inApp
+                ? 'Opens here, with a Done button'
+                : 'Opens outside the app'
       }
       haptic="light"
       scaleTo={0.98}
-      onPress={() =>
-        Linking.openURL(hrefFor(link)).catch(() =>
-          Alert.alert('Could not open that', 'Nothing on this phone opens that kind of link.')
-        )
-      }
+      onPress={() => {
+        const href = hrefFor(link);
+        // Two openers, two failures, two answers. The old single message
+        // ("nothing on this phone opens that kind of link") is true of a
+        // tel: or a mailto: with no app behind it, and nonsense about a
+        // website that failed to present in a browser this app carries.
+        const opening = inApp ? openInAppBrowser(href) : Linking.openURL(href);
+        opening.catch(() =>
+          inApp
+            ? Alert.alert('Could not open that page', 'Check your connection and try again.')
+            : Alert.alert('Could not open that', 'Nothing on this phone opens that kind of link.')
+        );
+      }}
       style={[styles.linkRow, { backgroundColor: theme.surface }]}>
       <View style={styles.linkText}>
         <ThemedText type="callout">{label}</ThemedText>

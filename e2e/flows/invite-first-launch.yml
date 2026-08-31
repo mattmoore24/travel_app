@@ -1,0 +1,71 @@
+appId: com.mattmoore.samewhere
+---
+# DOES A GROUP INVITE SURVIVE A FIRST LAUNCH? (platform-invite-survives-first-launch)
+#
+# Group invites are the app's only viral loop, and the entire population an
+# invite is FOR is people who do not have the app. So the first thing that
+# happens to an invite is the thing this flow tests: a cold start, on a phone
+# where `samewhere.intro.seen.v1` is unset, with a deep link in hand.
+#
+# The claim the audit made is that the link is swallowed. src/app/_layout.tsx
+# returns the boot hold and then IntroTour ABOVE the Stack, and join-group is
+# declared only inside that Stack, so at the moment the initial URL is handed
+# to the navigation container there is no navigator to receive it. Against
+# that: expo-router gives the container the initial linking state, and React
+# Navigation can rehydrate a stale state into a navigator that mounts late.
+# The repo's own note in src/features/auth/routing.ts says the opposite
+# happened to a navigation in flight ("when the stack came back it came back
+# at its anchor route"), which is a different case and not proof of this one.
+#
+# Nothing in the repo settled it, and building a capture path for a bug that
+# may not exist is worse than the bug. This flow settles it. It stays here
+# permanently either way: a refactor of the root layout would silently
+# reintroduce the regression, and this is the only place it would be seen.
+#
+# IF THIS FLOW FAILS, the fix is four lines in
+# src/features/auth/use-auth-listener.ts: match `/join-group/:token` off
+# Linking.getInitialURL() next to the recovery parse and stash it with the
+# store's existing `inviteRemembered`. PendingInviteHandoff in
+# src/app/(tabs)/_layout.tsx already spends the token at the first moment
+# there is a mounted stack, so the token then survives the tour, the auth
+# stack and onboarding for free.
+#
+# THE TOKEN IS DELIBERATELY ONE THAT DOES NOT RESOLVE. What is being tested is
+# whether the ROUTE is reached, and "This invite is not open" is a sentence
+# only src/app/join-group/[token].tsx can produce. A real token would need a
+# group created in another flow, and coupling this to that flow's state would
+# make a failure here ambiguous, which is the one thing this flow must not be.
+#
+# No `clearState`, ever: it deletes the app's data container and with it the
+# over-the-air update carrying the JS under test. The workflow resets storage
+# between flows, which is what makes the tour appear below.
+
+# Cold, not backgrounded. openLink into a RUNNING app arrives as a url event,
+# which is the case that already works; the initial-URL path is the one in
+# question.
+- stopApp
+- openLink: samewhere://join-group/e2e-first-launch-token
+
+# The tour is the proof this is a genuine first launch. If this fails, storage
+# was not reset and the flow is answering a different question.
+- extendedWaitUntil:
+    visible: 'Show me around'
+    timeout: 30000
+- takeScreenshot: 80-invite-cold-start-tour
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Skip rather than the four-page walk: the guest tour already photographs the
+# pages, and what matters here is what is underneath when the tour goes.
+- tapOn: 'Skip'
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: 81-after-the-tour
+
+# The whole question, in one assertion. Exact text, per change-review: never
+# loosened to make a run pass. Reaching the map instead of this screen is the
+# bug, and it is what the screenshot above will show.
+- extendedWaitUntil:
+    visible: 'This invite is not open'
+    timeout: 20000
+- takeScreenshot: 82-invite-survived

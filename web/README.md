@@ -30,12 +30,17 @@ install picks it up immediately — test on a device that has never had the app.
 
 ## 2. The pages
 
-| Path         | What it is                                                                                                          |
-| ------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `/privacy`   | The full text of `docs/legal/PRIVACY_POLICY.md`. Required App Store Connect field.                                  |
-| `/support`   | A contact page naming `hello@samewhere.io`. Required App Store Connect field.                                       |
-| `/i/<token>` | Invite landing: the group's name, an "Open in Samewhere" button, and an App Store link for anybody without the app. |
-| `/reset`     | Password reset landing.                                                                                             |
+| Path          | What it is                                                                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/privacy`    | The full text of `docs/legal/PRIVACY_POLICY.md`. Required App Store Connect field.                                                                                |
+| `/guidelines` | The full text of `docs/legal/COMMUNITY_GUIDELINES.md`, published because the DSA wants the rules and the reporting and appeal routes readable without an account. |
+| `/support`    | A contact page naming `hello@samewhere.io`. Required App Store Connect field.                                                                                     |
+| `/i/<token>`  | Invite landing: the group's name, an "Open in Samewhere" button, and an App Store link for anybody without the app.                                               |
+| `/reset`      | Password reset landing.                                                                                                                                           |
+
+`/privacy` and `/guidelines` are the same documents the app bundles in
+`src/constants/policies.ts`. All four copies move together: markdown, page,
+in-app summary, and the App Store Connect field.
 
 `/i/<token>` may render **only** what `group_invite_preview` already exposes to
 `anon` — the group name and nothing else. No member list, no avatars, no
@@ -128,7 +133,7 @@ resolves before launch.
 Verify the whole surface after any deploy:
 
 ```
-for p in / /privacy /support /i/testtoken /reset /reset/foo /nope-xyz; do
+for p in / /privacy /guidelines /support /i/testtoken /reset /reset/foo /nope-xyz; do
   printf '%-16s ' "$p"
   curl -s -o /dev/null -w 'code=%{http_code} redirects=%{num_redirects} ' \
     "https://link.samewhere.io$p"

@@ -146,3 +146,124 @@ describe('the copy the database ships', () => {
     expect(stale).toEqual([]);
   });
 });
+
+/**
+ * The App Store listing is copy too, and it is the surface most likely to
+ * import the dating frame by accident: it gets written last, under a
+ * deadline, from references that are all dating apps. So the draft in
+ * docs/APP_STORE.md is scanned by the same rules the app's own strings obey.
+ *
+ * Scoped to the marked block, because the rest of that document is internal
+ * prose about builds and certificates, where an em dash is nobody's problem
+ * and "request" means an HTTP one.
+ */
+
+/**
+ * How much of the description is above the More fold, in characters.
+ *
+ * App Store Connect folds by RENDERED lines on the reader's own screen
+ * width, so a source-line count proves nothing about what they see. A
+ * character prefix is the property that survives being re-wrapped.
+ */
+const FOLD = 120;
+
+/**
+ * Listing-only vocabulary, each phrase rather than each word.
+ *
+ * The design brief's bans are about MEANING, and the words carry innocent
+ * meanings elsewhere: 'place' is right for a spot on the map (the drop-a-pin
+ * search field) and appears inside 'placement', so a bare \bplace\b in
+ * BANNED would fire on copy that is correct. These are the exact phrases the
+ * listing got wrong, kept as phrases for that reason.
+ */
+const LISTING_BANNED: { pattern: RegExp; why: string }[] = [
+  {
+    pattern: /\bplaces you go\b/i,
+    why: '"place" meaning a business. A hostel, bar, cafe or tour operator is a BUSINESS in every string anybody reads (founder, 2026-08-28).',
+  },
+  {
+    pattern: /\branked\b|\bscored\b|\bflicked\b/i,
+    why: 'the travelers queue described as a ranking or a card stack, which imports the frame even in the negative. Say the mechanic positively: one person at a time, read in full, say hello or move on.',
+  },
+];
+describe('the App Store listing copy', () => {
+  const doc = fs.readFileSync(path.join(ROOT, 'docs', 'APP_STORE.md'), 'utf8');
+  const START = '<!-- listing-copy:start -->';
+  const END = '<!-- listing-copy:end -->';
+
+  const section = (): string => {
+    const from = doc.indexOf(START);
+    const to = doc.indexOf(END);
+    expect(from).toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    return doc.slice(from + START.length, to);
+  };
+
+  /** Every fenced block in the listing section, contents only. */
+  const fencedBlocks = (): string[] =>
+    [...section().matchAll(/```\n([\s\S]*?)```/g)].map((m) => m[1].trimEnd());
+
+  it('is present and substantial', () => {
+    expect(section().trim().length).toBeGreaterThan(500);
+  });
+
+  it('carries no em dash', () => {
+    expect(section().includes(EM_DASH)).toBe(false);
+  });
+
+  it('carries no banned word', () => {
+    const offending = section()
+      .split('\n')
+      .filter((line) => BANNED.test(line));
+    expect(offending).toEqual([]);
+  });
+
+  it('spends its opening characters on the map, the shared dates and the word platonic', () => {
+    // App Store Connect folds the description by RENDERED lines, and it
+    // renders whatever width the reader's phone is - so counting SOURCE
+    // lines certified nothing. The property that survives the fold is a
+    // character prefix: whatever the device wraps at, the first ~120
+    // characters are above More.
+    const description = section().slice(section().indexOf('A map of what other travelers'));
+    const opening = description.slice(0, FOLD).toLowerCase();
+    expect(opening).toContain('map');
+    expect(opening).toContain('platonic');
+    expect(opening).toMatch(/overlap|same dates|shared dates|days you share/);
+  });
+
+  it('keeps every pasted paragraph on one physical line', () => {
+    // These blocks are pasted verbatim and App Store Connect keeps every
+    // newline it is given, so an 80-column hard wrap becomes a line break in
+    // the middle of a sentence on the store page. A line that is followed by
+    // one starting in lower case is that wrap, and nothing else: every real
+    // line in these blocks opens with a capital.
+    const wrapped: string[] = [];
+    for (const block of fencedBlocks()) {
+      const lines = block.split('\n');
+      lines.forEach((line, i) => {
+        const next = lines[i + 1];
+        if (line.trim() !== '' && next != null && /^[a-z]/.test(next)) {
+          wrapped.push(`${line} / ${next}`);
+        }
+      });
+    }
+    expect(wrapped).toEqual([]);
+  });
+
+  it('carries none of the vocabulary the SQL scan cannot see', () => {
+    const offending = LISTING_BANNED.filter((rule) => rule.pattern.test(section())).map(
+      (rule) => rule.why
+    );
+    expect(offending).toEqual([]);
+  });
+
+  it('keeps the name, subtitle and keyword fields inside the App Store limits', () => {
+    const [name, subtitle, keywords] = fencedBlocks().map((block) => block.trim());
+    expect(name.length).toBeLessThanOrEqual(30);
+    expect(subtitle.length).toBeLessThanOrEqual(30);
+    expect(keywords.length).toBeLessThanOrEqual(100);
+    // A keyword field with a space after a comma spends a character on
+    // nothing: Apple splits on the comma either way.
+    expect(keywords).not.toMatch(/, /);
+  });
+});

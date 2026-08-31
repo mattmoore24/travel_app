@@ -46,3 +46,25 @@ export function hrefFor(link: BusinessLinkJson): string {
   const base = HANDLE_BASE[link.kind];
   return base ? `${base}${value.replace(/^@+/, '')}` : `https://${value}`;
 }
+
+/**
+ * Which link kinds open INSIDE the app, in an SFSafariViewController with a
+ * Done button, rather than throwing the reader out to Safari.
+ *
+ * Only the two that are pure reading: a business's own site and its menu.
+ * Everything else is deliberately left to `Linking.openURL`, and each for its
+ * own reason:
+ *
+ * - `phone`, `email`, `whatsapp` are not web addresses at all. `tel:` and
+ *   `mailto:` have nothing to render, and wa.me is claimed by WhatsApp.
+ * - `instagram`, `tiktok`, `facebook`, `x` are https URLs the native apps
+ *   claim as universal links. An in-app browser intercepts that and shows a
+ *   signed-out web view instead of the app the person is already logged into.
+ * - `reservations` and `tickets` end in somebody typing a card number. That
+ *   belongs in the browser that has their autofill and their password
+ *   manager, not in a web view inside a travel app.
+ * - `other` is unknown by definition, so it gets the conservative path.
+ */
+export function opensInAppBrowser(kind: BusinessLinkKind): boolean {
+  return kind === 'website' || kind === 'menu';
+}

@@ -10,14 +10,42 @@ import { ThemedText } from '@/components/themed-text';
 import { useBlockUser, useReportUser } from '@/features/chat/hooks';
 import type { ReportReason } from '@/lib/database.types';
 
-const REASON_OPTIONS: { value: ReportReason; label: string }[] = [
+/**
+ * What a reporter can say, in their words.
+ *
+ * 'They are under 18' is here because the app had no way to say it at all,
+ * while the privacy policy promised we remove underage accounts. It is
+ * phrased as an observation rather than an accusation, like the other five,
+ * and it does NOT suppress anybody by itself: it sorts the report to the
+ * front of the review queue and a person decides (decision D34).
+ */
+export const REASON_OPTIONS: { value: ReportReason; label: string }[] = [
   { value: 'flirtation_or_sexual', label: 'Explicit or sexual' },
   { value: 'harassment', label: 'Harassment' },
   { value: 'spam', label: 'Spam' },
   { value: 'fake_profile', label: 'Fake profile' },
   { value: 'safety_concern', label: 'Safety concern' },
+  { value: 'underage', label: 'They are under 18' },
   { value: 'other', label: 'Other' },
 ];
+
+/**
+ * Values the database accepts and this form deliberately does not offer,
+ * each with the reason. A value that is in neither list is a value somebody
+ * added to the enum and forgot to think about, which is exactly what
+ * happened to 'impersonation'; the test in
+ * src/app/__tests__/report-reasons.test.ts fails until it lands in one.
+ */
+export const REASON_NOT_OFFERED: Partial<Record<ReportReason, string>> = {
+  impersonation:
+    'Fake profile already covers it in a traveler\u2019s words, and two chips a ' +
+    'reporter has to choose between is a queue full of mislabelled reports. ' +
+    'The value itself is an orphan on public.report_reason: 20260827090000 ' +
+    'added it for the business report path, and the path that shipped writes ' +
+    'a DIFFERENT enum (public.business_report_reason, whose value is ' +
+    '\u2018not_this_business\u2019) into a different table (business_reports, ' +
+    'via report_business). Nothing writes this value to reports today.',
+};
 
 export default function ReportScreen() {
   const params = useLocalSearchParams<{ userId: string; context?: string }>();

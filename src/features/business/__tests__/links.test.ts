@@ -1,4 +1,4 @@
-import { hrefFor } from '@/features/business/links';
+import { hrefFor, opensInAppBrowser } from '@/features/business/links';
 import type { BusinessLinkJson, BusinessLinkKind } from '@/lib/database.types';
 
 const link = (kind: BusinessLinkKind, value: string): BusinessLinkJson =>
@@ -39,5 +39,39 @@ describe('hrefFor', () => {
   it('gives a scheme-less address one, which is the case that started this', () => {
     expect(hrefFor(link('website', 'example.com'))).toBe('https://example.com');
     expect(hrefFor(link('menu', ' example.com/menu '))).toBe('https://example.com/menu');
+  });
+});
+
+/**
+ * Which opener a link kind gets. This is the whole of the in-app browser
+ * decision, isolated out of the screen so it can be asserted without
+ * mounting one: a website and a menu come up inside the app with a Done
+ * button; everything else belongs to another app and is left alone.
+ */
+describe('opensInAppBrowser', () => {
+  it('keeps reading inside the app', () => {
+    expect(opensInAppBrowser('website')).toBe(true);
+    expect(opensInAppBrowser('menu')).toBe(true);
+  });
+
+  it('leaves the kinds that are not web pages to the system', () => {
+    for (const kind of ['phone', 'email', 'whatsapp'] as BusinessLinkKind[]) {
+      expect(opensInAppBrowser(kind)).toBe(false);
+    }
+  });
+
+  // The expensive mistake this prevents: an in-app browser intercepting a
+  // universal link the native app claims, and showing a signed-out web view
+  // to somebody who is logged in two icons away.
+  it('leaves every social handle to the app that claims it', () => {
+    for (const kind of ['instagram', 'tiktok', 'facebook', 'x'] as BusinessLinkKind[]) {
+      expect(opensInAppBrowser(kind)).toBe(false);
+    }
+  });
+
+  it('leaves anything that ends in a card number to the real browser', () => {
+    expect(opensInAppBrowser('reservations')).toBe(false);
+    expect(opensInAppBrowser('tickets')).toBe(false);
+    expect(opensInAppBrowser('other')).toBe(false);
   });
 });

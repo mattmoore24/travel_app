@@ -38,6 +38,20 @@ export default function GuidelinesScreen() {
             </View>
           ))}
 
+          {/* The two documents point at each other, so a person who opened
+              one is never told to go and find the other. */}
+          <View style={styles.section}>
+            <ThemedText type="smallBold">Privacy</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              What we collect, what we never collect, and what happens to your selfie.
+            </ThemedText>
+            <PrimaryButton
+              variant="ghost"
+              label="Privacy policy"
+              onPress={() => router.push('/privacy')}
+            />
+          </View>
+
           <View style={styles.section}>
             <ThemedText type="smallBold">Contact us</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">

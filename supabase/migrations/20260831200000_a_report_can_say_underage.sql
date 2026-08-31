@@ -1,0 +1,18 @@
+-- A report can say "they are under 18".
+--
+-- The 18+ rule is a CHECK on a typed integer (20260816190000, `age between 18
+-- and 120`) mirrored by validateAge, whose error text names the number to
+-- type. That is the honest state of things for a free app. What was not
+-- honest is that the app then threw away the one signal that could actually
+-- find a minor: the report form offered six reasons, none of them this, and
+-- no free-text field could carry it into a queue that sorts by reason.
+-- Meanwhile docs/legal/PRIVACY_POLICY.md promised "we remove underage
+-- accounts" through a mechanism that did not exist.
+--
+-- ONE STATEMENT IN THIS FILE, DELIBERATELY. Postgres refuses to use a new
+-- enum value in the same transaction that added it, so anything referring to
+-- 'underage' by name has to live in a later migration. The queue ordering
+-- does, in 20260831201500. The repo has added to this enum before
+-- (20260827090000 added 'impersonation'), so the pattern is proven here and
+-- the heavier enum rebuild 20260823040000 needed is not.
+alter type public.report_reason add value if not exists 'underage';

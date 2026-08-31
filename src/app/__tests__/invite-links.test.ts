@@ -26,6 +26,20 @@ describe('an invite survives leaving the app', () => {
     expect(code).not.toContain('Linking.createURL');
   });
 
+  it('shares the link itself, never a scheme, in the text somebody pastes on', () => {
+    // The invite leaves through the native share sheet as ONE string, so
+    // whatever is in that string is what lands in WhatsApp. A custom scheme
+    // there is dead for the entire population an invite exists for: iMessage
+    // and WhatsApp will not linkify it, and Safari answers "the address is
+    // invalid". This is the assertion the audit wanted made in Maestro; it
+    // cannot be, because there is no copy step to read back (the share sheet
+    // is the chooser) and the URL is never printed on screen.
+    const code = read('group', '[id].tsx');
+    expect(code).toContain('const url = inviteUrl(inviteToken)');
+    expect(code).toContain('${url}');
+    expect(code).not.toContain('samewhere://');
+  });
+
   it('points at the host the pages and the association file are served from', () => {
     expect(WEB_ORIGIN).toBe('https://link.samewhere.io');
     expect(WebLinks.invite('abc123')).toBe('https://link.samewhere.io/i/abc123');

@@ -180,6 +180,13 @@ function BusinessAccount({ name }: { name: string | null }) {
           label="Send us a message"
           onPress={() => router.push('/contact')}
         />
+        {/* The policy, on the one page a business account has. It was the
+            only one of the three profile variants with no route to /privacy
+            at all: the traveler page and the guest page both carry this
+            button, and a business owner who wanted to know what we do with
+            their data - or an App Reviewer signed in on the business demo
+            account looking for 5.1.1(i) - had nowhere to go from here. */}
+        <PrimaryButton variant="ghost" label="Privacy" onPress={() => router.push('/privacy')} />
         <PrimaryButton
           variant="ghost"
           label="Sign out"

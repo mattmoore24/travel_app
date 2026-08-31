@@ -3,7 +3,7 @@
 -- standing gates on suspended/banned senders, the photo moderation flag, the
 -- selfie verification flow, and the admin report queue.
 begin;
-select plan(76);
+select plan(79);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -716,6 +716,38 @@ select throws_ok(
        '00000000-0000-0000-0000-00000000000d', 'trip_match', 'hey', 'bio') $$,
   'account banned',
   'banned sender is refused at the DB layer'
+);
+
+-- An underage report: collectable at all, and first in the queue (D34).
+--
+-- Dave is the only account still active and unreported at this point, and
+-- alice is a live reporter. The older spam report is what makes the ordering
+-- assertion mean something: on created_at alone it would come first.
+select pg_temp.admin();
+insert into public.reports (reporter_id, reported_user_id, reason, details, created_at)
+  values ('00000000-0000-0000-0000-00000000000b',
+          '00000000-0000-0000-0000-00000000000d',
+          'spam', 'posting the same link in every group', now() - interval '2 days');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select lives_ok(
+  $$ insert into public.reports (reporter_id, reported_user_id, reason, details)
+     values ('00000000-0000-0000-0000-00000000000a',
+             '00000000-0000-0000-0000-00000000000d',
+             'underage', 'says on their profile they are still at school') $$,
+  'a traveler can report that somebody is under 18'
+);
+select pg_temp.admin();
+select is(
+  (select reason::text from public.reports
+    where reported_user_id = '00000000-0000-0000-0000-00000000000d'
+      and reporter_id = '00000000-0000-0000-0000-00000000000a'),
+  'underage',
+  'the report lands with the reason it was filed under'
+);
+select is(
+  (select reason::text from public.admin_report_queue limit 1),
+  'underage',
+  'an underage report sorts ahead of every older open report'
 );
 
 select * from finish();

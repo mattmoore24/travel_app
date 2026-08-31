@@ -38,14 +38,27 @@ export const GUIDELINE_SECTIONS = [
     title: 'Your privacy',
     body: 'We never collect your location. Pins are plans you type, and they vanish within 72 hours. Your socials only show once you are both chatting. Delete your account, and everything in it, any time from your profile.',
   },
+  {
+    // The one section of docs/legal/COMMUNITY_GUIDELINES.md that never made
+    // it into the app, and the only one that is about the moment the product
+    // exists for: two strangers actually meeting.
+    title: 'Meeting up',
+    body: 'Make plans in public places, and tell someone where you are going. Report anything that feels off. You are never wasting our time.',
+  },
 ] as const;
 
 /**
  * The privacy policy, distilled from docs/legal/PRIVACY_POLICY.md for the
- * /privacy screen. Only the uncontested paragraphs of that draft are here:
- * the analytics bullet and the exact hosting region are still bracketed
- * founder decisions there, so neither is claimed here — shipping a guess in
- * a published policy is worse than saying less.
+ * /privacy screen. Nothing bracketed in that draft is claimed here: the exact
+ * Supabase region and the legal entity are still founder and lawyer answers,
+ * and shipping a guess in a published policy is worse than saying less.
+ *
+ * `source` names the heading in docs/legal/PRIVACY_POLICY.md each section
+ * summarises, and src/app/__tests__/privacy-screen.test.tsx asserts every one
+ * of them is still a real heading there. The header comment was the only
+ * thing keeping the two in step before, and it had already failed once: the
+ * meeting-safety section of the house rules was dropped from the app for
+ * months and nothing noticed.
  *
  * Two recorded decisions shape the wording: the data-export promise is
  * narrowed to what Contact us can actually deliver (D20), and the selfie
@@ -56,36 +69,51 @@ export const PRIVACY_PROMISE =
 
 export const PRIVACY_SECTIONS = [
   {
+    // The location denial leads, because it is the strongest sentence in the
+    // document and the one a cautious traveler opened this screen to find.
+    title: 'What we never collect',
+    source: 'What we deliberately do NOT collect',
+    body: 'Your device location. The app never asks for it and has no permission to read it, so the map can only ever show plans people typed in themselves. We also never see your birthdate, your contacts, or any photo beyond the ones you pick, and we never follow you around other apps.',
+  },
+  {
     title: 'What we collect',
-    body: 'Your email address, and the profile you build: name, age, gender, home city, languages, bio, photos and any socials you add. Trips are a city and dates. Pins are a venue, a category and a day, and they are permanently deleted within 72 hours. Messages you send are stored so both sides of a chat can read them.',
+    source: 'What we collect',
+    body: 'Your email address, and the profile you build: name, age, gender, home city, languages, bio, photos and any socials you add. Trips are a city and dates. Pins are a venue, a category and a day, and they are permanently deleted within 72 hours. Messages you send are stored so both sides of a chat can read them. We also record which screens get opened, so we can tell which parts of the app are working.',
   },
   {
     title: 'The selfie check',
-    body: 'Getting verified is optional. Your selfie is compared automatically with your profile photos to confirm they show the same person. That comparison counts as biometric data, so it only happens because you chose to start it. The selfie is deleted once checked, and only the result is kept.',
-  },
-  {
-    title: 'What we never collect',
-    body: 'Your device location. The app never asks for it and has no permission to read it. We also never see your birthdate, your contacts, or any photo beyond the ones you pick.',
+    source: 'Verification, and why we call it biometric',
+    body: 'Getting verified is optional. Your selfie is compared automatically with your profile photos to confirm they show the same person. Nothing measures your face and no template of it is worked out. That comparison still counts as biometric data, so it only happens because you chose to start it. The selfie is deleted once checked, and only the result is kept.',
   },
   {
     title: 'What other travelers see',
-    body: 'Your profile and your upcoming trips show to travelers who can reach them, like someone whose trip overlaps yours or someone who taps your pin. Posting a trip also makes you eligible to appear as the one featured traveler a signed-out visitor sees; delete the trip and you leave that spot. Your socials only show once you are both chatting, and the database enforces that. The heat on the map is anonymous, and areas with only a few plans are never shown.',
+    source: 'How your information is shared with other users',
+    body: 'Your profile and your upcoming trips show to travelers who can reach them, like someone whose trip overlaps yours or someone who taps your pin. Posting a trip also makes you eligible to appear as the one featured traveler a signed-out visitor sees, but only while you are set to everyone: narrow who can see you and a signed-out visitor cannot see you at all. Your socials only show once you are both chatting, and the database enforces that. The heat on the map is anonymous, and areas with only a few plans are never shown.',
   },
   {
     title: 'Moderation',
-    body: 'First messages, photos and selfies are checked automatically before they land, partly by an AI classifier we run through Anthropic\u2019s API. Decisions are logged so we can answer for them. Your content is never used to train AI models.',
+    source: 'Content moderation',
+    body: 'First messages, photos and selfies are checked automatically before they land, partly by an AI classifier we run through Anthropic\u2019s API. Decisions are logged so we can answer for them, and repeated problems can cost you your account. Your content is never used to train AI models.',
+  },
+  {
+    title: 'If we get it wrong',
+    source: 'Appeals, and a person at the end of it',
+    body: 'Anything decided automatically can be looked at again by a person. If a message was blocked, a photo removed or an account restricted, write to us from Contact us and somebody will read the decision itself, not just the log. We answer within 30 days.',
   },
   {
     title: 'Where your data lives',
-    body: 'Your account, photos and messages live in our database and photo storage, hosted by Supabase. Push notifications travel through Expo and Apple.',
+    source: 'Who processes your data for us',
+    body: 'Your account, photos and messages live with Supabase, in the EU. Push notifications travel through Expo and Apple, analytics through PostHog in the EU, the moderation and selfie checks through Anthropic, and our email through Resend. None of them may use your data for anything but running Samewhere, and none of them is an advertising company.',
   },
   {
     title: 'Deleting your account',
+    source: 'Retention and deletion',
     body: 'Delete your account any time from your profile. Your profile, photos, trips, pins and chats are permanently deleted, for both sides of every chat. Moderation records are kept with your identity removed, because safety reports have to outlive the accounts they are about.',
   },
   {
     title: 'Your rights',
-    body: 'Depending on where you live, you may have the right to see, correct or delete what we hold about you. Send us a message from Contact us in the app and a person will sort it out. This app is for adults 18 and over.',
+    source: 'Your rights',
+    body: 'Depending on where you live, you may have the right to see, correct or delete what we hold about you. Send us a message from Contact us in the app and a person will sort it out within 30 days. This app is for adults 18 and over.',
   },
 ] as const;
 

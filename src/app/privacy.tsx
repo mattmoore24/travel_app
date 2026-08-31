@@ -39,6 +39,19 @@ export default function PrivacyScreen() {
             </View>
           ))}
 
+          {/* Back the other way, so neither document is a dead end. */}
+          <View style={styles.section}>
+            <ThemedText type="smallBold">House rules</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              The short version of what is allowed here, and what happens when it is not.
+            </ThemedText>
+            <PrimaryButton
+              variant="ghost"
+              label="Read the house rules"
+              onPress={() => router.push('/guidelines')}
+            />
+          </View>
+
           <View style={styles.section}>
             <ThemedText type="smallBold">Questions about your data?</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">

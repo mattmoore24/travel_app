@@ -3766,6 +3766,8 @@ Mute exists — src/app/(tabs)/chat.tsx:603 and :635 put it on the row's swipe a
 
 **Waits on.** Should a group report also name a person, or can a report have no human subject? For: an unnamed group report is the only honest shape when the problem is the room itself. Against: every downstream moderation lever the app has acts on a person, so a subjectless report may have nothing behind it.
 
+**Also widen when this lands.** Four published sentences were narrowed to name this gap and will be wrong once it closes: docs/legal/COMMUNITY_GUIDELINES.md (DSA Art. 16), its copy in web/guidelines/index.html, the Reporting paragraph in web/support/index.html, and docs/APP_STORE.md's review note 2, age-rating row and listing-copy SAFETY line.
+
 ### `chat-anyone-in-a-group-can-invite` — Let any member share the invite link, with the admin keeping the kill switch
 
 **Priority** next · **Effort** M · **Ships as** over the air + Supabase deploy

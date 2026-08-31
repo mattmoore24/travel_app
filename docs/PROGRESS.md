@@ -91,6 +91,22 @@ the cleanup when their own package lands).
    screens gallery for the founder.
 3. On-device checks that need a person: build 16's universal-link test, the
    haptics walk, Reduce Motion, AX5 on the smallest screen.
+4. **Owed: per-decision automation disclosure in the five moderation push
+   bodies.** DSA Art. 17(3)(c) asks whether a decision was taken by automated
+   means, and the five notifications (message not delivered, photo removed,
+   guidelines warning, account suspended, account banned) say what and on what
+   ground but never that the screening was automatic. The house rules and the
+   privacy policy now disclose the automation generally, which is what ships;
+   the per-decision line needs a migration, so it belongs with the
+   moderation-copy packages rather than in this batch. Whether the general
+   disclosure satisfies 17(3)(c) on its own is a question for the founder's
+   lawyer, bracketed in docs/legal/COMMUNITY_GUIDELINES.md.
+5. **Owed: a Report action for a group ITSELF.** The whole reporting path is
+   per-person (`reports.reported_user_id` is NOT NULL), so a traveler-made
+   group can only be reported one message at a time. The house rules, the two
+   web pages and the App Store notes now say so and point at Contact us; they
+   widen again when `chat-group-page-mute-and-report` lands (see the note in
+   its spec).
 
 ---
 

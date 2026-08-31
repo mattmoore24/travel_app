@@ -72,9 +72,16 @@ arrive, and `select * from admin_moderation_stats;` must count it as blocked.
 
 ## 2. Verify a sending domain in Resend
 
-**Not done. Founder action, and nothing in the repo can do it.** Until it is,
-the only inbox in the world that can receive a Samewhere email is the one the
-Resend account was opened with.
+**Step 2b below supersedes the state of this section.** `samewhere.io` was
+registered on 2026-08-30 and mail now goes out from `hello@samewhere.io`
+through Resend with Google receiving. What is left is a founder check, not a
+setup: confirm the `SUPPORT_FROM` repo secret is set and the functions have
+been redeployed since, then take the delivery proof at the foot of 2b. The
+rest of this section is kept because it is the procedure, and because it
+explains the failure mode if any of it is ever undone.
+
+Before the domain existed, the only inbox in the world that could receive a
+Samewhere email was the one the Resend account was opened with.
 
 `support-mailer` sends from `SUPPORT_FROM`, which is unset, so it falls back to
 Resend's shared `onboarding@resend.dev`. That address is a sandbox: with no
@@ -220,6 +227,23 @@ existing inbox for free, and forwarding is fine for launch.
    `link.samewhere.io` — the subdomain, not the apex, which stays on
    Squarespace with the Workspace mail records. The association file is live
    and verified: 200, `application/json`, zero redirects, real Team ID.
+
+   Six paths are served, and every one of them is load-bearing for something
+   that cannot be fixed after submission:
+
+   | Path                                      | Who breaks without it                                                    |
+   | ----------------------------------------- | ------------------------------------------------------------------------ |
+   | `/.well-known/apple-app-site-association` | every universal link falls back to Safari, silently                      |
+   | `/privacy`                                | App Store Connect's Privacy Policy URL field is mandatory                |
+   | `/guidelines`                             | the DSA wants the rules and the appeal route public                      |
+   | `/support`                                | App Store Connect's Support URL, and guideline 1.2's "published" contact |
+   | `/i/<token>`                              | anybody who is sent an invite and does not have the app                  |
+   | `/reset`                                  | anybody who opens a password reset on a laptop                           |
+
+   After any deploy, run the whole-surface curl loop at the foot of
+   [`web/README.md`](../web/README.md) — it checks all six plus a real 404,
+   and the association file without `-L`, which is what proves zero redirects.
+
 7. **Then the app:** DONE in code — `ios.associatedDomains:
 ["applinks:link.samewhere.io"]` in `app.json` AND the route
    `src/app/i/[token].tsx`, in one commit. The route is not optional: a

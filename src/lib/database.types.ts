@@ -654,8 +654,24 @@ export type MessageRow = {
   kind?: 'said' | 'joined';
 };
 
+/**
+ * Mirrors public.report_reason, including the two values added after the
+ * enum was first created: 'impersonation' (20260827090000) and 'underage'
+ * (20260831200000). Both are listed here even though the report form offers
+ * only one of them, because src/app/__tests__/report-reasons.test.ts asserts
+ * every value is either offered or explicitly declined with a reason. The
+ * silent drift this fixes is real: 'impersonation' sat in the database for
+ * a month, absent from this union and from the form.
+ */
 export type ReportReason =
-  'flirtation_or_sexual' | 'harassment' | 'spam' | 'fake_profile' | 'safety_concern' | 'other';
+  | 'flirtation_or_sexual'
+  | 'harassment'
+  | 'spam'
+  | 'fake_profile'
+  | 'safety_concern'
+  | 'impersonation'
+  | 'underage'
+  | 'other';
 
 export type SendRequestResult = {
   /**

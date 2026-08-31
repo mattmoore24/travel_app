@@ -231,6 +231,41 @@ appId: com.mattmoore.samewhere
     timeout: 2000
 - takeScreenshot: 08-account-kind-business
 
+# THE PRIVACY POLICY, FROM THE CONSENT LINE (platform-privacy-in-app)
+#
+# 5.1.1(i) wants the policy readable inside the app, and the reader who most
+# needs it is this one: signed out, being asked to agree, no account yet. The
+# link is a child span of the consent sentence rather than a button, so this
+# also proves the span is tappable and not decorative. 19-house-rules has a
+# sibling now.
+#
+# The sentence carries TWO links, 'house rules' and 'privacy policy', and iOS
+# publishes a paragraph as one element for the whole sentence plus one per
+# link fragment (RCTParagraphComponentAccessibilityProvider). So assert the
+# sentence first — if the fragments are missing this fails here, naming the
+# consent line, rather than three steps later on a screen nobody expected —
+# and then tap the fragment by its whole label, which the sentence element
+# cannot match.
+- assertVisible: '.*By continuing you agree to our.*'
+- tapOn: 'privacy policy'
+# NOT 'Privacy policy': the house rules screen now renders a button with
+# exactly that label, so the wait stopped telling the two screens apart and a
+# tap that landed on the sibling link would have gone green on the wrong
+# screen. This heading is the privacy screen's own first section and nothing
+# else in the app says it.
+- extendedWaitUntil:
+    visible: 'What we never collect'
+    timeout: 15000
+# The exact sentence a human reads, per change-review: never loosen this to a
+# wildcard. It is the strongest promise the app makes and it leads the screen.
+- assertVisible:
+    text: 'We never collect your location. The map only shows plans people typed in themselves.'
+- takeScreenshot: 08a-privacy-policy
+- tapOn: 'Done'
+- extendedWaitUntil:
+    visible: 'What are you signing up as?'
+    timeout: 15000
+
 # THE MAP REMEMBERS THE CITY (map-remembers-your-city): choose a city, kill
 # the app, and the choice survives the relaunch — this is the whole point and
 # only an E2E step proves it. Chips are PressableScales carrying their own
@@ -254,3 +289,61 @@ appId: com.mattmoore.samewhere
     text: 'Denpasar'
     selected: true
 - takeScreenshot: 09-city-remembered
+
+# ─────────────────────────────────────────────────────────────────────────
+# THE IN-APP BROWSER (platform-in-app-browser)
+#
+# A business's Website and Menu now open OVER the app with a Done button
+# instead of throwing the reader into Safari. "Does it look right" is the
+# only question that matters about a presentation style, so this segment
+# exists to photograph it.
+#
+# Every navigation STEP is optional, and that is not the banned kind of
+# loosening: what is uncertain here is Maestro's REACH, not the app's
+# behaviour. The route to a business page runs through the plan list, whose
+# rows only exist where a seeded launch business has a live post and the map
+# is drawn below city scale. The kind-to-opener rule itself is asserted
+# properly, in jest, in src/features/business/__tests__/links.test.ts.
+#
+# ARRIVING is not optional, though, and that is the difference from the first
+# version of this segment: with every step optional and nothing asserted, a
+# run that never left the map took two screenshots of the map and reported
+# green. A hard assertion goes in front of each screenshot, so a run that did
+# not get there fails instead of photographing whatever was on screen.
+#
+# The seeded businesses all carry exactly one link, a 'Website'
+# (20260827150000_seed_business_content.sql), so that row is present wherever
+# this route is. If it is ever missing, seed it back - do not loosen this.
+#
+# The screenshots are the evidence. Note that iOS renders SFSafariViewController
+# in a separate process, so 10a may come back empty; the frame around it is
+# still the proof that the app did not leave.
+# ─────────────────────────────────────────────────────────────────────────
+- tapOn:
+    text: '.*, something on tonight'
+    optional: true
+- extendedWaitUntil:
+    visible: 'See the whole page'
+    timeout: 10000
+    optional: true
+- tapOn:
+    text: 'See the whole page'
+    optional: true
+- scrollUntilVisible:
+    element:
+      text: 'Website'
+    direction: DOWN
+    timeout: 10000
+    optional: true
+# Hard: this is the business page with its links on it, or there is no
+# picture worth taking.
+- assertVisible: 'Website'
+- takeScreenshot: 10-business-page-links
+# Hard too, and for the same reason: 10a is a photograph OF THIS TAP. Nothing
+# can be asserted after it - SFSafariViewController's chrome belongs to
+# another process and Maestro cannot see into it - so the tap on a row that
+# was just asserted is what makes the next screenshot mean anything.
+- tapOn: 'Website'
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 10a-in-app-browser
