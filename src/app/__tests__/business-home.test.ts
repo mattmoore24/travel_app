@@ -137,7 +137,9 @@ describe('the My business tab', () => {
   });
 
   it('has a route to the account controls', () => {
-    const row = code.indexOf('label="Account and rules"');
+    // 'House rules and account', decision D32: the rulebook has one name in
+    // every user-facing string, and this row leads with it.
+    const row = code.indexOf('label="House rules and account"');
     expect(row).toBeGreaterThan(-1);
     expect(code.slice(row, row + 400)).toContain("router.push('/profile-me')");
   });

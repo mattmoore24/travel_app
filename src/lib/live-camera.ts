@@ -42,6 +42,7 @@ export async function captureLivePhoto(options?: {
    * half that cannot be downloaded from anywhere.
    */
   allowsEditing?: boolean;
+  /** Android-only: iOS's system editor is always square and ignores this. */
   aspect?: [number, number];
 }): Promise<LiveCaptureResult> {
   if (Platform.OS === 'web') {

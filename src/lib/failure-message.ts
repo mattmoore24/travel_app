@@ -86,7 +86,7 @@ const HINT_COPY: Record<string, string> = {
   account_closed: ACCOUNT_CLOSED,
   not_authenticated: SIGNED_OUT,
   trip_past: 'That trip has already finished.',
-  guidelines: 'That breaks our community guidelines. Reword it and try again.',
+  guidelines: 'That breaks our house rules. Reword it and try again.',
 };
 
 /**
@@ -118,8 +118,11 @@ const DB_COPY: Record<string, string> = {
   'sending too fast — wait a moment': HINT_COPY.message_throttle,
   'sending too fast, give it a moment': HINT_COPY.message_throttle,
   'trip is entirely in the past': 'That trip has already finished.',
-  'that text breaks our community guidelines':
-    'That breaks our community guidelines. Reword it and try again.',
+  // Both phrasings, so the database rename (the one-name-for-the-rules
+  // migration) can deploy before or after this ships without either order
+  // showing anyone the raw Postgres sentence.
+  'that text breaks our community guidelines': HINT_COPY.guidelines,
+  'that text breaks our house rules': HINT_COPY.guidelines,
   // Lowercase sentences promoted rather than dropped to the generic (the
   // scan the D3 package asked for): every one is reachable from a button.
   'three pins is the limit': 'Three pins is the limit. Unpin one first.',

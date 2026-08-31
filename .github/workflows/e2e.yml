@@ -339,6 +339,20 @@ jobs:
           # Whatever happened above, capture the screen raw — pixels beat a
           # green flag, and simctl needs nothing from Maestro.
           xcrun simctl io "$UDID" screenshot zz-final-state.png || true
+          # One pass at AX3 (accessibility-extra-large) for the map dock and
+          # the cluster count badge: the dock is minHeight now and the badge
+          # deliberately does not scale, and only a picture proves either.
+          # The signed-in tour just ran, so a relaunch lands on the Map tab
+          # with the Drop-a-pin dock up. Raw simctl, no assertions — this is
+          # evidence, not a gate — and the size is put back afterwards so a
+          # retry of anything later starts from the default.
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl ui "$UDID" content_size accessibility-extra-large || true
+          xcrun simctl launch "$UDID" "$BUNDLE_ID" || true
+          sleep 25
+          xcrun simctl io "$UDID" screenshot zz-ax3-map-dock.png || true
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl ui "$UDID" content_size medium || true
           ls -la
 
       # BEFORE the publish step: publishing checks out an orphan branch,

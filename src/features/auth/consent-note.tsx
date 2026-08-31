@@ -15,15 +15,23 @@ export function ConsentNote() {
   return (
     <ThemedText type="small" themeColor="textSecondary" style={styles.text}>
       By continuing you agree to our{' '}
-      {/* The role is what makes this a child element VoiceOver can land on
-          and activate. Without it the sentence reads as one block and the
-          link is unreachable. */}
+      {/* The role is what makes each of these a child element VoiceOver can
+          land on and activate. Without it the sentence reads as one block
+          and the links are unreachable. */}
       <ThemedText
         type="small"
         accessibilityRole="link"
         style={{ color: theme.tint }}
         onPress={() => router.push('/guidelines')}>
-        community guidelines
+        house rules
+      </ThemedText>{' '}
+      and{' '}
+      <ThemedText
+        type="small"
+        accessibilityRole="link"
+        style={{ color: theme.tint }}
+        onPress={() => router.push('/privacy')}>
+        privacy policy
       </ThemedText>
       . Keep it casual and friendly.
     </ThemedText>

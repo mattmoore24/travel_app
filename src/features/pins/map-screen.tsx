@@ -5,7 +5,16 @@ import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Keyboard, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  Keyboard,
+  PixelRatio,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Circle, Marker, Polygon, PROVIDER_DEFAULT, type Region } from 'react-native-maps';
 import Animated, { FadeInDown, FadeInUp, FadeOut, ZoomIn } from 'react-native-reanimated';
@@ -44,6 +53,8 @@ import { AudienceChip } from '@/features/pins/audience-chip';
 import { audienceInSentence } from '@/features/profile/audience';
 import {
   CITY_ZOOM_DELTA,
+  clusterCategory,
+  clusterIntentDate,
   clusterPins,
   clusterTitle,
   metersBetween,
@@ -58,6 +69,7 @@ import {
   PinGlyph,
   PinMarkerView,
   PinStackView,
+  STACK_CENTER_OFFSET,
   useMarkerTracking,
 } from '@/features/pins/pin-marker';
 import { openInMaps } from '@/features/pins/open-in-maps';
@@ -69,6 +81,7 @@ import {
   GEOCODE_FLOOR_MS,
   burnOutLabel,
   intentLabel,
+  isLaterDay,
   pinSubtitle,
   pinTitle,
   shouldGeocode,
@@ -543,11 +556,18 @@ function CrewRow({
 function CrewFace({ person, first }: { person: PinCrewRow; first: boolean }) {
   const theme = useTheme();
   const { data: url } = usePhotoUrl(person.photo_path);
+  // A definite square, scaled by the font setting: Yoga only derives a
+  // length from aspectRatio when the other axis is definite, so the earlier
+  // minHeight+aspectRatio pair measured the disc at zero and the crew row
+  // collapsed to borders. Capped so five faces still fit beside the label.
+  const size = Math.round(28 * Math.min(PixelRatio.getFontScale(), 1.5));
   return (
     <View
       style={[
         styles.crewFace,
         {
+          width: size,
+          height: size,
           backgroundColor: theme.backgroundElement,
           borderColor: theme.surface,
           marginLeft: first ? 0 : -10,
@@ -607,7 +627,9 @@ function CityScaleMarker({
     <Marker
       coordinate={{ latitude: lat, longitude: lng }}
       anchor={MARKER_ANCHOR}
-      centerOffset={MARKER_CENTER_OFFSET}
+      // The pill is stack-height, not body-height; at city zoom the couple
+      // of points this could still be off are invisible.
+      centerOffset={STACK_CENTER_OFFSET}
       tracksViewChanges={tracking}
       accessibilityRole="button"
       accessibilityLabel={`${countOf(count, 'plan')} in ${name}`}
@@ -633,7 +655,16 @@ function CityPinMarker({
   // Signed-in viewers see the poster's face on the map; a guest's feed has no
   // photo_path at all (server-stripped), so this simply resolves to nothing.
   const { data: photoUri } = usePhotoUrl(pin.photo_path);
-  const tracking = useMarkerTracking(`${selected}:${photoUri ?? ''}:${pin.chat_id ?? ''}`);
+  const ownUserId = useOwnUserId();
+  const own = pin.user_id != null && pin.user_id === ownUserId;
+  // `own` and the later-day DIM are IN the key: anything that changes what
+  // the marker draws must re-open the rasterization window, or the ring and
+  // the dim are simply missing from the frozen bitmap. The derived boolean
+  // rather than the stored date, because across local midnight the date is
+  // unchanged while the dim flips.
+  const tracking = useMarkerTracking(
+    `${selected}:${photoUri ?? ''}:${pin.chat_id ?? ''}:${own}:${isLaterDay(pin.intent_date)}`
+  );
   return (
     <Marker
       coordinate={{ latitude: pin.lat, longitude: pin.lng }}
@@ -666,6 +697,8 @@ function CityPinMarker({
         selected={selected}
         photoUri={photoUri ?? null}
         open={pin.chat_id != null}
+        own={own}
+        intentDate={pin.intent_date}
       />
     </Marker>
   );
@@ -694,12 +727,23 @@ function ClusterMarker({
     0,
     Math.min(3, cluster.pins.length)
   );
-  const tracking = useMarkerTracking(`${selected}:${faces.join('|')}`);
+  // The dominant category, not pins[0]'s: a stack must not dress every plan
+  // as the first one. Where the plans disagree, PinStackView draws neutral.
+  const category = clusterCategory(cluster);
+  const soonest = clusterIntentDate(cluster);
+  // With no photo at all the stack collapses to a single 36pt disc, whose
+  // tip sits where a single marker's does; a face row is 28pt.
+  const hasFaces = faces.some((uri) => uri != null);
+  // Everything the marker draws is in the key, or it never paints — the view
+  // is a frozen bitmap outside the tracking window.
+  const tracking = useMarkerTracking(
+    `${selected}:${faces.join('|')}:${cluster.pins.length}:${category}:${isLaterDay(soonest)}`
+  );
   return (
     <Marker
       coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
       anchor={MARKER_ANCHOR}
-      centerOffset={MARKER_CENTER_OFFSET}
+      centerOffset={hasFaces ? STACK_CENTER_OFFSET : MARKER_CENTER_OFFSET}
       displayPriority="required"
       zIndex={selected ? 10 : 2}
       tracksViewChanges={tracking}
@@ -712,8 +756,9 @@ function ClusterMarker({
       <PinStackView
         faces={faces}
         count={cluster.pins.length}
-        category={cluster.pins[0].category}
+        category={category}
         selected={selected}
+        intentDate={soonest}
       />
     </Marker>
   );
@@ -1548,7 +1593,9 @@ export default function MapScreen() {
               size={19}
               tintColor={theme.onAccent}
             />
-            <Text style={[styles.dockLabel, { color: theme.onAccent }]}>Drop a pin</Text>
+            <ThemedText type="callout" style={[styles.dockLabel, { color: theme.onAccent }]}>
+              Drop a pin
+            </ThemedText>
           </PressableScale>
         </Animated.View>
       ) : null}
@@ -1977,10 +2024,11 @@ const styles = StyleSheet.create({
   crewFaces: {
     flexDirection: 'row',
   },
+  // Card chrome, not marker artwork, so the accessibility argument cuts the
+  // other way: the fallback initial scales with Dynamic Type and the disc
+  // grows with it rather than freezing the text.
   crewFace: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    borderRadius: 999,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2072,7 +2120,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.sm,
-    height: 52,
+    // min, not fixed: the label scales with Dynamic Type, and a frozen box
+    // around scaling text is the clipping bug the audit named.
+    minHeight: 52,
+    paddingVertical: Space.sm,
     paddingHorizontal: Space.xl,
     borderRadius: Radius.pill,
     shadowColor: '#000',
@@ -2081,8 +2132,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
+  // Size comes from the ThemedText role; only the weight is local.
   dockLabel: {
-    fontSize: Type.callout.fontSize,
     fontWeight: '600',
   },
   confirmBar: {

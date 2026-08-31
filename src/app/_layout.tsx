@@ -101,8 +101,8 @@ function AccountGate({
           {suspended
             ? `Your account is suspended${
                 until ? ` until ${until.toLocaleDateString()}` : ''
-              } for breaking our community guidelines.`
-            : 'Your account is closed for repeatedly breaking our community guidelines.'}
+              } for breaking our house rules.`
+            : 'Your account is closed for repeatedly breaking our house rules.'}
         </ThemedText>
         <PrimaryButton
           variant="ghost"
@@ -352,11 +352,13 @@ function RootNavigator() {
         <Stack.Screen name="business-edit" options={{ presentation: 'modal' }} />
         <Stack.Screen name="business-post" options={{ presentation: 'modal' }} />
       </Stack.Protected>
-      {/* Outside every guard so it's readable BEFORE sign-up (the welcome
-          screen links to it) and from the profile tab after — but declared
-          LAST: the first child of the stack becomes the anchor route, and an
-          unguarded screen in that slot swallows every cold start. */}
+      {/* Outside every guard so both policy screens are readable BEFORE
+          sign-up (the welcome screen and the consent line link to them) and
+          from the profile tab after — but declared LAST: the first child of
+          the stack becomes the anchor route, and an unguarded screen in that
+          slot swallows every cold start. */}
       <Stack.Screen name="guidelines" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="privacy" options={{ presentation: 'modal' }} />
       {/* Unguarded for the same reason, and one more: somebody who cannot
           sign in is the person most likely to need to write in. */}
       <Stack.Screen name="contact" options={{ presentation: 'modal' }} />

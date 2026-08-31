@@ -256,6 +256,24 @@ appId: com.mattmoore.samewhere
     timeout: 15000
 - tapOn: 'Done'
 
+# THE PRIVACY POLICY — App Review 5.1.1(i) wants it readable inside the app,
+# not only on the store listing. The asserted line is the promise the whole
+# product stands on, rendered from PRIVACY_SECTIONS' top card, so a picture
+# of it is a picture of the policy actually shipping. This sits BEFORE the
+# house-rules block because the block below deliberately ends inside the
+# contact form with the keyboard up.
+- scrollUntilVisible:
+    element:
+      text: 'Privacy'
+    direction: DOWN
+    timeout: 12000
+- tapOn: 'Privacy'
+- extendedWaitUntil:
+    visible: 'We never collect your location.*'
+    timeout: 15000
+- takeScreenshot: 19c-privacy
+- tapOn: 'Done'
+
 # HOUSE RULES AND THE CONTACT FORM
 #
 # App Review 1.2 wants both reachable from inside the app, and this form is
@@ -271,8 +289,10 @@ appId: com.mattmoore.samewhere
     direction: DOWN
     timeout: 12000
 - tapOn: 'House rules and help'
+# The screen the button opens now agrees with the button (decision D32): one
+# name for the rulebook, and the screenshot is the proof the two match.
 - extendedWaitUntil:
-    visible: 'Community guidelines'
+    visible: 'House rules'
     timeout: 15000
 - takeScreenshot: 19-house-rules
 - scrollUntilVisible:

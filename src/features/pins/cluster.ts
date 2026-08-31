@@ -1,4 +1,4 @@
-import type { CityPinRow } from '@/lib/database.types';
+import type { CityPinRow, PinCategory } from '@/lib/database.types';
 
 /**
  * How close two pins have to be to become one marker. Roughly a building:
@@ -64,6 +64,44 @@ export function clusterPins(pins: CityPinRow[], radiusM = CLUSTER_RADIUS_M): Pin
 /** The label a stacked marker carries. Two faces plus "+3", not "5". */
 export function stackLabel(count: number): string {
   return count > 99 ? '99+' : String(count);
+}
+
+/**
+ * The category a stacked marker wears: the one its plans mostly agree on,
+ * or 'mixed' when there is no clear winner. It used to be pins[0].category,
+ * which dressed a bar-plus-hike stack as two bars — a lie about half the
+ * stack.
+ */
+export function clusterCategory(cluster: PinCluster): PinCategory | 'mixed' {
+  const counts = new Map<PinCategory, number>();
+  for (const pin of cluster.pins) {
+    counts.set(pin.category, (counts.get(pin.category) ?? 0) + 1);
+  }
+  let best: PinCategory | null = null;
+  let bestCount = 0;
+  let tied = false;
+  for (const [category, count] of counts) {
+    if (count > bestCount) {
+      best = category;
+      bestCount = count;
+      tied = false;
+    } else if (count === bestCount) {
+      tied = true;
+    }
+  }
+  return best == null || tied ? 'mixed' : best;
+}
+
+/**
+ * The soonest plan day in a cluster. A mixed-day stack dims (or not) by its
+ * soonest day: the marker's job is "something is on here", and the soonest
+ * plan is the something.
+ */
+export function clusterIntentDate(cluster: PinCluster): string {
+  return cluster.pins.reduce(
+    (soonest, pin) => (pin.intent_date < soonest ? pin.intent_date : soonest),
+    cluster.pins[0].intent_date
+  );
 }
 
 /**

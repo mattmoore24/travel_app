@@ -57,6 +57,12 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'password-input'
 - inputText: ${E2E_THROWAWAY_PASSWORD}
+# The consent line under the create-account button is the App Review 1.2
+# surface: the agreement has to be readable at the moment it is made, so both
+# policy links must be on this screen. Wildcards on both sides because iOS
+# may expose the sentence as one element or as link fragments.
+- assertVisible: '.*house rules.*'
+- assertVisible: '.*privacy policy.*'
 - tapOn:
     id: 'create-account'
 - tapOn:

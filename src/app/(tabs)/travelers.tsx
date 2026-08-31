@@ -1102,8 +1102,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Square per decision D2(a): 3:2 was the widest crop in the app, on the
+  // screen whose whole job is proving there is a real person there. If the
+  // square pushes the sign-up card too far down in the re-shot screenshots,
+  // that finding reopens D2, not this line alone.
   cardHero: {
-    aspectRatio: 3 / 2,
+    aspectRatio: 1,
     justifyContent: 'flex-end',
   },
   cardHeroText: {

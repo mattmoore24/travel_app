@@ -50,7 +50,12 @@ jobs:
       MODERATION_PROMPTS: ${{ secrets.MODERATION_PROMPTS }}
       MODERATION_PROMPTS_BUSINESS: ${{ secrets.MODERATION_PROMPTS_BUSINESS }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-      SUPPORT_INBOX: ${{ secrets.SUPPORT_INBOX }}
+      # A literal, not a secret, on the founder's 2026-08-31 instruction: the
+      # secret held a personal gmail from before the domain existed, and the
+      # address is public on every page link.samewhere.io serves — there is
+      # nothing to hide and one thing to get wrong. The old SUPPORT_INBOX
+      # repo secret is no longer read and can be deleted.
+      SUPPORT_INBOX: hello@samewhere.io
       SUPPORT_FROM: ${{ secrets.SUPPORT_FROM }}
       ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
       PROJECT_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}

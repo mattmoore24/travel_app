@@ -190,7 +190,7 @@ export function useUploadPhoto() {
     mutationFn: ({ localUri, position }: { localUri: string; position: number }) =>
       uploadPhoto(userId!, localUri, position),
     onSuccess: (_data, { position }) => {
-      // On the mutation, not in PhotoGrid (which takes no props), so loss
+      // On the mutation, not in PhotoGrid, so loss
       // inside the iOS permission chain is separable from loss on signup's
       // Continue button: a photo that lands emits this even if the person
       // then quits on the gate.

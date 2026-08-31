@@ -109,6 +109,7 @@ function GuestProfile({ guestName }: { guestName: string | null }) {
           label="House rules"
           onPress={() => router.push('/guidelines')}
         />
+        <PrimaryButton variant="ghost" label="Privacy" onPress={() => router.push('/privacy')} />
       </ScrollView>
     </ThemedView>
   );
@@ -381,6 +382,13 @@ export default function ProfileScreen() {
                 variant="ghost"
                 label="House rules and help"
                 onPress={() => router.push('/guidelines')}
+              />
+              {/* The policy the consent line promised at sign-up, findable
+                  again afterwards without re-reading the rulebook. */}
+              <PrimaryButton
+                variant="ghost"
+                label="Privacy"
+                onPress={() => router.push('/privacy')}
               />
               {/* Without this the answer is a dead end. A business is its own
                   account by design (decision 5), and register_business refuses

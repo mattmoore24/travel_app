@@ -4,6 +4,12 @@
 > and a proper legal review (including GDPR — first launch city is in the
 > EU) is a separate, required step before launch.** Bracketed items need
 > founder decisions.
+>
+> The in-app summary of this document is `PRIVACY_SECTIONS` in
+> `src/constants/policies.ts`, rendered on the `/privacy` screen — keep the
+> two in step when either changes. The in-app version deliberately omits the
+> two bracketed paragraphs below (the PostHog analytics bullet and the exact
+> hosting region) until they are answered.
 
 _Last updated: [date]_
 

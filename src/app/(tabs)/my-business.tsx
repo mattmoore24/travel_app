@@ -727,7 +727,7 @@ export default function MyBusinessScreen() {
                   title="Your account"
                   icon={{ ios: 'gearshape', android: 'settings', web: 'settings' }}>
                   <DetailRow
-                    label="Account and rules"
+                    label="House rules and account"
                     icon={{
                       ios: 'person.crop.circle',
                       android: 'account_circle',

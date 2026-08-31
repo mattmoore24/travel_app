@@ -1,10 +1,18 @@
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  PixelRatio,
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 
+import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Radius, Space } from '@/constants/theme';
@@ -17,6 +25,7 @@ import {
 import { PHOTOS_MAX } from '@/features/profile/validation';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
+import { pickImage } from '@/lib/pick-image';
 import type { ProfilePhotoRow } from '@/lib/database.types';
 
 /**
@@ -28,8 +37,15 @@ const GALLERY_TARGET = 6;
 
 const EXTRA_COLUMNS = 3;
 const GAP = Space.sm;
-/** Portrait, like every photo people already have of themselves. */
-const RATIO = 5 / 4;
+/**
+ * Square, because square is what people approved: the iOS system editor
+ * always crops square, and drawing that square into a taller frame cropped a
+ * further fifth off each side — shoulders, and on a close portrait, ears.
+ * The tile shows exactly the frame the person framed.
+ */
+const RATIO = 1;
+/** Past this font scale the tile-plus-side-caption row becomes a column. */
+const CAPTION_STACK_SCALE = 1.3;
 
 function StatusChip({ status }: { status: ProfilePhotoRow['moderation_status'] }) {
   const theme = useTheme();
@@ -157,11 +173,25 @@ function EmptySlot({
  * profile photo because it is the one that is actually required and the one
  * everybody sees first; the rest are a quiet row of optional extras.
  */
-export function PhotoGrid() {
+export function PhotoGrid({
+  missingNote = 'Required. A clear photo of your face works best.',
+}: {
+  /**
+   * The line under "Profile photo" while the required slot is empty.
+   * Onboarding passes the reason instead of the requirement, because its own
+   * footer already says a photo is needed and the caption used to state the
+   * requirement twice on one screen.
+   */
+  missingNote?: string;
+} = {}) {
   const theme = useTheme();
   const { data: photos = [] } = useOwnPhotos();
   const uploadPhoto = useUploadPhoto();
   const [width, setWidth] = useState(0);
+  // The library permission was refused and iOS will not ask again. Without
+  // this the plus tile did nothing, forever, on the one step of signup that
+  // cannot be skipped.
+  const [libraryBlocked, setLibraryBlocked] = useState(false);
 
   const main = photos.find((p) => p.position === 0) ?? null;
   const extras = photos.filter((p) => p.position !== 0);
@@ -172,7 +202,11 @@ export function PhotoGrid() {
     Math.min(Math.max(GALLERY_TARGET - 1, extras.length + 1), PHOTOS_MAX - 1) - extras.length
   );
 
-  const mainWidth = width > 0 ? Math.min(width, 220) : 0;
+  // At accessibility sizes the side caption laddered word by word in a
+  // ~134pt column; a full-width tile with the caption underneath reads.
+  const stackCaption = PixelRatio.getFontScale() > CAPTION_STACK_SCALE;
+
+  const mainWidth = width > 0 ? (stackCaption ? width : Math.min(width, 220)) : 0;
   const extraWidth =
     width > 0 ? Math.floor((width - GAP * (EXTRA_COLUMNS - 1)) / EXTRA_COLUMNS) : 0;
 
@@ -189,18 +223,18 @@ export function PhotoGrid() {
   };
 
   const pickAndUpload = async (preferred: number | null, from = 0) => {
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+    // pickImage owns the action sheet: 'Take a photo' / 'Choose from
+    // library' / 'Cancel', with the camera-permission ask and the silent
+    // library fallback. NOT lib/live-camera — that module is the
+    // verification-selfie path and its own test forbids a library import.
+    // allowsEditing keeps the square system editor (and with it the Photos
+    // authorisation sheet); the camera option is what removes the dead end
+    // for anyone who refuses that sheet.
+    const uri = await pickImage({
       allowsEditing: true,
-      // `aspect` is Android-only. On iOS the system editor is always square,
-      // so asking for 4:5 here changed nothing except this file: people
-      // framed themselves inside a square and the profile then cropped a
-      // further fifth off each side to fill a 4:5 frame, cutting shoulders
-      // and, on a close portrait, ears. Take the square they approved and
-      // show it as a square.
-      quality: 1,
+      onLibraryBlocked: () => setLibraryBlocked(true),
     });
-    if (picked.canceled || picked.assets.length === 0) {
+    if (uri == null) {
       return;
     }
     // Recomputed after the picker await: the list can change while the sheet
@@ -213,7 +247,7 @@ export function PhotoGrid() {
       return;
     }
     try {
-      await uploadPhoto.mutateAsync({ localUri: picked.assets[0].uri, position });
+      await uploadPhoto.mutateAsync({ localUri: uri, position });
       haptics.success();
     } catch {
       Alert.alert('Upload failed', 'Check your connection and try again.');
@@ -231,7 +265,7 @@ export function PhotoGrid() {
     <View style={styles.container} onLayout={onLayout}>
       {width > 0 ? (
         <>
-          <View style={styles.mainBlock}>
+          <View style={[styles.mainBlock, stackCaption && styles.mainBlockStacked]}>
             {main ? (
               <FilledPhoto photo={main} width={mainWidth} height={mainWidth * RATIO} main />
             ) : (
@@ -243,15 +277,29 @@ export function PhotoGrid() {
                 onPress={() => pickAndUpload(0)}
               />
             )}
-            <View style={styles.mainCaption}>
+            <View style={[styles.mainCaption, stackCaption && styles.mainCaptionStacked]}>
               <ThemedText type="callout">Profile photo</ThemedText>
               <ThemedText type="footnote" themeColor="textSecondary">
-                {main
-                  ? 'This is the one people see first.'
-                  : 'Required. A clear photo of your face works best.'}
+                {main ? 'This is the one people see first.' : missingNote}
               </ThemedText>
             </View>
           </View>
+
+          {libraryBlocked ? (
+            <View style={styles.blockedRow}>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                Photos are off for Samewhere. Turn them on in Settings, or take one now.
+              </ThemedText>
+              <PrimaryButton
+                variant="ghost"
+                label="Open Settings"
+                accessibilityLabel="Open Settings"
+                onPress={() => {
+                  Linking.openSettings().catch(() => {});
+                }}
+              />
+            </View>
+          ) : null}
 
           <View style={styles.extrasBlock}>
             <ThemedText type="footnote" themeColor="textSecondary">
@@ -301,15 +349,29 @@ const styles = StyleSheet.create({
     height: 180,
     borderRadius: Radius.lg,
   },
+  // Top-aligned: bottom-aligning the caption floated it at the foot of a
+  // tall empty box, reading as detached from the tile it describes.
   mainBlock: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     gap: Space.lg,
+  },
+  mainBlockStacked: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
   },
   mainCaption: {
     flex: 1,
     gap: Space.xs,
     paddingBottom: Space.sm,
+  },
+  // In a column, flex: 1 with no definite parent height is the classic
+  // zero-height collapse; size the caption by its own content instead.
+  mainCaptionStacked: {
+    flex: 0,
+  },
+  blockedRow: {
+    gap: Space.xs,
   },
   extrasBlock: {
     gap: Space.sm,

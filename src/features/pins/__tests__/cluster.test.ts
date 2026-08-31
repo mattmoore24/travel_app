@@ -1,4 +1,11 @@
-import { clusterPins, clusterTitle, stackLabel, metersBetween } from '@/features/pins/cluster';
+import {
+  clusterCategory,
+  clusterIntentDate,
+  clusterPins,
+  clusterTitle,
+  stackLabel,
+  metersBetween,
+} from '@/features/pins/cluster';
 import type { CityPinRow } from '@/lib/database.types';
 
 let seq = 0;
@@ -71,6 +78,40 @@ describe('clusterTitle', () => {
     const a = pin({ venue_name: 'Mad Monkey' });
     const clusters = clusterPins([a, pin({ venue_name: 'The rooftop', lat: a.lat })]);
     expect(clusterTitle(clusters[0])).toBe('2 plans here');
+  });
+});
+
+describe('clusterCategory', () => {
+  it('wears the one category everybody shares', () => {
+    const [cluster] = clusterPins([pin({ category: 'bar' }), pin({ category: 'bar' })]);
+    expect(clusterCategory(cluster)).toBe('bar');
+  });
+
+  it('wears the clear winner when there is one', () => {
+    const [cluster] = clusterPins([
+      pin({ category: 'bar' }),
+      pin({ category: 'bar' }),
+      pin({ category: 'hike' }),
+    ]);
+    expect(clusterCategory(cluster)).toBe('bar');
+  });
+
+  // The launch-density case: two plans, two categories. It used to draw
+  // pins[0]'s glyph on both, which was a lie about half the stack.
+  it('goes neutral when the plans disagree with no winner', () => {
+    const [cluster] = clusterPins([pin({ category: 'bar' }), pin({ category: 'hike' })]);
+    expect(clusterCategory(cluster)).toBe('mixed');
+  });
+});
+
+describe('clusterIntentDate', () => {
+  it('answers with the soonest day in the stack', () => {
+    const [cluster] = clusterPins([
+      pin({ intent_date: '2026-08-23' }),
+      pin({ intent_date: '2026-08-22' }),
+      pin({ intent_date: '2026-08-24' }),
+    ]);
+    expect(clusterIntentDate(cluster)).toBe('2026-08-22');
   });
 });
 

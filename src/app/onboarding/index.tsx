@@ -352,7 +352,9 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         footer={signOutFooter}
         onBack={() => go(4)}
         onContinue={() => go(6)}>
-        <PhotoGrid />
+        {/* The footer note above already states the requirement, so the tile
+            caption carries the reason instead of saying it twice. */}
+        <PhotoGrid missingNote="People decide whether to say hi from this." />
       </StepShell>
     );
   }

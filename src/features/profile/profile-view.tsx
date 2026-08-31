@@ -790,8 +790,11 @@ export function ProfileView({
              (edcd8d7 tried exactly that); it hands the fill a screen-tall
              box and pushes the name below the fold, which is what E2E run 33
              photographed and 612bb5c reverted. A profile with no photo gets
-             the separate branch below instead. */
-          <View style={[styles.hero, { width: heroWidth, height: heroWidth * 1.15 }]}>
+             the separate branch below instead.
+
+             The ratio itself is 1:1 per decision D2(a): the iOS editor crops
+             square, so the hero shows the square people approved, whole. */
+          <View style={[styles.hero, { width: heroWidth, height: heroWidth }]}>
             {main ? (
               <Photo path={main.storage_path} style={StyleSheet.absoluteFill} />
             ) : (
@@ -1284,7 +1287,10 @@ const styles = StyleSheet.create({
   },
   galleryPhoto: {
     width: '100%',
-    aspectRatio: 4 / 5,
+    // Square, decision D2(a): the iOS editor crops square, and stretching
+    // that square into 4:5 cut a further fifth off each side of the frame
+    // people actually approved.
+    aspectRatio: 1,
     borderRadius: Radius.lg,
     borderCurve: 'continuous',
   },

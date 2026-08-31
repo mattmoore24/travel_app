@@ -6,30 +6,31 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, MaxContentWidth, Spacing } from '@/constants/theme';
-import { GUIDELINE_SECTIONS, ZERO_TOLERANCE } from '@/constants/policies';
+import { PRIVACY_PROMISE, PRIVACY_SECTIONS } from '@/constants/policies';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
- * The house rules + support contact, readable before sign-up and from the
- * profile tab (App Review 1.2 requires both for user-generated content).
- * 'House rules' is the one user-facing name for the rulebook (decision D32);
- * docs/legal/COMMUNITY_GUIDELINES.md keeps its filename for App Review.
+ * The privacy policy, readable before sign-up and from the profile tab
+ * (App Review 5.1.1(i) wants it reachable in-app, not only on the store
+ * listing). Bundled, never fetched: the person deciding whether to hand over
+ * a face and an age reads it offline, before an account exists. Long-form
+ * source of truth: docs/legal/PRIVACY_POLICY.md.
  */
-export default function GuidelinesScreen() {
+export default function PrivacyScreen() {
   const theme = useTheme();
 
   return (
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
         <ScrollView contentContainerStyle={styles.content}>
-          <ThemedText type="subtitle">House rules</ThemedText>
+          <ThemedText type="subtitle">Privacy policy</ThemedText>
           <ThemedView type="backgroundElement" style={styles.card}>
             <ThemedText type="smallBold" style={{ color: theme.tint }}>
-              {ZERO_TOLERANCE}
+              {PRIVACY_PROMISE}
             </ThemedText>
           </ThemedView>
 
-          {GUIDELINE_SECTIONS.map((section) => (
+          {PRIVACY_SECTIONS.map((section) => (
             <View key={section.title} style={styles.section}>
               <ThemedText type="smallBold">{section.title}</ThemedText>
               <ThemedText type="small" themeColor="textSecondary">
@@ -39,9 +40,9 @@ export default function GuidelinesScreen() {
           ))}
 
           <View style={styles.section}>
-            <ThemedText type="smallBold">Contact us</ThemedText>
+            <ThemedText type="smallBold">Questions about your data?</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Questions, appeals, anything that feels off. We read every message.
+              Big or small, we read every message.
             </ThemedText>
             <PrimaryButton
               variant="ghost"

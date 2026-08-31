@@ -44,10 +44,11 @@ export default function VerificationScreen() {
   const rejected = !verified && latest?.status === 'rejected';
 
   const takeSelfie = async () => {
+    // No `aspect`: it only ever reaches Android (see live-camera.ts), so the
+    // old [4, 5] claimed a 4:5 selfie while iOS captured a square.
     const shot = await captureLivePhoto({
       front: true,
       allowsEditing: true,
-      aspect: [4, 5],
     });
     if (shot.kind === 'captured') {
       setCameraBlocked(false);

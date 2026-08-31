@@ -10,6 +10,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Radius, Springs } from '@/constants/theme';
+import { isLaterDay } from '@/features/pins/pin-helpers';
+import { useTheme } from '@/hooks/use-theme';
 import type { PinCategory } from '@/lib/database.types';
 
 /**
@@ -30,6 +32,24 @@ const CATEGORY_GLYPHS: Record<PinCategory, SymbolViewProps['name']> = {
 const SEEDED_GLYPH: SymbolViewProps['name'] = { ios: 'star.fill', android: 'star', web: 'star' };
 
 /**
+ * What a stacked marker wears when its plans disagree about category: a
+ * neutral pin from the same mappin family the dock's Drop-a-pin control
+ * draws, rather than borrowing the first pin's category and lying about the
+ * rest of the stack.
+ */
+const MIXED_GLYPH: SymbolViewProps['name'] = {
+  ios: 'mappin.and.ellipse',
+  android: 'place',
+  web: 'place',
+};
+
+/** A stack's category: one of the pin categories, or 'mixed' when they differ. */
+export type StackCategory = PinCategory | 'mixed';
+
+const glyphFor = (category: StackCategory): SymbolViewProps['name'] =>
+  category === 'mixed' ? MIXED_GLYPH : CATEGORY_GLYPHS[category];
+
+/**
  * Two colours only, both warm: travelers pin in the campfire amber, curated
  * spots in gold. The glyph carries the category, so the map stays two
  * colours instead of a carnival of category hues.
@@ -47,15 +67,64 @@ const PIN_AMBER = '#FF9A5A';
 const PIN_GOLD = '#FFC168';
 const PIN_GLYPH = '#0E1020';
 const PIN_RING = '#FFFFFF';
+/**
+ * A plan for a later day burns one step dimmer: PIN_AMBER blended toward the
+ * basemap ground, never drawn at alpha (a translucent disc would show the
+ * map through it). Two steps only — a 45% amber on this basemap drops the
+ * marker under the legibility floor, so the ramp is full or this, nothing
+ * lower. Glyph ink on this value still reads at 5.7:1.
+ */
+const PIN_AMBER_LATER = '#CA784C';
+
+// 36, not 34. On a muted basemap the face is the only thing worth looking
+// at, and at 34 with a badge on its corner there was more chrome than
+// person.
+const BODY = 36;
+/**
+ * 16, was 11, and squeezed on the screen's X axis (see styles.tail): Apple's
+ * POI marks are always flat discs, so the lengthened teardrop neck is the
+ * silhouette that separates our markers where hue never could.
+ */
+const TAIL = 16;
+/** How much of the tail's layout box tucks up behind the body. */
+const TAIL_TUCK = TAIL / 2 + 4;
+/** Room for the spring overshoot so nothing clips at the bitmap edge. */
+const WRAP_PAD = 4;
+/** How many faces a stack shows before the count takes over. */
+const STACK_FACES = 3;
+const STACK_FACE = 28;
+const STACK_OVERLAP = 10;
 
 /**
  * Marker anchoring is split by provider (verified in react-native-maps
  * types): `anchor` is Google/Android-only; Apple Maps positions the view by
  * its CENTER plus `centerOffset` points. Without the offset every pin tip
  * would sit ~20pt south of its venue on iOS.
+ *
+ * DERIVED from the geometry, never hardcoded: the old {x:0,y:-20} encoded
+ * BODY+TAIL by hand, so any tail change would have drifted every pin tip off
+ * its venue — invisible in review and wrong on every marker.
  */
 export const MARKER_ANCHOR = { x: 0.5, y: 1 };
-export const MARKER_CENTER_OFFSET = { x: 0, y: -20 };
+
+function centerOffsetFor(bodyHeight: number): { x: number; y: number } {
+  // Layout: wrap padding, the body row, then the tail's box overlapping the
+  // body by TAIL_TUCK, then padding again.
+  const height = WRAP_PAD * 2 + bodyHeight + (TAIL - TAIL_TUCK);
+  // The tip is the rotated square's bottom corner: half the box below the
+  // box's centre, then sqrt(2)/2 of the side further for the rotation. The
+  // X squeeze changes width only, never the tip's Y.
+  const tip = WRAP_PAD + bodyHeight - TAIL_TUCK + TAIL / 2 + (TAIL * Math.SQRT2) / 2;
+  return { x: 0, y: -(tip - height / 2) };
+}
+
+export const MARKER_CENTER_OFFSET = centerOffsetFor(BODY);
+/**
+ * A stack's faces are 28pt, so its tip sits nearer its centre than a 36pt
+ * body's does. The city pill is within a couple of points of the same height
+ * and shares this at a zoom where the difference is invisible.
+ */
+export const STACK_CENTER_OFFSET = centerOffsetFor(STACK_FACE);
 
 type PinMarkerViewProps = {
   category: PinCategory;
@@ -73,6 +142,19 @@ type PinMarkerViewProps = {
    * third would turn it into a legend nobody read.
    */
   open?: boolean;
+  /**
+   * This is the viewer's own pin. A concentric accent ring, the same shape
+   * business-marker.tsx draws for an owner's listing: a SHAPE rather than a
+   * hue swap, drawn inside the wrap padding so nothing moves off its
+   * coordinate.
+   */
+  own?: boolean;
+  /**
+   * The plan's day. Today burns full amber; later days one step dimmer (see
+   * PIN_AMBER_LATER). Secondary channel only — the plan list carries the
+   * date in words.
+   */
+  intentDate?: string | null;
 };
 
 /**
@@ -88,7 +170,10 @@ export function PinMarkerView({
   selected = false,
   photoUri = null,
   open = false,
+  own = false,
+  intentDate = null,
 }: PinMarkerViewProps) {
+  const theme = useTheme();
   const scale = useSharedValue(1);
 
   useEffect(() => {
@@ -99,7 +184,10 @@ export function PinMarkerView({
     transform: [{ scale: scale.value }],
   }));
 
-  const fill = seeded ? PIN_GOLD : PIN_AMBER;
+  // The later-day dim applies to the amber only: gold is already the scarce
+  // colour, and dimming it would collapse it into amber.
+  const later = !seeded && intentDate != null && isLaterDay(intentDate);
+  const fill = seeded ? PIN_GOLD : later ? PIN_AMBER_LATER : PIN_AMBER;
   const glyph = seeded ? SEEDED_GLYPH : CATEGORY_GLYPHS[category];
   // A face beats an icon: knowing WHO is going is the reason to tap.
   const showFace = !seeded && photoUri != null;
@@ -110,6 +198,11 @@ export function PinMarkerView({
       // alike). Live views on Apple Maps, so the spring actually paints.
       entering={FadeInDown.springify().mass(1).damping(14).stiffness(260)}
       style={[styles.wrap, animatedStyle]}>
+      {own ? (
+        // Under the tail (zIndex), so the neck reads as passing behind the
+        // ring rather than being cut by it.
+        <View pointerEvents="none" style={[styles.ownRing, { borderColor: theme.accent }]} />
+      ) : null}
       <View style={[styles.body, { backgroundColor: fill }, selected && styles.bodySelected]}>
         {showFace ? (
           <>
@@ -154,12 +247,22 @@ export function PinStackView({
   count,
   category,
   selected = false,
+  intentDate = null,
 }: {
-  /** Photo URLs, already resolved. Nulls become the anonymous silhouette. */
+  /**
+   * Photo URLs, already resolved. Entries that resolved to nothing are
+   * DROPPED, not drawn: at launch density nobody has a photo, and a row of
+   * identical glyph discs plus a badge was three circles for two plans. When
+   * nothing resolves at all, the stack collapses to one glyph disc plus the
+   * count, matching the single-marker silhouette.
+   */
   faces: (string | null)[];
   count: number;
-  category: PinCategory;
+  /** The cluster's dominant category, or 'mixed' when its plans disagree. */
+  category: StackCategory;
   selected?: boolean;
+  /** Soonest plan day in the stack; a later-than-today day burns dimmer. */
+  intentDate?: string | null;
 }) {
   const scale = useSharedValue(1);
 
@@ -172,34 +275,43 @@ export function PinStackView({
   }));
 
   const shown = faces.slice(0, STACK_FACES);
+  const resolved = shown.filter((uri): uri is string => uri != null);
+  const later = intentDate != null && isLaterDay(intentDate);
+  const fill = later ? PIN_AMBER_LATER : PIN_AMBER;
 
   return (
     <Animated.View
       entering={FadeInDown.springify().mass(1).damping(14).stiffness(260)}
       style={[styles.wrap, animatedStyle]}>
       <View style={styles.stackRow}>
-        {shown.map((uri, index) => (
-          <View
-            key={index}
-            style={[
-              styles.stackFace,
-              { backgroundColor: PIN_AMBER, marginLeft: index === 0 ? 0 : -STACK_OVERLAP },
-              // Later faces paint over earlier ones, which is what makes the
-              // overlap read as a stack rather than as a smudge.
-              { zIndex: STACK_FACES - index },
-            ]}>
-            {uri ? (
-              <Image source={{ uri }} style={styles.face} contentFit="cover" />
-            ) : (
-              <SymbolView name={CATEGORY_GLYPHS[category]} size={13} tintColor={PIN_GLYPH} />
-            )}
+        {resolved.length === 0 ? (
+          <View style={[styles.body, { backgroundColor: fill }]}>
+            <SymbolView name={glyphFor(category)} size={15} tintColor={PIN_GLYPH} />
           </View>
-        ))}
-        <View style={[styles.stackCount, { backgroundColor: PIN_AMBER }]}>
-          <Text style={styles.stackCountText}>{count > 99 ? '99+' : count}</Text>
+        ) : (
+          resolved.map((uri, index) => (
+            <View
+              key={index}
+              style={[
+                styles.stackFace,
+                { backgroundColor: fill, marginLeft: index === 0 ? 0 : -STACK_OVERLAP },
+                // Later faces paint over earlier ones, which is what makes
+                // the overlap read as a stack rather than as a smudge.
+                { zIndex: STACK_FACES - index },
+              ]}>
+              <Image source={{ uri }} style={styles.face} contentFit="cover" />
+            </View>
+          ))
+        )}
+        <View style={[styles.stackCount, { backgroundColor: fill }]}>
+          {/* Marker artwork is cartography, not body text: the badge cannot
+              grow with Dynamic Type on a view frozen as a bitmap. */}
+          <Text allowFontScaling={false} style={styles.stackCountText}>
+            {count > 99 ? '99+' : count}
+          </Text>
         </View>
       </View>
-      <View style={[styles.tail, { backgroundColor: PIN_AMBER }]} />
+      <View style={[styles.tail, { backgroundColor: fill }]} />
     </Animated.View>
   );
 }
@@ -220,9 +332,15 @@ export function CityCountView({ name, count }: { name: string; count: number }) 
       entering={FadeInDown.springify().mass(1).damping(14).stiffness(260)}
       style={styles.wrap}>
       <View style={styles.cityPill}>
-        <Text style={styles.cityName}>{name}</Text>
+        {/* Marker artwork is cartography: MapKit's own labels do not scale
+            with Dynamic Type either, and this view is frozen as a bitmap. */}
+        <Text allowFontScaling={false} style={styles.cityName}>
+          {name}
+        </Text>
         <View style={styles.cityDot} />
-        <Text style={styles.cityCount}>{count}</Text>
+        <Text allowFontScaling={false} style={styles.cityCount}>
+          {count}
+        </Text>
       </View>
       <View style={[styles.tail, { backgroundColor: PIN_AMBER }]} />
     </Animated.View>
@@ -293,15 +411,6 @@ export function useMarkerTracking(key: string): boolean {
   }, [tracking]);
   return tracking;
 }
-
-// 36, not 34. On a muted basemap the face is the only thing worth looking at,
-// and at 34 with a badge on its corner there was more chrome than person.
-const BODY = 36;
-const TAIL = 11;
-/** How many faces a stack shows before the count takes over. */
-const STACK_FACES = 3;
-const STACK_FACE = 28;
-const STACK_OVERLAP = 10;
 
 const styles = StyleSheet.create({
   stackRow: {
@@ -385,7 +494,23 @@ const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
     // Room for the spring overshoot so nothing clips at the bitmap edge.
-    padding: 4,
+    padding: WRAP_PAD,
+  },
+  /**
+   * The viewer's own pin: a 2pt concentric accent ring living INSIDE the
+   * wrap padding, absolutely positioned so the marker's layout — and with it
+   * the derived centre offset — does not move a point. Same argument as
+   * business-marker.tsx's own-ring: a shape, not a hue swap.
+   */
+  ownRing: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: BODY + WRAP_PAD * 2,
+    height: BODY + WRAP_PAD * 2,
+    borderRadius: (BODY + WRAP_PAD * 2) / 2,
+    borderWidth: 2,
+    zIndex: -2,
   },
   body: {
     width: BODY,
@@ -454,9 +579,13 @@ const styles = StyleSheet.create({
   tail: {
     width: TAIL,
     height: TAIL,
-    marginTop: -(TAIL / 2 + 4),
+    marginTop: -TAIL_TUCK,
     borderRadius: 2,
-    transform: [{ rotate: '45deg' }],
+    // A rotated square squeezed on the screen's X axis: the diamond becomes
+    // a teardrop neck. The scale is OUTSIDE the rotate (first in the array,
+    // CSS ordering), so the squeeze is horizontal on screen and the tip's Y
+    // — which centerOffsetFor() derives — is untouched.
+    transform: [{ scaleX: 0.62 }, { rotate: '45deg' }],
     zIndex: -1,
   },
 });

@@ -296,6 +296,16 @@ export function shouldGeocode({
  * Matching either date fixes that without ever showing a plan that has already
  * happened, which is what a looser `<=` comparison would have done.
  */
+/**
+ * Whether a plan is for a LATER day than today, on either of the two clocks
+ * that write intent_date (see filterDates below). Markers burn a step dimmer
+ * for later days; today, and a day already under way, burn at full amber.
+ * ISO date strings compare correctly as strings.
+ */
+export function isLaterDay(intentISO: string, now = new Date()): boolean {
+  return intentISO > toISODate(now) && intentISO > now.toISOString().slice(0, 10);
+}
+
 export function filterDates(filter: 'today' | 'tomorrow' | 'later', now = new Date()): string[] {
   // 'later' is the day after tomorrow, which is as far as a pin can ever
   // reach: the lifetime is capped at 72 hours, so three days is the whole

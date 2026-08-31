@@ -428,20 +428,20 @@ it: a bare rename produces a green deploy and a broken app. `city_rooms` and
 `join_room` keep their names, because shipped iOS builds call them over the wire
 and a binary does not update over the air.
 
-| table                          | what it holds                                                  |
-| ------------------------------ | -------------------------------------------------------------- |
-| `businesses`                   | the listing. `state` and `verified_at` are ORTHOGONAL          |
-| `business_staff`               | who moderates the room, no expiry                              |
-| `business_photos`              | private bucket `business-photos`, cover is position 0          |
-| `business_links`               | the one chokepoint a URL can enter through                     |
-| `business_hours`               | rows, not a grid: two rows is a split shift                    |
-| `business_posts`               | expiry chosen by the business, including never                 |
-| `business_email_confirmations` | the six-digit code. No client grants at all                    |
-| `business_verifications`       | the two storefront shots. Evidence, never rendered             |
-| `business_reports`             | one voice per account, enforced by a partial unique index      |
-| `business_scans`               | the impersonation queue, one scan a day per business           |
-| `business_ratings`             | Beli-style. No text anywhere                                   |
-| `outbound_mail`                | queued email; `to_address` NULL means the SUPPORT_INBOX secret |
+| table                          | what it holds                                                   |
+| ------------------------------ | --------------------------------------------------------------- |
+| `businesses`                   | the listing. `state` and `verified_at` are ORTHOGONAL           |
+| `business_staff`               | who moderates the room, no expiry                               |
+| `business_photos`              | private bucket `business-photos`, cover is position 0           |
+| `business_links`               | the one chokepoint a URL can enter through                      |
+| `business_hours`               | rows, not a grid: two rows is a split shift                     |
+| `business_posts`               | expiry chosen by the business, including never                  |
+| `business_email_confirmations` | the six-digit code. No client grants at all                     |
+| `business_verifications`       | the two storefront shots. Evidence, never rendered              |
+| `business_reports`             | one voice per account, enforced by a partial unique index       |
+| `business_scans`               | the impersonation queue, one scan a day per business            |
+| `business_ratings`             | Beli-style. No text anywhere                                    |
+| `outbound_mail`                | queued email; `to_address` NULL means the SUPPORT_INBOX address |
 
 **`state` is permission to appear; `verified_at` is a badge.** Confirming the
 email moves a listing from `unconfirmed` to `listed` and grants no check mark,
@@ -826,9 +826,10 @@ a trigger, and no select policy for anyone.
 Two delivery channels, either or both:
 
 - **Email.** A cron'd `support-mailer` Edge Function sends undelivered rows
-  through Resend. Needs `RESEND_API_KEY` and `SUPPORT_INBOX` as repo secrets;
-  without them the worker returns `{skipped: 'not configured'}` and changes
-  nothing.
+  through Resend. Needs the `RESEND_API_KEY` secret; `SUPPORT_INBOX` is pinned
+  to `hello@samewhere.io` in the deploy workflow (2026-08-31 — it is a public
+  address, not a secret). Without the key the worker returns
+  `{skipped: 'not configured'}` and changes nothing.
 - **Push, and it needs no key at all.** `app_config.support_notify_recipients`
   is a JSON array of **emails or user ids**; an `after insert` trigger queues
   a push to each of them with the sender's address as the title. Empty by

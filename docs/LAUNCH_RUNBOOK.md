@@ -201,9 +201,11 @@ existing inbox for free, and forwarding is fine for launch.
    subdomain (`send.samewhere.io`) so it cannot collide with the forwarder's MX.
 3. **DMARC**, recommended: `_dmarc.samewhere.io` TXT
    `v=DMARC1; p=none; rua=mailto:hello@samewhere.io`. Start at `p=none`.
-4. **Secrets:** `SUPPORT_FROM` = `Samewhere <hello@samewhere.io>`,
-   `SUPPORT_INBOX` = `hello@samewhere.io`, plus `RESEND_API_KEY`. Then
-   Actions → **Supabase deploy**.
+4. **Secrets:** `SUPPORT_FROM` = `Samewhere <hello@samewhere.io>` and
+   `RESEND_API_KEY`. `SUPPORT_INBOX` needs no secret any more — it is pinned to
+   `hello@samewhere.io` in the deploy workflow itself, and an old
+   `SUPPORT_INBOX` repo secret can be deleted. Then Actions →
+   **Supabase deploy**.
 5. **Analytics secrets**, unrelated to mail but on the same checklist because
    nothing measures anything until they exist: `EXPO_PUBLIC_POSTHOG_API_KEY` and
    `EXPO_PUBLIC_POSTHOG_HOST` as repo secrets, and the same pair in the EAS

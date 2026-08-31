@@ -461,8 +461,8 @@ Two reports on the same business do not re-scan within 24 hours; the email
 still sends, because the founder wants to see them.
 
 **The email** reuses `support-mailer`'s Resend path exactly, and is addressed to
-the `SUPPORT_INBOX` secret — the founder's personal address today, a dedicated
-support address later, and changing it is a secret rotation with no code change.
+`SUPPORT_INBOX` — pinned to `hello@samewhere.io` in the deploy workflow since
+2026-08-31 (it began as a personal-address secret before the domain existed).
 Subject and body carry the business name, the city, the reason, the note, a link
 to the report row and, once the scan lands, the verdict. Nothing in it is
 guessed: if the scan has not finished, the email says the scan is pending and a

@@ -12,6 +12,7 @@ import {
   hoursLabel,
   intentDateOptions,
   intentLabel,
+  isLaterDay,
   minHoursForIntent,
   pinSubtitle,
   pinTitle,
@@ -244,6 +245,23 @@ describe('pinTitle / pinSubtitle (one voice for a pin, everywhere)', () => {
     expect(pinSubtitle({ note: null })).toBeNull();
     expect(pinSubtitle({ note: '' })).toBeNull();
     expect(pinSubtitle({ note: '   ' })).toBeNull();
+  });
+});
+
+describe('isLaterDay (the marker dim)', () => {
+  // Mar 4, 3pm local. Whatever the runner's timezone, both of the two clocks
+  // that write intent_date agree these are today-or-past and this is later.
+  const now = new Date(2026, 2, 4, 15, 0);
+
+  it('is false for today and for a day already under way', () => {
+    expect(isLaterDay(toISODate(now), now)).toBe(false);
+    expect(isLaterDay(toISODate(addDays(now, -1)), now)).toBe(false);
+  });
+
+  it('is true only once BOTH clocks agree the day is later', () => {
+    // Two days out is later than today on the local clock and the UTC clock
+    // alike, whichever side of the meridian the runner sits on.
+    expect(isLaterDay(toISODate(addDays(now, 2)), now)).toBe(true);
   });
 });
 
