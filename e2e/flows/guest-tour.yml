@@ -62,16 +62,15 @@ appId: com.mattmoore.samewhere
     timeout: 15000
 - assertVisible: 'I already have an account'
 - takeScreenshot: 03a-guest-account
-# profile-me carries the default native header, so the system back chevron
-# is there and answers to its standard spoken label.
-# First tap on the native minimal back chevron anywhere in the suite: its
-# spoken label is expected to be 'Back' but is unverified on a device (run 28
-# once died on a back tap in the other flow). If this step fails, reset via
-# the tab bar instead of going back.
-- tapOn: 'Back'
+# The pushed profile screen hides the tab bar, and run 90 proved the native
+# minimal back chevron answers to no label Maestro can see - the 'Back' tap
+# found nothing. Relaunch instead, the pattern the suite already trusts
+# (signed-in-tour: "Relaunch rather than back"): the guest session persists,
+# the intro is seen-once, so the app comes back up on the tabs.
+- launchApp
 - extendedWaitUntil:
     visible: 'Travelers'
-    timeout: 10000
+    timeout: 30000
 - tapOn: 'Chat'
 # Same fade as the member Chat tab: wait it out or the shot is mid-fade.
 - waitForAnimationToEnd:

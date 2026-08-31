@@ -186,6 +186,14 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 49-business-photo-added
+# The upload has to LAND before Save: run 90 tapped Save with the tile still
+# a spinner at '0 of 10', the editor stayed open, and the 20s wait for the
+# step title timed out. '1 of 10' is the photo counter (the links list above
+# reads '2 of 10' by this point, so the string is unambiguous), and a minute
+# covers a slow runner's storage round trip.
+- extendedWaitUntil:
+    visible: '1 of 10'
+    timeout: 60000
 # Save, not the header's Close. The editor is a long form and by this point it
 # is scrolled to the photo grid, so the X at the top is off screen and cannot
 # be tapped — run 86 sat in the editor for the rest of the flow. Save is
