@@ -350,6 +350,21 @@ appId: com.mattmoore.samewhere
 # The screenshots are the evidence. Note that iOS renders SFSafariViewController
 # in a separate process, so 10a may come back empty; the frame around it is
 # still the proof that the app did not leave.
+#
+# OPEN THE LIST FIRST. This segment used to start by tapping the business row
+# directly, and it could never have passed: the step above it relaunches the
+# app to prove the city survives a cold start, so what is on screen here is
+# the MAP, and the row it wants lives inside the plan list that relaunch
+# collapsed. Every step to it was optional, so the miss was silent right up
+# to the hard assert on 'Website', which then failed with a message about a
+# link rather than about a list that was never opened. Tapped by testID for
+# the same reason the 05e segment does it: the peek strip is a Pressable
+# carrying its own accessibility label, so its printed words are not elements
+# on iOS.
+- tapOn:
+    id: 'plan-list-peek'
+- waitForAnimationToEnd:
+    timeout: 2000
 # ─────────────────────────────────────────────────────────────────────────
 - tapOn:
     text: '.*, something on tonight'

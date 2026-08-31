@@ -1,7 +1,8 @@
 # Making a profile, which the suite has never photographed either.
 #
 # The signed-in tour signs into an account that is already onboarded, and the
-# guest tour stops at the account-kind chooser, so the front door of the whole
+# guest tour never makes one (it browses, meets the gate, and photographs the
+# chooser and the map on the way past), so the front door of the whole
 # app — the screens that decide whether somebody ends up with a profile at all
 # — has had no picture of it. It just went from seven steps to thirteen.
 #
