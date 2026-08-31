@@ -22,6 +22,7 @@ function pin(over: Partial<CityPinRow> = {}): CityPinRow {
     photo_path: null,
     venue_name: 'Mad Monkey',
     note: null,
+    plan: null,
     place_label: null,
     category: 'bar',
     lat: 13.7563,
@@ -80,6 +81,24 @@ describe('clusterTitle', () => {
     const a = pin({ venue_name: 'Mad Monkey' });
     const clusters = clusterPins([a, pin({ venue_name: 'The rooftop', lat: a.lat })]);
     expect(clusterTitle(clusters[0])).toBe('2 plans here');
+  });
+
+  it('one venue with two different PLANS is still that venue', () => {
+    // The whole point of the venue/plan split: plan text lives in `plan`
+    // now, so two people at one bar no longer read as '2 plans here'.
+    const a = pin({ venue_name: 'Mad Monkey', plan: 'Sunset drinks' });
+    const clusters = clusterPins([
+      a,
+      pin({ venue_name: 'Mad Monkey', plan: 'Pub quiz', lat: a.lat }),
+    ]);
+    expect(clusterTitle(clusters[0])).toBe('Mad Monkey');
+  });
+
+  it('a blank venue falls back to the address, then to the count', () => {
+    const [withLabel] = clusterPins([pin({ venue_name: ' ', place_label: 'Rua da Rosa, Lisbon' })]);
+    expect(clusterTitle(withLabel)).toBe('Rua da Rosa, Lisbon');
+    const [bare] = clusterPins([pin({ venue_name: ' ', place_label: null })]);
+    expect(clusterTitle(bare)).toBe('1 plan here');
   });
 });
 

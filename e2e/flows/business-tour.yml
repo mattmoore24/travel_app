@@ -322,20 +322,31 @@ appId: com.mattmoore.samewhere
 # than merely useless, so it cannot be reached by deep link either.
 - assertNotVisible: 'Travelers'
 
-# THE MAP FIRST, because that is where the app opens. The founder's words:
-# "the map page as a business isn't used for that purpose". No faces on it,
-# no drop-a-pin dock, no audience chip.
-- waitForAnimationToEnd:
-    timeout: 3000
-- takeScreenshot: 71-business-map
-
-# THE TAB ITSELF. Run 88 named the map 70-business-my-business, because
-# "My business" is the TAB LABEL and is on screen whichever tab is selected:
-# waiting for the words proved the tab bar exists, not that the tab is open.
-- tapOn: 'My business'
+# THE LANDING IS MY BUSINESS NOW (founder decision D8): the app itself
+# switches a business off the Map tab the moment the account kind resolves,
+# so the first screen an owner reads is their own listing and its next step.
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 70-business-my-business
+
+# THE MAP, reached by a tap rather than being the landing. The founder's
+# words: "the map page as a business isn't used for that purpose". No faces,
+# no drop-a-pin dock, no audience chip - and no city rail: the map opens on
+# the listing's own city (Lisbon here), so the chips for three other cities
+# are gone.
+- tapOn: 'Map'
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertNotVisible: 'Mexico City'
+# This listing never confirmed its email, so the strip explains the missing
+# chip in the state's own words. Optional: after a mid-flow launchApp the map
+# screen is not reliably addressable (see the traps skill) - the screenshot
+# is the evidence either way, and it must differ from 70 this time.
+- extendedWaitUntil:
+    visible: 'Your business is not on the map yet.*'
+    timeout: 10000
+    optional: true
+- takeScreenshot: 71-business-map
 
 # THE CHAT TAB. A business's own room and the travelers who wrote in, and
 # nothing shaped like a traveler's hello queue.
@@ -364,7 +375,8 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'My business'
     timeout: 40000
-- tapOn: 'My business'
+# No tab tap: the D8 landing has already selected My business, and tapping
+# the phrase again risks hitting the page's own subtitle (run 88's bug).
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 74-business-my-business-again

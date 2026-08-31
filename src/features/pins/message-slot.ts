@@ -17,6 +17,11 @@ export const SLOT_ORDER = [
   // impression this product cannot afford.
   'pins-error',
   'heat-error',
+  // An owner whose own listing is missing from their own map: the one card
+  // that says why, and (when it is the email code) what to do. Ahead of the
+  // empty states — the missing chip is the more actionable absence — and it
+  // silences the 'Tap a business' legend by winning the slot from it.
+  'own-listing',
   // Empty states, most specific first.
   'empty-city',
   'viewport-empty',

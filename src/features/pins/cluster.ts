@@ -1,3 +1,4 @@
+import { countOf } from '@/lib/plural';
 import type { CityPinRow, PinCategory } from '@/lib/database.types';
 
 /**
@@ -199,12 +200,22 @@ export function clusterIntentDate(cluster: PinCluster): string {
 
 /**
  * What a stacked marker says when it opens: the venue if everybody agrees on
- * one, the count otherwise.
+ * one, the count otherwise. Since the venue/plan split, venue_name actually
+ * MEANS the venue, so two people at one bar with different plan text agree
+ * again. A dragged pin that never got a reverse geocode can hold a blank-ish
+ * venue: fall back to its place_label (the address), then to the count.
  */
 export function clusterTitle(cluster: PinCluster): string {
-  const names = new Set(cluster.pins.map((pin) => pin.venue_name));
+  const names = new Set(cluster.pins.map((pin) => pin.venue_name.trim()));
   if (names.size === 1) {
-    return cluster.pins[0].venue_name;
+    const name = cluster.pins[0].venue_name.trim();
+    if (name) {
+      return name;
+    }
+    const label = cluster.pins[0].place_label?.trim();
+    if (label) {
+      return label;
+    }
   }
-  return `${cluster.pins.length} plans here`;
+  return `${countOf(cluster.pins.length, 'plan')} here`;
 }

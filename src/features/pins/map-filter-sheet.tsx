@@ -86,10 +86,17 @@ export function MapFilterSheet({
   filters,
   resultCount,
   totalCount,
+  clock,
   onChange,
   onClose,
 }: {
   filters: MapFilters;
+  /**
+   * The browsed city's wall clock (cityClockNow). The third day chip is
+   * named for a weekday, and the weekday two days out is the CITY's, not the
+   * reader's — fifteen hours of difference can make it the wrong name.
+   */
+  clock?: Date;
   /**
    * How many markers survive right now — computed by the map from the SAME
    * arrays the markers render (see mapResultCount), or the number would
@@ -109,9 +116,10 @@ export function MapFilterSheet({
   // drawn on my map.
   const viewerIsBusiness = useIsBusiness();
   // The third day has no name of its own — "later" is vague and the date is
-  // noise — so it says which weekday it is, the way the pin form already does.
+  // noise — so it says which weekday it is, the way the pin form already
+  // does. Derived from the city clock: the chip filters the city's days.
   const laterLabel = new Intl.DateTimeFormat('en', { weekday: 'long' }).format(
-    addDays(new Date(), 2)
+    addDays(clock ?? new Date(), 2)
   );
   // The cap is what keeps a strip of MAP visible above the sheet: the whole
   // argument against an Apply button is that you watch the markers answer

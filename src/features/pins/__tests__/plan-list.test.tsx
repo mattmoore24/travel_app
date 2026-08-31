@@ -49,6 +49,7 @@ function pin(over: Partial<CityPinRow> = {}): CityPinRow {
     photo_path: 'photos/ana.jpg',
     venue_name: 'Sky Bar',
     note: 'Sunset drinks',
+    plan: null,
     place_label: null,
     category: 'bar',
     lat: 13.7563 + seq * 0.01,
@@ -157,6 +158,26 @@ describe('the peek line', () => {
     expect(
       todayCount([pin({ intent_date: toISODate(now) }), pin({ intent_date: '2001-01-01' })], now)
     ).toBe(1);
+  });
+
+  it('leads with the city day and KEEPS the device day matched (widen, never swap)', () => {
+    // A device at 20:00 on Jul 30 browsing a city already at 03:00 on Jul 31.
+    // Passing the city clock as `now` used to drop the device-local and UTC
+    // candidates the map's own Today filter still accepts, so a pin the
+    // device clock wrote vanished from the peek's count.
+    const device = new Date(2026, 6, 30, 20, 0);
+    const city = new Date(2026, 6, 31, 3, 0);
+    expect(
+      todayCount(
+        [
+          pin({ intent_date: '2026-07-31' }), // the city's today
+          pin({ intent_date: '2026-07-30' }), // the device's today, still matched
+          pin({ intent_date: '2026-07-28' }),
+        ],
+        device,
+        city
+      )
+    ).toBe(2);
   });
 });
 

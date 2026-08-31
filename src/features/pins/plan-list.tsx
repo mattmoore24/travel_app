@@ -22,6 +22,7 @@ import {
 import type { PinCluster } from '@/features/pins/cluster';
 import { daysFor } from '@/features/pins/filters';
 import { burnOutLabel, intentLabel, pinSubtitle, pinTitle } from '@/features/pins/pin-helpers';
+import { toISODate } from '@/features/trips/dates';
 import { PinGlyph } from '@/features/pins/pin-marker';
 import { useTheme } from '@/hooks/use-theme';
 import { countOf } from '@/lib/plural';
@@ -57,9 +58,15 @@ export function planListSummary(cityName: string, pinCount: number, todayCount: 
   return todayCount > 0 ? `${plans} · ${todayCount} today` : plans;
 }
 
-/** How many of the filtered pins are for today, on either clock (see filterDates). */
-export function todayCount(pins: CityPinRow[], now = new Date()): number {
-  const today = daysFor('today', now)!;
+/**
+ * How many of the filtered pins are for today. The city clock LEADS when one
+ * is given, and the device-local and UTC candidate days stay matched — the
+ * same "widen, never swap" tolerance the map's own Today filter applies (see
+ * filterDates). Passing the city clock as `now` instead DROPPED those two
+ * candidates, so the peek's count disagreed with the markers it summarised.
+ */
+export function todayCount(pins: CityPinRow[], now = new Date(), city: Date | null = null): number {
+  const today = daysFor('today', now, city)!;
   return pins.filter((pin) => today.has(pin.intent_date)).length;
 }
 
@@ -132,6 +139,7 @@ export function PlanList({
   onSelectPin,
   onSelectVenue,
   onSelectBusiness,
+  clock,
 }: {
   cityName: string;
   /** The FILTERED pins — the same array the markers render, or the peek lies. */
@@ -159,6 +167,12 @@ export function PlanList({
   onSelectPin: (pin: CityPinRow) => void;
   onSelectVenue: (clusterKey: string) => void;
   onSelectBusiness: (businessId: string) => void;
+  /**
+   * The browsed city's wall clock (cityClockNow). "Today" in the summary,
+   * the section titles and the row labels is the CITY's today — the same
+   * authority the markers and the filter chips read.
+   */
+  clock?: Date;
 }) {
   const theme = useTheme();
   const { height: windowHeight } = useWindowDimensions();
@@ -224,12 +238,23 @@ export function PlanList({
       runOnJS(onDetentChange)(best);
     });
 
-  const sections = useMemo(() => planSections(clusters, centre), [clusters, centre]);
+  const cityDayISO = clock != null ? toISODate(clock) : null;
+  const sections = useMemo(
+    () => planSections(clusters, centre, clock ?? new Date()),
+    // Day-level key: the clock object is new every render, the titles only
+    // change when the city's calendar day does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [clusters, centre, cityDayISO]
+  );
   const businesses = useMemo(
     () => listableBusinesses(places, isBusinessViewer, ownBusinessId),
     [places, isBusinessViewer, ownBusinessId]
   );
-  const summary = planListSummary(cityName, pins.length, todayCount(pins));
+  const summary = planListSummary(
+    cityName,
+    pins.length,
+    todayCount(pins, new Date(), clock ?? null)
+  );
 
   if (pins.length === 0 && businesses.length === 0) {
     return null;
@@ -297,6 +322,7 @@ export function PlanList({
                   key={cluster.key}
                   cluster={cluster}
                   index={sectionStarts[sectionIndex] + rowIndex}
+                  clock={clock ?? new Date()}
                   onPress={() =>
                     cluster.pins.length === 1
                       ? onSelectPin(cluster.pins[0])
@@ -357,10 +383,13 @@ export function PlanList({
 function PlanRow({
   cluster,
   index,
+  clock,
   onPress,
 }: {
   cluster: PinCluster;
   index: number;
+  /** The browsed city's clock; its today owns the word 'Today'. */
+  clock: Date;
   onPress: () => void;
 }) {
   const theme = useTheme();
@@ -372,13 +401,13 @@ function PlanRow({
   const details = single
     ? [
         pinSubtitle(single) ? pinTitle(single) : null,
-        intentLabel(single.intent_date),
+        intentLabel(single.intent_date, clock),
         burnOutLabel(single.expires_at),
         open && single.crew > 0 ? `${single.crew} going` : null,
       ]
         .filter(Boolean)
         .join(' · ')
-    : `${countOf(cluster.pins.length, 'plan')} · ${intentLabel(clusterIntentDate(cluster))}`;
+    : `${countOf(cluster.pins.length, 'plan')} · ${intentLabel(clusterIntentDate(cluster), clock)}`;
 
   return (
     <Pressable

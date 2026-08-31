@@ -2,7 +2,7 @@
 -- pruning, storage-object ceilings, admin metrics view privileges, and the
 -- account-deletion cascade (what dies, what survives).
 begin;
-select plan(25);
+select plan(27);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -36,6 +36,23 @@ create function pg_temp.lisbon() returns int language sql as
 insert into public.trips (user_id, city_id, start_date, end_date) values
   ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), current_date + 10, current_date + 20),
   ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), current_date + 10, current_date + 20);
+
+-- Every active launch city states a clock the server can actually evaluate:
+-- a typo'd IANA name would otherwise raise inside the first scheduled job,
+-- where nobody sees it (20260831160000).
+select is(
+  (select count(*)::int from public.launch_cities
+    where active and not public.is_valid_timezone(timezone)),
+  0,
+  'every active launch city carries a timezone now() at time zone accepts'
+);
+select throws_ok(
+  $$ update public.launch_cities set timezone = 'Neverland/Nowhere'
+     where city_id = pg_temp.lisbon() $$,
+  '23514',
+  null,
+  'a timezone that does not parse is refused at write time'
+);
 
 -- Build an accepted chat for the message-flood test.
 select pg_temp.login('00000000-0000-0000-0000-00000000000b');

@@ -25,6 +25,7 @@ import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
+import { useAuthStore } from '@/features/auth/store';
 import { guestEmptyCityLine, guestGateReason } from '@/features/guest/copy';
 import {
   useFeaturedPhoto,
@@ -94,6 +95,7 @@ type Candidate = {
  */
 function GuestTravelers() {
   const insets = useSafeAreaInsets();
+  const intentRemembered = useAuthStore((s) => s.intentRemembered);
   // Dynamic Type grows the native tab bar; the constant it replaces did not.
   const tabBarInset = useTabBarInset();
   const launchCitiesQuery = useLaunchCities();
@@ -296,6 +298,19 @@ function GuestTravelers() {
           reason={guestGateReason(featured?.display_name, featured != null, cityName)}
           // Not the reason: that sentence carries a real traveler's name.
           where="travelers-tab"
+          // The third origin the account wall used to throw away: signup
+          // lands this person back on the Travelers tab (the tabs layout
+          // replays it). Recorded only on the tap through.
+          onNavigate={(go) => {
+            if (cityId != null) {
+              intentRemembered({
+                kind: 'traveler',
+                cityId,
+                ...(featured != null ? { userId: featured.user_id } : {}),
+              });
+            }
+            go();
+          }}
         />
       </ScrollView>
     </ThemedView>

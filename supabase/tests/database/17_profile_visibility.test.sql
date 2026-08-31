@@ -185,7 +185,8 @@ select public.set_visibility('everyone');
 -- 3. The map, same rule ----------------------------------------------------------
 
 select pg_temp.admin();
-insert into public.launch_cities (city_id, active) values (pg_temp.lisbon(), true)
+insert into public.launch_cities (city_id, active, timezone)
+  values (pg_temp.lisbon(), true, 'Europe/Lisbon')
   on conflict (city_id) do update set active = true;
 insert into public.pins (user_id, city_id, venue_name, category, lat, lng,
                          intent_date, expires_at)

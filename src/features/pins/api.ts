@@ -12,13 +12,15 @@ export type LaunchCityWithCity = {
   active: boolean;
   radius_km: number;
   heat_k: number;
+  /** IANA zone name for the city's own clock (launch_cities.timezone). */
+  timezone: string;
   cities: CityRow;
 };
 
 export async function fetchLaunchCities() {
   const { data, error } = await supabase
     .from('launch_cities')
-    .select('city_id, active, radius_km, heat_k, cities(*)')
+    .select('city_id, active, radius_km, heat_k, timezone, cities(*)')
     .eq('active', true)
     .order('city_id'); // deterministic: the default city must not flip on refetch
   if (error) {
@@ -51,6 +53,7 @@ export async function createPin(input: {
   cityId: number;
   venueName: string;
   note?: string | null;
+  plan?: string | null;
   placeLabel?: string | null;
   category: PinCategory;
   lat: number;
@@ -65,6 +68,7 @@ export async function createPin(input: {
       city_id: input.cityId,
       venue_name: input.venueName,
       note: input.note ?? null,
+      plan: input.plan ?? null,
       place_label: input.placeLabel ?? null,
       category: input.category,
       lat: input.lat,
@@ -93,6 +97,7 @@ export async function postJoinablePin(input: {
   cityId: number;
   venueName: string;
   note?: string | null;
+  plan?: string | null;
   placeLabel?: string | null;
   category: PinCategory;
   lat: number;
@@ -104,6 +109,7 @@ export async function postJoinablePin(input: {
     p_city_id: input.cityId,
     p_venue_name: input.venueName,
     p_note: input.note ?? null,
+    p_plan: input.plan ?? null,
     p_place_label: input.placeLabel ?? null,
     p_category: input.category,
     p_lat: input.lat,

@@ -106,13 +106,21 @@ export function toggle<T>(list: T[], value: T, atLeastOne = false): T[] {
  * sender was on, so a device just past midnight and a server just short of it
  * disagree about what "today" is. See filterDates.
  */
-export function daysFor(day: DayFilter, now = new Date()): Set<string> | null {
-  return day === 'any' ? null : new Set(filterDates(day, now));
+export function daysFor(
+  day: DayFilter,
+  now = new Date(),
+  city: Date | null = null
+): Set<string> | null {
+  return day === 'any' ? null : new Set(filterDates(day, now, city));
 }
 
-/** Which single day the heat RPC should be asked about — it takes one, or none. */
-export function heatDay(day: DayFilter, now = new Date()): string | null {
-  return day === 'any' ? null : filterDates(day, now)[0];
+/**
+ * Which single day the heat RPC should be asked about — it takes one, or
+ * none. With a city clock (cityClockNow) it is the CITY's day: filterDates
+ * puts that candidate first.
+ */
+export function heatDay(day: DayFilter, now = new Date(), city: Date | null = null): string | null {
+  return day === 'any' ? null : filterDates(day, now, city)[0];
 }
 
 /** Whether one traveler pin survives the current filters. */

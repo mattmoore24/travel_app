@@ -20,6 +20,29 @@
 # onboarding_completed_at, so what it leaves behind is an unfinished profile:
 # invisible in Travelers, invisible on the map, exactly like somebody who
 # closed the app half way through.
+#
+# THE INTENT CARRIED ACROSS THE WALL has two map origins
+# (map-carries-your-intent-through-signup), and they cannot both be proven in
+# one run: the store holds ONE pendingIntent and this flow signs up ONCE. So
+# the door into signup decides which replay the tail asserts, and the tail
+# hard-asserts exactly the one that matches:
+#
+#   PIN variant — the guest opens a traveler's pin card from the plan list
+#   (markers are MapKit's and not in the tree; the list rows are ours) and
+#   takes its gate. After finish-profile the SAME pin's card must be open on
+#   the same city ('View <venue> in Maps' is on every pin card).
+#
+#   DROP-PIN variant — the guest taps Drop a pin and takes that gate. After
+#   finish-profile the map must come back IN PLACE MODE ('Pin here').
+#
+# Which door is taken depends on live-backend supply: a pin card only gates
+# for a TRAVELER's pin — a curated pick's card has no gate by design, guests
+# may read our picks freely — and the seeder guarantees only picks. So the
+# pin door is taken whenever a traveler pin is row 0 of the plan list, and
+# the drop-pin door is the deterministic fallback. A run's screenshots say
+# which variant it proved: 75-signup-done-pin-replay or 75-signup-done. The
+# regression either tail catches is the same one: an intent recorded at a
+# gate and thrown away by signup.
 appId: com.mattmoore.samewhere
 ---
 - launchApp
@@ -30,7 +53,58 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
-- tapOn: 'Drop a pin'
+# THE PIN DOOR, attempted first. Rows are addressable by testID; the peek may
+# still be settling (the pins query), so it gets a real wait — but every step
+# stays optional: a city with no list at all falls through to the drop-pin
+# door below.
+- extendedWaitUntil:
+    visible:
+      id: 'plan-list-peek'
+    timeout: 10000
+    optional: true
+- tapOn:
+    id: 'plan-list-peek'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    id: 'plan-list-row-0'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+# Row 0 opened a traveler's pin: its gate is up. Take it — this records the
+# {kind: 'pin'} intent — and skip the drop-pin door entirely.
+- runFlow:
+    when:
+      visible: "See who's going and say hi"
+    commands:
+      - takeScreenshot: 49-pin-card-gate
+      - tapOn: 'Make a profile'
+      # Waited out HERE, not only at the shared step below: the sheet leaves
+      # first and the push lands after its exit animation, so the fallback
+      # block's notVisible check would otherwise run mid-navigation and tap
+      # 'Drop a pin' on a screen that no longer has one.
+      - extendedWaitUntil:
+          visible: 'What are you signing up as?'
+          timeout: 10000
+# Otherwise row 0 was a curated pick (no gate) or there was no list: close
+# whatever opened, fold the list back off the dock, and take the drop-pin
+# door. The fold matters — an expanded list physically covers 'Drop a pin'.
+- runFlow:
+    when:
+      notVisible: 'What are you signing up as?'
+    commands:
+      - tapOn:
+          text: 'Close'
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn:
+          id: 'plan-list-peek'
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn: 'Drop a pin'
 - extendedWaitUntil:
     visible: 'Make a profile'
     timeout: 10000
@@ -311,4 +385,46 @@ appId: com.mattmoore.samewhere
       - extendedWaitUntil:
           visible: 'Travelers'
           timeout: 25000
-      - takeScreenshot: 75-signup-done
+      # THE INTENT CARRIED ACROSS THE WALL (map-carries-your-intent-through-
+      # signup): whichever gate this run entered signup through, its replay
+      # must be on screen — and the two end states are mutually exclusive, so
+      # the tail asserts exactly the one that matches the door taken above.
+      # 'Pin here' is place mode (the drop-pin variant); when it never comes,
+      # the pin variant ran and the SAME pin's card must be open — every pin
+      # card carries the maps link, spoken as 'View <venue> in Maps'. A run
+      # where NEITHER appears fails here, which is the regression this tail
+      # exists to catch: an intent recorded at a gate and dropped by signup.
+      - extendedWaitUntil:
+          visible: 'Pin here'
+          timeout: 20000
+          optional: true
+      - runFlow:
+          when:
+            visible: 'Pin here'
+          commands:
+            # THE DROP-PIN VARIANT, proven: the map came back IN PLACE MODE
+            # at the spot the guest had. 75-signup-done photographs it.
+            - takeScreenshot: 75-signup-done
+            # Leave place mode so the flow ends on the ordinary map, the
+            # state the screenshot used to show.
+            - tapOn: 'Cancel'
+            - waitForAnimationToEnd:
+                timeout: 2000
+      - runFlow:
+          when:
+            notVisible: 'Pin here'
+          commands:
+            # THE PIN VARIANT, proven: the card the guest was reading when
+            # the wall interrupted them is open again, on its own city. The
+            # wait is not slack — the replay holds the card until the city's
+            # pins have refetched under the new account. (A pin that burns
+            # out during the minutes signup takes degrades the replay to the
+            # city alone BY DESIGN; that rare race shows here as a red tail
+            # over a bare-map screenshot. Re-run it — never loosen this.)
+            - extendedWaitUntil:
+                visible: 'View .* in Maps'
+                timeout: 20000
+            - takeScreenshot: 75-signup-done-pin-replay
+            - tapOn: 'Close'
+            - waitForAnimationToEnd:
+                timeout: 2000

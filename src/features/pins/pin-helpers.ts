@@ -1,3 +1,4 @@
+import { cityNow } from '@/features/business/vocabulary';
 import { metersBetween } from '@/features/pins/cluster';
 import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
 import type { PinCategory } from '@/lib/database.types';
@@ -13,8 +14,17 @@ export function pinTitle(pin: { venue_name: string }): string {
   return pin.venue_name;
 }
 
-/** The plan text, or null when there is none worth showing. */
-export function pinSubtitle(pin: { note: string | null }): string | null {
+/**
+ * The plan text, or null when there is none worth showing. `plan` is the
+ * column that means it since the venue/plan split; `note` (the
+ * finding-the-door detail) stands in for rows that predate the split and
+ * for plans whose author wrote only a detail.
+ */
+export function pinSubtitle(pin: { plan?: string | null; note: string | null }): string | null {
+  const plan = pin.plan?.trim();
+  if (plan) {
+    return plan;
+  }
   const note = pin.note?.trim();
   return note ? note : null;
 }
@@ -247,6 +257,49 @@ export function intentLabel(intentISO: string, now = new Date()): string {
   );
 }
 
+/**
+ * The browsed city's wall clock, as a Date whose LOCAL getters read the
+ * city's own time — the shape cityNow already hands to the business-hours
+ * code, so both halves of the app tell time the same way.
+ *
+ * The map is city-scoped and its stated use case is planning a city you have
+ * not reached yet, so "today" on it means the CITY's today: at 20:00 in
+ * London it is 03:00 the NEXT day in Bangkok, and a device-clock "today"
+ * filters to a night that ended hours ago. Prefers the real IANA zone
+ * (launch_cities.timezone); falls back to cityNow's longitude approximation
+ * when the zone is missing or unknown to this device's ICU.
+ */
+export function cityClockNow(timezone: string | null, lng: number | null, now = new Date()): Date {
+  if (timezone) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }).formatToParts(now);
+      const num = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? NaN);
+      const year = num('year');
+      const month = num('month');
+      const day = num('day');
+      // Some ICU builds print midnight as '24' under hour12: false.
+      const hour = num('hour') % 24;
+      const minute = num('minute');
+      const second = num('second');
+      if ([year, month, day, hour, minute, second].every(Number.isFinite)) {
+        return new Date(year, month - 1, day, hour, minute, second);
+      }
+    } catch {
+      // An IANA name this device's ICU does not know: fall through.
+    }
+  }
+  return cityNow(now, lng);
+}
+
 /** iOS CLGeocoder rate-limits: never reverse-geocode more often than this. */
 export const GEOCODE_FLOOR_MS = 800;
 
@@ -306,12 +359,37 @@ export function isLaterDay(intentISO: string, now = new Date()): boolean {
   return intentISO > toISODate(now) && intentISO > now.toISOString().slice(0, 10);
 }
 
-export function filterDates(filter: 'today' | 'tomorrow' | 'later', now = new Date()): string[] {
+/**
+ * The city-clock variant of the dim, for callers holding the SYNTHETIC Date
+ * cityClockNow returns. isLaterDay's second leg is UTC-write tolerance for
+ * the DEVICE clock, and it is meaningless on a synthetic Date: its
+ * toISOString() re-reads the city's wall time in the device's own zone.
+ * Browsing Bangkok at 20:00 Bangkok time from Mexico City (UTC-6), the
+ * synthetic clock's instant is already 02:00Z on Bangkok's TOMORROW, so a
+ * pin for that tomorrow failed `intentISO > toISOString()` and lost its
+ * dim. On a city clock the city's calendar day is the whole question.
+ */
+export function isLaterCityDay(intentISO: string, clock: Date): boolean {
+  return intentISO > toISODate(clock);
+}
+
+export function filterDates(
+  filter: 'today' | 'tomorrow' | 'later',
+  now = new Date(),
+  city: Date | null = null
+): string[] {
   // 'later' is the day after tomorrow, which is as far as a pin can ever
   // reach: the lifetime is capped at 72 hours, so three days is the whole
   // universe rather than an arbitrary stopping point.
   const offset = filter === 'today' ? 0 : filter === 'tomorrow' ? 1 : 2;
+  // The browsed CITY's calendar day leads when a city clock is given
+  // (cityClockNow): the map is city-scoped, so "Today" is the city's today
+  // and heatDay asks the server about that one. The device-local and UTC
+  // candidates stay in the set — two clocks already write intent_date (see
+  // above), and a third clock REPLACING that tolerance would hide seeded
+  // pins from everyone. Widen, never swap.
+  const cityDay = city != null ? toISODate(addDays(city, offset)) : null;
   const local = toISODate(addDays(now, offset));
   const utc = new Date(now.getTime() + offset * 86_400_000).toISOString().slice(0, 10);
-  return local === utc ? [local] : [local, utc];
+  return [...new Set([...(cityDay != null ? [cityDay] : []), local, utc])];
 }

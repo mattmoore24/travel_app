@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import AppTabs from '@/components/app-tabs';
 import { useAuthStore } from '@/features/auth/store';
 import { useIsBusiness } from '@/features/business/hooks';
+import { useIsGuest } from '@/features/guest/hooks';
 import { ConnectedNotice } from '@/features/matching/connected-notice';
 import { useAcceptedCelebration } from '@/features/matching/use-accepted-celebration';
 import { PushPrimer } from '@/features/notifications/push-primer';
@@ -55,6 +56,75 @@ function PendingInviteHandoff() {
 }
 
 /**
+ * A business lands on My business, not the Map (founder decision D8).
+ *
+ * The Map is the first tab, so it was the landing screen for an account
+ * whose map has no action on it. A ONE-SHOT navigation the moment the
+ * account-kind query answers "business" — never a reorder of the NativeTabs
+ * triggers, whose conditional shape app-tabs.tsx records as the trap: the
+ * screen list must not change between renders. One shot only, so a later
+ * refetch of my_business can never yank an owner off a tab they chose; and
+ * never during the listing flow, whose own replace to /business-signup must
+ * not be raced (the same rule PendingInviteHandoff documents).
+ */
+function BusinessLanding() {
+  const viewerIsBusiness = useIsBusiness();
+  const listingIntent = useAuthStore((s) => s.listingIntent);
+  const landed = useRef(false);
+  useEffect(() => {
+    if (landed.current || !viewerIsBusiness || listingIntent) {
+      return;
+    }
+    landed.current = true;
+    router.navigate('/(tabs)/my-business');
+  }, [viewerIsBusiness, listingIntent]);
+  return null;
+}
+
+/**
+ * Replays what a guest was doing when the account wall interrupted them
+ * (auth store, `pendingIntent`) — the Travelers half. The map replays its
+ * own two origins itself (selecting a pin card and entering place mode are
+ * map state, not routes); this component lands the 'traveler' kind back on
+ * the tab it came from, and clears any intent a business account cannot
+ * spend. Cleared BEFORE navigating, exactly like the invite above: the
+ * replayed screen can be backed out of, and a value still in the store
+ * would push it straight back on.
+ */
+function PendingIntentHandoff() {
+  const intent = useAuthStore((s) => s.pendingIntent);
+  // NEVER a bare non-null session test: a guest ACCOUNT is an anonymous
+  // Supabase session, so that test was true for the exact person who just
+  // tapped "Make a profile" — the intent was spent (traveler kind: replayed
+  // at the still-anonymous guest, mid-signup) or left to misfire. The same
+  // guard the map's replay effect uses: anonymous or absent, the intent
+  // WAITS in the store until a real sign-in completes and flips this false.
+  const isGuest = useIsGuest();
+  const intentHandled = useAuthStore((s) => s.intentHandled);
+  const listingIntent = useAuthStore((s) => s.listingIntent);
+  const viewerIsBusiness = useIsBusiness();
+
+  useEffect(() => {
+    if (isGuest || intent == null || listingIntent) {
+      return;
+    }
+    if (viewerIsBusiness) {
+      // A business cannot open a pin card, drop a pin, or read Travelers:
+      // nothing here is spendable, so it is let go rather than replayed.
+      intentHandled();
+      return;
+    }
+    if (intent.kind !== 'traveler') {
+      return;
+    }
+    intentHandled();
+    router.navigate('/(tabs)/travelers');
+  }, [isGuest, intent, listingIntent, viewerIsBusiness, intentHandled]);
+
+  return null;
+}
+
+/**
  * A tapped push opens the thing it is about. Render-nothing, mounted here
  * beside PendingInviteHandoff for exactly the reasons that component
  * documents: it needs a mounted stack and a live session, and a cold-start
@@ -79,7 +149,9 @@ export default function TabsLayout() {
           moment that earns the question can happen on any of them. It renders
           nothing until something asks it to. */}
       <PushPrimer />
+      <BusinessLanding />
       <PendingInviteHandoff />
+      <PendingIntentHandoff />
       <NotificationRouting />
     </>
   );

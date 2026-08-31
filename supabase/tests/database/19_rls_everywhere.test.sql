@@ -75,8 +75,8 @@ from unnest(array['app_config', 'cities', 'launch_cities',
 -- for the map's city rail.
 
 select pg_temp.admin();
-insert into public.launch_cities (city_id, active)
-select id, true from public.cities where name = 'Lisbon' and country_code = 'PT'
+insert into public.launch_cities (city_id, active, timezone)
+select id, true, 'Europe/Lisbon' from public.cities where name = 'Lisbon' and country_code = 'PT'
 on conflict (city_id) do update set active = true;
 
 select pg_temp.guest();

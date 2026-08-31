@@ -60,6 +60,17 @@ describe('the default is a map with nothing hidden', () => {
     expect(heatDay('any', NOW)).toBeNull();
     expect(daysFor('any', NOW)).toBeNull();
   });
+
+  it("asks the heat RPC about the CITY's day when a city clock is given", () => {
+    // A device on the evening of the 28th browsing a city already into the
+    // 29th: the single day the RPC gets is the city's, and the marker set
+    // still accepts the device-written date (widened, never swapped).
+    const city = new Date(2026, 7, 29, 3, 0);
+    expect(heatDay('today', NOW, city)).toBe('2026-08-29');
+    const days = daysFor('today', NOW, city)!;
+    expect(days.has('2026-08-29')).toBe(true);
+    expect(days.has('2026-08-28')).toBe(true);
+  });
 });
 
 describe('counting what is on', () => {

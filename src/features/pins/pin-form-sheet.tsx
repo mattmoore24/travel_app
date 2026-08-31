@@ -2,7 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { ChipRail } from '@/components/form/chip-rail';
@@ -13,11 +13,12 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet } from '@/components/ui/sheet';
 import { ThemedText } from '@/components/themed-text';
-import { HitTarget, Radius, Space } from '@/constants/theme';
+import { HitTarget, Radius, Space, Type } from '@/constants/theme';
 import { useCreatePin } from '@/features/pins/hooks';
 import {
   MAX_PIN_HOURS,
   categoryForPoi,
+  cityClockNow,
   defaultHoursForIntent,
   expiryForHours,
   hoursLabel,
@@ -35,6 +36,15 @@ import type { LocalSearchResult } from '@/modules/local-search';
 type PinFormSheetProps = {
   cityId: number;
   cityName: string;
+  /**
+   * The city's IANA zone (launch_cities.timezone), so the day chips and the
+   * written intent_date are the CITY's calendar. A pin dropped from an
+   * airport lounge lands on the destination's date; the validate_pin
+   * trigger's current_date -1/+2 window absorbs the offset in both
+   * directions. Null falls back to a longitude approximation of the pin's
+   * own coordinate (cityClockNow).
+   */
+  cityTimezone?: string | null;
   coords: { lat: number; lng: number };
   /** Everything the place search already knows, when that is how it was found. */
   initialPlace?: LocalSearchResult | null;
@@ -58,6 +68,7 @@ type PinFormSheetProps = {
 export function PinFormSheet({
   cityId,
   cityName,
+  cityTimezone = null,
   coords,
   initialPlace = null,
   initialLabel = null,
@@ -66,13 +77,24 @@ export function PinFormSheet({
 }: PinFormSheetProps) {
   const theme = useTheme();
   const createPin = useCreatePin();
-  const [venue, setVenue] = useState(initialPlace?.name ?? '');
+  // The SPOT's name - from search, or the map pill's reverse geocode - and
+  // editable, because "Somdet Phra Pokklao Bridge" is where you are, not
+  // necessarily what you would call it. The plan lives in its own field now:
+  // one column was being asked to be two things, and three strings broke
+  // downstream (the compose draft, clusterTitle, the marker's spoken label).
+  const [venue, setVenue] = useState(initialPlace?.name ?? initialLabel ?? '');
+  const venueTouched = useRef(false);
+  const [plan, setPlan] = useState('');
   const [note, setNote] = useState('');
   const [placeLabel, setPlaceLabel] = useState<string | null>(
     initialPlace ? placeLabelFor(initialPlace) : initialLabel
   );
-  const [intentDate, setIntentDate] = useState(toISODate(new Date()));
-  const [hours, setHours] = useState(() => defaultHoursForIntent(toISODate(new Date())));
+  const [intentDate, setIntentDate] = useState(() =>
+    toISODate(cityClockNow(cityTimezone, coords.lng))
+  );
+  const [hours, setHours] = useState(() =>
+    defaultHoursForIntent(toISODate(cityClockNow(cityTimezone, coords.lng)))
+  );
   const [hoursTouched, setHoursTouched] = useState(false);
   // Founder: some people want an open plan and some want to be asked first,
   // and neither is the odd one out. Open is the default because it is the
@@ -110,6 +132,11 @@ export function PinFormSheet({
           .filter(Boolean)
           .join(', ');
         setPlaceLabel(label || null);
+        // Seed the editable venue name too, but never over something the
+        // person has already typed.
+        if (label && !venueTouched.current) {
+          setVenue((current) => (current ? current : label));
+        }
       })
       .catch(() => {
         // No label is fine; the pin still knows exactly where it is.
@@ -119,9 +146,11 @@ export function PinFormSheet({
     };
   }, [coords.lat, coords.lng, initialLabel, initialPlace]);
 
-  // Recomputed per render: the sheet can sit open across local midnight, and
-  // a stale "today" would post an already-expired pin.
-  const todayISO = toISODate(new Date());
+  // Recomputed per render: the sheet can sit open across midnight, and a
+  // stale "today" would post an already-expired pin. The CITY's midnight -
+  // its clock owns the word on this whole surface (cityClockNow).
+  const cityClock = cityClockNow(cityTimezone, coords.lng);
+  const todayISO = toISODate(cityClock);
   const effectiveIntent = intentDate < todayISO ? todayISO : intentDate;
   const minHours = minHoursForIntent(effectiveIntent);
   // Until it is dragged, the slider follows the day you pick. After that it
@@ -134,7 +163,7 @@ export function PinFormSheet({
   // grey, it says which box it is waiting for; live, it repeats the promise.
   // Same slot, one line either way, so nothing reflows. The expiry itself is
   // stated by the "Disappears after" heading, once, not three times.
-  const needsPlan = venue.trim().length === 0;
+  const needsPlan = plan.trim().length === 0;
   const footnote = needsPlan
     ? 'Say what the plan is first.'
     : 'A plan, not your location. It disappears on its own.';
@@ -143,7 +172,11 @@ export function PinFormSheet({
     try {
       const pin = await createPin.mutateAsync({
         cityId,
-        venueName: venue.trim(),
+        // The DB requires a venue (1..80). When neither search nor the
+        // geocoder named the spot and the person left the field alone, the
+        // address, then the city, stand in - both true, neither a plan.
+        venueName: (venue.trim() || placeLabel || cityName).slice(0, 80),
+        plan: plan.trim() || null,
         note: note.trim() || null,
         placeLabel,
         category,
@@ -194,13 +227,25 @@ export function PinFormSheet({
               you are about to drop rather than showing an emoji sticker. */}
             <PinGlyph category={category} />
             <View style={styles.placeText}>
-              {/* Two lines. A one-line cap was set without checking it against
-                real place names and truncated the very thing the person is
-                being asked to confirm — "Somdet Phra Pokklao Bri…" — while
-                the line under it held only the word "Bangkok". */}
-              <ThemedText type="callout" numberOfLines={2}>
-                {initialPlace?.name ?? placeLabel ?? `Where you dropped it in ${cityName}`}
-              </ThemedText>
+              {/* EDITABLE. The search result or the reverse geocode fills it
+                in, and the person can correct it - the address of the spot
+                is not always what anybody calls the spot. A plain opaque
+                input, never inside glass (a TextInput under a
+                UIVisualEffectView never receives its tap - see traps). */}
+              <TextInput
+                testID="venue-name-input"
+                accessibilityLabel="Name of the spot"
+                value={venue}
+                onChangeText={(text) => {
+                  venueTouched.current = true;
+                  setVenue(text);
+                }}
+                placeholder={`Where you dropped it in ${cityName}`}
+                placeholderTextColor={theme.textTertiary}
+                maxLength={80}
+                style={[styles.venueInput, { color: theme.text }]}
+                returnKeyType="done"
+              />
               <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
                 {[initialPlace?.address, initialPlace?.locality ?? cityName]
                   .filter(Boolean)
@@ -292,7 +337,7 @@ export function PinFormSheet({
             room for about a screen and a half of form. */}
           <ChipRail
             label="When"
-            options={intentDateOptions()}
+            options={intentDateOptions(cityClock)}
             selected={effectiveIntent}
             onSelect={setIntentDate}
           />
@@ -326,17 +371,18 @@ export function PinFormSheet({
             through the middle of its own letters by the submit button. */}
           <View
             onLayout={(event) => {
-              fieldY.current.venue = event.nativeEvent.layout.y;
+              fieldY.current.plan = event.nativeEvent.layout.y;
             }}>
             <FormTextField
               label="What's the plan?"
-              testID="venue-input"
+              testID="plan-input"
               placeholder="Sunset drinks, morning surf"
-              value={venue}
-              onChangeText={setVenue}
+              value={plan}
+              onChangeText={setPlan}
+              maxLength={80}
               onFocus={() => {
                 scrollRef.current?.scrollTo({
-                  y: Math.max(0, (fieldY.current.venue ?? 0) - Space.sm),
+                  y: Math.max(0, (fieldY.current.plan ?? 0) - Space.sm),
                   animated: true,
                 });
               }}
@@ -384,7 +430,7 @@ export function PinFormSheet({
           slider: tapping it scrolls the real control into view. */}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${intentLabel(effectiveIntent)}, gone in ${hoursLabel(effectiveHours)}. Shows the expiry control.`}
+        accessibilityLabel={`${intentLabel(effectiveIntent, cityClock)}, gone in ${hoursLabel(effectiveHours)}. Shows the expiry control.`}
         hitSlop={4}
         onPress={() => {
           scrollRef.current?.scrollTo({
@@ -397,7 +443,7 @@ export function PinFormSheet({
           themeColor="textSecondary"
           numberOfLines={1}
           style={styles.expiryReadout}>
-          {intentLabel(effectiveIntent)} · gone in {hoursLabel(effectiveHours)}
+          {intentLabel(effectiveIntent, cityClock)} · gone in {hoursLabel(effectiveHours)}
         </ThemedText>
       </Pressable>
       <PrimaryButton
@@ -493,6 +539,11 @@ const styles = StyleSheet.create({
   placeText: {
     flex: 1,
     gap: 2,
+  },
+  // The callout role's metrics, as an input: the card's name line, editable.
+  venueInput: {
+    ...Type.callout,
+    padding: 0,
   },
   mapsLink: {
     flexDirection: 'row',

@@ -1,6 +1,35 @@
 import type { Session } from '@supabase/supabase-js';
 import { create } from 'zustand';
 
+import type { Region } from '@/features/pins/camera';
+
+/**
+ * What a guest was DOING when the account wall interrupted them, so the
+ * moment after signup can put them back there. The invite token below was
+ * the only context that ever survived the wall; this generalises the same
+ * idea to the other three origins:
+ *
+ *   'pin'      — they opened a pin's card and were invited to see who is
+ *                going. Replay selects the city, then the card, and degrades
+ *                silently to the city alone when the pin has expired
+ *                (signup takes minutes; pins live at most 72 hours).
+ *   'drop-pin' — they tapped Drop a pin. Replay returns the map to place
+ *                mode at the region they had panned to.
+ *   'traveler' — they met the gate on the Travelers tab. Replay lands them
+ *                back on that tab.
+ *
+ * Same in-memory lifetime as the invite, and deliberately NEVER persisted:
+ * an intent surviving a cold start is a different feature with a different
+ * privacy story.
+ */
+export type PendingIntent = {
+  kind: 'pin' | 'traveler' | 'drop-pin';
+  cityId: number;
+  pinId?: string;
+  userId?: string;
+  region?: Region | null;
+};
+
 type AuthState = {
   /** Restored/live Supabase session; null = signed out. */
   session: Session | null;
@@ -52,6 +81,14 @@ type AuthState = {
    * likely expired and the surprise would be worse than the loss.
    */
   pendingInvite: string | null;
+  /**
+   * What the guest was doing when they took a sign-up gate. Written by the
+   * gate's own navigate handler (never by merely seeing the gate, so backing
+   * out records nothing), cleared BEFORE the replay navigates — the same
+   * rule inviteHandled documents: the replayed screen can be backed out of,
+   * and a value still in the store would push it straight back on.
+   */
+  pendingIntent: PendingIntent | null;
   setSession: (session: Session | null) => void;
   setInitialized: () => void;
   recoveryStarted: () => void;
@@ -62,6 +99,8 @@ type AuthState = {
   listingDone: () => void;
   inviteRemembered: (token: string) => void;
   inviteHandled: () => void;
+  intentRemembered: (intent: PendingIntent) => void;
+  intentHandled: () => void;
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -70,6 +109,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   recovery: null,
   listingIntent: false,
   pendingInvite: null,
+  pendingIntent: null,
   setSession: (session) => set({ session }),
   setInitialized: () => set({ initialized: true }),
   recoveryStarted: () => set({ recovery: { status: 'establishing', message: null } }),
@@ -80,4 +120,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   listingDone: () => set({ listingIntent: false }),
   inviteRemembered: (token) => set({ pendingInvite: token }),
   inviteHandled: () => set({ pendingInvite: null }),
+  intentRemembered: (intent) => set({ pendingIntent: intent }),
+  intentHandled: () => set({ pendingIntent: null }),
 }));

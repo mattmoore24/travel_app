@@ -629,7 +629,7 @@ export default function RoomScreen() {
         {reportGate ? (
           <Sheet onClose={() => setReportGate(false)}>
             <SignUpGate
-              reason="You need an account to report"
+              reason="Send your report"
               where="room-report"
               onNavigate={leavingSheet(() => setReportGate(false))}
             />

@@ -66,6 +66,8 @@ export type NewPin = {
   cityId: number;
   venueName: string;
   note?: string | null;
+  /** What the person is doing there. The venue names the spot. */
+  plan?: string | null;
   placeLabel?: string | null;
   category: PinCategory;
   lat: number;

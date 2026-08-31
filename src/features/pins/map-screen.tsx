@@ -22,6 +22,7 @@ import Animated, { FadeInDown, FadeInUp, FadeOut, ZoomIn } from 'react-native-re
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PlaceholderScreen } from '@/components/placeholder-screen';
+import { useAuthStore } from '@/features/auth/store';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { AvatarButton } from '@/components/ui/avatar-button';
 import { GlassSurface } from '@/components/ui/glass-surface';
@@ -37,11 +38,14 @@ import { Type, Elevation, HitTarget, Motion, Radius, Space, Spacing } from '@/co
 import { useDeletePin, useJoinPinChat, useLaunchCities, usePinCrew } from '@/features/pins/hooks';
 import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker';
 import { useCityBusinesses, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
+import { listingNotice } from '@/features/business/listing-notice';
 import { PlaceSheet } from '@/features/business/place-sheet';
 import { useIsGuest, useIsSignedOut, useMapHeat, useMapPins } from '@/features/guest/hooks';
 import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { AudienceChip } from '@/features/pins/audience-chip';
 import { audienceInSentence } from '@/features/profile/audience';
+import { deviceTimezone, pickBrowsingCity } from '@/features/pins/browsing-city';
+import { useCityChoice } from '@/features/pins/city-store';
 import { FAR_FROM_CITY_M, anyInRegion, fitRegion } from '@/features/pins/camera';
 import {
   CITY_ZOOM_DELTA,
@@ -68,6 +72,7 @@ import {
   useMarkerTracking,
 } from '@/features/pins/pin-marker';
 import { openInMaps } from '@/features/pins/open-in-maps';
+import { createDropGate, shouldDismissOnPan } from '@/features/pins/place-mode';
 import {
   PLAN_LIST_PEEK,
   PlanList,
@@ -81,8 +86,9 @@ import { PlacePinOverlay } from '@/features/pins/place-pin-overlay';
 import {
   GEOCODE_FLOOR_MS,
   burnOutLabel,
+  cityClockNow,
   intentLabel,
-  isLaterDay,
+  isLaterCityDay,
   pinSubtitle,
   pinTitle,
   shouldGeocode,
@@ -99,6 +105,8 @@ import {
   type MapFilters,
 } from '@/features/pins/filters';
 import { crewLabel } from '@/features/pins/crew';
+import { useMyTrips } from '@/features/trips/hooks';
+import { toISODate } from '@/features/trips/dates';
 import { FilterButton, MapFilterSheet } from '@/features/pins/map-filter-sheet';
 import { useMyChats, useSentRequests, useFirstMessageBudget } from '@/features/matching/hooks';
 import { chooseSlot } from '@/features/pins/message-slot';
@@ -122,11 +130,14 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 function PinCard({
   pin,
   cityId,
+  clock,
   onClose,
   onNeedsAccount,
 }: {
   pin: CityPinRow;
   cityId: number;
+  /** The browsed city's wall clock (cityClockNow): "Today" is ITS today. */
+  clock: Date;
   onClose: () => void;
   /**
    * Somebody with no session at all tapped Join. A guest ACCOUNT can join —
@@ -261,7 +272,7 @@ function PinCard({
             </ThemedText>
           ) : null}
           <ThemedText type="footnote" themeColor="textSecondary">
-            {intentLabel(pin.intent_date)} · {burnOutLabel(pin.expires_at)}
+            {intentLabel(pin.intent_date, clock)} · {burnOutLabel(pin.expires_at)}
           </ThemedText>
           {pin.place_label ? (
             <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
@@ -658,10 +669,13 @@ function CityScaleMarker({
 function CityPinMarker({
   pin,
   selected,
+  clock,
   onPress,
 }: {
   pin: CityPinRow;
   selected: boolean;
+  /** The browsed city's clock — the one authority for Today and the dim. */
+  clock: Date;
   onPress: () => void;
 }) {
   // Signed-in viewers see the poster's face on the map; a guest's feed has no
@@ -673,9 +687,11 @@ function CityPinMarker({
   // the marker draws must re-open the rasterization window, or the ring and
   // the dim are simply missing from the frozen bitmap. The derived boolean
   // rather than the stored date, because across local midnight the date is
-  // unchanged while the dim flips.
+  // unchanged while the dim flips. The CITY variant, because `clock` is the
+  // synthetic city Date — isLaterDay's ISO leg misreads it (pin-helpers).
+  const later = isLaterCityDay(pin.intent_date, clock);
   const tracking = useMarkerTracking(
-    `${selected}:${photoUri ?? ''}:${pin.chat_id ?? ''}:${own}:${isLaterDay(pin.intent_date)}`
+    `${selected}:${photoUri ?? ''}:${pin.chat_id ?? ''}:${own}:${later}`
   );
   return (
     <Marker
@@ -694,7 +710,7 @@ function CityPinMarker({
         pin.venue_name,
         pin.display_name,
         pin.chat_id ? 'open to join' : null,
-        intentLabel(pin.intent_date),
+        intentLabel(pin.intent_date, clock),
         burnOutLabel(pin.expires_at),
       ]
         .filter(Boolean)
@@ -710,7 +726,7 @@ function CityPinMarker({
         photoUri={photoUri ?? null}
         open={pin.chat_id != null}
         own={own}
-        intentDate={pin.intent_date}
+        later={later}
       />
     </Marker>
   );
@@ -726,10 +742,13 @@ function CityPinMarker({
 function ClusterMarker({
   cluster,
   selected,
+  clock,
   onPress,
 }: {
   cluster: PinCluster;
   selected: boolean;
+  /** The browsed city's clock — the one authority for the later-day dim. */
+  clock: Date;
   onPress: () => void;
 }) {
   const first = usePhotoUrl(cluster.pins[0]?.photo_path ?? null);
@@ -747,9 +766,11 @@ function ClusterMarker({
   // tip sits where a single marker's does; a face row is 28pt.
   const hasFaces = faces.some((uri) => uri != null);
   // Everything the marker draws is in the key, or it never paints — the view
-  // is a frozen bitmap outside the tracking window.
+  // is a frozen bitmap outside the tracking window. City variant: `clock` is
+  // the synthetic city Date, whose UTC read the plain ISO leg misreads.
+  const later = isLaterCityDay(soonest, clock);
   const tracking = useMarkerTracking(
-    `${selected}:${faces.join('|')}:${cluster.pins.length}:${category}:${isLaterDay(soonest)}`
+    `${selected}:${faces.join('|')}:${cluster.pins.length}:${category}:${later}`
   );
   return (
     <Marker
@@ -770,7 +791,7 @@ function ClusterMarker({
         count={cluster.pins.length}
         category={category}
         selected={selected}
-        intentDate={soonest}
+        later={later}
       />
     </Marker>
   );
@@ -783,14 +804,26 @@ function ClusterMarker({
  * deliberately faceless — at a zoom where venues collide, who is going is
  * not answerable on the map.
  */
-function CountBubbleMarker({ screen, onPress }: { screen: ScreenCluster; onPress: () => void }) {
+function CountBubbleMarker({
+  screen,
+  clock,
+  onPress,
+}: {
+  screen: ScreenCluster;
+  /** The browsed city's clock — the one authority for the later-day dim. */
+  clock: Date;
+  onPress: () => void;
+}) {
   const pins = screenClusterPins(screen);
   const category = clusterCategory({ key: screen.key, lat: screen.lat, lng: screen.lng, pins });
   const soonest = pins.reduce(
     (min, pin) => (pin.intent_date < min ? pin.intent_date : min),
     pins[0].intent_date
   );
-  const tracking = useMarkerTracking(`${pins.length}:${category}:${isLaterDay(soonest)}`);
+  // City variant, like every marker on this map: `clock` is the city's
+  // synthetic Date, and the device-clock ISO leg is meaningless on it.
+  const later = isLaterCityDay(soonest, clock);
+  const tracking = useMarkerTracking(`${pins.length}:${category}:${later}`);
   return (
     <Marker
       coordinate={{ latitude: screen.lat, longitude: screen.lng }}
@@ -806,7 +839,7 @@ function CountBubbleMarker({ screen, onPress }: { screen: ScreenCluster; onPress
         event.stopPropagation();
         onPress();
       }}>
-      <PinStackView faces={[]} count={pins.length} category={category} intentDate={soonest} />
+      <PinStackView faces={[]} count={pins.length} category={category} later={later} />
     </Marker>
   );
 }
@@ -848,8 +881,40 @@ export default function MapScreen() {
   // the map type. See features/pins/basemap.
   const launchCitiesQuery = useLaunchCities();
   const launchCities = launchCitiesQuery.data ?? [];
-  const [cityId, setCityId] = useState<number | null>(null);
-  const activeCityId = cityId ?? launchCities[0]?.city_id ?? null;
+  // Which city, in order of how explicitly it was asked for: the persisted
+  // chip choice, then the soonest trip, then the launch city on the device's
+  // own clock zone (Intl only — NEVER a location read, §7 rule 2), then
+  // launchCities[0]. Held back until the stored choice has been read, or the
+  // map would mount on the fallback and flip cities a frame later.
+  const chosenCityId = useCityChoice((s) => s.cityId);
+  const cityHydrated = useCityChoice((s) => s.hydrated);
+  const chooseCity = useCityChoice((s) => s.chooseCity);
+  const { data: myTrips = [] } = useMyTrips();
+  // A place is not a traveler and may not drop a 72-hour pin (§7 rule 8, six
+  // BEFORE INSERT triggers). Without this the owner filled in the whole pin
+  // form and was refused by a raw database alert at the end of it.
+  const ownBusiness = useOwnBusiness().data ?? null;
+  const isBusiness = ownBusiness != null;
+  // Which chip on this map is theirs. Every listing was drawn identically,
+  // so an owner looking for their own business on their own map had to guess.
+  const ownBusinessId = ownBusiness?.id ?? null;
+  // For a business the LISTING owns the city. Resolved here, AHEAD of
+  // pickBrowsingCity, never seeded into the persisted store: the store is
+  // what the chips write, the rail is hidden for a business, and a persisted
+  // pre-signin chip tap (or any stored choice) would otherwise pin the owner
+  // to the wrong city with no control left to undo it — while a store write
+  // of the listing's city would make map_viewed report `explicit: true` for
+  // a choice the owner never made. Launch-city membership is checked here so
+  // a deactivated city falls through to the ordinary resolution.
+  const businessCityId =
+    ownBusiness?.city_id != null && launchCities.some((c) => c.city_id === ownBusiness.city_id)
+      ? ownBusiness.city_id
+      : null;
+  const activeCityId = cityHydrated
+    ? (businessCityId ??
+      pickBrowsingCity(launchCities, myTrips, toISODate(new Date()), chosenCityId, deviceTimezone())
+        .cityId)
+    : null;
   const activeCity = launchCities.find((c) => c.city_id === activeCityId);
   // Everything the map is narrowed by, behind one control. It used to be
   // three date chips and nothing else, which filtered the dimension people
@@ -857,11 +922,26 @@ export default function MapScreen() {
   // all. See features/pins/filters.
   const [filters, setFilters] = useState<MapFilters>(DEFAULT_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  // One date for the heat RPC, which takes a single day, and the set of dates
-  // the pin markers accept. They differ because two clocks write intent_date -
-  // see filterDates.
-  const filterISO = heatDay(filters.day);
-  const filterSet = useMemo(() => daysFor(filters.day), [filters.day]);
+  // The browsed city's wall clock — the ONE authority for the word "today"
+  // on this screen. At 20:00 in London it is 03:00 tomorrow in Bangkok, and
+  // a device-clock Today filtered to a night that had already ended.
+  // Recomputed per render (renders are event-driven here); the derivations
+  // below memo on its calendar DAY, so identity churn stops at the strings.
+  const cityClock = cityClockNow(activeCity?.timezone ?? null, activeCity?.cities.lng ?? null);
+  const cityDayISO = toISODate(cityClock);
+  const deviceDayISO = toISODate(new Date());
+  // One date for the heat RPC, which takes a single day (the city's), and
+  // the set of dates the pin markers accept. A set, because THREE clocks now
+  // meet here: the city's day leads, and the device-local and UTC days that
+  // write intent_date stay matched - see filterDates.
+  const filterISO = heatDay(filters.day, new Date(), cityClock);
+  const filterSet = useMemo(
+    () => daysFor(filters.day, new Date(), cityClock),
+    // Day-level keys on purpose: the clock objects are new every render, but
+    // the sets they produce only change when a calendar day rolls over.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filters.day, cityDayISO, deviceDayISO]
+  );
   const pinsQuery = useMapPins(activeCityId);
   const { data: allPins = [], isSuccess: pinsLoaded } = pinsQuery;
   // Both halves of the heat ask: the day-filtered layer, and the all-days
@@ -912,14 +992,8 @@ export default function MapScreen() {
   const { data: places = [] } = useCityBusinesses(activeCityId);
   // One at a time. Two chips stacked over a map is furniture, so the places
   // one waits until the heat one has been read and dismissed.
-  // A place is not a traveler and may not drop a 72-hour pin (§7 rule 8, six
-  // BEFORE INSERT triggers). Without this the owner filled in the whole pin
-  // form and was refused by a raw database alert at the end of it.
-  const ownBusiness = useOwnBusiness().data ?? null;
-  const isBusiness = ownBusiness != null;
-  // Which chip on this map is theirs. Every listing was drawn identically,
-  // so an owner looking for their own business on their own map had to guess.
-  const ownBusinessId = ownBusiness?.id ?? null;
+  // (ownBusiness / isBusiness / ownBusinessId live up beside the city
+  // resolution now: the listing's city is an input to activeCityId.)
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   // Every other gate in the app states its reason before it asks. Dropping a
   // pin was the one that did not: it teleported a guest to an email form with
@@ -957,6 +1031,110 @@ export default function MapScreen() {
   // about a ring that is not on the map is the same contradiction the legend
   // exists to avoid.
   const ownChipOnMap = ownBusinessId != null && places.some((p) => p.id === ownBusinessId);
+  // The owner's own row of city_businesses, for the dock button's label:
+  // has_live_post is what separates "say what's on tonight" from "update it".
+  const ownPlace = ownBusinessId != null ? places.find((p) => p.id === ownBusinessId) : undefined;
+  // The one thing a hostel owner wants from a map of their city — see who is
+  // around, then say what is on tonight — gets a dock only once the listing
+  // is live: posting into a listing nobody can see would be a lie of a
+  // button, so until then the own-listing card below stands in its place.
+  const businessDockShown = isBusiness && ownBusiness?.state === 'listed';
+  // The owner's own chip is missing from their own map, and the code knows
+  // why: my_business() carries the state. Only non-listed states — a listed
+  // chip answers for itself, and while city_businesses is still loading a
+  // card would flash over a map that is about to be fine.
+  const listingMissing =
+    isBusiness && ownBusiness != null && ownBusiness.state !== 'listed' && !ownChipOnMap;
+  const ownListingNotice = ownBusiness != null ? listingNotice(ownBusiness.state) : null;
+
+  // Make a city current: state, cleared selections, and the camera, in one
+  // move. Hoisted above the config early-return because the pending-intent
+  // replay effect below has to close over it from the hooks section.
+  const applyCity = (id: number) => {
+    chooseCity(id);
+    setSelectedPinId(null);
+    // The venue stack's SHEET heals itself — openVenue resolves to null the
+    // moment the city's list reloads — but the raw key would linger, and the
+    // camera-fit guard reads the raw key: a stale one from the last city
+    // would hold the new city's first fit hostage. Cleared like the others.
+    setVenueKey(null);
+    // The place card does not heal at all: it is handed a bare id and
+    // `business-detail` is cached under that id alone, so without this the
+    // card for a bar in Bangkok stays parked at the bottom of the Lisbon map,
+    // with Join the chat and Message still wired to it.
+    setSelectedPlaceId(null);
+    const city = launchCities.find((c) => c.city_id === id);
+    if (city) {
+      // A city switch is the longest flight the camera makes, and Reanimated
+      // never sees it - so Reduce Motion is honoured here by hand: the same
+      // region, arrived at instantly.
+      mapRef.current?.animateToRegion(
+        {
+          latitude: city.cities.lat,
+          longitude: city.cities.lng,
+          latitudeDelta: 0.09,
+          longitudeDelta: 0.09,
+        },
+        reduceMotion ? 0 : 350
+      );
+    }
+  };
+
+  // A business account's map opens on its own city — RESOLVED, not seeded:
+  // businessCityId (above) outranks pickBrowsingCity, and nothing is written
+  // into the store the chips share. What is left for an effect is the
+  // camera: useOwnBusiness is async, so the resolution flips activeCityId
+  // only after the MapView has already mounted on initialRegion — a map
+  // labelled with the right city still parked over the wrong one is the same
+  // wrong city with extra steps. One shot, the flight applyCity makes minus
+  // the chooseCity write; deferred a tick like the replay below, because a
+  // synchronous setState cascade inside an effect is a lint error and a real
+  // render hazard. The ROW is the dependency, not the launchCities array —
+  // the array is re-created while the query loads and would churn the deps.
+  const flownToBusinessCity = useRef(false);
+  const businessCity =
+    businessCityId != null ? launchCities.find((c) => c.city_id === businessCityId) : undefined;
+  useEffect(() => {
+    if (flownToBusinessCity.current || businessCity == null) {
+      return;
+    }
+    flownToBusinessCity.current = true;
+    const timer = setTimeout(() => {
+      // The same clears applyCity makes: a selection made over the wrong
+      // city during the resolution's brief window must not survive the trip.
+      setSelectedPinId(null);
+      setVenueKey(null);
+      setSelectedPlaceId(null);
+      mapRef.current?.animateToRegion(
+        {
+          latitude: businessCity.cities.lat,
+          longitude: businessCity.cities.lng,
+          latitudeDelta: 0.09,
+          longitudeDelta: 0.09,
+        },
+        reduceMotion ? 0 : 350
+      );
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [businessCity, reduceMotion]);
+
+  // THE GUEST'S TAP, CARRIED ACROSS THE ACCOUNT WALL. The one context that
+  // used to survive signup was a group-invite token (PendingInviteHandoff);
+  // the map replays its own two origins the same way: select the city, then
+  // the pin card (below, once the rows land), or re-enter place mode at the
+  // region they had panned to. Cleared BEFORE acting - inviteHandled's own
+  // rule - so backing out of the replayed screen cannot push it back on.
+  const pendingIntent = useAuthStore((s) => s.pendingIntent);
+  const intentHandled = useAuthStore((s) => s.intentHandled);
+  const listingIntent = useAuthStore((s) => s.listingIntent);
+  const intentRemembered = useAuthStore((s) => s.intentRemembered);
+  // Which plan somebody signed-out tried to JOIN, so the join gate can
+  // record it: by the time that gate's navigate runs, the card is closed and
+  // selectedPin is gone.
+  const joinGatePinId = useRef<string | null>(null);
+  // The pin half of a replay waits for the city's rows: set here, consumed
+  // by the effect below once pinsLoaded is true for the right city.
+  const replayPin = useRef<{ cityId: number; pinId: string } | null>(null);
 
   // The plan list's detent lives HERE, not inside the list: an expanded list
   // buries whatever the message slot rendered under it, so the slot-clear
@@ -978,6 +1156,18 @@ export default function MapScreen() {
   // no permission is requested, and this is the same call the pin form
   // already makes today, just before the commit instead of after.
   const [placeLabel, setPlaceLabel] = useState<string | null>(null);
+  // The geocoder answered and the answer was NOTHING: open water, a
+  // motorway, nowhere. Its own state rather than a magic label value,
+  // because it also disables Pin here - the one thing worse than a plan on
+  // a bridge is committing it there. A network failure is NOT this: the
+  // catch below degrades to the plain pill and an enabled button.
+  const [nothingHere, setNothingHere] = useState(false);
+  // The thud gate: entering place mode and flying to a search result are
+  // camera moves the app makes, and the pin's drop haptic means "you placed
+  // it here". See features/pins/place-mode. useState, not a ref: the gate is
+  // handed to a prop during render, and the refs lint is right that a
+  // ref.current read there is a hazard.
+  const [dropGate] = useState(() => createDropGate());
   // Guards on the geocoder, because CLGeocoder rate-limits and starts
   // failing under rapid panning: a seq counter drops any response that is
   // not the newest (the use-place-search pattern), and shouldGeocode holds
@@ -1022,6 +1212,9 @@ export default function MapScreen() {
           ? [place.name ?? place.street, place.district ?? place.city].filter(Boolean).join(', ')
           : '';
         setPlaceLabel(label || null);
+        // A resolved empty answer is a fact about the spot; say it and hold
+        // the button. A new settle re-asks and clears it.
+        setNothingHere(!label);
       })
       .catch(() => {
         // No name is fine; the pill falls back to its own words. But clear
@@ -1030,6 +1223,9 @@ export default function MapScreen() {
         // pill to "Drop it here" until the person panned away. The time
         // floor still applies.
         lastGeocoded.current = null;
+        // Degrade to nothing, never to a refusal: a device that cannot
+        // geocode right now must still be able to pin.
+        setNothingHere(false);
       });
   };
 
@@ -1048,6 +1244,137 @@ export default function MapScreen() {
   useEffect(() => {
     return () => stopNamingPlaceCentre();
   }, []);
+
+  /**
+   * Nudge the camera so a marker stays visible above the card that is about
+   * to open over the bottom of the map. One function for all three marker
+   * families and the plan list, so every card behaves alike. Skipped when
+   * the marker is already north of the region centre: the card opens at the
+   * bottom, so a marker in the top half already clears it, and animating
+   * anyway would fight the person's own framing.
+   */
+  const nudgeAbove = (lat: number, lng: number) => {
+    const region = lastRegion.current;
+    if (region && lat > region.latitude) {
+      return;
+    }
+    const delta = region?.latitudeDelta ?? 0.05;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: lat - delta * 0.12,
+        longitude: lng,
+        latitudeDelta: delta,
+        longitudeDelta: region?.longitudeDelta ?? delta,
+      },
+      300
+    );
+  };
+
+  /**
+   * Into place mode: browse -> place, camera zoomed a step toward street
+   * precision. `at` is for the signup replay, which re-enters at the region
+   * the guest had panned to; a live tap reads the settled region instead.
+   */
+  const enterPlaceMode = (at?: Region | null) => {
+    if (isBusiness) {
+      return;
+    }
+    if (isGuest) {
+      setGate('drop');
+      return;
+    }
+    if (!activeCity) {
+      return;
+    }
+    haptics.light();
+    setSelectedPinId(null);
+    setSearchedPlace(null);
+    setPlaceLabel(null);
+    setNothingHere(false);
+    stopNamingPlaceCentre();
+    const region = at ?? lastRegion.current;
+    setPlaceCoords({
+      lat: region?.latitude ?? activeCity.cities.lat,
+      lng: region?.longitude ?? activeCity.cities.lng,
+    });
+    setMode('place');
+    // Zoom in a step: placement wants street precision, browsing wants area.
+    // The app's own move, so the pin's landing must not thud like a choice.
+    dropGate.markProgrammatic();
+    mapRef.current?.animateToRegion(
+      {
+        latitude: region?.latitude ?? activeCity.cities.lat,
+        longitude: region?.longitude ?? activeCity.cities.lng,
+        latitudeDelta: Math.min(region?.latitudeDelta ?? 0.09, 0.09) / 3,
+        longitudeDelta: Math.min(region?.longitudeDelta ?? 0.09, 0.09) / 3,
+      },
+      Motion.slow
+    );
+  };
+
+  // THE REPLAY ITSELF, one tick deferred: it flips several pieces of screen
+  // state at once (city, then selection or mode), and a synchronous cascade
+  // inside an effect is both a lint error and a real render hazard. The
+  // clear (intentHandled) is synchronous and FIRST, so backing out of the
+  // replayed screen cannot push it back on.
+  useEffect(() => {
+    if (
+      pendingIntent == null ||
+      // The Travelers tab replays its own origin (see app/(tabs)/_layout).
+      pendingIntent.kind === 'traveler' ||
+      isGuest ||
+      isBusiness ||
+      listingIntent ||
+      !cityHydrated ||
+      launchCities.length === 0
+    ) {
+      return;
+    }
+    intentHandled();
+    const intent = pendingIntent;
+    if (!launchCities.some((c) => c.city_id === intent.cityId)) {
+      // The city left the programme while they signed up. Nothing honest to
+      // replay; the resolved default stands.
+      return;
+    }
+    const timer = setTimeout(() => {
+      applyCity(intent.cityId);
+      if (intent.kind === 'pin' && intent.pinId != null) {
+        replayPin.current = { cityId: intent.cityId, pinId: intent.pinId };
+      } else if (intent.kind === 'drop-pin') {
+        // The ordinary door, at the remembered region: enterPlaceMode marks
+        // its own camera move so the pin's landing does not thud.
+        enterPlaceMode(intent.region);
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+    // applyCity/enterPlaceMode are stable per render; the guards above make
+    // this one-shot, so the exhaustive list would only widen it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingIntent, isGuest, isBusiness, listingIntent, cityHydrated, launchCities]);
+
+  // The data-dependent half: the card can only open once the city's pins are
+  // back, and the pin may have burned out while signup happened. Degrades
+  // SILENTLY to the selected city - never an error at the end of thirteen
+  // screens.
+  useEffect(() => {
+    const target = replayPin.current;
+    if (target == null || activeCityId !== target.cityId || !pinsLoaded) {
+      return;
+    }
+    replayPin.current = null;
+    const pin = allPins.find((p) => p.id === target.pinId);
+    if (pin == null) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setSelectedPinId(pin.id);
+      nudgeAbove(pin.lat, pin.lng);
+    }, 0);
+    return () => clearTimeout(timer);
+    // nudgeAbove reads refs and is stable per render; the consumed ref makes
+    // this one-shot.
+  }, [pinsLoaded, allPins, activeCityId]);
 
   const pins = useMemo(
     () => allPins.filter((pin) => pinPasses(pin, filters, filterSet)),
@@ -1153,13 +1480,35 @@ export default function MapScreen() {
   // Once per CITY, by ref: the deps carry isGuest only to read its current
   // value, and a guest upgrade flipping it in place must not recount a city
   // view that already happened.
+  //
+  // Captured UNCONDITIONALLY once the city list has settled: `explicit`
+  // separates a chosen city from a defaulted attribution (every silent
+  // default used to be filed under Bangkok), and a user the resolution finds
+  // no city for at all — the list failed, or came back empty — is counted
+  // with `city_id: null` rather than invisible. Interest from outside the
+  // launch cities is the growth signal; a metric that is zero by
+  // construction is worse than none.
   const viewedCities = useRef<Set<number>>(new Set());
+  const citiesSettled = launchCitiesQuery.isSuccess || launchCitiesQuery.isError;
   useEffect(() => {
-    if (activeCityId != null && !viewedCities.current.has(activeCityId)) {
-      viewedCities.current.add(activeCityId);
-      analytics.capture('map_viewed', { city_id: activeCityId, guest: isGuest });
+    if (!cityHydrated || !citiesSettled) {
+      return;
     }
-  }, [activeCityId, isGuest]);
+    const key = activeCityId ?? -1;
+    if (viewedCities.current.has(key)) {
+      return;
+    }
+    viewedCities.current.add(key);
+    analytics.capture('map_viewed', {
+      city_id: activeCityId ?? null,
+      guest: isGuest,
+      // A chip tap and nothing else. A business's city is resolved from its
+      // listing (businessCityId outranks the store), so a stored choice —
+      // theirs from before signup, or anybody's on this device — is not what
+      // put this city on screen and must not report as one.
+      explicit: businessCityId == null && chosenCityId != null,
+    });
+  }, [activeCityId, businessCityId, chosenCityId, cityHydrated, citiesSettled, isGuest]);
   // `heatmap_viewed`, not the old `heatmap_rendered`: that one fired when
   // heat DATA arrived, not when a person saw anything, so the founder metric
   // read healthy for a layer that had drawn zero pixels. A view needs pixels
@@ -1262,6 +1611,7 @@ export default function MapScreen() {
       ? chooseSlot({
           'pins-error': pinsQuery.isError,
           'heat-error': heatShown && heatQuery.isError,
+          'own-listing': listingMissing,
           'empty-city': emptyCity,
           'viewport-empty': viewportEmpty && !farFromCity,
           'way-home': farFromCity,
@@ -1303,6 +1653,9 @@ export default function MapScreen() {
       pinsLoaded &&
       !selectedPin &&
       pins.length === 0 &&
+      // While the own-listing card holds the strip, announcing "nothing
+      // pinned" over it would be the screen contradicting itself out loud.
+      slot !== 'own-listing' &&
       (!isBusiness || !(!cityScale && showsBusinesses(filters) && places.length > 0))
       ? !isBusiness && audience !== 'everyone'
         ? `Nothing pinned for ${audienceInSentence(audience)} yet`
@@ -1318,74 +1671,19 @@ export default function MapScreen() {
     return <PlaceholderScreen configError icon={{ ios: 'map.fill', android: 'map', web: 'map' }} />;
   }
 
+  /** The chip-tap path: the same move as applyCity, chosen by a person. */
   const selectCity = (id: number) => {
-    setCityId(id);
-    setSelectedPinId(null);
-    // The venue stack's SHEET heals itself — openVenue resolves to null the
-    // moment the city's list reloads — but the raw key would linger, and the
-    // camera-fit guard reads the raw key: a stale one from the last city
-    // would hold the new city's first fit hostage. Cleared like the others.
-    setVenueKey(null);
-    // The place card does not heal at all: it is handed a bare id and
-    // `business-detail` is cached under that id alone, so without this the
-    // card for a bar in Bangkok stays parked at the bottom of the Lisbon map,
-    // with Join the chat and Message still wired to it.
-    setSelectedPlaceId(null);
-    const city = launchCities.find((c) => c.city_id === id);
-    if (city) {
-      // A city switch is the longest flight the camera makes, and Reanimated
-      // never sees it - so Reduce Motion is honoured here by hand: the same
-      // region, arrived at instantly.
-      mapRef.current?.animateToRegion(
-        {
-          latitude: city.cities.lat,
-          longitude: city.cities.lng,
-          latitudeDelta: 0.09,
-          longitudeDelta: 0.09,
-        },
-        reduceMotion ? 0 : 350
-      );
-    }
-  };
-
-  const enterPlaceMode = () => {
-    if (isBusiness) {
-      return;
-    }
-    if (isGuest) {
-      setGate('drop');
-      return;
-    }
-    if (!activeCity) {
-      return;
-    }
-    haptics.light();
-    setSelectedPinId(null);
-    setSearchedPlace(null);
-    setPlaceLabel(null);
-    stopNamingPlaceCentre();
-    const region = lastRegion.current;
-    setPlaceCoords({
-      lat: region?.latitude ?? activeCity.cities.lat,
-      lng: region?.longitude ?? activeCity.cities.lng,
-    });
-    setMode('place');
-    // Zoom in a step: placement wants street precision, browsing wants area.
-    mapRef.current?.animateToRegion(
-      {
-        latitude: region?.latitude ?? activeCity.cities.lat,
-        longitude: region?.longitude ?? activeCity.cities.lng,
-        latitudeDelta: Math.min(region?.latitudeDelta ?? 0.09, 0.09) / 3,
-        longitudeDelta: Math.min(region?.longitudeDelta ?? 0.09, 0.09) / 3,
-      },
-      Motion.slow
-    );
+    applyCity(id);
+    // The other half of the attribution fix: a switch is an event of its
+    // own, so the funnel can tell "chose Lisbon" from "defaulted there".
+    analytics.capture('city_switched', { city_id: id });
   };
 
   const exitPlaceMode = () => {
     setMode('browse');
     setLifted(false);
     setPlaceLabel(null);
+    setNothingHere(false);
     stopNamingPlaceCentre();
   };
 
@@ -1393,10 +1691,13 @@ export default function MapScreen() {
     setSearchedPlace(place);
     // The search result carries a better name than any reverse geocode.
     setPlaceLabel(null);
+    setNothingHere(false);
     stopNamingPlaceCentre();
     setPlaceCoords({ lat: place.latitude, lng: place.longitude });
     // Address search is the other cross-city flight Reduce Motion turns into
     // a cut. The marker still lands on the spot, which is the information.
+    // Also the app's move: the landing drop stays visual, never a thud.
+    dropGate.markProgrammatic();
     mapRef.current?.animateToRegion(
       {
         latitude: place.latitude,
@@ -1409,31 +1710,6 @@ export default function MapScreen() {
   };
 
   const placing = mode === 'place' || mode === 'detail';
-
-  /**
-   * Nudge the camera so a marker stays visible above the card that is about
-   * to open over the bottom of the map. One function for all three marker
-   * families and the plan list, so every card behaves alike. Skipped when
-   * the marker is already north of the region centre: the card opens at the
-   * bottom, so a marker in the top half already clears it, and animating
-   * anyway would fight the person's own framing.
-   */
-  const nudgeAbove = (lat: number, lng: number) => {
-    const region = lastRegion.current;
-    if (region && lat > region.latitude) {
-      return;
-    }
-    const delta = region?.latitudeDelta ?? 0.05;
-    mapRef.current?.animateToRegion(
-      {
-        latitude: lat - delta * 0.12,
-        longitude: lng,
-        latitudeDelta: delta,
-        longitudeDelta: region?.longitudeDelta ?? delta,
-      },
-      300
-    );
-  };
 
   /**
    * A count bubble splits by zooming until its members actually separate on
@@ -1526,13 +1802,16 @@ export default function MapScreen() {
     });
   };
 
-  // The peek anchors above the Drop-a-pin dock, which it never covers — on
-  // the dock's MEASURED height, because the button grows with Dynamic Type
-  // and the constant left the peek over its top edge at the AX sizes. A
-  // business has no dock, so its list sits on the tab bar clearance itself.
-  // (planListShown / planListCollapsed live up beside mapCovered now: the
-  // slot and the heatmap-view gate read the expanded list as cover.)
-  const planListBottom = isBusiness ? dockBottom : dockBottom + dockHeight + Space.sm;
+  // The peek anchors above the dock, which it never covers — on the dock's
+  // MEASURED height, because the button grows with Dynamic Type and the
+  // constant left the peek over its top edge at the AX sizes. A traveler
+  // always has the Drop-a-pin dock; a business has one only once its listing
+  // is live ("Post what's on"), and until then its list sits on the tab bar
+  // clearance itself. (planListShown / planListCollapsed live up beside
+  // mapCovered now: the slot and the heatmap-view gate read the expanded
+  // list as cover.)
+  const planListBottom =
+    !isBusiness || businessDockShown ? dockBottom + dockHeight + Space.sm : dockBottom;
   // The one strip of map that carries a message, directly above the plan
   // list's peek (or the dock, when there is no list). ONE derivation: the
   // two hand-tuned offsets it replaces overlapped by about a chip's lower
@@ -1569,13 +1848,17 @@ export default function MapScreen() {
           }}
           onRegionChange={() => {
             if (mode === 'place') {
-              setLifted(true);
               // Dragging the map is the instruction the search field gives
               // when nothing matched ("try the street, or drag the map to
               // the spot"), and the keyboard used to stay up through the
-              // whole drag, covering the bottom third of the map and the
-              // "Pin here" button underneath it.
-              Keyboard.dismiss();
+              // whole drag. Dismissed ONCE, on the transition into lifted:
+              // this callback fires per FRAME of a pan, and a per-frame
+              // dismiss ran for the drag's whole duration on the one screen
+              // that must hold 60fps (see place-mode.ts).
+              if (shouldDismissOnPan(lifted)) {
+                Keyboard.dismiss();
+              }
+              setLifted(true);
             }
           }}
           onRegionChangeComplete={(region) => {
@@ -1731,6 +2014,7 @@ export default function MapScreen() {
                 <CountBubbleMarker
                   key={screen.key}
                   screen={screen}
+                  clock={cityClock}
                   onPress={() => {
                     if (placing) {
                       return;
@@ -1750,6 +2034,7 @@ export default function MapScreen() {
                     key={cluster.key}
                     cluster={cluster}
                     selected={cluster.key === venueKey}
+                    clock={cityClock}
                     onPress={() => {
                       if (placing || cluster.key === venueKey) {
                         return;
@@ -1766,6 +2051,7 @@ export default function MapScreen() {
                     key={cluster.pins[0].id}
                     pin={cluster.pins[0]}
                     selected={cluster.pins[0].id === selectedPinId}
+                    clock={cityClock}
                     // Guard doubles inside selectPin: marker onPress can fire
                     // twice on iOS. The camera nudge lives there too.
                     onPress={() => selectPin(cluster.pins[0])}
@@ -1806,7 +2092,7 @@ export default function MapScreen() {
       />
 
       {/* Fixed centre pin the map pans underneath while placing. */}
-      {placing ? <PlacePinOverlay lifted={lifted} /> : null}
+      {placing ? <PlacePinOverlay lifted={lifted} onDrop={dropGate.dropped} /> : null}
 
       {/* Dev builds only (the build-stamp precedent): how many heat rows the
           server returned for the active city and day. The COUNT only — a
@@ -1826,48 +2112,55 @@ export default function MapScreen() {
           reach for these controls. */}
       {mode === 'browse' ? (
         <View style={[styles.cityBar, { top: insets.top + Spacing.two }]} pointerEvents="box-none">
-          <View style={styles.headerRow} pointerEvents="box-none">
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.cityChips}
-              style={styles.cityScroll}>
-              {launchCities.map((city) => {
-                const selected = city.city_id === activeCityId;
-                return (
-                  <PressableScale
-                    key={city.city_id}
-                    accessibilityRole="button"
-                    accessibilityLabel={city.cities.name}
-                    accessibilityState={{ selected }}
-                    hitSlop={4}
-                    haptic="selection"
-                    scaleTo={0.94}
-                    onPress={() => selectCity(city.city_id)}>
-                    <View
-                      style={[
-                        styles.cityChip,
-                        {
-                          backgroundColor: selected ? theme.accent : theme.surface,
-                          borderColor: selected ? 'transparent' : theme.hairline,
-                        },
-                      ]}>
-                      {/* One size, whichever is selected. 'smallBold' is a
+          {/* No city rail for a business. It operates in exactly one city —
+              seeded above from its own listing — and four chips including two
+              continents away turned a fact into a navigation task. */}
+          {isBusiness ? null : (
+            <View style={styles.headerRow} pointerEvents="box-none">
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.cityChips}
+                style={styles.cityScroll}>
+                {launchCities.map((city) => {
+                  const selected = city.city_id === activeCityId;
+                  return (
+                    <PressableScale
+                      key={city.city_id}
+                      accessibilityRole="button"
+                      accessibilityLabel={city.cities.name}
+                      accessibilityState={{ selected }}
+                      hitSlop={4}
+                      haptic="selection"
+                      scaleTo={0.94}
+                      onPress={() => selectCity(city.city_id)}>
+                      <View
+                        style={[
+                          styles.cityChip,
+                          {
+                            backgroundColor: selected ? theme.accent : theme.surface,
+                            borderColor: selected ? 'transparent' : theme.hairline,
+                          },
+                        ]}>
+                        {/* One size, whichever is selected. 'smallBold' is a
                           bigger role (15pt) as well as a heavier one, so
                           tapping a chip used to reflow the whole rail and
                           shove its neighbours sideways under your thumb. */}
-                      <ThemedText
-                        type="small"
-                        style={selected ? { color: theme.onAccent, fontWeight: '700' } : undefined}>
-                        {city.cities.name}
-                      </ThemedText>
-                    </View>
-                  </PressableScale>
-                );
-              })}
-            </ScrollView>
-          </View>
+                        <ThemedText
+                          type="small"
+                          style={
+                            selected ? { color: theme.onAccent, fontWeight: '700' } : undefined
+                          }>
+                          {city.cities.name}
+                        </ThemedText>
+                      </View>
+                    </PressableScale>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
           <View style={styles.dateRow}>
             {/* The row scrolls now, and the avatar is a real sibling at the
                 end of it rather than a floating overlay.
@@ -2009,11 +2302,43 @@ export default function MapScreen() {
         </View>
       ) : null}
 
+      {/* An owner's own chip is missing from their own map, and the state
+          says why. Only 'unconfirmed' is a tap — the email code is the one
+          absence the owner can fix themselves; the other states have nothing
+          here for them to do. The 'Tap a business' legend is silenced while
+          this is up by the slot itself, or the screen says two things at
+          once. */}
+      {slot === 'own-listing' && ownListingNotice ? (
+        ownListingNotice.pressable ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${ownListingNotice.line} ${ownListingNotice.detail}`}
+            onPress={() => router.push('/business-email')}
+            style={[styles.emptyBanner, { bottom: messageSlot }]}>
+            <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
+              <ThemedText type="smallBold">{ownListingNotice.line}</ThemedText>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                {ownListingNotice.detail}
+              </ThemedText>
+            </GlassSurface>
+          </Pressable>
+        ) : (
+          <View style={[styles.emptyBanner, { bottom: messageSlot }]} pointerEvents="none">
+            <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
+              <ThemedText type="smallBold">{ownListingNotice.line}</ThemedText>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                {ownListingNotice.detail}
+              </ThemedText>
+            </GlassSurface>
+          </View>
+        )
+      ) : null}
+
       {slot === 'empty-city' && activeCity && !isBusiness ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Be the first to drop a pin"
-          onPress={enterPlaceMode}
+          onPress={() => enterPlaceMode()}
           style={[styles.emptyBanner, { bottom: messageSlot }]}>
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
             {/* The audience wins over the filters, because it is the one
@@ -2192,7 +2517,7 @@ export default function MapScreen() {
             accessibilityLabel="Drop a pin"
             scaleTo={0.95}
             haptic="light"
-            onPress={enterPlaceMode}
+            onPress={() => enterPlaceMode()}
             // The measured height feeds planListBottom: the button's
             // minHeight grows with Dynamic Type, and the plan list's peek
             // used to anchor on the constant and cover the dock's top edge.
@@ -2207,6 +2532,43 @@ export default function MapScreen() {
             />
             <ThemedText type="callout" style={[styles.dockLabel, { color: theme.onAccent }]}>
               Drop a pin
+            </ThemedText>
+          </PressableScale>
+        </Animated.View>
+      ) : null}
+
+      {/* The business dock: the one action a listed owner has on this map.
+          Says what is on tonight, or updates it — NEVER 'Drop a pin', and
+          never through enterPlaceMode, which returns early for a business
+          (the founder's rule at features/business/hooks and the
+          assert_not_business trigger both forbid a business pin). Gated on
+          'listed': posting into a listing nobody can see helps nobody, so
+          until then the own-listing card carries the strip instead. */}
+      {activeCity && mode === 'browse' && businessDockShown && !selectedPin ? (
+        <Animated.View
+          entering={FadeInUp.duration(Motion.standard)}
+          exiting={FadeOut.duration(Motion.quick)}
+          style={[styles.dock, { bottom: dockBottom }]}
+          pointerEvents="box-none">
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={ownPlace?.has_live_post ? 'Update tonight' : "Post what's on"}
+            scaleTo={0.95}
+            haptic="light"
+            onPress={() => router.push('/business-post')}
+            // The same measurement the traveler dock feeds planListBottom:
+            // the button grows with Dynamic Type.
+            onLayout={(event) =>
+              setDockHeight(Math.max(DOCK_MIN_HEIGHT, Math.round(event.nativeEvent.layout.height)))
+            }
+            style={[styles.dockButton, { backgroundColor: theme.accent }]}>
+            <SymbolView
+              name={{ ios: 'storefront', android: 'storefront', web: 'storefront' }}
+              size={19}
+              tintColor={theme.onAccent}
+            />
+            <ThemedText type="callout" style={[styles.dockLabel, { color: theme.onAccent }]}>
+              {ownPlace?.has_live_post ? 'Update tonight' : "Post what's on"}
             </ThemedText>
           </PressableScale>
         </Animated.View>
@@ -2231,13 +2593,15 @@ export default function MapScreen() {
               type="footnote"
               numberOfLines={1}
               themeColor={lifted ? 'textSecondary' : undefined}>
-              {searchedPlace?.name ?? placeLabel ?? 'Drop it here'}
+              {nothingHere && !searchedPlace
+                ? 'Nothing here. Drag to a street or a venue.'
+                : (searchedPlace?.name ?? placeLabel ?? 'Drop it here')}
             </ThemedText>
           </View>
           <View style={styles.confirmBar}>
             <PrimaryButton
               label="Pin here"
-              disabled={placeCoords == null || lifted}
+              disabled={placeCoords == null || lifted || (nothingHere && !searchedPlace)}
               onPress={() => {
                 haptics.light();
                 // Kill the debounced geocode: a timer armed by the last pan
@@ -2256,6 +2620,7 @@ export default function MapScreen() {
         <PinFormSheet
           cityId={activeCity.city_id}
           cityName={activeCity.cities.name}
+          cityTimezone={activeCity.timezone}
           coords={placeCoords}
           initialPlace={searchedPlace}
           initialLabel={placeLabel}
@@ -2296,6 +2661,7 @@ export default function MapScreen() {
           cityName={activeCity.cities.name}
           pins={pins}
           clusters={clusters}
+          clock={cityClock}
           places={places}
           isBusinessViewer={isBusiness}
           ownBusinessId={ownBusinessId}
@@ -2472,16 +2838,32 @@ export default function MapScreen() {
       {gate ? (
         <Sheet onClose={() => setGate(null)}>
           <SignUpGate
-            reason={
+            // The invitation leads; the name disclosure is the small print
+            // under it. The headline slot was carrying a privacy warning at
+            // the exact moment somebody showed enthusiasm.
+            reason={gate === 'join' ? 'Join the plan and the chat' : 'Put your plan on the map'}
+            detail={
               gate === 'join'
-                ? 'Joining puts you in the chat, with a name'
-                : 'Pins come with your name on them'
+                ? undefined
+                : 'Your name and photo go on the pin, so people know who they are meeting. It disappears within three days.'
             }
             where={gate === 'join' ? 'join-plan' : 'drop-pin'}
             compact
             // Pushing a route from inside a sheet leaves its scrim over the
             // map and every later tap lands on nothing. See components/ui/sheet.
-            onNavigate={leavingSheet(() => setGate(null))}
+            onNavigate={(go) => {
+              // Remember what they were DOING before the wall: the plan they
+              // tried to join, or the spot they had panned to. Recorded only
+              // on the tap through - backing out records nothing.
+              if (activeCityId != null) {
+                intentRemembered(
+                  gate === 'join' && joinGatePinId.current != null
+                    ? { kind: 'pin', cityId: activeCityId, pinId: joinGatePinId.current }
+                    : { kind: 'drop-pin', cityId: activeCityId, region: lastRegion.current }
+                );
+              }
+              leavingSheet(() => setGate(null))(go);
+            }}
           />
         </Sheet>
       ) : null}
@@ -2497,6 +2879,7 @@ export default function MapScreen() {
       {mode === 'browse' && filtersOpen ? (
         <MapFilterSheet
           filters={filters}
+          clock={cityClock}
           // The SAME arrays the markers render, or the number contradicts
           // the dots the moment Businesses is unticked.
           resultCount={mapResultCount(pins.length, places.length, filters)}
@@ -2517,9 +2900,14 @@ export default function MapScreen() {
               <ThemedText type="headline" numberOfLines={1}>
                 {clusterTitle(openVenue)}
               </ThemedText>
-              <ThemedText type="footnote" themeColor="textSecondary">
-                {openVenue.pins.length} plans here
-              </ThemedText>
+              {/* Only when the headline is a NAME. clusterTitle's last
+                  fallback is this same count, and the sheet used to print
+                  it twice, as its own title and subtitle. */}
+              {clusterTitle(openVenue) !== `${countOf(openVenue.pins.length, 'plan')} here` ? (
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  {countOf(openVenue.pins.length, 'plan')} here
+                </ThemedText>
+              ) : null}
             </View>
             <Pressable
               accessibilityRole="button"
@@ -2561,7 +2949,9 @@ export default function MapScreen() {
                       {pinSubtitle(pin) ?? pinTitle(pin)}
                     </ThemedText>
                     <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
-                      {[pin.display_name, intentLabel(pin.intent_date)].filter(Boolean).join(' · ')}
+                      {[pin.display_name, intentLabel(pin.intent_date, cityClock)]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </ThemedText>
                   </View>
                   <SymbolView
@@ -2591,16 +2981,31 @@ export default function MapScreen() {
               reason="See who's going and say hi"
               where="pin-card"
               compact
-              onNavigate={leavingSheet(() => setSelectedPinId(null))}
+              onNavigate={(go) => {
+                // The pin they were reading, replayed after signup - and
+                // degraded silently to the city if it burns out first.
+                if (activeCityId != null) {
+                  intentRemembered({
+                    kind: 'pin',
+                    cityId: activeCityId,
+                    pinId: selectedPin.id,
+                  });
+                }
+                leavingSheet(() => setSelectedPinId(null))(go);
+              }}
             />
           ) : (
             <PinCard
               pin={selectedPin}
               cityId={activeCityId}
+              clock={cityClock}
               onClose={() => setSelectedPinId(null)}
-              onNeedsAccount={() =>
-                leavingSheet(() => setSelectedPinId(null))(() => setGate('join'))
-              }
+              onNeedsAccount={() => {
+                // By the time the join gate's navigate runs the card is
+                // closed, so the plan's id is parked here for it.
+                joinGatePinId.current = selectedPin.id;
+                leavingSheet(() => setSelectedPinId(null))(() => setGate('join'));
+              }}
             />
           )}
         </Sheet>

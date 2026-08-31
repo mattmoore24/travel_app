@@ -1,4 +1,5 @@
 import type { LaunchCityWithCity } from '@/features/pins/api';
+import { useCityChoice } from '@/features/pins/city-store';
 import { useLaunchCities } from '@/features/pins/hooks';
 import type { TripWithCity } from '@/features/trips/api';
 import { useMyTrips } from '@/features/trips/hooks';
@@ -12,10 +13,11 @@ import { toISODate } from '@/features/trips/dates';
  * `launchCities[0]`". The Chat tab's room list did exactly that, so a
  * traveler in Bangkok read that Lisbon hostels were "near you".
  *
- * The input is a date range the traveler TYPED — their trips — never device
- * location. That is what keeps §7 rule 2 intact: the app never collects or
- * displays where anybody is. Anybody "improving" this later will reach for
- * expo-location; do not.
+ * The inputs are a tap the traveler made (the persisted chip choice), a date
+ * range they TYPED (their trips), and the device's own clock setting — never
+ * device location. That is what keeps §7 rule 2 intact: the app never
+ * collects or displays where anybody is. Anybody "improving" this later will
+ * reach for expo-location; do not.
  */
 export type BrowsingCity = {
   cityId: number | null;
@@ -23,31 +25,62 @@ export type BrowsingCity = {
 };
 
 /**
- * The launch city of the trip containing `today`, else the earliest upcoming
- * trip whose city is a launch city, else the first launch city (deterministic
- * — fetchLaunchCities orders by city_id — and all a guest with no trips can
- * get).
+ * The device's clock zone, from Intl and ONLY Intl. A zone name is a setting
+ * somebody chose on their phone, not a position; §7 rule 2 forbids the
+ * position, and this helper exists so nobody swaps in a location read to
+ * answer the same question.
+ */
+export function deviceTimezone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolution order, most explicit first:
+ *
+ *   1. the persisted choice, while that city is still an active launch city
+ *      (a deactivated one falls through rather than rendering an empty map);
+ *   2. the launch city of the trip containing `today`, else the earliest
+ *      upcoming trip whose city is a launch city;
+ *   3. the launch city whose `timezone` matches the device's clock zone;
+ *   4. the first launch city (deterministic — fetchLaunchCities orders by
+ *      city_id — and all a guest with no trips in Berlin can get).
  */
 export function pickBrowsingCity(
   launchCities: LaunchCityWithCity[],
   trips: TripWithCity[],
-  today: string
+  today: string,
+  chosenCityId: number | null = null,
+  deviceTz: string | null = null
 ): BrowsingCity {
   const launchById = new Map(launchCities.map((city) => [city.city_id, city]));
-  const inLaunchCity = trips.filter((trip) => launchById.has(trip.city_id));
+  const named = (cityId: number): BrowsingCity => ({
+    cityId,
+    cityName: launchById.get(cityId)?.cities.name ?? null,
+  });
 
+  if (chosenCityId != null && launchById.has(chosenCityId)) {
+    return named(chosenCityId);
+  }
+
+  const inLaunchCity = trips.filter((trip) => launchById.has(trip.city_id));
   const current = inLaunchCity.find((trip) => trip.start_date <= today && today <= trip.end_date);
   const upcoming = inLaunchCity
     .filter((trip) => trip.start_date > today)
     .sort((a, b) => a.start_date.localeCompare(b.start_date))[0];
-
   const trip = current ?? upcoming;
   if (trip) {
-    return {
-      cityId: trip.city_id,
-      cityName: launchById.get(trip.city_id)?.cities.name ?? null,
-    };
+    return named(trip.city_id);
   }
+
+  const zoned = deviceTz != null ? launchCities.find((city) => city.timezone === deviceTz) : null;
+  if (zoned) {
+    return named(zoned.city_id);
+  }
+
   const first = launchCities[0];
   return { cityId: first?.city_id ?? null, cityName: first?.cities.name ?? null };
 }
@@ -55,10 +88,19 @@ export function pickBrowsingCity(
 /**
  * The hook the screens use. useMyTrips is already cached from the profile
  * tab and disabled without a user id, so a guest costs nothing extra and
- * falls through to the first launch city.
+ * falls through to the timezone match, then the first launch city. Reads the
+ * same persisted choice the map's chips write, so every tab browses ONE
+ * city.
  */
 export function useBrowsingCity(): BrowsingCity {
   const { data: launchCities = [] } = useLaunchCities();
   const { data: trips = [] } = useMyTrips();
-  return pickBrowsingCity(launchCities, trips, toISODate(new Date()));
+  const chosenCityId = useCityChoice((s) => s.cityId);
+  return pickBrowsingCity(
+    launchCities,
+    trips,
+    toISODate(new Date()),
+    chosenCityId,
+    deviceTimezone()
+  );
 }

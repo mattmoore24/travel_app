@@ -230,3 +230,27 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2000
 - takeScreenshot: 08-account-kind-business
+
+# THE MAP REMEMBERS THE CITY (map-remembers-your-city): choose a city, kill
+# the app, and the choice survives the relaunch — this is the whole point and
+# only an E2E step proves it. Chips are PressableScales carrying their own
+# labels, the same addressing 'Filters' already trusts. Denpasar because it
+# is the second chip and needs no rail scroll.
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+- tapOn: 'Denpasar'
+- waitForAnimationToEnd:
+    timeout: 2500
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+- extendedWaitUntil:
+    visible: 'Denpasar'
+    timeout: 15000
+- assertVisible:
+    text: 'Denpasar'
+    selected: true
+- takeScreenshot: 09-city-remembered

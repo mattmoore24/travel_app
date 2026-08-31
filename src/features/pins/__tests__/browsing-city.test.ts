@@ -22,11 +22,12 @@ const city = (id: number, name: string): CityRow => ({
   population: 1_000_000,
 });
 
-const launch = (id: number, name: string): LaunchCityWithCity => ({
+const launch = (id: number, name: string, timezone = 'UTC'): LaunchCityWithCity => ({
   city_id: id,
   active: true,
   radius_km: 30,
   heat_k: 3,
+  timezone,
   cities: city(id, name),
 });
 
@@ -42,8 +43,8 @@ const trip = (cityId: number, name: string, start: string, end: string): TripWit
   cities: city(cityId, name),
 });
 
-const LISBON = launch(1, 'Lisbon');
-const BANGKOK = launch(2, 'Bangkok');
+const LISBON = launch(1, 'Lisbon', 'Europe/Lisbon');
+const BANGKOK = launch(2, 'Bangkok', 'Asia/Bangkok');
 const CITIES = [LISBON, BANGKOK];
 const TODAY = '2026-08-30';
 
@@ -84,5 +85,50 @@ describe('pickBrowsingCity', () => {
       trip(1, 'Lisbon', '2026-09-01', '2026-09-09'),
     ];
     expect(pickBrowsingCity(CITIES, trips, TODAY)).toEqual({ cityId: 2, cityName: 'Bangkok' });
+  });
+
+  it('the persisted choice beats everything, including a current trip', () => {
+    // A tap the person made is the most explicit signal there is; a trip is
+    // an inference about it.
+    const trips = [trip(1, 'Lisbon', '2026-08-25', '2026-09-05')];
+    expect(pickBrowsingCity(CITIES, trips, TODAY, 2)).toEqual({
+      cityId: 2,
+      cityName: 'Bangkok',
+    });
+  });
+
+  it('a persisted city that has left the programme falls through, never an empty map', () => {
+    // fetchLaunchCities serves active rows only, so a deactivated stored id
+    // simply is not in the list; the trip (then timezone, then first) answers
+    // instead of a city with nothing behind it.
+    const trips = [trip(2, 'Bangkok', '2026-09-10', '2026-09-20')];
+    expect(pickBrowsingCity(CITIES, trips, TODAY, 99)).toEqual({
+      cityId: 2,
+      cityName: 'Bangkok',
+    });
+  });
+
+  it("with no choice and no trips, the device's clock zone picks the city", () => {
+    // Intl's zone name, never a location read: a phone set to Asia/Bangkok
+    // opens on Bangkok instead of whichever row sorts first.
+    expect(pickBrowsingCity(CITIES, [], TODAY, null, 'Asia/Bangkok')).toEqual({
+      cityId: 2,
+      cityName: 'Bangkok',
+    });
+  });
+
+  it('a trip still beats the clock zone', () => {
+    const trips = [trip(1, 'Lisbon', '2026-09-10', '2026-09-20')];
+    expect(pickBrowsingCity(CITIES, trips, TODAY, null, 'Asia/Bangkok')).toEqual({
+      cityId: 1,
+      cityName: 'Lisbon',
+    });
+  });
+
+  it('an unmatched zone falls to the first launch city', () => {
+    expect(pickBrowsingCity(CITIES, [], TODAY, null, 'Europe/Berlin')).toEqual({
+      cityId: 1,
+      cityName: 'Lisbon',
+    });
   });
 });

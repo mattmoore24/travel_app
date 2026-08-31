@@ -4,6 +4,7 @@ import {
   MAX_PIN_HOURS,
   burnOutLabel,
   categoryForPoi,
+  cityClockNow,
   defaultHoursForIntent,
   expiryForDuration,
   expiryForHours,
@@ -12,6 +13,7 @@ import {
   hoursLabel,
   intentDateOptions,
   intentLabel,
+  isLaterCityDay,
   isLaterDay,
   minHoursForIntent,
   pinSubtitle,
@@ -202,6 +204,59 @@ describe('filterDates', () => {
     const dates = filterDates('today', midday);
     expect(dates).toContain('2026-08-22');
   });
+
+  it("leads with the browsed city's day, and keeps the device day matched", () => {
+    // A device at 20:00 on the 30th browsing a city where it is already
+    // 03:00 on the 31st: "today" must show the city's tonight, and must not
+    // hide pins the device's own clock (or the seed's UTC clock) wrote.
+    const device = new Date(2026, 7, 30, 20, 0);
+    const city = new Date(2026, 7, 31, 3, 0);
+    const dates = filterDates('today', device, city);
+    expect(dates[0]).toBe('2026-08-31'); // the city leads: heatDay asks about it
+    expect(dates).toContain('2026-08-30'); // the tolerance is widened, never swapped
+    expect(new Set(dates).size).toBe(dates.length);
+  });
+
+  it('shifts every chip by the same city day', () => {
+    const device = new Date(2026, 7, 30, 20, 0);
+    const city = new Date(2026, 7, 31, 3, 0);
+    expect(filterDates('tomorrow', device, city)[0]).toBe('2026-09-01');
+    expect(filterDates('later', device, city)[0]).toBe('2026-09-02');
+  });
+});
+
+describe("cityClockNow (the browsed city's today)", () => {
+  it("reads Bangkok's small hours off a London evening", () => {
+    // 19:00 UTC on Aug 30 is 02:00 on Aug 31 in Bangkok (UTC+7).
+    const instant = new Date(Date.UTC(2026, 7, 30, 19, 0));
+    const bkk = cityClockNow('Asia/Bangkok', 100.5, instant);
+    expect(toISODate(bkk)).toBe('2026-08-31');
+    expect(bkk.getHours()).toBe(2);
+  });
+
+  it('answers the other direction for a device east of the city', () => {
+    // 03:00 UTC on Aug 31 is still 21:00 on Aug 30 in Mexico City (UTC-6).
+    const instant = new Date(Date.UTC(2026, 7, 31, 3, 0));
+    const cdmx = cityClockNow('America/Mexico_City', -99.13, instant);
+    expect(toISODate(cdmx)).toBe('2026-08-30');
+    expect(cdmx.getHours()).toBe(21);
+  });
+
+  it('falls back to the longitude approximation for a zone ICU does not know', () => {
+    // lng 105 is roughly UTC+7; the approximation lands on the same day.
+    const instant = new Date(Date.UTC(2026, 7, 30, 19, 0));
+    const approx = cityClockNow('Not/AZone', 105, instant);
+    expect(toISODate(approx)).toBe('2026-08-31');
+    expect(approx.getHours()).toBe(2);
+  });
+
+  it('labels intent dates by the city clock it is handed', () => {
+    const city = new Date(2026, 7, 31, 3, 0);
+    expect(intentLabel('2026-08-31', city)).toBe('Today');
+    expect(intentLabel('2026-09-01', city)).toBe('Tomorrow');
+    // The night the device still calls "today" is over in the city.
+    expect(intentLabel('2026-08-30', city)).not.toBe('Today');
+  });
 });
 
 describe('shouldGeocode (the place pill throttle)', () => {
@@ -237,14 +292,20 @@ describe('pinTitle / pinSubtitle (one voice for a pin, everywhere)', () => {
     ).toBe('Sky Bar');
   });
 
-  it('subtitles a pin with its trimmed plan text', () => {
+  it('subtitles a pin with its plan first, the note standing in', () => {
+    expect(pinSubtitle({ plan: ' Sunset drinks ', note: 'by the door at 7' })).toBe(
+      'Sunset drinks'
+    );
+    // Rows from before the split (and plans whose author wrote only a
+    // detail) still say something.
+    expect(pinSubtitle({ plan: null, note: '  Sunset drinks  ' })).toBe('Sunset drinks');
     expect(pinSubtitle({ note: '  Sunset drinks  ' })).toBe('Sunset drinks');
   });
 
-  it('returns null for a missing, empty or whitespace note', () => {
-    expect(pinSubtitle({ note: null })).toBeNull();
-    expect(pinSubtitle({ note: '' })).toBeNull();
-    expect(pinSubtitle({ note: '   ' })).toBeNull();
+  it('returns null when neither the plan nor the note says anything', () => {
+    expect(pinSubtitle({ plan: null, note: null })).toBeNull();
+    expect(pinSubtitle({ plan: '', note: '' })).toBeNull();
+    expect(pinSubtitle({ plan: '   ', note: '   ' })).toBeNull();
   });
 });
 
@@ -262,6 +323,35 @@ describe('isLaterDay (the marker dim)', () => {
     // Two days out is later than today on the local clock and the UTC clock
     // alike, whichever side of the meridian the runner sits on.
     expect(isLaterDay(toISODate(addDays(now, 2)), now)).toBe(true);
+  });
+});
+
+describe('isLaterCityDay (the dim on the city clock)', () => {
+  // THE BANGKOK-FROM-MEXICO-CITY REGRESSION. Browsing Bangkok at 20:00
+  // Bangkok time on Aug 31 from Mexico City (UTC-6): the map's clock is the
+  // SYNTHETIC Date cityClockNow builds — wall time 2026-08-31 20:00 read in
+  // the DEVICE zone. On that device the synthetic instant is 02:00Z on
+  // SEP 1, so isLaterDay's UTC leg (`intentISO > toISOString()`) refused a
+  // pin for Bangkok's tomorrow and the dim was lost. That leg is UTC-write
+  // tolerance for the device clock and means nothing on a synthetic Date.
+
+  it('keeps the dim on a pin for the city’s tomorrow, wherever the device is', () => {
+    // 13:00Z on Aug 31 IS 20:00 in Bangkok; the synthetic clock reads
+    // 2026-08-31 whatever zone this runner sits in.
+    const clock = cityClockNow('Asia/Bangkok', 100.5, new Date(Date.UTC(2026, 7, 31, 13, 0)));
+    expect(toISODate(clock)).toBe('2026-08-31');
+    expect(isLaterCityDay('2026-09-01', clock)).toBe(true); // tomorrow: dimmed
+    expect(isLaterCityDay('2026-08-31', clock)).toBe(false); // tonight: full amber
+    expect(isLaterCityDay('2026-08-30', clock)).toBe(false); // already under way
+  });
+
+  it('documents the leg that lost it: isLaterDay’s UTC read on the synthetic instant', () => {
+    // The exact instant a Mexico City device holds for "Bangkok, 20:00,
+    // Aug 31": wall 2026-08-31T20:00 at UTC-6 is 02:00Z on Sep 1. Its UTC
+    // day equals the intent date, so the ISO leg fails in EVERY runner zone
+    // — which is why the map's city-clock call sites must not use isLaterDay.
+    const syntheticOnThatDevice = new Date('2026-09-01T02:00:00Z');
+    expect(isLaterDay('2026-09-01', syntheticOnThatDevice)).toBe(false);
   });
 });
 

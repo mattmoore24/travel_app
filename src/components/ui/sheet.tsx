@@ -227,7 +227,10 @@ export function Sheet({
       // safe-area inset on top reserved that strip twice and left a band of
       // dead sheet between the last control and the keyboard, on the one
       // screen whose scroll area is being starved to make room for it.
-      paddingBottom: Math.max(insets.bottom, lift) + Space.lg,
+      // Space.md, not lg: over the home indicator's own inset the larger
+      // step read as a band of dead sheet under every card's last control
+      // (the guest gate wore it worst - a 200pt card in a 40%-tall sheet).
+      paddingBottom: Math.max(insets.bottom, lift) + Space.md,
       // A full screen height below its resting place, then sprung home — the
       // same travel the preset used, without handing Reanimated the layout.
       transform: [{ translateY: drag.value + enter.value * height }],

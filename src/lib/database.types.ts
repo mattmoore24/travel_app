@@ -155,6 +155,8 @@ export type PublicPinRow = {
   id: string;
   venue_name: string;
   note: string | null;
+  /** What the person is doing there ("Sunset drinks"); the venue is the spot. */
+  plan: string | null;
   place_label: string | null;
   category: PinCategory;
   lat: number;
@@ -705,8 +707,10 @@ export type CityPinRow = {
   verified: boolean;
   photo_path: string | null;
   venue_name: string;
-  /** What the plan actually is, in the author's words. */
+  /** The finding-the-door detail, in the author's words. */
   note: string | null;
+  /** What the person is doing there ("Sunset drinks"); the venue is the spot. */
+  plan: string | null;
   /** Street or area the pin sits on, as the author confirmed it. */
   place_label: string | null;
   category: PinCategory;
@@ -1111,6 +1115,7 @@ export type Database = {
           city_id: number;
           venue_name: string;
           note: string | null;
+          plan: string | null;
           place_label: string | null;
           category: PinCategory;
           lat: number;
@@ -1126,6 +1131,7 @@ export type Database = {
           city_id: number;
           venue_name: string;
           note?: string | null;
+          plan?: string | null;
           place_label?: string | null;
           category: PinCategory;
           lat: number;
@@ -1480,6 +1486,7 @@ export type Database = {
           p_lng: number;
           p_intent_date: string;
           p_expires_at: string;
+          p_plan?: string | null;
         };
         Returns: { pin_id: string; chat_id: string };
       };

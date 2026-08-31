@@ -19,18 +19,34 @@ import { analytics } from '@/lib/analytics';
  * two gates in one session and be asked to do two apparently different
  * things — "Make a profile" at Drop a pin, "Create an account" one tap later
  * on a pin's card — when both push the same /join. The gate's reasons are
- * about the profile ("Pins come with your name on them"), and "account" is
- * the word the business flow keeps for itself.
+ * about the profile ("Put your plan on the map"), and "account" is the word
+ * the business flow keeps for itself.
  */
 const CTA = 'Make a profile';
 
 export function SignUpGate({
   reason,
+  detail,
   where,
   compact = false,
   onNavigate = (go) => go(),
 }: {
+  /**
+   * The headline, and it has a CONTRACT: it always answers "what do I get",
+   * in the imperative — the invitation, never a warning. This is the
+   * highest-stakes conversion surface in the app, read most often by
+   * exactly the person the research says the marketplace cannot afford to
+   * lose; a caveat in this slot is the sentence that makes her put the
+   * phone down. Any caveat goes in `detail`, under it, in honest small
+   * print.
+   */
   reason: string;
+  /**
+   * The footnote under the reason: the honest disclosure, when the moment
+   * owes one ("Your name and photo go on the pin..."). Optional, and never
+   * the headline.
+   */
+  detail?: string;
   /**
    * A short, stable name for THIS gate, and the only thing analytics ever
    * sees. `reason` is a human sentence and one of them interpolates another
@@ -60,6 +76,11 @@ export function SignUpGate({
     <GlassSurface radius={Radius.xl} style={compact ? styles.compact : styles.card}>
       <View style={styles.inner}>
         <ThemedText type="headline">{reason}</ThemedText>
+        {detail ? (
+          <ThemedText type="footnote" themeColor="textSecondary">
+            {detail}
+          </ThemedText>
+        ) : null}
         <ThemedText type="footnote" themeColor="textSecondary">
           Takes a minute. Always free.
         </ThemedText>
@@ -96,9 +117,9 @@ const styles = StyleSheet.create({
   // that close together in one column read as a misplaced element rather
   // than as hierarchy.
   card: {},
-  compact: {
-    marginTop: Space.sm,
-  },
+  // No marginTop of its own either: the map's gate sheet already spaces its
+  // content, and the extra strip read as a card floating loose in the sheet.
+  compact: {},
   inner: {
     gap: Space.md,
     padding: Space.lg,

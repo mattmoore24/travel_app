@@ -10,7 +10,6 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Radius, Springs } from '@/constants/theme';
-import { isLaterDay } from '@/features/pins/pin-helpers';
 import { useTheme } from '@/hooks/use-theme';
 import type { PinCategory } from '@/lib/database.types';
 
@@ -150,11 +149,13 @@ type PinMarkerViewProps = {
    */
   own?: boolean;
   /**
-   * The plan's day. Today burns full amber; later days one step dimmer (see
-   * PIN_AMBER_LATER). Secondary channel only — the plan list carries the
-   * date in words.
+   * The plan is for a LATER day than the browsed city's today; it burns one
+   * step dimmer (see PIN_AMBER_LATER). Computed by the map screen, which
+   * owns the one clock authority (cityClockNow) — the marker must not read a
+   * clock of its own, or the dim and the labels drift apart. Secondary
+   * channel only — the plan list carries the date in words.
    */
-  intentDate?: string | null;
+  later?: boolean;
 };
 
 /**
@@ -171,7 +172,7 @@ export function PinMarkerView({
   photoUri = null,
   open = false,
   own = false,
-  intentDate = null,
+  later = false,
 }: PinMarkerViewProps) {
   const theme = useTheme();
   const scale = useSharedValue(1);
@@ -186,7 +187,6 @@ export function PinMarkerView({
 
   // The later-day dim applies to the amber only: gold is already the scarce
   // colour, and dimming it would collapse it into amber.
-  const later = !seeded && intentDate != null && isLaterDay(intentDate);
   const fill = seeded ? PIN_GOLD : later ? PIN_AMBER_LATER : PIN_AMBER;
   const glyph = seeded ? SEEDED_GLYPH : CATEGORY_GLYPHS[category];
   // A face beats an icon: knowing WHO is going is the reason to tap.
@@ -247,7 +247,7 @@ export function PinStackView({
   count,
   category,
   selected = false,
-  intentDate = null,
+  later = false,
 }: {
   /**
    * Photo URLs, already resolved. Entries that resolved to nothing are
@@ -261,8 +261,11 @@ export function PinStackView({
   /** The cluster's dominant category, or 'mixed' when its plans disagree. */
   category: StackCategory;
   selected?: boolean;
-  /** Soonest plan day in the stack; a later-than-today day burns dimmer. */
-  intentDate?: string | null;
+  /**
+   * Soonest plan day in the stack is later than the browsed city's today, so
+   * the stack burns dimmer. Computed by the map screen's one clock.
+   */
+  later?: boolean;
 }) {
   const scale = useSharedValue(1);
 
@@ -276,7 +279,6 @@ export function PinStackView({
 
   const shown = faces.slice(0, STACK_FACES);
   const resolved = shown.filter((uri): uri is string => uri != null);
-  const later = intentDate != null && isLaterDay(intentDate);
   const fill = later ? PIN_AMBER_LATER : PIN_AMBER;
 
   return (

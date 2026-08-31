@@ -78,7 +78,7 @@ appId: com.mattmoore.samewhere
 # so the disabled reason is proved rather than only photographed.
 - assertVisible: 'Say what the plan is first.'
 - tapOn:
-    id: 'venue-input'
+    id: 'plan-input'
 - inputText: 'Rooftop hello from Maestro'
 # Return first: Name is single-line, so this dismisses the keyboard, and the
 # tap below then lands on the details field. Tapping a second field with the

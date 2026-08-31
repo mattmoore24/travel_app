@@ -693,8 +693,8 @@ export default function ChatScreen() {
                 <SignUpGate
                   reason={
                     myGroups.length > 0
-                      ? 'Pins, trips and meeting travelers need a profile'
-                      : 'Want to join in?'
+                      ? 'Drop pins, post trips and say hi to travelers'
+                      : 'Say hi to other travelers'
                   }
                   where="chat-tab"
                 />
@@ -706,7 +706,7 @@ export default function ChatScreen() {
               <EmptyState
                 title="No chats yet"
                 body="One-to-one chats start when you say hi to someone and they answer.">
-                <SignUpGate reason="Want to join in?" where="chat-tab" />
+                <SignUpGate reason="Say hi to other travelers" where="chat-tab" />
               </EmptyState>
             )}
           </Animated.View>
