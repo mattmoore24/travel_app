@@ -260,11 +260,50 @@ async function purge() {
   console.log(`\n${gone} demo travelers removed.`);
 }
 
+/**
+ * The launch gate: RED while any demo account can still sign in. The purge
+ * used to be a runbook sentence somebody had to remember and then trust;
+ * this makes it a workflow run that fails until the purge actually took —
+ * run `purge`, then `check`, and green is the evidence.
+ */
+async function check() {
+  const present = [];
+  for (const person of people) {
+    try {
+      await signIn(person.slug);
+      present.push(person.name);
+      console.log(`!!   ${person.name} can still sign in`);
+    } catch (e) {
+      // Only an invalid-credentials 400 from the token endpoint proves the
+      // account is gone. Every other failure — a rotated DEMO_PASSWORD, an
+      // auth outage, a 429 — throws the same way, and a gate that reads all
+      // of them as "gone" is green exactly when it knows least. Fail the run
+      // instead, so somebody looks.
+      if (!/-> 400:/.test(e.message)) {
+        throw new Error(
+          `${person.name}: could not tell whether the account is gone ` +
+            `(${e.message.slice(0, 120)}). The check needs a working anon key ` +
+            'and the DEMO_PASSWORD the seed used.'
+        );
+      }
+      console.log(`ok   ${person.name} gone`);
+    }
+  }
+  if (present.length > 0) {
+    throw new Error(
+      `${present.length} demo travelers still live (${present.join(', ')}). ` +
+        'Run the workflow with `purge`, then `check` again.'
+    );
+  }
+  console.log(`\nAll ${people.length} demo travelers are gone.`);
+}
+
 const mode = process.argv[2];
 try {
   if (mode === 'seed') await seed();
   else if (mode === 'purge') await purge();
-  else throw new Error('usage: seed-demo-travelers.mjs seed|purge');
+  else if (mode === 'check') await check();
+  else throw new Error('usage: seed-demo-travelers.mjs seed|purge|check');
 } catch (e) {
   console.error(`::error::${mode} failed: ${e.message}`);
   process.exit(1);

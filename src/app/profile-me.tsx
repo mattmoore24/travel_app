@@ -59,7 +59,7 @@ function GuestProfile({ guestName }: { guestName: string | null }) {
             />
           </View>
         </View>
-        <ThemedText type="title" style={styles.guestText}>
+        <ThemedText type="display" style={styles.guestText}>
           {/* Founder, 2026-08-28: "'you are [name] in here' for guests is
               weird wording. Just have it say '[name], you are in guest
               mode'." The old line was trying to say the name is only for
@@ -139,7 +139,7 @@ function BusinessAccount({ name }: { name: string | null }) {
     <ThemedView style={styles.root}>
       <Stack.Screen options={{ headerTitle: 'Your profile' }} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.guestContent}>
-        <ThemedText type="title" style={styles.guestText}>
+        <ThemedText type="display" style={styles.guestText}>
           {name ?? 'Your account'}
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.guestText}>

@@ -11,17 +11,16 @@ import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
+import { DockedActionBar, dockedActionBarHeight } from '@/components/ui/docked-action-bar';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import type { Section as EditSection } from '@/app/business-edit';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  BottomTabInset,
   HitTarget,
   MaxContentWidth,
   Motion,
   Radius,
   Space,
-  tabDockBottom,
   type ThemeColor,
 } from '@/constants/theme';
 import {
@@ -40,6 +39,7 @@ import {
   notificationValueLine,
   useNotificationPermission,
 } from '@/features/notifications/notifications-row';
+import { useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import type { BusinessPostJson, MyBusinessRow } from '@/lib/database.types';
@@ -49,12 +49,6 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 const TIME = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 const HERO_RATIO = 3 / 2;
-
-/** Room under the scroll for the docked button and the tab bar beneath it. */
-const DOCK_CLEARANCE = 120;
-
-/** PrimaryButton's filled height, which the backdrop has to cover exactly. */
-const DOCK_BUTTON = 52;
 
 /** Twenty minutes, which is what the migration gives a code. */
 const CODE_TTL_MS = 20 * 60 * 1000;
@@ -273,6 +267,13 @@ function DetailRow({
  */
 export default function MyBusinessScreen() {
   const insets = useSafeAreaInsets();
+  // Dynamic Type grows the native tab bar; the constants it replaces did not.
+  const dockBottom = useTabDockBottom();
+  // The dock's real height, measured by the bar (it grows with Dynamic
+  // Type). Seeded from the shared formula so the first frame is right; the
+  // measurement only corrects it. Feeds the scroll clearance, so the last
+  // rows can never run under the button again.
+  const [barHeight, setBarHeight] = useState(() => dockedActionBarHeight(dockBottom));
   const theme = useTheme();
   const ownQuery = useOwnBusiness();
   const business = ownQuery.data ?? null;
@@ -431,10 +432,7 @@ export default function MyBusinessScreen() {
     <ThemedView style={styles.root}>
       <View style={styles.column}>
         <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: BottomTabInset + DOCK_CLEARANCE },
-          ]}
+          contentContainerStyle={[styles.content, { paddingBottom: barHeight + Space.xl }]}
           showsVerticalScrollIndicator={false}>
           {/* No header above it: the cover IS the header, and a business
               opening this tab should see the picture travelers see first. */}
@@ -783,35 +781,22 @@ export default function MyBusinessScreen() {
 
         {/* The button lives outside the scroll on purpose: a primary action
             inside one is reachable only by scrolling to it, and this is the
-            thing a business opens the tab to do. The gradient gives it a
-            ground so the text passing underneath does not compete with the
-            label on top of it. */}
-        <LinearGradient
-          colors={['transparent', theme.background]}
-          locations={[0, 0.55]}
-          style={[styles.dockBackdrop, { height: dockHeight(insets.bottom) + Space.xxl }]}
-          pointerEvents="none"
+            thing a business opens the tab to do. DockedActionBar is the same
+            chrome Travelers docks: an opaque plate exactly as tall as the
+            measured bar, a short ramp fading down to it, and hit-testing
+            that lets taps through — the single gradient it replaces reached
+            full opacity 55% of the way down its own height, so the button
+            row sat on a half-transparent wash and the page read through. */}
+        <DockedActionBar
+          primaryLabel={next.label}
+          primaryAccessibilityLabel={next.hint}
+          onPrimary={next.onPress}
+          bottomInset={dockBottom}
+          onBarHeight={setBarHeight}
         />
-        <View
-          style={[styles.dock, { paddingBottom: tabDockBottom(insets.bottom) }]}
-          pointerEvents="box-none">
-          <PrimaryButton label={next.label} accessibilityLabel={next.hint} onPress={next.onPress} />
-        </View>
       </View>
     </ThemedView>
   );
-}
-
-/**
- * How tall the docked bar actually is, so the fade starts AT it rather than
- * a line and a half above it. Handing this the scroll clearance instead is
- * what dissolved the last line of a traveler's trip dates on run 44.
- */
-function dockHeight(bottomInset: number) {
-  // The same one formula every docked bar uses (see tabDockBottom): the old
-  // expression halved the safe-area inset, a 17pt drift against the Map's
-  // pill on the same phone.
-  return Space.sm + DOCK_BUTTON + tabDockBottom(bottomInset);
 }
 
 const styles = StyleSheet.create({
@@ -937,19 +922,5 @@ const styles = StyleSheet.create({
   },
   seeItBlock: {
     gap: Space.sm,
-  },
-  dockBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  dock: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: Space.lg,
-    paddingTop: Space.sm,
   },
 });

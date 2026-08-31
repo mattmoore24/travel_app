@@ -57,7 +57,16 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf={{ default: 'storefront', selected: 'storefront.fill' }} />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="chat">
+      <NativeTabs.Trigger
+        name="chat"
+        // The badge is the app's only unread signal, and iOS 26's Liquid
+        // Glass tab bar no longer derives an accessibilityValue from
+        // badgeValue — so VoiceOver said "Chat, tab" whether five people
+        // were waiting or nobody. The label carries the count instead
+        // (SDK 57's NativeTabs forwards this to the UITabBarItem as
+        // tabBarItemAccessibilityLabel). "Waiting" is the word the chat
+        // code already uses; never "request".
+        accessibilityLabel={waiting > 0 ? `Chat, ${waiting} waiting` : 'Chat'}>
         <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{

@@ -147,10 +147,12 @@ pre-launch. Before opening the app to real users, in this order:
   pins force-pushed to a git branch. Private repo makes that branch private
   again; delete the historical branch too (`git push origin :e2e-results`).
 - **Purge the demo travelers**: Actions -> **Demo travelers** -> Run workflow ->
-  `purge`. Six seeded accounts (Maya, Dev, Freja, Theo, Nora, Luca) exist so the
-  Travelers tab, matching and message requests can be tested on a real device.
-  They are AI-generated, not real people, and every bio carries a `[demo]`
-  marker, but no real user should ever see them.
+  `purge`, then run it again with `check` — the check is the gate, and it stays
+  red while any demo account can still sign in, so a half-taken purge cannot
+  pass on trust. The seeded accounts exist so the Travelers tab, matching and
+  first messages can be tested on a real device. They are AI-generated, not
+  real people, and every bio carries a `[demo]` marker (shown in the app as a
+  "Sample profile" chip), but no real user should ever see them.
 - **Re-check Actions billing**: private CI bills minutes again. Set a spending
   limit (Settings → Billing) that covers ~$1.10 per full E2E run and pennies
   per deploy/TestFlight orchestration, or lean on the 2,000 free monthly

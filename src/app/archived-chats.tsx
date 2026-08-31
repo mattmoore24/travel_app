@@ -7,6 +7,7 @@ import ReanimatedSwipeable, {
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { EmptyState } from '@/components/ui/empty-state';
 import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { ChatRowSkeleton } from '@/components/ui/skeleton';
@@ -127,7 +128,10 @@ export default function ArchivedChatsScreen() {
         </View>
         {/* Only on success-with-zero: a failed fetch is not an empty archive. */}
         {query.isSuccess && chats.length === 0 ? (
-          <ThemedText themeColor="textSecondary">Nothing archived.</ThemedText>
+          <EmptyState
+            title="Nothing archived yet"
+            body="Archive a chat and it lands here. Quiet chats join on their own after two weeks."
+          />
         ) : null}
       </ScrollView>
     </ThemedView>

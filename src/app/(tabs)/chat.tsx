@@ -26,6 +26,7 @@ import {
 } from '@/features/chat/chat-row';
 import { InviteCodeSheet } from '@/features/chat/invite-code-sheet';
 import { useIsGuest } from '@/features/guest/hooks';
+import { useAnnounce } from '@/features/chat/use-announce';
 import { useBrowsingCity } from '@/features/pins/browsing-city';
 import { useLiveChatList } from '@/features/chat/hooks';
 import { anchorAboutYours } from '@/features/chat/anchors';
@@ -34,15 +35,9 @@ import { useChatPref, useCityRooms } from '@/features/rooms/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { EmptyState } from '@/components/ui/empty-state';
 import { LoadError } from '@/components/ui/load-error';
-import {
-  BottomTabInset,
-  HitTarget,
-  MaxContentWidth,
-  Motion,
-  Radius,
-  Spacing,
-} from '@/constants/theme';
+import { HitTarget, MaxContentWidth, Motion, Radius, Spacing } from '@/constants/theme';
 import {
   useIncomingRequests,
   useMyChats,
@@ -50,6 +45,7 @@ import {
   useSentRequests,
 } from '@/features/matching/hooks';
 import { usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
+import { useTabBarInset } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import { countOf } from '@/lib/plural';
@@ -505,6 +501,8 @@ function tabsWithCounts(chats: ChatListRow[], requests: number) {
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
+  // Dynamic Type grows the native tab bar; the constant it replaces did not.
+  const tabBarInset = useTabBarInset();
   const isGuest = useIsGuest();
   const requestsQuery = useIncomingRequests();
   const chatsQuery = useMyChats();
@@ -528,6 +526,26 @@ export default function ChatScreen() {
   // somebody answers, a hello lands. Without this the dots and the tab badge
   // are whatever they were when the tab was last mounted.
   useFocusEffect(refresh);
+  // A place has no Travelers tab, no groups and no discovery surface: §7 rule
+  // 8 keeps it out of every one of them. Everything that assumed a traveler
+  // is gated on this. Read here, above the announcement, which speaks in
+  // rooms for a business.
+  const isBusiness = useOwnBusiness().data != null;
+  // Say the settle out loud: VoiceOver heard silence while this screen
+  // loaded and silence when it resolved, so empty and loaded were
+  // indistinguishable without re-exploring by hand. Failures are announced
+  // by LoadError itself. Guests keep their own quiet page: its content is a
+  // gate, not a list that settles. A business hears its own vocabulary:
+  // its conversations are rooms, and its empty copy is the visible one.
+  useAnnounce(
+    !isGuest && chatsQuery.isSuccess
+      ? chats.length > 0
+        ? countOf(chats.length, isBusiness ? 'room' : 'chat')
+        : isBusiness
+          ? 'Nobody has dropped in yet'
+          : 'No chats yet'
+      : null
+  );
   const { data: archived = [] } = useMyChats(true);
   // The city a trip the traveler TYPED puts them in, never a device-location
   // read, and never blindly launchCities[0] (which told a traveler in
@@ -538,10 +556,6 @@ export default function ChatScreen() {
   // Alert.prompt it replaces existed only on iOS; Android and web got an
   // alert with no input at all, which asked for a paste it could not take.
   const [inviteOpen, setInviteOpen] = useState(false);
-  // A place has no Travelers tab, no groups and no discovery surface: §7 rule
-  // 8 keeps it out of every one of them. Everything that assumed a traveler
-  // is gated on this.
-  const isBusiness = useOwnBusiness().data != null;
   // Null for a business: it never renders the room list, so it must not pay
   // for the fetch. isBusiness resolves one query later for travelers, which
   // just starts this one a beat later on the same key.
@@ -607,14 +621,12 @@ export default function ChatScreen() {
           style={styles.scroll}
           contentContainerStyle={[
             styles.content,
-            // Grow to fill on the Chats side. A guest has no one-to-one chats
-            // by definition, so that tab is one sentence and a card — and
-            // top-aligned they ended at the halfway line with 350pt of empty
-            // canvas under them, which reads as a list that failed to load
-            // rather than as an invitation. Groups stays top-aligned: it has
-            // the room list in it and that scrolls.
-            tab === 'groups' ? null : styles.guestFill,
-            { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
+            // Both segments top-aligned. The Chats side used to centre its
+            // block in the leftover space (the comment here once defended
+            // that); the founder's recorded call is the other way — every
+            // empty state top-anchors, and the block carries a title now, so
+            // it reads as an invitation rather than a list that failed.
+            { paddingTop: insets.top + Spacing.four, paddingBottom: tabBarInset + Spacing.six },
           ]}>
           <View style={styles.headerRow}>
             <View style={styles.headerSwitch}>
@@ -629,10 +641,7 @@ export default function ChatScreen() {
           </View>
           {/* Keyed on the tab for the same reason as the member branch: the
               body fades in over the thumb's own 150ms travel. */}
-          <Animated.View
-            key={tab}
-            entering={FadeIn.duration(Motion.quick)}
-            style={[styles.tabBody, tab === 'groups' ? null : styles.guestFill]}>
+          <Animated.View key={tab} entering={FadeIn.duration(Motion.quick)} style={styles.tabBody}>
             {tab === 'groups' ? (
               <>
                 {/* A guest who accepted an invite is a member of that group,
@@ -693,12 +702,14 @@ export default function ChatScreen() {
                 />
               </>
             ) : (
-              <View style={styles.guestCentre}>
-                <ThemedText type="footnote" themeColor="textSecondary">
-                  One-to-one chats start when you say hi to someone and they answer.
-                </ThemedText>
+              // Top-anchored, like every other empty state (Tier-3 decision,
+              // reversing the centred block: it floated one stray sentence in
+              // a screen of empty space, with no title at all).
+              <EmptyState
+                title="No chats yet"
+                body="One-to-one chats start when you say hi to someone and they answer.">
                 <SignUpGate reason="Want to join in?" where="chat-tab" />
-              </View>
+              </EmptyState>
             )}
           </Animated.View>
         </ScrollView>
@@ -722,7 +733,7 @@ export default function ChatScreen() {
         }
         contentContainerStyle={[
           styles.content,
-          { paddingTop: insets.top + Spacing.four, paddingBottom: BottomTabInset + Spacing.six },
+          { paddingTop: insets.top + Spacing.four, paddingBottom: tabBarInset + Spacing.six },
         ]}>
         <View style={styles.headerRow}>
           <View style={styles.headerSwitch}>
@@ -916,16 +927,16 @@ export default function ChatScreen() {
           (tab !== 'groups' || !roomsQuery.isPending) &&
           inTab.length === 0 &&
           (tab === 'groups' || (requests.length === 0 && waitingOnThem.length === 0)) ? (
-            <ThemedView type="backgroundElement" style={styles.emptyCard}>
-              <ThemedText type="callout">
-                {isBusiness
+            <EmptyState
+              title={
+                isBusiness
                   ? 'Nobody has dropped in yet'
                   : tab === 'groups'
                     ? 'No groups yet'
-                    : 'No chats yet'}
-              </ThemedText>
-              <ThemedText type="footnote" themeColor="textSecondary">
-                {isBusiness
+                    : 'No chats yet'
+              }
+              body={
+                isBusiness
                   ? 'Put up what is on this week, and travelers who find you on the map can join.'
                   : tab === 'groups'
                     ? // "below" may only be said while something IS below:
@@ -936,29 +947,20 @@ export default function ChatScreen() {
                       : cityName
                         ? `Start one and it shows up here for travelers in ${cityName}.`
                         : 'Start one and it shows up here for other travelers.'
-                    : 'Say hi to someone going your way. The chat opens when they answer.'}
-              </ThemedText>
-              {/* Both routes below are traveler-only and hidden from a place,
-                so for a business account these were two buttons that could
-                not do anything. */}
-              {tab === 'individual' && !isBusiness ? (
-                <PrimaryButton label="Find travelers" onPress={() => router.push('/travelers')} />
-              ) : null}
-              {/* The '+' in the header is easy to miss (screenshot 20), and
-                an empty state should name the one next action. */}
-              {tab === 'groups' && !isBusiness ? (
-                <PrimaryButton label="Start a group" onPress={() => router.push('/new-group')} />
-              ) : null}
-              {/* An owner looking at an empty inbox had nothing to do about it.
-                "Post something" is the title of the screen it opens, so the
-                control says exactly what happens. */}
-              {isBusiness ? (
-                <PrimaryButton
-                  label="Post something"
-                  onPress={() => router.push('/business-post')}
-                />
-              ) : null}
-            </ThemedView>
+                    : 'Say hi to someone going your way. The chat opens when they answer.'
+              }
+              // One next action per branch. Find travelers and Start a group
+              // are traveler-only and hidden from a place ("Post something"
+              // is the title of the screen it opens, so the control says
+              // exactly what happens).
+              action={
+                isBusiness
+                  ? { label: 'Post something', onPress: () => router.push('/business-post') }
+                  : tab === 'groups'
+                    ? { label: 'Start a group', onPress: () => router.push('/new-group') }
+                    : { label: 'Find travelers', onPress: () => router.push('/travelers') }
+              }
+            />
           ) : null}
 
           {tab === 'groups' && !isBusiness ? (
@@ -1002,17 +1004,9 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  guestFill: {
-    flexGrow: 1,
-  },
   /* The keyed fade wrapper stands in for the scroll content it now contains,
      so it carries the same gap the content container puts between sections. */
   tabBody: {
-    gap: Spacing.three,
-  },
-  guestCentre: {
-    flex: 1,
-    justifyContent: 'center',
     gap: Spacing.three,
   },
   headerRow: {
@@ -1032,11 +1026,6 @@ const styles = StyleSheet.create({
     borderRadius: HitTarget / 2,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  emptyCard: {
-    gap: Spacing.three,
-    padding: Spacing.four,
-    borderRadius: Radius.xl,
   },
   root: {
     flex: 1,

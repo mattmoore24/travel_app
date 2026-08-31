@@ -26,6 +26,7 @@ import { TopRatedShelf } from '@/features/business/top-rated-shelf';
 import { MAX_PRIORITIES } from '@/features/profile/priorities';
 import { MAX_PROMPTS, promptLabel, promptLabelInline } from '@/features/profile/prompts';
 import { useTheme } from '@/hooks/use-theme';
+import { splitDemoMarker } from '@/lib/demo-marker';
 import type {
   ProfilePriorityRow,
   ProfilePromptRow,
@@ -750,6 +751,8 @@ export function ProfileView({
   const woven = gallery.slice(0, INTERLEAVED);
   const remaining = gallery.slice(INTERLEAVED);
   const home = [profile.home_city, profile.home_country].filter(Boolean).join(', ');
+  // The seeded "[demo]" suffix out of the prose, onto a chip (lib/demo-marker).
+  const about = splitDemoMarker(profile.bio);
   // Just the city: cityLabel is "Bangkok, Thailand", and "Both in Bangkok,
   // Thailand Aug 23 - 28" wraps to two lines on a phone.
   const overlapTrip = owner ? undefined : trips.find((trip) => trip.overlap);
@@ -949,13 +952,26 @@ export function ProfileView({
                 icon={{ ios: 'text.quote', android: 'format_quote', web: 'format_quote' }}
                 onEdit={edit('about')}
                 onReply={
-                  onRespondTo && profile.bio
-                    ? () => onRespondTo({ key: 'bio', label: 'their bio', quote: profile.bio })
+                  onRespondTo && about.bio
+                    ? // The STRIPPED text, never profile.bio: the reply chip
+                      // quotes the bio into a first message, and the demo
+                      // marker must not end up inside somebody's hello.
+                      () => onRespondTo({ key: 'bio', label: 'their bio', quote: about.bio })
                     : undefined
                 }
               />
-              {profile.bio ? (
-                <ThemedText>{profile.bio}</ThemedText>
+              {/* The fixture's "[demo]" suffix renders as a chip, not as a
+                  fourth line of prose — the disclosure survives, and the bio
+                  reads as a person wrote it. See lib/demo-marker. */}
+              {about.isDemo ? (
+                <View style={[styles.demoChip, { backgroundColor: theme.surfaceSunken }]}>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    Sample profile
+                  </ThemedText>
+                </View>
+              ) : null}
+              {about.bio ? (
+                <ThemedText>{about.bio}</ThemedText>
               ) : (
                 <ThemedText themeColor="textSecondary">Say what you&apos;re up for.</ThemedText>
               )}
@@ -1205,6 +1221,12 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: Space.sm,
+  },
+  demoChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: Space.sm,
+    paddingVertical: Space.xs,
+    borderRadius: Radius.pill,
   },
   promptEmpty: {
     flexDirection: 'row',

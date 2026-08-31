@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -25,10 +25,9 @@ import { useTheme } from '@/hooks/use-theme';
  * records for full-screen views that paint nothing.
  *
  * `bottomInset` is EXPLICIT, not read from context: the Travelers tab passes
- * `tabDockBottom(insets.bottom)` because a tab bar floats under it, while a
- * stacked screen with a nav header passes the bare safe-area inset —
- * carrying BottomTabInset onto a stacked screen floats the bar 49pt too
- * high.
+ * `useTabDockBottom()` because a tab bar floats under it, while a stacked
+ * screen with a nav header passes the bare safe-area inset — carrying the
+ * tab-bar inset onto a stacked screen floats the bar 49pt too high.
  */
 export function DockedActionBar({
   primaryLabel,
@@ -36,6 +35,8 @@ export function DockedActionBar({
   disabled = false,
   secondary,
   bottomInset,
+  primaryAccessibilityLabel,
+  onBarHeight,
 }: {
   primaryLabel: string;
   onPrimary: () => void;
@@ -49,9 +50,24 @@ export function DockedActionBar({
   secondary?: ReactNode;
   /** Space below the button row: the tab dock on a tab, the safe area on a stack. */
   bottomInset: number;
+  /** Spoken label for the primary, when the visible words are not enough. */
+  primaryAccessibilityLabel?: string;
+  /**
+   * The bar's measured height, for the screen's scroll clearance. Seed any
+   * state you hold with `dockedActionBarHeight(bottomInset)` so the first
+   * frame is right and the measurement only corrects it.
+   */
+  onBarHeight?: (height: number) => void;
 }) {
   const theme = useTheme();
-  const barHeight = dockedActionBarHeight(bottomInset);
+  // MEASURED, not derived: the buttons are minHeight around labels that
+  // scale with Dynamic Type, so at the accessibility sizes the real bar is
+  // taller than any formula says. Deriving the plate from the formula is
+  // what put the buttons back on the translucent ramp and ran the bio under
+  // them — twice, per this file's own history. The formula survives only as
+  // the first-frame seed, corrected by onLayout before anything scrolls.
+  const [measured, setMeasured] = useState<number | null>(null);
+  const barHeight = measured ?? dockedActionBarHeight(bottomInset);
   return (
     <>
       <View
@@ -64,13 +80,22 @@ export function DockedActionBar({
         style={[styles.ramp, { height: ACTION_BAR_RAMP, bottom: barHeight }]}
         pointerEvents="none"
       />
-      <View style={[styles.bar, { paddingBottom: bottomInset }]} pointerEvents="box-none">
+      <View
+        style={[styles.bar, { paddingBottom: bottomInset }]}
+        pointerEvents="box-none"
+        // The bar is bottom-anchored with its padding inside, so its layout
+        // height IS the full bar height: paddingTop + row + bottomInset.
+        onLayout={(event) => {
+          const height = Math.round(event.nativeEvent.layout.height);
+          setMeasured(height);
+          onBarHeight?.(height);
+        }}>
         {secondary}
         <View style={styles.primaryWrap}>
           <PrimaryButton
             label={primaryLabel}
+            accessibilityLabel={primaryAccessibilityLabel}
             disabled={disabled}
-            maxFontSizeMultiplier={BAR_SCALE_CAP}
             onPress={onPrimary}
           />
         </View>
@@ -79,25 +104,16 @@ export function DockedActionBar({
   );
 }
 
-/**
- * Dynamic Type cap for the labels inside the bar: its height is a layout
- * constant, so an uncapped label outgrows the 52pt buttons and lifts them
- * off the opaque plate onto the translucent ramp — the exact defect the
- * plate exists to prevent. Do not spray this cap beyond bars whose height
- * is a layout constant.
- */
-export const BAR_SCALE_CAP = 1.4;
-
-/** The primary button's height, and any secondary pill's. */
+/** The primary button's MINIMUM height, and any secondary pill's floor. */
 export const ACTION_BUTTON = 52;
 
 /**
- * How tall the bar actually is — and therefore how tall its opaque plate is
- * and where a screen's scroll clearance comes from. Derive clearance from
- * this, never from a magic number: the magic constant it replaced was 30pt
- * taller, so the fade started a line and a half above the bar and dissolved
- * whatever was there ("Both there Aug 23 - 28", sliced in half at rest —
- * run 44).
+ * The bar's height at the default text size — the SEED for the measured
+ * height above and for any screen state that feeds scroll clearance, never
+ * the truth on its own. Derive first-frame clearance from this, never from
+ * a magic number: the magic constant it replaced was 30pt taller, so the
+ * fade started a line and a half above the bar and dissolved whatever was
+ * there ("Both there Aug 23 - 28", sliced in half at rest — run 44).
  */
 export function dockedActionBarHeight(bottomInset: number) {
   return Space.sm + ACTION_BUTTON + bottomInset;

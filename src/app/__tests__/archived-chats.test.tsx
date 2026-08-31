@@ -97,7 +97,7 @@ describe('the archive while loading', () => {
     mockQuery.isPending = true;
     render(<ArchivedChatsScreen />);
     expect(screen.UNSAFE_getAllByType(ChatRowSkeleton)).toHaveLength(3);
-    expect(screen.queryByText('Nothing archived.')).toBeNull();
+    expect(screen.queryByText('Nothing archived yet')).toBeNull();
   });
 });
 
@@ -107,16 +107,17 @@ describe('the archive when the fetch fails', () => {
     mockQuery.error = new Error('offline');
     render(<ArchivedChatsScreen />);
     expect(screen.getByText('Try again')).toBeTruthy();
-    expect(screen.queryByText('Nothing archived.')).toBeNull();
+    expect(screen.queryByText('Nothing archived yet')).toBeNull();
   });
 });
 
 describe('the archive on success', () => {
-  it('says "Nothing archived." only for a genuinely empty archive', () => {
+  it('says "Nothing archived yet" only for a genuinely empty archive', () => {
     mockQuery.isSuccess = true;
     mockQuery.data = [];
     render(<ArchivedChatsScreen />);
-    expect(screen.getByText('Nothing archived.')).toBeTruthy();
+    // The EmptyState shape every list shares now: a title and a body.
+    expect(screen.getByText('Nothing archived yet')).toBeTruthy();
   });
 
   it('draws each conversation as the inbox row, name and preview included', () => {
@@ -129,6 +130,6 @@ describe('the archive on success', () => {
     expect(screen.getByText('Maya')).toBeTruthy();
     expect(screen.getByText('See you at the miradouro')).toBeTruthy();
     expect(screen.getByText('Maestro crew')).toBeTruthy();
-    expect(screen.queryByText('Nothing archived.')).toBeNull();
+    expect(screen.queryByText('Nothing archived yet')).toBeNull();
   });
 });

@@ -17,7 +17,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AvatarButton } from '@/components/ui/avatar-button';
 import {
   ACTION_BUTTON,
-  BAR_SCALE_CAP,
   DockedActionBar,
   dockedActionBarHeight,
 } from '@/components/ui/docked-action-bar';
@@ -37,9 +36,9 @@ import { useLaunchCities } from '@/features/pins/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { EmptyState } from '@/components/ui/empty-state';
 import { LoadError } from '@/components/ui/load-error';
 import {
-  BottomTabInset,
   Elevation,
   HitTarget,
   MaxContentWidth,
@@ -48,7 +47,6 @@ import {
   Space,
   Spacing,
   Type,
-  tabDockBottom,
 } from '@/constants/theme';
 import {
   useDailySpotlight,
@@ -68,13 +66,16 @@ import {
   usePublicPhotos,
   usePublicProfile,
 } from '@/features/profile/hooks';
+import { useAnnounce } from '@/features/chat/use-announce';
 import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { formatDate, formatDateRange, toISODate } from '@/features/trips/dates';
 import { useMyTrips, useTravelerTrips } from '@/features/trips/hooks';
+import { useTabBarInset, useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
+import { splitDemoMarker } from '@/lib/demo-marker';
 import { countOf } from '@/lib/plural';
 import type { MatchRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -93,6 +94,8 @@ type Candidate = {
  */
 function GuestTravelers() {
   const insets = useSafeAreaInsets();
+  // Dynamic Type grows the native tab bar; the constant it replaces did not.
+  const tabBarInset = useTabBarInset();
   const launchCitiesQuery = useLaunchCities();
   const launchCities = launchCitiesQuery.data ?? [];
   const cityId = launchCities[0]?.city_id ?? null;
@@ -108,6 +111,8 @@ function GuestTravelers() {
   const { data: photoUrl } = useFeaturedPhoto(cityId, featured?.photo_path != null);
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
+  // "[demo]" out of the prose, onto a chip. See lib/demo-marker.
+  const featuredBio = splitDemoMarker(featured?.bio);
 
   // No capture here: the parent screen fires travelers_viewed exactly once,
   // carrying the guest flag, for both audiences. This component used to fire
@@ -149,9 +154,9 @@ function GuestTravelers() {
         style={styles.list}
         contentContainerStyle={[
           styles.listContent,
-          { paddingTop: insets.top + Space.lg, paddingBottom: BottomTabInset + Space.xxl },
+          { paddingTop: insets.top + Space.lg, paddingBottom: tabBarInset + Space.xxl },
         ]}>
-        <ThemedText type="title">Travelers</ThemedText>
+        <ThemedText type="display">Travelers</ThemedText>
         {featured ? (
           <>
             {/* Say which one it is. featured_traveler's window is "in town
@@ -254,7 +259,20 @@ function GuestTravelers() {
                     {featured.city_name} ·{' '}
                     {formatDateRange(featured.their_start, featured.their_end)}
                   </ThemedText>
-                  {featured.bio ? <ThemedText type="body">{featured.bio}</ThemedText> : null}
+                  {/* The seeded bios end in a literal "[demo]" (the fixture
+                      requires a visible marker: AI portraits, no real
+                      likeness). A bracketed token as the last line of prose
+                      reads as unfinished software, so the marker becomes a
+                      chip — which survives truncation — and the prose is
+                      shown clean. */}
+                  {featuredBio.isDemo ? (
+                    <View style={[styles.demoChip, { backgroundColor: theme.surfaceSunken }]}>
+                      <ThemedText type="caption" themeColor="textSecondary">
+                        Sample profile
+                      </ThemedText>
+                    </View>
+                  ) : null}
+                  {featuredBio.bio ? <ThemedText type="body">{featuredBio.bio}</ThemedText> : null}
                   {/* What the tap does. It said "Tap to see their profile"
                       and then scrolled to the sign-up card, because the
                       profile route is unreadable signed-out — a label that
@@ -293,6 +311,8 @@ function GuestTravelers() {
 function TravelerPage({
   candidate,
   width,
+  barHeight,
+  onBarHeight,
   onSayHi,
   onNext,
   chatId,
@@ -305,6 +325,13 @@ function TravelerPage({
 }: {
   candidate: Candidate;
   width: number;
+  /**
+   * The action bar's height, measured by the bar itself and held by the
+   * parent (the undo bar floats on the same number). Seeded from the
+   * formula so the first frame is right; the measurement corrects it.
+   */
+  barHeight: number;
+  onBarHeight: (height: number) => void;
   /**
    * True when this is today's mutual spotlight. The ribbon copy is built HERE
    * rather than passed in, because the note names the traveler and a prepared
@@ -327,6 +354,8 @@ function TravelerPage({
   const canOpen = chatId == null && !requested;
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  // The dock clearance tracks Dynamic Type with the tab bar it stands on.
+  const dockBottom = useTabDockBottom();
   const { data: profile } = usePublicProfile(candidate.userId);
   const { data: photos = [] } = usePublicPhotos(candidate.userId);
   const { data: trips = [] } = useTravelerTrips(candidate.userId);
@@ -439,10 +468,11 @@ function TravelerPage({
         contentContainerStyle={{
           paddingTop: Space.sm,
           // Clearance for the floating Say hi bar AND the tab bar under it,
-          // DERIVED from the bar's real height so it cannot silently go
-          // short the moment the bar grows. The magic 148 this replaces was
-          // double-counting BottomTabInset (198 of padding for a 135pt bar).
-          paddingBottom: actionBarHeight(insets.bottom) + Space.xl,
+          // from the bar's MEASURED height so it cannot silently go short
+          // the moment the bar grows — at the accessibility sizes the
+          // buttons outgrow any formula. The magic 148 this replaces was
+          // double-counting the tab inset (198 of padding for a 135pt bar).
+          paddingBottom: barHeight + Space.xl,
         }}
         showsVerticalScrollIndicator={false}>
         <ProfileView
@@ -474,7 +504,8 @@ function TravelerPage({
           so the map's pin-reached profile docks the same chrome. The plate,
           the ramp, and the hit-testing rules all live there now. */}
       <DockedActionBar
-        bottomInset={tabDockBottom(insets.bottom)}
+        bottomInset={dockBottom}
+        onBarHeight={onBarHeight}
         // PrimaryButton renders disabled as a surfaceSunken fill with a
         // textSecondary label (8.2:1), not a fade, so "No hellos left
         // today" stays legible while it says not-now. Opening an existing
@@ -509,10 +540,7 @@ function TravelerPage({
               size={18}
               tintColor={theme.text}
             />
-            <ThemedText
-              type="caption"
-              themeColor="textSecondary"
-              maxFontSizeMultiplier={BAR_SCALE_CAP}>
+            <ThemedText type="caption" themeColor="textSecondary">
               Next
             </ThemedText>
           </PressableScale>
@@ -520,17 +548,6 @@ function TravelerPage({
       />
     </View>
   );
-}
-
-/**
- * How tall the bar actually is — and therefore where the scroll clearance
- * comes from. Defined ON tabDockBottom so this bar and the Map's "Drop a
- * pin" pill can never again sit at two heights on one phone (the old
- * expression halved the safe-area inset, a 17pt drift). The base formula
- * lives with the bar in components/ui/docked-action-bar.
- */
-export function actionBarHeight(bottomInset: number) {
-  return dockedActionBarHeight(tabDockBottom(bottomInset));
 }
 
 /**
@@ -552,6 +569,11 @@ function ProfileCorner() {
 
 export default function TravelersScreen() {
   const insets = useSafeAreaInsets();
+  const dockBottom = useTabDockBottom();
+  // The action bar's real height, measured by the bar and held HERE because
+  // the undo bar floats on the same number. Seeded from the formula so the
+  // first frame is right; the measurement only corrects it.
+  const [barHeight, setBarHeight] = useState(() => dockedActionBarHeight(dockBottom));
   const { width } = useWindowDimensions();
   const isGuest = useIsGuest();
   const tripsQuery = useMyTrips();
@@ -615,21 +637,6 @@ export default function TravelersScreen() {
     analytics.capture('travelers_viewed', { guest: isGuest });
   }, [isGuest]);
 
-  if (!isSupabaseConfigured) {
-    return (
-      <PlaceholderScreen
-        icon={{ ios: 'person.2.fill', android: 'group', web: 'group' }}
-        title="Travelers"
-        phase="waiting on backend keys"
-        description="Add Supabase keys to .env to post trips and browse travelers."
-      />
-    );
-  }
-
-  if (isGuest) {
-    return <GuestTravelers />;
-  }
-
   // `state === 'blocked'` is a hello the moderation pre-filter refused. It was
   // never delivered, the other person has no idea it happened, and the row is
   // kept only so the sender can be told why — so counting it as "you already
@@ -686,6 +693,43 @@ export default function TravelersScreen() {
       queue.unshift(...queue.splice(at, 1));
     }
   }
+
+  // Say the settle out loud. VoiceOver heard silence while this screen
+  // loaded and silence when it resolved, so empty and loaded were
+  // indistinguishable without re-exploring by hand. The queue above is
+  // computed before the early returns exactly so this hook can sit with the
+  // other hooks; failures are announced by LoadError itself.
+  useAnnounce(
+    !isGuest && tripsQuery.isSuccess && matchesQuery.isSuccess
+      ? trips.length === 0
+        ? 'Travelers opens once you add a trip'
+        : queue.length === 0
+          ? // The same branch the visible wall takes: when the viewer's own
+            // audience setting is what emptied the queue, "nobody new" is a
+            // supply claim the founder already flagged as reading like a
+            // broken filter. Say what the wall says.
+            audience !== 'everyone'
+            ? 'Nobody fits who you asked to see. It works both ways.'
+            : 'Nobody new on your dates right now'
+          : countOf(queue.length, 'traveler')
+      : null
+  );
+
+  if (!isSupabaseConfigured) {
+    return (
+      <PlaceholderScreen
+        icon={{ ios: 'person.2.fill', android: 'group', web: 'group' }}
+        title="Travelers"
+        phase="waiting on backend keys"
+        description="Add Supabase keys to .env to post trips and browse travelers."
+      />
+    );
+  }
+
+  if (isGuest) {
+    return <GuestTravelers />;
+  }
+
   // No cursor: passing someone removes them from the queue, so the next
   // person slides into the same slot. Advancing an index as well is what
   // would skip every second traveler.
@@ -732,21 +776,22 @@ export default function TravelersScreen() {
     return (
       <ThemedView style={styles.root}>
         <ProfileCorner />
-        <View style={[styles.empty, { paddingTop: insets.top + Space.xxl }]}>
+        {/* The same clearance as the other wall below: Space.xxl put a
+            headline through ProfileCorner's lower half, so both walls clear
+            the 44pt avatar the same way and start at the same y. */}
+        <View style={[styles.empty, { paddingTop: insets.top + Space.sm + HitTarget + Space.lg }]}>
           {/* The second half of the sentence signup started. Step 10's skip
               says "Travelers stays closed until you do.", so the wall echoes
               those words instead of arriving as a surprise with no memory
-              that the skip was a choice. */}
-          <ThemedText type="title" style={styles.emptyText}>
-            Travelers opens once you add a trip
-          </ThemedText>
-          <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-            You&apos;ll see who&apos;s in town on your dates.
-          </ThemedText>
-          {/* Straight to the fix. Sending someone to their profile to hunt
-              for the button is one hop of homework between a person and the
-              thing this screen just told them they need. */}
-          <PrimaryButton label="Add a trip" onPress={() => router.push('/add-trip')} />
+              that the skip was a choice. The action goes straight to the
+              fix: sending someone to their profile to hunt for the button is
+              one hop of homework between a person and the thing this screen
+              just told them they need. */}
+          <EmptyState
+            title="Travelers opens once you add a trip"
+            body="You'll see who's in town on your dates."
+            action={{ label: 'Add a trip', onPress: () => router.push('/add-trip') }}
+          />
         </View>
       </ThemedView>
     );
@@ -783,54 +828,56 @@ export default function TravelersScreen() {
             insets.top + Space.sm and is a 44pt button, so Space.xxl put the
             headline's first line straight through its lower half. */}
         <View style={[styles.empty, { paddingTop: insets.top + Space.sm + HitTarget + Space.lg }]}>
-          <ThemedText type="title" style={styles.emptyText}>
-            {headline}
-          </ThemedText>
-          <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-            {body}
-          </ThemedText>
           {/* navigate, not push: pushing '/(tabs)' from inside the tabs
               stacks a SECOND copy of the whole tab navigator on the root
               stack rather than switching to Map, so the way back was a
               gesture nobody would guess at. */}
-          {filtered ? (
-            <PrimaryButton
-              label={`Change who you see (${AUDIENCE_LABEL[audience]})`}
-              onPress={() => router.push('/visibility')}
-            />
-          ) : null}
-          <PrimaryButton
-            variant={filtered ? 'ghost' : undefined}
-            label="Drop a pin"
-            onPress={() => router.navigate('/(tabs)')}
-          />
-          <PrimaryButton
-            variant="ghost"
-            label="Add another trip"
-            onPress={() => router.push('/add-trip')}
-          />
-          {passed.count > 0 ? (
-            // All-or-nothing is right when the queue is already empty, but
-            // the count belongs in the sentence: an unnumbered "them" made
-            // this read like a rewind of everything rather than the small,
-            // specific act it is.
+          <EmptyState
+            title={headline}
+            body={body}
+            action={
+              filtered
+                ? {
+                    label: `Change who you see (${AUDIENCE_LABEL[audience]})`,
+                    onPress: () => router.push('/visibility'),
+                  }
+                : { label: 'Drop a pin', onPress: () => router.navigate('/(tabs)') }
+            }>
+            {filtered ? (
+              <PrimaryButton
+                variant="ghost"
+                label="Drop a pin"
+                onPress={() => router.navigate('/(tabs)')}
+              />
+            ) : null}
             <PrimaryButton
               variant="ghost"
-              label={`Show the ${countOf(passed.count, 'person', 'people')} you skipped`}
-              onPress={() => {
-                // The undo bar outlives the queue: passing the LAST person
-                // empties the deck-free list while the 5s window still runs,
-                // and reset() would re-render the main return with a bar for
-                // a pass this very tap already restored.
-                if (undoTimer.current) {
-                  clearTimeout(undoTimer.current);
-                  undoTimer.current = null;
-                }
-                setUndo(null);
-                passed.reset();
-              }}
+              label="Add another trip"
+              onPress={() => router.push('/add-trip')}
             />
-          ) : null}
+            {passed.count > 0 ? (
+              // All-or-nothing is right when the queue is already empty, but
+              // the count belongs in the sentence: an unnumbered "them" made
+              // this read like a rewind of everything rather than the small,
+              // specific act it is.
+              <PrimaryButton
+                variant="ghost"
+                label={`Show the ${countOf(passed.count, 'person', 'people')} you skipped`}
+                onPress={() => {
+                  // The undo bar outlives the queue: passing the LAST person
+                  // empties the deck-free list while the 5s window still
+                  // runs, and reset() would re-render the main return with a
+                  // bar for a pass this very tap already restored.
+                  if (undoTimer.current) {
+                    clearTimeout(undoTimer.current);
+                    undoTimer.current = null;
+                  }
+                  setUndo(null);
+                  passed.reset();
+                }}
+              />
+            ) : null}
+          </EmptyState>
         </View>
       </ThemedView>
     );
@@ -865,6 +912,8 @@ export default function TravelersScreen() {
         <TravelerPage
           isSpotlight={current.userId === spotlightId}
           candidate={current}
+          barHeight={barHeight}
+          onBarHeight={setBarHeight}
           width={Math.min(width, MaxContentWidth)}
           remaining={queue.length - 1}
           refreshing={matchesQuery.isFetching}
@@ -930,7 +979,7 @@ export default function TravelersScreen() {
         <Animated.View
           entering={FadeInDown.duration(Motion.standard)}
           exiting={FadeOutDown.duration(Motion.quick)}
-          style={[styles.undoDock, { bottom: actionBarHeight(insets.bottom) }]}
+          style={[styles.undoDock, { bottom: barHeight }]}
           pointerEvents="box-none">
           <ThemedView type="surface" style={[styles.undoCard, Elevation.floating]}>
             <ThemedText type="footnote" numberOfLines={1} style={styles.undoText}>
@@ -1010,8 +1059,12 @@ const styles = StyleSheet.create({
   nextButton: {
     // A pill with a word on it, not an unlabelled arrow floating in space:
     // the circle it replaces was surfaceSunken on canvas (1.15:1) outlined
-    // in hairlineWidth hairline, with no visible word at all.
-    height: ACTION_BUTTON,
+    // in hairlineWidth hairline, with no visible word at all. minHeight and
+    // stretch, never a fixed height: the pill tracks the Say hi button as
+    // both grow with Dynamic Type, instead of shrinking away from it and
+    // costing the row its baseline.
+    minHeight: ACTION_BUTTON,
+    alignSelf: 'stretch',
     paddingHorizontal: Space.lg,
     borderRadius: Radius.pill,
     flexDirection: 'row',
@@ -1051,9 +1104,6 @@ const styles = StyleSheet.create({
     gap: Space.md,
     padding: Space.lg,
     alignItems: 'stretch',
-  },
-  emptyText: {
-    textAlign: 'center',
   },
   root: {
     flex: 1,
@@ -1120,6 +1170,12 @@ const styles = StyleSheet.create({
   cardBody: {
     padding: Space.lg,
     gap: Space.sm,
+  },
+  demoChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: Space.sm,
+    paddingVertical: Space.xs,
+    borderRadius: Radius.pill,
   },
   nameRow: {
     flexDirection: 'row',

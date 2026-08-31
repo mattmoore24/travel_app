@@ -56,7 +56,7 @@ function AccountLoadError({
   return (
     <ThemedView style={styles.errorRoot}>
       <SafeAreaView style={styles.errorContent}>
-        <ThemedText type="subtitle" style={styles.errorText}>
+        <ThemedText type="title" style={styles.errorText}>
           {title}
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.errorText}>
@@ -94,7 +94,7 @@ function AccountGate({
   return (
     <ThemedView style={styles.errorRoot}>
       <SafeAreaView style={styles.errorContent}>
-        <ThemedText type="subtitle" style={styles.errorText}>
+        <ThemedText type="title" style={styles.errorText}>
           {suspended ? 'Account suspended' : 'Account banned'}
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.errorText}>

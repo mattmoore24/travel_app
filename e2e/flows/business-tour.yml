@@ -339,7 +339,7 @@ appId: com.mattmoore.samewhere
 
 # THE CHAT TAB. A business's own room and the travelers who wrote in, and
 # nothing shaped like a traveler's hello queue.
-- tapOn: 'Chat'
+- tapOn: 'Chat(, .*)?'
 - waitForAnimationToEnd:
     timeout: 2500
 - takeScreenshot: 72-business-chat

@@ -108,7 +108,7 @@ export function PushPrimer() {
             tintColor={theme.accent}
           />
         </View>
-        <ThemedText type="subtitle" style={styles.center}>
+        <ThemedText type="title" style={styles.center}>
           {copy.title}
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.center}>

@@ -71,7 +71,7 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
-- tapOn: 'Chat'
+- tapOn: 'Chat(, .*)?'
 # Same fade as the member Chat tab: wait it out or the shot is mid-fade.
 - waitForAnimationToEnd:
     timeout: 2000

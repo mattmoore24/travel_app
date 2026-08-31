@@ -352,6 +352,18 @@ jobs:
           sleep 25
           xcrun simctl io "$UDID" screenshot zz-ax3-map-dock.png || true
           xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          # The large-text tour at AX5, driven by Maestro so the two primary
+          # actions are TAPPED, not only photographed: the tab bar grows with
+          # Dynamic Type and useTabBarInset now scales the docks' clearance
+          # with it. The flow lives OUTSIDE e2e/flows/ so the loop's glob
+          # cannot run the ordinary passes at this size. `|| true` like the
+          # AX3 shot above: its screenshots are the acceptance (Maestro keeps
+          # them under ~/.maestro on failure and the publish step sweeps
+          # both), and a warm relaunch's map tree is not reliably addressable
+          # (traps), so a tap miss here is evidence to look at, not a gate.
+          xcrun simctl ui "$UDID" content_size accessibility-extra-extra-extra-large || true
+          maestro --udid "$UDID" test ../e2e/large-text-tour.yml || true
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
           xcrun simctl ui "$UDID" content_size medium || true
           ls -la
 

@@ -797,7 +797,7 @@ function MessageMenu({
                   styles.pillItem,
                   existingEmoji === emoji ? { backgroundColor: theme.accentSoft } : undefined,
                 ]}>
-                <ThemedText type="title">{emoji}</ThemedText>
+                <ThemedText type="display">{emoji}</ThemedText>
               </PressableScale>
             ))}
             {grid ? null : (

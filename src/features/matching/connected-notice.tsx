@@ -4,12 +4,11 @@ import { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { SymbolView } from 'expo-symbols';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Elevation, Motion, Radius, Space, tabDockBottom } from '@/constants/theme';
+import { Elevation, Motion, Radius, Space } from '@/constants/theme';
+import { useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import type { AcceptedMatch } from '@/features/matching/use-accepted-celebration';
@@ -41,7 +40,7 @@ export function ConnectedNotice({
   onDismiss: () => void;
 }) {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  const dockBottom = useTabDockBottom();
   const { data: photoUrl } = usePhotoUrl(match.photoPath);
 
   useEffect(() => {
@@ -53,7 +52,7 @@ export function ConnectedNotice({
     <Animated.View
       entering={FadeInDown.duration(Motion.standard)}
       exiting={FadeOutDown.duration(Motion.quick)}
-      style={[styles.dock, { bottom: tabDockBottom(insets.bottom) }]}
+      style={[styles.dock, { bottom: dockBottom }]}
       pointerEvents="box-none">
       <ThemedView type="surface" style={[styles.card, Elevation.floating]}>
         <View style={styles.row}>

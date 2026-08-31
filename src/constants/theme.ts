@@ -142,15 +142,21 @@ export const Fonts = Platform.select({
 /**
  * Seven type roles, generous line height. Sizes are defaults — they scale with
  * Dynamic Type because nothing disables `allowFontScaling`.
+ *
+ * The loosest three ratios are deliberate: an explicit lineHeight on a Text
+ * shears the stacked marks of Thai, Lao, Burmese, Devanagari and Vietnamese,
+ * and the old Latin-tight 1.19/1.25/1.27 on display, title and caption
+ * clipped exactly where names render (the profile hero). Nothing in the
+ * Latin rendering gets worse at these values; do not tighten them back.
  */
 export const Type = {
-  display: { fontSize: 32, lineHeight: 38, fontWeight: '700' },
-  title: { fontSize: 24, lineHeight: 30, fontWeight: '700' },
+  display: { fontSize: 32, lineHeight: 42, fontWeight: '700' },
+  title: { fontSize: 24, lineHeight: 32, fontWeight: '700' },
   headline: { fontSize: 18, lineHeight: 24, fontWeight: '600' },
   body: { fontSize: 16, lineHeight: 23, fontWeight: '400' },
   callout: { fontSize: 15, lineHeight: 20, fontWeight: '500' },
   footnote: { fontSize: 13, lineHeight: 18, fontWeight: '400' },
-  caption: { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.4 },
+  caption: { fontSize: 11, lineHeight: 15, fontWeight: '600', letterSpacing: 0.4 },
 } as const;
 
 export type TypeRole = keyof typeof Type;
@@ -258,16 +264,14 @@ export const Spacing = {
   six: 64,
 } as const;
 
-export const BottomTabInset = Platform.select({ ios: 50, android: 80, web: 72 }) ?? 0;
-
 /**
- * Where a floating dock sits above the tab bar, and what a docked bar pads
- * its bottom with. ONE formula on purpose: two tabs used to compute the same
- * clearance with two different expressions (one halved the safe-area inset),
- * so the same chrome sat at two heights on one phone.
+ * The tab bar's height at the DEFAULT text size — the floor of the real
+ * inset, never the inset itself on native. The bar's height is driven by its
+ * item labels and those scale with Dynamic Type, so native screens read
+ * `useTabBarInset()` (src/hooks/use-tab-bar-inset.ts), which scales this
+ * with fontScale. The web build keeps the constant: its bar is the app's own
+ * fixed-height chrome, not a label-driven native bar.
  */
-export function tabDockBottom(bottomInset: number) {
-  return BottomTabInset + bottomInset + Space.sm;
-}
+export const BottomTabInset = Platform.select({ ios: 50, android: 80, web: 72 }) ?? 0;
 
 export const MaxContentWidth = 800;

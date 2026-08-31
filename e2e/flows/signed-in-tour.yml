@@ -122,6 +122,13 @@ appId: com.mattmoore.samewhere
 # two controls that define what a pin IS need no scrolling to reach.
 - assertVisible: 'When'
 - assertVisible: 'Disappears after.*'
+# The slider itself, by its spoken label (an adjustable carries its own
+# accessibilityLabel, and that is what Maestro sees). The 72h cap is a §7
+# hard rule, and a user who cannot reach this control cannot set it — the
+# slider was once clipped off the bottom of the scroll viewport while the
+# form's tests stayed green, so a future regression fails the run here
+# rather than only the eye.
+- assertVisible: 'How long this pin stays up'
 - takeScreenshot: 15b-pin-join-mode
 # 'Put it on the map' sits outside the form's scroll area and the sheet lifts
 # with the keyboard, so it is reachable with the keyboard still up.
@@ -326,7 +333,7 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
-- tapOn: 'Chat'
+- tapOn: 'Chat(, .*)?'
 - extendedWaitUntil:
     visible: 'Groups'
     timeout: 15000
@@ -470,7 +477,7 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
-- tapOn: 'Chat'
+- tapOn: 'Chat(, .*)?'
 - extendedWaitUntil:
     visible: 'Groups'
     timeout: 15000

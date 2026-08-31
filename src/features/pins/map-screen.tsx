@@ -32,17 +32,7 @@ import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import {
-  Type,
-  BottomTabInset,
-  Elevation,
-  HitTarget,
-  Motion,
-  Radius,
-  Space,
-  Spacing,
-  tabDockBottom,
-} from '@/constants/theme';
+import { Type, Elevation, HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
 import { useDeletePin, useJoinPinChat, useLaunchCities, usePinCrew } from '@/features/pins/hooks';
 import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker';
 import { useCityBusinesses, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
@@ -99,7 +89,9 @@ import { crewLabel } from '@/features/pins/crew';
 import { FilterButton, MapFilterSheet } from '@/features/pins/map-filter-sheet';
 import { useMyChats, useSentRequests, useFirstMessageBudget } from '@/features/matching/hooks';
 import { useOwnUserId, useOwnVisibility, usePhotoUrl } from '@/features/profile/hooks';
+import { useAnnounce } from '@/features/chat/use-announce';
 import { useAccessibilitySettings } from '@/hooks/use-accessibility-settings';
+import { useTabBarInset, useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
@@ -769,6 +761,11 @@ type MapMode = 'browse' | 'place' | 'detail';
 export default function MapScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  // Measured against Dynamic Type, not the 50pt constant: at the AX sizes
+  // the native bar grows upward, and everything anchored on the constant
+  // slid underneath it — including the Drop a pin dock.
+  const tabBarInset = useTabBarInset();
+  const dockBottom = useTabDockBottom();
   const mapRef = useRef<MapView>(null);
   // MapKit's camera is outside Reanimated's reach, so Reduce Motion is
   // honoured by hand on the two long flights (city switch, address search).
@@ -961,6 +958,28 @@ export default function MapScreen() {
       analytics.capture('heatmap_rendered', { city_id: activeCityId, cells: heat.length });
     }
   }, [activeCityId, heat.length]);
+
+  // Say the empty settle out loud: the empty-city banner is a card VoiceOver
+  // is never told about, so a quiet city and a map that failed to load were
+  // the same silence. The sentence mirrors whichever banner is on screen
+  // (the business variant is suppressed while its chips answer the filters,
+  // exactly like the card). Failures are announced by LoadError itself.
+  useAnnounce(
+    activeCity != null &&
+      mode === 'browse' &&
+      pinsLoaded &&
+      !selectedPin &&
+      pins.length === 0 &&
+      (!isBusiness || !(!cityScale && showsBusinesses(filters) && places.length > 0))
+      ? !isBusiness && audience !== 'everyone'
+        ? `Nothing pinned for ${audienceInSentence(audience)} yet`
+        : isDefault(filters)
+          ? isBusiness
+            ? `Nothing pinned in ${activeCity.cities.name} yet`
+            : `No pins in ${activeCity.cities.name} yet`
+          : 'Nothing matches your filters'
+      : null
+  );
 
   if (!isSupabaseConfigured) {
     return (
@@ -1482,10 +1501,7 @@ export default function MapScreen() {
           two - launchCitiesQuery does it fifteen lines up. */}
       {activeCity && mode === 'browse' && pinsQuery.isError && !selectedPin ? (
         <View
-          style={[
-            styles.emptyBanner,
-            { bottom: BottomTabInset + insets.bottom + Spacing.five + 64 },
-          ]}>
+          style={[styles.emptyBanner, { bottom: tabBarInset + insets.bottom + Spacing.five + 64 }]}>
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
             <LoadError
               what="the pins"
@@ -1506,10 +1522,7 @@ export default function MapScreen() {
           accessibilityRole="button"
           accessibilityLabel="Be the first to drop a pin"
           onPress={enterPlaceMode}
-          style={[
-            styles.emptyBanner,
-            { bottom: BottomTabInset + insets.bottom + Spacing.five + 64 },
-          ]}>
+          style={[styles.emptyBanner, { bottom: tabBarInset + insets.bottom + Spacing.five + 64 }]}>
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
             {/* The audience wins over the filters, because it is the one
                 with nothing on screen to show it is on. The Filters button
@@ -1550,10 +1563,7 @@ export default function MapScreen() {
         <View
           // The same height as the traveler card, dock or no dock: the two
           // legends above it are positioned against that number.
-          style={[
-            styles.emptyBanner,
-            { bottom: BottomTabInset + insets.bottom + Spacing.five + 64 },
-          ]}
+          style={[styles.emptyBanner, { bottom: tabBarInset + insets.bottom + Spacing.five + 64 }]}
           pointerEvents="none">
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
             <ThemedText type="smallBold">
@@ -1576,7 +1586,7 @@ export default function MapScreen() {
         <Animated.View
           entering={FadeInUp.duration(Motion.standard)}
           exiting={FadeOut.duration(Motion.quick)}
-          style={[styles.dock, { bottom: tabDockBottom(insets.bottom) }]}
+          style={[styles.dock, { bottom: dockBottom }]}
           pointerEvents="box-none">
           {/* Blue, not amber. Amber now belongs to the pins themselves, and
               two warm things on one screen means neither reads as the
@@ -1604,7 +1614,7 @@ export default function MapScreen() {
         <Animated.View
           entering={FadeInUp.duration(Motion.standard)}
           exiting={FadeOut.duration(Motion.quick)}
-          style={[styles.dock, { bottom: tabDockBottom(insets.bottom) }]}
+          style={[styles.dock, { bottom: dockBottom }]}
           pointerEvents="box-none">
           {/* The spot's name, BEFORE the commitment: the reverse geocode the
               form used to run one screen too late now feeds this pill. A
@@ -1677,10 +1687,7 @@ export default function MapScreen() {
         <Animated.View
           entering={FadeInUp.duration(Motion.standard)}
           exiting={FadeOut.duration(Motion.quick)}
-          style={[
-            styles.legend,
-            { bottom: BottomTabInset + insets.bottom + Space.xxxl + Space.xl },
-          ]}
+          style={[styles.legend, { bottom: tabBarInset + insets.bottom + Space.xxxl + Space.xl }]}
           pointerEvents="box-none">
           <PressableScale
             accessibilityRole="button"
@@ -1712,10 +1719,7 @@ export default function MapScreen() {
         <Animated.View
           entering={FadeInUp.duration(Motion.standard)}
           exiting={FadeOut.duration(Motion.quick)}
-          style={[
-            styles.legend,
-            { bottom: BottomTabInset + insets.bottom + Space.xxxl + Space.xl },
-          ]}
+          style={[styles.legend, { bottom: tabBarInset + insets.bottom + Space.xxxl + Space.xl }]}
           pointerEvents="box-none">
           <PressableScale
             accessibilityRole="button"

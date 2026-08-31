@@ -137,7 +137,7 @@ export function StepShell({
               entering={FadeInRight.duration(320)}
               exiting={FadeOutLeft.duration(200)}
               style={styles.scene}>
-              <ThemedText type="title">{title}</ThemedText>
+              <ThemedText type="display">{title}</ThemedText>
               {subtitle ? <ThemedText themeColor="textSecondary">{subtitle}</ThemedText> : null}
               <View style={styles.fields}>{children}</View>
             </Animated.View>

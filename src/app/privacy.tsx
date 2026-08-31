@@ -23,7 +23,7 @@ export default function PrivacyScreen() {
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
         <ScrollView contentContainerStyle={styles.content}>
-          <ThemedText type="subtitle">Privacy policy</ThemedText>
+          <ThemedText type="title">Privacy policy</ThemedText>
           <ThemedView type="backgroundElement" style={styles.card}>
             <ThemedText type="smallBold" style={{ color: theme.tint }}>
               {PRIVACY_PROMISE}

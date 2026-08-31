@@ -117,7 +117,7 @@ describe('the My business tab', () => {
   });
 
   it("puts the next real step in the screen's biggest button", () => {
-    expect(code).toContain('label={next.label}');
+    expect(code).toContain('primaryLabel={next.label}');
     expect(code).toContain("label: 'Confirm your email',");
     expect(code).toContain("label: 'Post something',");
     // The composer promises the map, so it cannot be the permanent primary

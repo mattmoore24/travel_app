@@ -5,7 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Radius, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Radius, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useTabBarInset } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 
 type PlaceholderScreenProps = {
@@ -36,12 +37,14 @@ export function PlaceholderScreen({
   children,
 }: PlaceholderScreenProps) {
   const theme = useTheme();
+  // Room for the tab bar, which grows with Dynamic Type on native.
+  const tabBarInset = useTabBarInset();
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={[styles.safeArea, { paddingBottom: tabBarInset + Spacing.three }]}>
         <SymbolView name={icon} size={56} tintColor={theme.textSecondary} />
-        <ThemedText type="subtitle" style={styles.centerText}>
+        <ThemedText type="title" style={styles.centerText}>
           {title}
         </ThemedText>
         <ThemedText themeColor="textSecondary" style={styles.centerText}>
@@ -70,7 +73,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
-    paddingBottom: BottomTabInset + Spacing.three,
     maxWidth: MaxContentWidth,
   },
   centerText: {

@@ -1,8 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { Space, tabDockBottom } from '@/constants/theme';
-
 /**
  * The docked action bar's opaque plate can never drift from the bar it is
  * covering.
@@ -15,6 +13,11 @@ import { Space, tabDockBottom } from '@/constants/theme';
  * bug this pins down: travelers halved the safe-area inset while the Map's
  * "Drop a pin" pill took it whole, so the same chrome sat at two heights on
  * one phone.
+ *
+ * The tab-bar half of the clearance is a HOOK now (use-tab-bar-inset): the
+ * native bar grows with Dynamic Type, and the 50pt constant it replaces is
+ * only the floor. The one-formula rule survives the move — the dock offset
+ * is still computed in exactly one place.
  *
  * The identity is asserted against the source rather than the imported
  * function so this test does not have to evaluate a screen module whose
@@ -29,22 +32,30 @@ const strip = (file: string) =>
 
 const screen = strip(path.join(__dirname, '..', '(tabs)', 'travelers.tsx'));
 const bar = strip(path.join(__dirname, '..', '..', 'components', 'ui', 'docked-action-bar.tsx'));
+const hook = strip(path.join(__dirname, '..', '..', 'hooks', 'use-tab-bar-inset.ts'));
 
 describe('the action bar and its ground share one formula', () => {
-  it('the bar height is one expression, and travelers derives from it on tabDockBottom', () => {
+  it('the bar height is measured, seeded from the one formula', () => {
     expect(bar).toContain('return Space.sm + ACTION_BUTTON + bottomInset;');
-    expect(screen).toContain('return dockedActionBarHeight(tabDockBottom(bottomInset));');
+    // Measured by onLayout, formula only as the first-frame seed: at the
+    // accessibility sizes the buttons outgrow any formula, and a derived
+    // plate put them back on the translucent ramp twice.
+    expect(bar).toContain('measured ?? dockedActionBarHeight(bottomInset)');
+    expect(bar).toContain('onLayout');
+    expect(screen).toContain('useState(() => dockedActionBarHeight(dockBottom))');
     // The halved inset was the drift; it must not come back anywhere here.
-    for (const source of [screen, bar]) {
+    for (const source of [screen, bar, hook]) {
       expect(source).not.toContain('insets.bottom / 2');
       expect(source).not.toContain('bottomInset / 2');
     }
   });
 
-  it('tabDockBottom takes the whole inset', () => {
-    // actionBarHeight(34) === tabDockBottom(34) + Space.sm + ACTION_BUTTON
-    // by construction (the assertion above); this checks the base formula.
-    expect(tabDockBottom(34)).toBe(50 + 34 + Space.sm);
+  it('the dock offset takes the whole inset, floored at the constant', () => {
+    // dockBottom = tabBarInset + insets.bottom + Space.sm, where tabBarInset
+    // never drops below BottomTabInset and scales with fontScale (clamped).
+    expect(hook).toContain('return tabBarInset + insets.bottom + Space.sm;');
+    expect(hook).toContain('Math.min(Math.max(fontScale, 1), MAX_TAB_BAR_SCALE)');
+    expect(hook).toContain('Math.round(BottomTabInset * scale)');
   });
 
   it('the plate is solid and exactly bar-height, with the ramp above it', () => {
@@ -61,31 +72,35 @@ describe('the action bar and its ground share one formula', () => {
     expect(bar).toContain('pointerEvents="box-none"');
   });
 
-  it("travelers' scroll clearance is derived, not a magic number", () => {
-    expect(screen).toContain('paddingBottom: actionBarHeight(insets.bottom) + Space.xl');
+  it("travelers' scroll clearance rides the measured height, not a magic number", () => {
+    expect(screen).toContain('paddingBottom: barHeight + Space.xl');
     expect(screen).not.toContain('ACTION_BAR_CLEARANCE');
   });
 
   it('the bar pads with the inset it is handed, and travelers hands it the dock', () => {
     expect(bar).toContain('paddingBottom: bottomInset');
-    expect(screen).toContain('bottomInset={tabDockBottom(insets.bottom)}');
+    expect(screen).toContain('bottomInset={dockBottom}');
   });
 
-  it('Next is a labelled pill on a visible border', () => {
+  it('Next is a labelled pill on a visible border, tracking its neighbour', () => {
     expect(screen).toContain('borderColor: theme.border');
     expect(screen).not.toContain('borderColor: theme.hairline');
     expect(screen).not.toContain('StyleSheet.hairlineWidth');
     // The visible word, and the unique spoken label.
     expect(screen).toMatch(/>\s*Next\s*<\/ThemedText>/);
     expect(screen).toContain('accessibilityLabel="Next traveler"');
+    // minHeight and stretch, never a fixed height: at large text the pill
+    // grows with the Say hi button instead of shrinking away from it.
+    expect(screen).toContain('minHeight: ACTION_BUTTON');
+    expect(screen).not.toContain('height: ACTION_BUTTON');
   });
 
   it('a stacked screen does not carry the tab dock', () => {
     // The pin-reached profile sits under a nav header with no tab bar;
-    // BottomTabInset there floats the bar 49pt too high.
+    // the tab-bar inset there floats the bar 49pt too high.
     const profile = strip(path.join(__dirname, '..', 'profile', '[userId].tsx'));
     expect(profile).toContain('DockedActionBar');
     expect(profile).not.toContain('BottomTabInset');
-    expect(profile).not.toContain('tabDockBottom');
+    expect(profile).not.toContain('useTabDockBottom');
   });
 });

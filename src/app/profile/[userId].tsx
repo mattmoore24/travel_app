@@ -310,7 +310,7 @@ export default function PublicProfileScreen() {
       {/* The one action a stranger's page is FOR, docked where a thumb can
           reach it — it used to be a 26pt chip in a section header while
           Report and Block got the page's only full-width buttons. The bare
-          safe-area inset, never tabDockBottom: this is a stacked screen
+          safe-area inset, never useTabDockBottom: this is a stacked screen
           with a nav header and no tab bar under it. */}
       {known || from === 'group' ? null : (
         <DockedActionBar

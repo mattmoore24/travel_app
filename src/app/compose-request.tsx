@@ -214,7 +214,7 @@ export default function ComposeRequestScreen() {
           />
         </View>
         <View style={styles.sentText}>
-          <ThemedText type="subtitle" style={styles.centred}>
+          <ThemedText type="title" style={styles.centred}>
             That is your {budget.data.allowed} for today
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centred}>
@@ -239,7 +239,7 @@ export default function ComposeRequestScreen() {
           />
         </Animated.View>
         <Animated.View entering={FadeIn.delay(120).duration(240)} style={styles.sentText}>
-          <ThemedText type="subtitle" style={styles.centred}>
+          <ThemedText type="title" style={styles.centred}>
             Sent to {params.name ?? 'them'}
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centred}>
@@ -405,7 +405,7 @@ export default function ComposeRequestScreen() {
             />
           </View>
           <View style={styles.sentText}>
-            <ThemedText type="subtitle" style={styles.centred}>
+            <ThemedText type="title" style={styles.centred}>
               That is your {capped} for today
             </ThemedText>
             <ThemedText themeColor="textSecondary" style={styles.centred}>

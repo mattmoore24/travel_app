@@ -4,6 +4,13 @@ The product bet is that a traveler opens this app in a hostel lobby, understands
 it in five seconds, and finds one real person to meet. Everything below serves
 that. Sources for each research claim are at the bottom.
 
+**On tokens, `src/constants/theme.ts` wins.** Every hard number this document
+once carried drifted — palette, type, radii, even the pin colours — so the
+tables are gone and the one copy that cannot go stale silently is the code,
+which carries the contrast ratios and the reasoning inline. This document
+keeps what the code cannot: the research, the principles, the guest ladder,
+and the narrative of how the system got here.
+
 ## What the research says (Aug 2026)
 
 1. **iOS 26 "Liquid Glass" is the current native language** — the biggest visual
@@ -29,7 +36,7 @@ that. Sources for each research claim are at the bottom.
 5. **Reactions are a long-press → floating menu**, with the background blurred
    and haptic feedback — the 2026 convention across Google Messages, WhatsApp,
    Messenger.
-6. **Hostelworld already validates the establishment-chat idea** — and its
+6. **Hostelworld already validates the business-room idea** — and its
    windows are tighter than ours: rooms open 7 days before check-in and close
    3 days after checkout. Their existence proves demand; their windows are a
    useful comparison for ours (below).
@@ -46,7 +53,8 @@ that. Sources for each research claim are at the bottom.
 4. **Depth, not decoration.** Elevation and translucency for hierarchy; no
    gratuitous borders, no card-in-card.
 5. **Warm, not romantic.** This is not a dating app and it must not look like
-   one. No red/pink/purple gradients, no hearts. Indigo + amber on warm bone.
+   one. No red/pink/purple gradients, no hearts. Nocturne: the brand blue as
+   the lantern on an ink-violet night, warm amber as the signal.
    The single exception is the ❤️ tapback on a message (founder, 2026-08-22):
    it marks a message, not a person, and it is the grammar every phone user
    already has. Nothing else earns a heart.
@@ -65,59 +73,30 @@ that. Sources for each research claim are at the bottom.
 
 ## Tokens
 
-Defined in `src/constants/theme.ts`; nothing hardcodes a hex or a magic number.
+Defined in `src/constants/theme.ts`; nothing in the app hardcodes a hex, a
+font size, or a magic number. **Read that file rather than any table here** —
+the tables this section used to carry drifted on almost every value (palette,
+type, radii), and at least one drifted value was dangerous: an old copy
+listed the deep brand blue as the accent, a colour theme.ts spends a
+paragraph explaining is unusable for anything readable on the app's ground
+(2.34:1).
 
-**Colour — "Dusk": deep indigo + burnt amber on warm bone.** The light when you land
-somewhere, which is also when travellers actually make plans.
+What theme.ts holds, so you know what to look for:
 
-Indigo replaced the original trail green deliberately. Green was chosen partly
-for map legibility, and that turned out to be backwards: Apple Maps' basemap is
-beige _and green_, so green accents sit close to park polygons on the app's hero
-screen. A cool primary separates from the basemap; the warm bone canvas and the
-amber keep it from reading cold. It remains nothing like the red/pink/purple
-every dating app runs, which was always the more important constraint.
+- **"Nocturne", dark only.** A traveler's map at night: the ground is the
+  unlit city, warm light is the signal. Both scheme keys hold the same
+  palette on purpose; a light scheme can be restored later by filling one
+  key back in. The accent is the brand blue's dark-scheme sibling; the deep
+  brand blue survives only as a fill under white. Every pair is computed
+  against WCAG, not eyeballed, and the ratios are in the comments.
+- **Why a blue accent at all**: the palette moved off the original trail
+  green because green accents sat next to park polygons on the hero screen.
+  The same collision logic keeps the PINS warm — see the pin section below.
+- Seven type roles with deliberately loose line heights (an explicit
+  lineHeight shears the stacked marks of Thai, Lao, Burmese, Devanagari and
+  Vietnamese), a 4pt space grid, a radius scale, three elevation levels, a
+  `Motion` duration map and a `Springs` vocabulary, and `HitTarget = 44`.
 
-| Role            | Light                 | Dark                 | Use                               |
-| --------------- | --------------------- | -------------------- | --------------------------------- |
-| `canvas`        | `#FBFAF7` warm bone   | `#0D0F14` near-black | page background                   |
-| `surface`       | `#FFFFFF`             | `#171A21`            | cards, sheets                     |
-| `surfaceSunken` | `#F0EFEA`             | `#212630`            | inputs, chips                     |
-| `text`          | `#14171A`             | `#F4F4F2`            | primary text                      |
-| `textSecondary` | `#585F6B`             | `#A3AAB8`            | supporting text (6.2:1 on canvas) |
-| `accent`        | `#2A4C9B` deep indigo | `#8AA6F0`            | primary actions, selection, pins  |
-| `onAccent`      | `#FFFFFF`             | `#0A1330`            | text on accent                    |
-| `accentSoft`    | `#E7EBF8`             | `#1D2742`            | accent-tinted fills               |
-| `highlight`     | `#9A5709` burnt amber | `#F0A93C`            | featured, own-pin, unread         |
-| `onHighlight`   | `#FFFFFF`             | `#2A1A00`            | text on amber                     |
-| `highlightSoft` | `#FBEEDA`             | `#33260F`            | amber-tinted fills                |
-| `warning`       | `#9A5709`             | `#F0A93C`            | expiry, moderation notices        |
-| `danger`        | `#B5342A`             | `#F08076`            | destructive, blocked              |
-| `hairline`      | `#00000012`           | `#FFFFFF14`          | 0.5pt separators only             |
-
-Amber is the deep ochre rather than a bright one on purpose: a brighter amber
-can't carry white text at 4.5:1 and loses to a beige basemap. Every pair in this
-table was **checked numerically** against WCAG 2.1 (4.5:1 for text, 3:1 for
-graphical marks), not judged by eye — which is how the previous palette shipped
-a `warning` colour that silently failed at 4.12:1.
-
-**Type.** iOS system font, seven roles, generous line height. Sizes are the
-default; all scale with Dynamic Type.
-
-| Role       | Size / line | Weight | Use                     |
-| ---------- | ----------- | ------ | ----------------------- |
-| `display`  | 34 / 40     | 700    | one per screen, max     |
-| `title`    | 26 / 32     | 700    | screen titles           |
-| `headline` | 19 / 24     | 600    | card titles, names      |
-| `body`     | 16 / 23     | 400    | messages, bios          |
-| `callout`  | 15 / 20     | 500    | buttons, chips          |
-| `footnote` | 13 / 18     | 400    | metadata, timestamps    |
-| `caption`  | 11 / 14     | 600    | overline labels, badges |
-
-**Space** on a 4pt grid: `xs 4 · sm 8 · md 12 · lg 16 · xl 24 · xxl 32 · xxxl 48`.
-**Radius**: `sm 10 · md 14 · lg 20 · xl 28 · pill 999`. Nothing sharp; nothing
-fully circular except avatars and the FAB.
-**Elevation**: three levels only — `raised` (cards on canvas), `floating`
-(glass controls over the map), `sheet` (bottom sheets).
 **Motion**: `quick 150ms` for state, `standard 250ms` for sheets/navigation,
 spring for gesture-driven surfaces. Everything respects Reduce Motion.
 
@@ -125,11 +104,11 @@ spring for gesture-driven surfaces. Everything respects Reduce Motion.
 
 Three tabs, in the order people use them:
 
-| Tab           | Contains                                                                |
-| ------------- | ----------------------------------------------------------------------- |
-| **Map**       | Full-bleed map, floating city/day controls, pin sheet, drop-pin FAB     |
-| **Travelers** | Overlapping travelers from 14 days before arrival; first card is public |
-| **Chat**      | Requests · pinned · direct chats · establishment rooms · archived       |
+| Tab           | Contains                                                                   |
+| ------------- | -------------------------------------------------------------------------- |
+| **Map**       | Full-bleed map, floating city/day controls, pin sheet, drop-pin FAB        |
+| **Travelers** | Overlapping travelers from 14 days before arrival; first card is public    |
+| **Chat**      | First messages waiting on you · pinned · chats · business rooms · archived |
 
 **Profile leaves the tab bar** and lives behind the avatar in the top-right of
 Map and Travelers — standard for social apps, and it buys the third tab for
@@ -146,7 +125,7 @@ and returns you exactly where you were.
 | The whole map: curated pins, the heat layer, city switching  | Dropping a pin              |
 | Traveler pins shown **without identity** (a dot, not a face) | Seeing who a pin belongs to |
 | The **first** traveler card, in full                         | Every card after the first  |
-| An establishment room, **read-only**                         | Posting, reacting, joining  |
+| A business room, **read-only**                               | Posting, reacting, joining  |
 | Community guidelines, privacy policy                         | —                           |
 
 Privacy calls made here:
@@ -160,11 +139,11 @@ Privacy calls made here:
   posting a trip is the consent, nobody can message that person without an
   account, and the slot rotates constantly because it is a live ranking —
   whoever in the city people are connecting with most this week. Selection =
-  requests received in the last 30 days, tie-broken by verified then recency;
+  hellos received in the last 30 days, tie-broken by verified then recency;
   only active, onboarded travelers inside the window are eligible.
-- **Establishment rooms are publicly readable**, which members must be told
+- **Business rooms are publicly readable**, which members must be told
   _before_ they post — the composer carries a one-line notice, and each room
-  has a `public_preview` flag an establishment can turn off.
+  has a `public_preview` flag the business can turn off.
 
 ## The traveler window
 
@@ -173,25 +152,27 @@ window. Two reasons: people can plan before they land (the point), and the tab
 stays full of travelers you can actually meet rather than a year of future
 bookings. Cards show the counterpart's **whole stay** ("here 19–26 Aug"), not
 just the overlap, so you can see how long someone is around. The same window
-governs sending a request — you can only message an overlap you can see.
+governs saying hi — you can only message an overlap you can see.
 
 ## Chat architecture
 
 One tab, three kinds of conversation, one consistent row.
 
 ```
-Requests            ← accept-gated first messages (badge)
+Waiting on you      ← first messages pending your answer (badge)
 Pinned              ← anything the user pinned, either kind
 Chats               ← direct + rooms, ordered by last activity
 Archived  →         ← one row, opens the archive screen
 ```
 
-**Direct chats** are unchanged in behaviour (accept-gated, moderated first
-message, block/unmatch).
+**One-to-one chats** are unchanged in behaviour (accept-gated, moderated
+first message, block, end the chat). One conversation, one word: a
+traveler-made one is a **group**, a business-run one is a **room**, and
+**"chat"** is only ever a one-to-one.
 
-**Establishment rooms** are new:
+**Business rooms** are new:
 
-- An establishment (hostel/hotel) owns a room. A staff member is the
+- A business (hostel/hotel) owns a room. A staff member is the
   **moderator**: they can pin a message, remove a message, and remove a member.
 - **Anyone in the city can join**; joining asks one question — _when do you
   leave?_ — because that answer drives everything else.
@@ -246,7 +227,7 @@ anything is exactly the friction the guest ladder exists to avoid.
 3. ~~**Screen-by-screen redesign**~~ — Map (full-bleed + sheet), Travelers (big
    photo cards), Chat (sectioned list), Profile.
 4. ~~**Guest mode**~~ — anon policies, featured traveler, gates.
-5. ~~**Establishment rooms**~~ — schema, lifecycle sweep, moderation tools, UI.
+5. ~~**Business rooms**~~ — schema, lifecycle sweep, moderation tools, UI.
 6. ~~**Reactions + chat photos.**~~
 
 Each stage ships green (typecheck, lint, tests, pgTAP) and gets screenshots in
@@ -291,21 +272,26 @@ Things, Luma, Lumy), map UX (Apple Maps, Airbnb, Uber pickers, Zenly),
 motion/haptics standards, 2025-26 color direction, and the RN/Expo engineering
 of all of it (verified against installed SDK 57 types). What shipped:
 
-### Palette verdict: keep Dusk
+### Palette verdict: keep the blue + amber pairing
 
-Three researchers independently concluded the indigo + amber campfire pairing
+(Historical: the palette this pass reviewed was "Dusk", with a light scheme.
+The shipped palette is **Nocturne, dark only** — theme.ts is the record.)
+
+Three researchers independently concluded the blue + amber campfire pairing
 is an ownable identity — competitors cluster in coral (Airbnb), black/purple
 (Hinge/Partiful), and green (Beli) — and the icon locks it in. Adjustments
 made rather than replacement:
 
-- **Warm ink** — light-mode text is now `#211E1A` (was a cool near-black);
-  warmth throughout is the 2026 direction for community products.
-- **Amber owns action and reward** — the docked "Drop a pin" button is amber
-  (`highlight`/`onHighlight`, both schemes WCAG-checked already): lighting a
-  fire is THE core act, and amber is spent nowhere else on that screen.
-  Indigo recedes to structure, links, selected states, and the pins.
-- Dark mode already followed the research (lifted indigo `#8AA6F0`,
-  indigo-tinged near-blacks, amber `#F0A93C` at 9:1) — no change needed.
+- **Warm ink** — light-mode text moved to a warm near-black; warmth
+  throughout is the 2026 direction for community products. (Moot under
+  Nocturne, kept as the record of why the light scheme read warm.)
+- **Amber owns the map's CONTENT now, not its controls.** This pass
+  originally gave the docked "Drop a pin" button the amber; the shipped
+  button is the accent blue, because amber is spent on twenty markers on
+  that same screen and two warm things on one screen means neither reads as
+  the signal. Controls are the brand blue; the map's content is warm.
+- Dark mode already followed the research (the lifted brand-blue accent,
+  ink-violet near-blacks, warm amber at 9:1) — and is now the whole app.
 
 ### Motion vocabulary (Springs in `constants/theme.ts`, haptics in `lib/haptics.ts`)
 
@@ -325,15 +311,21 @@ the system owns tabs, and 100×/day actions get no animation.
 ### The map pins
 
 Emoji markers are gone. Pins are ringed dots with a tail (tip on the exact
-coordinate — note `anchor` is Google-only; Apple Maps uses `centerOffset`):
-indigo body + white category glyph for traveler pins, amber + star for curated
-seeds. Two colors total; the glyph carries the category; selected pins scale
-up, raise zIndex, and the camera nudges them above the detail sheet.
-`displayPriority` keeps real traveler pins from ever being collision-hidden.
+coordinate — note `anchor` is Google-only; Apple Maps uses `centerOffset`).
+**Both pin colours are warm** (`src/features/pins/pin-marker.tsx`): traveler
+pins are the campfire amber `#FF9A5A` with a `#0E1020` glyph, curated seeds
+gold `#FFC168` with a star. Never the brand blue — the basemap is dark navy
+now, and a blue marker on a dark blue basemap is the same collision that
+pushed the brand off green in the first place, just inverted. Warm light on
+an unlit city is the whole idea of the palette. Two colors total; the glyph
+carries the category; selected pins scale up, raise zIndex, and the camera
+nudges them above the detail sheet. `displayPriority` keeps real traveler
+pins from ever being collision-hidden.
 
 ### The drop-a-pin flow (in place, one screen)
 
-Docked amber pill (bottom-center, not a floating FAB — iOS convention) →
+Docked accent-blue pill (bottom-center, not a floating FAB — iOS
+convention; amber belongs to the markers, see above) →
 placement mode on the same map: chrome swaps out, a fixed center pin lifts
 while the map pans and settles with a thud, on-device CLGeocoder search
 ("Search a place in Bangkok…" — no keys, no user location, submit-only to
@@ -352,7 +344,8 @@ brand indigo (was leftover template blue).
 ### The welcome sequence (2026-08-19)
 
 First launch opens on the splash field itself: `IntroTour` reuses the exact
-indigo (`#2A4C9B`) and the 200 pt campfire mark position, so native splash →
+splash indigo (`BrandDeep` in theme.ts) and the 200 pt campfire mark
+position, so native splash →
 animated overlay → welcome scene plays as one unbroken shot. The mark is a
 single shared element floating above the pager: as the first swipe begins it
 glides up and shrinks into a docked emblem, with scale and translate driven
@@ -401,8 +394,9 @@ Worth building when the moment is right, in rough order of value:
 
 1. **Travel Log share card** — Flighty-Passport-style postcard after each trip
    (city, days, meetups joined); free-tier growth artifact.
-2. **Ember-cooling expiry** — pin color cools `#F0A93C` → `#9A5709` → gray as
-   the 72h burns down; the countdown ring variant needs design time.
+2. **Ember-cooling expiry** — pin colour cools from the pin amber through a
+   deep ochre to gray as the 72h burns down; the countdown ring variant
+   needs design time.
 3. **Lottie/HEVC-alpha illustration set** — 4–5 warm 3D-ish hero assets
    (campfire, tent, backpack) for empty states, à la Airbnb Lava.
 4. **MKLocalSearch Expo module** (~60 lines Swift) for true venue-name search;

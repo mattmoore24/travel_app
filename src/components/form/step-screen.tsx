@@ -77,7 +77,7 @@ export function StepScreen({
             // the only exit. Dragging closes it, same as the signup shell.
             keyboardDismissMode="interactive">
             <View style={styles.titleRow}>
-              <ThemedText type="subtitle" style={styles.title}>
+              <ThemedText type="title" style={styles.title}>
                 {title}
               </ThemedText>
               {onClose ? (

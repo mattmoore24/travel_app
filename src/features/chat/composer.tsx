@@ -1,13 +1,13 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
 
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoButton } from '@/components/ui/photo-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { Fonts, Radius, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ComposerDraft = { text: string; photoUri: string | null };
@@ -48,6 +48,17 @@ export function Composer({
   onSend: (draft: ComposerDraft) => Promise<void> | void;
 }) {
   const theme = useTheme();
+  // The field's type rides the scale like every other string in the app —
+  // it was the one hardcoded font size left, so at the accessibility sizes
+  // a 120pt box held about a line and a half of the message being composed,
+  // on a product where every first message is moderated and has to be right
+  // first time. Four lines' worth of room, growing with fontScale, clamped
+  // to a third of the window so the box can never eat the thread.
+  const { fontScale, height } = useWindowDimensions();
+  const inputMaxHeight = Math.min(
+    4 * Type.callout.lineHeight * fontScale + 2 * Spacing.two,
+    height / 3
+  );
   const [draft, setDraft] = useState('');
   const [attachment, setAttachment] = useState<string | null>(null);
 
@@ -123,6 +134,7 @@ export function Composer({
               color: theme.text,
               backgroundColor: theme.surfaceSunken,
               fontFamily: Fonts?.sans,
+              maxHeight: inputMaxHeight,
             },
           ]}
           placeholder={attachment ? 'Add a message…' : placeholder}
@@ -182,11 +194,12 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     minHeight: 40,
-    maxHeight: 120,
+    // maxHeight is inline: it scales with fontScale. fontSize comes from the
+    // scale (Type.callout) — nothing in the app hardcodes a font size.
     borderRadius: Radius.lg,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    fontSize: 15,
+    fontSize: Type.callout.fontSize,
   },
   sendTarget: {
     width: 40,

@@ -22,7 +22,7 @@ export default function GuidelinesScreen() {
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
         <ScrollView contentContainerStyle={styles.content}>
-          <ThemedText type="subtitle">House rules</ThemedText>
+          <ThemedText type="title">House rules</ThemedText>
           <ThemedView type="backgroundElement" style={styles.card}>
             <ThemedText type="smallBold" style={{ color: theme.tint }}>
               {ZERO_TOLERANCE}

@@ -19,7 +19,11 @@ import path from 'node:path';
 const E2E = path.join(__dirname, '..', '..', '..', 'e2e');
 
 const flowFiles = (): string[] =>
-  ['flows', 'subflows'].flatMap((dir) => {
+  // '.' picks up the flows that live OUTSIDE e2e/flows on purpose (warmup,
+  // the AX5 large-text tour) — outside so the workflow's flow-loop glob
+  // cannot run them as ordinary passes, but they are still Maestro files
+  // and a parse error in one is still a silent no-op on the runner.
+  ['flows', 'subflows', '.'].flatMap((dir) => {
     const full = path.join(E2E, dir);
     return fs.existsSync(full)
       ? fs

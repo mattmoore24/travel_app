@@ -37,7 +37,7 @@ export default function MapScreenWeb() {
           styles.content,
           { paddingTop: insets.top + Spacing.six, paddingBottom: BottomTabInset + Spacing.six },
         ]}>
-        <ThemedText type="subtitle">Pins in {city.cities.name}</ThemedText>
+        <ThemedText type="title">Pins in {city.cities.name}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           Web fallback list. The real map renders on iOS.
         </ThemedText>

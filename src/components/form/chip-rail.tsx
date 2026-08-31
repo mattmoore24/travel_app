@@ -26,13 +26,15 @@ export function ChipRail<T extends string>({
 }: ChipRailProps<T>) {
   const theme = useTheme();
   // The label is drawn as well as spoken. It used to be accessibility-only,
-  // which left the Today/Tomorrow chips floating with no heading at all.
+  // AND it sat on the horizontal ScrollView, which is not a focusable
+  // element — so "When" was invisible to sighted users and to VoiceOver
+  // alike. The spoken half lives on the labelled wrapper below (a
+  // radiogroup: one choice among the chips), never on the scroller.
   const rail = (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       keyboardShouldPersistTaps="always"
-      accessibilityLabel={label}
       contentContainerStyle={styles.row}>
       {options.map((option) => {
         const active = option.value === selected;
@@ -60,7 +62,7 @@ export function ChipRail<T extends string>({
     return rail;
   }
   return (
-    <View style={styles.labelled}>
+    <View style={styles.labelled} accessibilityRole="radiogroup" accessibilityLabel={label}>
       <ThemedText type="smallBold">{label}</ThemedText>
       {rail}
     </View>
