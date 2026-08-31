@@ -174,6 +174,43 @@ export function categoryForPoi(raw: string | null | undefined): PinCategory {
   return 'other';
 }
 
+// Small and unambiguous on purpose (founder decision D10: no chip rail —
+// fix the inference). Each word names an activity a person would write in a
+// plan; anything needing a second thought belongs in the nearby-venue
+// lookup, which carries a real POI category. "walk" -> hike is the
+// borderline this list stops at. First hit wins, in this order.
+const PLAN_KEYWORDS: [PinCategory, string[]][] = [
+  ['bar', ['drinks', 'beer', 'pub', 'cocktail', 'rooftop']],
+  ['restaurant', ['dinner', 'lunch', 'breakfast', 'food', 'eat', 'brunch', 'coffee']],
+  ['club', ['club', 'dancing', 'party', 'gig']],
+  ['hike', ['hike', 'trek', 'walk', 'park']],
+  ['beach', ['beach', 'surf', 'swim']],
+  ['museum', ['museum', 'gallery', 'exhibition']],
+  ['monument', ['temple', 'wat', 'palace', 'ruins']],
+];
+
+/**
+ * A guess at the pin's kind from the plan's own words, for the hand-placed
+ * path where the map supplied no POI. "Sunset drinks" is a bar pin; without
+ * this it filed as 'other' and vanished under every category filter.
+ *
+ * Null — not 'other' — when no keyword matches, so the caller decides:
+ * categoryForPoi's rule that unrecognised is a real answer (the comment
+ * above it records the founder's ruling) is extended here, not replaced.
+ * The guess is never invisible: the form's place card draws the marker
+ * live as the plan is typed, so the person sees the pin they are about to
+ * drop before they drop it.
+ */
+export function categoryForPlan(text: string): PinCategory | null {
+  const plan = text.toLowerCase();
+  for (const [category, words] of PLAN_KEYWORDS) {
+    if (words.some((word) => new RegExp(`\\b${word}\\b`).test(plan))) {
+      return category;
+    }
+  }
+  return null;
+}
+
 /** The narrowest a pin's life can be set to. */
 export const MIN_PIN_HOURS = 1;
 

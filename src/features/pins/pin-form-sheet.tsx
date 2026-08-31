@@ -2,7 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { ChipRail } from '@/components/form/chip-rail';
@@ -17,6 +17,7 @@ import { HitTarget, Radius, Space, Type } from '@/constants/theme';
 import { useCreatePin } from '@/features/pins/hooks';
 import {
   MAX_PIN_HOURS,
+  categoryForPlan,
   categoryForPoi,
   cityClockNow,
   defaultHoursForIntent,
@@ -62,8 +63,8 @@ type PinFormSheetProps = {
  * asked for them separately: WHERE (filled in for you, with a link into
  * Maps) and WHAT (yours to write). The old "what kind of plan" row is gone
  * on purpose: when the place came from search, Apple already told us it is a
- * bar, and when it did not, the answer changes nothing anyone sees except a
- * pin emoji.
+ * bar, and when it did not, the plan's own words answer instead
+ * (categoryForPlan), previewed live by the marker in the place card.
  */
 export function PinFormSheet({
   cityId,
@@ -110,7 +111,14 @@ export function PinFormSheet({
   const scrollRef = useRef<ScrollView>(null);
   const fieldY = useRef<Record<string, number>>({});
 
-  const category = categoryForPoi(initialPlace?.category);
+  // The marker's kind. Apple's POI category leads when the place came from
+  // search or a venue chip; a hand-placed pin has none, so the PLAN's own
+  // words are read instead (founder decision D10: no chip rail, fix the
+  // inference). Recomputed per keystroke on purpose — the place card's
+  // glyph below previews the pin being dropped, so the guess is visible
+  // before it is committed, which is what makes guessing defensible.
+  const poiCategory = categoryForPoi(initialPlace?.category);
+  const category = poiCategory !== 'other' ? poiCategory : (categoryForPlan(plan) ?? 'other');
 
   // Where the map says this spot is, so the card can show a street instead
   // of a dot. Only when the place did not come from search, which already
@@ -168,6 +176,32 @@ export function PinFormSheet({
     ? 'Say what the plan is first.'
     : 'A plan, not your location. It disappears on its own.';
 
+  // The plan text is what makes the difference between a marker and an
+  // invitation, and the sheet's pull-down and scrim are one careless thumb
+  // away from a person mid-sentence over a live keyboard. So a dismissal
+  // GESTURE asks first when anything has been written — the same voice as
+  // edit-profile's guard, which admits in its own comment that a swipe once
+  // ate a whole bio rewrite in silence. The pre-filled venue does not count
+  // unless the person edited it: search and the geocoder wrote that, and a
+  // guard that fires on text the app typed is asking about work nobody did.
+  // Raising the Alert while the sheet is still mounted and presented is
+  // safe (UIAlertController presents over the sheet's own view controller);
+  // dismissing FIRST and alerting later is the presentation iOS drops.
+  const requestClose = () => {
+    const wrote =
+      plan.trim().length > 0 ||
+      note.trim().length > 0 ||
+      (venueTouched.current && venue.trim().length > 0);
+    if (!wrote) {
+      onClose();
+      return;
+    }
+    Alert.alert('Discard this plan?', "You'll lose what you wrote.", [
+      { text: 'Keep writing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: onClose },
+    ]);
+  };
+
   const submit = async () => {
     try {
       const pin = await createPin.mutateAsync({
@@ -194,7 +228,7 @@ export function PinFormSheet({
   };
 
   return (
-    <Sheet onClose={onClose} avoidKeyboard>
+    <Sheet onClose={onClose} onCloseRequest={requestClose} avoidKeyboard>
       {/* The fades live HERE, not in the Sheet: every other Sheet caller has
           static children, and a generic top fade would wash out their first
           row for no reason. They say "there is more" where the scroll edge

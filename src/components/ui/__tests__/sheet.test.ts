@@ -54,6 +54,31 @@ describe('Sheet presentation', () => {
     expect(SHEET_SETTLE_MS).toBeGreaterThan(SHEET_EXIT_MS);
   });
 
+  it('routes every dismissal gesture through onCloseRequest when one is set', () => {
+    // The discard guard's seam: with onCloseRequest set, the scrim tap, the
+    // pull-down, the grabber's accessibility tap and Android's back all call
+    // it INSTEAD of onClose, so a guard can ask before state is thrown
+    // away. With it absent the alias IS onClose and nothing changes for the
+    // other callers.
+    expect(code).toContain('const requestClose = onCloseRequest ?? onClose;');
+    // The pull gesture's dismissal branch goes through the alias — and only
+    // through it: a stray runOnJS(onClose) would be a pull that skips the
+    // guard.
+    expect(code).toContain('runOnJS(requestClose)()');
+    expect(code).not.toContain('runOnJS(onClose)');
+    // The scrim and the grabber's accessibility tap too.
+    expect(code).toContain('onPress={requestClose}');
+    expect(code).toContain('onAccessibilityTap={requestClose}');
+    expect(code).toContain('onRequestClose={requestClose}');
+    // A refused dismissal must spring the sheet home rather than leave it
+    // parked halfway off screen: the drag reset stays unconditional, BEFORE
+    // the dismissal branch decides anything.
+    const reset = code.indexOf('drag.value = withSpring(0, Springs.release)');
+    const branch = code.indexOf('runOnJS(requestClose)()');
+    expect(reset).toBeGreaterThan(-1);
+    expect(branch).toBeGreaterThan(reset);
+  });
+
   it('mounts its scroller only when a caller opts in with `scrolls`', () => {
     // Opt-in is what keeps the blast radius small: pin-form-sheet and
     // place-sheet own their scrollers already, and a second one around them

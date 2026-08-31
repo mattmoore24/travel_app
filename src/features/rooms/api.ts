@@ -3,6 +3,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import type {
   PinnedMessageRow,
   CityRoomRow,
+  PinForGroupRow,
   ReactionSummaryRow,
   RoomMessageRow,
 } from '@/lib/database.types';
@@ -47,6 +48,22 @@ export async function fetchRoomInfo(chatId: string) {
     throw error;
   }
   return (data ?? [])[0] ?? null;
+}
+
+/**
+ * The plan a pin-born group came from, while the pin is alive. Definer and
+ * member-gated server-side: a joiner is already in the room, so the pin
+ * owner's discovery filter must not hide the plan from them. Null once the
+ * pin has expired (hard rule 3: an expired pin is unreadable) or been taken
+ * down — the room then says the plan has ended rather than showing a stale
+ * clock.
+ */
+export async function fetchPinForGroup(chatId: string) {
+  const { data, error } = await supabase.rpc('pin_for_group', { p_chat_id: chatId });
+  if (error) {
+    throw error;
+  }
+  return ((data ?? []) as PinForGroupRow[])[0] ?? null;
 }
 
 /** Business rooms in a city. Readable signed-out. */

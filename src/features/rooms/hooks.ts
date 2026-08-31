@@ -14,6 +14,7 @@ import {
   unsendMessage,
   removeRoomMessage,
   setChatPref,
+  fetchPinForGroup,
   fetchRoomInfo,
   fetchRoomPins,
   pinMessage,
@@ -40,6 +41,19 @@ export function useRoomInfo(chatId: string | null) {
     queryFn: () => fetchRoomInfo(chatId!),
     enabled: isSupabaseConfigured && chatId != null,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * The plan a pin-born group opened from. Pass null unless the group row
+ * carries a non-null pin_id — the answer is a round trip, and a group made
+ * any other way has nothing to ask about.
+ */
+export function usePinForGroup(chatId: string | null) {
+  return useQuery({
+    queryKey: ['pin-for-group', chatId],
+    queryFn: () => fetchPinForGroup(chatId!),
+    enabled: isSupabaseConfigured && chatId != null,
   });
 }
 

@@ -71,7 +71,49 @@ appId: com.mattmoore.samewhere
 - swipe:
     start: 50%, 62%
     end: 58%, 42%
+# The venue chips arrive after the settle's debounced lookup, so give them a
+# moment — but never require them. MKLocalPointsOfInterestRequest returns
+# nothing at all in some regions and over water (this very pan once landed on
+# a river), and the row is designed to be absent rather than empty there. A
+# binary without nearbyAsync has no row either, by the same design.
+- extendedWaitUntil:
+    visible:
+      id: 'nearby-venue-0'
+    timeout: 8000
+    optional: true
 - takeScreenshot: 13-place-after-pan
+# When MapKit named the block, prove a chip carries its venue into the form
+# the way a searched place does: the venue's own name, not a reverse-geocoded
+# street, heads the place card. Conditional for the same reason the wait
+# above is optional.
+- runFlow:
+    when:
+      visible:
+        id: 'nearby-venue-0'
+    commands:
+      - copyTextFrom:
+          id: 'nearby-venue-0'
+      - tapOn:
+          id: 'nearby-venue-0'
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 13b-nearby-venue-picked
+      - tapOn: 'Pin here'
+      # Escaped: assertVisible is a regex and venue names carry brackets and
+      # plus signs ('Big C (Ratchadamri)') that would otherwise never match.
+      - evalScript: ${output.venuePattern = maestro.copiedText.replace(/[.*+?^$}{)(|\[\]\\]/g, '\\$&')}
+      - assertVisible: ${output.venuePattern}
+      - takeScreenshot: 13c-nearby-venue-in-form
+      # Back out to place mode so the main flow's own 'Pin here' below still
+      # lands there. A pull on the grabber, because the scrim's full-screen
+      # bounds centre on the sheet itself and a tap there would land on a
+      # field. Nothing has been typed, so the discard guard lets it through.
+      - swipe:
+          from:
+            id: 'sheet-grabber'
+          direction: DOWN
+      - waitForAnimationToEnd:
+          timeout: 3000
 - tapOn: 'Pin here'
 - takeScreenshot: 14-pin-form
 # The button is grey here and the footnote says why. Asserted before typing,
@@ -108,6 +150,19 @@ appId: com.mattmoore.samewhere
 # a newline is exactly what `.` does not match.
 - assertVisible: 'Meeting by the door around 7.*'
 - takeScreenshot: 15-pin-form-filled
+# THE DISCARD GUARD. A pull on the grabber with a plan mid-sentence must ask,
+# not eat it: the sheet used to unmount on this exact gesture with all state
+# gone, and "Pin here" again gave an empty form. The refusal also proves the
+# sheet survives the gesture — sprung back home, everything still in it —
+# rather than sitting parked halfway off screen.
+- swipe:
+    from:
+      id: 'sheet-grabber'
+    direction: DOWN
+- assertVisible: 'Discard this plan?'
+- tapOn: 'Keep writing'
+- assertVisible: 'Rooftop hello from Maestro'
+- assertVisible: 'Meeting by the door around 7.*'
 # HOW PEOPLE COME ALONG. The choice that turns a pin into a plan somebody can
 # join in one tap, versus the hello-and-wait the app had only ever offered.
 # It sits ABOVE the fields now: run 76 photographed it below them, clipped in
@@ -144,23 +199,32 @@ appId: com.mattmoore.samewhere
 # the one place the whole path — RPC, group, room_members, the map re-read —
 # is checked in one line.
 - assertVisible: 'Your plan, open to join'
-# ASSERT THE APP STILL RESPONDS. Run 42 posted a pin and then went deaf:
-# Close, Travelers, Map and the avatar were all "tapped" — Maestro found every
-# one of them in the tree and reported success — while the screen did not
-# change by a single pixel for the next minute. Three screenshots came back
-# byte-identical and the run only failed four steps later, on a name that was
-# never going to appear. A tap that is allowed to do nothing is how a frozen
-# app passes as a working one, so from here on every tap out of this card has
-# to prove it landed.
-- tapOn: 'Close'
-# The card's own headline going away is the proof, and it has to be this
-# rather than something about the Map tab: "Drop a pin" is ALSO the label on
-# the Travelers empty state, and "Travelers" is the tab's own label whichever
-# tab you are on. An assertion that is true either way is exactly the kind
-# that let a dead app through.
-- waitForAnimationToEnd:
-    timeout: 3000
-- assertNotVisible: 'Rooftop hello from Maestro'
+# THE PIN-BORN ROOM, photographed for the first time. The run had never once
+# entered it — the room it does photograph later ("Maestro crew") is the
+# hand-made group from the 22/23 flow, which is why "the room loses the plan"
+# survived the audit's own evidence. This tap is also the liveness proof the
+# old 'Close' tap carried (run 42 posted a pin and then went deaf): the wait
+# below matches room-only content, so a tap that did nothing fails HERE.
+- tapOn: 'Open the chat'
+# Wait on ROOM-ONLY content first: the map's own pin card behind this push
+# prints the same burnOutLabel, so a wait keyed on the burn line would pass
+# at t=0 with the tap having done nothing. The membership line exists only
+# in the room. Then the card's own line, anchored for the whole-element
+# match ('Today · burns out in 24h' is one Text), and the Maps link by its
+# SPOKEN label - the Pressable hides its inner text (traps).
+- extendedWaitUntil:
+    visible: '1 person in this chat.*'
+    timeout: 20000
+- assertVisible: '.*burns out (in .*|soon)'
+- assertVisible: 'View .* in Maps'
+- takeScreenshot: 16b-pin-born-room
+# Relaunch rather than `back` — Maestro's back does not reliably pop an iOS
+# push (see the Chat section below). The session survives (keychain, not the
+# data container) and the app lands on the Map tab. Do NOT add clearState.
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
 - tapOn: 'Travelers'
 - takeScreenshot: 17-travelers-signed-in
 # THE QUEUE HAS SCOPE NOW. The header line above the hero says how many

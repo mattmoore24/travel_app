@@ -121,6 +121,7 @@ export function leavingSheet(close: () => void) {
 export function Sheet({
   children,
   onClose,
+  onCloseRequest,
   dimmed = true,
   avoidKeyboard = false,
   inline = false,
@@ -129,6 +130,16 @@ export function Sheet({
 }: {
   children: ReactNode;
   onClose: () => void;
+  /**
+   * Where a dismissal GESTURE lands — the scrim tap, the pull-down, the
+   * grabber's accessibility tap, Android's back — when the caller wants a
+   * say before state is thrown away (a discard guard raising an Alert, which
+   * is safe while the sheet is still presented). When absent, every path
+   * calls onClose and nothing changes for the other callers. The refused
+   * pull needs no help: the drag offset springs home on every gesture end
+   * regardless, so a guarded sheet is never left parked halfway off screen.
+   */
+  onCloseRequest?: () => void;
   dimmed?: boolean;
   /** Lift the sheet above the keyboard — for sheets that contain inputs. */
   avoidKeyboard?: boolean;
@@ -197,6 +208,12 @@ export function Sheet({
   // dropped is a fair question asked at the worst moment.
   useRegisterNativeModal(true);
 
+  // Every dismissal gesture routes through here, so a guard set by the
+  // caller sees the scrim tap and the pull alike. Direct onClose calls from
+  // a sheet's own content (a Close button, leavingSheet) are deliberate and
+  // stay direct.
+  const requestClose = onCloseRequest ?? onClose;
+
   // Down only: dragging up would let a sheet leave its own bottom edge, and
   // the rubber-band there reads as a bug rather than as resistance.
   const pull = Gesture.Pan()
@@ -205,11 +222,12 @@ export function Sheet({
     })
     .onEnd((event) => {
       // Reset either way. On dismissal the sheet is normally unmounted by
-      // the caller, but a caller that keeps it mounted must not be left with
-      // a sheet parked halfway off the screen.
+      // the caller, but a caller that keeps it mounted — a refused discard
+      // guard does — must not be left with a sheet parked halfway off the
+      // screen.
       drag.value = withSpring(0, Springs.release);
       if (event.translationY > DISMISS_DISTANCE || event.velocityY > DISMISS_VELOCITY) {
-        runOnJS(onClose)();
+        runOnJS(requestClose)();
       }
     });
 
@@ -251,7 +269,7 @@ export function Sheet({
             accessibilityRole="button"
             accessibilityLabel="Dismiss"
             style={StyleSheet.absoluteFill}
-            onPress={onClose}
+            onPress={requestClose}
           />
         </Animated.View>
       ) : null}
@@ -278,10 +296,11 @@ export function Sheet({
         <GestureDetector gesture={pull}>
           <View
             accessible
+            testID="sheet-grabber"
             accessibilityRole="button"
             accessibilityLabel="Dismiss"
             accessibilityHint="Or pull down"
-            onAccessibilityTap={onClose}
+            onAccessibilityTap={requestClose}
             style={styles.grabberTarget}>
             <View style={[styles.grabber, { backgroundColor: theme.hairline }]} />
           </View>
@@ -321,7 +340,12 @@ export function Sheet({
     // against its PARENT, not the screen — which anchored the gender
     // dropdown to its own field box and the trip editor to the bottom of the
     // profile's scroll content.
-    <Modal transparent visible statusBarTranslucent animationType="none" onRequestClose={onClose}>
+    <Modal
+      transparent
+      visible
+      statusBarTranslucent
+      animationType="none"
+      onRequestClose={requestClose}>
       {/* A React Native Modal is hosted in its own native window, which sits
           outside the gesture root the navigator establishes — so without
           this, every gesture inside a sheet is dead. That covers the pull to

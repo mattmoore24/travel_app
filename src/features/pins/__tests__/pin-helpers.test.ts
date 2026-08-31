@@ -3,6 +3,7 @@ import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
 import {
   MAX_PIN_HOURS,
   burnOutLabel,
+  categoryForPlan,
   categoryForPoi,
   cityClockNow,
   defaultHoursForIntent,
@@ -98,6 +99,51 @@ describe('categoryForPoi', () => {
     expect(categoryForPoi('MKPOICategoryLaundry')).toBe('other');
     expect(categoryForPoi(null)).toBe('other');
     expect(categoryForPoi(undefined)).toBe('other');
+  });
+});
+
+describe('categoryForPlan', () => {
+  it('reads the activity out of a plan someone actually wrote', () => {
+    expect(categoryForPlan('Sunset drinks')).toBe('bar');
+    expect(categoryForPlan('Rooftop hello from Maestro')).toBe('bar');
+    expect(categoryForPlan('brunch by the river')).toBe('restaurant');
+    expect(categoryForPlan('going dancing after midnight')).toBe('club');
+    expect(categoryForPlan('trek to the viewpoint')).toBe('hike');
+    expect(categoryForPlan('morning surf')).toBe('beach');
+    expect(categoryForPlan('the modern art gallery')).toBe('museum');
+    expect(categoryForPlan('Wat Pho at opening')).toBe('monument');
+  });
+
+  it('ignores case, the way people type', () => {
+    expect(categoryForPlan('COCKTAIL HOUR')).toBe('bar');
+    expect(categoryForPlan('Beach day')).toBe('beach');
+  });
+
+  it('matches words, not fragments', () => {
+    // 'eat' inside 'theatre' or 'club' inside 'clubhouse' would be a guess
+    // built on letters, not on what anybody said they were doing.
+    expect(categoryForPlan('theatre tickets sorted')).toBeNull();
+    expect(categoryForPlan('meet at the clubhouse door')).toBeNull();
+  });
+
+  it('answers null when the plan names no activity, so the caller decides', () => {
+    // Null, not 'other': categoryForPoi already rules that unrecognised is a
+    // real answer, and this extends that rule rather than replacing it.
+    expect(categoryForPlan('Hello from Maestro')).toBeNull();
+    expect(categoryForPlan('meet by the fountain at 7')).toBeNull();
+    expect(categoryForPlan('')).toBeNull();
+  });
+});
+
+describe('a null POI and a keyword-free plan still land on a real category', () => {
+  it('the form-side fallback chain ends at other, never at nothing', () => {
+    // The exact expression the pin form runs for a hand-placed pin whose
+    // plan names no activity: POI 'other', plan null, and the pin still
+    // files under a chip that exists.
+    const poi = categoryForPoi(null);
+    expect(poi !== 'other' ? poi : (categoryForPlan('meet by the fountain') ?? 'other')).toBe(
+      'other'
+    );
   });
 });
 

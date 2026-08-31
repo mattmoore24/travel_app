@@ -25,6 +25,7 @@ import { MessageThread } from '@/features/chat/message-thread';
 import {
   useJoinRoom,
   useLeaveRoom,
+  usePinForGroup,
   useReactions,
   useRemoveRoomMessage,
   usePinMessage,
@@ -35,6 +36,9 @@ import {
   useToggleReaction,
   useUnsendMessage,
 } from '@/features/rooms/hooks';
+import { PinGlyph } from '@/features/pins/pin-marker';
+import { burnOutLabel, cityClockNow, intentLabel } from '@/features/pins/pin-helpers';
+import { openInMaps } from '@/features/pins/open-in-maps';
 import { addDays, formatDateRange, toISODate } from '@/features/trips/dates';
 import { useBusinessForChat, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
 import { Composer } from '@/features/chat/composer';
@@ -94,6 +98,21 @@ export default function RoomScreen() {
   // which is exactly what tells the two apart on this screen.
   const { data: group } = useGroup(membership?.kind === 'room' ? (id ?? null) : null);
   const isGroup = group != null;
+  // The plan a pin-born group came from, asked only while the group row says
+  // there is one. The answer feeds the card under the header; the countdown
+  // in it comes from expires_at through burnOutLabel — the same helper the
+  // map uses — so the room and the pin card can never disagree.
+  const planQuery = usePinForGroup(group?.pin_id != null ? (id ?? null) : null);
+  const plan = planQuery.data ?? null;
+  // The ask settled and there was no pin behind the id: it expired (hard
+  // rule 3 makes it unreadable even before the sweep deletes it) or was
+  // taken down. Said out loud rather than silently dropping the card, so
+  // the room does not lose its origin mid-evening. plan_ended_at is the
+  // durable half: the sweep deletes the pin and nulls pin_id within fifteen
+  // minutes, and without the stamp the line would vanish with them.
+  const planEnded =
+    (group?.pin_id != null && planQuery.isSuccess && plan == null) ||
+    (isGroup && group?.pin_id == null && group?.plan_ended_at != null);
   // The database refuses the insert anyway; this is so the person is told
   // why instead of watching Send do nothing.
   const muted = isGroup && group.speaking === 'granted' && membership?.my_role === 'member';
@@ -296,6 +315,57 @@ export default function RoomScreen() {
               </ThemedText>
             )}
           </View>
+
+          {/* The plan this group opened from — the rooftop, the night, and
+              the clock the previous screen had and the room used to lose.
+              Non-scrolling, under the header, while the group row points
+              at a pin or remembers one ending. Once the pin is gone
+              (expired or taken down) one quiet line says so, surviving the
+              sweep through plan_ended_at; a group that never had a pin
+              never grows the card. */}
+          {isGroup && (plan != null || planEnded) ? (
+            <View style={[styles.planCard, { backgroundColor: theme.surfaceSunken }]}>
+              {plan != null ? (
+                <>
+                  <PinGlyph category={plan.category} />
+                  <View style={styles.planText}>
+                    <ThemedText type="callout" numberOfLines={2}>
+                      {plan.venue_name}
+                    </ThemedText>
+                    <ThemedText type="footnote" themeColor="textSecondary">
+                      {intentLabel(plan.intent_date, cityClockNow(null, plan.lng))} ·{' '}
+                      {burnOutLabel(plan.expires_at)}
+                    </ThemedText>
+                  </View>
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityLabel={`View ${plan.venue_name} in Maps`}
+                    hitSlop={8}
+                    onPress={() =>
+                      openInMaps({
+                        lat: plan.lat,
+                        lng: plan.lng,
+                        label: plan.place_label ?? plan.venue_name,
+                      })
+                    }
+                    style={styles.mapsLink}>
+                    <SymbolView
+                      name={{ ios: 'map', android: 'map', web: 'map' }}
+                      size={15}
+                      tintColor={theme.accent}
+                    />
+                    <ThemedText type="footnote" themeColor="accent">
+                      View in Maps
+                    </ThemedText>
+                  </Pressable>
+                </>
+              ) : (
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  The plan has burned out. The group stays.
+                </ThemedText>
+              )}
+            </View>
+          ) : null}
 
           {/* What the host has kept at the top. A hostel room is a river:
               the address of tonight's dinner scrolls out of reach in twenty
@@ -669,6 +739,25 @@ const styles = StyleSheet.create({
     gap: Space.xs,
     paddingHorizontal: Space.lg,
     paddingBottom: Space.md,
+  },
+  planCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    marginHorizontal: Space.lg,
+    marginBottom: Space.sm,
+    padding: Space.md,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
+  planText: {
+    flex: 1,
+    gap: 2,
+  },
+  mapsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
   },
   pinStrip: {
     gap: Space.xs,

@@ -26,6 +26,7 @@ struct LocalSearchResult: Record {
 /// key, and no location permission is requested or required.
 public class LocalSearchModule: Module {
   private var activeSearch: MKLocalSearch?
+  private var activeNearby: MKLocalSearch?
 
   public func definition() -> ModuleDefinition {
     Name("LocalSearch")
@@ -98,6 +99,76 @@ public class LocalSearchModule: Module {
     // MapKit is main-thread-affine, and `activeSearch` is touched by every
     // call — pinning the function to the main queue satisfies both without a
     // lock. The search itself is asynchronous, so nothing blocks here.
+    .runOnQueue(.main)
+
+    /// The venues under a coordinate, with no query to type. Built on
+    /// MKLocalPointsOfInterestRequest rather than MKLocalSearch.Request,
+    /// because there is no natural-language query for "what is here".
+    ///
+    /// Same privacy shape as searchAsync: the coordinate is the map centre
+    /// the person panned to, never a device location. No permission is
+    /// requested or required.
+    AsyncFunction("nearbyAsync") {
+      (
+        latitude: Double,
+        longitude: Double,
+        radiusMeters: Double,
+        limit: Int,
+        promise: Promise
+      ) in
+      let request = MKLocalPointsOfInterestRequest(
+        center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+        radius: max(1, radiusMeters)
+      )
+      request.pointOfInterestFilter = .includingAll
+
+      // One lookup at a time: a new settle's lookup supersedes the last.
+      // Its own slot, not activeSearch — a nearby lookup must never cancel
+      // a typed search that happens to be in flight, or vice versa.
+      self.activeNearby?.cancel()
+      let search = MKLocalSearch(request: request)
+      self.activeNearby = search
+
+      search.start { response, error in
+        if let error {
+          let nsError = error as NSError
+          // Nothing at this spot (open water, sparse regions) and a
+          // cancelled lookup are normal outcomes, not failures: resolve
+          // empty so the chip row is simply absent.
+          if nsError.domain == MKErrorDomain,
+            nsError.code == MKError.placemarkNotFound.rawValue
+              || nsError.code == MKError.unknown.rawValue {
+            promise.resolve([LocalSearchResult]())
+            return
+          }
+          promise.reject("ERR_LOCAL_SEARCH", error.localizedDescription)
+          return
+        }
+
+        // Drop the nameless: a venue chip with no name is not an offer.
+        let items = response?.mapItems ?? []
+        let results: [LocalSearchResult] = items.prefix(max(1, limit)).compactMap { item in
+          guard let name = item.name ?? item.placemark.name else {
+            return nil
+          }
+          let result = LocalSearchResult()
+          let placemark = item.placemark
+          result.name = name
+          result.address = [placemark.thoroughfare, placemark.subThoroughfare]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+            .nilIfEmpty
+          result.locality = placemark.subLocality ?? placemark.locality
+          result.latitude = placemark.coordinate.latitude
+          result.longitude = placemark.coordinate.longitude
+          result.category = item.pointOfInterestCategory?.rawValue
+          return result
+        }
+        promise.resolve(results)
+      }
+    }
+    // Same main-thread affinity as searchAsync, for the same reasons.
     .runOnQueue(.main)
   }
 }

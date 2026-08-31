@@ -547,6 +547,21 @@ export type GroupRow = {
    * white screen.
    */
   max_stay_until: string | null;
+  /**
+   * The pin this group opened from, while that pin is alive. Goes null when
+   * the pin expires or is taken down (ON DELETE SET NULL); the group
+   * survives that as an ordinary no-end-date group. On the wire since
+   * 20260829120000 — fetchGroup does `select('*')` — only the type was
+   * missing. Non-null is what tells the room to ask pin_for_group.
+   */
+  pin_id: string | null;
+  /**
+   * Stamped by the pins delete trigger the moment the plan's pin leaves the
+   * table, because expire_pins hard-deletes and ON DELETE SET NULL erases
+   * pin_id — this is what keeps the room's "burned out" line honest after
+   * the sweep. Null for groups that never had a pin or predate the stamp.
+   */
+  plan_ended_at: string | null;
   created_at: string;
 };
 
@@ -728,6 +743,22 @@ export type CityPinRow = {
   chat_id: string | null;
   /** How many are in that chat, counting the author. Zero when there is none. */
   crew: number;
+};
+
+/**
+ * Row shape returned by pin_for_group(): the plan a pin-born group came
+ * from, for the room's own card. Members only, and empty once the pin has
+ * expired (hard rule 3) or been taken down.
+ */
+export type PinForGroupRow = {
+  pin_id: string;
+  venue_name: string;
+  place_label: string | null;
+  category: PinCategory;
+  intent_date: string;
+  expires_at: string;
+  lat: number;
+  lng: number;
 };
 
 /** Row shape returned by pin_crew(): who is already going. */
@@ -1497,6 +1528,10 @@ export type Database = {
       pin_crew: {
         Args: { p_pin_id: string };
         Returns: PinCrewRow[];
+      };
+      pin_for_group: {
+        Args: { p_chat_id: string };
+        Returns: PinForGroupRow[];
       };
       people_you_know: {
         Args: { p_query?: string | null };

@@ -28,10 +28,11 @@ describe('the drop thud gate', () => {
     expect(impacts).toHaveLength(2);
   });
 
-  it('both of the app’s own camera moves mark the gate', () => {
-    // enterPlaceMode's zoom step and flyTo's landing — the two programmatic
+  it('all of the app’s own camera moves mark the gate', () => {
+    // enterPlaceMode's zoom step, flyTo's landing, and a nearby-venue chip
+    // moving the pin onto its venue — the three programmatic
     // animateToRegion calls in place mode.
-    expect(MAP.match(/dropGate\.markProgrammatic\(\);/g)).toHaveLength(2);
+    expect(MAP.match(/dropGate\.markProgrammatic\(\);/g)).toHaveLength(3);
     // And the overlay's haptic goes through the gate, nowhere else.
     expect(MAP).toContain('onDrop={dropGate.dropped}');
   });

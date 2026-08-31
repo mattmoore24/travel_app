@@ -81,7 +81,7 @@ import {
 } from '@/features/pins/plan-list';
 import { PinFormSheet } from '@/features/pins/pin-form-sheet';
 import { PinSearchField } from '@/features/pins/pin-search-field';
-import type { LocalSearchResult } from '@/modules/local-search';
+import { nearbyPlaces, type LocalSearchResult } from '@/modules/local-search';
 import { PlacePinOverlay } from '@/features/pins/place-pin-overlay';
 import {
   GEOCODE_FLOOR_MS,
@@ -618,6 +618,16 @@ const BUSINESS_SEEDED_LABEL = 'One of our picks in this city.';
  * stops being about that place. Roughly a venue's own footprint.
  */
 const PLACE_DRIFT_M = 40;
+
+/**
+ * How far around the placement pin to ask MapKit for venues. About a block:
+ * wide enough to catch the bar whose sign is under the pin, narrow enough
+ * that the chips are answers to "what is here", not a directory.
+ */
+const NEARBY_RADIUS_M = 120;
+
+/** At most this many venue chips above the name pill. */
+const NEARBY_SHOWN = 3;
 
 /**
  * One marker for the whole city, once the map is zoomed past street scale:
@@ -1162,6 +1172,12 @@ export default function MapScreen() {
   // a bridge is committing it there. A network failure is NOT this: the
   // catch below degrades to the plain pill and an enabled button.
   const [nothingHere, setNothingHere] = useState(false);
+  // The venues MapKit knows under the placement pin, offered as chips so the
+  // drag-the-map path can produce a pin as good as the search path: a real
+  // name and a real category, no question asked. Empty means the row is
+  // ABSENT (over water, sparse regions, or a binary without nearbyAsync);
+  // an empty row would be a promise with nothing in it.
+  const [nearbyVenues, setNearbyVenues] = useState<LocalSearchResult[]>([]);
   // The thud gate: entering place mode and flying to a search result are
   // camera moves the app makes, and the pin's drop haptic means "you placed
   // it here". See features/pins/place-mode. useState, not a ref: the gate is
@@ -1202,6 +1218,32 @@ export default function MapScreen() {
     const mine = ++geocodeSeq.current;
     lastGeocoded.current = { lat, lng };
     lastGeocodeAt.current = new Date().getTime();
+    // The venues under the pin ride the SAME seq, floor and distance guards
+    // as the geocode, so the two cannot each fire on every frame of a pan.
+    // Sorted here because MKLocalPointsOfInterestRequest promises radius,
+    // not order, and "the two or three NEAREST" is the offer.
+    nearbyPlaces({ latitude: lat, longitude: lng, radiusMeters: NEARBY_RADIUS_M })
+      .then((venues) => {
+        if (mine !== geocodeSeq.current) {
+          return;
+        }
+        setNearbyVenues(
+          [...venues]
+            .sort(
+              (a, b) =>
+                metersBetween(lat, lng, a.latitude, a.longitude) -
+                metersBetween(lat, lng, b.latitude, b.longitude)
+            )
+            .slice(0, NEARBY_SHOWN)
+        );
+      })
+      .catch(() => {
+        // A lookup that failed offers nothing, quietly: the name pill and
+        // the plan-text category guess are the fallback, not an error.
+        if (mine === geocodeSeq.current) {
+          setNearbyVenues([]);
+        }
+      });
     Location.reverseGeocodeAsync({ latitude: lat, longitude: lng })
       .then((places) => {
         if (mine !== geocodeSeq.current) {
@@ -1291,6 +1333,7 @@ export default function MapScreen() {
     setSearchedPlace(null);
     setPlaceLabel(null);
     setNothingHere(false);
+    setNearbyVenues([]);
     stopNamingPlaceCentre();
     const region = at ?? lastRegion.current;
     setPlaceCoords({
@@ -1684,6 +1727,7 @@ export default function MapScreen() {
     setLifted(false);
     setPlaceLabel(null);
     setNothingHere(false);
+    setNearbyVenues([]);
     stopNamingPlaceCentre();
   };
 
@@ -1692,6 +1736,10 @@ export default function MapScreen() {
     // The search result carries a better name than any reverse geocode.
     setPlaceLabel(null);
     setNothingHere(false);
+    // Chips from wherever the map was before the flight would be offers
+    // about the wrong block. A searched place needs none (it already
+    // carries a name and a category); panning away from it re-asks.
+    setNearbyVenues([]);
     stopNamingPlaceCentre();
     setPlaceCoords({ lat: place.latitude, lng: place.longitude });
     // Address search is the other cross-city flight Reduce Motion turns into
@@ -2580,6 +2628,71 @@ export default function MapScreen() {
           exiting={FadeOut.duration(Motion.quick)}
           style={[styles.dock, { bottom: dockBottom }]}
           pointerEvents="box-none">
+          {/* The venues under the pin, when MapKit has any: tap one and the
+              pin lands on it, carrying its name and category into the form
+              exactly the way a searched place does. Absent rather than
+              empty when there is nothing to offer (open water, sparse
+              regions, a binary without nearbyAsync) — the name pill below
+              remains the fallback. */}
+          {nearbyVenues.length > 0 ? (
+            <View style={styles.nearbyRow}>
+              {nearbyVenues.map((venue, index) => {
+                const active = searchedPlace === venue;
+                return (
+                  <PressableScale
+                    key={`${venue.name}:${venue.latitude}:${venue.longitude}`}
+                    testID={`nearby-venue-${index}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    // A hint, not a label: the label would hide the venue's
+                    // name from anything reading the printed text (see
+                    // traps), and the name IS the information.
+                    accessibilityHint="Puts the pin on it"
+                    scaleTo={0.96}
+                    haptic="light"
+                    // The chip is 34pt tall; the slop makes the target 44.
+                    hitSlop={5}
+                    onPress={() => {
+                      setSearchedPlace(venue);
+                      setPlaceLabel(null);
+                      setNothingHere(false);
+                      setPlaceCoords({ lat: venue.latitude, lng: venue.longitude });
+                      // Kill the debounced geocode: the venue's own name now
+                      // leads, and a late reverse geocode must not re-ask
+                      // about a centre the pin has already left.
+                      stopNamingPlaceCentre();
+                      // The app's own camera move, so the landing must not
+                      // thud like a choice. At the CURRENT zoom, not flyTo's:
+                      // the venue is a few metres away and a zoom change
+                      // would read as leaving the block.
+                      dropGate.markProgrammatic();
+                      const region = lastRegion.current;
+                      mapRef.current?.animateToRegion(
+                        {
+                          latitude: venue.latitude,
+                          longitude: venue.longitude,
+                          latitudeDelta: region?.latitudeDelta ?? 0.012,
+                          longitudeDelta: region?.longitudeDelta ?? 0.012,
+                        },
+                        Motion.standard
+                      );
+                    }}
+                    style={[
+                      styles.nearbyChip,
+                      Elevation.floating,
+                      { backgroundColor: active ? theme.accent : theme.surface },
+                    ]}>
+                    <ThemedText
+                      type="footnote"
+                      numberOfLines={1}
+                      style={active ? { color: theme.onAccent } : undefined}>
+                      {venue.name}
+                    </ThemedText>
+                  </PressableScale>
+                );
+              })}
+            </View>
+          ) : null}
           {/* The spot's name, BEFORE the commitment: the reverse geocode the
               form used to run one screen too late now feeds this pill. A
               surface and a shadow, matching the search field above — not
@@ -3266,6 +3379,22 @@ const styles = StyleSheet.create({
   confirmBar: {
     alignSelf: 'stretch',
     paddingHorizontal: Spacing.four,
+  },
+  nearbyRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: Space.xs,
+    maxWidth: '94%',
+    marginBottom: Space.sm,
+  },
+  nearbyChip: {
+    flexShrink: 1,
+    minHeight: 34,
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.pill,
+    borderCurve: 'continuous',
   },
   placeNamePill: {
     minHeight: 34,
