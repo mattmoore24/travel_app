@@ -2509,3 +2509,68 @@ owner room now ends on the action the owner actually holds — "Say what's on
 tonight", which is what earns the brighter marker `city_businesses.has_live_post`
 draws — and the share half waits on a hosted page for a listing. Founder
 question: is that page worth building, and on which domain?
+
+## Phase 11 — Wave 1 of the UX plan
+
+### The Business batch, and the crash that was finally answered
+
+Eleven packages landed together (`c1e481d`). The signup half moved the photo
+grid out of the 1,500-line editor into one shared component and mounted it
+inside step 7, which had been a headline over 1,000pt of black; Continue now
+counts the photo the OWNER can see rather than only an approved one, so an
+owner whose cover is in review is no longer told "one photo is the only thing
+we need here" by a screen already showing their photo. The progress track
+gained a role, a value and a spoken "Step N of M". The email is asked for with
+its consequence named where it is asked, and the code can be typed from any
+later step. A new step 3 says what a listing gets you before the form starts.
+
+The owner's tab got the thing it never had: something that came back from the
+world. "How it's going" is one sentence built from two numbers already on the
+screen. It counts CONVERSATIONS, never senders, and names nobody — the rating
+block one section below is the anti-retaliation control, and a leak from next
+door would undo it. Your details is reordered by what each row does to the
+listing, every empty value says what filling it buys instead of four identical
+"Nothing yet"s, and "3 of 5 done" gives the list an end. Share your page offers
+the link and a QR for the counter.
+
+**The business-tour crash is answered.** Three fixes had failed. The cause was
+that `(tabs)` stays mounted underneath `business-signup`, so `BusinessLanding`'s
+navigate ran from a route below the focused one and expo-router's StackRouter
+appended a second `(tabs)` rather than replacing. All four navigating handoffs
+are now gated on `useIsFocused`. The evidence is the run itself: the tour drove
+deep into signup — name, address, marker, confirm, contact, photos — which it
+could not do at all while crashing at the door.
+
+### Three e2e failures that were not the app
+
+Run 97 went red in six flows, and none of it was app behaviour.
+
+**One system alert cost four flows.** `invite-first-launch` opens
+`samewhere://join-group/...` against a stopped app; iOS answers with "Open in
+Samewhere?". That is a SYSTEM alert — not in the app's view hierarchy, and it
+outlives `stopApp`. Nothing tapped it, so that flow failed and then
+`large-text-tour`, `onboarding-tour` and `signed-in-tour` each failed on their
+first assertion, in alphabetical order, with the intro tour plainly visible
+behind the dialog in every failure screenshot. Worth recording as a class: a
+flow that opens a custom-scheme link poisons every flow that runs after it.
+
+**A bound set inside its own tolerance.** The photo stage was capped at 45s
+next to a comment describing the case it covers as "16-60s on a cold CI
+simulator". It failed exactly as that arithmetic predicts, twice. Now 90s, and
+the two stages no longer share the word "preparing it", so the next failure
+screenshot says whether the render or the JPEG encode stalled.
+
+**The same misdirection, one step further along.** `guest-tour` tapped the
+business post, warned past an OPTIONAL wait for the sheet, warned past an
+optional scroll, and went red on a missing 'Website' — reporting a missing link
+when the sheet was what was missing. That is the exact failure the paragraph
+standing above it already described; only the first of four steps had been made
+hard. All of them are hard now, with a budget the machine can meet.
+
+### Still open, honestly
+
+Whether the business sheet's "See the whole page" was slow or genuinely absent
+is not yet settled — 10s could not tell those apart, and 30s will. The photo
+pipeline's real timing on CI is likewise unmeasured; the raised bound ends the
+symptom without proving which stage was slow, and the split stage names exist
+to answer that on the next failure rather than to claim it is answered now.
