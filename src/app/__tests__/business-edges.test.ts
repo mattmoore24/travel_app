@@ -134,9 +134,13 @@ describe('the listing steps read as a business', () => {
     // the review step read as a bait.
     expect(code).toContain('Nobody can find you on the map until you type that code in.');
     // The code goes out the moment there is an address to send it to, before
-    // the photo step rather than nine screens later.
+    // the photo step rather than nine screens later - but only when one is
+    // not already in flight. Continue, back one screen, Continue again is an
+    // ordinary thing to do while checking a phone number, and an unguarded
+    // send spent one of the five daily codes on each pass while invalidating
+    // the digits already in the owner's inbox.
     const send = code.indexOf(
-      'void requestCode.mutateAsync(email.trim()).catch(() => {});\n      go(8);'
+      'if (!codeLive && !codeBounced) {\n        void requestCode.mutateAsync(email.trim()).catch(() => {});\n      }\n      go(8);'
     );
     expect(send).toBeGreaterThan(-1);
   });

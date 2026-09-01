@@ -218,3 +218,49 @@ describe('the tab handoffs do not navigate from underneath', () => {
     expect(layout).toContain('}, [onScreen, viewerIsBusiness, listingIntent]);');
   });
 });
+
+/**
+ * Two dead ends the review pass found in this batch's own new code, both of
+ * them re-creating a bug the file beside them had just fixed.
+ */
+describe('the code screen always has a way off it', () => {
+  const email = source('business-email.tsx');
+
+  it('offers Finish this later in both branches, not only one', () => {
+    // It used to sit inside the ELSE branch, so tapping "Use a different
+    // address" left one text field, one send button, and no exit - which is
+    // the dead end this screen exists to remove, moved one branch over.
+    expect((email.match(/label="Finish this later"/g) ?? []).length).toBe(1);
+    // One button that renders after BOTH arms of the ternary cannot be
+    // branch-specific. 'Send a code to this address' is the changing arm's
+    // last control; 'Send the code to a different address' is the other's.
+    const exit = email.indexOf('label="Finish this later"');
+    expect(exit).toBeGreaterThan(email.indexOf('Send a code to this address'));
+    expect(exit).toBeGreaterThan(email.indexOf('Send the code to a different address'));
+  });
+
+  it('lets somebody keep the address they already had', () => {
+    // Tapping "Use a different address" is one tap and easy to do by
+    // accident, and the code already sent is still good. Without this the
+    // only way back to it was to retype the same address and spend a second
+    // of the five.
+    expect(email).toContain('label="Keep the address you had"');
+    expect(email).toContain('setChanging(false)');
+    expect(email).toContain('changing && address ?');
+  });
+});
+
+describe('the contact step does not burn a code per back-navigation', () => {
+  it('guards its send exactly as sendCode does', () => {
+    const signup = source('business-signup.tsx');
+    // saveContacts fired requestCode unconditionally. Continue, back one
+    // screen, Continue again is an ordinary thing to do while checking a
+    // phone number, and each pass spent one of the five daily sends AND
+    // invalidated the digits already in the owner's inbox. sendCode() thirty
+    // lines below carried the guard already.
+    expect(signup).toContain('if (!codeLive && !codeBounced) {');
+    // Both senders read the same two flags, so they cannot drift on what
+    // counts as a code already in flight.
+    expect((signup.match(/codeLive/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  });
+});

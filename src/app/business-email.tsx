@@ -218,86 +218,103 @@ export default function BusinessEmailScreen() {
       // only exit from a code that never arrives is to kill the app.
       onContinue={submit}
       footer={
-        changing ? (
-          <>
-            <FormTextField
-              label="Where should we send it?"
-              accessibilityLabel="Business email address"
-              autoFocus
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              textContentType="emailAddress"
-              placeholder="hello@yourbusiness.com"
-              value={draft}
-              onChangeText={setDraft}
-              // Gated the way the button beside it is. Two quick returns fired
-              // two sends and burned two of the five a business gets in a
-              // day, and the second one unmounted a still-focused field.
-              onSubmitEditing={() => {
-                if (!resend.isPending) {
-                  sendAgain(draft);
-                }
-              }}
-              returnKeyType="send"
-            />
-            <PrimaryButton
-              variant="ghost"
-              label="Send me a code"
-              accessibilityLabel="Send a code to this address"
-              disabled={!draft.includes('@')}
-              loading={resend.isPending}
-              onPress={() => sendAgain(draft)}
-            />
-          </>
-        ) : (
-          <>
-            {/* Only when we know where it went. Resending needs an address
-                and this screen has no honest way to guess one. */}
-            {address ? (
-              <PrimaryButton
-                // It leads once the last code has expired: an empty six-digit
-                // box under a ghost button is the wrong shape for a screen
-                // whose only next step is a new code.
-                variant={codeExpired && !bounced ? 'filled' : 'ghost'}
-                label="Send it again"
-                accessibilityLabel="Send the code again"
-                loading={resend.isPending}
-                onPress={() => sendAgain()}
+        <>
+          {changing ? (
+            <>
+              <FormTextField
+                label="Where should we send it?"
+                accessibilityLabel="Business email address"
+                autoFocus
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                textContentType="emailAddress"
+                placeholder="hello@yourbusiness.com"
+                value={draft}
+                onChangeText={setDraft}
+                // Gated the way the button beside it is. Two quick returns fired
+                // two sends and burned two of the five a business gets in a
+                // day, and the second one unmounted a still-focused field.
+                onSubmitEditing={() => {
+                  if (!resend.isPending) {
+                    sendAgain(draft);
+                  }
+                }}
+                returnKeyType="send"
               />
-            ) : null}
-            {/* Always. A typo at signup, a work address nobody reads, or a
+              <PrimaryButton
+                variant="ghost"
+                label="Send me a code"
+                accessibilityLabel="Send a code to this address"
+                disabled={!draft.includes('@')}
+                loading={resend.isPending}
+                onPress={() => sendAgain(draft)}
+              />
+            </>
+          ) : (
+            <>
+              {/* Only when we know where it went. Resending needs an address
+                and this screen has no honest way to guess one. */}
+              {address ? (
+                <PrimaryButton
+                  // It leads once the last code has expired: an empty six-digit
+                  // box under a ghost button is the wrong shape for a screen
+                  // whose only next step is a new code.
+                  variant={codeExpired && !bounced ? 'filled' : 'ghost'}
+                  label="Send it again"
+                  accessibilityLabel="Send the code again"
+                  loading={resend.isPending}
+                  onPress={() => sendAgain()}
+                />
+              ) : null}
+              {/* Always. A typo at signup, a work address nobody reads, or a
                 sending domain the provider will not carry, are the ways this
                 screen becomes a dead end, and typing a different address is
                 the only fix that does not need a person. It leads when we
                 already know the last one bounced. */}
-            <PrimaryButton
-              variant={bounced ? 'filled' : 'ghost'}
-              label={address ? 'Use a different address' : 'Send me a code'}
-              accessibilityLabel="Send the code to a different address"
-              onPress={() => {
-                setDraft(address ?? '');
-                setChanging(true);
-              }}
-            />
-            {sentAgain ? (
-              <ThemedText type="footnote" themeColor="textSecondary" style={styles.echo}>
-                Sent. Give it a minute to turn up.
-              </ThemedText>
-            ) : null}
-            {alreadyUsed ? (
-              <ThemedText type="footnote" themeColor="textSecondary" style={styles.echo}>
-                That code had already been used. You&apos;re on the map either way.
-              </ThemedText>
-            ) : null}
+              <PrimaryButton
+                variant={bounced ? 'filled' : 'ghost'}
+                label={address ? 'Use a different address' : 'Send me a code'}
+                accessibilityLabel="Send the code to a different address"
+                onPress={() => {
+                  setDraft(address ?? '');
+                  setChanging(true);
+                }}
+              />
+              {sentAgain ? (
+                <ThemedText type="footnote" themeColor="textSecondary" style={styles.echo}>
+                  Sent. Give it a minute to turn up.
+                </ThemedText>
+              ) : null}
+              {alreadyUsed ? (
+                <ThemedText type="footnote" themeColor="textSecondary" style={styles.echo}>
+                  That code had already been used. You&apos;re on the map either way.
+                </ThemedText>
+              ) : null}
+            </>
+          )}
+          {/* Both of these used to live inside the ELSE branch only, so
+              tapping "Use a different address" left a screen with one text
+              field and one send button on it and no way off at all - not back
+              to the code already in hand, and not out of signup. That is the
+              dead end the comment above this footer describes as the thing
+              this screen exists to remove; it had simply been moved one
+              branch over. */}
+          {changing && address ? (
             <PrimaryButton
               variant="ghost"
-              label="Finish this later"
-              accessibilityLabel="Finish this later"
-              onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+              label="Keep the address you had"
+              accessibilityLabel={`Keep sending to ${address}`}
+              onPress={() => setChanging(false)}
             />
-          </>
-        )
+          ) : null}
+          <PrimaryButton
+            variant="ghost"
+            label="Finish this later"
+            accessibilityLabel="Finish this later"
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+          />
+        </>
       }>
       <FormTextField
         label="Code"

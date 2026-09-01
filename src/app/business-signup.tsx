@@ -435,7 +435,20 @@ export default function BusinessSignupScreen() {
       // Continue path: a mail failure must not hold up the form, and the
       // footer on every step from here on, plus the code screen at the end,
       // both surface a bounce through useBusinessCodeStatus.
-      void requestCode.mutateAsync(email.trim()).catch(() => {});
+      //
+      // Guarded exactly as sendCode() is, and for the reason written there:
+      // a second code inside the first one's twenty minutes spends one of the
+      // five a business gets in a day AND invalidates the digits somebody may
+      // be holding in their other hand. This step is not a one-way door -
+      // Continue, back one screen, Continue again is an ordinary thing to do
+      // while checking a phone number - so an unguarded send here burned a
+      // daily allowance per back-navigation and silently killed the code
+      // already in the owner's inbox. A bounce is skipped from the same end:
+      // re-sending to an address that just bounced only bounces again, and
+      // the code screen leads with "Use a different address".
+      if (!codeLive && !codeBounced) {
+        void requestCode.mutateAsync(email.trim()).catch(() => {});
+      }
       go(8);
     } catch {
       setContactProblem('We could not save those just then. Try that again.');
