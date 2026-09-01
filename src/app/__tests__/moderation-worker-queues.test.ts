@@ -58,3 +58,107 @@ describe('every verdict door has a worker behind it', () => {
     expect(worker).toContain('note_business_post_photo_attempt');
   });
 });
+
+/**
+ * And every queue has to be reachable, which is a different thing from
+ * existing.
+ *
+ * The eight queues run in sequence inside one HTTP request and every item is
+ * a model call. Nothing bounded how long that took, so a slow queue starved
+ * every queue behind it — and starved them for ever, because past the
+ * platform's wall clock the isolate is killed mid-item, the `note_*_attempt`
+ * write never runs, `moderation_attempts` does not move, and the next tick
+ * starts again from the same first row. Held content then never moves while
+ * `functions deploy` succeeds, the deploy's probe answers 401, and this
+ * suite is green.
+ *
+ * Source-reading for the same reason as above: what is being checked is that
+ * a loop and a clock agree, and no runtime test of this repo runs the worker.
+ */
+describe('no queue can eat the tick', () => {
+  /** `for (const x of y ?? []) {` — one per queue, and nothing else matches. */
+  const QUEUE_LOOP = /for \(const \w+ of \w+ \?\? \[\]\) \{\n(\s*)(.*)\n/g;
+
+  it('finds all eight queue loops', () => {
+    expect([...worker.matchAll(QUEUE_LOOP)]).toHaveLength(8);
+  });
+
+  it('asks for time before every item, in every one of them', () => {
+    const unguarded = [...worker.matchAll(QUEUE_LOOP)]
+      .filter((m) => !m[2].startsWith('if (!hasTime'))
+      .map((m) => m[0].split('\n')[0]);
+    expect(unguarded).toEqual([]);
+  });
+
+  it('gives every queue a slice, and the slices fit inside the tick', () => {
+    const tick = Number(
+      /const TICK_BUDGET_MS = ([\d_]+);/.exec(worker)?.[1].replace(/_/g, '') ?? '0'
+    );
+    const block = /const QUEUE_BUDGET_MS = \{([^}]*)\}/s.exec(worker)?.[1] ?? '';
+    const slices = [...block.matchAll(/(\w+): ([\d_]+),/g)].map((m) => ({
+      queue: m[1],
+      ms: Number(m[2].replace(/_/g, '')),
+    }));
+
+    expect(tick).toBeGreaterThan(0);
+    expect(slices).toHaveLength(8);
+    expect(slices.filter((s) => s.ms <= 0)).toEqual([]);
+    // The invariant that makes "reached" true rather than likely: the worst a
+    // queue can do to the one behind it is spend its own slice. Raise the tick
+    // budget before adding a queue, never the sum past it.
+    expect(slices.reduce((total, s) => total + s.ms, 0)).toBeLessThanOrEqual(tick);
+  });
+
+  it('bounds a single request, because the SDK default is ten minutes', () => {
+    // A hung call is how the isolate gets killed mid-item, and an item killed
+    // that way is never even counted as attempted.
+    expect(worker).toMatch(/timeout: REQUEST_TIMEOUT_MS/);
+    expect(worker).toMatch(/maxRetries: REQUEST_RETRIES/);
+    const timeout = Number(
+      /const REQUEST_TIMEOUT_MS = ([\d_]+);/.exec(worker)?.[1].replace(/_/g, '') ?? '0'
+    );
+    expect(timeout).toBeGreaterThan(0);
+    expect(timeout).toBeLessThanOrEqual(120_000);
+  });
+});
+
+/**
+ * A Supabase function is bundled at DEPLOY time. A floating specifier
+ * therefore means a deploy that changes nothing in the repo can still change
+ * what production runs, and the first anybody hears of it is content that
+ * stops moving.
+ */
+describe('the edge functions pin what they import', () => {
+  const functions = path.join(REPO, 'supabase', 'functions');
+
+  function everyImport(): { file: string; specifier: string }[] {
+    const found: { file: string; specifier: string }[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+        } else if (entry.name.endsWith('.ts')) {
+          const src = fs.readFileSync(full, 'utf8');
+          for (const m of src.matchAll(/from '((?:npm|jsr):[^']+)'/g)) {
+            found.push({ file: path.relative(REPO, full), specifier: m[1] });
+          }
+        }
+      }
+    };
+    walk(functions);
+    return found;
+  }
+
+  it('finds the imports at all', () => {
+    expect(everyImport().length).toBeGreaterThan(4);
+  });
+
+  it('names an exact version on every npm specifier', () => {
+    // jsr: is deliberately excluded — see the note on the import itself.
+    const floating = everyImport()
+      .filter(({ specifier }) => specifier.startsWith('npm:'))
+      .filter(({ specifier }) => !/@\d+\.\d+\.\d+(\/|$)/.test(specifier));
+    expect(floating).toEqual([]);
+  });
+});

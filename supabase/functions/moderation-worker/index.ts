@@ -25,10 +25,24 @@
 //   * A model refusal (stop_reason 'refusal') means the content was extreme:
 //     treated as a block verdict.
 // deno-lint-ignore-file no-explicit-any
+//
+// The npm specifiers are pinned to exact versions. A Supabase function is
+// bundled at DEPLOY time, not at commit time, so a floating specifier means
+// the classifier's runtime is whatever npm published most recently — and a
+// deploy that changes nothing in this file can still change what it runs.
+// Every check would stay green through it: `functions deploy` succeeds, the
+// deploy's own probe still gets its 401, and the only symptom is held content
+// that never moves. Raise these deliberately, in a commit that says so.
+//
+// The jsr one keeps its major range: jsr.io is not reachable from where this
+// was written, so an exact version here would be a guess, and a guess that is
+// wrong fails the bundle for every function in the project. A major range on
+// a client this code uses for `.from`/`.rpc`/`createSignedUrl` is the smaller
+// exposure of the two.
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import Anthropic from 'npm:@anthropic-ai/sdk';
-import { z } from 'npm:zod';
-import { zodOutputFormat } from 'npm:@anthropic-ai/sdk/helpers/zod';
+import Anthropic from 'npm:@anthropic-ai/sdk@0.122.0';
+import { z } from 'npm:zod@4.5.4';
+import { zodOutputFormat } from 'npm:@anthropic-ai/sdk@0.122.0/helpers/zod';
 
 const MODEL = 'claude-opus-5';
 const MAX_ATTEMPTS = 10;
@@ -39,6 +53,58 @@ const CHAT_PHOTOS_PER_TICK = 8;
 const STOREFRONTS_PER_TICK = 3;
 const SCANS_PER_TICK = 3;
 const SIGNED_URL_TTL_SECONDS = 600;
+
+// THE TICK HAS A CLOCK, because before it had one a slow queue could starve
+// every queue behind it for ever.
+//
+// Eight queues run in sequence and each item is a model call. Nothing bounded
+// how long that took, so the arithmetic was: 8 chat photos + 10 held messages
+// + 15 photos + 3 selfies + 3 storefronts + 3 scans, several of them at
+// CAREFUL effort over an image. Past the platform's wall clock the isolate is
+// killed mid-item, and killed is worse than failed: the `note_*_attempt` call
+// that records the try never runs, so `moderation_attempts` does not move and
+// the MAX_ATTEMPTS failsafe never fires either. The queue behind the slow one
+// is then never reached, on this tick or any tick after it, and the outward
+// symptom is a first hello held for ever while `functions deploy` succeeds,
+// the deploy's probe answers 401, and every check in the repo is green.
+//
+// So: a budget for the tick, and a slice of it for each queue. A slice is
+// measured from the moment its queue starts and capped by the tick's own end,
+// which means time a fast queue does not spend is inherited by the ones
+// behind it, and no queue can ever eat the tick. Whatever is left over waits
+// for the next tick sixty seconds later, which is what a queue is for.
+//
+// 50s against a cron that fires every minute: a tick that overran the minute
+// would have the next one re-select the same rows and classify them twice.
+const TICK_BUDGET_MS = 50_000;
+const QUEUE_BUDGET_MS = {
+  chatPhotos: 9_000,
+  messages: 11_000,
+  photos: 6_000,
+  businessPhotos: 5_000,
+  postPhotos: 5_000,
+  verifications: 5_000,
+  storefronts: 5_000,
+  scans: 4_000,
+} as const;
+
+// The slices add up to the budget rather than overrunning it, and that is the
+// whole point: it means the worst a queue can do to the one behind it is
+// spend its own slice, so every queue is reached on every tick and starts at
+// least one item. Slices that summed to more than the budget would put the
+// starvation back, just further down the list. A test holds the sum.
+
+// One hung request must not be able to take the tick with it. The SDK's own
+// default is a TEN MINUTE timeout with two automatic retries — thirty minutes
+// of one item, against a platform wall clock the isolate does not survive.
+// And an isolate killed mid-item is strictly worse than a call that failed:
+// the `note_*_attempt` write never runs, so the item does not even count as
+// tried and MAX_ATTEMPTS never arrives.
+//
+// maxRetries is 0 on purpose. The queue IS the retry, sixty seconds later,
+// and going round that way records the attempt.
+const REQUEST_TIMEOUT_MS = 90_000;
+const REQUEST_RETRIES = 0;
 
 const MessageVerdict = z.object({
   action: z.enum(['allow', 'block']),
@@ -282,7 +348,11 @@ Deno.serve(async (req) => {
       { status: 503 }
     );
   }
-  const anthropic = new Anthropic({ apiKey: anthropicKey });
+  const anthropic = new Anthropic({
+    apiKey: anthropicKey,
+    timeout: REQUEST_TIMEOUT_MS,
+    maxRetries: REQUEST_RETRIES,
+  });
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -310,6 +380,28 @@ Deno.serve(async (req) => {
     return data.signedUrl;
   };
 
+  // A queue's permission to start one more item. Called once per queue, just
+  // before its loop, and asked before each item — never in the middle of one,
+  // so nothing is ever abandoned half classified. The first refusal writes a
+  // note, so a tick that ran out of time says so in its own report instead of
+  // looking identical to a tick with nothing to do.
+  const startedAt = Date.now();
+  const tickEndsAt = startedAt + TICK_BUDGET_MS;
+  const budgetFor = (queue: keyof typeof QUEUE_BUDGET_MS) => {
+    const endsAt = Math.min(Date.now() + QUEUE_BUDGET_MS[queue], tickEndsAt);
+    let noted = false;
+    return () => {
+      if (Date.now() < endsAt) {
+        return true;
+      }
+      if (!noted) {
+        noted = true;
+        report.notes.push(`${queue}: out of time this tick, the rest waits for the next one`);
+      }
+      return false;
+    };
+  };
+
   // The order of these six queues is the order somebody experiences them,
   // not the order they were written. A chat photo is the only one with a
   // person watching a placeholder in a live conversation, so it drains
@@ -328,7 +420,11 @@ Deno.serve(async (req) => {
     .order('created_at')
     .limit(CHAT_PHOTOS_PER_TICK);
 
+  const hasTimeChatPhotos = budgetFor('chatPhotos');
   for (const photo of chatPhotos ?? []) {
+    if (!hasTimeChatPhotos()) {
+      break;
+    }
     try {
       const url = await signedUrl('chat-photos', photo.image_path);
       const verdict = await classify(
@@ -387,7 +483,11 @@ Deno.serve(async (req) => {
     return Response.json({ error: heldError.message }, { status: 500 });
   }
 
+  const hasTimeMessages = budgetFor('messages');
   for (const request of held ?? []) {
+    if (!hasTimeMessages()) {
+      break;
+    }
     try {
       const verdict = await classify(
         anthropic,
@@ -472,7 +572,11 @@ Deno.serve(async (req) => {
     .order('created_at')
     .limit(PHOTOS_PER_TICK);
 
+  const hasTimePhotos = budgetFor('photos');
   for (const photo of photos ?? []) {
+    if (!hasTimePhotos()) {
+      break;
+    }
     try {
       const url = await signedUrl('profile-photos', photo.storage_path);
       const verdict = await classify(
@@ -565,7 +669,11 @@ Deno.serve(async (req) => {
     .order('created_at')
     .limit(PHOTOS_PER_TICK);
 
+  const hasTimeBusinessPhotos = budgetFor('businessPhotos');
   for (const photo of businessPhotos ?? []) {
+    if (!hasTimeBusinessPhotos()) {
+      break;
+    }
     try {
       const url = await signedUrl('business-photos', photo.storage_path);
       const verdict = await classify(
@@ -668,7 +776,11 @@ Deno.serve(async (req) => {
     .order('created_at')
     .limit(PHOTOS_PER_TICK);
 
+  const hasTimePostPhotos = budgetFor('postPhotos');
   for (const post of postPhotos ?? []) {
+    if (!hasTimePostPhotos()) {
+      break;
+    }
     try {
       const url = await signedUrl('business-photos', post.photo_path as string);
       const verdict = await classify(
@@ -772,7 +884,11 @@ Deno.serve(async (req) => {
     }
   };
 
+  const hasTimeVerifications = budgetFor('verifications');
   for (const verification of verifications ?? []) {
+    if (!hasTimeVerifications()) {
+      break;
+    }
     try {
       if ((verification.attempts ?? 0) >= MAX_ATTEMPTS) {
         await applyVerificationVerdict(verification.id, {
@@ -880,7 +996,11 @@ Deno.serve(async (req) => {
       }
     };
 
+    const hasTimeStorefronts = budgetFor('storefronts');
     for (const check of storefronts ?? []) {
+      if (!hasTimeStorefronts()) {
+        break;
+      }
       try {
         if ((check.attempts ?? 0) >= MAX_ATTEMPTS) {
           await applyStorefront(check.id, {
@@ -990,7 +1110,11 @@ Deno.serve(async (req) => {
       .order('created_at')
       .limit(SCANS_PER_TICK);
 
+    const hasTimeScans = budgetFor('scans');
     for (const scan of scans ?? []) {
+      if (!hasTimeScans()) {
+        break;
+      }
       try {
         if ((scan.attempts ?? 0) >= MAX_ATTEMPTS) {
           // Fail OPEN here, and only here. Everything else in this worker
