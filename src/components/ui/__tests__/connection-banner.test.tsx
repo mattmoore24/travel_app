@@ -1,4 +1,6 @@
 import { act, render, screen } from '@testing-library/react-native';
+import fs from 'node:fs';
+import path from 'node:path';
 import React from 'react';
 
 import { ConnectionBanner } from '@/components/ui/connection-banner';
@@ -113,5 +115,50 @@ describe('the connection banner', () => {
     await dropTheWifi();
     await finish(new Error('boom'));
     expect(screen.getByText('No connection')).toBeTruthy();
+  });
+});
+
+/**
+ * THE MOUNT, which is the half no render test can see.
+ *
+ * The component, its store and every test above it shipped in one commit
+ * with the banner mounted nowhere: `subscribeToConnection` had no caller, so
+ * the bar never drew and `announceForAccessibility` was unreachable in the
+ * built app. Four independent review lenses found it and nothing in the suite
+ * did, because a test that renders the component directly proves only that
+ * the component works.
+ *
+ * This is the third feature in two batches to ship with no entry point, so
+ * it is pinned by source rather than trusted.
+ */
+describe('the banner is actually in the app', () => {
+  const layout = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'app', '_layout.tsx'),
+    'utf8'
+  );
+
+  it('is mounted in the root layout', () => {
+    expect(layout).toContain('<ConnectionBanner />');
+    expect(layout).toContain("from '@/components/ui/connection-banner'");
+  });
+
+  it('is a sibling of the navigator, not a child of a screen', () => {
+    // Being offline outlives whatever screen somebody is on, and a banner
+    // inside (tabs) would vanish on every pushed screen.
+    const nav = layout.indexOf('<RootNavigator />');
+    const banner = layout.indexOf('<ConnectionBanner />');
+    const themeClose = layout.indexOf('</ThemeProvider>');
+    expect(nav).toBeGreaterThan(-1);
+    expect(banner).toBeGreaterThan(nav);
+    expect(banner).toBeLessThan(themeClose);
+  });
+
+  it('clears the top control row rather than covering it', () => {
+    // The map floats its city bar and avatar at insets.top + Spacing.two with
+    // a 44pt target. At insets.top + Space.xs the pill landed on both, and
+    // pointerEvents="none" left them tappable while invisible.
+    const banner = fs.readFileSync(path.join(__dirname, '..', 'connection-banner.tsx'), 'utf8');
+    expect(banner).toContain('insets.top + Spacing.two + HitTarget + Space.xs');
+    expect(banner).not.toContain('top: insets.top + Space.xs }');
   });
 });

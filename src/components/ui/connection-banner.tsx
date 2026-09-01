@@ -4,7 +4,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
-import { Elevation, Motion, Radius, Space } from '@/constants/theme';
+import { Elevation, HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { NO_CONNECTION } from '@/lib/failure-message';
 import { getConnectionStatus, subscribeToConnection } from '@/lib/query-client';
@@ -139,7 +139,17 @@ export function ConnectionBanner() {
   if (current === 'hidden') return null;
 
   return (
-    <View style={[styles.root, { top: insets.top + Space.xs }]} pointerEvents="none">
+    // BELOW the top control row, not on it. The map is the default screen and
+    // it floats its city bar and avatar at `insets.top + Spacing.two` with a
+    // 44pt hit target; an opaque pill at `insets.top + Space.xs` landed
+    // directly on both — and because this container is pointerEvents="none"
+    // they stayed TAPPABLE while being invisible, which is the worst version
+    // of that bug. Clearing the row derives the offset from the same two
+    // constants the map uses rather than hardcoding a number, and it lands
+    // just under a native navigation header on the pushed screens too.
+    <View
+      style={[styles.root, { top: insets.top + Spacing.two + HitTarget + Space.xs }]}
+      pointerEvents="none">
       <Animated.View
         entering={FadeIn.duration(Motion.quick)}
         // Amber for the fault and green for its repair, never danger: red is

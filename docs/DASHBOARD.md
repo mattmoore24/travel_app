@@ -338,12 +338,15 @@ written". Neither name may return: the vocabulary they came from is banned.
   entry points was used. Until it exists, read the funnel from `map_viewed`
   straight to `pin_compose_step` (`spot_named`) and accept that the
   discovery drop and the place-search drop are folded together.
-- `request_responded`'s `source` and `city_id` are wired through
-  `useRespondToRequest` but nothing can pass them: `incoming_requests()`
-  does not return either column, so both read null. Adding them means a
-  migration that drops and recreates that function (its OUT columns change)
-  and re-states its grants. The authoritative split is `admin_request_funnel`
-  either way; this is only for PostHog breakdowns.
+- `request_responded` carries only `accepted`, on purpose. It briefly took
+  `source` and `city_id` too, and nothing could pass them: `incoming_requests()`
+  returns neither column, so every event read null and the breakdown was one
+  "no value" bucket. Widening that function means a drop-and-recreate on a
+  live one, to feed an event that cannot use the answer anyway - `request_sent`
+  is fired by the SENDER and `request_responded` by the RECIPIENT, two
+  different distinct_ids, so no PostHog funnel can join them whatever the
+  properties say. The split lives in `admin_request_funnel`, in SQL, where
+  both sides of the hello are visible at once.
 - `account_type` is `business` only once `useOwnBusiness` has answered. It is
   set from the auth listener, which is mounted once at the root, so it
   applies app-wide with no per-screen wiring.

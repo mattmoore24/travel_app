@@ -267,20 +267,24 @@ export function useRespondToRequest() {
       requestId: string;
       accept: boolean;
       /**
-       * Where the hello came from, mirrored onto the event so accept rate
-       * can be read by source. Never sent to the server — the row already
-       * knows, this is only so PostHog can break the answer down.
+       * NO `source` OR `cityId` HERE, DELIBERATELY.
        *
-       * Nullable because the recipient genuinely may not know it yet:
-       * incoming_requests() does not return `source` today, so nothing can
-       * pass it until that function's OUT columns grow one (which needs a
-       * drop-and-recreate migration). Null reads as "not stated" rather than
-       * as a source, and the authoritative split lives in
-       * admin_request_funnel either way.
+       * They were added as optional params and no caller could ever pass
+       * them: incoming_requests() returns neither column, so every
+       * request_responded carried `source: null, city_id: null` and the
+       * breakdown they were added for was one "no value" bucket. An API that
+       * advertises a capability it does not have is worse than one that says
+       * nothing.
+       *
+       * Widening incoming_requests() would mean a drop-and-recreate on a live
+       * function to feed an event that cannot use the answer: request_sent is
+       * fired by the SENDER and request_responded by the RECIPIENT, two
+       * different distinct_ids, so no PostHog funnel can ever join them
+       * whatever the properties say. The authoritative split is
+       * admin_request_funnel (20260902150000), which answers by city, by
+       * source and by decided-versus-still-waiting, in SQL, where both sides
+       * of the hello are visible at once.
        */
-      source?: RequestSource | null;
-      /** The city the hello belongs to, same shape and same caveat as `source`. */
-      cityId?: number | null;
     }) => respondToRequest(input.requestId, input.accept),
     onSuccess: (result, input) => {
       // AND THIS IS NOT HALF A FUNNEL. request_sent is fired by the SENDER
@@ -289,11 +293,7 @@ export function useRespondToRequest() {
       // say. The accept rate comes from admin_request_funnel in SQL; these
       // properties exist only so the PostHog side can be broken down the
       // same way. docs/DASHBOARD.md insight 3 says the same thing at length.
-      analytics.capture('request_responded', {
-        accepted: result.accepted,
-        source: input.source ?? null,
-        city_id: input.cityId ?? null,
-      });
+      analytics.capture('request_responded', { accepted: result.accepted });
       queryClient.invalidateQueries({ queryKey: ['incoming-requests', userId] });
       if (result.accepted) {
         queryClient.invalidateQueries({ queryKey: ['chats', userId] });

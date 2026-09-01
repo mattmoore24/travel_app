@@ -11,6 +11,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { ConnectionBanner } from '@/components/ui/connection-banner';
 import { IntroTour } from '@/features/intro/intro-tour';
 import { useIntroState } from '@/features/intro/store';
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -628,6 +629,17 @@ export default function RootLayout() {
       <ThemeProvider value={NavigationTheme}>
         <AnimatedSplashOverlay />
         <RootNavigator />
+        {/* A sibling of the navigator, not a child of any screen: the phone
+            being offline is a fact about the room somebody walked into, and
+            it outlives whatever screen they happen to be on. It renders null
+            unless the query client has actually seen requests fail, so on a
+            working connection this costs one subscription and nothing else.
+
+            Mounted here because it was mounted NOWHERE: the component, its
+            store and its 117 lines of passing tests all shipped in the same
+            commit as a feature no person could ever see. Four review lenses
+            found it independently. */}
+        <ConnectionBanner />
       </ThemeProvider>
     </QueryClientProvider>
   );
