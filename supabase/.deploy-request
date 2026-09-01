@@ -276,3 +276,21 @@
              the SAME commit re-run passed in eleven seconds, so this is not a
              regression being fixed — it is the mechanism that produces exactly
              that symptom being removed.
+
+2026-09-01 — deploy BEFORE the OTA, and this one matters more than usual.
+             Four migrations: trips.approximate + traveler_trips (drop/recreate,
+             new OUT column); chat_meet_answers with meet_prompt_due /
+             answer_meet_prompt and the admin_meet_answers view;
+             my_report_status / my_support_messages; and featured_traveler
+             raised from one row to three, now with a block filter and with the
+             bio narrowed to the lead row.
+             The featured-photo Edge Function is rewritten in the same change
+             and MUST land with them: it now asks featured_traveler as the
+             CALLER rather than as the service role, which is the only reason
+             the new block filter applies to the photo call at all, and it
+             returns {user_id, url} pairs so a face can never be drawn under
+             somebody else's name. `db push` then `functions deploy` are two
+             steps of one job here, so they land together; the phone is the lag.
+             Publishing the OTA first would 400 every trip write until this
+             applies, exact trips included, because trips.approximate would not
+             exist yet.
