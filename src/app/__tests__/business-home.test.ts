@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { after, between } from '@/lib/__tests__/source';
+
 /**
  * A business owner's own two screens: the My business tab and the account
  * page behind the header avatar.
@@ -239,7 +241,7 @@ describe('the rules a business is shown', () => {
   });
 
   it("say the thing rule 8 says, in a business owner's words", () => {
-    const business = policies.slice(policies.indexOf('BUSINESS_ZERO_TOLERANCE'));
+    const business = after(policies, 'BUSINESS_ZERO_TOLERANCE');
     expect(business).toContain('Travelers write first');
     expect(business).toContain('cannot join a traveler plan or another business chat');
     // The traveler line that reads as banning what a business is here to do.
@@ -330,7 +332,7 @@ describe('the notification primer', () => {
       "export type PrimerReason = 'hello-sent' | 'pin-posted' | 'hello-received';"
     );
     expect(store.slice(0, store.indexOf('BusinessPrimerReason'))).not.toContain('listing-live');
-    const askBusiness = store.slice(store.indexOf('askBusiness: async'));
+    const askBusiness = after(store, 'askBusiness: async');
     expect(askBusiness.slice(0, 400)).toContain('set({ asking: reason });');
   });
 });
@@ -383,7 +385,7 @@ describe('My business is worth opening on a Tuesday', () => {
     // Conversations, never senders. The rating block's own comment records
     // the anti-retaliation control; a line naming a traveler one section
     // above it would undo that control from next door.
-    const section = code.slice(code.indexOf("How it's going"), code.indexOf('title="Your rating"'));
+    const section = between(code, "How it's going", 'title="Your rating"');
     expect(section).not.toMatch(/user_id|sender|other_user/);
   });
 
@@ -397,7 +399,7 @@ describe('My business is worth opening on a Tuesday', () => {
     // Scoped to this memo, not the file: the code-delivery countdown at the
     // top legitimately reads Date.now() inside an interval, which is a
     // different thing from reading it during render.
-    const memo = code.slice(code.indexOf('const chatsThisWeek'), code.indexOf('useEffect('));
+    const memo = between(code, 'const chatsThisWeek', 'useEffect(');
     expect(memo).not.toContain('Date.now()');
     // And it is hoisted above every early return: the tab has three of them
     // (error, pending, no business), and a hook below one of those is the

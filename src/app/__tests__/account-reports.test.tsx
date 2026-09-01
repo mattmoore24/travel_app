@@ -5,6 +5,7 @@ import path from 'node:path';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import MyReportsScreen from '@/app/my-reports';
+import { after, between } from '@/lib/__tests__/source';
 
 /**
  * What a reporter is allowed to learn, and the entry point that lets them.
@@ -225,7 +226,7 @@ describe('the way in', () => {
     // holds both accounts, BusinessAccount is the one declared first, and an
     // unscoped indexOf found ITS row - so deleting the traveler row outright
     // left this green under the name of the half it had stopped covering.
-    const spine = account.slice(account.indexOf('export default function ProfileScreen('));
+    const spine = after(account, 'export default function ProfileScreen(');
     const row = spine.indexOf('label="Your reports and messages"');
     expect(row).toBeGreaterThan(-1);
     expect(spine.slice(row, row + 400)).toContain("router.push('/my-reports')");
@@ -234,10 +235,7 @@ describe('the way in', () => {
   it('is on the business account page too', () => {
     // A business writes in about a listing that will not confirm and then
     // has nothing at all to look at, which is the same silence.
-    const branch = account.slice(
-      account.indexOf('function BusinessAccount('),
-      account.indexOf('function SettingsRow(')
-    );
+    const branch = between(account, 'function BusinessAccount(', 'function SettingsRow(');
     const row = branch.indexOf('label="Your reports and messages"');
     expect(row).toBeGreaterThan(-1);
     expect(branch.slice(row, row + 200)).toContain("router.push('/my-reports')");
@@ -254,9 +252,10 @@ describe('the way in', () => {
       '<Stack.Screen name="my-reports" options={{ presentation: \'modal\' }} />'
     );
     // And inside a guard, beside report: the queries are keyed on an account.
-    const guarded = layout.slice(
-      layout.indexOf('<Stack.Screen name="report" options'),
-      layout.indexOf('<Stack.Screen name="guest-name"')
+    const guarded = between(
+      layout,
+      '<Stack.Screen name="report" options',
+      '<Stack.Screen name="guest-name"'
     );
     expect(guarded).toContain('name="my-reports"');
     expect(guarded).toContain('</Stack.Protected>');

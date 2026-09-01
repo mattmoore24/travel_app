@@ -308,7 +308,17 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
         <SignUpGate
           reason="Join the chat here, or message the business"
           where="place-sheet"
-          compact
+          // Flat, like every other gate inside a sheet. This card IS a
+          // `<Sheet inline>` (PlaceSheet above), so the gate's GlassSurface
+          // was a second frame inside the sheet's own — and on the fallback
+          // branch, which is every device without Liquid Glass and every
+          // device with Reduce Transparency on, GlassSurface paints
+          // `theme.surface`, which is exactly what the sheet is already
+          // painted. So it drew nothing at all and cost a ring of padding.
+          // `compact` only ever selected between two GlassSurface styles, so
+          // it goes with the frame rather than staying behind as a prop with
+          // nothing on the other end.
+          flat
           onNavigate={leaveThen}
         />
       ) : viewerIsBusiness ? (

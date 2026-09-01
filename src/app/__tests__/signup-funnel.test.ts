@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { SIGNUP_TOTAL_STEPS, signupStepName } from '@/features/signup/steps';
+import { between } from '@/lib/__tests__/source';
 
 /**
  * Every signup step emits one funnel event, in one schema.
@@ -96,15 +97,12 @@ describe('every onboarding step leaves through the instrumented door', () => {
   it('saveAndGo no longer captures anything of its own', () => {
     // go() runs inside saveAndGo, so a second capture here emits twice for
     // every step that saves.
-    const saveAndGo = code.slice(
-      code.indexOf('const saveAndGo'),
-      code.indexOf('const signOutFooter')
-    );
+    const saveAndGo = between(code, 'const saveAndGo', 'const signOutFooter');
     expect(saveAndGo).not.toContain('analytics.capture');
   });
 
   it('go() emits only on a forward move, with the schema fields', () => {
-    const go = code.slice(code.indexOf('const go ='), code.indexOf('const saveAndGo'));
+    const go = between(code, 'const go =', 'const saveAndGo');
     expect(go).toContain('next > step');
     expect(go).toContain('step_index: step');
     expect(go).toContain('step_name: signupStepName(step)');

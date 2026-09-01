@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { between } from '@/lib/__tests__/source';
+
 /**
  * EVERY CAPABILITY IN THIS BATCH HAS A CALL SITE, and this is a source scan
  * because that is the only way to see the defect.
@@ -62,7 +64,7 @@ describe('the city rail', () => {
   it('promises only what the app can do', () => {
     // No notify-me worker exists, so the sheet must not say it will tell
     // anybody anything.
-    const sheet = map.slice(map.indexOf('We open cities where'), map.indexOf('Ask for it'));
+    const sheet = between(map, 'We open cities where', 'Ask for it');
     expect(sheet).not.toMatch(/we will (tell|let you know|email)/i);
   });
 });

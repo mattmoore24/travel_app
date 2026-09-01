@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { after, between } from '@/lib/__tests__/source';
+
 /**
  * Every composer announces a way out.
  *
@@ -44,7 +46,7 @@ describe.each([
   ['writing to a business', stripped('message-place.tsx')],
 ])('%s', (_which, code) => {
   it('passes onClose to StepScreen', () => {
-    const shell = code.slice(code.indexOf('<StepScreen'));
+    const shell = after(code, '<StepScreen');
     expect(shell).not.toBe('');
     expect(attribute(shell, 'onClose')).not.toBeNull();
   });
@@ -55,6 +57,6 @@ it('the say-hi close cancels the confirmation timer before leaving', () => {
   // popped the screen UNDERNEATH. The unmount effect clears it; the close
   // handler must too, because closing navigates before unmounting settles.
   const code = stripped('compose-request.tsx');
-  const leave = code.slice(code.indexOf('const leave'), code.indexOf('const requestClose'));
+  const leave = between(code, 'const leave', 'const requestClose');
   expect(leave).toContain('clearTimeout(backTimer.current)');
 });

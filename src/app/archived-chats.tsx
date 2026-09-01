@@ -93,10 +93,13 @@ export default function ArchivedChatsScreen() {
   return (
     <ThemedView style={styles.root}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        <ThemedText type="title">Archived</ThemedText>
-        {/* No visible "swipe" anywhere: the word is banned vocabulary, and
-            the inbox teaches the same gestures without it. Press-and-hold is
-            the named way; the slide is a habit people arrive with. */}
+        {/* No title drawn here: "Archived" is the native header's title now
+            (app/_layout.tsx). It used to be both, so the word appeared twice
+            and the header row above it carried nothing but a back button.
+
+            No visible "swipe" anywhere either: the word is banned vocabulary,
+            and the inbox teaches the same gestures without it. Press-and-hold
+            is the named way; the slide is a habit people arrive with. */}
         <ThemedText type="footnote" themeColor="textSecondary">
           Still readable. A new message brings one back to the top, or press and hold one to put it
           back yourself.

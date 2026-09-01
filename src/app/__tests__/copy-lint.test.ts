@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { after } from '@/lib/__tests__/source';
+
 /**
  * The database ships user-facing copy: push titles and bodies land on lock
  * screens, raised exceptions reach the user verbatim through the Alert in
@@ -224,7 +226,7 @@ describe('the App Store listing copy', () => {
     // lines certified nothing. The property that survives the fold is a
     // character prefix: whatever the device wraps at, the first ~120
     // characters are above More.
-    const description = section().slice(section().indexOf('A map of what other travelers'));
+    const description = after(section(), 'A map of what other travelers');
     const opening = description.slice(0, FOLD).toLowerCase();
     expect(opening).toContain('map');
     expect(opening).toContain('platonic');

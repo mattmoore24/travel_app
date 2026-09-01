@@ -9,6 +9,7 @@ import { useAuthStore } from '@/features/auth/store';
 import { useAccountType } from '@/features/guest/hooks';
 import { refreshPushToken } from '@/features/notifications/push';
 import { analytics } from '@/lib/analytics';
+import { writeDeviceLocale } from '@/lib/device-locale';
 import { queryClient } from '@/lib/query-client';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
@@ -146,6 +147,22 @@ export function useAuthListener() {
         // now happens in the primer, at the first moment there is an answer
         // worth waiting for.
         refreshPushToken();
+        // And the phone's own language, beside it, for the same reason it is
+        // here: this is the one place that fires once per sign-in and has a
+        // user id in hand. It is what lets the moderation worker answer a
+        // refused selfie or a refused storefront in a language the person
+        // reads (src/lib/device-locale.ts). Fire and forget - nothing on
+        // screen waits for it, and a failure costs an English sentence.
+        //
+        // It writes on every launch, unconditionally, and that is not an
+        // oversight: `profiles.locale` carries no select grant, so the client
+        // has nothing to compare against and cannot skip a redundant write.
+        // A once-per-launch write to profiles is a presence signal unless the
+        // database says otherwise, and 20260903020000 is where it says so -
+        // the updated_at trigger stamps only for columns somebody EDITED.
+        // Anything else added to this branch that writes a row a stranger can
+        // read needs the same question asked of it.
+        void writeDeviceLocale(session.user.id);
       }
       // Drop all cached server state on sign-out so the next account (or a
       // fresh sign-in) never sees the previous user's data or errored queries.

@@ -12,9 +12,12 @@
 #     these for real, delete its entry - the gate fails on stale entries.
 #
 # New migrations do not get entries here unless they reissue one of these
-# strings byte for byte (20260830030000 reissues apply_message_verdict and
-# 20260830110000 reissues send_message_request, raise literals included,
-# which is why they appear below).
+# strings byte for byte (20260830030000 reissues apply_message_verdict,
+# 20260830110000 reissues send_message_request, and 20260903010000 reissues
+# apply_business_verification_verdict to change one coalesce, raise literals
+# included, which is why they appear below). Those two are service-facing:
+# only the moderation worker can call that function, so the strings reach a
+# report note and never a person.
 20260816200000_trips_matching.sql:495
 20260816200000_trips_matching.sql:538
 20260816200000_trips_matching.sql:574
@@ -144,3 +147,5 @@
 # anything the deployed function did not already say.
 20260902210000_a_hello_can_be_taken_back.sql:241
 20260902210000_a_hello_can_be_taken_back.sql:250
+20260903010000_a_verdict_speaks_your_language.sql:105
+20260903010000_a_verdict_speaks_your_language.sql:108

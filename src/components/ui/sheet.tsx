@@ -291,7 +291,39 @@ export function Sheet({
 
   // Down only: dragging up would let a sheet leave its own bottom edge, and
   // the rubber-band there reads as a bug rather than as resistance.
+  //
+  // The detector wraps the whole CARD (below), not the 24pt grabber strip it
+  // used to. On iOS a grabber means "this thing is draggable", and a card you
+  // can only drag by 4pt of visible bar advertises a gesture that a reach for
+  // the title does not find. Two consequences follow, and both are handled
+  // here rather than at the call sites:
+  //
+  // `.activeOffsetY(10)` is the whole composition story. It is a DOWNWARD-only
+  // threshold — a positive offset sets the end of the dead zone and leaves the
+  // start unbounded, so an upward drag can never activate this at all, which
+  // is the down-only decision enforced at the gesture rather than only clamped
+  // in the handler. The 10pt dead zone is what keeps the pan off a tap: every
+  // button on the card is now under the detector, and without a threshold the
+  // pan would claim the touch before the Pressable settled.
+  //
+  // It is also what lets an inner list keep scrolling. A sheet's scroller is a
+  // UIScrollView nested INSIDE this view, its own pan recognises well before
+  // 10pt of travel, and RNGH's delegate refuses simultaneous recognition with
+  // a recogniser it has no declared relation to — so the scroller recognises
+  // first and prevents this one. A drag that starts in the venue list scrolls;
+  // a drag that starts on the header, where no scroller is under the finger,
+  // dismisses.
+  //
+  // Deliberately NOT `blocksExternalGesture(scroller)`: that reverses the
+  // relation and makes the scroller wait for this pan to fail, which is the
+  // unscrollable venue list the package's risk note names. And not
+  // `simultaneousWithExternalGesture` either, which would scroll the list and
+  // drag the sheet down at the same time. The scrollers that matter most here
+  // (place-sheet's venue stack, pin-form-sheet's form) live in `children` and
+  // have no ref this file could reach anyway, so the threshold is the only
+  // composition that covers all of them.
   const pull = Gesture.Pan()
+    .activeOffsetY(10)
     .onUpdate((event) => {
       drag.value = Math.max(0, event.translationY);
     })
@@ -349,26 +381,34 @@ export function Sheet({
         </Animated.View>
       ) : null}
 
-      <Animated.View
-        // Presentation is the iOS system-sheet spring (`Springs.sheet`:
-        // SwiftUI response .55 / damping .825 converted) applied to the
-        // transform above. Dismissal is quicker by convention, and it stays a
-        // layout animation safely — nothing grows on the way out.
-        exiting={SlideOutDown.duration(200)}
-        style={[
-          styles.sheet,
-          Elevation.sheet,
-          {
-            width: sheetWidth,
-            backgroundColor: theme.surface,
-            maxHeight: height - insets.top - Space.lg,
-          },
-          keyboardStyle,
-        ]}>
-        {/* The grabber is the drag target, and it is deliberately taller
-            than it looks: 4pt of visible bar inside a 24pt strip, because
-            the affordance was advertising a gesture that did not exist. */}
-        <GestureDetector gesture={pull}>
+      {/* The whole card is the drag target. It used to be the grabber alone,
+          which meant a pull on a card's own title did nothing — on three
+          surfaces that sit over the live map and are all reached for by the
+          header. See the gesture above for why a threshold, and not an
+          external-gesture relation, is what keeps an inner list scrolling. */}
+      <GestureDetector gesture={pull}>
+        <Animated.View
+          // Presentation is the iOS system-sheet spring (`Springs.sheet`:
+          // SwiftUI response .55 / damping .825 converted) applied to the
+          // transform above. Dismissal is quicker by convention, and it stays a
+          // layout animation safely — nothing grows on the way out.
+          exiting={SlideOutDown.duration(200)}
+          style={[
+            styles.sheet,
+            Elevation.sheet,
+            {
+              width: sheetWidth,
+              backgroundColor: theme.surface,
+              maxHeight: height - insets.top - Space.lg,
+            },
+            keyboardStyle,
+          ]}>
+          {/* Still a 24pt strip around 4pt of visible bar, and still the
+              VoiceOver path: "Dismiss" performed on the grabber is the only
+              way to close a sheet without a pointer, and a pull is not
+              something VoiceOver can perform. It is no longer the only place
+              the drag is accepted, but it is still where the drag is
+              ADVERTISED, so it keeps its hint. */}
           <View
             accessible
             testID="sheet-grabber"
@@ -379,25 +419,25 @@ export function Sheet({
             style={styles.grabberTarget}>
             <View style={[styles.grabber, { backgroundColor: theme.hairline }]} />
           </View>
-        </GestureDetector>
-        {scrolls ? (
-          <>
-            {/* Same recipe as pin-form-sheet's scroller: shrinks rather than
-                overflows, "always" so a tap on the next field is not eaten
-                while one has focus, and dragging dismisses the keyboard. */}
-            <ScrollView
-              style={styles.scroll}
-              contentContainerStyle={styles.scrollContent}
-              keyboardShouldPersistTaps="always"
-              keyboardDismissMode="interactive">
-              {children}
-            </ScrollView>
-            {footer}
-          </>
-        ) : (
-          children
-        )}
-      </Animated.View>
+          {scrolls ? (
+            <>
+              {/* Same recipe as pin-form-sheet's scroller: shrinks rather than
+                  overflows, "always" so a tap on the next field is not eaten
+                  while one has focus, and dragging dismisses the keyboard. */}
+              <ScrollView
+                style={styles.scroll}
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="always"
+                keyboardDismissMode="interactive">
+                {children}
+              </ScrollView>
+              {footer}
+            </>
+          ) : (
+            children
+          )}
+        </Animated.View>
+      </GestureDetector>
       {/* A sheet presented through a Modal is hosted in its OWN window, so
           the bar the screen underneath mounted cannot be reached from a field
           in here. Every sheet with a field needs one of its own. */}

@@ -62,6 +62,15 @@
           "locationWhenInUsePermission": false,
           "motionUsagePermission": "Samewhere does not track motion. Apple requires this notice because a software library the app is built with refers to the motion tools."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#8AA6F0",
+          "defaultChannel": "default",
+          "mode": "production"
+        }
       ]
     ],
     "locales": {

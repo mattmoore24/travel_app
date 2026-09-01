@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { openLine } from '@/features/business/vocabulary';
+import { after } from '@/lib/__tests__/source';
 
 /**
  * "Hours not set", rather than a section that quietly is not there.
@@ -50,7 +51,7 @@ describe('the listing page names the gap', () => {
     // An absent open line up beside the category is correct: the line is a
     // fact about today, and there is no fact. Saying it in both places would
     // make the missing hours louder than the business.
-    const meta = code.slice(code.indexOf('<View style={styles.metaRow}>'));
+    const meta = after(code, '<View style={styles.metaRow}>');
     expect(meta.slice(0, meta.indexOf('</View>'))).not.toContain('Hours not set');
   });
 
@@ -99,7 +100,7 @@ describe('the tapped-marker card says the same thing', () => {
     // whose own gap test is `hours.length === 0 && !note` - and moving a
     // disagreement is not the same as ending one.
     expect(code).toContain('place.hours_note');
-    const meta = code.slice(code.indexOf('CATEGORY_LABEL[place.category],'));
+    const meta = after(code, 'CATEGORY_LABEL[place.category],');
     const line = meta.slice(0, meta.indexOf(".join(' · ')"));
     expect(line).toContain('hours_note');
     // Trimmed: a note of three spaces is not hours.

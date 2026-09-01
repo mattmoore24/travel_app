@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 
 import { answerMeetPrompt } from '@/features/matching/api';
 import { MeetPrompt } from '@/features/chat/meet-prompt';
+import { after } from '@/lib/__tests__/source';
 
 /**
  * The meet question is a card a person can actually tap.
@@ -140,7 +141,7 @@ describe('the thread that shows it', () => {
     // business is not a business - so the comment above the line said "not
     // asked at all on a business thread" while the round trip was made on
     // every one of them.
-    const call = thread.slice(thread.indexOf('useMeetPromptDue('));
+    const call = after(thread, 'useMeetPromptDue(');
     expect(call.slice(0, call.indexOf(';') + 1)).toBe(
       "useMeetPromptDue(chat?.kind === 'direct' ? chat.chat_id : null);"
     );

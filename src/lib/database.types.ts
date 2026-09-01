@@ -51,7 +51,20 @@ export type ProfileUpdate = Partial<
     | 'gender'
     | 'onboarding_completed_at'
   >
->;
+> & {
+  /**
+   * The phone's own BCP 47 tag, written once per sign-in so a moderation
+   * verdict about somebody's face or livelihood can be written in a language
+   * they read.
+   *
+   * WRITE-ONLY, which is why it is here and not in ProfileRow: the migration
+   * grants update and deliberately not select, because profiles_select_visible
+   * would otherwise hand every traveler who can see you your phone's language
+   * along with your bio. Nothing in the app reads it back; the moderation
+   * worker reads it as the service role.
+   */
+  locale?: string | null;
+};
 
 export type ProfilePhotoRow = {
   id: string;
@@ -1115,6 +1128,18 @@ export type Database = {
         Row: { user_id: string; trip_clocks: boolean; created_at: string };
         Insert: { user_id: string; trip_clocks?: boolean };
         Update: { trip_clocks?: boolean };
+        Relationships: [];
+      };
+      /**
+       * Words a traveler would rather not see, which fold a first message
+       * behind a tap on their own screen and do nothing else. RLS scopes every
+       * verb to auth.uid(), so there is no row here anybody but the owner can
+       * read or write, and no server path consults the table at all.
+       */
+      user_muted_words: {
+        Row: { user_id: string; word: string; created_at: string };
+        Insert: { user_id: string; word: string };
+        Update: never;
         Relationships: [];
       };
       profile_prompts: {

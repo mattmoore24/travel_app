@@ -405,7 +405,7 @@ function TimeField({
 /**
  * The weekday chips.
  *
- * Deliberately not ChipRow, which labels each chip for VoiceOver with its own
+ * Deliberately not ChipRail, which labels each chip for VoiceOver with its own
  * visible text: two rule lines would then both announce seven chips called
  * "Mon", "Tue"..., and a screen reader would have no way to tell which set of
  * hours it was about to change.

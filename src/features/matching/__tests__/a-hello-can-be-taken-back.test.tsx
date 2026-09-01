@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { withdrawMessageRequest } from '@/features/matching/api';
 import { useWithdrawHello } from '@/features/matching/hooks';
 import { SentRequestCard } from '@/features/matching/sent-request-card';
+import { between } from '@/lib/__tests__/source';
 import { analytics } from '@/lib/analytics';
 
 /**
@@ -144,9 +145,10 @@ describe('and somebody can reach it', () => {
     // may never imply anything about the person they were aimed at. Scoped to
     // the two pieces that draw it, with comments gone, so the check is about
     // words somebody reads rather than words somebody wrote about the code.
-    const strip = travelers.slice(
-      travelers.indexOf('function SaidHiStrip('),
-      travelers.indexOf('export default function TravelersScreen(')
+    const strip = between(
+      travelers,
+      'function SaidHiStrip(',
+      'export default function TravelersScreen('
     );
     const withoutComments = (code: string) =>
       code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');

@@ -25,6 +25,9 @@ jest.mock('react-native-gesture-handler', () => {
       'enabled',
       'numberOfTaps',
       'maxDuration',
+      // This file renders a Sheet too, and the sheet's pull now declares a
+      // downward dead zone so the card-wide drag target cannot steal a tap.
+      'activeOffsetY',
     ]) {
       chain[key] = () => chain;
     }

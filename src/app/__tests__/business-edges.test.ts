@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { after, between } from '@/lib/__tests__/source';
+
 /**
  * The edges of the business account: an invite link, the post form, and the
  * signup steps that build the listing.
@@ -111,7 +113,7 @@ describe('the listing steps read as a business', () => {
     // Three steps in a row promised a step and delivered a 1,430-line
     // settings form scroll-positioned at a heading. This is the one that did
     // not have to: it is a single text field, so it is one here.
-    const step = code.slice(code.indexOf('if (step === 9) {'));
+    const step = after(code, 'if (step === 9) {');
     const body = step.slice(0, step.indexOf('if (step === 10) {'));
     // No handoff at all: nothing on this step pushes anywhere.
     expect(body).not.toContain('router.');
@@ -144,7 +146,7 @@ describe('the listing steps read as a business', () => {
     expect(code).toContain('function ExampleBlock(');
     expect(code).toContain('<ExampleBlock what="One line of hours looks like this">');
     expect(code).toContain('<ExampleBlock what="Two links look like this">');
-    const block = code.slice(code.indexOf('function ExampleBlock('));
+    const block = after(code, 'function ExampleBlock(');
     expect(block.slice(0, block.indexOf('\n/**'))).toContain('accessibilityLabel={what}');
     // And only while the step is empty, or it would sit under the real thing
     // as a second, greyed copy of it.
@@ -200,7 +202,7 @@ describe('the listing steps read as a business', () => {
     // NEVER a push to /business-email from inside the footer: that screen
     // ends with router.replace('/(tabs)'), which would drop a mid-signup
     // owner out of the flow with an unfinished listing behind them.
-    const footer = code.slice(code.indexOf('function ConfirmEmailFooter('));
+    const footer = after(code, 'function ConfirmEmailFooter(');
     const footerBody = footer.slice(0, footer.indexOf('\nfunction CategoryGrid'));
     expect(footerBody).not.toContain('router.');
     // The resend is capped on the run-out timer. A business gets five codes a
@@ -283,15 +285,15 @@ describe('a named section gets that section, not the whole settings form', () =>
     // 'Finding the door' and 'Anything the hours miss' are not in the spec's
     // list of what details and location render, and with a gate in front of
     // them an unassigned field is a field no caller can ever open.
-    const location = code.slice(code.indexOf("{shows('location') ? ("));
+    const location = after(code, "{shows('location') ? (");
     expect(location.slice(0, location.indexOf("{shows('hours') ? ("))).toContain(
       'label="Finding the door"'
     );
-    const hours = code.slice(code.indexOf("{shows('hours') ? ("));
+    const hours = after(code, "{shows('hours') ? (");
     expect(hours.slice(0, hours.indexOf("{shows('links') ? ("))).toContain(
       'label="Anything the hours miss"'
     );
-    const details = code.slice(code.indexOf("{shows('details') ? ("));
+    const details = after(code, "{shows('details') ? (");
     expect(details.slice(0, details.indexOf("{shows('location') ? ("))).toContain(
       'label="Website"'
     );
@@ -408,7 +410,7 @@ describe('the review step says the true thing about the code', () => {
 
   it('has a branch for every state the owner can be in', () => {
     const code = src(SIGNUP);
-    const block = code.slice(code.indexOf('const reviewAction ='), code.indexOf('const sendCode'));
+    const block = between(code, 'const reviewAction =', 'const sendCode');
     // Listed, bounced, live, run out, never sent. A bounce leads with the
     // fix, because re-sending to an address that just bounced bounces again.
     expect(block).toContain("label: 'You are on the map'");
@@ -440,7 +442,7 @@ describe('the contact step guard is scoped to the address', () => {
     // day) left an address looking covered by a code nobody received, and
     // the next pass would skip it too.
     expect(code).toContain('.then(() => setSentTo(target))');
-    const block = code.slice(code.indexOf('const target = email.trim()'));
+    const block = after(code, 'const target = email.trim()');
     expect(block.slice(0, block.indexOf('go(8)'))).not.toContain('setSentTo(target);');
   });
 

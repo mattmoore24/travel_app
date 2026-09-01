@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
-import { ChipRow } from '@/components/form/chip-row';
+import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -116,10 +116,11 @@ export default function EditPromptScreen() {
         ) : null
       }>
       <ThemedText type="smallBold">Question</ThemedText>
-      <ChipRow
+      <ChipRail
+        wrap
         options={options}
-        selected={[promptKey]}
-        onToggle={(value) => {
+        selected={promptKey}
+        onSelect={(value) => {
           setPromptKey(value);
           // The placeholder changes with the question, so an answer typed
           // against the old one would read as an answer to the new one.

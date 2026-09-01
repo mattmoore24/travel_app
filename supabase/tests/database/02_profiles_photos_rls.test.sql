@@ -1,7 +1,7 @@
 -- Profiles: owner-only writes, server-owned verification state, shadowban
 -- visibility. Photos: moderation stub + audit trail, 7-photo cap, owner gating.
 begin;
-select plan(17);
+select plan(22);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -172,6 +172,47 @@ select is(
    where user_id = '00000000-0000-0000-0000-00000000000a'),
   1,
   'shadowbanned user still sees own profile'
+);
+
+-- The phone's language: writable for yourself, and readable by nobody.
+--
+-- profiles.locale exists so a moderation verdict about somebody's own face
+-- can be written in a language they read. It is not profile content, so it
+-- carries an UPDATE grant and no SELECT grant at all: profiles_select_visible
+-- would otherwise hand every traveler who can see you your phone's language
+-- along with your bio.
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select lives_ok(
+  $$ update public.profiles set locale = 'th-TH'
+     where user_id = '00000000-0000-0000-0000-00000000000a' $$,
+  'a traveler can write their own phone language'
+);
+select throws_ok(
+  $$ select locale from public.profiles
+     where user_id = '00000000-0000-0000-0000-00000000000a' $$,
+  '42501',
+  null,
+  'and cannot read the column back - not even their own'
+);
+-- RLS filters an update rather than raising, so writing somebody else's
+-- locale looks like it worked. What it must not do is change anything.
+select lives_ok(
+  $$ update public.profiles set locale = 'th-TH'
+     where user_id = '00000000-0000-0000-0000-00000000000b' $$,
+  'writing another traveler''s locale appears to succeed'
+);
+reset role;
+select is(
+  (select locale from public.profiles
+    where user_id = '00000000-0000-0000-0000-00000000000b'),
+  null::text,
+  'and leaves it exactly as it was'
+);
+select is(
+  (select locale from public.profiles
+    where user_id = '00000000-0000-0000-0000-00000000000a'),
+  'th-TH',
+  'while their own landed'
 );
 
 select * from finish();

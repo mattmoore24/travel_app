@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 
 import { answerMeetPrompt, fetchMeetPromptDue } from '@/features/matching/api';
 import { useAnswerMeetPrompt, useMeetPromptDue } from '@/features/matching/hooks';
+import { after } from '@/lib/__tests__/source';
 import { analytics } from '@/lib/analytics';
 
 /**
@@ -147,7 +148,7 @@ describe('the shape that keeps an answer private', () => {
     // without ever naming it - and every behavioural test would still pass.
     // Both reads of the answers table inside the due check are pinned to the
     // caller.
-    const dueFn = code.slice(code.indexOf('function public.meet_prompt_due'));
+    const dueFn = after(code, 'function public.meet_prompt_due');
     const body = dueFn.slice(0, dueFn.indexOf('revoke execute'));
     expect(body).toContain('where a.chat_id = c.id and a.user_id = auth.uid()');
     expect(body.match(/chat_meet_answers/g)).toHaveLength(1);

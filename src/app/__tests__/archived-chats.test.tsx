@@ -1,4 +1,6 @@
 import { render, screen } from '@testing-library/react-native';
+import fs from 'node:fs';
+import path from 'node:path';
 
 import ArchivedChatsScreen from '@/app/archived-chats';
 import { ChatRowSkeleton } from '@/components/ui/skeleton';
@@ -92,6 +94,21 @@ beforeEach(() => {
   mockQuery.isError = false;
   mockQuery.isSuccess = false;
   mockQuery.error = null;
+});
+
+describe('the header', () => {
+  it('names the screen once, in the header row that was carrying only a chevron', () => {
+    // The route set `headerTitle: ''`, so iOS drew a lone glass back button
+    // on a row of its own and the screen wrote "Archived" again underneath
+    // it. Both halves are pinned: the title has to be ON the route, and the
+    // body must not draw it a second time.
+    mockQuery.isSuccess = true;
+    mockQuery.data = [];
+    render(<ArchivedChatsScreen />);
+    expect(screen.queryByText('Archived')).toBeNull();
+    const layout = fs.readFileSync(path.join(__dirname, '..', '_layout.tsx'), 'utf8');
+    expect(layout).toMatch(/name="archived-chats"[\s\S]{0,120}headerTitle: 'Archived'/);
+  });
 });
 
 describe('the archive while loading', () => {

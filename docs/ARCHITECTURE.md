@@ -1066,21 +1066,37 @@ was "whatever each formatter's author felt like":
   of the app today.
 
 `src/lib/locale.ts` is where the phone is asked, and the only place it should be:
-`DEVICE_LOCALE`, `DEVICE_LANGUAGE`, `USES_24_HOUR_CLOCK`, `FIRST_WEEKDAY` and
-`DEVICE_TIME_ZONE`, read once at module load from `expo-localization` and frozen for the
-process. Anything that formats a date or a time is to take its locale from there rather
-than naming one.
+`DEVICE_LOCALE`, `DEVICE_LOCALE_TAG`, `DEVICE_LANGUAGE`, `USES_24_HOUR_CLOCK`,
+`FIRST_WEEKDAY` and `DEVICE_TIME_ZONE`, read once at module load from `expo-localization`
+and frozen for the process. Anything that formats a date or a time is to take its locale
+from there rather than naming one.
 
-**What is actually migrated: nothing yet.** The helper has no production call sites. Eleven
-display formatters still name `'en'` — `app/place/[id].tsx:50`,
-`app/(tabs)/my-business.tsx:49`, `features/pins/map-filter-sheet.tsx:121`,
-`features/pins/pin-helpers.ts:66` and `:292`, `features/trips/dates.ts:29` and `:30`,
-`features/chat/separators.ts:6`, `:7`, `:50` and `:55` — and each is a screen a traveler
-reads. A twelfth, `features/pins/pin-helpers.ts:312`, names `'en-US'` on purpose and must
-keep it: `cityClockNow` reads the parts back by name to build a Date, so it is machine
-parsing rather than display, and a locale-dependent format there would be a bug. Moving the
-eleven is its own package; until it lands, this section is a decision and a debt, not a
-description.
+**"Should be" is now enforced**, by `src/lib/__tests__/one-clock.test.ts` ("the phone is
+asked from exactly one place"): any file under `src/` other than `lib/locale.ts` that
+imports `expo-localization` fails the test. It was added the day after
+`src/lib/device-locale.ts` became a second caller, carrying a near-verbatim copy of
+lib/locale's own widening rationale, with neither this section nor that file's own "this
+file is the one call site" comment updated. Nothing stops a file from READING the phone's
+language — the rule is only that it asks lib/locale for it rather than the device.
+
+`DEVICE_LOCALE_TAG` is that same answer with no fallback, and the split is deliberate. A
+formatter must have some locale, so `DEVICE_LOCALE` guesses `'en-US'` when the phone says
+nothing and nobody is harmed. The tag written to `profiles.locale` — which decides what
+language a moderation verdict about somebody's face or somebody's livelihood comes back in
+— must not guess: null there means English silently, and a guessed language is a rejection
+written in a language the reader may not have. `src/lib/device-locale.ts` is that write,
+and after 2026-09-03 it holds only the write, its once-per-launch guard and the column's
+16-character ceiling.
+
+**What is actually migrated is tracked in the test, not here.** `clocks()` and `dates()`
+have production call sites now — chat separators and business hours both take their clock
+from `lib/locale`, which is what closed the two-clock bug. The files that still name a
+locale of their own live in `ADOPTION_OUTSTANDING` in `src/lib/__tests__/one-clock.test.ts`,
+a debt a file may leave and nothing may join. That list is the live one; a list written out
+here would go stale, and the one that used to be here did. `cityClockNow`
+(`features/pins/pin-helpers.ts`) names `'en-US'` on purpose and must keep it: it reads the
+formatted parts back by name to build a Date, so it is machine parsing rather than display,
+and the guard exempts `.formatToParts` for exactly that reason.
 
 **Expiry condition.** Revisit the English-only strings decision when a non-English launch
 city is added, or when a launch market's retention lags the others by enough to suspect the
@@ -1194,6 +1210,142 @@ this function, so a tie meant the two calls returned different PEOPLE (`f.user_i
 makes the order total, and discloses nothing the client does not already receive); and the
 photos are keyed by user_id rather than by list position, which is what keeps a face off
 the wrong name when the two calls disagree anyway.
+
+### `profiles.updated_at` stamps only for an edit (20260903020000)
+
+The second presence leak through the same column in two days, and the fix is a different
+SHAPE rather than one more exception.
+
+`profiles` carries a BEFORE UPDATE trigger that stamps `updated_at = now()`, and
+`updated_at` is in the client select grant behind `profiles_select_visible`, whose only
+predicate is that the account is active. So any write the app makes for its own bookkeeping
+publishes `select user_id, display_name, updated_at from profiles order by updated_at desc`
+— every active traveler ranked by when they last opened the app, which is the presence
+signal §7 rule 2 bans. 20260902220000 closed that for `touch_last_seen()` with a WHEN clause
+naming `last_seen_on`. 20260903010000 then added `profiles.locale`, written once per launch
+from `use-auth-listener`, and the leak was back — at launch granularity rather than the
+daily one, because the locale write has no once-a-day guard.
+
+**The client cannot fix it.** `locale` is deliberately not in any select grant, so the app
+cannot read the value back to skip a redundant write.
+
+**And extending the deny-list would not have fixed it either** — measured, not reasoned.
+`and new.locale is not distinct from old.locale` reads a same-value rewrite as "locale did
+not change", so the WHEN passes and the row is stamped exactly as before; it would have
+suppressed only the rare launch after somebody changed their phone's language. So the clause
+is inverted: it names the columns that ARE an edit (the profile's own content, the
+verification state, the two audience settings) and stamps only when one of those changed.
+A column added tomorrow is not on that list, so by default it stamps nothing and publishes
+nothing. Forgetting now costs a stale timestamp nothing in the app reads; forgetting before
+cost a presence feed.
+
+`supabase/tests/database/64_only_an_edit_earns_a_stamp.test.sql` asserts the attack, the
+counter-case (a real edit still stamps, including one that travels in the same statement as
+a locale write), and a classification of **every** column on the table: each one either
+appears in the trigger's list or on the bookkeeping list in that file, so a nineteenth
+column fails a test until somebody decides which it is. It also documents the trap that made
+its predecessor useless: `now()` is the transaction timestamp and a pgTAP file is one
+transaction, so comparing a stamp against one captured a few statements earlier compares
+`now()` with `now()`. `59_bookkeeping_is_not_presence` did that and passed with its own guard
+deleted; both files now park `updated_at` in 2020 with the trigger disabled and ask whether
+it moved.
+
+**The end state, for whoever meets this a third time:** `revoke select (updated_at) on
+public.profiles from authenticated`. The trigger only has to be careful because the column is
+bulk-readable, and no screen reads its value. It cannot be done in one migration —
+`PROFILE_COLUMNS` names `updated_at` in every profile query the installed builds make, and
+Postgres refuses a select naming a column the role cannot read, so every profile screen on
+every phone in the wild would answer `permission denied` the moment it deployed. The order
+is: drop it from `PROFILE_COLUMNS`, ship that, let it reach the builds, then revoke.
+
+**And this section asked its question of one of the four triggers on the table.** The next
+one down had the same shape and a worse consequence — see 20260903030000 below, which also
+carries the inventory so a third does not have to be found the same way.
+
+### A trigger on `profiles` does nothing persistent until an edit moved (20260903030000)
+
+The same launch write, the **other** trigger on the same table, and this one is not a leak —
+it locks somebody out of their own profile.
+
+`profiles` carries four triggers and 20260903020000 asked its question of one of them.
+`profiles_screen_text` (20260817150000:210) is attached with no `when` clause, and the first
+two statements of `screen_profile_text()` ran on **every** update of the row, before it had
+looked at whether any text changed: it raised `daily profile update limit reached` once
+thirty `(entity_type='profile', action='updated')` `moderation_events` rows existed for the
+account in 24 hours, and then filed one more of exactly those rows.
+
+So the once-per-launch `locale` write and the once-a-day `touch_last_seen()` each spent a
+unit of a safety rate limit and filed a dated audit row. **After thirty cold starts in a day
+the account could not update its own profile at all** — the cap is counted before the insert
+and raises for the whole statement, so `updateOwnProfile`, the `onboarding_completed_at`
+write that is the single fact making somebody discoverable, `set_visibility()`,
+`set_group_adds()`, `set_listing_intent()`, the display-name mirror on a business rename and
+`apply_verification_verdict` all raised. Thirty launches is a bad travel day on a flaky
+connection.
+
+**Is the audit row itself a leak? No, and it was established rather than assumed.**
+`moderation_events` has RLS on with no client policy, is revoked from `anon` and from
+`authenticated` (20260816190000:252, :336, :374) and appears in no view or callable function,
+so the per-launch record was server-side only — not the bulk-readable presence feed
+20260903020000 closed, and not a §7 rule 2 breach. It was still a behavioural record the
+product never decided to keep, in the table whose purpose is moderation decisions. Both
+halves went.
+
+**The fix is inside the function, not a WHEN clause on the trigger, and the asymmetry with
+its sibling is deliberate.** `set_updated_at()` has no opinion of its own, so the WHEN clause
+_is_ the whole logic and there is nowhere else for it to live. `screen_profile_text()`
+already contains the exact condition — it is the condition that decides what gets screened —
+and a copy of it on the trigger would make two lists of screened columns that must agree.
+They would drift in the dangerous direction: adding `occupation` to the text this function
+screens means adding it to the `if` in the body, and the WHEN clause upstairs would then
+silently stop the screen running for an occupation-only edit. That is a moderation control
+failing **open**. One condition now guards all three things: screen the text, count the edit,
+file the row.
+
+The cap's meaning gets narrower and truer. Its author wrote it as text velocity
+(20260817150000:171) and `screen_profile_text` is the only writer of the rows it counts; it
+was never a general profile-write throttle, it was a text-edit throttle that happened to be
+counting launches.
+
+**Every trigger on `profiles`, because the third must not cost another round.** Two columns
+and then a second trigger each had to be discovered separately by somebody re-asking the same
+question, so the answers are written down and
+`supabase/tests/database/65_only_an_edit_spends_the_cap.test.sql` asserts the list — a fifth
+trigger fails a test until whoever adds it has classified it, the same job assertion 9 and 10
+of `64_only_an_edit_earns_a_stamp` do for a new column.
+
+- **`profiles_updated_at`** (BEFORE UPDATE, WHEN edited-columns) — nothing, since 20260903020000.
+- **`profiles_screen_text`** (BEFORE UPDATE, no WHEN) — nothing, since 20260903030000. Was a
+  unit of the cap and a dated audit row.
+- **`profiles_reset_visibility`** (BEFORE UPDATE **OF** `verified`) — nothing, twice over.
+  `update of` fires only for a statement that names that column, and `verified` is not in the
+  client update grant, so no client statement can name it. The body then no-ops unless the
+  badge actually went away, and its only effect is on the row's own `visible_to`.
+- **`profiles_guest_minimal`** (BEFORE UPDATE, no WHEN) — nothing, but for a weaker reason
+  worth knowing. It does run in full on every update, and it is harmless only because it is a
+  pure assertion: no row, no stamp, no counter, and it reads only NEW, which for a
+  bookkeeping write is unchanged from OLD. Give it a counter, a stamp or an insert and it
+  becomes 20260903030000 again.
+
+**The rule the next person needs, in one line:** a BEFORE UPDATE trigger on `profiles` must
+either be scoped to the columns it cares about, or do nothing persistent until it has
+established that one of them changed.
+
+### `user_muted_words` takes adds and removals, not edits (20260903000000)
+
+The table was granted all four verbs behind one `for all` policy while
+`src/lib/database.types.ts` declared its `Update` as `never` and the client only ever
+inserted and deleted — three sources of truth, two of them disagreeing, on a safety table.
+Resolved toward least privilege: `update` is **revoked by name** (Supabase's default
+privileges had already handed it to `authenticated`, so merely omitting it from the grant
+list would have taken nothing back), and the `for all` policy is split into select/insert/
+delete so the catalog says the same thing as the grant.
+
+The split alone would not have been enough, and the measurement is the point: with no UPDATE
+policy on the table, RLS does not refuse an update — it matches no rows, so the statement
+reports success and changes nothing. `63_words_i_would_rather_not_see` asserts the refusal
+from both a stranger and the owner, plus the privilege set itself, because a silent zero-row
+update is not a refusal anybody can see.
 
 ## Technical flags (raised to founder, non-blocking)
 

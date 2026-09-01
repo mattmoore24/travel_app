@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Keyboard, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 
-import { ChipRow } from '@/components/form/chip-row';
+import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { StepScreen } from '@/components/form/step-screen';
@@ -311,10 +311,11 @@ export default function ComposeRequestScreen() {
         ) : pickingElement ? (
           <>
             <ThemedText type="smallBold">What are you saying hi about?</ThemedText>
-            <ChipRow
+            <ChipRail
+              wrap
               options={ELEMENT_OPTIONS}
-              selected={[element]}
-              onToggle={(value) => setElement(value)}
+              selected={element}
+              onSelect={(value) => setElement(value)}
             />
           </>
         ) : (

@@ -90,7 +90,17 @@ jest.mock('react-native-gesture-handler', () => {
 
   const builder = () => {
     const chain = {};
-    for (const key of ['onUpdate', 'onEnd', 'onBegin', 'onStart', 'onFinalize', 'enabled']) {
+    for (const key of [
+      'onUpdate',
+      'onEnd',
+      'onBegin',
+      'onStart',
+      'onFinalize',
+      'enabled',
+      // The sheet's pull needs a 10pt downward dead zone now that the drag
+      // target is the whole card rather than the grabber.
+      'activeOffsetY',
+    ]) {
       chain[key] = () => chain;
     }
     return chain;

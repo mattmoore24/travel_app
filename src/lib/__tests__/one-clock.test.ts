@@ -190,6 +190,50 @@ describe('the app prints a day from exactly one place too', () => {
 });
 
 /**
+ * ONE place asks the phone, which is the same defect one layer under the two
+ * above.
+ *
+ * The clock and the date engine both went wrong because more than one file
+ * answered the same question. The QUESTION under both of them is "what is
+ * this phone set to", and lib/locale is the one file that asks it - stated in
+ * that file, stated again in docs/ARCHITECTURE.md D5, and enforced by nothing
+ * until now. A day after D5 was written, src/lib/device-locale.ts called
+ * `getLocales()` a second time, with a near-verbatim copy of lib/locale's own
+ * widening rationale, and neither document was updated. It was caught in
+ * review; the third one should not have to be.
+ *
+ * Note what this does NOT say: nothing here stops a file from reading the
+ * phone's language, it stops a file from asking the PHONE for it. Import
+ * `DEVICE_LOCALE`, `DEVICE_LOCALE_TAG` or any of the rest from lib/locale as
+ * often as is useful - one answer, however many readers.
+ */
+describe('the phone is asked from exactly one place', () => {
+  const files = sourceFiles(SRC).filter((f) => !f.endsWith(path.join('lib', 'locale.ts')));
+
+  it('has no second caller of expo-localization', () => {
+    const offenders = files
+      .filter((f) =>
+        /(?:from|require\()\s*['"]expo-localization['"]/.test(fs.readFileSync(f, 'utf8'))
+      )
+      .map((f) => path.relative(REPO, f))
+      .sort();
+    // The fix is always the same: import what you need from '@/lib/locale',
+    // and add it there if it is not exported yet.
+    expect(offenders).toEqual([]);
+  });
+
+  it('and the one write that needed the raw tag asks lib/locale for it', () => {
+    // profiles.locale takes the tag with NO fallback, because null means
+    // English silently and a guessed language is a rejection somebody cannot
+    // read. That is a different export from the formatter's `DEVICE_LOCALE`,
+    // and lib/locale is where the difference is documented.
+    const write = fs.readFileSync(path.join(SRC, 'lib', 'device-locale.ts'), 'utf8');
+    expect(write).toContain("from '@/lib/locale'");
+    expect(write).toContain('DEVICE_LOCALE_TAG');
+  });
+});
+
+/**
  * A Portuguese phone, so the assertions below are about what a non-English
  * device gets rather than about what the runner happens to be set to. This is
  * the exact configuration that used to draw "agosto 2026" as a calendar

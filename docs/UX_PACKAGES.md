@@ -758,13 +758,13 @@ The argument for having no Apply button is that you can watch the map change as 
 
 - src/features/pins/map-filter-sheet.tsx:118 — cap the sheet body at `maxHeight: height * 0.6`. components/ui/sheet.tsx:246-253 has no detents; it sizes to content under `maxHeight: height - insets.top - Space.lg`, so this is a style on the inline sheet's own body. The ScrollView at :141 already scrolls, so nothing is lost.
 
-- src/features/pins/map-filter-sheet.tsx:95-103 — take a new `resultCount: number` prop and render it as a line directly above the Done button: '3 plans on the map', or 'No plans match' with a Clear all beneath it. Do NOT relabel Done to 'Show 3 plans': the comment at :216-219 rejects a button that implies pending work, and it is right — the map has already applied everything.
+- src/features/pins/map-filter-sheet.tsx:95-103 — take a new `resultCount: number` prop and render it as a line directly above the Done button: '3 plans on the map', or 'No plans fit these filters' with a Clear all beneath it. Do NOT relabel Done to 'Show 3 plans': the comment at :216-219 rejects a button that implies pending work, and it is right — the map has already applied everything.
 
 - src/features/pins/map-filter-sheet.tsx:119-139 — a second count under the Filters header, '3 of 11 plans', so the size of what was removed is legible.
 
 - src/features/pins/map-screen.tsx:1562 — pass the count. It must be computed from the same arrays the markers render — `pins` after pinPasses, plus `places` when businesses are ticked — or the number will contradict the dots the moment Businesses is unticked.
 
-**Tests.** Jest render test on MapFilterSheet: the count line reflects the prop, the zero case renders 'No plans match' and a Clear all, and Done keeps its label. Jest asserting the count passed from the map equals `pins.length + (showsBusinesses(filters) ? places.length : 0)`. Screenshots: re-shoot 05a, 05b and 05c and confirm markers are visible above the sheet and the count on 05c explains the near-empty map.
+**Tests.** Jest render test on MapFilterSheet: the count line reflects the prop, the zero case renders 'No plans fit these filters' and a Clear all, and Done keeps its label. Jest asserting the count passed from the map equals `pins.length + (showsBusinesses(filters) ? places.length : 0)`. Screenshots: re-shoot 05a, 05b and 05c and confirm markers are visible above the sheet and the count on 05c explains the near-empty map.
 
 **Risk.** A 0.6 cap plus a fourth 'What to show' row plus large Dynamic Type is the combination that pushes Done off the bottom, which the file's own style comment at :401-403 already warns about. Check the sheet at AX3 with the heat row present before shipping. Keep the numeric badge on FilterButton as it is; it answers a different question.
 
@@ -2806,6 +2806,10 @@ The pan gesture is attached only to the 24pt grabber strip, so pulling down on a
 
 **Priority** later · **Effort** M · **Ships as** over the air
 
+**Status: done (2026-09-01), with two properties put back.** A merge of three chips is not the intersection of them. The first pass carried across the testID and the 44pt hitSlop and silently dropped two things the filter sheet's private Chip had: the 1pt hairline border and the bold label on a selected chip. The border was not decoration. `ChipRail` paints an unselected chip `surfaceSunken`, which measures **1.12:1** against the sheet it sits in and **1.24:1** against the canvas, so without an edge an unticked chip is a word floating in the page with no pill around it. Both are back, on every chip in the app rather than only on the filter sheet's, which is the point of there being one component. `ChipRail`'s `label` prop also moved from the common half of the union onto the single-select half: the `multi` + `label` pairing had no caller anywhere in the app, and the branch that stripped the `radiogroup` role back off for it was exercised only by the test asserting the branch existed. The role is unconditional and true now, and the pairing is a compile error.
+
+**Still owed:** the three screenshots this package names (42-business-where-empty, 14-pin-form, 05b-map-filters-on) have not been re-shot since the border and the weight came back.
+
 There are three chip implementations on three different token vocabularies. ChipRow uses theme.tint / theme.backgroundElement, Spacing.two/three, `type="small"`, a vertical-only hitSlop and flexWrap. ChipRail uses theme.accent / theme.surfaceSunken, Space.md/sm, `type="footnote"`, PressableScale, a horizontal ScrollView and no hitSlop. And the map filter sheet — the one the filter screenshots actually show — defines a third private Chip on theme.accent / theme.surface. Today the aliases resolve to the same hex, so the divergence is invisible, which is exactly why it is dangerous: the day anyone gives tint and accent different values, half the chips in the app change and half do not.
 
 <details><summary>Closes 1 audit findings</summary>
@@ -2834,6 +2838,10 @@ There are three chip implementations on three different token vocabularies. Chip
 
 **Priority** later · **Effort** S · **Ships as** over the air
 
+**Status: done (2026-09-01), after one missed call site.** The `flat` variant landed with the four call sites anybody had thought of, and left the fifth — and worst — on the card: `src/features/business/place-sheet.tsx`, the guest gate on a business marker. Its `<Sheet inline>` is one component up the file (`PlaceSheet` wraps `PlaceCard`), so it matched no pattern a reader or a regex would write, and it kept `compact`, which only ever selected between two GlassSurface styles. On every device without Liquid Glass, and every device with Reduce Transparency on, that GlassSurface painted `theme.surface` — the sheet's own colour — so the card was not a card, it was a ring of padding. Fixed, and the test that says "every gate that renders inside a Sheet asks for flat" now answers that universal by parsing every `.tsx` in `src/` with the TypeScript compiler and resolving a gate through the component that renders it, rather than naming three files and checking four of ten sites.
+
+The resolution is **across files**, and it was not at first. The version that landed with the fix built both maps — what is rendered under a `<Sheet>`, and what renders what — inside the per-file loop, and only ever opened files that already contained `<SignUpGate`. So a gate in a component whose `<Sheet>` lives in a DIFFERENT file resolved to not-inside-a-sheet and passed while still carrying the card: the same false universal as the file-naming version, one indirection further out. Both maps are now accumulated over every `.tsx` in `src/` before the reachability walk runs once at the end. Component identity is the JSX tag name, so two same-named components in different files are treated as one — which can only push `insideSheet` toward true, the safe direction for a rule that says "ask for flat". No call site's answer changed when this was fixed, which is the point: the hole was in what the test could see, not in what the app does.
+
 In screenshot 06 the sign-up gate is a bordered rounded card sitting inside the map's sheet, which is the card-in-card that DESIGN.md principle 4 explicitly bans. It is the more expensive instance of the pattern because it is the moment a browsing guest is asked for an account, and the container framing makes the ask read as a modal inside a modal. The sheet is already the elevated object; the card adds a second frame and buys nothing.
 
 <details><summary>Closes 1 audit findings</summary>
@@ -2859,6 +2867,25 @@ In screenshot 06 the sign-up gate is a bordered rounded card sitting inside the 
 ### `ds-stack-header` — Give the pushed screens a real header title instead of a bare back button on its own row
 
 **Priority** later · **Effort** M · **Ships as** over the air
+
+**Status: PARTIALLY DONE (2026-09-01) — one route of seven.** `archived-chats` has its title ("Archived", `_layout.tsx:466`) and its in-body `<ThemedText type="title">` is gone. Six `headerTitle: ''` routes still carry the lone-back-button pattern, and the finding that says so is right about the count and wrong about two of them, so read the table before applying it. Line numbers are as of this note; the route NAME is the handle.
+
+| Route (`_layout.tsx`)       | Header row today                                                     | What to do                                                                                        |
+| --------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `first-messages` (:474)     | genuinely empty; the page draws `type="title">Waiting on you` (:41)  | `headerTitle: 'Waiting on you'`, and DELETE `first-messages.tsx:41`. Identical to archived-chats. |
+| `place/[id]` (:412)         | genuinely empty; the page draws the business name (:524)             | the business name, set from the screen — see below. KEEP the in-page name.                        |
+| `join-group/[token]` (:621) | genuinely empty; five branch headlines, no one title                 | `headerTitle: 'Group invite'`. Keep every branch headline.                                        |
+| `i/[token]` (:629)          | the same screen, re-exported                                         | the same `'Group invite'`. These two must never drift.                                            |
+| `profile-me` (:433)         | NOT empty — the screen sets its own title in all four branches       | leave the layout alone, or lift the two static ones. Not a lone back button.                      |
+| `profile/[userId]` (:517)   | NOT empty — the screen sets `headerTitle: name` once the query lands | leave it. `''` is the pre-resolve placeholder and is correct.                                     |
+
+Three notes that stop this being re-derived:
+
+- **`place/[id]` sets its title from the screen, not from the layout**, for the reason `profile/[userId]` already gives at :185: the name only exists once the query resolves. Add `<Stack.Screen options={{ headerTitle: place.name }} />` inside the loaded branch. Keep the hero name in the body: it carries `<PlaceSeal />` and the category/hours meta line, so deleting it loses the verified check's anchor. Name in the header AND on the hero is what `profile/[userId]` already does, deliberately.
+- **The traps entry applies to any title set from inside a screen.** `<Stack.Screen>` inside the component reaches the navigator through `setOptions` AFTER mount, so the row is empty for a frame on push. That is tolerable for a title and was NOT tolerable for `headerShown`, which is why `room/[id]`'s is set in the layout.
+- **`profile-me` is not this package's problem** and the package already says so ("Do not chase profile-me (18)"): its four branches set 'Your profile' / 'Account' / 'Your profile' themselves. The only improvement available is moving the two static ones into the layout so the first frame is not blank; that is optional and is not what the finding describes.
+
+**Correction (2026-09-01).** An earlier version of this note said nothing here was applied because `src/app/_layout.tsx` was held by another agent. That was false and this very package's status line contradicts it three paragraphs above: `_layout.tsx` is edited twice in this pass — `headerTitle: 'Archived'` at `:466`, and `<Stack.Screen name="muted-words">` registered at `:514`. One route of seven is done end to end (`archived-chats`: the layout title is set AND the duplicate `<ThemedText type="title">` is deleted from `archived-chats.tsx`). The other six are open, and what they need is in the table above: four of them (`first-messages`, `place/[id]`, `join-group/[token]`, `i/[token]`) need a change in the SCREEN as well as in the layout, and two (`profile-me`, `profile/[userId]`) need nothing at all.
 
 The app has three unrelated header grammars, and the most common one spends a whole row on a lone circular back button and then stacks the screen's title underneath it. On 73-business-account and 24-group-message that is 105-110pt of header before the title, and in the chat the room's name and "1 person here" sit below the button rather than beside it, so a messaging screen opens with a quarter of it empty. The cause is not a missing component: src/app/\_layout.tsx sets `headerTitle: ''` on eight routes, so the native iOS 26 header renders a lone glass back button and each screen then draws its own title in the body.
 
@@ -4594,6 +4621,13 @@ Messages to a business go through with no accept gate, so an owner receives ever
 
 **Priority** later · **Effort** M · **Ships as** over the air + Supabase deploy
 
+**Status: done (2026-09-01), except that half of `reason_en` has no reader.** `profiles.locale` is written once per sign-in, the worker passes the tag into both prompts, and `reason_en` is required by both verdict schemas rather than optional — which is what this package's own Risk paragraph asks for. But "required" is not "read". Of the two:
+
+- The **storefront** English copy has exactly one reader, and it is the right one: `apply_business_verification_verdict`'s `uncertain` branch mails the founder and quotes `p_verdict ->> 'reason_en'` (`20260903010000:137`), falling back to `reason` for verdicts written before the deploy.
+- The **selfie** English copy has none. `apply_verification_verdict` (`20260817090000:811`) stores the verdict whole into `verification_requests.verdict` and into `moderation_events.metadata`, mails nobody, and there is no admin surface over either. So the sentence written specifically so the founder could adjudicate an appeal about somebody's face is reachable only by opening the SQL editor and knowing the key is there. (The traveler-facing half does work: `reason` is rendered at `src/features/profile/verification-capture.tsx:164-165`, which is where the route this package cites as `verification.tsx:124-130` moved to, because signup needs the same capture and cannot reach that route.)
+
+Reading it out of a jsonb column by hand is not a reader. The gap is written up as `hi-a-verdict-the-founder-can-read` below rather than left as a field nothing looks at — that pattern has cost this project eight columns already.
+
 The classifier is language-agnostic, which is the hard part and it is done. But two verdicts speak directly to a person about their own face or their own livelihood, and both come back in English and are rendered verbatim: src/app/verification.tsx:124-130 and src/app/business-storefront.tsx:219-228. A Thai hostel owner whose storefront photo is rejected gets a sentence they may not read at the exact moment the app most needs to sound fair rather than arbitrary. The storefront verdict's own comment already shows the right instinct, three outcomes rather than two because "a hand-painted sign in a script the model reads poorly is a real business having a bad day", and then the explanation is in the wrong language.
 
 <details><summary>Closes 1 audit findings</summary>
@@ -4625,6 +4659,30 @@ The classifier is language-agnostic, which is the hard part and it is done. But 
 **Risk.** The founder cannot read a rejection written in Thai, which makes an appeal harder to adjudicate — reason_en is the mitigation and it must be required by the schema, not optional. Second, languageTag is the phone's language, not necessarily one the person reads well, and a business owner's profile row may have nothing useful in it at all; null must fall back to English silently rather than to a nearest guess.
 
 **Waits on.** Is a rejection sentence written by a model, in a language nobody at Samewhere reads, acceptable on a screen about somebody's face or livelihood? For: the alternative is a sentence they cannot read at all, at the moment the app most needs to sound fair. Against: it is unreviewable copy on the two most consequential screens the app has, and the English original only helps after somebody complains.
+
+### `hi-a-verdict-the-founder-can-read` — An admin surface for the English half of a moderation verdict
+
+**Priority** next · **Effort** S · **Ships as** Supabase deploy only
+
+**Status: OPEN. Nothing in this package is in the tree** — do not read it as shipped behaviour.
+
+`hi-a-verdict-in-your-language` made `reason_en` required on both verdict schemas so that a rejection written in Thai stays adjudicable. The storefront half got its reader in the same pass (the `uncertain` mail to the founder). The selfie half did not: `apply_verification_verdict` writes the verdict into `verification_requests.verdict` and `moderation_events.metadata` and stops there, and neither table has an admin surface. A person whose selfie was refused appeals through Contact us, the founder opens the support inbox, and the one sentence written for exactly that moment is not on screen anywhere.
+
+**Changes**
+
+- `supabase/migrations/<new>_a_verdict_the_founder_can_read.sql` — `create view public.admin_verification_queue`, modelled exactly on `admin_report_queue` (`20260817090000:873-891`): a service-role surface for the SQL editor, `revoke all ... from anon, authenticated` on the next line, no RPC. Select `v.id, v.user_id, v.created_at, v.reviewed_at, v.status, v.reason, v.verdict ->> 'reason_en' as reason_en, v.verdict ->> 'engine' as engine, v.attempts` from `public.verification_requests v` where `v.status <> 'pending'`, newest first. `reason` and `reason_en` side by side is the whole point: one is what the person was shown, the other is what it says.
+
+- Same migration — the business half, for symmetry and because the `uncertain` mail is a one-shot a founder can lose: the same shape over `public.business_verifications`, joined to `public.businesses` for the name. Its `verdict` already carries `reason_en` from `20260903010000`.
+
+- No new column, no function signature moves, nothing on the client. This is a read.
+
+**Database.** One migration, two views, two revokes. No `drop function` dance: nothing here has OUT columns.
+
+**Tests.** pgTAP, `supabase/tests/database/<n>_a_verdict_the_founder_can_read.test.sql`, written as an attack rather than a happy path: as `authenticated`, `select` from each view is refused; as `anon`, refused; and the service role sees a rejected row whose `reason_en` is the English string while its `reason` is not. Verify each assertion fails with the grant or the column removed before believing it — the point of the file is that a traveler cannot read the moderation queue, and a view created without the `revoke` passes a happy-path test perfectly.
+
+**Risk.** A view over `verification_requests` is a list of everybody whose selfie was refused, which is about as sensitive as this database gets. The `revoke` is the whole security of it and it must be in the same migration as the `create view`, not a follow-up: a view inherits nothing useful by default and `public` keeps read on it. Do not add an `admin_resolve_verification` RPC in the same package — re-running a verification is a separate decision with its own consequences for `profiles.verified`, and this package is only about being able to READ the verdict.
+
+**Waits on.** Nothing. The founder question this hangs off (may a model write a rejection in a language nobody here reads?) is recorded on `hi-a-verdict-in-your-language` and is unchanged by giving the English copy a reader — if anything, this is the mitigation that makes answering "yes" reasonable.
 
 ## Cross-cutting platform: errors, offline, copy pipeline, i18n, links, instrumentation, store compliance
 

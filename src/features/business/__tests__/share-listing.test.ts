@@ -11,6 +11,7 @@ import {
   listingUrl,
   shareListing,
 } from '@/features/business/share-listing';
+import { between } from '@/lib/__tests__/source';
 
 /**
  * The one thing a hostel can point at.
@@ -158,10 +159,7 @@ describe('where the share is offered', () => {
   it('is not offered to a guest, whose next move is the account', () => {
     const code = src(PAGE);
     // SignUpGate already asks, and a second ask underneath it is two asks.
-    const guest = code.slice(
-      code.indexOf(') : isGuest ? ('),
-      code.indexOf(') : isBusinessAccount')
-    );
+    const guest = between(code, ') : isGuest ? (', ') : isBusinessAccount');
     expect(guest).toContain('<SignUpGate');
     expect(guest).not.toContain('LISTING_SHARE_LABEL');
   });

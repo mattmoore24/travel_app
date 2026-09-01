@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { after } from '@/lib/__tests__/source';
+
 /**
  * The two screens that can be the only route in the stack.
  *
@@ -135,10 +137,7 @@ describe('registering a business changes exactly one thing', () => {
     // Comments stripped: the explanation above the code names the call it
     // forbids, so a raw read would match its own reasoning.
     const code = source('..', 'features', 'business', 'hooks.ts');
-    const success = code.slice(
-      code.indexOf('mutationFn: registerBusiness'),
-      code.indexOf('mutationFn: registerBusiness') + 400
-    );
+    const success = after(code, 'mutationFn: registerBusiness').slice(0, 400);
     expect(success).not.toContain('setListingIntent(false)');
     expect(success).toContain("invalidateQueries({ queryKey: ['my-business'");
   });

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { coverIdOf, coverPromotion, PHOTOS_MAX } from '@/features/business/business-photos';
+import { after } from '@/lib/__tests__/source';
 
 /**
  * Which photo the public sees as the cover.
@@ -204,7 +205,7 @@ describe('one picker, however many buttons drive it', () => {
     expect(code).toContain('const picking = useRef(false)');
     // Set before any await, and cleared in a finally so a cancelled picker
     // or a failed upload does not wedge the button shut.
-    const guard = code.slice(code.indexOf('const pick = async'));
+    const guard = after(code, 'const pick = async');
     const body = guard.slice(0, guard.indexOf('const pickOne'));
     expect(body.indexOf('picking.current = true')).toBeLessThan(body.indexOf('await'));
     expect(body).toContain('finally');
@@ -228,7 +229,7 @@ describe('a verdict reaches the screen that is watching for it', () => {
   it('stops once everything has settled', () => {
     // The poll must end on its own, or an owner reading a finished listing
     // pays for it forever.
-    const watch = code.slice(code.indexOf('refetchInterval:'));
+    const watch = after(code, 'refetchInterval:');
     expect(watch.slice(0, watch.indexOf('});'))).toContain(': false');
   });
 });

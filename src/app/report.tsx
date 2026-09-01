@@ -2,7 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 
-import { ChipRow } from '@/components/form/chip-row';
+import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { StepScreen } from '@/components/form/step-screen';
@@ -135,11 +135,7 @@ export default function ReportScreen() {
       note={reason == null ? 'Pick what happened first.' : null}
       onContinue={submit}>
       <ThemedText type="smallBold">What happened?</ThemedText>
-      <ChipRow
-        options={REASON_OPTIONS}
-        selected={reason ? [reason] : []}
-        onToggle={(v) => setReason(v)}
-      />
+      <ChipRail wrap options={REASON_OPTIONS} selected={reason} onSelect={(v) => setReason(v)} />
       <FormTextField
         label="Details (optional)"
         multiline

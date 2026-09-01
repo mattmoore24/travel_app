@@ -4,7 +4,7 @@ import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { ChipRow } from '@/components/form/chip-row';
+import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -760,13 +760,14 @@ export default function BusinessSignupScreen() {
         {launchCities.length > 0 && !addressFocused ? (
           <View style={styles.block}>
             <ThemedText type="callout">Which city?</ThemedText>
-            <ChipRow
+            <ChipRail
+              wrap
               options={launchCities.map((c) => ({
                 value: String(c.city_id),
                 label: c.cities.name,
               }))}
-              selected={city ? [String(city.city_id)] : []}
-              onToggle={(value) => {
+              selected={city ? String(city.city_id) : null}
+              onSelect={(value) => {
                 setCityId(Number(value));
                 // A marker belongs to the city it was placed in, and since
                 // 20260829160000 the server agrees: register_business runs the

@@ -74,22 +74,23 @@ describe('the survivor count', () => {
     expect(screen.getByText(/3 of 11 plans/)).toBeTruthy();
   });
 
-  it('says No plans match with a Clear all when the FILTERS emptied the map', () => {
+  it('says no plans fit these filters, with a Clear all, when the FILTERS emptied the map', () => {
     renderSheet({
       filters: { ...DEFAULT_FILTERS, day: 'today' },
       resultCount: 0,
       totalCount: 11,
     });
-    expect(screen.getByText('No plans match')).toBeTruthy();
+    expect(screen.getByText('No plans fit these filters')).toBeTruthy();
     expect(screen.getAllByText('Clear all').length).toBeGreaterThan(0);
   });
 
   it('never blames the filters for a genuinely empty city', () => {
     // Default filters, zero everywhere: nothing was filtered out, so 'No
-    // plans match' would be a lie and Clear all a button that does nothing.
+    // plans fit these filters' would be a lie and Clear all a button that
+    // does nothing.
     renderSheet({ resultCount: 0, totalCount: 0 });
     expect(screen.getByText('Nothing on the map yet.')).toBeTruthy();
-    expect(screen.queryByText('No plans match')).toBeNull();
+    expect(screen.queryByText('No plans fit these filters')).toBeNull();
     expect(screen.queryByText('Clear all')).toBeNull();
     expect(screen.queryByText(/0 of 0/)).toBeNull();
   });

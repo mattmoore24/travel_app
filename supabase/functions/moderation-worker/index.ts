@@ -123,8 +123,16 @@ const PhotoVerdict = z.object({
 const VerificationVerdict = z.object({
   action: z.enum(['approve', 'reject']),
   confidence: z.number(),
-  // User-facing when rejecting ("the selfie is too dark to compare").
+  // User-facing when rejecting ("the selfie is too dark to compare"), and
+  // written in the language of the subject's own phone when their profile
+  // carries one. A null locale means English, silently.
   reason: z.string(),
+  // The same sentence in English, and REQUIRED by this schema rather than
+  // optional. Nobody is ever shown it: it exists so that an appeal about
+  // somebody's face is adjudicable by a founder who cannot read Thai. Make it
+  // optional and the one verdict worth appealing is the one that arrives
+  // without it.
+  reason_en: z.string(),
 });
 
 // Three outcomes, not two. 'uncertain' exists because a hand-painted sign in
@@ -134,8 +142,14 @@ const VerificationVerdict = z.object({
 const StorefrontVerdict = z.object({
   action: z.enum(['approve', 'reject', 'uncertain']),
   confidence: z.number(),
-  // User-facing on a reject: what to do differently, never an accusation.
+  // User-facing on a reject: what to do differently, never an accusation, in
+  // the owner's own language when their profile carries a locale.
   reason: z.string(),
+  // English, always, and required for the same reason as above — with one
+  // extra reader here: an 'uncertain' storefront mails the founder to finish
+  // the call by hand, and that mail quotes reason_en
+  // (20260903010000_a_verdict_speaks_your_language.sql).
+  reason_en: z.string(),
 });
 
 const ImpersonationVerdict = z.object({
@@ -143,6 +157,37 @@ const ImpersonationVerdict = z.object({
   confidence: z.number(),
   reason: z.string(),
 });
+
+/**
+ * The one line that decides what language a verdict speaks.
+ *
+ * Appended to the content block of the two queues whose verdict is READ BY
+ * THE PERSON IT IS ABOUT — a selfie, and a storefront. Nowhere else: a
+ * message verdict is never shown to anybody (hard rule 5 keeps every
+ * moderation outcome away from the sender), and an impersonation verdict is
+ * read by the founder alone.
+ *
+ * A null, empty or unparseable tag falls back to English SILENTLY. It must
+ * never fall back to a nearest guess: `languageTag` is the phone's language,
+ * not necessarily one the person reads well, and inventing a better guess
+ * from a country or a name is how somebody gets a rejection in a language
+ * they do not speak, written by an app that was sure it knew better.
+ */
+function languageLine(locale: string | null | undefined): string {
+  const tag = typeof locale === 'string' ? locale.trim() : '';
+  const english =
+    'Write `reason_en` in English, plain and short. Never an accusation: ' +
+    'say what to do differently. No em dashes.';
+  if (tag.length === 0 || tag.length > 16) {
+    return `THE PERSON THIS IS ABOUT: no language recorded. Write \`reason\` in English. ${english} The two may be the same sentence.`;
+  }
+  return (
+    `THE PERSON THIS IS ABOUT READS: ${tag} (a BCP 47 tag). Write \`reason\` ` +
+    `in that language, addressed to them, in the same plain register you ` +
+    `would use in English. If you cannot write that language well, write ` +
+    `\`reason\` in English rather than badly. ${english}`
+  );
+}
 
 // The classifier instructions are deliberately NOT in this (public) source:
 // publishing the exact BLOCK/ALLOW rules would hand evaders a how-to guide.
@@ -858,6 +903,32 @@ Deno.serve(async (req) => {
   }
 
   // -- 4. Pending selfie verifications ---------------------------------------
+  //
+  // The subject's own language, for the two queues that answer a person about
+  // themselves. Read as the service role, which holds the table-level grant on
+  // profiles; `locale` is granted to no client role at all, so this is the
+  // only reader there is besides its owner's write.
+  //
+  // Every failure here is the same as no locale: a missing row, a null column
+  // and a network error all mean English. Silently, and per item rather than
+  // once per tick, because a locale lookup that threw would cost the whole
+  // queue an item that is otherwise fine.
+  const localeOf = async (userId: string | null | undefined): Promise<string | null> => {
+    if (!userId) {
+      return null;
+    }
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('locale')
+        .eq('user_id', userId)
+        .maybeSingle();
+      return (data as { locale?: string | null } | null)?.locale ?? null;
+    } catch {
+      return null;
+    }
+  };
+
   const { data: verifications } = await supabase
     .from('verification_requests')
     .select('id, user_id, storage_path, attempts')
@@ -891,9 +962,14 @@ Deno.serve(async (req) => {
     }
     try {
       if ((verification.attempts ?? 0) >= MAX_ATTEMPTS) {
+        // The hardcoded failsafes stay English, on purpose, and set reason_en
+        // to the same string. A failsafe fires because something already went
+        // wrong ten times over; it is not the place to add a translation
+        // round trip that can be the eleventh.
         await applyVerificationVerdict(verification.id, {
           action: 'reject',
           reason: 'We could not process your selfie. Please try again.',
+          reason_en: 'We could not process your selfie. Please try again.',
           engine: 'failsafe',
         });
         await deleteSelfie(verification.storage_path);
@@ -912,6 +988,7 @@ Deno.serve(async (req) => {
         await applyVerificationVerdict(verification.id, {
           action: 'reject',
           reason: 'Add at least one profile photo before verifying.',
+          reason_en: 'Add at least one profile photo before verifying.',
           engine: 'claude-verifier-precheck',
         });
         await deleteSelfie(verification.storage_path);
@@ -931,6 +1008,8 @@ Deno.serve(async (req) => {
           { type: 'image', source: { type: 'url', url } },
         ]),
         { type: 'text', text: 'Is this selfie plausibly the same person as the profile photos?' },
+        // A refusal about somebody's own face, in a sentence they can read.
+        { type: 'text', text: languageLine(await localeOf(verification.user_id)) },
       ];
       const verdict = await classify(anthropic, PROMPTS.verification, content, VerificationVerdict);
       const payload = verdict
@@ -938,6 +1017,7 @@ Deno.serve(async (req) => {
         : {
             action: 'reject',
             reason: 'We could not review this selfie. Please try a different photo.',
+            reason_en: 'We could not review this selfie. Please try a different photo.',
             engine: 'claude-verifier',
             model: MODEL,
           };
@@ -1003,9 +1083,11 @@ Deno.serve(async (req) => {
       }
       try {
         if ((check.attempts ?? 0) >= MAX_ATTEMPTS) {
+          // English, and reason_en the same string — see the selfie failsafe.
           await applyStorefront(check.id, {
             action: 'reject',
             reason: 'We could not process those photos. Have another go.',
+            reason_en: 'We could not process those photos. Have another go.',
             engine: 'failsafe',
           });
           report.storefronts.rejected += 1;
@@ -1014,7 +1096,7 @@ Deno.serve(async (req) => {
 
         const { data: business } = await supabase
           .from('businesses')
-          .select('name, category, place_label, city_id')
+          .select('name, category, place_label, city_id, owner_user_id')
           .eq('id', check.business_id)
           .maybeSingle();
         const { data: city } = business
@@ -1052,6 +1134,10 @@ Deno.serve(async (req) => {
               'from the legal one? Does the storefront look like the claimed category? ' +
               'Does the wide shot plausibly match the claimed city?',
           },
+          // A refusal about somebody's livelihood, in a sentence they can
+          // read. The OWNER's locale, not the business's: a business has no
+          // language, a person does.
+          { type: 'text', text: languageLine(await localeOf(business?.owner_user_id)) },
         ];
 
         const verdict = await classify(anthropic, storefrontPrompt, content, StorefrontVerdict);
@@ -1062,6 +1148,7 @@ Deno.serve(async (req) => {
           : {
               action: 'uncertain',
               reason: 'We could not review those photos automatically.',
+              reason_en: 'We could not review those photos automatically.',
               engine: 'claude-storefront',
               model: MODEL,
             };

@@ -15,6 +15,7 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { Skeleton } from '@/components/ui/skeleton';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
 import { anchorAboutYours } from '@/features/chat/anchors';
@@ -23,6 +24,7 @@ import { rowTimestamp } from '@/features/chat/separators';
 import { useAnnounce } from '@/features/chat/use-announce';
 import { useRespondToRequest } from '@/features/matching/hooks';
 import { overlapSentence } from '@/features/matching/overlap';
+import { matchesMutedWord, useMutedWords } from '@/features/profile/muted-words';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import type { IncomingRequestRow } from '@/lib/database.types';
@@ -38,6 +40,15 @@ export const DECLINE_UNDO_MS = 5000;
 
 /** Past this many lines the first message is folded and can be opened. */
 const MESSAGE_LINES = 4;
+
+/**
+ * The height the message slot holds while the reader's own word list is still
+ * being fetched.
+ *
+ * Roughly the fold block's own height, so the card does not jump by a visible
+ * amount when the answer arrives either way.
+ */
+const FOLD_HEIGHT = 56;
 
 /**
  * A hello somebody sent you, and the two answers to it.
@@ -64,6 +75,32 @@ export function IncomingRequestCard({ request }: { request: IncomingRequestRow }
   const [accepting, setAccepting] = useState(false);
   const [declined, setDeclined] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  // The reader's own line, applied here and nowhere else. This is NOT
+  // moderation and it does not stand in for any: hard rule 5 means this
+  // message was already classified before it was delivered, and what happens
+  // below happens afterwards, on this phone, at render. It folds. It deletes
+  // nothing, it declines nothing, and nothing about it reaches the sender -
+  // their profile, the report link, Decline and Accept are all exactly where
+  // they were.
+  const muted = useMutedWords();
+  const [readAnyway, setReadAnyway] = useState(false);
+  // THREE states, not two. Defaulting the list to [] while the query is still
+  // in the air made `mutedBy` null on the first render, so the message painted
+  // in full and folded itself a round trip later - on every cold open of the
+  // inbox, which is the one time the list is not already cached. The words
+  // were on screen, and readable by VoiceOver, before anything hid them.
+  //
+  // "Not yet known" is therefore its own state and the message waits in it.
+  // A list that is not coming at all is NOT that state: a query that is
+  // disabled (no session, no Supabase) or that has failed answers with no
+  // list, and the hello is shown, because holding every first message behind
+  // a request that will not arrive would be a worse answer than the one this
+  // whole feature exists to soften.
+  const checkingList = muted.data === undefined && muted.isLoading;
+  const mutedBy =
+    readAnyway || muted.data === undefined
+      ? null
+      : matchesMutedWord(request.first_message, muted.data);
   // Is the message longer than the fold? Measured UNCLAMPED, by the hidden
   // copy below. React Native reports lines AFTER truncation, so asking the
   // clamped Text how many lines it has can never answer more than
@@ -253,46 +290,80 @@ export function IncomingRequestCard({ request }: { request: IncomingRequestRow }
           </ThemedText>
         </View>
       ) : null}
-      {/* Folded at four lines. A 500-character first message is a fifth of a
+      {/* A word the reader asked not to see, so the words themselves are not
+          on the screen yet. The one that caused it IS named, because a fold
+          that will not say why reads as the app censoring people rather than
+          as the reader's own setting - and it is named to the reader alone,
+          on the reader's own device. The message is not rendered at all while
+          this is up, so VoiceOver cannot read past the fold either - and that
+          holds from the very first frame, because a placeholder holds the
+          slot until the list is known. */}
+      {checkingList ? (
+        <Skeleton height={FOLD_HEIGHT} radius={Radius.md} />
+      ) : mutedBy != null ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityHint="Shows the message"
+          onPress={() => {
+            haptics.selection();
+            setReadAnyway(true);
+          }}
+          style={({ pressed }) => [
+            styles.folded,
+            { backgroundColor: theme.surfaceSunken },
+            pressed && styles.pressed,
+          ]}>
+          <ThemedText type="footnote" themeColor="textSecondary">
+            This uses a word on your list: {mutedBy}
+          </ThemedText>
+          <ThemedText type="footnote" themeColor="accent">
+            Show what they wrote
+          </ThemedText>
+        </Pressable>
+      ) : (
+        <>
+          {/* Folded at four lines. A 500-character first message is a fifth of a
           screen, and a stack of them is a wall between a returning traveler
           and the conversations they opened the app for. No accessibility
           label on the press: the message IS the label, and a label here
           would hide it from VoiceOver entirely. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityHint={expanded ? 'Folds the message back up' : 'Shows the whole message'}
-        onPress={() => setExpanded((open) => !open)}>
-        <ThemedText numberOfLines={expanded ? undefined : MESSAGE_LINES}>
-          {request.first_message}
-        </ThemedText>
-        {/* Inside the Pressable, not beside it. It was a sibling of the
+          <Pressable
+            accessibilityRole="button"
+            accessibilityHint={expanded ? 'Folds the message back up' : 'Shows the whole message'}
+            onPress={() => setExpanded((open) => !open)}>
+            <ThemedText numberOfLines={expanded ? undefined : MESSAGE_LINES}>
+              {request.first_message}
+            </ThemedText>
+            {/* Inside the Pressable, not beside it. It was a sibling of the
             thing it toggles, so the one part of the card that names the
             action was the one part that did not perform it: tapping the
             words did nothing at all. One target now carries both. */}
-        {folded ? (
-          <ThemedText type="footnote" themeColor="accent" style={styles.fold}>
-            {expanded ? 'Show less' : 'Show the whole message'}
-          </ThemedText>
-        ) : null}
-      </Pressable>
-      {/* The measuring pass, for one render only. Same width, same type, no
+            {folded ? (
+              <ThemedText type="footnote" themeColor="accent" style={styles.fold}>
+                {expanded ? 'Show less' : 'Show the whole message'}
+              </ThemedText>
+            ) : null}
+          </Pressable>
+          {/* The measuring pass, for one render only. Same width, same type, no
           clamp — the visible Text above cannot answer this question about
           itself, because React Native counts lines after truncating and a
           four-line clamp reports four lines for a message of four, fourteen
           or four hundred. Out of flow so it changes no layout, and hidden
           from VoiceOver so the message is not read twice. */}
-      {measured ? null : (
-        <ThemedText
-          style={styles.measure}
-          pointerEvents="none"
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          onTextLayout={(event: NativeSyntheticEvent<TextLayoutEventData>) => {
-            setFolded(event.nativeEvent.lines.length > MESSAGE_LINES);
-            setMeasured(true);
-          }}>
-          {request.first_message}
-        </ThemedText>
+          {measured ? null : (
+            <ThemedText
+              style={styles.measure}
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              onTextLayout={(event: NativeSyntheticEvent<TextLayoutEventData>) => {
+                setFolded(event.nativeEvent.lines.length > MESSAGE_LINES);
+                setMeasured(true);
+              }}>
+              {request.first_message}
+            </ThemedText>
+          )}
+        </>
       )}
       {/* The receiver's half of moderation. This is the one screen in the app
           where a stranger's words arrive unasked-for, and until now the only
@@ -375,6 +446,11 @@ const styles = StyleSheet.create({
     // The card's own `gap` used to space this from the message; inside the
     // Pressable it needs its own.
     marginTop: Spacing.one,
+  },
+  folded: {
+    gap: 2,
+    padding: Space.md,
+    borderRadius: Radius.md,
   },
   measure: {
     position: 'absolute',

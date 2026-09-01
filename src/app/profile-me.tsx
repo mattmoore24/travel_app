@@ -499,7 +499,19 @@ function SettingsRow({
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={[label, detail, value].filter(Boolean).join(', ')}
+      // The LABEL is the row's name and nothing else, which is to say the
+      // words actually printed on it. It used to be label, detail and value
+      // joined into one sentence, and a Pressable carrying its own label
+      // collapses to a single element on iOS: the words on screen stopped
+      // being addressable at all, so a flow asserting the row by the name it
+      // shows would fail on a screenshot that plainly shows that name. Every
+      // fact the joined sentence carried is still spoken - VoiceOver reads
+      // the value straight after the label - and now in the order iOS
+      // expects, name then state.
+      accessibilityLabel={label}
+      accessibilityValue={
+        detail || value ? { text: [detail, value].filter(Boolean).join(', ') } : undefined
+      }
       haptic="light"
       scaleTo={0.99}
       onPress={onPress}
@@ -909,6 +921,28 @@ export default function ProfileScreen() {
                       label="House rules and help"
                       onPress={() => router.push('/guidelines')}
                     />
+                    {/* Beside the house rules on purpose: those are the line
+                        the app draws for everybody, and this is the one you
+                        draw for yourself. It folds a first message behind a
+                        tap and does nothing else - nobody is blocked and the
+                        sender is never told, which is why it is not filed
+                        under Blocked and not on the visibility screen, whose
+                        own header promises it does nothing to chat.
+
+                        Gated on the onboarding stamp for the same reason
+                        Blocked above is: /muted-words is registered inside
+                        `Stack.Protected guard={signedIn && onboarded}`, and
+                        an account part way through listing a business lands
+                        on this spine with `onboarded` still false, so for
+                        them an ungated row would push a route the navigator
+                        does not have and do nothing at all. */}
+                    {profile.onboarding_completed_at == null ? null : (
+                      <SettingsRow
+                        label="Words you would rather not see"
+                        detail="Fold a first message that uses one of your words."
+                        onPress={() => router.push('/muted-words')}
+                      />
+                    )}
                     {/* The policy the consent line promised at sign-up,
                         findable again afterwards without re-reading the
                         rulebook. */}

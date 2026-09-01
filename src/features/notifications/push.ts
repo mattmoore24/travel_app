@@ -66,11 +66,49 @@ export function pushPossible(): boolean {
  */
 let registeredToken: string | null = null;
 
+/**
+ * The Android channel `app.json` names, and the code that makes it exist.
+ *
+ * `defaultChannel: "default"` in the expo-notifications plugin block writes
+ * `com.google.firebase.messaging.default_notification_channel_id` into the
+ * manifest — it NAMES a channel, it does not create one. Nothing in this repo
+ * called setNotificationChannelAsync, so on Android the id pointed at nothing
+ * and the system fell back to a channel of its own making, with a name the
+ * app never chose. A config naming a channel nothing creates is a config that
+ * does not do what it says.
+ *
+ * Created here rather than at module scope because this is the moment the
+ * device is actually going to receive something, and it is the same moment on
+ * every launch that already has permission (refreshPushToken). Android
+ * treats the call as an upsert, so repeating it is free; the id is the only
+ * part that must stay in step with app.json, which
+ * src/app/__tests__/notification-config.test.ts asserts.
+ *
+ * iOS has no such thing and the module does not export the function there.
+ */
+const ANDROID_CHANNEL = 'default';
+
+async function ensureAndroidChannel(): Promise<void> {
+  if (Platform.OS !== 'android') {
+    return;
+  }
+  await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL, {
+    // Seen in Android's own settings, so it is copy: it says what arrives on
+    // this channel rather than repeating the app's name back at somebody.
+    name: 'Messages and plans',
+    // A hello or a message is a banner on iOS, and HIGH is the Android
+    // importance that behaves the same way. DEFAULT would make every one of
+    // them a silent line in the shade.
+    importance: Notifications.AndroidImportance.HIGH,
+  });
+}
+
 async function storeToken(): Promise<Registration> {
   const id = projectId();
   if (!id) {
     return 'unavailable';
   }
+  await ensureAndroidChannel();
   const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId: id });
   await supabase.rpc('register_push_token', { p_token: token, p_platform: Platform.OS });
   registeredToken = token;

@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { after } from '@/lib/__tests__/source';
+
 /**
  * The saved replies have to be writable AND usable.
  *
@@ -31,7 +33,7 @@ describe('an owner can write a saved reply', () => {
     // The table refuses length 0, and a chip with nothing on it is a control
     // that does nothing.
     const api = read('src', 'features', 'business', 'api.ts');
-    const fn = api.slice(api.indexOf('export async function setSavedReply'));
+    const fn = after(api, 'export async function setSavedReply');
     expect(fn.slice(0, fn.indexOf('upsert'))).toContain('.delete()');
     // Upsert on the table's own unique pair, so editing one slot twice cannot
     // leave two rows in it.
@@ -54,7 +56,7 @@ describe('an owner can use one', () => {
     // sentence into a message nobody re-read, which is how a saved reply
     // answers the wrong question confidently.
     const composer = read('src', 'features', 'chat', 'composer.tsx');
-    const chip = composer.slice(composer.indexOf('savedReplies && savedReplies.length'));
+    const chip = after(composer, 'savedReplies && savedReplies.length');
     const body = chip.slice(0, chip.indexOf('</ScrollView>'));
     expect(body).toContain('setDraft(reply.body)');
     expect(body).not.toContain('onSend');

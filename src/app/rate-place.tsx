@@ -5,7 +5,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ChipRow } from '@/components/form/chip-row';
+import { ChipRail } from '@/components/form/chip-rail';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -317,7 +317,7 @@ export default function RatePlaceScreen() {
                 </View>
                 <View style={styles.tags}>
                   <ThemedText type="callout">Tag it, if you like</ThemedText>
-                  <ChipRow options={TAG_OPTIONS} selected={tags} onToggle={toggleTag} />
+                  <ChipRail wrap multi options={TAG_OPTIONS} selected={tags} onToggle={toggleTag} />
                   {/* The cap is said before anybody hits it: a fourth chip
                       that quietly does nothing reads as a broken chip. */}
                   <ThemedText type="footnote" themeColor="textSecondary">

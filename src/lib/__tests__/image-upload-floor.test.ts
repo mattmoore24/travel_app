@@ -14,6 +14,7 @@
  * property of the phone, not of the photo, and blocking there would turn a
  * soft picture into no picture at all.
  */
+import { after } from '@/lib/__tests__/source';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -150,7 +151,7 @@ describe('the two callers the floor exists for', () => {
   it('a profile photo is held to it', () => {
     // It fills the card a stranger decides on.
     const code = src('src/features/profile/api.ts');
-    const call = code.slice(code.indexOf('export async function uploadPhoto'));
+    const call = after(code, 'export async function uploadPhoto');
     expect(call.slice(0, call.indexOf('supabase'))).toContain('fillsAFrame: true');
   });
 

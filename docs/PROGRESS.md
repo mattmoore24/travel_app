@@ -3,6 +3,104 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **Four things this pass owes the next one** (2026-09-01)
+
+A review round closed four design-system findings (the gate inside the place
+sheet, the chip's missing border and bold, the filter sheet's 34pt "Clear
+all", and a test whose title claimed a universal it did not check). Four
+things did NOT close, and each is written down here rather than left to be
+rediscovered.
+
+1. **`ds-stack-header` is one route of seven.** `archived-chats` has its
+   title; six `headerTitle: ''` routes in `src/app/_layout.tsx` still spend a
+   header row on a lone back button. The exact six, what each one's title
+   should be, and the two of them that are NOT actually bare (`profile-me`
+   and `profile/[userId]` set their own titles from inside the screen) are in
+   a table under the `ds-stack-header` package in
+   [`UX_PACKAGES.md`](UX_PACKAGES.md), written so it can be applied without
+   re-deriving it.
+
+   An earlier draft of this note said nothing was applied because
+   `_layout.tsx` was held by another agent. That was wrong, and the diff of
+   this very pass disproves it: `_layout.tsx` is edited twice here — the
+   `archived-chats` title at `:466`, and the `muted-words` route registered at
+   `:514`. What is actually done is one route of seven, end to end:
+   `archived-chats` carries `headerTitle: 'Archived'` and the duplicate
+   `<ThemedText type="title">` is gone from `archived-chats.tsx`. What remains
+   is the other six, and they were left because four of them need work in the
+   SCREEN as well as in the layout, not because the layout was unavailable:
+   `first-messages` needs its in-body title at `first-messages.tsx:41`
+   deleted, `place/[id]` needs its title set from inside the loaded branch
+   (the name only exists once the query resolves), and `join-group/[token]`
+   and `i/[token]` are one screen re-exported twice and must be given the same
+   string. The other two, `profile-me` and `profile/[userId]`, already set
+   their own titles and want nothing at all.
+
+2. **The selfie verdict's English copy still has no reader.** `reason_en` is
+   now required by both moderation verdict schemas. The storefront half is
+   read (the `uncertain` mail to the founder quotes it); the selfie half is
+   written into `verification_requests.verdict` and read by nothing, so the
+   sentence that exists specifically to make an appeal about somebody's face
+   adjudicable is reachable only from the SQL editor. New package
+   `hi-a-verdict-the-founder-can-read` in UX_PACKAGES.md specifies the fix:
+   two service-role views modelled on `admin_report_queue`, with the
+   `revoke` in the same migration and a pgTAP file written as an attack. It
+   is a Supabase deploy and nothing else.
+
+3. **The notification config reaches nobody until an EAS build runs.** The
+   whole `expo-notifications` plugin block is new, and `plugins` is prebuild
+   input: the icon, the tint colour, the Android channel id and `mode` are
+   read when the native projects are generated, so no installed build has seen
+   any of it. The trap is that shipping it over the air looks like it worked —
+   `runtimeVersion` is `{ policy: 'appVersion' }` and `version` is still
+   `0.1.0`, so an `update` carrying this app.json IS accepted by the
+   TestFlight build already on the phone. It gets the JavaScript and none of
+   the native config. **A green update run is evidence about JavaScript and
+   nothing else; it says nothing about whether a push will arrive.** Batch the
+   build with the App Store review prompt, which is also waiting on one — the
+   table is under "Queued for the next build: the whole notification config"
+   in [`APP_STORE.md`](APP_STORE.md), with the one-line `codesign` check to
+   run afterwards. The JavaScript half (registration, the foreground handler,
+   the Android channel `push.ts` now creates, the primer, the routing) does
+   ship over the air and is worth publishing on its own.
+
+4. **The APNs entitlement is set, and not yet proven.** `app.json` now passes
+   `"mode": "production"` to the expo-notifications plugin, which is what
+   writes `aps-environment`; the plugin's own default is `development`, this
+   config has no `ios.entitlements` to pre-set it, and a TestFlight binary
+   carrying the sandbox value registers a token that never delivers.
+   `src/app/__tests__/notification-config.test.ts` fails if the mode is
+   dropped. What could NOT be established from here is whether anything
+   downstream rewrites the value: Expo's own SDK 57 notes say Xcode does it
+   at archive time, and the EAS capability-sync page reads the key's presence
+   and says nothing about its value. The one-line check to run against the
+   first real build, and both sources, are under "The APNs entitlement" in
+   [`APP_STORE.md`](APP_STORE.md).
+
+### One rule this pass added: source slices are cut by an anchor that has to exist
+
+A lot of this repo's checks are "this block of that file does not do X", which
+can only be asserted against the text. Cutting the block with
+`code.slice(code.indexOf(a), code.indexOf(b))` fails silently in two ways: `a`
+is not in the file any more (indexOf gives -1, slice reads it as one character
+from the end, the result is `''`), or `b` occurs earlier in the file than `a`
+(the range inverts, the result is `''`). Every negative assertion passes
+against `''`.
+
+Both had shipped. `muted-words-reach.test.ts` was asserting that the folded
+first message never writes, never calls an RPC and never tells the sender —
+the one invariant that feature may not break — against an empty string, since
+a fix round put `{checkingList ? (` in front of the anchor it was cut by.
+`business-home.test.ts` cut its memo from line 403 to line 100 and had been
+asserting about nothing since it was written.
+
+`src/lib/__tests__/source.ts` now exports `between(code, from, to)` and
+`after(code, from)`: a missing anchor throws with the anchor printed, and the
+closing anchor is searched for AFTER the opening one so a pair cannot invert.
+All 56 call sites across 26 test files use them, and
+`src/lib/__tests__/source-anchors.test.ts` fails if any test starts a slice at
+an `indexOf` again.
+
 ## Current: **e2e run 96 is green end to end** (2026-08-31)
 
 The first fully green simulator run since 89 — and 89 never checked that a

@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { after, between } from '@/lib/__tests__/source';
+
 /**
  * The conversation list, as the apps people already use draw one.
  *
@@ -37,10 +39,7 @@ describe('the chat list is a list, not a stack of cards', () => {
   });
 
   it('never gives a conversation row a card radius or fill', () => {
-    const row = rowModule.slice(
-      rowModule.indexOf('  row: {'),
-      rowModule.indexOf('  unreadGutter: {')
-    );
+    const row = between(rowModule, '  row: {', '  unreadGutter: {');
     expect(row).not.toContain('borderRadius');
     expect(row).not.toContain('backgroundColor');
   });
@@ -188,7 +187,7 @@ describe('the chat list is a list, not a stack of cards', () => {
     // This was the only unbounded list in the app that was not virtualized -
     // the thread has been a proper inverted FlatList since it was built.
     expect(code).toContain('<SectionList');
-    const signedIn = code.slice(code.indexOf('const sections: ChatSection[] = []'));
+    const signedIn = after(code, 'const sections: ChatSection[] = []');
     expect(signedIn).not.toContain('<ScrollView');
     // The guest branch stays a ScrollView: guestFill and guestCentre depend
     // on flexGrow, which a SectionList's contentContainerStyle handles
@@ -208,7 +207,7 @@ describe('the chat list is a list, not a stack of cards', () => {
     // 'always' rather than 'handled': 'handled' asks the responder chain
     // whether a child wants the touch, and the reaction menu's capture-phase
     // responder is exactly the kind of thing that answers wrongly.
-    const list = code.slice(code.indexOf('<SectionList'));
+    const list = after(code, '<SectionList');
     expect(list).toContain('keyboardShouldPersistTaps="always"');
     expect(list).toContain('refreshControl={');
   });

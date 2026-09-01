@@ -30,6 +30,7 @@ export function SignUpGate({
   detail,
   where,
   compact = false,
+  flat = false,
   onNavigate = (go) => go(),
 }: {
   /**
@@ -59,6 +60,27 @@ export function SignUpGate({
   where: string;
   compact?: boolean;
   /**
+   * Render straight onto the caller's ground: no GlassSurface, no frame, no
+   * padding of the gate's own.
+   *
+   * For a gate that already sits INSIDE a Sheet. The sheet is the elevated
+   * object; a second rounded frame inside it is the card-in-card DESIGN.md
+   * principle 4 bans, and it is at its most expensive here, because this is
+   * the moment a browsing guest is asked for an account and a box inside a
+   * box reads as a modal inside a modal.
+   *
+   * It also fixes something invisible. GlassSurface's non-glass fallback —
+   * the branch every device without Liquid Glass takes, and every device with
+   * Reduce Transparency on — paints `theme.surface`, which is exactly the
+   * sheet's own background (sheet.tsx). So on the fallback the card was not
+   * even a card: it was padding. Not nesting it is one of the two fixes the
+   * package allows; the other was giving GlassSurface a ground prop, and a
+   * prop no remaining caller would pass is a capability with nothing on the
+   * other end. Every GlassSurface left in the app sits over the map or the
+   * canvas, where the fallback reads correctly.
+   */
+  flat?: boolean;
+  /**
    * How to run the jump to sign-up. A caller that renders this INSIDE a sheet
    * must pass `leavingSheet(close)`, or the sheet's scrim outlives the push
    * and freezes whatever is behind it. See components/ui/sheet.
@@ -73,43 +95,54 @@ export function SignUpGate({
     analytics.capture('gate_shown', { where });
   }, [where]);
 
-  return (
-    <GlassSurface radius={Radius.xl} style={compact ? styles.compact : styles.card}>
-      <View style={styles.inner}>
-        <ThemedText type="headline">{reason}</ThemedText>
-        {detail ? (
-          <ThemedText type="footnote" themeColor="textSecondary">
-            {detail}
-          </ThemedText>
-        ) : null}
-        {/* The one line every gate in the app shows: the map, travelers,
+  // One body, two grounds. Everything below the frame — the copy, the two
+  // doors, and both `capture` calls on them — is shared, so the flat variant
+  // cannot drift from the card one and cannot lose the funnel.
+  const body = (
+    <View style={flat ? styles.flatInner : styles.inner}>
+      <ThemedText type="headline">{reason}</ThemedText>
+      {detail ? (
+        <ThemedText type="footnote" themeColor="textSecondary">
+          {detail}
+        </ThemedText>
+      ) : null}
+      {/* The one line every gate in the app shows: the map, travelers,
             chat, a business, a room, a group invite. It carries the strongest
             promise the product makes, because this is the moment somebody
             decides whether to hand over an email. */}
-        <ThemedText type="footnote" themeColor="textSecondary">
-          {SIGN_UP_GATE_NOTE}
-        </ThemedText>
-        <PrimaryButton
-          label={CTA}
-          onPress={() => {
-            analytics.capture('gate_tapped', { where });
-            onNavigate(() => router.push('/join'));
-          }}
-        />
-        {/* The second door. A gate that offers only "make a profile" reads
+      <ThemedText type="footnote" themeColor="textSecondary">
+        {SIGN_UP_GATE_NOTE}
+      </ThemedText>
+      <PrimaryButton
+        label={CTA}
+        onPress={() => {
+          analytics.capture('gate_tapped', { where });
+          onNavigate(() => router.push('/join'));
+        }}
+      />
+      {/* The second door. A gate that offers only "make a profile" reads
             as "you are new", and the person who already has an account —
             reinstalling, or on somebody else's phone — has to guess that
             signing in is hidden one screen inside signing up. Both doors,
             at the moment the question is asked. */}
-        <PrimaryButton
-          variant="ghost"
-          label="I already have an account"
-          onPress={() => {
-            analytics.capture('gate_signin_tapped', { where });
-            onNavigate(() => router.push('/email'));
-          }}
-        />
-      </View>
+      <PrimaryButton
+        variant="ghost"
+        label="I already have an account"
+        onPress={() => {
+          analytics.capture('gate_signin_tapped', { where });
+          onNavigate(() => router.push('/email'));
+        }}
+      />
+    </View>
+  );
+
+  if (flat) {
+    return body;
+  }
+
+  return (
+    <GlassSurface radius={Radius.xl} style={compact ? styles.compact : styles.card}>
+      {body}
     </GlassSurface>
   );
 }
@@ -128,5 +161,13 @@ const styles = StyleSheet.create({
   inner: {
     gap: Space.md,
     padding: Space.lg,
+  },
+  // No padding at all. The flat variant renders into a Sheet, which already
+  // pads its own column by Space.lg horizontally and spaces its children by
+  // Space.md — the same rhythm, so the gate adding its own would inset the
+  // copy from the sheet's other content and put back the second edge the card
+  // was drawing.
+  flatInner: {
+    gap: Space.md,
   },
 });

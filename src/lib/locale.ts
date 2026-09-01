@@ -52,11 +52,33 @@ const locale: Partial<Locale> = locales[0] ?? {};
 const calendar: Partial<Calendar> = calendars[0] ?? {};
 
 /**
+ * The tag EXACTLY as the phone reported it, or null when it reported none.
+ * The one export in this file that does NOT fall back, and the difference is
+ * the whole point of it existing beside `DEVICE_LOCALE` below.
+ *
+ * A formatter always needs some locale, so 'en-US' is the right answer when
+ * the phone will not say - nobody is harmed by a machine guessing at month
+ * order. A PERSON's language is the other kind of question: `profiles.locale`
+ * decides which language a moderation verdict about somebody's face or
+ * somebody's livelihood is written in, and there null means English silently
+ * while a guess means a rejection in a language they may not read, from an
+ * app that was sure it knew better. So the guess is made where it is
+ * harmless, and never in the value the write takes.
+ *
+ * `src/lib/device-locale.ts` is that write, and it is the only other reader
+ * of this constant. It asks HERE rather than calling `getLocales()` a second
+ * time: this file is the one place the phone is asked (docs/ARCHITECTURE.md,
+ * D5), and `src/lib/__tests__/one-clock.test.ts` fails the build if a third
+ * caller appears.
+ */
+export const DEVICE_LOCALE_TAG: string | null = locale.languageTag ?? null;
+
+/**
  * The full BCP 47 tag, region included: 'en-US', 'pt-PT', 'es-419'. This is
  * what `Intl` wants. Never pass a bare 'en' where this belongs, or American
  * month/day order comes back on a British phone.
  */
-export const DEVICE_LOCALE: string = locale.languageTag || 'en-US';
+export const DEVICE_LOCALE: string = DEVICE_LOCALE_TAG || 'en-US';
 
 /** Just the language: 'en', 'pt', 'th'. Useful for a lookup, not for Intl. */
 export const DEVICE_LANGUAGE: string = locale.languageCode || 'en';

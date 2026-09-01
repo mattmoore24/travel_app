@@ -3184,7 +3184,10 @@ export default function MapScreen() {
                 : 'Your name and photo go on the pin, so people know who they are meeting. It disappears within three days.'
             }
             where={gate === 'join' ? 'join-plan' : 'drop-pin'}
-            compact
+            // Flat, not a card. The Sheet around it is already the elevated
+            // object, so the gate's own frame was a card inside a card at the
+            // one moment we ask a browsing guest for an account.
+            flat
             // Pushing a route from inside a sheet leaves its scrim over the
             // map and every later tap lands on nothing. See components/ui/sheet.
             onNavigate={(go) => {
@@ -3318,7 +3321,10 @@ export default function MapScreen() {
             <SignUpGate
               reason="See who's going and say hi"
               where="pin-card"
-              compact
+              // Same card-in-card as the gate sheet above: the pin card is a
+              // `<Sheet inline>`, which draws the same surface, so the gate's
+              // frame bought a second edge and nothing else.
+              flat
               onNavigate={(go) => {
                 // The pin they were reading, replayed after signup - and
                 // degraded silently to the city if it burns out first.

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { archiveStampKey, newlyArchived } from '@/features/chat/archive-notice';
+import { between } from '@/lib/__tests__/source';
 
 /**
  * The notice that stops an auto-archive being a disappearance.
@@ -95,10 +96,7 @@ describe('the words the notice uses', () => {
 
   it('says what happened, with a count and no em dash', () => {
     expect(screen).toContain("{countOf(count, 'quiet chat')} moved to Archived");
-    const line = screen.slice(
-      screen.indexOf('function ArchiveNotice'),
-      screen.indexOf('const WAITING_COLLAPSE_AT')
-    );
+    const line = between(screen, 'function ArchiveNotice', 'const WAITING_COLLAPSE_AT');
     expect(line).not.toContain('—');
   });
 

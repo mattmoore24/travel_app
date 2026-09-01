@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { gateCopy } from '@/features/auth/gate-copy';
+import { between } from '@/lib/__tests__/source';
 
 /**
  * The one screen a suspended or closed account can reach.
@@ -103,7 +104,7 @@ describe('how the gate gets there', () => {
     // The gate is returned INSTEAD OF the Stack, so there is neither, and the
     // form drew its title under the status bar and into the notch.
     const gate = gateSource();
-    const appeal = gate.slice(gate.indexOf("view === 'appeal'"), gate.indexOf('<ContactForm'));
+    const appeal = between(gate, "view === 'appeal'", '<ContactForm');
     expect(appeal).toContain("edges={['top']}");
     // And only the top: the bottom is StepScreen's, where its Send sits.
     expect(appeal).not.toContain("'bottom'");

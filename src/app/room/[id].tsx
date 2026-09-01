@@ -879,6 +879,9 @@ export default function RoomScreen() {
             <SignUpGate
               reason="Send your report"
               where="room-report"
+              // Inside a Sheet, so flat: the sheet is the frame. The footer
+              // gate further up this file is on a PAGE and keeps its card.
+              flat
               onNavigate={leavingSheet(() => setReportGate(false))}
             />
           </Sheet>

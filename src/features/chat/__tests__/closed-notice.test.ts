@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { closedNotice } from '@/features/chat/closed-notice';
+import { between } from '@/lib/__tests__/source';
 
 /**
  * A block that says it landed.
@@ -53,18 +54,16 @@ describe('what the thread does with it', () => {
     // once and this query joins that storm; a truthy default would tell
     // somebody, for a beat, that they had not blocked a person they just did.
     const thread = source('app', 'chat', '[id].tsx');
-    const branch = thread.slice(
-      thread.indexOf('const iBlockedThem ='),
-      thread.indexOf('const messagesQuery =')
-    );
+    const branch = between(thread, 'const iBlockedThem =', 'const messagesQuery =');
     expect(branch).toContain('blocksQuery.isSuccess &&');
   });
 
   it('answers the block with a haptic, before the refetch storm', () => {
     const hooks = source('features', 'chat', 'hooks.ts');
-    const mutation = hooks.slice(
-      hooks.indexOf('export function useBlockUser()'),
-      hooks.indexOf('export function useBlocks()')
+    const mutation = between(
+      hooks,
+      'export function useBlockUser()',
+      'export function useBlocks()'
     );
     expect(mutation.indexOf('haptics.success()')).toBeGreaterThan(-1);
     expect(mutation.indexOf('haptics.success()')).toBeLessThan(

@@ -453,9 +453,17 @@ function RootNavigator() {
           // flashing once per push.
           options={{ headerShown: false }}
         />
+        {/* A REAL title in the header row, not an empty one with the word
+            drawn again underneath. `headerTitle: ''` spent a whole row on a
+            lone glass back button and then made the screen repeat itself
+            below it, which is where the two-storey chrome on this spine came
+            from. The row already exists; it was just empty. The title paints
+            in Nocturne's own text token because NavigationTheme sets
+            `colors.text` (below) — native headers take their colour from the
+            navigation appearance, never from a component's style. */}
         <Stack.Screen
           name="archived-chats"
-          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+          options={{ headerShown: true, headerTitle: 'Archived', headerShadowVisible: false }}
         />
         {/* Where the waiting first messages go once there are too many of
             them to keep in the inbox. signedIn, not signedIn && onboarded:
@@ -493,6 +501,17 @@ function RootNavigator() {
             the same kind of thing: who can see you, and who you have already
             decided cannot. */}
         <Stack.Screen name="blocked" options={{ presentation: 'modal' }} />
+        {/* The reader's own line on what a hello may say. It was the one real
+            route file in src/app/ the layout did not name, and expo-router
+            appends those - so it rendered outside every guard with the root's
+            headerShown false and a card presentation, which is a full-bleed
+            page under the Dynamic Island with no header, no back chevron and
+            no Close on it. That is /my-reports one batch ago, exactly. Beside
+            blocked and visibility because the settings spine files it beside
+            them, and on the same guard they are on: the row that leads here
+            is hidden for an account with no onboarding stamp (profile-me),
+            so the client and the navigator agree about who can reach it. */}
+        <Stack.Screen name="muted-words" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compose-request" options={{ presentation: 'modal' }} />
         <Stack.Screen
           name="profile/[userId]"

@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { after } from '@/lib/__tests__/source';
+
 /**
  * Signup asks for every part of a profile, once, and ends by showing it.
  *
@@ -106,7 +108,7 @@ describe('skip is only on the steps that may be skipped', () => {
     expect(shell).toContain('Travelers stays closed until you do. The map does not.');
     expect(shell).toContain('onSkip={trips.length > 0 ? undefined');
     const stepShell = stripped('..', 'features', 'signup', 'step-shell.tsx');
-    const skipBlock = stepShell.slice(stepShell.indexOf('{onSkip ? ('));
+    const skipBlock = after(stepShell, '{onSkip ? (');
     expect(skipBlock).toContain('skipNote');
   });
 
@@ -142,7 +144,7 @@ describe('the last step is the profile, not a summary of it', () => {
     expect(code).toContain('onEditTrips={() => jumpToStep(10)}');
     // Steps 8 and 9 push /edit-prompt and /edit-priorities for real, so the
     // check is scoped to the review block: nothing in it navigates.
-    const review = code.slice(code.indexOf('<ProfileView'));
+    const review = after(code, '<ProfileView');
     expect(review).not.toContain('router.');
   });
 

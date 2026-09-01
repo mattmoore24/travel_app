@@ -1,6 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
+import { ChipRail, type ChipOption } from '@/components/form/chip-rail';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -121,6 +122,12 @@ export function MapFilterSheet({
   const laterLabel = new Intl.DateTimeFormat('en', { weekday: 'long' }).format(
     addDays(clock ?? new Date(), 2)
   );
+  const dayOptions: ChipOption<DayFilter>[] = [
+    { value: 'any', label: 'Any day' },
+    { value: 'today', label: 'Today' },
+    { value: 'tomorrow', label: 'Tomorrow' },
+    { value: 'later', label: laterLabel },
+  ];
   // The cap is what keeps a strip of MAP visible above the sheet: the whole
   // argument against an Apply button is that you watch the markers answer
   // every tick, and the un-capped sheet ran to the tab bar and covered the
@@ -152,7 +159,12 @@ export function MapFilterSheet({
             accessibilityLabel="Clear all filters"
             haptic="light"
             scaleTo={0.94}
-            hitSlop={8}
+            // 13, not 8. An 18pt footnote row plus 13 a side is the 44 this
+            // app buys every small control; 8 made it 34, which is smaller
+            // than every chip in the sheet below it and is the one control
+            // here that undoes everything the sheet did. Same arithmetic the
+            // place sheet's close button and "See the whole page" link use.
+            hitSlop={13}
             onPress={() => onChange(DEFAULT_FILTERS)}>
             <ThemedText type="footnote" themeColor="accent">
               Clear all
@@ -170,23 +182,14 @@ export function MapFilterSheet({
             four groups only fit on a small phone without one. */}
         {viewerIsBusiness ? null : (
           <Group title="When">
-            <View style={styles.chips}>
-              {(
-                [
-                  ['any', 'Any day'],
-                  ['today', 'Today'],
-                  ['tomorrow', 'Tomorrow'],
-                  ['later', laterLabel],
-                ] as [DayFilter, string][]
-              ).map(([value, label]) => (
-                <Chip
-                  key={value}
-                  label={label}
-                  selected={filters.day === value}
-                  onPress={() => onChange({ ...filters, day: value })}
-                />
-              ))}
-            </View>
+            {/* No `label` on the rail: Group already draws the heading, and
+                two of them would be the same word twice. */}
+            <ChipRail
+              wrap
+              options={dayOptions}
+              selected={filters.day}
+              onSelect={(day) => onChange({ ...filters, day })}
+            />
           </Group>
         )}
 
@@ -214,26 +217,28 @@ export function MapFilterSheet({
                 ? 'Nothing ticked means everything.'
                 : "Only travelers' plans. Businesses are filtered above."
             }>
-            <View style={styles.chips}>
-              {/* The marker's own disc and glyph, so the picker and the thing
-                  it picks share a vocabulary. Emoji here contradicted the map
-                  twice (Museum, Sights) and put a red pushpin on screen. */}
-              {PIN_CATEGORIES.map((category) => (
-                <Chip
-                  key={category.value}
-                  testID={`filter-category-${category.value}`}
-                  label={category.label}
-                  leading={<PinGlyph category={category.value} size={18} />}
-                  selected={filters.categories.includes(category.value)}
-                  onPress={() =>
-                    onChange({
-                      ...filters,
-                      categories: toggle(filters.categories, category.value),
-                    })
-                  }
-                />
-              ))}
-            </View>
+            {/* The marker's own disc and glyph, so the picker and the thing
+                it picks share a vocabulary. Emoji here contradicted the map
+                twice (Museum, Sights) and put a red pushpin on screen.
+
+                The testID is what the simulator suite holds these by: a
+                category chip's label used to lead with an emoji, so Maestro's
+                full-string match on "Bar" could never hit it — run 72 failed
+                on exactly that, and guest-tour.yml still selects by this id. */}
+            <ChipRail
+              wrap
+              multi
+              options={PIN_CATEGORIES.map((category) => ({
+                value: category.value,
+                label: category.label,
+                leading: <PinGlyph category={category.value} size={18} />,
+                testID: `filter-category-${category.value}`,
+              }))}
+              selected={filters.categories}
+              onToggle={(value) =>
+                onChange({ ...filters, categories: toggle(filters.categories, value) })
+              }
+            />
           </Group>
         )}
       </ScrollView>
@@ -242,19 +247,22 @@ export function MapFilterSheet({
           already applied everything, and an over-filtered map must never be
           mistakable for an empty city. Only when the FILTERS did the
           emptying, though (the header's own Clear all uses the same test): a
-          genuinely empty city at the defaults has no plans to match and
+          genuinely empty city at the defaults has nothing filtered out and
           nothing to clear, so it gets the honest sentence instead. */}
       {resultCount === 0 && !isDefault(filters) ? (
         <View style={styles.resultEmpty}>
           <ThemedText type="smallBold" style={styles.resultLine}>
-            No plans match
+            No plans fit these filters
           </ThemedText>
           <PressableScale
             accessibilityRole="button"
             accessibilityLabel="Clear all filters"
             haptic="light"
             scaleTo={0.94}
-            hitSlop={8}
+            // The same 44 as the header's Clear all above, and for the same
+            // reason: it is the same control, offered a second time to
+            // somebody who has just filtered the map down to nothing.
+            hitSlop={13}
             onPress={() => onChange(DEFAULT_FILTERS)}>
             <ThemedText type="footnote" themeColor="accent" style={styles.resultLine}>
               Clear all
@@ -298,57 +306,6 @@ function Group({
       ) : null}
       {children}
     </View>
-  );
-}
-
-function Chip({
-  label,
-  leading,
-  selected,
-  onPress,
-  testID,
-}: {
-  label: string;
-  /** Drawn before the label — the category chips put the marker's glyph here. */
-  leading?: React.ReactNode;
-  selected: boolean;
-  onPress: () => void;
-  /**
-   * For the simulator suite. A category chip's label used to lead with an
-   * emoji, so Maestro's full-string match on "Bar" could never hit it — run
-   * 72 failed on exactly that, and guest-tour.yml still selects by this id.
-   * An id is what the rest of the suite uses for anything whose visible text
-   * is not a clean handle, and it survives the glyph now sitting beside the
-   * words.
-   */
-  testID?: string;
-}) {
-  const theme = useTheme();
-  return (
-    <PressableScale
-      testID={testID}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected }}
-      haptic="selection"
-      scaleTo={0.94}
-      onPress={onPress}>
-      <View
-        style={[
-          styles.chip,
-          {
-            backgroundColor: selected ? theme.accent : theme.surface,
-            borderColor: selected ? 'transparent' : theme.hairline,
-          },
-        ]}>
-        {leading}
-        <ThemedText
-          type="footnote"
-          style={selected ? { color: theme.onAccent, fontWeight: '700' } : undefined}>
-          {label}
-        </ThemedText>
-      </View>
-    </PressableScale>
   );
 }
 
@@ -508,22 +465,6 @@ const styles = StyleSheet.create({
   },
   group: {
     gap: Space.sm,
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Space.sm,
-  },
-  chip: {
-    height: 34,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Space.xs,
-    paddingHorizontal: Space.md,
-    borderRadius: Radius.pill,
-    borderCurve: 'continuous',
-    borderWidth: 1,
   },
   row: {
     flexDirection: 'row',

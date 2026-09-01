@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { lastShapeKey, liveCountExcluding, parseShape, shapeOfPost } from '@/app/business-post';
+import { after, between } from '@/lib/__tests__/source';
 
 /**
  * Fixing a post, and putting one up again.
@@ -134,7 +135,7 @@ describe('the update itself', () => {
     // screen_business_post counts an un-archive against the cap, so flipping
     // archived_at back to null here would not bypass the cap - it would
     // bypass the SCREEN, which is where somebody notices the stale date.
-    const body = code.slice(code.indexOf('export async function updateBusinessPost'));
+    const body = after(code, 'export async function updateBusinessPost');
     expect(body).toContain('happens_at: input.happensAt');
     expect(body).not.toContain('archived_at');
   });
@@ -169,7 +170,7 @@ describe('the photo a post can carry', () => {
     // The whole control is optional. `ready` decides the docked button, and it
     // asks for a title and a shape and nothing else - a photo that could stop
     // a post going up would be a worse feature than no photo at all.
-    const ready = code.slice(code.indexOf('const ready ='), code.indexOf('const note ='));
+    const ready = between(code, 'const ready =', 'const note =');
     expect(ready).toContain('trimmedTitle.length >= TITLE_MIN');
     expect(ready).toContain('shape != null');
     expect(ready).not.toContain('photo');
@@ -200,7 +201,7 @@ describe('the photo a post can carry', () => {
   it('uploads through the same door every other business photo uses', () => {
     // processAndUploadImage with the resolution floor on, because a post photo
     // is drawn at cover width on the place page and is judged the same way.
-    const upload = api.slice(api.indexOf('export async function uploadPostPhoto'));
+    const upload = after(api, 'export async function uploadPostPhoto');
     expect(upload).toContain('BUSINESS_PHOTO_BUCKET');
     expect(upload).toContain('{ fillsAFrame: true }');
   });

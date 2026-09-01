@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert } from 'react-native';
 
-import { ChipRow } from '@/components/form/chip-row';
+import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { StepScreen } from '@/components/form/step-screen';
@@ -136,10 +136,11 @@ export function ContactForm({
       onClose={onClose}
       onContinue={submit}>
       <ThemedText type="smallBold">What is this about?</ThemedText>
-      <ChipRow
+      <ChipRail
+        wrap
         options={SUPPORT_CATEGORIES}
-        selected={category ? [category] : []}
-        onToggle={(value) => setCategory(value)}
+        selected={category}
+        onSelect={(value) => setCategory(value)}
       />
       <FormTextField
         label="Your email"

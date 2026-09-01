@@ -79,6 +79,74 @@ describe('Sheet presentation', () => {
     expect(branch).toBeGreaterThan(reset);
   });
 
+  it('hands the drag to the whole card, not to the grabber strip', () => {
+    // The bug this replaces: the GestureDetector wrapped the 24pt grabber, so
+    // pulling a card down by its own title did nothing — on three surfaces
+    // over the live map that a person reaches for by the header. A refactor
+    // that puts the detector back around the grabber has to fail here.
+    const detector = code.indexOf('<GestureDetector gesture={pull}>');
+    expect(detector).toBeGreaterThan(-1);
+    expect(code.match(/<GestureDetector/g)).toHaveLength(1);
+
+    // The first element it opens is the card itself. Nothing — least of all
+    // the grabber's View — may come between them.
+    const card = code.indexOf('<Animated.View', detector);
+    expect(card).toBeGreaterThan(detector);
+    expect(code.slice(detector, card)).not.toContain('<View');
+
+    // And it closes AFTER the card, so the sheet's children (the grabber, the
+    // scroller, a caller's list) are all inside the drag target rather than
+    // beside it.
+    const cardEnd = code.indexOf('</Animated.View>', card);
+    const detectorEnd = code.indexOf('</GestureDetector>', card);
+    expect(cardEnd).toBeGreaterThan(card);
+    expect(detectorEnd).toBeGreaterThan(cardEnd);
+
+    // The grabber is inside the card and keeps its own VoiceOver button: a
+    // pull is not something VoiceOver can perform, so "Dismiss" on the strip
+    // is the only keyboard-free way out of a sheet.
+    const grabber = code.indexOf('testID="sheet-grabber"');
+    expect(grabber).toBeGreaterThan(card);
+    expect(grabber).toBeLessThan(cardEnd);
+    expect(code).toContain('accessibilityHint="Or pull down"');
+  });
+
+  it('needs 10pt of DOWNWARD travel before the pan takes the touch', () => {
+    // Three jobs, one line. It keeps the pan off a tap now that every button
+    // on the card sits under the detector; it enforces the down-only decision
+    // at the gesture (a positive offset leaves the upward end unbounded, so an
+    // upward drag can never activate) on top of the clamp below; and it is
+    // what lets an inner scroller win, because a UIScrollView's own pan
+    // recognises well inside 10pt and RNGH refuses simultaneous recognition
+    // with a recogniser it has no declared relation to.
+    expect(code).toContain('.activeOffsetY(10)');
+    expect(code).toContain('drag.value = Math.max(0, event.translationY)');
+  });
+
+  it('never declares a relation that would stop an inner list scrolling', () => {
+    // `blocksExternalGesture(scroller)` reverses the relation: the scroller
+    // would wait for this pan to fail, and the venue stack inside place-sheet
+    // becomes unscrollable — worse than the bug this package fixes.
+    // `simultaneousWithExternalGesture` is the other half of the trap: the
+    // list would scroll and the sheet drag down on the same finger.
+    expect(code).not.toContain('blocksExternalGesture');
+    expect(code).not.toContain('simultaneousWithExternalGesture');
+  });
+
+  it('keeps its own gesture root, because a Modal is hosted outside the navigator’s', () => {
+    // A React Native Modal gets its own native window, which sits outside the
+    // gesture root the navigator establishes — without this the pull is dead
+    // on every presented sheet, and it is now the card's whole surface that
+    // would be dead rather than 24pt of it.
+    const modal = code.indexOf('<Modal');
+    const root = code.indexOf('<GestureHandlerRootView', modal);
+    const modalEnd = code.indexOf('</Modal>', modal);
+    expect(modal).toBeGreaterThan(-1);
+    expect(root).toBeGreaterThan(modal);
+    expect(root).toBeLessThan(modalEnd);
+    expect(code).toMatch(/<GestureHandlerRootView[^>]*>\{body\}<\/GestureHandlerRootView>/);
+  });
+
   it('mounts its scroller only when a caller opts in with `scrolls`', () => {
     // Opt-in is what keeps the blast radius small: pin-form-sheet and
     // place-sheet own their scrollers already, and a second one around them
