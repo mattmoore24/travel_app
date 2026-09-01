@@ -40,59 +40,132 @@ export const SHEET_SETTLE_MS = 450;
 const DISMISS_DISTANCE = 90;
 
 /**
- * How many native-modal Sheets are mounted right now, and a way to watch it.
+ * TWO counts, because two different questions are asked here and answering
+ * both with one number is what made a photo tap dead.
  *
- * Only the push primer needs this: it is the one thing in the app that
- * presents a sheet on a schedule of its own — the moment a hello is
- * delivered or a pin is posted — rather than because somebody tapped
- * something. Both of those moments happen while another sheet is on its way
- * out, which is exactly the presentation iOS drops.
+ * `presentedModals` is the COLLISION question: how many native `<Modal>`s are
+ * up in this window right now. iOS presents one at a time and silently DROPS
+ * a presentation that begins while another is dismissing, and on Fabric that
+ * does not lose a modal — it leaves an invisible full-screen view answering
+ * every hit test and the app is dead to touch until relaunch (traps). Only
+ * something about to present a Modal of its own has any business reading it.
+ *
+ * `screenOwners` is the MANNERS question: is the person already looking at
+ * something? An inline sheet counts here and not above. It has no Modal, so
+ * there is nothing to collide with, but the map's pin card is still what
+ * somebody is reading, and the push primer arriving over the confirmation for
+ * the pin they just dropped is a fair question asked at the worst moment.
+ *
+ * One number served both until 2026-09-01, and the map paid for it: its pin
+ * and venue cards are `<Sheet inline>` and nothing clears them on blur, so the
+ * count sat at 1 on every screen the app went to afterwards — and the photo
+ * viewer, which was watching it for a collision that could not happen, never
+ * presented at all.
  */
-let presentedSheets = 0;
-const sheetListeners = new Set<() => void>();
+type Count = {
+  read: () => number;
+  subscribe: (listener: () => void) => () => void;
+  shift: (by: number) => void;
+};
 
-function readPresentedSheets(): number {
-  return presentedSheets;
-}
-
-function subscribeToSheets(listener: () => void): () => void {
-  sheetListeners.add(listener);
-  return () => {
-    sheetListeners.delete(listener);
+function createCount(): Count {
+  let value = 0;
+  const listeners = new Set<() => void>();
+  return {
+    read: () => value,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    shift: (by) => {
+      value = Math.max(0, value + by);
+      for (const listener of listeners) {
+        listener();
+      }
+    },
   };
 }
 
-function setPresentedSheets(next: number): void {
-  presentedSheets = Math.max(0, next);
-  for (const listener of sheetListeners) {
-    listener();
-  }
+const presentedModals = createCount();
+const screenOwners = createCount();
+
+function useCount(count: Count): number {
+  return useSyncExternalStore(count.subscribe, count.read, count.read);
 }
 
-/** How many native modals are mounted. Inline sheets do not count. */
-export function usePresentedSheetCount(): number {
-  return useSyncExternalStore(subscribeToSheets, readPresentedSheets, readPresentedSheets);
-}
-
-/**
- * Declare that this component owns the screen — a `<Sheet>`, or a raw
- * `<Modal>` standing in for one.
- *
- * Sheet calls it for itself. Anything else rendering a raw `<Modal>` should
- * call it too, or the count is a lie and whatever is waiting on it presents
- * into a collision anyway.
- */
-export function useRegisterNativeModal(active: boolean): void {
+function useHold(count: Count, active: boolean): void {
   useEffect(() => {
     if (!active) {
       return;
     }
-    setPresentedSheets(presentedSheets + 1);
-    return () => {
-      setPresentedSheets(presentedSheets - 1);
-    };
-  }, [active]);
+    count.shift(1);
+    return () => count.shift(-1);
+  }, [count, active]);
 }
+
+/**
+ * How many native modals are presented right now — the number to read before
+ * presenting one of your own. An inline sheet is not one of these.
+ *
+ * Exported for the tests rather than for a screen, deliberately: the
+ * subscribing form is the wrong one for every real caller (see the read-once
+ * form below and the reason under it), but a counter nothing can observe is a
+ * counter nothing can hold to its word, and this one is load-bearing for
+ * whether a photo viewer ever opens. sheet-counts.test.tsx and
+ * photo-viewer.test.tsx read it to assert what the counter does.
+ */
+export function usePresentedModalCount(): number {
+  return useCount(presentedModals);
+}
+
+/**
+ * The same number, read once instead of watched.
+ *
+ * For a decision taken at a single moment — "was anything in the way when
+ * this tap happened" — where subscribing would mean re-deciding later, on a
+ * count that has since moved for reasons that have nothing to do with the tap.
+ */
+export function presentedModalCount(): number {
+  return presentedModals.read();
+}
+
+/**
+ * How many things own the screen right now, inline sheets included.
+ *
+ * Only the push primer needs this: it is the one thing in the app that
+ * presents on a schedule of its own — the moment a hello is delivered or a
+ * pin is posted — rather than because somebody tapped something, so it is the
+ * only one that has to ask whether it is interrupting.
+ */
+export function useScreenOwnerCount(): number {
+  return useCount(screenOwners);
+}
+
+/**
+ * Declare that this component presents a native `<Modal>` — a `<Sheet>`, or a
+ * raw `<Modal>` standing in for one.
+ *
+ * Sheet calls it for itself. Anything else rendering a raw `<Modal>` should
+ * call it too, or the count is a lie and whatever is waiting on it presents
+ * into a collision anyway. A native modal owns the screen as well, so this
+ * registers in both counts.
+ */
+export function useRegisterNativeModal(active: boolean): void {
+  useHold(presentedModals, active);
+  useHold(screenOwners, active);
+}
+
+/**
+ * Declare something that owns the screen WITHOUT presenting a Modal — an
+ * inline sheet, and nothing else so far. Nothing can collide with it, so it
+ * stays out of the modal count.
+ */
+export function useRegisterScreenOwner(active: boolean): void {
+  useHold(screenOwners, active);
+}
+
 /** Or how fast, for a flick that never travels that far. */
 const DISMISS_VELOCITY = 900;
 
@@ -202,11 +275,13 @@ export function Sheet({
   }, [enter]);
 
   // Register while this sheet owns the screen, so anything that would present
-  // one of its own waits its turn. Inline sheets count too: nothing can
-  // collide with them, but they are still what somebody is looking at, and
-  // the primer arriving over the confirmation card for the pin you just
+  // one of its own waits its turn. One or the other, never both: an inline
+  // sheet renders no Modal, so nothing can collide with it and it must stay
+  // out of the collision count — but it is still what somebody is looking at,
+  // and the primer arriving over the confirmation card for the pin you just
   // dropped is a fair question asked at the worst moment.
-  useRegisterNativeModal(true);
+  useRegisterNativeModal(!inline);
+  useRegisterScreenOwner(inline);
 
   // Every dismissal gesture routes through here, so a guard set by the
   // caller sees the scrim tap and the pull alike. Direct onClose calls from

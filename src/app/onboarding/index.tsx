@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { LanguageField } from '@/components/form/language-field';
+import { CityField } from '@/components/form/city-field';
 import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -51,13 +52,14 @@ import { rememberWantedAudience } from '@/features/profile/wanted-audience';
 import { MAX_PRIORITIES } from '@/features/profile/priorities';
 import { useMyTrips } from '@/features/trips/hooks';
 import { formatDateRange } from '@/features/trips/dates';
+import { profileTripFromOwnTrip } from '@/features/trips/profile-trips';
 import { StepShell } from '@/features/signup/step-shell';
 import { resumeStep } from '@/features/signup/resume';
 import { SIGNUP_TOTAL_STEPS, signupStepName } from '@/features/signup/steps';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 import { useTheme } from '@/hooks/use-theme';
-import type { Gender, ProfileAudience, ProfileRow } from '@/lib/database.types';
+import type { CityRow, Gender, ProfileAudience, ProfileRow } from '@/lib/database.types';
 
 /**
  * The same sentence on every step that has one, in the same place.
@@ -147,13 +149,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   // the hold above: a socials list that has not landed yet is a section that
   // says nothing for a beat, not a wrong profile.
   const { data: handles = [] } = useOwnSocialHandles();
-  const profileTrips: ProfileTrip[] = trips.map((trip) => ({
-    id: trip.id,
-    cityId: trip.city_id,
-    cityLabel: `${trip.cities.name}, ${trip.cities.country_name}`,
-    startDate: trip.start_date,
-    endDate: trip.end_date,
-  }));
+  const profileTrips: ProfileTrip[] = trips.map(profileTripFromOwnTrip);
 
   // Not `useState(3)`. Every field on every screen is prefilled from the saved
   // profile and saveAndGo writes on the way past each step, so nothing was
@@ -199,6 +195,20 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   const [bio, setBio] = useState(profile.bio ?? '');
   const [occupation, setOccupation] = useState(profile.occupation ?? '');
   const [touched, setTouched] = useState(false);
+
+  /**
+   * Take the city AND its country from the reference row.
+   *
+   * Both text columns keep being written — nothing that reads them today
+   * breaks, and a profile whose city is not in the table is still expressible
+   * — but a picked one now writes the same two strings for everybody who
+   * picks it, which is the whole point: 'Deutschland', 'Germany' and 'DE'
+   * were three countries.
+   */
+  const pickHomeCity = (choice: CityRow) => {
+    setCity(choice.name);
+    setCountry(choice.country_name);
+  };
 
   const nameError = touched ? validateDisplayName(name) : null;
   const ageError = touched ? validateAge(age) : null;
@@ -410,13 +420,20 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
                 5
               )
         }>
-        <FormTextField
+        {/* The same component Edit profile mounts, not a second copy of it.
+            The hand-rolled list that used to sit here had already drifted
+            from the shared one it was supposed to match: no minHeight at all
+            (about 39pt, under the 44 floor), a different ground colour, and a
+            comment claiming the geometry was add-trip's while differing from
+            it in both. One component is the only version of this that cannot
+            drift again. */}
+        <CityField
           label="City"
           testID="city-input"
           autoFocus
           value={city}
           onChangeText={setCity}
-          autoComplete="off"
+          onPick={pickHomeCity}
         />
         <FormTextField
           label="Country"
@@ -425,6 +442,9 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
           onChangeText={setCountry}
           autoComplete="country"
         />
+        <ThemedText type="footnote" themeColor="textSecondary">
+          Tap a suggestion and both fill themselves in. Not listed? What you type is fine.
+        </ThemedText>
         <View style={styles.block}>
           <ThemedText type="callout">Languages</ThemedText>
           <ThemedText type="footnote" themeColor="textSecondary">

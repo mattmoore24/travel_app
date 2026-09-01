@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useState, type ReactNode } from 'react';
 import {
+  Pressable,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -13,6 +14,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { PhotoCheckVeil } from '@/components/ui/photo-check';
+import { PhotoViewer, type ViewablePhoto } from '@/components/ui/photo-viewer';
 import { Skeleton } from '@/components/ui/skeleton';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -23,7 +25,7 @@ import { overlapSentence } from '@/features/matching/overlap';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { SocialLogo } from '@/features/profile/social-logo';
-import { formatDateRange } from '@/features/trips/dates';
+import { daysUntil, formatDateRange, formatTripDates } from '@/features/trips/dates';
 import { TripEditor, type EditableTrip } from '@/features/trips/trip-editor';
 import { TopRatedShelf } from '@/features/business/top-rated-shelf';
 import { MAX_PRIORITIES } from '@/features/profile/priorities';
@@ -44,9 +46,39 @@ export type ProfileTrip = {
   cityLabel: string;
   startDate: string;
   endDate: string;
+  /**
+   * The window is a guess ("Bangkok, probably most of September"), not two
+   * days somebody picked. The dates are still real dates — the widest range
+   * the traveler stands behind — so nothing that does arithmetic on them
+   * changes; what changes is that the card must not print them as a fact.
+   * Absent on a trip whose source has not been widened for the column yet,
+   * which reads the same as false.
+   */
+  approximate?: boolean;
   /** Set when the viewer's own trip overlaps this one. */
   overlap?: { start: string; end: string } | null;
 };
+
+/**
+ * The dates on a trip card.
+ *
+ * The spec asked for an unqualified range with a small "roughly" chip beside
+ * it. One sentence beats a fact and a disclaimer sitting next to each other:
+ * a reader deciding whether to book flights around somebody's plans should
+ * not have to notice a second element to learn that the first one is a guess.
+ */
+function tripDates(trip: ProfileTrip): string {
+  return formatTripDates(trip.startDate, trip.endDate, trip.approximate);
+}
+
+/**
+ * How close the window has to get before the owner is asked for real dates.
+ *
+ * Two weeks out is when a rough month stops being honest and starts being
+ * stale — flights are booked, and the people reading the profile are the ones
+ * who will be there.
+ */
+const ROUGH_NUDGE_DAYS = 14;
 
 /**
  * Something on a profile you can answer, the way Hinge lets you reply to one
@@ -64,6 +96,7 @@ function Photo({
   path,
   label,
   style,
+  onOpen,
 }: {
   path: string;
   /**
@@ -73,27 +106,55 @@ function Photo({
    */
   label?: string;
   style?: object;
+  /**
+   * Open this photo full screen.
+   *
+   * The SIGNED URL goes with it, because this is the component holding it.
+   * The viewer signs nothing itself — the photos bucket is private and every
+   * caller's photo lives in a different one — so whoever has the URL hands it
+   * over (components/ui/photo-viewer.tsx says why).
+   */
+  onOpen?: (photo: ViewablePhoto) => void;
 }) {
   const theme = useTheme();
   const { data: url } = usePhotoUrl(path);
+  // A photo that still arrives late crossfades into the frame instead of
+  // snapping into it. The frame is surfaceSunken underneath, so the snap read
+  // as a glitch on the one screen whose whole pitch is the face.
+  const image = url ? (
+    <Image
+      source={{ uri: url }}
+      style={styles.fill}
+      contentFit="cover"
+      transition={Motion.quick}
+      // Only when the frame itself is not the button. A Pressable with its
+      // own label makes its children invisible to VoiceOver and to Maestro,
+      // so the label moves up rather than being said twice.
+      accessibilityLabel={onOpen && url ? undefined : label}
+    />
+  ) : (
+    // Loading, not missing. A flat rectangle on a slow connection is
+    // indistinguishable from a photo that failed to arrive.
+    <Skeleton style={StyleSheet.absoluteFill} radius={0} />
+  );
   return (
     <View style={[styles.photoFrame, { backgroundColor: theme.surfaceSunken }, style]}>
-      {/* A photo that still arrives late crossfades into the frame instead
-          of snapping into it. The frame is surfaceSunken underneath, so the
-          snap read as a glitch on the one screen whose whole pitch is the
-          face. */}
-      {url ? (
-        <Image
-          source={{ uri: url }}
-          style={styles.fill}
-          contentFit="cover"
-          transition={Motion.quick}
+      {onOpen && url ? (
+        // A plain Pressable, not PressableScale: a photo that shrinks under
+        // the thumb reads as a card, and this one is meant to read as the
+        // picture itself. It sits UNDER the reply chip and the edit button in
+        // the hero, so neither of their targets is swallowed — the tap only
+        // lands here where nothing else claimed it.
+        <Pressable
+          accessibilityRole="imagebutton"
           accessibilityLabel={label}
-        />
+          accessibilityHint="Opens it full screen."
+          style={styles.fill}
+          onPress={() => onOpen({ uri: url, label: label ?? 'Photo' })}>
+          {image}
+        </Pressable>
       ) : (
-        // Loading, not missing. A flat rectangle on a slow connection is
-        // indistinguishable from a photo that failed to arrive.
-        <Skeleton style={StyleSheet.absoluteFill} radius={0} />
+        image
       )}
     </View>
   );
@@ -442,16 +503,24 @@ function WovenPhoto({
   index,
   label,
   onRespondTo,
+  onOpenPhoto,
 }: {
   photo: ProfilePhotoRow;
   index: number;
   /** What VoiceOver says this photo is: "Mara, photo 3 of 5". */
   label: string;
   onRespondTo?: (target: RespondTarget) => void;
+  /** Open it full screen. Always supplied — a gallery photo is for looking at. */
+  onOpenPhoto?: (photo: ViewablePhoto) => void;
 }) {
   return (
     <View>
-      <Photo path={photo.storage_path} label={label} style={styles.galleryPhoto} />
+      <Photo
+        path={photo.storage_path}
+        label={label}
+        style={styles.galleryPhoto}
+        onOpen={onOpenPhoto}
+      />
       {onRespondTo ? (
         <ReplyButton
           onPhoto
@@ -539,9 +608,7 @@ function TripsSection({
                 ]}>
                 <View style={styles.tripText}>
                   <ThemedText type="headline">{trip.cityLabel}</ThemedText>
-                  <ThemedText themeColor="textSecondary">
-                    {formatDateRange(trip.startDate, trip.endDate)}
-                  </ThemedText>
+                  <ThemedText themeColor="textSecondary">{tripDates(trip)}</ThemedText>
                   {/* Not on the trip the hero is already showing: two
                       copies of one window is noise, and this is the copy the
                       floating Say hi bar fades. A second overlapping trip
@@ -565,16 +632,58 @@ function TripsSection({
               </View>
             );
             if (owner) {
+              // A rough window is fine while the trip is months away and
+              // stale once it is close: by then flights are booked, and the
+              // people reading this are the ones who will be there. Owner
+              // only — nobody else can do anything about it, and a stranger
+              // being told somebody's dates are vague twice is noise.
+              // Both bounds. daysUntil goes NEGATIVE once the window opens
+              // and fetchMyTrips keeps a trip on the profile until its end
+              // date passes, so an upper bound alone asked somebody on day
+              // five of a rough Bangkok window to firm up dates for the trip
+              // they were already on. Nothing to firm up, and the one place
+              // it could appear is the profile they are living out of.
+              const startsIn = daysUntil(trip.startDate);
+              const askForDates =
+                trip.approximate === true && startsIn >= 0 && startsIn <= ROUGH_NUDGE_DAYS;
               return (
-                <PressableScale
-                  key={trip.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit trip to ${trip.cityLabel}`}
-                  haptic="light"
-                  scaleTo={0.985}
-                  onPress={() => onEditTrip(trip)}>
-                  {row}
-                </PressableScale>
+                <View key={trip.id} style={styles.tripEntry}>
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit trip to ${trip.cityLabel}`}
+                    haptic="light"
+                    scaleTo={0.985}
+                    onPress={() => onEditTrip(trip)}>
+                    {row}
+                  </PressableScale>
+                  {askForDates ? (
+                    <PressableScale
+                      accessibilityRole="button"
+                      accessibilityLabel={`Know your dates yet? Edit your trip to ${trip.cityLabel}.`}
+                      testID="rough-dates-nudge"
+                      haptic="light"
+                      scaleTo={0.98}
+                      onPress={() => onEditTrip(trip)}>
+                      <View style={[styles.promptEmpty, { borderColor: theme.hairline }]}>
+                        <SymbolView
+                          name={{
+                            ios: 'calendar',
+                            android: 'calendar_month',
+                            web: 'calendar_month',
+                          }}
+                          size={18}
+                          tintColor={theme.accent}
+                        />
+                        <View style={styles.promptEmptyText}>
+                          <ThemedText type="callout">Know your dates yet?</ThemedText>
+                          <ThemedText type="footnote" themeColor="textSecondary">
+                            Swap the rough window for the days you actually go.
+                          </ThemedText>
+                        </View>
+                      </View>
+                    </PressableScale>
+                  ) : null}
+                </View>
               );
             }
             if (!onRespondTo) {
@@ -587,10 +696,7 @@ function TripsSection({
                 // The words on the card, then what tapping does. A
                 // Pressable's own label REPLACES its children, so the city
                 // and the dates have to be in it or they are gone.
-                accessibilityLabel={`${trip.cityLabel}, ${formatDateRange(
-                  trip.startDate,
-                  trip.endDate
-                )}.${
+                accessibilityLabel={`${trip.cityLabel}, ${tripDates(trip)}.${
                   trip.overlap && trip.id !== heroOverlapTripId
                     ? ` Both there ${formatDateRange(trip.overlap.start, trip.overlap.end)}.`
                     : ''
@@ -923,6 +1029,11 @@ export function ProfileView({
   const { width } = useWindowDimensions();
   const [editingTrip, setEditingTrip] = useState<EditableTrip | null>(null);
   const [addingTrip, setAddingTrip] = useState(false);
+  // The photo being looked at full screen, from the hero or from anywhere in
+  // the gallery. One viewer for the page, mounted at the bottom: it presents
+  // nothing until a photo is set, and it asks whether a modal is already up at
+  // the moment of the tap rather than watching a count from before it.
+  const [viewing, setViewing] = useState<ViewablePhoto | null>(null);
 
   const main = photos.find((p) => p.position === 0) ?? photos[0] ?? null;
   const gallery = photos.filter((p) => p.id !== main?.id);
@@ -996,6 +1107,7 @@ export function ProfileView({
                 path={main.storage_path}
                 label={heroPhotoLabel}
                 style={StyleSheet.absoluteFill}
+                onOpen={setViewing}
               />
             ) : (
               <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.surfaceSunken }]} />
@@ -1125,6 +1237,7 @@ export function ProfileView({
                     cityLabel: trip.cityLabel,
                     startDate: trip.startDate,
                     endDate: trip.endDate,
+                    approximate: trip.approximate === true,
                   })
             }
             onAddTrip={() => (onEditTrips ? onEditTrips() : setAddingTrip(true))}
@@ -1147,6 +1260,7 @@ export function ProfileView({
               index={0}
               label={galleryPhotoLabel(0)}
               onRespondTo={onRespondTo}
+              onOpenPhoto={setViewing}
             />
           ) : null}
 
@@ -1226,6 +1340,7 @@ export function ProfileView({
               index={1}
               label={galleryPhotoLabel(1)}
               onRespondTo={onRespondTo}
+              onOpenPhoto={setViewing}
             />
           ) : null}
 
@@ -1280,6 +1395,7 @@ export function ProfileView({
               index={2}
               label={galleryPhotoLabel(2)}
               onRespondTo={onRespondTo}
+              onOpenPhoto={setViewing}
             />
           ) : null}
 
@@ -1339,6 +1455,7 @@ export function ProfileView({
                   index={INTERLEAVED + index}
                   label={galleryPhotoLabel(INTERLEAVED + index)}
                   onRespondTo={onRespondTo}
+                  onOpenPhoto={setViewing}
                 />
               ))}
             </Animated.View>
@@ -1350,6 +1467,10 @@ export function ProfileView({
 
       {addingTrip ? <TripEditor trip={null} onClose={() => setAddingTrip(false)} /> : null}
       {editingTrip ? <TripEditor trip={editingTrip} onClose={() => setEditingTrip(null)} /> : null}
+      {/* One for the whole page rather than one per photo. With no photo set
+          it carries nothing at all: no gesture tree, no registration, no
+          window size it is not using. */}
+      <PhotoViewer photo={viewing} onClose={() => setViewing(null)} />
     </>
   );
 }
@@ -1526,6 +1647,12 @@ const styles = StyleSheet.create({
     paddingVertical: Space.xs,
   },
   tripList: {
+    gap: Space.sm,
+  },
+  /* One trip and whatever the owner is being asked about it, kept together
+     so the nudge reads as belonging to the card above it rather than to the
+     next one down. */
+  tripEntry: {
     gap: Space.sm,
   },
   tripCard: {

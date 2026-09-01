@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { PhotoCheck } from '@/components/ui/photo-check';
+import { PhotoViewer, type ViewablePhoto } from '@/components/ui/photo-viewer';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet, SHEET_SETTLE_MS, useRegisterNativeModal } from '@/components/ui/sheet';
 import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
@@ -408,12 +409,129 @@ function PinCard({ pin, mine }: { pin: MessagePin; mine: boolean }) {
   );
 }
 
+/**
+ * The space a photo in a bubble occupies, reserved from its first paint.
+ *
+ * THE HEIGHT IS NOT A VARIABLE. Every photo bubble stands this tall whether
+ * the image has loaded or not, because an inverted list is anchored to its own
+ * bottom: a cell that changed height when its photo landed would slide
+ * everything above it down the screen, which is the thread moving under the
+ * reader's finger half a second after they opened it. This is the same
+ * anchoring the unread jump and the reaction menu both reason about below.
+ *
+ * The column itself caps at 80%, so this is also the widest a photo gets.
+ */
+const PHOTO_SIZE = 220;
+/**
+ * And the narrowest, for a photo far taller than it is wide. Below this a
+ * 9:16 video still reads as a sliver rather than as a picture of something.
+ */
+const PHOTO_MIN_WIDTH = 120;
+
+/**
+ * How wide the frame is for a photo of this shape. Only the width moves.
+ *
+ * `aspect` is width over height, straight off the loaded image, and null until
+ * it has loaded. A portrait or square photo therefore gets a frame of exactly
+ * its own shape at the reserved height, and a photo too wide for the column
+ * keeps the reserved square and letterboxes inside it (contentFit contain,
+ * below) - which is still the WHOLE photo, which is the thing the old centre
+ * crop was hiding. A width change moves nothing vertically, so no version of
+ * this reflows the thread.
+ */
+function photoFrame(aspect: number | null): { width: number } {
+  if (aspect == null || !Number.isFinite(aspect) || aspect <= 0) {
+    return { width: PHOTO_SIZE };
+  }
+  return { width: Math.max(PHOTO_MIN_WIDTH, Math.min(PHOTO_SIZE, PHOTO_SIZE * aspect)) };
+}
+
+/**
+ * A photo inside a bubble: its own shape, and openable.
+ *
+ * It was a fixed 220 square drawn `contentFit="cover"`, which is a centre
+ * crop - so a landscape photo of the meeting spot arrived as its middle
+ * third, with no press target, and neither side could ever see the rest of
+ * it. Both halves of that are answered here: the photo is drawn whole inside
+ * a frame that takes its shape, and a press hands the URL to the thread's
+ * PhotoViewer. The frame's HEIGHT is reserved before the image loads and never
+ * changes - see photoFrame - so nothing in the thread moves when it lands.
+ *
+ * The URL is signed by whoever already has it (`useChatPhotoUrl`, against the
+ * `chat-photos` bucket) and passed on. The viewer deliberately signs nothing
+ * itself - `usePhotoUrl` signs against `profile-photos`, which is a different
+ * bucket, and a viewer that signed for itself would show nothing here.
+ */
+function ChatPhoto({
+  uri,
+  testID,
+  onOpen,
+  onLongPress,
+}: {
+  uri: string;
+  /** `photo-<message id>`, so a test can press the photo and not the bubble. */
+  testID?: string;
+  /** Open it full screen. Absent leaves the old, unopenable behaviour. */
+  onOpen?: () => void;
+  /**
+   * The bubble's own menu. Forwarded for the same reason the link spans get
+   * it: a pressable child claims the touch responder, so the ancestor never
+   * arms its long press and a photo message would have no reachable menu.
+   */
+  onLongPress?: () => void;
+}) {
+  const [aspect, setAspect] = useState<number | null>(null);
+  const frame = photoFrame(aspect);
+  const image = (
+    <Image
+      source={{ uri }}
+      // The frame is the thing under test in a-chat-photo-can-be-opened, and
+      // the press target above carries the plain `photo-<id>` that the other
+      // cases press.
+      testID={testID ? `${testID}-image` : undefined}
+      style={[styles.photo, frame]}
+      // contain, never cover: for a portrait or square photo the frame IS the
+      // photo's shape and the two are identical, and for one wider than the
+      // column this is the difference between the whole picture and its
+      // middle third, which was the defect.
+      contentFit="contain"
+      onLoad={(event) => {
+        const { width, height } = event.source;
+        if (width > 0 && height > 0) {
+          setAspect(width / height);
+        }
+      }}
+    />
+  );
+  if (!onOpen) {
+    return image;
+  }
+  return (
+    <PressableScale
+      // The bubble around this carries its own accessibilityLabel, which
+      // makes it one element on iOS and hides everything inside it from
+      // VoiceOver anyway. Opening the photo is offered there as a rotor
+      // action on the bubble instead (see Bubble), so this stays out of the
+      // tree rather than sitting in it unreachable.
+      accessible={false}
+      testID={testID}
+      haptic="none"
+      scaleTo={0.98}
+      delayLongPress={220}
+      onPress={onOpen}
+      onLongPress={onLongPress}>
+      {image}
+    </PressableScale>
+  );
+}
+
 function BubbleBody({
   message,
   mine,
   tailed,
   quote,
   onSpanLongPress,
+  onOpenPhoto,
 }: {
   message: ThreadMessage;
   mine: boolean;
@@ -429,6 +547,12 @@ function BubbleBody({
    * reachable menu, and holding it OPENS the link on release.
    */
   onSpanLongPress?: () => void;
+  /**
+   * Open this message's photo full screen. Takes the URL because this is the
+   * component holding it; the thread owns the viewer and the words spoken
+   * over it.
+   */
+  onOpenPhoto?: (uri: string) => void;
 }) {
   const theme = useTheme();
   const { data: imageUrl } = useChatPhotoUrl(message.image_path);
@@ -471,11 +595,17 @@ function BubbleBody({
         <PhotoCheck url={imageUrl ?? null} style={styles.photo} />
       ) : message.image_path ? (
         imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.photo} contentFit="cover" />
+          <ChatPhoto
+            uri={imageUrl}
+            testID={`photo-${message.id}`}
+            onOpen={onOpenPhoto ? () => onOpenPhoto(imageUrl) : undefined}
+            onLongPress={onSpanLongPress}
+          />
         ) : (
-          // The path is there and the signing call has not answered yet.
-          // Same frame, so the bubble does not resize under the thread when
-          // it does.
+          // The path is there and the signing call has not answered yet. The
+          // square is the space every photo bubble reserves, loaded or not, so
+          // handing over to the real photo changes the bubble's width and
+          // never its height.
           <View style={[styles.photo, { backgroundColor: theme.surfaceSunken }]} />
         )
       ) : null}
@@ -537,6 +667,7 @@ function Bubble({
   quote,
   delivered = false,
   lifted = false,
+  onOpenPhoto,
 }: {
   message: ThreadMessage;
   mine: boolean;
@@ -579,8 +710,23 @@ function Bubble({
    * opacity could hide, and which is what Messages blanks too.
    */
   lifted?: boolean;
+  /** Open this message's photo full screen. Forwarded to the body. */
+  onOpenPhoto?: (uri: string) => void;
 }) {
   const anchor = useRef<View>(null);
+  // The same signed URL the body already asks for. Read again here rather
+  // than threaded up through a prop: React Query serves both calls from one
+  // cache entry, and the rotor action HAS to hang off this element, because
+  // the bubble carries an accessibilityLabel and iOS therefore collapses
+  // everything inside it into a single accessibility element.
+  const { data: photoUrl } = useChatPhotoUrl(message.image_path);
+  // Not while the photo is still being checked: nothing is drawn then but a
+  // review tile, and an action that opens a photo nobody can see yet is an
+  // action that lies about what it does.
+  const photoAction =
+    onOpenPhoto && photoUrl && message.moderation_status !== 'pending'
+      ? () => onOpenPhoto(photoUrl)
+      : null;
 
   const bodyLinks = message.body ? splitLinks(message.body).filter((span) => span.url) : [];
   // Hoisted so the link spans inside BubbleBody can arm the same long-press
@@ -672,11 +818,24 @@ function Bubble({
             // spans inside are unreachable by touch there; the URL is offered
             // as a rotor action instead.
             accessibilityActions={
-              bodyLinks.length > 0
-                ? [{ name: 'openLink', label: `Open ${bodyLinks[0].text}` }]
+              // Opening the photo is offered the same way and for the same
+              // reason: the bubble is one accessibility element, so a press
+              // target inside it is unreachable by touch and a rotor action
+              // is the only door VoiceOver has.
+              photoAction || bodyLinks.length > 0
+                ? [
+                    ...(photoAction ? [{ name: 'openPhoto', label: 'Open photo' }] : []),
+                    ...(bodyLinks.length > 0
+                      ? [{ name: 'openLink', label: `Open ${bodyLinks[0].text}` }]
+                      : []),
+                  ]
                 : undefined
             }
             onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'openPhoto') {
+                photoAction?.();
+                return;
+              }
               if (event.nativeEvent.actionName === 'openLink' && bodyLinks[0]?.url) {
                 Linking.openURL(bodyLinks[0].url).catch(() => {});
               }
@@ -691,6 +850,7 @@ function Bubble({
               tailed={last}
               quote={quote}
               onSpanLongPress={openMenu}
+              onOpenPhoto={onOpenPhoto}
             />
           </PressableScale>
         </View>
@@ -1230,6 +1390,15 @@ export function MessageThread({
    * more than two people in it" says it once, here as well.
    */
   const [reactorsFor, setReactorsFor] = useState<string | null>(null);
+  /**
+   * The photo being looked at full screen, or null.
+   *
+   * One viewer for the whole thread, mounted at the bottom rather than inside
+   * a cell: a viewer in a list row would unmount the moment the row recycled.
+   * It presents nothing until a photo is set - the decision about what else is
+   * on screen is taken then, at the tap, not watched from before it.
+   */
+  const [viewingPhoto, setViewingPhoto] = useState<ViewablePhoto | null>(null);
   const namesReactors = avatarFor != null;
   const { height: windowHeight } = useWindowDimensions();
   const theme = useTheme();
@@ -1279,6 +1448,19 @@ export function MessageThread({
     messages.find((m) => m.sender_id === ownUserId && m.local == null)?.id ?? null;
   const myEmojiOn = (messageId: string) =>
     (byMessage.get(messageId) ?? []).find((r) => r.reacted_by_me)?.emoji ?? null;
+  /**
+   * What the photo IS, spoken. Built here rather than in the bubble because
+   * this is the level that knows who is who: a group asks authorFor, a
+   * one-to-one chat has the other person's name in a prop, and neither fact
+   * reaches a bubble.
+   */
+  const photoLabelFor = (message: ThreadMessage) => {
+    if (message.sender_id === ownUserId) {
+      return 'Photo you sent';
+    }
+    const from = authorFor?.(message) ?? otherName ?? null;
+    return from ? `Photo from ${from}` : 'Photo in this chat';
+  };
 
   return (
     <View style={styles.flex}>
@@ -1482,6 +1664,7 @@ export function MessageThread({
                   onRetry={item.local === 'failed' && onRetry ? () => onRetry(item) : undefined}
                   delivered={item.id === deliveredId}
                   lifted={menu?.message.id === item.id}
+                  onOpenPhoto={(uri) => setViewingPhoto({ uri, label: photoLabelFor(item) })}
                   onOpenMenu={
                     menuable
                       ? (rect) =>
@@ -1657,6 +1840,12 @@ export function MessageThread({
       {reactorsFor ? (
         <ReactorSheet messageId={reactorsFor} onClose={() => setReactorsFor(null)} />
       ) : null}
+
+      {/* At the thread root rather than inside a cell: a viewer in a list row
+          would unmount the moment the row recycled. Mounted with no photo it
+          carries nothing at all - no gesture tree, no registration - and asks
+          whether anything is in its way at the moment of the tap. */}
+      <PhotoViewer photo={viewingPhoto} onClose={() => setViewingPhoto(null)} />
     </View>
   );
 }
@@ -1727,8 +1916,11 @@ const styles = StyleSheet.create({
     gap: Space.xs,
   },
   photo: {
-    width: 220,
-    height: 220,
+    // The reserved space, shared by the loaded photo, the signing placeholder
+    // and the review tile so that all three are the same size. Only `width` is
+    // ever overridden (photoFrame); the height is the whole point.
+    width: PHOTO_SIZE,
+    height: PHOTO_SIZE,
     borderRadius: Radius.md,
   },
   unsentRow: {

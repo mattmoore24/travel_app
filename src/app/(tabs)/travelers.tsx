@@ -30,6 +30,7 @@ import { useAuthStore } from '@/features/auth/store';
 import { useBlockUser } from '@/features/chat/hooks';
 import { guestEmptyCityLine, guestGateReason } from '@/features/guest/copy';
 import {
+  featuredPhotoFor,
   useFeaturedPhoto,
   useFeaturedTraveler,
   useIsGuest,
@@ -81,8 +82,12 @@ import {
 import { useAnnounce } from '@/features/chat/use-announce';
 import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
-import { formatDate, formatDateRange, toISODate } from '@/features/trips/dates';
+import { formatDate, formatTripDates, roughWhen, toISODate } from '@/features/trips/dates';
 import { useMyTrips, useTravelerTrips } from '@/features/trips/hooks';
+import {
+  profileTripFromMatchRow,
+  profileTripFromTravelerRow,
+} from '@/features/trips/profile-trips';
 import { useTabBarInset, useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
@@ -100,9 +105,20 @@ type Candidate = {
 };
 
 /**
- * What a signed-out visitor sees: the single traveler people are connecting
- * with most in this city right now, then the gate. Seeing one real person is
- * the whole pitch — the account comes after that lands (docs/DESIGN.md).
+ * What a signed-out visitor sees: the travelers people are connecting with
+ * most in this city right now, then the gate. Seeing real people is the whole
+ * pitch — the account comes after that lands (docs/DESIGN.md).
+ *
+ * THREE FACES, NOT ONE, and the extra two are deliberately smaller. One face
+ * cannot answer "are there people here on my dates", which is the question
+ * this tab exists to answer on launch day, and a dead city is the category's
+ * number one killer. But three full cards is exactly what the compact card
+ * was introduced to prevent: the hero is a square (decision D2(a)) and a
+ * stack of three plus a sign-up card is taller than any phone, which puts the
+ * one thing this screen is asking somebody to do below the fold. So the lead
+ * keeps the whole card and the other two are a face, a name and their dates.
+ * More faces, less per face — the extra rows carry strictly nothing the lead
+ * card does not, and a tap on any of them still brings the gate to them.
  */
 function GuestTravelers() {
   const insets = useSafeAreaInsets();
@@ -114,18 +130,31 @@ function GuestTravelers() {
   const cityId = launchCities[0]?.city_id ?? null;
   const cityName = launchCities[0]?.cities?.name ?? null;
   const featuredQuery = useFeaturedTraveler(cityId);
-  const { data: featured, isPending } = featuredQuery;
+  const { isPending } = featuredQuery;
+  // `?? []` and not a default in the destructure: the query answers null while
+  // it is disabled, and every branch below counts this list.
+  const featured = featuredQuery.data ?? [];
+  // The one who gets the whole card, and the ones who get a row.
+  const lead = featured[0] ?? null;
+  const alsoHere = featured.slice(1);
   // Evidence for the empty branch: the same faceless rows the guest map
   // already serves, counted. Never individual pins — a real traveler's venue
   // plus date is not guest content.
   const { data: cityPins = [] } = useMapPins(cityId);
   // Not usePhotoUrl: that signs the path with the caller's own credentials,
   // and a guest has none the storage layer will accept. See useFeaturedPhoto.
-  const { data: photoUrl } = useFeaturedPhoto(cityId, featured?.photo_path != null);
+  // BY IDENTITY, not by position. The cards and the faces are two separate
+  // calls to featured_traveler(), whose guards run per person, so the two row
+  // sets can differ by somebody who was banned, blocked, narrowed their
+  // audience or reached the end of their trip in between. Indexed, that draws
+  // a real traveler's face under another real traveler's name on a signed-out
+  // device; keyed, it draws a monogram.
+  const photos = useFeaturedPhoto(cityId, featured).data;
+  const photoUrl = lead ? featuredPhotoFor(photos, lead.user_id, 0) : null;
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
   // "[demo]" out of the prose, onto a chip. See lib/demo-marker.
-  const featuredBio = splitDemoMarker(featured?.bio);
+  const featuredBio = splitDemoMarker(lead?.bio);
 
   // No capture here: the parent screen fires travelers_viewed exactly once,
   // carrying the guest flag, for both audiences. This component used to fire
@@ -170,16 +199,24 @@ function GuestTravelers() {
           { paddingTop: insets.top + Space.lg, paddingBottom: tabBarInset + Space.xxl },
         ]}>
         <ThemedText type="display">Travelers</ThemedText>
-        {featured ? (
+        {lead ? (
           <>
             {/* Say which one it is. featured_traveler's window is "in town
                 within the next two weeks", so a flat "right now" was a claim
                 the query does not make: the founder's own test profile showed
                 up under it with a trip starting five days later. */}
             <ThemedText type="footnote" themeColor="textSecondary">
-              {featured.their_start > toISODate(new Date())
-                ? `In ${featured.city_name} from ${formatDate(featured.their_start)}`
-                : `In ${featured.city_name} this week`}
+              {/* A rough window never gets a day. "In Lisbon from Sep 3" is
+                  one specific date stated as a fact, to a SIGNED-OUT device,
+                  about somebody who only ever said a month - and unlike the
+                  trip card there is no prefix that repairs it, because the
+                  sentence is built around an arrival day. Drop to the scale
+                  the traveler actually picked instead. */}
+              {lead.approximate
+                ? `In ${lead.city_name} sometime ${roughWhen(lead.their_start, lead.their_end)}`
+                : lead.their_start > toISODate(new Date())
+                  ? `In ${lead.city_name} from ${formatDate(lead.their_start)}`
+                  : `In ${lead.city_name} this week`}
             </ThemedText>
             {/* Compact on purpose. This is a teaser with a sign-up card
                 under it, and a full-height photo pushed that card off the
@@ -189,7 +226,12 @@ function GuestTravelers() {
                 here, not the rare one. */}
             <PressableScale
               accessibilityRole="button"
-              accessibilityLabel={`Say hi to ${featured.display_name ?? 'this traveler'}`}
+              // What the tap DOES, which is bring the sign-up card into view.
+              // It said "Say hi to Mara" and scrolled to a form, so the one
+              // person who cannot see where the page went was told the wrong
+              // thing about it - the same defect the visible line below this
+              // card was rewritten to fix, left on the label.
+              accessibilityLabel={`${lead.display_name ?? 'This traveler'}. Make a profile to see theirs`}
               scaleTo={0.98}
               // Inside a scroller: a touch-down haptic fires on a flick past
               // the card, and scrolling must not buzz. PressableScale's own
@@ -241,11 +283,11 @@ function GuestTravelers() {
                     <View style={styles.cardHeroText} pointerEvents="none">
                       <View style={styles.nameRow}>
                         <Text style={styles.cardHeroName} numberOfLines={1}>
-                          {featured.display_name ?? 'Traveler'}
-                          {featured.age != null ? `, ${featured.age}` : ''}
+                          {lead.display_name ?? 'Traveler'}
+                          {lead.age != null ? `, ${lead.age}` : ''}
                         </Text>
-                        {featured.verified ? (
-                          <VerifiedSeal name={featured.display_name} age={featured.age} onPhoto />
+                        {lead.verified ? (
+                          <VerifiedSeal name={lead.display_name} age={lead.age} onPhoto />
                         ) : null}
                       </View>
                     </View>
@@ -256,21 +298,21 @@ function GuestTravelers() {
                     <View style={styles.nameRow}>
                       <View style={[styles.cardMono, { backgroundColor: theme.accentSoft }]}>
                         <ThemedText type="title" style={{ color: theme.accent }}>
-                          {(featured.display_name ?? 'T').trim().charAt(0).toUpperCase()}
+                          {(lead.display_name ?? 'T').trim().charAt(0).toUpperCase()}
                         </ThemedText>
                       </View>
                       <ThemedText type="headline" numberOfLines={1} style={styles.nameText}>
-                        {featured.display_name ?? 'Traveler'}
-                        {featured.age != null ? `, ${featured.age}` : ''}
+                        {lead.display_name ?? 'Traveler'}
+                        {lead.age != null ? `, ${lead.age}` : ''}
                       </ThemedText>
-                      {featured.verified ? (
-                        <VerifiedSeal name={featured.display_name} age={featured.age} />
+                      {lead.verified ? (
+                        <VerifiedSeal name={lead.display_name} age={lead.age} />
                       ) : null}
                     </View>
                   )}
                   <ThemedText type="footnote" themeColor="textSecondary">
-                    {featured.city_name} ·{' '}
-                    {formatDateRange(featured.their_start, featured.their_end)}
+                    {lead.city_name} ·{' '}
+                    {formatTripDates(lead.their_start, lead.their_end, lead.approximate)}
                   </ThemedText>
                   {/* The seeded bios end in a literal "[demo]" (the fixture
                       requires a visible marker: AI portraits, no real
@@ -296,6 +338,94 @@ function GuestTravelers() {
                 </View>
               </ThemedView>
             </PressableScale>
+            {alsoHere.length > 0 ? (
+              <>
+                {/* Frames the rows as more of the same city rather than a
+                    list with no heading, and it has to do it WITHOUT saying
+                    anybody is there. featured_traveler's window is
+                    `start_date <= current_date + 14`, so "Also in Lisbon" was
+                    a present-tense locative over people who may be nine days
+                    from arriving — the same claim the lead line above was
+                    rewritten to drop, made again at group level and on a
+                    signed-out device. "Plans" is the word the map already
+                    uses for future intent, and it covers a traveler who is
+                    there today as well as one who lands next week. The
+                    per-row dates say which. */}
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  {/* Counted, because featured_traveler answers with up to
+                      three and two of those leave exactly one row under this
+                      line. */}
+                  {alsoHere.length === 1
+                    ? `One more traveler with ${lead.city_name} plans`
+                    : `More travelers with ${lead.city_name} plans`}
+                </ThemedText>
+                {alsoHere.map((traveler, index) => {
+                  // By this traveler's own id. The +1 is the fallback index
+                  // for a bundle talking to an edge function that predates
+                  // identities: this map starts at the second person, so row n
+                  // here is row n+1 of the list the URLs were minted for.
+                  const rowPhoto = featuredPhotoFor(photos, traveler.user_id, index + 1);
+                  return (
+                    <PressableScale
+                      key={traveler.user_id}
+                      accessibilityRole="button"
+                      // Same destination, same sentence as the lead card.
+                      accessibilityLabel={`${traveler.display_name ?? 'This traveler'}. Make a profile to see theirs`}
+                      scaleTo={0.98}
+                      haptic="none"
+                      // Same destination as the lead card, for the same reason:
+                      // the profile route is unreadable signed-out, so a push
+                      // would be a tap that silently does nothing.
+                      onPress={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+                      <ThemedView type="backgroundElement" style={styles.card}>
+                        <View style={[styles.cardBody, styles.alsoRow]}>
+                          {/* No face is an ordinary answer here — a traveler
+                            with no approved photo, or one the two calls
+                            disagreed about — and the monogram covers it. */}
+                          {rowPhoto ? (
+                            <Image
+                              source={{ uri: rowPhoto }}
+                              style={styles.alsoPhoto}
+                              contentFit="cover"
+                              contentPosition="top"
+                            />
+                          ) : (
+                            <View style={[styles.cardMono, { backgroundColor: theme.accentSoft }]}>
+                              <ThemedText type="title" style={{ color: theme.accent }}>
+                                {(traveler.display_name ?? 'T').trim().charAt(0).toUpperCase()}
+                              </ThemedText>
+                            </View>
+                          )}
+                          <View style={styles.alsoText}>
+                            <View style={styles.nameRow}>
+                              <ThemedText type="headline" numberOfLines={1} style={styles.nameText}>
+                                {traveler.display_name ?? 'Traveler'}
+                                {traveler.age != null ? `, ${traveler.age}` : ''}
+                              </ThemedText>
+                              {traveler.verified ? (
+                                <VerifiedSeal name={traveler.display_name} age={traveler.age} />
+                              ) : null}
+                            </View>
+                            {/* Dates and nothing else. Three faces is the whole
+                              change; three bios would be three times as much of
+                              three real travelers on a device with no account.
+                              20260902260000 stopped sending them as well, so
+                              this row has nothing to print even if it tried. */}
+                            <ThemedText type="footnote" themeColor="textSecondary">
+                              {formatTripDates(
+                                traveler.their_start,
+                                traveler.their_end,
+                                traveler.approximate
+                              )}
+                            </ThemedText>
+                          </View>
+                        </View>
+                      </ThemedView>
+                    </PressableScale>
+                  );
+                })}
+              </>
+            ) : null}
           </>
         ) : (
           <ThemedText themeColor="textSecondary">
@@ -306,7 +436,7 @@ function GuestTravelers() {
           // Both branches come from one function of `featured`, so the empty
           // branch can never again promise "everyone else" under a line that
           // just said there is nobody.
-          reason={guestGateReason(featured?.display_name, featured != null, cityName)}
+          reason={guestGateReason(lead?.display_name, lead != null, cityName)}
           // Not the reason: that sentence carries a real traveler's name.
           where="travelers-tab"
           // The third origin the account wall used to throw away: signup
@@ -317,7 +447,7 @@ function GuestTravelers() {
               intentRemembered({
                 kind: 'traveler',
                 cityId,
-                ...(featured != null ? { userId: featured.user_id } : {}),
+                ...(lead != null ? { userId: lead.user_id } : {}),
               });
             }
             go();
@@ -439,22 +569,11 @@ function TravelerPage({
 
   const profileTrips: ProfileTrip[] = (
     trips.length > 0
-      ? trips.map((trip) => ({
-          id: trip.trip_id,
-          cityId: trip.city_id,
-          cityLabel: `${trip.city_name}, ${trip.city_country}`,
-          startDate: trip.start_date,
-          endDate: trip.end_date,
-        }))
-      : [
-          {
-            id: candidate.match.trip_id,
-            cityId: candidate.match.city_id,
-            cityLabel: `${candidate.match.city_name}, ${candidate.match.city_country}`,
-            startDate: candidate.match.their_start,
-            endDate: candidate.match.their_end,
-          },
-        ]
+      ? trips.map(profileTripFromTravelerRow)
+      : // The placeholder shown for the beat before traveler_trips answers.
+        // Written out here until now, which made features/trips/profile-trips
+        // four of five rather than the single place a new column reaches.
+        [profileTripFromMatchRow(candidate.match)]
   ).map((trip) => ({ ...trip, overlap: candidate.overlaps.get(trip.id) ?? null }));
 
   return (
@@ -1464,6 +1583,23 @@ const styles = StyleSheet.create({
   cardBody: {
     padding: Space.lg,
     gap: Space.sm,
+  },
+  // The second and third faces. A row, not a card: the lead's square hero
+  // plus a sign-up card already fills a 6.1 inch screen, and two more of
+  // those would put the gate somewhere nobody scrolls to.
+  alsoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+  },
+  alsoPhoto: {
+    width: 48,
+    height: 48,
+    borderRadius: Radius.pill,
+  },
+  alsoText: {
+    flex: 1,
+    gap: 2,
   },
   demoChip: {
     alignSelf: 'flex-start',

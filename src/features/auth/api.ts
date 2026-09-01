@@ -1,10 +1,11 @@
+import type { User } from '@supabase/supabase-js';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Platform } from 'react-native';
 
 import { PASSWORD_RESET_REDIRECT } from '@/constants/links';
 import { clearIconBadge } from '@/features/notifications/badge';
 import { forgetPushToken } from '@/features/notifications/push';
-import { forgetAppleUser, rememberAppleUser } from '@/lib/apple-user';
+import { forgetAppleUser, readAppleUser, rememberAppleUser } from '@/lib/apple-user';
 import { forgetLastEmail, rememberLastEmail } from '@/lib/last-email';
 import { supabase } from '@/lib/supabase';
 
@@ -186,6 +187,140 @@ export async function setNewPassword(password: string) {
   // saved stays signed in here. Best effort: the password change is the
   // security event, and it already succeeded.
   await supabase.auth.signOut({ scope: 'others' }).catch(() => {});
+}
+
+/**
+ * What this account can prove itself with, which is not the same question as
+ * how it signed in most recently.
+ *
+ * Three answers and they are genuinely different acts: a password we can
+ * re-check, an Apple ID only Apple can vouch for, and nothing at all. The
+ * last one is a guest - an anonymous auth user who declined an account - and
+ * it is not a gap to be closed. There is no secret to ask them for, so the
+ * screens that ask for one keep their single confirm for a guest rather than
+ * putting up a field that can never be filled in. (Both doors a guest passes
+ * through, `(auth)/join` and `(auth)/email`, are unchanged for the same
+ * reason.)
+ */
+export type IdentityProof = 'password' | 'apple' | 'none';
+
+export function identityProofFor(user: User | null | undefined): IdentityProof {
+  if (user == null || user.is_anonymous === true) {
+    return 'none';
+  }
+  const provider =
+    typeof user.app_metadata?.provider === 'string' ? user.app_metadata.provider : undefined;
+  if (provider === 'apple') {
+    return 'apple';
+  }
+  // An account with no address has no password of ours either, whatever it
+  // says it signed in with.
+  return user.email ? 'password' : 'none';
+}
+
+/**
+ * How a confirmation ended. Three outcomes, deliberately not a boolean:
+ * backing out of Apple's sheet is not a failed check, and telling somebody
+ * their identity "did not check out" because they changed their mind is the
+ * kind of accusation this app does not make.
+ */
+export type IdentityCheck =
+  { outcome: 'confirmed' } | { outcome: 'canceled' } | { outcome: 'failed'; problem: string };
+
+/** The sentence every caller shows unless the server said something better. */
+const NOT_YOU = 'That did not check out. Try again.';
+
+/**
+ * A rate limiter answering must never read as a wrong password: somebody who
+ * typed it correctly on the fourth try would be told they typed it wrong.
+ * Same rule and the same pattern as `credentialsFailure` in
+ * features/auth/credentials, which owns the longer version of this for the
+ * password-change form.
+ */
+function identityProblem(e: unknown): string {
+  const raw = (e as { message?: unknown })?.message;
+  const text = typeof raw === 'string' ? raw : '';
+  return /for security purposes|rate limit|too many/i.test(text)
+    ? 'Too many tries just now. Wait a minute and go again.'
+    : NOT_YOU;
+}
+
+/**
+ * Ask who is holding the phone, before something irreversible.
+ *
+ * Deleting an account was one tap from an Alert, and it takes with it every
+ * chat on BOTH sides - conversations belonging to people who are not present
+ * and never agreed to lose them. In an app whose entire safety model assumes
+ * the people around a traveler are strangers, an unlocked phone left on a
+ * hostel table should not be enough to do that.
+ *
+ * IT MUST NOT BECOME A PASSWORD ORACLE, and that is what decides the shape.
+ * The address is read off the SESSION and there is no parameter to pass one
+ * in: a form that took an email and a password would let anybody holding any
+ * phone test whether an address has an account here and what its password is.
+ * The only thing this can answer is "is the person holding this phone the
+ * person already signed in on it", which is the only question worth asking.
+ *
+ * `supabase.auth.reauthenticate()` is not the answer here. It mails a nonce
+ * for a password change, and it has nothing at all to do for an Apple
+ * identity - which is the account kind that has no password to re-check and
+ * the one this has to keep working for.
+ */
+export async function confirmIdentity(password?: string): Promise<IdentityCheck> {
+  const { data } = await supabase.auth.getSession();
+  const user = data.session?.user;
+  if (user == null) {
+    return { outcome: 'failed', problem: NOT_YOU };
+  }
+
+  const proof = identityProofFor(user);
+  if (proof === 'none') {
+    // Nothing to ask for. The caller has already decided a single confirm is
+    // enough for this account; saying no here would only make the act
+    // impossible.
+    return { outcome: 'confirmed' };
+  }
+
+  if (proof === 'apple') {
+    let credential: AppleAuthentication.AppleAuthenticationCredential;
+    try {
+      // The system sheet is the check. It will not complete without Face ID,
+      // Touch ID or the device passcode, and switching the phone to another
+      // Apple ID needs that account's own password - so the person who
+      // finishes it is the person who unlocked the phone deliberately, not
+      // somebody who found it already unlocked.
+      credential = await AppleAuthentication.signInAsync({ requestedScopes: [] });
+    } catch (e) {
+      return (e as { code?: unknown })?.code === 'ERR_REQUEST_CANCELED'
+        ? { outcome: 'canceled' }
+        : { outcome: 'failed', problem: NOT_YOU };
+    }
+    // Apple's stable subject for this account, from the server's own copy of
+    // the identity first and the keychain second. If neither is known - an
+    // account that signed in before rememberAppleUser existed, a cleared
+    // keychain - the completed sheet above stands on its own rather than
+    // making deletion impossible, which App Review 5.1.1(v) requires to stay
+    // reachable. What it will never do is accept a DIFFERENT Apple ID.
+    const known =
+      user.identities?.find((identity) => identity.provider === 'apple')?.id ??
+      (typeof user.user_metadata?.sub === 'string' ? user.user_metadata.sub : null) ??
+      (await readAppleUser());
+    if (known != null && credential.user !== known) {
+      return { outcome: 'failed', problem: 'That is a different Apple ID to the one on here.' };
+    }
+    return { outcome: 'confirmed' };
+  }
+
+  const email = user.email;
+  if (!email || !password) {
+    return { outcome: 'failed', problem: NOT_YOU };
+  }
+  // Against the session's OWN address, never one somebody typed. This is a
+  // real sign-in, so it mints a fresh session for the same user - nothing is
+  // lost and no route changes underneath - and a few wrong tries reach the
+  // rate limiter, which is why the answer above tells "wait" from "wrong".
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  return error ? { outcome: 'failed', problem: identityProblem(error) } : { outcome: 'confirmed' };
 }
 
 /**

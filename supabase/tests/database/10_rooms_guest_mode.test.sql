@@ -1,6 +1,6 @@
 -- Establishment rooms, guest mode, reactions, and the traveler horizon.
 begin;
-select plan(49);
+select plan(67);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -133,6 +133,39 @@ select lives_ok(
 -- screen is "here is somebody real, here right now". A faceless card makes
 -- the opposite case, so a face is a requirement rather than a nicety.
 
+-- THE CALLER HAS TO BE ABLE TO CALL IT, and that is newly load-bearing.
+--
+-- supabase/functions/featured-photo/index.ts used to ask for these rows with
+-- the SERVICE role, which is how the block filter came to be off on the photo
+-- side of the screen. It asks as the caller now, so a signed-out visitor's
+-- faces depend on `anon` holding EXECUTE and a guest ACCOUNT's on
+-- `authenticated` holding it - a dependency that function did not have while
+-- it ran as admin.
+--
+-- BOTH GRANTS ARE ALREADY REDUNDANT, which is the reason to assert them
+-- rather than trust them. 20260902260000 grants both explicitly, the shim's
+-- `alter default privileges ... grant all on functions` covers both again
+-- (real Supabase does the same), and Postgres hands PUBLIC execute on a new
+-- function on top of that. Measured: dropping either name from the grant, or
+-- revoking it from that role alone, changes not one answer in this file. What
+-- fails is `revoke ... from public, <role>` - this repo's own lockdown idiom,
+-- the one at 20260830000000:57 - and that is precisely the well-meant change
+-- that would take the guest's faces away without touching a line of the
+-- function.
+--
+-- They sit ABOVE the first call rather than beside the others. Revoking from
+-- anon makes that call raise, which aborts the transaction and every
+-- assertion after it, so an assertion placed later could never be the one to
+-- report it.
+select ok(
+  has_function_privilege('anon', 'public.featured_traveler(int)', 'execute'),
+  'a signed-out visitor may call the function its faces come from'
+);
+select ok(
+  has_function_privilege('authenticated', 'public.featured_traveler(int)', 'execute'),
+  'and so may a guest account, which is an anonymous authenticated user'
+);
+
 select is(
   (select count(*)::int from public.featured_traveler(pg_temp.lisbon())),
   0,
@@ -147,7 +180,7 @@ select pg_temp.guest();
 select is(
   (select count(*)::int from public.featured_traveler(pg_temp.lisbon())),
   1,
-  'guests see exactly one traveler card'
+  'one traveler in town with a face is one card, not an empty screen'
 );
 select is(
   (select user_id from public.featured_traveler(pg_temp.lisbon())),
@@ -172,6 +205,297 @@ select throws_ok(
   null,
   'guests cannot read social handles'
 );
+
+-- GUEST MODE: THREE FACES, AND WHAT IS IN NONE OF THEM -----------------------------
+--
+-- One card became three (20260902260000), because one face cannot answer "are
+-- there people here on my dates" and a dead city is this category's number one
+-- killer. That is a real widening: three strangers reach a signed-out device
+-- where one did.
+--
+-- SO EVERY EXCLUSION IS ASSERTED OVER THE WHOLE RESULT, NOT OVER ITS FIRST
+-- ROW. A filter written as `where` on a single-row function and a filter
+-- applied to the top of a list are indistinguishable while the list is one
+-- long, and the whole class of bug this file is now guarding is the one that
+-- only appears at row two. Every check below counts matching rows in the FULL
+-- return and expects zero.
+--
+-- The fixture: SEVEN travelers in town with an approved face, plus three who
+-- must never appear for three different reasons.
+--
+-- Seven eligible travelers for three slots, so the cut and the ranking are
+-- both doing visible work: with four, "three came back" and "everybody
+-- eligible came back minus one" are the same sentence, and the block
+-- assertions at the end of this section would be satisfied by a function that
+-- simply returned whoever was left.
+select pg_temp.admin();
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-0000000000f1', 'feat-dora@example.com'),
+  ('00000000-0000-0000-0000-0000000000f2', 'feat-eli@example.com'),
+  ('00000000-0000-0000-0000-0000000000f3', 'feat-fin@example.com'),
+  ('00000000-0000-0000-0000-0000000000f4', 'feat-gil@example.com'),
+  ('00000000-0000-0000-0000-0000000000f5', 'feat-hana@example.com'),
+  ('00000000-0000-0000-0000-0000000000f6', 'feat-ines@example.com'),
+  ('00000000-0000-0000-0000-0000000000f7', 'feat-joao@example.com'),
+  ('00000000-0000-0000-0000-0000000000f8', 'feat-kit@example.com'),
+  ('00000000-0000-0000-0000-0000000000f9', 'feat-lena@example.com');
+
+-- The blanket update at the top of this file ran before these rows existed.
+update public.profiles set
+  display_name = 'traveler', age = 27, home_country = 'PT',
+  languages = array['en'], onboarding_completed_at = now()
+ where user_id in ('00000000-0000-0000-0000-0000000000f1',
+                   '00000000-0000-0000-0000-0000000000f2',
+                   '00000000-0000-0000-0000-0000000000f3',
+                   '00000000-0000-0000-0000-0000000000f4',
+                   '00000000-0000-0000-0000-0000000000f5',
+                   '00000000-0000-0000-0000-0000000000f6',
+                   '00000000-0000-0000-0000-0000000000f7',
+                   '00000000-0000-0000-0000-0000000000f8',
+                   '00000000-0000-0000-0000-0000000000f9');
+
+-- Bios, so the "only the lead carries one" assertions below have something to
+-- find. Bob leads; Dora and Eli take the two rows under him.
+update public.profiles set bio = 'Here for the tiles and the pasteis.'
+ where user_id in ('00000000-0000-0000-0000-00000000000b',
+                   '00000000-0000-0000-0000-0000000000f1',
+                   '00000000-0000-0000-0000-0000000000f2');
+
+-- Dora holds TWO Lisbon windows inside the fortnight. `trips` has no unique
+-- constraint on (user_id, city_id) and the cap is five active trips, so
+-- without the dedupe one traveler could take every slot and the screen would
+-- answer "are there people here" with the same face three times. Invisible
+-- while the answer was one row long.
+insert into public.trips (user_id, city_id, start_date, end_date, approximate) values
+  ('00000000-0000-0000-0000-0000000000f1', pg_temp.lisbon(),
+   current_date, current_date + 4, false),
+  ('00000000-0000-0000-0000-0000000000f1', pg_temp.lisbon(),
+   current_date + 6, current_date + 10, false),
+  -- Eli's window is a guess, not a claim (20260902230000).
+  ('00000000-0000-0000-0000-0000000000f2', pg_temp.lisbon(),
+   current_date + 1, current_date + 5, true),
+  ('00000000-0000-0000-0000-0000000000f3', pg_temp.lisbon(),
+   current_date + 2, current_date + 6, false),
+  ('00000000-0000-0000-0000-0000000000f4', pg_temp.lisbon(),
+   current_date + 1, current_date + 6, false),
+  ('00000000-0000-0000-0000-0000000000f5', pg_temp.lisbon(),
+   current_date + 1, current_date + 6, false),
+  ('00000000-0000-0000-0000-0000000000f7', pg_temp.lisbon(),
+   current_date + 1, current_date + 6, false),
+  ('00000000-0000-0000-0000-0000000000f8', pg_temp.lisbon(),
+   current_date + 2, current_date + 7, false),
+  ('00000000-0000-0000-0000-0000000000f9', pg_temp.lisbon(),
+   current_date + 3, current_date + 8, false);
+
+-- Ines went home. The trigger refuses a trip wholly in the past, which is
+-- right for a traveler and in the way here.
+alter table public.trips disable trigger trips_validate_dates;
+insert into public.trips (user_id, city_id, start_date, end_date) values
+  ('00000000-0000-0000-0000-0000000000f6', pg_temp.lisbon(),
+   current_date - 9, current_date - 3);
+alter table public.trips enable trigger trips_validate_dates;
+
+insert into public.profile_photos (user_id, storage_path, position, moderation_status) values
+  ('00000000-0000-0000-0000-0000000000f1', 'photos/dora-0.jpg', 0, 'approved'),
+  ('00000000-0000-0000-0000-0000000000f2', 'photos/eli-0.jpg', 0, 'approved'),
+  ('00000000-0000-0000-0000-0000000000f3', 'photos/fin-0.jpg', 0, 'approved'),
+  ('00000000-0000-0000-0000-0000000000f4', 'photos/gil-0.jpg', 0, 'approved'),
+  ('00000000-0000-0000-0000-0000000000f5', 'photos/hana-0.jpg', 0, 'approved'),
+  ('00000000-0000-0000-0000-0000000000f6', 'photos/ines-0.jpg', 0, 'approved'),
+  ('00000000-0000-0000-0000-0000000000f7', 'photos/joao-0.jpg', 0, 'approved'),
+  ('00000000-0000-0000-0000-0000000000f8', 'photos/kit-0.jpg', 0, 'approved'),
+  ('00000000-0000-0000-0000-0000000000f9', 'photos/lena-0.jpg', 0, 'approved');
+
+-- Gil narrowed his audience to verified travelers. A guest is nobody in
+-- particular, so he is eligible for no slot at all - not the first one, and
+-- not the third.
+update public.profiles set verified = true
+ where user_id = '00000000-0000-0000-0000-0000000000f4';
+update public.profiles set visible_to = 'verified'
+ where user_id = '00000000-0000-0000-0000-0000000000f4';
+-- Hana's account is closed. Ines went home before today (her trip is
+-- inserted above, past-dated with the validation trigger held off).
+update public.users set status = 'banned'
+ where id = '00000000-0000-0000-0000-0000000000f5';
+
+-- AND BOTH OF THEM CARRY THE BADGE, which is the whole of what makes the two
+-- assertions about them able to fail at all.
+--
+-- Every eligible traveler here ties on hellos (nothing in this file inserts a
+-- message_request) and on created_at (one transaction, one clock), so
+-- `f.verified desc` is the only key that can lift somebody above the rest -
+-- the same lever the fixture already uses on Gil two statements up. With the
+-- badge, deleting `u.status = 'active'` from featured_traveler puts Hana in
+-- slot 1 and deleting `t.end_date >= current_date - 1` puts Ines in slot 1.
+-- Without it they sort by user_id, land seventh and eighth of the nine, and
+-- fall off the end of a three-row answer whether their guard is there or not -
+-- so the assertions passed either way, and the only pgTAP coverage the
+-- banned-account and ended-trip guards had proved nothing at all. Both
+-- verified by deleting each predicate from the migration in turn.
+update public.profiles set verified = true
+ where user_id in ('00000000-0000-0000-0000-0000000000f5',
+                   '00000000-0000-0000-0000-0000000000f6');
+
+select pg_temp.guest();
+
+select is(
+  (select count(*)::int from public.featured_traveler(pg_temp.lisbon())),
+  3,
+  'a guest is shown three travelers, never the whole city'
+);
+select is(
+  (select count(*)::int from public.featured_traveler(pg_temp.lisbon())
+    where user_id = '00000000-0000-0000-0000-0000000000f1'),
+  1,
+  'a traveler with two windows in the same city takes one slot, not two'
+);
+select is(
+  (select count(*)::int from public.featured_traveler(pg_temp.lisbon())
+    where user_id = '00000000-0000-0000-0000-0000000000f4'),
+  0,
+  'a traveler who narrowed their audience is in NONE of the three rows'
+);
+-- Hana would be slot 1 without `u.status = 'active'`; see the badge note in
+-- the fixture. This fails when that predicate goes.
+select is(
+  (select count(*)::int from public.featured_traveler(pg_temp.lisbon())
+    where user_id = '00000000-0000-0000-0000-0000000000f5'),
+  0,
+  'nor is a closed account, in any row'
+);
+-- And Ines would be slot 1 without `t.end_date >= current_date - 1`. Same
+-- note, same measurement.
+select is(
+  (select count(*)::int from public.featured_traveler(pg_temp.lisbon())
+    where user_id = '00000000-0000-0000-0000-0000000000f6'),
+  0,
+  'nor a traveler whose trip has already ended'
+);
+select is(
+  (select count(*)::int from public.featured_traveler(pg_temp.lisbon())
+    where user_id = '00000000-0000-0000-0000-00000000000a'),
+  0,
+  'nor anybody who has not put a face on their own profile'
+);
+
+-- THE ORDER IS TOTAL, and that is a privacy assertion rather than a tidiness
+-- one. The card and the faces are two separate calls to this function - the
+-- client's, and featured-photo's, which that function makes with the CALLER's
+-- own JWT and then signs a URL per row it gets back (the service role signs;
+-- it no longer chooses, because an admin call has no auth.uid() and every
+-- guard in here would answer for nobody). Every ELIGIBLE traveler here ties on
+-- hellos, on the badge and on created_at (now() is the transaction's clock, so
+-- every fixture row in this file shares it) - the three excluded ones carry
+-- the badge on purpose, see the fixture - so the `f.user_id` tiebreak is the
+-- whole of what
+-- decides which three of the seven come back. Without it the two calls can cut
+-- a different three, and the screen gets a card it has no face for.
+--
+-- TWO ASSERTIONS, AND ONLY THE SECOND ONE TESTS THE TIEBREAK. The first pins
+-- who comes back and in what order, which is worth having and is what caught
+-- the dedupe and the exclusions above landing in one string. It does NOT catch
+-- a missing tiebreak, and it used to claim it did: deleting `, f.user_id` from
+-- the migration left the whole suite green. Measured again after the rewrite,
+-- at 4, 5, 6, 7, 8, 10, 16 and 30 fully tied travelers, and with the tie group
+-- forced to sort from the back of the input to the front - the answer never
+-- changed. A sort handed rows that compare equal returns them in the order it
+-- received them, and that order is the subquery's `order by t.user_id`, which
+-- is the order the tiebreak asks for. The two are indistinguishable from
+-- inside one session, and the guarantee the two CALLERS need is not.
+--
+-- So the tiebreak is asserted against the deployed definition instead. That is
+-- not a weaker test of it; it is the only one that fails.
+select is(
+  (select string_agg(user_id::text, ',') from public.featured_traveler(pg_temp.lisbon())),
+  '00000000-0000-0000-0000-00000000000b,'
+  '00000000-0000-0000-0000-0000000000f1,'
+  '00000000-0000-0000-0000-0000000000f2',
+  'the three come back deduplicated, filtered, and in ranking order'
+);
+select matches(
+  pg_get_functiondef('public.featured_traveler(int)'::regprocedure),
+  'order by f\.hellos desc, f\.verified desc, f\.created_at desc, f\.user_id',
+  'and the user_id tiebreak is what makes that order total'
+);
+
+-- The flag, so a card can say "Around Sep 3" rather than stating a day its
+-- owner told the app they were guessing at.
+select is(
+  (select approximate from public.featured_traveler(pg_temp.lisbon())
+    where user_id = '00000000-0000-0000-0000-0000000000f2'),
+  true,
+  'a rough window arrives marked as a guess'
+);
+select is(
+  (select approximate from public.featured_traveler(pg_temp.lisbon())
+    where user_id = '00000000-0000-0000-0000-00000000000b'),
+  false,
+  'and a real one arrives as the claim it is'
+);
+
+-- WHAT IS TRANSPORTED, not what is drawn. The rows under the lead render as a
+-- face, a name, an age, a seal and dates, so that is all the server sends
+-- them: three faces was the change, three strangers' bios reaching a
+-- signed-out device was not. `languages` was leaving the database for every
+-- row and being printed nowhere at all, so it is gone from the signature.
+select isnt(
+  (select bio from public.featured_traveler(pg_temp.lisbon())
+    where user_id = '00000000-0000-0000-0000-00000000000b'),
+  null,
+  'the lead card gets the bio it prints'
+);
+select is(
+  (select count(*)::int from public.featured_traveler(pg_temp.lisbon())
+    where user_id <> '00000000-0000-0000-0000-00000000000b' and bio is not null),
+  0,
+  'and no row under it carries a bio at all, printed or not'
+);
+select throws_ok(
+  $$ select languages from public.featured_traveler(pg_temp.lisbon()) $$,
+  '42703',
+  null,
+  'languages never leaves the database for a device with no account'
+);
+
+-- A BLOCK REACHES THIS SURFACE TOO -------------------------------------------
+--
+-- The block confirmation promises, in the user's own words, "They're gone from
+-- the map and Travelers", and a guest ACCOUNT can block somebody. This
+-- function carried no blocks filter at all until 20260902260000, so under
+-- `limit 1` a blocked traveler could take the one slot and under `limit 3`
+-- three of them. `blocks` is caller-scoped through auth.uid(), so the
+-- assertions have to be made as somebody rather than as a signed-out visitor.
+select pg_temp.admin();
+insert into public.blocks (blocker_id, blocked_id)
+values ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-0000000000f1');
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  (select count(*)::int from public.featured_traveler(pg_temp.lisbon())
+    where user_id = '00000000-0000-0000-0000-0000000000f1'),
+  0,
+  'somebody this account blocked is in none of the three rows'
+);
+select is(
+  (select count(*)::int from public.featured_traveler(pg_temp.lisbon())),
+  3,
+  'and the slot they lose goes to the next traveler, not to a gap'
+);
+
+-- Caller-scoped, not a takedown: a block is one person's decision about one
+-- other person, and it must not remove anybody from everybody else's screen.
+select pg_temp.guest();
+select is(
+  (select count(*)::int from public.featured_traveler(pg_temp.lisbon())
+    where user_id = '00000000-0000-0000-0000-0000000000f1'),
+  1,
+  'while a visitor who blocked nobody still sees them'
+);
+select pg_temp.admin();
+delete from public.blocks
+ where blocker_id = '00000000-0000-0000-0000-00000000000a'
+   and blocked_id = '00000000-0000-0000-0000-0000000000f1';
+select pg_temp.guest();
 
 -- BUSINESS ROOMS -------------------------------------------------------------------
 select pg_temp.admin();

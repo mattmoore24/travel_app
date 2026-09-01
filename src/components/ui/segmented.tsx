@@ -3,12 +3,23 @@ import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-nativ
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
-import { Motion, Radius, Space } from '@/constants/theme';
+import { HitTarget, Motion, Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 
 const TRACK_HEIGHT = 36;
 const INSET = 3;
+/**
+ * What the tabs are worth touching by.
+ *
+ * A 36pt track with 3pt of padding leaves each tab 30pt tall, ten under the
+ * floor - and this control now carries the whole of two date surfaces, where
+ * missing the tab you meant is a trip with the wrong dates on it. The track
+ * keeps the height it looks right at and the target grows past it, which is
+ * the same trade the verified seal and the photo grid's remove dot already
+ * make. Vertical only: sideways slop would overlap the neighbouring tab.
+ */
+const TAB_SLOP = Math.max(0, Math.ceil((HitTarget - (TRACK_HEIGHT - INSET * 2)) / 2));
 
 /**
  * The iOS segmented control, in this app's palette: a sunken track, a raised
@@ -84,6 +95,7 @@ export function Segmented<T extends string>({
                 : option.label
             }
             accessibilityState={{ selected }}
+            hitSlop={{ top: TAB_SLOP, bottom: TAB_SLOP }}
             onPress={() => {
               if (selected) {
                 return;
@@ -118,7 +130,9 @@ export function Segmented<T extends string>({
 const styles = StyleSheet.create({
   track: {
     flexDirection: 'row',
-    height: TRACK_HEIGHT,
+    // minHeight, not height: the labels scale with Dynamic Type and a fixed
+    // box clips them at the larger sizes.
+    minHeight: TRACK_HEIGHT,
     padding: INSET,
     borderRadius: Radius.md,
     borderCurve: 'continuous',

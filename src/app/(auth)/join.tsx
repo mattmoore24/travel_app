@@ -28,6 +28,22 @@ const PASSWORD_MIN = 8;
  * chrome as the four profile steps that follow, so the whole thing reads as
  * one six-step sequence even though the account gets created in the middle
  * of it (that is what swaps the app from the auth stack to onboarding).
+ *
+ * UNCHANGED BY THE DELETE CONFIRM, on purpose, and worth saying here rather
+ * than only in features/auth/api. Deleting an account now asks who is holding
+ * the phone before it destroys every chat on both sides, and a GUEST has
+ * nothing to be asked for: an anonymous auth row has no password of ours and
+ * no Apple identity, so `identityProofFor` answers 'none' and the delete
+ * keeps its single confirm. That is not a gap for this screen to close by
+ * demanding credentials earlier. Nobody is asked for an account at the door;
+ * they are asked at the moment of an action, which is the whole of the guest
+ * design.
+ *
+ * What this screen DOES do for that path is give a guest something to be
+ * asked with. The email branch below calls `upgradeGuestToAccount`, which
+ * adds the address and the password to the SAME auth row - so from the tap
+ * that finishes step 2, the account has a password `confirmIdentity` can
+ * re-check, and it kept every chat it made as a guest.
  */
 export default function JoinScreen() {
   const theme = useTheme();

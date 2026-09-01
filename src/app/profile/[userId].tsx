@@ -30,6 +30,7 @@ import {
   usePublicProfile,
 } from '@/features/profile/hooks';
 import { useTravelerTrips } from '@/features/trips/hooks';
+import { profileTripFromTravelerRow } from '@/features/trips/profile-trips';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -137,13 +138,10 @@ export default function PublicProfileScreen() {
     );
   }
 
-  const profileTrips: ProfileTrip[] = trips.map((trip) => ({
-    id: trip.trip_id,
-    cityId: trip.city_id,
-    cityLabel: `${trip.city_name}, ${trip.city_country}`,
-    startDate: trip.start_date,
-    endDate: trip.end_date,
-  }));
+  // One mapper for every screen that draws a trip card. This is the screen a
+  // stranger reads somebody's plans on, so a mapper that drops `approximate`
+  // turns a guessed window back into two days nobody picked.
+  const profileTrips: ProfileTrip[] = trips.map(profileTripFromTravelerRow);
 
   const name = profile.display_name ?? 'Traveler';
 

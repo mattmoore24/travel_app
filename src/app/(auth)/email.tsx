@@ -20,6 +20,16 @@ import { readLastEmail } from '@/lib/last-email';
  * /join — the two used to share this screen behind a toggle that always
  * opened on sign-in, so every "make my profile" button in the app landed
  * new users on a form asking for a password they had never set.
+ *
+ * AND IT IS NOT THE CONFIRM FORM EITHER, which is the other reason this
+ * screen stays exactly as it is. Deleting an account asks for the password
+ * first, but it asks through `confirmIdentity`, which reads the address off
+ * the SESSION and has no parameter to pass one in. A form that took an email
+ * AND a password, the way this one does, would let anybody holding any phone
+ * test whether an address has an account here and what its password is. So
+ * the two look alike and must never be the same screen. A guest is asked for
+ * nothing at all, having neither a password of ours nor an Apple identity,
+ * and keeps the single confirm.
  */
 export default function SignInScreen() {
   const theme = useTheme();

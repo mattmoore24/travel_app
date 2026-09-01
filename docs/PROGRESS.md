@@ -2574,3 +2574,74 @@ is not yet settled — 10s could not tell those apart, and 30s will. The photo
 pipeline's real timing on CI is likewise unmeasured; the raised bound ends the
 symptom without proving which stage was slow, and the split stage names exist
 to answer that on the next failure rather than to claim it is answered now.
+
+## Wave 2 backend: four migrations, and the order they have to be deployed in
+
+Four migrations are in the tree and **not yet deployed**: 20260902230000 (`trips.approximate`
+plus a rebuilt `traveler_trips()` and a narrowed `push_trip_starts_tomorrow()`),
+20260902240000 (`meet_answer`, `chat_meet_answers`, `meet_prompt_due()`,
+`answer_meet_prompt()`, `admin_meet_answers`), 20260902250000 (`my_report_status()`,
+`my_support_messages()`) and 20260902260000 (`featured_traveler()` returning three).
+`docs/ARCHITECTURE.md` carries what each one is for and why it is shaped the way it is;
+this is the status and the open questions.
+
+**Deploy order does not matter, and that is deliberate.** `supabase-deploy` and `testflight`
+are independent `workflow_dispatch` jobs with no `needs:` between them, so an over-the-air
+update can land on the founder's phone before the migrations apply. Every read added in this
+change was written for that window (`FeaturedTravelerRow.approximate` is optional,
+`useFeaturedPhoto` accepts both row shapes, `useMeetPromptDue` carries `retry: false`), and
+the trip WRITE path now matches:
+
+- `createTrip` omits `approximate` entirely when it is false. False is the column's own
+  default, so the row written is identical either way, and the key is the difference between
+  an ordinary trip posting and PostgREST answering PGRST204 and refusing the whole insert.
+- `updateTrip` still SENDS false — omitting it always would leave a rough trip unfixable,
+  since an absent field is dropped — and retries once without it on PGRST204. A project with
+  no column has no rough trips in it, so false is what a re-read would say anyway.
+- A `true` is sent in both writers and is allowed to FAIL against a database with no column.
+  Storing a guessed window as an exact one would print it as a fact on a stranger's screen,
+  which is the sentence 20260902230000 exists to stop. The person tries again after the
+  deploy; nobody is told a date that was never entered.
+
+`src/features/trips/__tests__/a-trip-survives-the-deploy-window.test.ts` holds all four cases.
+
+### Still open, honestly
+
+**The overlap sentence still states exact days.** "Both in Lisbon Sep 3 – 8" is printed on
+three surfaces from three sources, and only one of them (the profile, through `ProfileTrip`)
+knows whether the window is a guess. `get_matches()` was left without the column on purpose,
+because whether a rough trip matches at full weight, is de-ranked, or is excluded is the
+founder question recorded on prof-rough-trip-dates in `docs/UX_PACKAGES.md` and it decides
+how wide a rough window's read access to other people's trips is. Hedging the one surface
+that can would put the same pair of people in front of two different sentences about their
+own dates, which is the drift `features/matching/overlap` exists to close — and even that
+surface knows only half, because the window is an intersection and the READER's own trip may
+be the rough one. Hedge all three at once, after the founder question is answered.
+
+**A rough trip's read access is unchanged.** Until that same question is answered,
+`overlaps_own_trip()` and the `trips_select_overlap` policy treat a rough window exactly like
+an exact one. A 90-day guess therefore reads as wide a slice of other people's trips as a
+90-day plan. That is today's behaviour and not a regression, but it is the thing the answer
+changes.
+
+## What Wave 2 did NOT build: the App Store review prompt
+
+`tq-store-review` is **deferred, not done**, written down here so the package
+list and the tree agree. Nothing shipped: `expo-store-review` is not a
+dependency, `useAcceptedCelebration` calls nothing new, and there is no test
+for a prompt that does not exist.
+
+The reason is the package's own "Waits on" question, answered rather than
+dodged. It is a native module, so it cannot go over the air; an EAS build
+draws down real credit; and on a pre-launch app with no users the prompt has
+nothing to convert yet. What DID get produced is the runbook —
+`docs/APP_STORE.md` now carries "Queued for the next build: the App Store
+review prompt", listing the four things that must land in one change (the
+dependency, the `version` bump so `runtimeVersion` moves with it, the
+`requestReview()` call after the notice is dismissed, and a hand-run on
+TestFlight because Apple owns the dialog and no screenshot can prove it) and
+the rules for when it may fire: once per install ever, never during
+onboarding, never after a block or a report, and no custom pre-prompt.
+
+Un-defer it when the next native change is queued and batch the two.
+`docs/UX_PACKAGES.md` carries the same status line on the package itself.

@@ -23,6 +23,7 @@ jest.mock('@/features/guest/hooks', () => ({
   useIsSignedOut: () => mockIsGuest,
   useFeaturedTraveler: () => ({ data: null, isPending: false, isError: false }),
   useFeaturedPhoto: () => ({ data: null }),
+  featuredPhotoFor: () => null,
   useMapPins: () => ({ data: [] }),
 }));
 

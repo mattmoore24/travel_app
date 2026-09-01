@@ -3,10 +3,12 @@ import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 
 import {
+  answerMeetPrompt,
   fetchIncomingRequests,
   fetchMatches,
   fetchDailySpotlight,
   fetchFirstMessageBudget,
+  fetchMeetPromptDue,
   fetchMyChats,
   fetchSentRequests,
   fetchSocialHandles,
@@ -16,6 +18,7 @@ import {
   sendMessageRequest,
   touchLastSeen,
   withdrawMessageRequest,
+  type MeetAnswer,
 } from '@/features/matching/api';
 import { useIsBusiness } from '@/features/business/hooks';
 import { waitingTotal } from '@/features/chat/unread';
@@ -440,6 +443,69 @@ export function useMarkChatRead() {
       queryClient.invalidateQueries({ queryKey: ['chats'] });
     },
     onError: () => {},
+  });
+}
+
+/**
+ * Whether this chat should show the meet question.
+ *
+ * §6 counts hellos and accepts and nothing about whether anybody actually got
+ * a coffee, and those two numbers can move in opposite directions. This is the
+ * only source of the one that says the product works.
+ *
+ * THE ANSWER IS THE SERVER'S, ENTIRELY. Nothing about the due date is computed
+ * here - not the end of the shared trip window, not "have they answered", and
+ * above all not anything about the OTHER person. A client that derived any
+ * part of it would be a second implementation of the rule that the other
+ * traveler's answer must never be visible in any form, including as a prompt
+ * that quietly stopped appearing. meet_prompt_due() is the one implementation
+ * and 61_did_you_two_actually_meet.test.sql attacks it from both sides.
+ *
+ * A long staleTime because the answer turns over on a date boundary, not on a
+ * message: this must not re-ask across a tab switch, and the mutation below
+ * writes the false itself so the card leaves the moment it is answered.
+ */
+export function useMeetPromptDue(chatId: string | null) {
+  const userId = useOwnUserId();
+  return useQuery({
+    queryKey: ['meet-prompt-due', chatId, userId],
+    queryFn: () => fetchMeetPromptDue(chatId!),
+    enabled: isSupabaseConfigured && userId != null && chatId != null,
+    staleTime: 60 * 60 * 1000,
+    // An older bundle running against a database without the function, or the
+    // other way round, must leave the thread alone rather than retrying at it.
+    retry: false,
+  });
+}
+
+/**
+ * Answer it. One tap, one time, and it reaches nobody but the founder's
+ * aggregate.
+ *
+ * The event carries the ANSWER and nothing else - no chat id, no other user,
+ * no trip. It is the caller's own event under the caller's own distinct id,
+ * exactly like request_responded, and the authoritative number is SQL over
+ * chat_meet_answers (admin_meet_answers) because the two sides of a chat are
+ * two distinct ids and no funnel can join them.
+ *
+ * `first` is whether this call was the one that recorded it, so a double tap
+ * counts once. A failure is surfaced rather than swallowed: the prompt appears
+ * once ever, so an answer lost quietly is a number that never existed.
+ */
+export function useAnswerMeetPrompt() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { chatId: string; answer: MeetAnswer }) =>
+      answerMeetPrompt(input.chatId, input.answer),
+    meta: { failureTitle: "Couldn't save that" },
+    onSuccess: (first, input) => {
+      analytics.capture('meet_answered', { answer: input.answer, first });
+      // The card goes now rather than after a round trip. The server agrees on
+      // the next fetch, and it is the server that makes the dismissal
+      // permanent - there is no update or delete on the row.
+      queryClient.setQueryData(['meet-prompt-due', input.chatId, userId], false);
+    },
   });
 }
 

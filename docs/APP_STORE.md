@@ -211,6 +211,42 @@ native, it only exists in builds made after it was added: the JS side uses
 binaries, and the pin search falls back to address geocoding there. So the
 feature ships dark over the air and lights up at the next build.
 
+### Queued for the next build: the App Store review prompt
+
+**Not in the tree yet, and deliberately.** Everything about this product is
+free, so the star rating and search ranking are the whole of paid
+acquisition — and with nothing asking for a review, the rating will be shaped
+entirely by the minority who arrive at the listing angry. The moment worth
+converting already exists and is already detected: `useAcceptedCelebration`
+fires when a first message you sent turns into a chat, and it already refuses
+to fire in a burst on a fresh install.
+
+It is a native module, so it cannot ship over the air. Four things have to
+land in the same change or it is worse than nothing:
+
+1. `package.json` — add `expo-store-review`. Nothing goes under `plugins`:
+   it has no config plugin and needs no Info.plist key.
+2. `app.json` — bump `version`. `runtimeVersion` follows it, so without the
+   bump the build carrying the native module and every build without it share
+   a runtime version, and an update built against the module reaches a binary
+   that cannot load it.
+3. `src/features/matching/use-accepted-celebration.ts` — call `requestReview()`
+   **after** the notice is dismissed, never on top of the card, and gate it on
+   the same AsyncStorage seen-set that already marks a fresh install's history
+   as old news. One flag, in that store, not a second one.
+4. A hand-run on TestFlight. Apple owns the dialog and throttles it, so there
+   is no screenshot and the E2E suite cannot photograph it.
+
+The rules, in the order they matter: **once per install, ever**; never during
+onboarding; never after a bad moment (a block, a report, a moderation
+refusal); and no custom pre-prompt, because Apple already throttles the real
+one and a second ask in front of it is the thing App Review dislikes. Asking
+at the wrong moment, or twice, is worse than not asking at all.
+
+Batch it with whatever other native change is queued. On a pre-launch app
+with no users the prompt has nothing to convert yet, and a build spent on it
+alone is a build not spent on a native change that unblocks something.
+
 ## App Review notes (paste into the Review Notes field)
 
 > Samewhere helps travelers find other travelers in the same city on the same

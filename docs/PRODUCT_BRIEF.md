@@ -225,6 +225,16 @@ and ask.
   500–1,000 in-season before opening a new city)
 - Map DAU vs. matching DAU (validates map-led thesis)
 - Message request → accept rate (marketplace health; a collapsing accept rate = creep problem)
+- **Met-in-person rate** — of the travelers asked "did you two end up meeting" once a shared
+  trip window has ended, the share who answer yes. Source: `admin_meet_answers`
+  (`supabase/migrations/20260902240000_did_you_two_actually_meet.sql`), which is months,
+  answers and distinct people — never a chat, never a pair, never a name, and service-role
+  only. This is the number that decides whether the product works, and it can move in the
+  opposite direction to the accept rate above: hellos and accepts can both climb in a city
+  where nobody ever meets anybody. The answer is private to its author, is never shown to the
+  other traveler in any form (including by its absence), and is never an input to visibility
+  or ranking — the moment it becomes either, it is a rating of a person and this is a
+  different product.
 - % of first messages blocked by moderation (creep early-warning)
 - Pin creation rate and heatmap views per session
 - D1/D7 retention **within a trip window** (not calendar retention — travelers churn between
@@ -244,3 +254,16 @@ and ask.
 6. Heatmap cells below the k-threshold are **never rendered** to other users.
 7. All work is committed and pushed to GitHub; the project must always be fully recoverable
    from a fresh clone.
+8. **A business account never initiates contact with a traveler, never joins a traveler's
+   group or another business's chat, and never reads traveler discovery surfaces. Its reach
+   is its listing, its posts, its chat and its replies.**
+
+> Rule 8 was proposed in `docs/BUSINESS_ACCOUNTS.md` §2 and **signed off by the founder on
+> 2026-08-27** ("businesses can't message individuals without being messaged first"), to be
+> written into this section in phase 13. That never happened, so for a week the codebase
+> enforced and cited a rule this document did not contain: six BEFORE INSERT triggers,
+> `assert_not_business()`, `viewer_is_business()` and their pgTAP attack tests all say "§7
+> rule 8" (`docs/ARCHITECTURE.md` §"A business is not a traveler, on both sides"). This is
+> that rule, in the wording that was signed. The same sign-off also recorded how rules 3, 4
+> and 5 read for a business account; those readings narrow nothing above and live in
+> `docs/BUSINESS_ACCOUNTS.md` §2.

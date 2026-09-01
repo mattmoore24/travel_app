@@ -5,7 +5,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
-import { Sheet, SHEET_SETTLE_MS, usePresentedSheetCount } from '@/components/ui/sheet';
+import { Sheet, SHEET_SETTLE_MS, useScreenOwnerCount } from '@/components/ui/sheet';
 import { Radius, Space } from '@/constants/theme';
 import { usePushPrimer, type PrimerReason } from '@/features/notifications/primer-store';
 import { useTheme } from '@/hooks/use-theme';
@@ -73,12 +73,15 @@ export function PushPrimer() {
   // founder uses most.
   //
   // Two gates, because they catch different things. `focused` covers a route
-  // presented over the tabs (/compose-request, after a hello). The sheet
-  // count covers an in-screen Sheet that no router knows about (the pin
-  // form). And the settle delay covers the gap between the two facts that
-  // are not the same fact: unmounted in React, and gone from the screen.
+  // presented over the tabs (/compose-request, after a hello). The screen
+  // owner count covers an in-screen Sheet that no router knows about (the pin
+  // form) — and it is the count that includes INLINE sheets, because this is
+  // the manners question rather than the collision one: the map's pin card
+  // cannot collide with anything and is still what somebody is reading. And
+  // the settle delay covers the gap between the two facts that are not the
+  // same fact: unmounted in React, and gone from the screen.
   const focused = useIsFocused();
-  const sheets = usePresentedSheetCount();
+  const sheets = useScreenOwnerCount();
   const [presenting, setPresenting] = useState(false);
 
   // Reset during render when the question is withdrawn, which is the

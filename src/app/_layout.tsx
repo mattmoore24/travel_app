@@ -577,6 +577,17 @@ function RootNavigator() {
           actions do not get to be the ones that quietly fail. */}
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="report" options={{ presentation: 'modal' }} />
+        {/* The other half of reporting: what became of the ones you sent.
+            expo-router appends any route file the layout does not name, so
+            /my-reports rendered without this — and inherited the root's
+            headerShown false with a card presentation, which is a full-bleed
+            page pushed under the Dynamic Island with no Close on it. Every
+            sibling on this spine (guidelines, privacy, contact, report) is a
+            modal, and this belongs with them. signedIn and not
+            `signedIn && onboarded`: a business account never satisfies
+            `onboarded` by design (features/auth/routing), and the business
+            account page offers this row too. */}
+        <Stack.Screen name="my-reports" options={{ presentation: 'modal' }} />
       </Stack.Protected>
       {/* Typing a name is how somebody with no account BECOMES a guest, so
           it has to mount before there is a session, and again afterwards so

@@ -1648,6 +1648,8 @@ The founder can currently see how many hellos are accepted and nothing about whe
 
 **Priority** later · **Effort** S · **Ships as** EAS build
 
+**Status: DEFERRED, not done (2026-09-01).** Nothing in this package is in the tree. `expo-store-review` is not a dependency, `useAcceptedCelebration` calls nothing, and no jest test covers it — so do not read the paragraphs below as a description of shipped behaviour. It is deferred on its own "Waits on" question: this is a native module, so it cannot ship over the air, and an EAS build draws down real credit on a pre-launch app with no users for the prompt to convert. The four things that have to land together, and the rules for when the prompt may fire, are written up in [`APP_STORE.md`](APP_STORE.md) under "Queued for the next build" so that whoever spends the build has them; that write-up is the whole of what was produced here. Un-defer it when the next native change is queued and batch the two.
+
 Everything about this product is free, so App Store search ranking and the star rating are the whole of paid acquisition. Nothing converts a genuinely good moment into a review, so the rating will be shaped entirely by the minority who arrive at the listing angry. The moment already exists and is already detected: useAcceptedCelebration fires when a hello you sent turns into a chat, and it is already careful not to fire in a burst on a fresh install.
 
 <details><summary>Closes 1 audit findings</summary>

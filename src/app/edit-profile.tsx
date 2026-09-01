@@ -4,6 +4,7 @@ import { Alert, ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'rea
 
 import { SymbolView } from 'expo-symbols';
 
+import { CityField } from '@/components/form/city-field';
 import { LanguageField } from '@/components/form/language-field';
 import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
@@ -175,8 +176,25 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
         value={occupation}
         onChangeText={setOccupation}
       />
-      <FormTextField label="Home city" value={city} onChangeText={setCity} />
+      {/* The same field signup uses, so the two forms cannot spell a city
+          two ways. Everybody who already has an account edits here and never
+          sees the signup screen again, so a typeahead that lived only there
+          was a typeahead nobody could reach. */}
+      <CityField
+        label="Home city"
+        value={city}
+        onChangeText={setCity}
+        // The country comes off the picked row as well. That is the half
+        // that turns 'Deutschland', 'Germany' and 'DE' into one country.
+        onPick={(choice) => {
+          setCity(choice.name);
+          setCountry(choice.country_name);
+        }}
+      />
       <FormTextField label="Home country" value={country} onChangeText={setCountry} />
+      <ThemedText type="small" themeColor="textSecondary">
+        Tap a suggestion and both fill themselves in. Not listed? What you type is fine.
+      </ThemedText>
       <ThemedText type="smallBold">Languages</ThemedText>
       <LanguageField selected={languages} onChange={setLanguages} max={LANGUAGES_MAX} />
       <View onLayout={measure('about')} />

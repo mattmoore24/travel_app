@@ -1,19 +1,27 @@
 import { Image } from 'expo-image';
 import { router, Stack } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Alert, PixelRatio, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { BuildStamp } from '@/components/ui/build-stamp';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { Sheet, leavingSheet } from '@/components/ui/sheet';
 import { heldPhotoNotice } from '@/constants/moderation';
 import { BrandDeep, MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { BUSINESS_RULE_SECTIONS, BUSINESS_ZERO_TOLERANCE } from '@/constants/policies';
-import { signOut, signOutEverywhere } from '@/features/auth/api';
+import {
+  confirmIdentity,
+  identityProofFor,
+  signOut,
+  signOutEverywhere,
+  type IdentityProof,
+} from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
 import { deleteAccount } from '@/features/profile/api';
 import {
@@ -37,9 +45,10 @@ import { GUEST_SWEEP_LINE } from '@/features/guest/copy';
 import { FinishYourProfileCard } from '@/features/profile/finish-card';
 import { useIsGuest, useIsGuestAccount, useWantsBusiness } from '@/features/guest/hooks';
 import { useMyTrips } from '@/features/trips/hooks';
+import { profileTripFromOwnTrip } from '@/features/trips/profile-trips';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 /**
  * What somebody without a profile sees when they tap the header avatar.
@@ -125,6 +134,199 @@ function GuestProfile({ guestName }: { guestName: string | null }) {
 }
 
 /**
+ * The one confirmation both account pages use, and the only route to
+ * deleteAccount() in the app.
+ *
+ * It used to be a single Alert with a Delete button on it. An unlocked phone
+ * left on a hostel table was therefore enough to destroy an account
+ * irreversibly - and with it every chat on BOTH sides, including
+ * conversations belonging to people who are not present and never agreed to
+ * lose them. For an app whose whole safety model assumes the people around a
+ * traveler are strangers, that was the loudest thing in the product with no
+ * lock on it.
+ *
+ * A SHEET AND NOT `Alert.prompt`. The prompt is iOS-only - its Android and
+ * web arm is a plain alert with no input at all - and this app has already
+ * paid for that once: the invite paste was unreachable off iOS for weeks
+ * (features/chat/invite-code-sheet records it). One sheet, one field, every
+ * platform, and it is still one prompt: App Review 5.1.1(v) wants deletion
+ * reachable and easy, and a single re-authentication step is normal and
+ * accepted where an obstacle course is not.
+ *
+ * The account with no password at all - Sign in with Apple - is the case that
+ * decides the shape, which is why the question "what can this account prove
+ * with" lives in features/auth/api rather than in this file.
+ */
+export function DeleteAccountSheet({
+  title,
+  body,
+  onClose,
+}: {
+  title: string;
+  /** What deletion takes with it, in this account's own words. */
+  body: string;
+  onClose: () => void;
+}) {
+  /**
+   * WHAT THIS ACCOUNT CAN PROVE ITSELF WITH, ASKED OF THE SESSION THAT WILL
+   * BE ASKED TO PROVE IT.
+   *
+   * This used to read the auth store while `confirmIdentity` read
+   * `supabase.auth.getSession()`, so the credential the sheet ASKED for and
+   * the credential the server CHECKED were two answers from two sources. They
+   * agree almost always - the store has one writer, use-auth-listener, and it
+   * writes what onAuthStateChange hands it, which is the same session
+   * getSession returns - but "almost always" is not a thing to build an
+   * irreversible act on, and where they part the failure is a dead end: a
+   * guest who has just linked a password gets a single confirm with no field
+   * on it, the server asks for the password nobody was offered, and the sheet
+   * says "That did not check out" about a credential it never showed a box
+   * for.
+   *
+   * So the store seeds the first paint - it is right in every ordinary case
+   * and a loading state on a confirmation is worse than none - and the live
+   * session immediately supersedes it, through the SAME `identityProofFor`
+   * the checker applies. Re-read whenever the store's user changes, which is
+   * exactly when a link or an upgrade has happened.
+   */
+  const user = useAuthStore((s) => s.session?.user ?? null);
+  const [proof, setProof] = useState<IdentityProof>(() => identityProofFor(user));
+  useEffect(() => {
+    let live = true;
+    void supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (live) {
+          setProof(identityProofFor(data.session?.user ?? null));
+        }
+      })
+      // A session that cannot be read is a session confirmIdentity cannot
+      // read either, and it answers 'failed' for one. Leaving the seed in
+      // place keeps the two saying the same thing.
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [user]);
+  const [password, setPassword] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  /** The account is gone from the server; take this phone with it. */
+  const leave = async () => {
+    // The auth user no longer exists, and both account pages sit outside
+    // every route guard, so they survive the sign-out they fire and would
+    // otherwise sit there showing a deleted profile. Both halves, in the
+    // order they have to happen.
+    await signOut().catch(() => {});
+    router.replace('/join');
+  };
+
+  const remove = async () => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setProblem(null);
+    const check = await confirmIdentity(proof === 'password' ? password : undefined).catch(() => ({
+      outcome: 'failed' as const,
+      problem: 'That did not check out. Try again.',
+    }));
+    if (check.outcome !== 'confirmed') {
+      setBusy(false);
+      // Backing out of Apple's sheet is a decision, not a failed check, and
+      // telling somebody they are not themselves because they changed their
+      // mind is an accusation this app does not make.
+      if (check.outcome === 'failed') {
+        setProblem(check.problem);
+      }
+      return;
+    }
+    try {
+      await deleteAccount();
+    } catch {
+      setBusy(false);
+      setProblem('That did not go through. Check your connection and try again.');
+      return;
+    }
+    // Dismiss FIRST and finish after. Navigating out from under a presented
+    // sheet leaves its full-screen scrim behind, and every tap afterwards
+    // lands on an invisible overlay - the map freeze this repo has already
+    // paid for twice.
+    leavingSheet(onClose)(() => {
+      void leave();
+    });
+  };
+
+  return (
+    <Sheet
+      onClose={onClose}
+      // A dismissal gesture mid-delete would leave the round trip running
+      // with nothing to report back to, so the scrim and the pull-down are
+      // both closed while it runs. Cancel is closed with them, for a harder
+      // reason: `remove()` is an Edge Function already emptying five storage
+      // buckets and NOTHING aborts it. A Cancel that only unmounted the sheet
+      // would put the owner back on their account page believing they backed
+      // out, and sign them out to /join a second later with the account and
+      // both sides of every chat gone. There is no way out of this act once
+      // it starts; the honest thing is to stop offering one.
+      onCloseRequest={busy ? () => {} : onClose}
+      avoidKeyboard={proof === 'password'}
+      scrolls
+      footer={
+        <>
+          <PrimaryButton
+            variant="danger"
+            label="Delete forever"
+            loading={busy}
+            disabled={proof === 'password' && password.length === 0}
+            onPress={() => {
+              void remove();
+            }}
+          />
+          <PrimaryButton variant="ghost" label="Cancel" disabled={busy} onPress={onClose} />
+        </>
+      }>
+      <ThemedText type="headline">{title}</ThemedText>
+      <ThemedText themeColor="textSecondary">{body}</ThemedText>
+      {proof === 'password' ? (
+        <FormTextField
+          label="Your password"
+          testID="confirm-password-input"
+          secureTextEntry
+          revealToggle
+          autoComplete="current-password"
+          textContentType="password"
+          returnKeyType="go"
+          value={password}
+          onChangeText={(text) => {
+            setPassword(text);
+            setProblem(null);
+          }}
+          onSubmitEditing={() => {
+            void remove();
+          }}
+          error={problem}
+        />
+      ) : (
+        <>
+          {proof === 'apple' ? (
+            <ThemedText type="footnote" themeColor="textSecondary">
+              Apple will ask you to confirm it is you.
+            </ThemedText>
+          ) : null}
+          {problem ? (
+            <ThemedText type="footnote" themeColor="danger">
+              {problem}
+            </ThemedText>
+          ) : null}
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+/**
  * The account page a PLACE gets when it taps the header avatar.
  *
  * Not the traveler profile. That page offers Edit profile, Get verified (the
@@ -149,9 +351,7 @@ function GuestProfile({ guestName }: { guestName: string | null }) {
  */
 function BusinessAccount({ name }: { name: string | null }) {
   const theme = useTheme();
-  // Deleting an account is a round trip to an Edge Function, and the founder
-  // read the silence in between as "it didn't delete my account immediately".
-  const [deleting, setDeleting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   return (
     <ThemedView style={styles.root}>
@@ -163,51 +363,61 @@ function BusinessAccount({ name }: { name: string | null }) {
         {/* The undo for the one-time push primer - the same row travelers
             get, because a reply to a room lands the same way. */}
         <NotificationsRow />
-        {/* The rules a business is actually held to, on the page rather than
-            behind a button: it is four short lines, and the button it
-            replaces opened the traveler rulebook, which talks about pins and
-            "your profile" and bans commercial solicitation. */}
-        <View style={[styles.rules, { backgroundColor: theme.surface }]}>
-          <ThemedText type="callout">{BUSINESS_ZERO_TOLERANCE}</ThemedText>
-          {BUSINESS_RULE_SECTIONS.map((section) => (
-            <View key={section.title} style={styles.rulesSection}>
-              <ThemedText type="footnote">{section.title}</ThemedText>
-              <ThemedText type="footnote" themeColor="textSecondary">
-                {section.body}
-              </ThemedText>
-            </View>
-          ))}
-        </View>
-        {/* An owner is as likely as a traveler to lose an inbox or a phone,
-            and until now the only route to either change was the signed-out
-            "Forgot your password?" screen. */}
-        <PrimaryButton
-          variant="ghost"
-          label="Email and password"
-          onPress={() => router.push('/account-credentials')}
-        />
-        {/* The way to a human, which used to be two taps inside the traveler
-            guidelines. Nobody looking for help should have to read a rulebook
-            written for somebody else to find it. */}
-        <PrimaryButton
-          variant="ghost"
-          label="Send us a message"
-          onPress={() => router.push('/contact')}
-        />
-        {/* The policy, on the one page a business account has. It was the
-            only one of the three profile variants with no route to /privacy
-            at all: the traveler page and the guest page both carry this
-            button, and a business owner who wanted to know what we do with
-            their data - or an App Reviewer signed in on the business demo
-            account looking for 5.1.1(i) - had nowhere to go from here. */}
-        <PrimaryButton variant="ghost" label="Privacy" onPress={() => router.push('/privacy')} />
-        <PrimaryButton
-          variant="ghost"
-          label="Sign out"
-          onPress={() => {
-            signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
-          }}
-        />
+
+        {/* THE ACCOUNT CONTROLS COME FIRST NOW, and the rulebook goes to the
+            bottom. 73-business-account.png ended at Sign out with Delete
+            account below the visible area, so a bar owner closing down
+            scrolled past four sections about ratings and photo policy to
+            reach the one control App Review 5.1.1(v) requires to be
+            reachable. The rules did not get shorter and they did not move
+            behind a link to the traveler rulebook, which talks about pins and
+            is the wrong document for a business; they moved below the
+            controls, which is where reading material belongs on a settings
+            page.
+
+            And a row list rather than a stack of identical ghost buttons, the
+            same grammar the traveler side uses, so the three controls read as
+            controls. */}
+        <SettingsGroup title="Account">
+          {/* An owner is as likely as a traveler to lose an inbox or a phone,
+              and until now the only route to either change was the signed-out
+              "Forgot your password?" screen. */}
+          <SettingsRow
+            first
+            label="Email and password"
+            onPress={() => router.push('/account-credentials')}
+          />
+          {/* The way to a human, which used to be two taps inside the traveler
+              guidelines. Nobody looking for help should have to read a rulebook
+              written for somebody else to find it. */}
+          <SettingsRow label="Send us a message" onPress={() => router.push('/contact')} />
+          {/* And what became of the last one. An owner writes in about a
+              listing that will not confirm and then has nothing at all to
+              look at, which is the same silence a reporter used to get. */}
+          <SettingsRow
+            label="Your reports and messages"
+            onPress={() => router.push('/my-reports')}
+          />
+          {/* The policy, on the one page a business account has. It was the
+              only one of the three profile variants with no route to /privacy
+              at all: the traveler page and the guest page both carry this
+              button, and a business owner who wanted to know what we do with
+              their data - or an App Reviewer signed in on the business demo
+              account looking for 5.1.1(i) - had nowhere to go from here. */}
+          <SettingsRow label="Privacy" onPress={() => router.push('/privacy')} />
+        </SettingsGroup>
+
+        <SettingsGroup title="Leaving">
+          <SettingsRow
+            first
+            tone="action"
+            label="Sign out"
+            onPress={() => {
+              signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
+            }}
+          />
+        </SettingsGroup>
+
         {/* App Review 5.1.1(v), and the same weight the traveler page gives
             the same act. It was a ghost button here, so the one irreversible
             control on the page rendered in accent blue, identical to Sign out
@@ -215,41 +425,38 @@ function BusinessAccount({ name }: { name: string | null }) {
         <PrimaryButton
           variant="danger"
           label="Delete account"
-          loading={deleting}
-          onPress={() =>
-            Alert.alert(
-              'Delete this account?',
-              'Your business comes off the map and everything on it goes: photos, posts, hours, links, ratings and its chat. This cannot be undone.',
-              [
-                { text: 'Keep it', style: 'cancel' },
-                {
-                  text: 'Delete',
-                  style: 'destructive',
-                  // Await it, sign out, and LEAVE. This used to fire and
-                  // forget, so the account was gone from the server while the
-                  // phone went on holding a session for a user that no longer
-                  // existed: the founder deleted their business and was still
-                  // looking at the app as themselves. Awaiting fixed half of
-                  // it. The other half is this screen, which is not behind
-                  // any guard and so survives the sign-out it triggers, still
-                  // showing a deleted business's name.
-                  onPress: async () => {
-                    setDeleting(true);
-                    try {
-                      await deleteAccount();
-                    } catch {
-                      setDeleting(false);
-                      Alert.alert('Could not delete that', 'Try again in a minute.');
-                      return;
-                    }
-                    await signOut().catch(() => {});
-                    router.replace('/join');
-                  },
-                },
-              ]
-            )
-          }
+          onPress={() => setConfirmingDelete(true)}
         />
+        {confirmingDelete ? (
+          <DeleteAccountSheet
+            title="Delete this account?"
+            body="Your business comes off the map and everything on it goes: photos, posts, hours, links, ratings and its chat. This cannot be undone."
+            onClose={() => setConfirmingDelete(false)}
+          />
+        ) : null}
+
+        {/* The rules a business is actually held to, on the page rather than
+            behind a button: it is four short lines, and the button it
+            replaces opened the traveler rulebook, which talks about pins and
+            "your profile" and bans commercial solicitation. Titled like a
+            settings group so that moving it below the controls does not turn
+            it into an unlabelled slab at the bottom of the page. */}
+        <View style={styles.settingsGroup}>
+          <ThemedText type="caption" themeColor="textSecondary" style={styles.settingsGroupTitle}>
+            The rules for businesses
+          </ThemedText>
+          <View style={[styles.rules, { backgroundColor: theme.surface }]}>
+            <ThemedText type="callout">{BUSINESS_ZERO_TOLERANCE}</ThemedText>
+            {BUSINESS_RULE_SECTIONS.map((section) => (
+              <View key={section.title} style={styles.rulesSection}>
+                <ThemedText type="footnote">{section.title}</ThemedText>
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  {section.body}
+                </ThemedText>
+              </View>
+            ))}
+          </View>
+        </View>
         <BuildStamp />
       </ScrollView>
     </ThemedView>
@@ -348,10 +555,9 @@ function SettingsGroup({ title, children }: { title: string; children: ReactNode
 
 export default function ProfileScreen() {
   const theme = useTheme();
-  // Deleting is a round trip to an Edge Function that empties five storage
-  // buckets, so the button has to say it is working. See the business branch
-  // above for the rest of the reasoning.
-  const [deleting, setDeleting] = useState(false);
+  // The one irreversible act on the page now asks who is holding the phone
+  // first. See DeleteAccountSheet above for why that is a sheet.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   // Reading your own page as a stranger gets it. The page below claims in its
   // own comment to be exactly that, and in the way that matters it is not: a
   // stranger's copy is covered in reply chips and yours has Edit buttons in
@@ -468,13 +674,10 @@ export default function ProfileScreen() {
   // Just the city, not "Bangkok, Thailand": the banner is a sentence.
   const previewCity = trips[0]?.cities.name ?? null;
 
-  const profileTrips: ProfileTrip[] = trips.map((trip) => ({
-    id: trip.id,
-    cityId: trip.city_id,
-    cityLabel: `${trip.cities.name}, ${trip.cities.country_name}`,
-    startDate: trip.start_date,
-    endDate: trip.end_date,
-  }));
+  // Owner mode, so this is the only mount outside signup that can raise the
+  // "Know your dates yet?" nudge at all, and the one that decides whether the
+  // trip editor opens on the calendar or on the month.
+  const profileTrips: ProfileTrip[] = trips.map(profileTripFromOwnTrip);
 
   return (
     <ThemedView style={styles.root}>
@@ -736,6 +939,17 @@ export default function ProfileScreen() {
                       label="Send us a message"
                       onPress={() => router.push('/contact')}
                     />
+                    {/* And what became of the last one. A report used to end
+                        in a thank-you and vanish, so somebody who reported a
+                        stranger and heard nothing concluded the app does not
+                        moderate. Beside "Send us a message" because it is the
+                        other half of the same sentence: this is where what
+                        you sent went. */}
+                    <SettingsRow
+                      label="Your reports and messages"
+                      detail="What happened to them, and nothing about anybody else."
+                      onPress={() => router.push('/my-reports')}
+                    />
                   </SettingsGroup>
 
                   <SettingsGroup title="Account">
@@ -876,41 +1090,15 @@ export default function ProfileScreen() {
                   <PrimaryButton
                     variant="danger"
                     label="Delete account"
-                    loading={deleting}
-                    onPress={() => {
-                      Alert.alert(
-                        'Delete your account?',
-                        "Deletes your profile, photos, trips, pins and chats, for both sides. Can't be undone.",
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Delete forever',
-                            style: 'destructive',
-                            onPress: async () => {
-                              setDeleting(true);
-                              try {
-                                await deleteAccount();
-                              } catch {
-                                setDeleting(false);
-                                Alert.alert(
-                                  'Deletion failed',
-                                  'Check your connection and try again.'
-                                );
-                                return;
-                              }
-                              // The auth user no longer exists, and this
-                              // screen is outside every route guard, so it
-                              // survives its own sign-out still showing a
-                              // deleted profile. Both halves, in the order
-                              // they have to happen.
-                              await signOut().catch(() => {});
-                              router.replace('/join');
-                            },
-                          },
-                        ]
-                      );
-                    }}
+                    onPress={() => setConfirmingDelete(true)}
                   />
+                  {confirmingDelete ? (
+                    <DeleteAccountSheet
+                      title="Delete your account?"
+                      body="Deletes your profile, photos, trips, pins and chats, for both sides. Can't be undone."
+                      onClose={() => setConfirmingDelete(false)}
+                    />
+                  ) : null}
                   <BuildStamp />
                 </View>
               }

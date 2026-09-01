@@ -1091,6 +1091,110 @@ language. Until then this is a decision, not an omission, and it does not need r
 no RTL locale is declared and becomes a forty-file retrofit the day one is. Adding Arabic or
 Hebrew to the listing is not a metadata change; it is that retrofit first.
 
+## Wave 2 backend: four migrations (2026-09-01)
+
+One enum, one table, one admin view, one column and five functions landed in one change.
+They are recorded here because nothing else in the tree says what they are for.
+
+### `trips.approximate` — a window that is a guess (20260902230000)
+
+A traveler who does not yet know their dates could not post a trip at all: the calendar
+wants two specific days and Post trip stays off until both land. `approximate boolean not
+null default false` marks a window as a guess. **The dates stay real dates** — the widest
+range the traveler stands behind, still under the table's 365-day check — and the flag is
+the fact that they are not a claim. `rangeForRoughDates` (client, `features/trips/dates`)
+is the single rule that turns "a month, roughly this long" into those two dates, so the
+picker, the profile and any future overlap query cannot each invent their own.
+
+Who consults it, decided one reader at a time:
+
+- `traveler_trips()` carries it as an OUT column (the function was dropped and recreated —
+  `create or replace` cannot add an OUT column to a `RETURNS TABLE`), so a profile card can
+  read "Around Sep 1 – 30" instead of printing a guess as a fact.
+- `push_trip_starts_tomorrow()` **excludes** rough trips, and excludes them from its
+  overlap population count. "Lisbon tomorrow" on the first day of a window somebody
+  described as "probably most of September" is the app inventing a travel date. The count
+  goes out under the heat-k rule (§7 rule 6) and a disclosed population must not be padded
+  with windows nobody committed to; excluding can only make the number smaller, which is
+  the safe direction for a k-threshold.
+- `get_matches()`, `overlaps_own_trip()`, the `trips_select_overlap` policy and
+  `featured_traveler()` are **untouched, and that is an open founder question rather than
+  an oversight** — whether a rough trip matches at full weight, is de-ranked, or is
+  excluded decides how wide a rough window's read access to other people's trips is
+  (`docs/UX_PACKAGES.md`, prof-rough-trip-dates "Waits on"). Until it is answered, the
+  column ships defaulted false and every existing row behaves exactly as before.
+
+Two consequences worth keeping in mind. `trips` carries column-level UPDATE grants, so the
+migration grants `update (approximate)` — without it a rough trip could be posted and never
+corrected. And the overlap sentence (`features/matching/overlap`) still states exact days,
+because get_matches has no flag to hedge from and the window it prints is an intersection
+of two trips of which either may be rough; the file records why it cannot be hedged on one
+surface alone.
+
+### `chat_meet_answers` + `meet_answer` + `admin_meet_answers` — the met-in-person rate (20260902240000)
+
+§6's most important number ("did you two end up meeting") had no source. This is it, and it
+is the most §7-sensitive thing added since social handles, because it is one keystroke away
+from being a rating of a person.
+
+The shape follows from that. One row per (chat, participant), answered once and never
+updated or deleted — no update policy, no delete policy, no grant for either verb. Selects
+are scoped to the author's own row; `meet_prompt_due()` reads nothing of the other
+participant's answer, **including whether one exists**, because a prompt that stopped being
+due once the other person answered would publish their answer perfectly in a boolean. That
+is the reciprocal-interest rule (§1) in a place it is easy to break by accident.
+
+The write publishes nothing sideways either: its own table, no trigger of any kind, foreign
+keys only, and deliberately NOT in the `supabase_realtime` publication — a broadcast on
+insert is a live tell to anyone watching the chat's channel. This is the direct lesson of
+20260902220000, where a date written to an ungranted column still leaked a presence feed by
+tripping the parent row's `updated_at` trigger.
+
+`admin_meet_answers` is months, answers and distinct people, service-role only. Never a
+chat, never a pair, never a name — the rate is the metric, the row is not. Distinct people
+sits beside answers because one traveler answering both sides of their trip is not two
+meetings.
+
+### `my_report_status()` and `my_support_messages()` — what became of what you sent (20260902250000)
+
+A reporter used to hear a thank-you and then silence, and concluded the app does not
+moderate. Both records already existed and neither was readable: `reports` grants the
+reporter every column except `status`, and `support_messages` has no select policy at all.
+So both answers are SECURITY DEFINER functions, revoked from `anon`.
+
+**The state is binary on purpose.** `reports.status` is `open` or `resolved:<action>`, where
+the action is one of dismiss, warn, strike, suspend, ban, shadowban. A three-value state
+with "action taken" in it IS a moderation outcome about another person, published to
+anybody willing to file a report to find out — which makes the queue a scoreboard and the
+reporter a spectator at somebody else's punishment. A dismissal and a ban come back byte
+identical, and pgTAP 62 asserts that rather than assuming it.
+
+A report about a BUSINESS is a report: `business_reports` is unioned in under the same
+mapping, so somebody who reported a bar for how its doorman behaved does not read "Nothing
+sent yet" on the page built to end that silence. Its five resolutions collapse to the same
+word for the same reason.
+
+Both functions only read. The `user_id is not null` half of each owner test is belt and
+braces and is documented as such — the equality already excludes a null-author row, because
+`null = null` is NULL rather than TRUE — and it is kept so that a later rewrite of the owner
+test cannot quietly turn "no match" into "matches everybody's".
+
+### `featured_traveler(int)` returns three (20260902260000)
+
+The guest Travelers tab renders a lead card plus two rows against a function that ended in
+`limit 1`. This is a **real widening** — three strangers' faces now reach a signed-out
+device where one did — so every previous guard is restated unchanged, `is_blocked_pair` is
+added, and what each row carries shrinks.
+
+Three things a count breaks that one did not: one traveler with three windows in the same
+city could fill all three slots (`distinct on (t.user_id)` in a subquery, because
+`distinct on` needs its expressions to lead the ORDER BY and the ranking is a different
+order); the order had no tiebreak, and the card and the photo are two separate calls to
+this function, so a tie meant the two calls returned different PEOPLE (`f.user_id` last
+makes the order total, and discloses nothing the client does not already receive); and the
+photos are keyed by user_id rather than by list position, which is what keeps a face off
+the wrong name when the two calls disagree anyway.
+
 ## Technical flags (raised to founder, non-blocking)
 
 1. **`expo-router/unstable-native-tabs`** — the native tabs API is new in the SDK 5x line and

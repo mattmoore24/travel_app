@@ -100,6 +100,22 @@ export type TripRow = {
   city_id: number;
   start_date: string;
   end_date: string;
+  /**
+   * The window is a guess ("Bangkok, probably most of September"), not two
+   * days somebody picked. Added by 20260902230000 as `not null default
+   * false`, so once that migration has applied every row carries it and every
+   * row written before it reads as exact.
+   *
+   * OPTIONAL, for the window before it applies. supabase-deploy and testflight
+   * are independent jobs with no `needs:` between them, so this JavaScript can
+   * be on a phone against a project that has no such column - which is the
+   * window `updateTrip`'s PGRST204 retry and `createTrip`'s conditional key
+   * exist for, and `select('*, cities(*)')` comes back without it there.
+   * Typing it as always present is the one part of this change that assumed
+   * the deploy order the rest of it defends against. Undefined reads as
+   * exact, which is what every row was.
+   */
+  approximate?: boolean;
   status: TripStatus;
   created_at: string;
   updated_at: string;
@@ -160,20 +176,58 @@ export type TravelerTripRow = {
   city_country: string;
   start_date: string;
   end_date: string;
+  /**
+   * Whether those two dates are a claim. The OUT column added by
+   * 20260902230000, and the reason that migration paid for a drop and
+   * re-create: the profile is where a reader decides whether to believe
+   * somebody's dates, so a card that cannot see this prints a guess as a
+   * fact.
+   *
+   * Optional for the same deploy window as `TripRow.approximate` and
+   * `FeaturedTravelerRow.approximate`: until the migration applies, the RPC
+   * still has its old signature and answers without the column.
+   */
+  approximate?: boolean;
 };
 
-/** featured_traveler() — the one card a signed-out visitor sees. */
+/** featured_traveler() — the travelers a signed-out visitor is shown. */
 export type FeaturedTravelerRow = {
   user_id: string;
   display_name: string | null;
   age: number | null;
   verified: boolean;
-  languages: string[];
+  /**
+   * The lead card's bio, and null on every row under it (20260902260000).
+   *
+   * The rows below the lead render as a face, a name, an age, a seal and
+   * dates, so the server stops sending what they do not print: three faces
+   * was the change, three strangers' bios on a device with no account was
+   * not. `languages` used to be here too and is gone from the signature
+   * entirely — nothing on this screen has ever printed it.
+   */
   bio: string | null;
   city_name: string;
   their_start: string;
   their_end: string;
   photo_path: string | null;
+  /**
+   * Whether those dates are a claim, supplied by 20260902260000.
+   *
+   * This card prints "In Lisbon from Sep 3" to a SIGNED-OUT device, which is
+   * one specific day stated as a fact about somebody else - exactly what
+   * trips.approximate exists to stop (20260902230000: "anything that would
+   * state one of those dates as a FACT to another person has to consult this
+   * first").
+   *
+   * OPTIONAL, and staying that way. This package ships over the air AND as a
+   * Supabase deploy, and the two do not land together: a phone can be running
+   * this JavaScript against a project whose migration has not applied yet, and
+   * then the RPC answers without the column. Undefined reads as exact, which
+   * is what every row was before the column existed, so the only window where
+   * a guess can still be announced with a day is the gap between the two
+   * deploys.
+   */
+  approximate?: boolean;
 };
 
 /** public_city_pins() — deliberately has no identity columns. */
@@ -506,16 +560,6 @@ export type ReactionSummaryRow = {
   emoji: string;
   count: number;
   reacted_by_me: boolean;
-};
-
-/**
- * Row shape returned by support_message_status(). Deliberately carries no body
- * and no address: it answers "what became of mine", not "show me the inbox".
- */
-export type SupportMessageStatusRow = {
-  created_at: string;
-  delivered_at: string | null;
-  attempts: number;
 };
 
 /**
@@ -1296,8 +1340,11 @@ export type Database = {
           city_id: number;
           start_date: string;
           end_date: string;
+          approximate?: boolean;
         };
-        Update: Partial<Pick<TripRow, 'city_id' | 'start_date' | 'end_date' | 'status'>>;
+        Update: Partial<
+          Pick<TripRow, 'city_id' | 'start_date' | 'end_date' | 'status' | 'approximate'>
+        >;
         Relationships: [];
       };
       blocks: {
@@ -1744,10 +1791,6 @@ export type Database = {
         // predates the chip row keeps working through the OTA gap.
         Args: { p_reply_to: string; p_body: string; p_category?: string };
         Returns: string;
-      };
-      support_message_status: {
-        Args: { p_id: string };
-        Returns: SupportMessageStatusRow[];
       };
       join_room: {
         Args: { p_chat_id: string; p_departure_date: string };

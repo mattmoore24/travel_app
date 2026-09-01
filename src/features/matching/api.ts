@@ -203,6 +203,60 @@ export async function markChatRead(chatId: string) {
   }
 }
 
+/**
+ * The three answers to the meet question, and the only three.
+ *
+ * A string union rather than a generated enum type because database.types.ts
+ * is owned by another implementer this session (same door as SentRequest
+ * above); the report names the line it belongs on. The database has the real
+ * enum (public.meet_answer, 20260902240000) and refuses anything else, so
+ * this is a description of what is accepted rather than the guard.
+ */
+export type MeetAnswer = 'yes' | 'no' | 'unsure';
+
+/**
+ * Should this chat show the meet question?
+ *
+ * The answer depends on the shared trip dates and on whether the CALLER has
+ * already answered. It never depends on what the other person answered, or on
+ * whether they answered at all - that would be the reciprocal-interest reveal
+ * §1 refuses, delivered as a boolean. The rule is enforced in
+ * meet_prompt_due() and proved from both sides in
+ * supabase/tests/database/61_did_you_two_actually_meet.test.sql; nothing here
+ * can restore it if the function is ever rewritten, which is why it is not
+ * computed here.
+ */
+export async function fetchMeetPromptDue(chatId: string) {
+  const { data, error } = await untypedRpc<boolean>('meet_prompt_due', {
+    p_chat_id: chatId,
+  });
+  if (error) {
+    throw error;
+  }
+  return data === true;
+}
+
+/**
+ * Answer it, once and for all.
+ *
+ * There is no update policy and no delete grant on chat_meet_answers, so the
+ * first answer is the answer forever and a second tap is a no-op rather than
+ * an error. `true` means this call was the one that recorded it, which is the
+ * only thing the caller needs in order to count it exactly once. It says
+ * nothing about the other traveler, who cannot read this row and is never
+ * told it exists.
+ */
+export async function answerMeetPrompt(chatId: string, answer: MeetAnswer) {
+  const { data, error } = await untypedRpc<boolean>('answer_meet_prompt', {
+    p_chat_id: chatId,
+    p_answer: answer,
+  });
+  if (error) {
+    throw error;
+  }
+  return data === true;
+}
+
 export async function fetchSocialHandles(userId: string) {
   const { data, error } = await supabase
     .from('social_handles')

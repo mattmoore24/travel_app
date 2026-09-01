@@ -37,14 +37,25 @@ export function useCreateTrip() {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { cityId: number; startDate: string; endDate: string; cityName: string }) =>
-      createTrip(userId!, input.cityId, input.startDate, input.endDate),
+    mutationFn: (input: {
+      cityId: number;
+      startDate: string;
+      endDate: string;
+      cityName: string;
+      /** The window is a month the traveler picked, not two days. */
+      approximate?: boolean;
+    }) => createTrip(userId!, input.cityId, input.startDate, input.endDate, input.approximate),
     onSuccess: (trip, input) => {
       analytics.capture('trip_created', {
         city_id: trip.city_id,
         city_name: input.cityName,
         start_date: trip.start_date,
         end_date: trip.end_date,
+        // Whether the rough tab is the one people reach for. The window's
+        // length is already captured below and means something different on
+        // a rough trip (it is the month, not the stay), so the flag has to
+        // travel with it or the two numbers cannot be told apart.
+        approximate: trip.approximate === true,
         // §6 retention is "within a trip window", not calendar — this lets
         // PostHog cohort on trips that start imminently (see DASHBOARD.md).
         starts_within_days: daysUntil(trip.start_date),
@@ -87,6 +98,7 @@ export function useUpdateTrip() {
       cityId?: number;
       startDate?: string;
       endDate?: string;
+      approximate?: boolean;
     }) => updateTrip(input.tripId, input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['trips', userId] });

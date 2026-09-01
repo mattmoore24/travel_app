@@ -31,6 +31,20 @@ function businessAccount(): string {
   return code.slice(start, end);
 }
 
+/**
+ * The confirmation both account pages now share. Deleting moved off the two
+ * branches and into one component, so the assertions about what deleting DOES
+ * follow it there; the assertions about what each branch OFFERS stay above.
+ */
+function deleteSheet(): string {
+  const code = src(ACCOUNT);
+  const start = code.indexOf('export function DeleteAccountSheet(');
+  const end = code.indexOf('function BusinessAccount(');
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return code.slice(start, end);
+}
+
 describe('the account page a business gets', () => {
   it('is settings, and no longer a door back to the tab that sent you', () => {
     const branch = businessAccount();
@@ -70,12 +84,149 @@ describe('the account page a business gets', () => {
   });
 
   it('leaves the app as somebody with no account, once the account is gone', () => {
+    const sheet = deleteSheet();
+    expect(sheet).toContain('await deleteAccount();');
+    expect(sheet).toContain('await signOut()');
+    // Both account pages are outside every guard, so each survives the
+    // sign-out it fires and would otherwise sit there showing a deleted
+    // business's name.
+    expect(sheet).toContain("router.replace('/join')");
+  });
+
+  /**
+   * prof-business-account-order. 73-business-account.png ended at Sign out
+   * with Delete account below the visible area, so an owner closing down
+   * scrolled past four sections of rulebook to reach the one control App
+   * Review 5.1.1(v) requires to be reachable. Orderings are exactly the kind
+   * of defect a render test cannot see.
+   */
+  it('puts the account controls above the reading material', () => {
     const branch = businessAccount();
-    expect(branch).toContain('await deleteAccount();');
-    expect(branch).toContain('await signOut()');
-    // This page is outside every guard, so it survives the sign-out it fires
-    // and would otherwise sit there showing a deleted business's name.
-    expect(branch).toContain("router.replace('/join')");
+    const controls = branch.indexOf('<SettingsGroup title="Account">');
+    const leaving = branch.indexOf('<SettingsGroup title="Leaving">');
+    const remove = branch.indexOf('label="Delete account"');
+    const rules = branch.indexOf('BUSINESS_ZERO_TOLERANCE');
+    for (const index of [controls, leaving, remove, rules]) {
+      expect(index).toBeGreaterThan(-1);
+    }
+    expect([controls, leaving, remove, rules]).toEqual(
+      [controls, leaving, remove, rules].sort((a, b) => a - b)
+    );
+  });
+
+  it('reads its controls as a row list, the same as the traveler side', () => {
+    const branch = businessAccount();
+    // Not four identical full-width ghost buttons, which weighted Privacy
+    // the same as Sign out.
+    expect(branch).not.toContain('variant="ghost"');
+    for (const label of [
+      'Email and password',
+      'Send us a message',
+      'Your reports and messages',
+      'Privacy',
+      'Sign out',
+    ]) {
+      expect(branch).toContain(`label="${label}"`);
+    }
+    // The rulebook keeps a heading of its own, or moving it down the page
+    // turns it into an unlabelled slab at the bottom.
+    expect(branch).toContain('The rules for businesses');
+  });
+});
+
+/**
+ * acct-deleting-asks-who-you-are. An unlocked phone on a hostel table was
+ * enough to destroy an account and every chat on both sides of it, including
+ * conversations belonging to people who never agreed to lose them.
+ */
+describe('deleting asks who is holding the phone', () => {
+  it('confirms an identity before it deletes anything', () => {
+    const sheet = deleteSheet();
+    const confirm = sheet.indexOf('confirmIdentity(');
+    const remove = sheet.indexOf('await deleteAccount();');
+    expect(confirm).toBeGreaterThan(-1);
+    expect(remove).toBeGreaterThan(confirm);
+    // And it STOPS rather than carrying on. `toContain('return;')` was the
+    // assertion here, and every early return in the file satisfied it - the
+    // one thing it could not see was the one thing the test is named for. So
+    // the guard is located, and the return has to sit between it and the
+    // delete: a reordering that let the check fall through fails here.
+    const guard = sheet.indexOf("if (check.outcome !== 'confirmed')", confirm);
+    expect(guard).toBeGreaterThan(confirm);
+    expect(guard).toBeLessThan(remove);
+    const stop = sheet.indexOf('return;', guard);
+    expect(stop).toBeGreaterThan(guard);
+    expect(stop).toBeLessThan(remove);
+  });
+
+  it("does not accuse somebody who backed out of Apple's sheet", () => {
+    const sheet = deleteSheet();
+    expect(sheet).toContain("if (check.outcome === 'failed')");
+    expect(sheet).toContain('That did not check out. Try again.');
+  });
+
+  it('asks for a password only where there is one to ask for', () => {
+    const sheet = deleteSheet();
+    expect(sheet).toContain('identityProofFor(user)');
+    expect(sheet).toContain("proof === 'password' ? (");
+    // An Apple account has no password of ours at all, so a field would be a
+    // form that can never succeed.
+    expect(sheet).toContain("proof === 'apple' ?");
+  });
+
+  it('asks for the credential the server is going to check, from the same session', () => {
+    // The sheet used to decide what to ASK for from the auth store while
+    // confirmIdentity decided what to CHECK from supabase.auth.getSession().
+    // Two sources for one decision, and where they part the person gets a
+    // single confirm with no field on it and a server that wants a password.
+    // The store may still seed the first paint; the live session has to
+    // supersede it, through the same identityProofFor the checker applies.
+    const sheet = deleteSheet();
+    const seed = sheet.indexOf('identityProofFor(user)');
+    expect(seed).toBeGreaterThan(-1);
+    // From the seed onwards, so the sentence in the comment above it that
+    // NAMES getSession cannot be what satisfies this.
+    const live = sheet.indexOf('.getSession()', seed);
+    expect(live).toBeGreaterThan(seed);
+    expect(sheet).toContain('setProof(identityProofFor(data.session?.user ?? null))');
+    // And it is re-asked when the account's credentials change under it,
+    // which is the one moment the two could ever have disagreed.
+    expect(sheet.slice(live, live + 700)).toContain('}, [user]);');
+  });
+
+  it('asks for the password through a real field on every platform', () => {
+    // Alert.prompt exists only on iOS - its Android and web arm is a plain
+    // alert with no input at all - and this repo has already paid for that
+    // once on the invite paste (features/chat/invite-code-sheet). Comments
+    // stripped, the same way invite-exits does it, because both files
+    // deliberately NAME the thing they must not use.
+    const code = src(ACCOUNT)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    expect(code).not.toContain('Alert.prompt');
+    expect(code).not.toContain('Platform.OS');
+    expect(code).toContain('<FormTextField');
+  });
+
+  it('closes every exit while the delete is actually running, Cancel included', () => {
+    // The scrim and the pull-down were already guarded. Cancel was not, and
+    // it calls onClose directly: press it mid-delete and the sheet unmounts,
+    // the owner is back on their account page believing they backed out, and
+    // a second later remove() finishes and signs them out with the account
+    // and both sides of every chat gone. Nothing aborts an Edge Function that
+    // is already emptying storage buckets, so the only honest answer is to
+    // stop offering a way out once it has started.
+    const sheet = deleteSheet();
+    expect(sheet).toContain('label="Cancel" disabled={busy}');
+    expect(sheet).toContain('onCloseRequest={busy ? () => {} : onClose}');
+  });
+
+  it('dismisses the sheet before it navigates out from under it', () => {
+    // router.replace from inside a presented Sheet leaves the full-screen
+    // scrim on the screen and every tap afterwards lands on an invisible
+    // overlay. leavingSheet owns both the rule and the timing.
+    const sheet = deleteSheet();
+    expect(sheet).toContain('leavingSheet(onClose)');
   });
 });
 

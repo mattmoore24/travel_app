@@ -22,6 +22,7 @@ import {
   useLeaveChat,
 } from '@/features/chat/hooks';
 import { closedNotice } from '@/features/chat/closed-notice';
+import { MeetPrompt } from '@/features/chat/meet-prompt';
 import { MessageThread } from '@/features/chat/message-thread';
 import { ThreadHeader } from '@/features/chat/thread-header';
 import { flattenPages } from '@/features/chat/paging';
@@ -30,7 +31,7 @@ import type { ThreadMessage } from '@/features/chat/outgoing';
 import { footerAnchor } from '@/features/chat/anchors';
 import { useMarkReadWhileOpen } from '@/features/chat/use-mark-read';
 import { firstUnreadId, useReachUnreadBoundary, useUnreadAtOpen } from '@/features/chat/unread';
-import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
+import { useMeetPromptDue, useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
 // Reactions are chat-shaped, not room-shaped: the table and the summary RPC
 // take any chat id, so direct chats reuse exactly what rooms use.
 import {
@@ -317,6 +318,16 @@ export default function ChatScreen() {
     chat?.other_user_id != null &&
     (blocksQuery.data ?? []).some((blocked) => blocked.userId === chat.other_user_id);
   const messagesQuery = useMessages(chat?.chat_id ?? null);
+  // "Did you two end up meeting", the day after the last date the two of you
+  // shared. The server decides the whole of when, and it never says anything
+  // about the other traveler's own answer (meet_prompt_due, 20260902240000).
+  // Asked on a one-to-one chat and nowhere else, because the function's first
+  // condition is `c.kind = 'direct'` and anything else could only ever come
+  // back false. The gate reads THIS THREAD's kind, not the reader's own
+  // account: it used to ask whether the viewer was a business, which is a
+  // different question with a different answer - a traveler writing to a
+  // hostel is not a business, and made the round trip anyway.
+  const meetPromptDue = useMeetPromptDue(chat?.kind === 'direct' ? chat.chat_id : null);
   const sendMessage = useSendMessage(chat?.chat_id ?? null);
   const discardFailed = useDiscardFailed(chat?.chat_id ?? null);
   const sendPhoto = useSendPhoto(chat?.chat_id ?? '');
@@ -455,6 +466,10 @@ export default function ChatScreen() {
           {chat.other_user_id && !viewerIsBusiness ? (
             <SocialsCard userId={chat.other_user_id} />
           ) : null}
+          {/* Above the thread, and only on the server's own true. Answering
+              takes it away for good: there is no update policy and no delete
+              grant on the row, so this chat is never asked again. */}
+          {meetPromptDue.data === true ? <MeetPrompt chatId={chat.chat_id} /> : null}
           {/* The chat row can be served from cache while the messages call
               fails, and then the conversation reads as empty rather than as
               unloaded. */}
