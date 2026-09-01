@@ -141,31 +141,29 @@ export function useRegisterBusiness() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: registerBusiness,
-    onSuccess: async () => {
+    onSuccess: () => {
       // The account has just changed KIND, so the router's answer has changed
       // with it. Anything less than a refetch leaves a fresh business sitting
       // in the traveler tabs.
       //
-      // ORDER IS LOAD-BEARING, and getting it wrong crashed the listing flow
-      // on the confirm step. `owesOnboarding` is false while EITHER isBusiness
-      // or wantsBusiness is true. Lowering the intent flag first opened a
-      // window where neither was: my-business had not come back yet, so the
-      // account read as an unfinished traveler, `(tabs)` was filtered out of
-      // the navigator, and traveler onboarding was mounted underneath the
-      // screen the owner was standing on. So: WAIT for my-business to answer,
-      // which is what makes isBusiness true, and only then take the intent
-      // down. The two facts overlap rather than leaving a gap between them.
-      await queryClient.invalidateQueries({ queryKey: ['my-business', userId] });
-      // Now it is safe. Without this nothing ever lowers the flag for a
-      // business that succeeded: the profile row offering to drop it renders
-      // only in the traveler branch, which a registered business never
-      // reaches, so the column would come to mean "has ever started a
-      // listing" rather than what its comment and its pgTAP assertion say.
-      // Best effort: isBusiness outranks it everywhere it is read, so a
-      // failed write costs nothing and self-corrects on the next attempt.
-      void setListingIntent(false)
-        .then(() => queryClient.setQueryData(['listing-intent', userId], false))
-        .catch(() => {});
+      // NOTHING ELSE GOES IN HERE, and the reason is written on this file's
+      // sibling test. Registering flips a guard, and a guard flip filters a
+      // route out of the navigator UNDERNEATH whichever business screen is
+      // showing; react-native-screens then has to reshuffle a stack whose
+      // first entry is a modal, and the app dies. The founder hit that once
+      // already, typing a confirmation code.
+      //
+      // A review finding asked for `setListingIntent(false)` here, on the
+      // grounds that nothing ever lowers wants_business for a listing that
+      // succeeded, so the column comes to mean "has ever started a listing".
+      // That is true and it is cosmetic. Adding the write killed the listing
+      // flow on its confirm step in two consecutive e2e runs, in both
+      // orderings — before the refetch and after it — because the write is a
+      // second guard-flipping fact landing in the same moment as the first.
+      // isBusiness outranks wants_business everywhere it is read
+      // (owesOnboarding returns false on isBusiness before it ever looks at
+      // the flag), so the drift costs nothing. Leave it.
+      queryClient.invalidateQueries({ queryKey: ['my-business', userId] });
     },
   });
 }

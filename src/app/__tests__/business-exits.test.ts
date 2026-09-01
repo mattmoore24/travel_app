@@ -94,30 +94,32 @@ describe('no screen replaces the root without checking it can go back', () => {
  * Held here as source assertions, because the bug is an ORDER between two
  * awaits rather than a value any pure function returns.
  */
-describe('registering a business never drops both flags at once', () => {
-  // Read RAW, comments and all: one of the two assertions below is about the
-  // comment that explains the order, and `source` strips those.
+describe('registering a business changes exactly one thing', () => {
+  // Read RAW, comments and all: the assertion below is about the comment that
+  // explains the rule, and `source` strips those.
   const hooks = fs.readFileSync(
     path.join(__dirname, '..', '..', 'features', 'business', 'hooks.ts'),
     'utf8'
   );
 
-  it('waits for my-business before taking the listing intent down', () => {
-    const success = hooks.slice(
-      hooks.indexOf('mutationFn: registerBusiness'),
-      hooks.indexOf('mutationFn: registerBusiness') + 2000
+  it('does not lower the listing intent in the same breath', () => {
+    // Two e2e runs died on the confirm step for this. Registering already
+    // flips one guard (isBusiness), and a guard flip filters a route out of
+    // the navigator underneath the business screen that is showing — the
+    // crash this whole file exists to prevent. A second guard-flipping write
+    // in the same moment made it reproducible in BOTH orderings.
+    // Comments stripped: the explanation above the code names the call it
+    // forbids, so a raw read would match its own reasoning.
+    const code = source('..', 'features', 'business', 'hooks.ts');
+    const success = code.slice(
+      code.indexOf('mutationFn: registerBusiness'),
+      code.indexOf('mutationFn: registerBusiness') + 400
     );
-    const invalidate = success.indexOf("invalidateQueries({ queryKey: ['my-business'");
-    const lower = success.indexOf('setListingIntent(false)');
-    expect(invalidate).toBeGreaterThan(-1);
-    expect(lower).toBeGreaterThan(-1);
-    // The refetch comes first, and it is AWAITED: isBusiness has to be true
-    // before wantsBusiness goes false.
-    expect(invalidate).toBeLessThan(lower);
-    expect(success).toContain("await queryClient.invalidateQueries({ queryKey: ['my-business'");
+    expect(success).not.toContain('setListingIntent(false)');
+    expect(success).toContain("invalidateQueries({ queryKey: ['my-business'");
   });
 
-  it('states the reason, so the next edit does not reorder it back', () => {
-    expect(hooks).toContain('ORDER IS LOAD-BEARING');
+  it('says why, so the finding does not get re-applied', () => {
+    expect(hooks).toContain('NOTHING ELSE GOES IN HERE');
   });
 });
