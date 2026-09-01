@@ -13,7 +13,8 @@
       "usesAppleSignIn": true,
       "associatedDomains": ["applinks:link.samewhere.io"],
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleAllowMixedLocalizations": true
       }
     },
     "android": {
@@ -48,8 +49,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Lets you choose profile photos to share with other travelers.",
-          "cameraPermission": "Lets you take a photo for your profile, for a chat, or a selfie to verify your profile photos are really you.",
+          "photosPermission": "For a profile photo, a photo in a chat, or your business listing. Profile and listing photos are seen by other travelers, a chat photo only by the people in it.",
+          "cameraPermission": "For a profile photo, a photo in a chat, or a verification selfie. Every photo is checked before it reaches anyone else, and verification selfies are deleted straight after.",
           "microphonePermission": false
         }
       ],
@@ -63,6 +64,9 @@
         }
       ]
     ],
+    "locales": {
+      "en": "./locales/en.json"
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

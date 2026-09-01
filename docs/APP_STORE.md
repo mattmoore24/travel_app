@@ -19,7 +19,7 @@ blocking so nothing discovers it on submission day.
 | Published developer contact (1.2)                      | done, <https://link.samewhere.io/support> plus the in-app Contact us form                    |
 | Privacy policy URL (5.1.1(i))                          | done, <https://link.samewhere.io/privacy>, and the same summary ships inside the app         |
 | Permission purpose strings                             | done, photos + camera; microphone suppressed                                                 |
-| Encryption declaration (ITSAppUsesNonExemptEncryption) | done in app.json, no "missing compliance" stall                                              |
+| Encryption declaration (ITSAppUsesNonExemptEncryption) | done in app.json, no "missing compliance" stall; the reasoning is under Export compliance    |
 | EAS build profiles                                     | done, eas.json (development/preview/production)                                              |
 | **Moderation pipeline actually ON**                    | **BLOCKING** - ships dark by default, [runbook step 1](LAUNCH_RUNBOOK.md) before review      |
 | **EAS environment variables**                          | **BLOCKING** - cloud builds do not read local `.env`; set them (below) or the app is keyless |
@@ -29,7 +29,7 @@ blocking so nothing discovers it on submission day.
 | **Name and trademark checks**                          | **BLOCKING** - docs/NAMING.md, never run; the bundle id is unchangeable after submission     |
 | iPad, Mac and Vision Pro distribution                  | decided: iPhone only for v1, opt out in App Store Connect (see below)                        |
 | Apple Developer Program                                | founder                                                                                      |
-| App icon final pass, screenshots                       | after a TestFlight build exists                                                              |
+| App icon final pass, screenshots                       | icon: brief and measurements under Assets, artwork still needed; screenshots need a build    |
 
 ## EAS environment variables (do this before the first build)
 
@@ -146,6 +146,40 @@ Two things to re-check at submission, because both have moved before:
   policy names it outright either way, in **What we collect** and in
   **Retention and deletion**, so the two cannot disagree by accident.
 
+## Export compliance: why the encryption answer is "exempt"
+
+`app.json` sets `ios.infoPlist.ITSAppUsesNonExemptEncryption: false`, which is
+what stops every upload stalling on App Store Connect's "missing compliance"
+prompt. The file is JSON and cannot carry the reasoning beside the key, so the
+reasoning is here. It was derived once, against Apple's questionnaire, and it
+should not have to be derived again.
+
+The app encrypts two things, and both are exempt:
+
+1. **The Supabase session at rest.** `src/lib/secure-session-store.ts`
+   generates an AES-256 key, keeps it in the iOS keychain, and holds the
+   session ciphertext in AsyncStorage — Supabase's own documented pattern,
+   used because SecureStore caps a value at about 2KB and a session is
+   bigger. What is encrypted is an access token and a refresh token: nothing
+   but authentication material. That is the exemption for encryption "limited
+   to authentication", and the fact that the algorithm is standard AES from a
+   third-party JS library rather than from the OS does not change it, because
+   the test is what the encryption is FOR.
+2. **Everything on the wire**, which is HTTPS to Supabase, to Expo's update
+   server and to PostHog. Encryption the operating system provides is exempt
+   on its own terms.
+
+**The one change that reverses this.** If the app ever encrypts USER CONTENT
+at rest under a key of its own — messages, photos, anything that is not a
+credential — the answer stops being exempt. It then needs the year's
+self-classification report, and App Store Connect adds the French encryption
+declaration on top. Anybody adding client-side encryption of message bodies is
+adding that paperwork with it, and should say so in the same PR.
+
+This is a self-classification, not legal advice, and it is written down so the
+lawyer reviewing `docs/legal/` is reviewing a stated position rather than an
+assumption.
+
 ## Shipping changes without spending a build
 
 EAS free plans include a limited number of iOS builds per month, and this
@@ -159,7 +193,8 @@ JavaScript ships over the air.
   ever reach a build able to run it.
 - **Native changes** → a real build is unavoidable: adding or removing a
   native module, anything under `plugins` in app.json, permission strings,
-  icons/splash, the app version, or an SDK upgrade.
+  `expo.locales` and the files it points at, icons/splash, the app version, or
+  an SDK upgrade.
 - **E2E** → `build=false` (the default) reuses the last simulator binary and
   pushes current JS to its `e2e` channel first. Only pass `build=true` after
   a native change.
@@ -304,10 +339,72 @@ convincing), and **no filename or caption may carry the banned vocabulary**.
 The old spec called shot 3 "request compose", which is how a banned word
 reaches a caption.
 
+### The app icon: three crops, not one file
+
+**Status: not done, and it needs a designer or an image tool.** Everything
+below is the brief for that work, plus the measurements of what is in the
+repo today, so the next pass starts from numbers rather than from an
+impression.
+
+**What is there now.** Five PNGs, and three of them are the same file:
+
+| File                          | Size  | Alpha | Mark fills | Job                             |
+| ----------------------------- | ----- | ----- | ---------- | ------------------------------- |
+| `icon.png`                    | 1024² | no    | 55% × 66%  | the App Store and home screen   |
+| `splash-icon.png`             | 1024² | yes   | 37% × 44%  | the splash, at `imageWidth` 200 |
+| `android-icon-foreground.png` | 1024² | yes   | 37% × 44%  | the adaptive icon's foreground  |
+| `brand-mark.png`              | 1024² | yes   | 37% × 44%  | nothing: no call site           |
+| `android-icon-monochrome.png` | 432²  | yes   | 45% × 41%  | the themed Android icon         |
+
+The middle three are byte-identical (`md5 e6bfa4a4…`). One drawing is being
+asked to be a store icon, a splash mark and an adaptive foreground, and those
+are three different safe areas.
+
+**`brand-mark.png` is the trap in this set.** The package plan says to leave
+it alone as the in-app mark. It is not the in-app mark: nothing imports it.
+The mark on the welcome screen, the intro tour and Profile is
+`splash-icon.png` (`src/components/animated-icon.tsx:37`,
+`src/app/profile-me.tsx:64`, `src/features/intro/intro-tour.tsx:243`). So
+re-cropping `splash-icon.png` for the splash silently redraws three in-app
+screens. **Repoint those three imports to `brand-mark.png` first**, in the
+same commit or before it, and then the splash crop is free to change.
+
+**What each file needs.**
+
+- **`icon.png` — the one that matters.** 1024×1024, no alpha, no rounded
+  corners (Apple applies the mask), no glow, no drop shadow. Drawn to be read
+  at **60pt in a search row**, which is where a decision gets made, and above
+  the screenshots on the product page. Today's mark fills 55% of the width, so
+  at 60pt the campfire is about 33pt across and the two crossed logs are two
+  white bars with a gap between them and the flame. That gap is the first
+  thing to close. The ground is `accentDeep` `#2A4C9B`, which is the one
+  correct use of that value: a fill under white.
+- **`splash-icon.png` — its own crop.** It renders at `imageWidth: 200` on
+  `#0E1020`, and the mark inside it currently fills 37% of the canvas, so what
+  a person actually sees on launch is about **74pt wide** in the middle of a
+  phone. Either the crop tightens or the `imageWidth` goes up; the crop is the
+  better answer, because it does not change the plugin config.
+- **`android-icon-foreground.png` — a different circle again.** The adaptive
+  icon is 108dp with only the inner 72dp guaranteed visible under any mask.
+  Today's mark is well inside that, and undersized for it.
+- **`brand-mark.png` — the in-app mark**, once the three imports above point
+  at it. It is the only one of the set that may keep transparency and near
+  white logs, because it is only ever drawn on `canvas`.
+- **`android-icon-monochrome.png`** is already its own file at the right size.
+  Leave it.
+
+**How to accept it, since nothing here is automated.** Render the 1024 at
+60pt. Render it in grayscale, because the amber against the blue is the whole
+signal and it has to survive as a value difference. Put it in a mock search
+row beside five apps in this category. If the campfire reads as a campfire in
+all three, it is done. This is the `screens` skill's rule applied to a single
+asset: the picture answers, not the file size.
+
+**Any of this costs an EAS build**, because the icon paths are native config.
+Land it with the next batched build rather than on its own.
+
 ### Everything else
 
-- App Store icon at 1024px, drawn as artwork rather than upscaled from the
-  in-app icon (see the `platform-app-icon` package).
 - The listing copy below, pasted into App Store Connect.
 - Localised metadata for the four launch markets (see Localisation below).
 
@@ -416,6 +513,33 @@ and screenshots' captions for:
 keyword field is per-locale. Have a native speaker read the subtitle and the
 first three description lines at minimum; a machine-translated listing in this
 category reads as a scam, which is the opposite of what the copy is for.
+
+### The permission dialogs are in the binary, and have the longest lead time
+
+The listing is data and ships whenever you like. The permission sheets are
+not: `expo.locales` in app.json points at `locales/<lang>.json`, and those
+files are read **at prebuild**, written into `<lang>.lproj/InfoPlist.strings`,
+and compiled into the app. So a translation added the day before a submission
+is a translation that is not in the build, and the wait is a full EAS build
+and a TestFlight round trip. Of everything on the localisation list this is
+the item to start first.
+
+`locales/en.json` exists today with the three declared usage strings in it.
+Adding pt-PT, es-MX, th or id is then a new file beside it and one line in
+`expo.locales`, which is the whole reason the English one is there at all: the
+strings were inline in the plugin block, where the second language would have
+had nowhere to go.
+
+**Two copies of the same sentence, and they must not drift.** The plugin block
+in app.json still carries `photosPermission` and `cameraPermission`, because
+that is what writes the base `Info.plist` values every non-localised device
+falls back to, and `locales/en.json` carries the same words for English.
+Change one, change the other in the same commit.
+
+**No double quotes in a locale string.** The generator writes
+`KEY = "value";` with no escaping (`@expo/config-plugins`,
+`build/ios/Locales.js`), so a `"` in the copy produces a strings file that
+does not parse and a permission dialog that falls back to nothing.
 
 ## iPad, Mac and Vision Pro distribution
 

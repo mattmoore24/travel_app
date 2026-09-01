@@ -137,7 +137,56 @@ export function useCreatePin() {
       // somebody answered is obviously worth something.
       usePushPrimer.getState().ask('pin-posted');
     },
+    // A FAILED post used to be invisible, and pins are the supply side of the
+    // whole product: no pins, no map, no heatmap, no reason to open the app.
+    // Without this, a broken RPC and a city full of people who simply do not
+    // want to publish intent produce exactly the same chart — a low pin rate
+    // with no diagnosis. The global mutation alert still shows the person
+    // what happened; this is the same event counted.
+    onError: (error, input) => {
+      analytics.capture('pin_post_failed', {
+        reason: pinPostFailureReason(error),
+        city_id: input.cityId,
+        // Which of the two write paths broke. They are different functions
+        // with different validations, and a failure in one says nothing
+        // about the other.
+        joinable: input.joinable === true,
+      });
+    },
   });
+}
+
+/**
+ * The CLASS of a failed post, and never the message.
+ *
+ * The message is the dangerous half: a `raise` out of validate_pin quotes
+ * what was typed, and docs/PROGRESS.md records what happens when user text
+ * reaches analytics by accident. So the answer comes from a closed
+ * vocabulary — a Postgres/PostgREST code, or one of three shapes — and the
+ * code is bounds-checked before it is used, so even a client library that
+ * one day puts prose in `code` cannot widen it into free text.
+ *
+ * `PostgrestError` is not an `Error` (see the traps skill), which is why the
+ * code check comes first and why the `instanceof Error` arm is a fallback
+ * rather than the entry point.
+ */
+export function pinPostFailureReason(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === 'string' && /^[0-9A-Za-z]{1,10}$/.test(code)) {
+      return `pg_${code}`;
+    }
+  }
+  // React Native's fetch rejects with a TypeError when the request never
+  // left the phone, which is the one non-database failure worth telling
+  // apart: it is a person on a hostel wifi, not a broken migration.
+  if (error instanceof TypeError) {
+    return 'network';
+  }
+  if (error instanceof Error) {
+    return 'error';
+  }
+  return 'unknown';
 }
 
 /**

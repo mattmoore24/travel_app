@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ImageSource } from 'expo-image';
 
 import { useAuthStore } from '@/features/auth/store';
 import {
@@ -34,6 +35,7 @@ import type {
 } from '@/lib/database.types';
 import { analytics } from '@/lib/analytics';
 import { invalidateDiscoverySurfaces } from '@/features/profile/discovery-cache';
+import { photoSource } from '@/lib/photo-source';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export function useOwnUserId() {
@@ -262,7 +264,14 @@ export function useReorderPhotos() {
   });
 }
 
-/** Signed URL for a photo in the private bucket (cached just under its TTL). */
+/**
+ * Signed URL for a photo in the private bucket (cached just under its TTL).
+ *
+ * Prefer `usePhotoSource` below wherever the answer is going into an
+ * `<Image>`: a bare URL is a new expo-image cache key on every cold launch,
+ * and this hook cannot fix that on its own because the URL it returns is the
+ * half that changes.
+ */
 export function usePhotoUrl(storagePath: string | null) {
   return useQuery({
     queryKey: ['photo-url', storagePath],
@@ -271,6 +280,24 @@ export function usePhotoUrl(storagePath: string | null) {
     staleTime: 50 * 60 * 1000,
     gcTime: 55 * 60 * 1000,
   });
+}
+
+/**
+ * The same signed URL, carrying the storage path as expo-image's cache key.
+ *
+ * This is the hook an `<Image>` wants. `usePhotoUrl` hands back a string, so
+ * a call site that wanted the cache to survive a relaunch had to remember the
+ * path separately and pass it a second time; twenty-odd screens doing that by
+ * hand is twenty-odd chances to key on the wrong thing. Here the two halves
+ * travel together and `source={photo}` is the whole call site.
+ *
+ * Null while the URL is still being signed, and null when there is no photo:
+ * a caller renders its skeleton in both cases, which is what it did before.
+ * See src/lib/photo-source.ts for why the storage path is a safe key.
+ */
+export function usePhotoSource(storagePath: string | null): ImageSource | null {
+  const { data } = usePhotoUrl(storagePath);
+  return photoSource(data, storagePath);
 }
 
 /** Own users row (status + suspension expiry) — drives the account gate. */

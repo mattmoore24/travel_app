@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
@@ -30,8 +30,29 @@ import {
 import { openInMaps } from '@/features/pins/open-in-maps';
 import { toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
+import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 import type { LocalSearchResult } from '@/modules/local-search';
+
+/**
+ * The composer's funnel, three steps wide and no wider.
+ *
+ * Pin creation rate is a §6 metric and it used to be two events across: the
+ * map was viewed, and then a pin either existed or did not. That says the
+ * number is low and nothing about why, which is the difference between three
+ * completely different fixes — the composer is too long, the place search is
+ * failing, or travelers do not want to publish intent at all.
+ *
+ * Only the REQUIRED path is a step, and that is what keeps the funnel
+ * readable. The day, the lifetime and the join mode all arrive with sensible
+ * defaults, so touching them is not progress and counting them would put
+ * optional detours below the gate in the chart. What is left is: the spot has
+ * a name (however it got one — search, the geocoder, or typed), the plan has
+ * words in it (the only thing the submit button waits for), and the button
+ * was pressed. Each fires at most once, never per keystroke.
+ */
+const COMPOSE_STEPS = ['spot_named', 'plan_written', 'submitted'] as const;
+type ComposeStep = (typeof COMPOSE_STEPS)[number];
 
 /** iOS toolbar id: gives the multiline field a way out of the keyboard. */
 type PinFormSheetProps = {
@@ -110,6 +131,58 @@ export function PinFormSheet({
   // being called while rendering.
   const scrollRef = useRef<ScrollView>(null);
   const fieldY = useRef<Record<string, number>>({});
+
+  // How far this composer got. Refs, not state: nothing on screen depends on
+  // them, and the unmount handler below has to read them AFTER the last
+  // render, which is the one thing a state variable cannot give it.
+  const reached = useRef<ComposeStep[]>([]);
+  const posted = useRef(false);
+  const reachStep = useCallback((step: ComposeStep) => {
+    if (reached.current.includes(step)) {
+      return;
+    }
+    reached.current.push(step);
+    analytics.capture('pin_compose_step', {
+      step,
+      step_index: COMPOSE_STEPS.indexOf(step) + 1,
+    });
+  }, []);
+
+  // Watching the VALUE, not the keystroke: both of these fire the first time
+  // their field is non-empty and never again, so a person typing a plan
+  // sends one event rather than thirty. A venue that arrived pre-filled
+  // counts, and that is deliberate — this step never firing is exactly what
+  // "place search is failing" looks like from the chart.
+  useEffect(() => {
+    if (venue.trim().length > 0) {
+      reachStep('spot_named');
+    }
+  }, [venue, reachStep]);
+  useEffect(() => {
+    if (plan.trim().length > 0) {
+      reachStep('plan_written');
+    }
+  }, [plan, reachStep]);
+
+  // Left without posting. The furthest step in the canonical order, not the
+  // most recent one reached: the form is a scroller, not a wizard, so
+  // somebody can write the plan before naming the spot, and a funnel that
+  // took the chronological answer would report them as going backwards.
+  useEffect(
+    () => () => {
+      if (posted.current) {
+        return;
+      }
+      const furthest = reached.current.reduce(
+        (best, step) => Math.max(best, COMPOSE_STEPS.indexOf(step)),
+        -1
+      );
+      analytics.capture('pin_compose_abandoned', {
+        last_step: furthest < 0 ? 'none' : COMPOSE_STEPS[furthest],
+      });
+    },
+    []
+  );
 
   // The marker's kind. Apple's POI category leads when the place came from
   // search or a venue chip; a hand-placed pin has none, so the PLAN's own
@@ -203,6 +276,10 @@ export function PinFormSheet({
   };
 
   const submit = async () => {
+    // Before the await, so a post that never comes back still counts as a
+    // press. The gap between this step and pin_created is where
+    // pin_post_failed lives (features/pins/hooks.ts).
+    reachStep('submitted');
     try {
       const pin = await createPin.mutateAsync({
         cityId,
@@ -221,6 +298,10 @@ export function PinFormSheet({
         joinable,
       });
       haptics.success();
+      // Set before the parent is told, because being told is what unmounts
+      // this sheet: pin_created and pin_compose_abandoned must never both
+      // describe the same composer.
+      posted.current = true;
       onPosted(pin.id);
     } catch {
       // Surfaced by the global mutation error alert (e.g. outside geofence).

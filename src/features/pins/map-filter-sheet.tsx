@@ -212,7 +212,7 @@ export function MapFilterSheet({
             note={
               filters.categories.length === 0
                 ? 'Nothing ticked means everything.'
-                : 'Only travelers’ plans. Businesses are filtered above.'
+                : "Only travelers' plans. Businesses are filtered above."
             }>
             <View style={styles.chips}>
               {/* The marker's own disc and glyph, so the picker and the thing

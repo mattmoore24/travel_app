@@ -1,9 +1,9 @@
 import Constants from 'expo-constants';
-import * as Updates from 'expo-updates';
 import { StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Space } from '@/constants/theme';
+import { release } from '@/lib/analytics';
 
 /**
  * Which code is actually running, printed where a person can read it.
@@ -17,13 +17,16 @@ import { Space } from '@/constants/theme';
  *
  * The id is the update's own, so it can be read over the phone and compared
  * against what the publish log reported.
+ *
+ * It comes from `release` in src/lib/analytics.ts rather than from
+ * expo-updates directly, and that is the whole point of the indirection:
+ * every event now carries `update_id` and `is_embedded` from that same
+ * object, so the eight characters read off this line and the eight
+ * characters a chart is broken down by cannot drift apart.
  */
 export function BuildStamp() {
   const version = Constants.expoConfig?.version ?? '0.0.0';
-  const source =
-    Updates.isEmbeddedLaunch || !Updates.updateId
-      ? 'built-in bundle'
-      : `update ${Updates.updateId.slice(0, 8)}`;
+  const source = release.isEmbedded ? 'built-in bundle' : `update ${release.updateId}`;
   return (
     <ThemedText type="footnote" themeColor="textSecondary" style={styles.stamp}>
       Samewhere {version} · {source}

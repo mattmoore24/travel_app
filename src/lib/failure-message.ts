@@ -40,7 +40,20 @@ export function isOffline(error: unknown): boolean {
   );
 }
 
-const OFFLINE = 'No connection. This one needs the internet.';
+/**
+ * The two words the app uses whenever the PHONE, not the server, is the
+ * problem — and the only place they are written.
+ *
+ * Every offline sentence below is built from this one phrase, and so is the
+ * connection banner (`src/components/ui/connection-banner.tsx`). That matters
+ * because the banner and an error message are usually on screen together: a
+ * traveler who walks out of the cafe mid-conversation sees the bar under the
+ * notch AND whatever the screen they were on says about its failed load. Two
+ * different phrasings of the same fact reads as two different faults.
+ */
+export const NO_CONNECTION = 'No connection';
+
+const OFFLINE = `${NO_CONNECTION}. This one needs the internet.`;
 
 export const GENERIC_SAVE_FAILURE = 'Something went wrong. Try that again.';
 
@@ -206,7 +219,7 @@ export function saveFailureMessage(error: unknown): string {
 /** For a query that failed: something the screen wanted to show. */
 export function loadFailureMessage(error: unknown, what: string): string {
   if (isOffline(error)) {
-    return `No connection, so ${what} could not load.`;
+    return `${NO_CONNECTION}, so ${what} could not load.`;
   }
   return `${what[0].toUpperCase()}${what.slice(1)} could not load.`;
 }

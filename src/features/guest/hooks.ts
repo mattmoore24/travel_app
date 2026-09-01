@@ -4,7 +4,7 @@ import { useIsFocused } from 'expo-router';
 import { useRefetchOnRefocus } from '@/hooks/use-refetch-on-refocus';
 
 import { useAuthStore } from '@/features/auth/store';
-import { useIsBusiness, useListingIntent } from '@/features/business/hooks';
+import { useIsBusiness, useListingIntent, useOwnBusiness } from '@/features/business/hooks';
 import type {
   CityPinRow,
   FeaturedTravelerRow,
@@ -58,6 +58,66 @@ export function useIsSignedOut() {
 /** A guest specifically: named, session-carrying, not a member. */
 export function useIsGuestAccount() {
   return useAuthStore((s) => s.session?.user.is_anonymous === true);
+}
+
+/**
+ * What kind of account is looking at this, in the five words analytics is
+ * allowed to know. Never a name, never an id.
+ */
+export type AccountType = 'signed_out' | 'guest' | 'traveler' | 'business' | 'unknown';
+
+/**
+ * The account kind, for the property every event carries (docs/DASHBOARD.md).
+ *
+ * This exists because "map DAU vs matching DAU" is the number that decides
+ * whether the map-led thesis is true, and it is biased upward on the map
+ * side by exactly the number of business accounts: components/app-tabs.tsx
+ * renders the map trigger unconditionally and hides Travelers from a
+ * business, so a business can reach one side of the ratio and is
+ * structurally barred from the other. Without this property the split cannot
+ * be reconstructed after the fact, and as listings grow the ratio drifts in
+ * the direction the founder wants to see for a reason that has nothing to do
+ * with travelers. A flattering failure is the dangerous kind.
+ *
+ * 'unknown' IS AN ANSWER, and refusing to guess is the point. useOwnBusiness
+ * settles a beat after the first paint — the same race app-tabs.tsx
+ * documents for the tab list — so an account kind assumed before then is
+ * wrong for a business every time, invisibly. Everywhere else in the app the
+ * settling answer is "not a business", because that is the kinder UX; here
+ * the cost of being wrong is the metric quietly flattering itself, so an
+ * unresolved kind says so and the chart can exclude it.
+ *
+ * Mid-listing counts as 'business' rather than as a traveler who has not
+ * finished, matching what useMapPins already does with the same fact: for
+ * the purpose of this number a non-traveler on the map is a non-traveler on
+ * the map.
+ */
+export function useAccountType(): AccountType {
+  const signedOut = useIsSignedOut();
+  const guestAccount = useIsGuestAccount();
+  const business = useOwnBusiness();
+  const listing = useListingIntent();
+  const listingIntent = useAuthStore((s) => s.listingIntent);
+
+  if (signedOut) {
+    return 'signed_out';
+  }
+  if (guestAccount) {
+    // Both queries above are disabled for an anonymous session, so they
+    // never settle and this has to answer before the settle check below.
+    return 'guest';
+  }
+  // A positive answer needs no settle: data in hand IS settled, and the
+  // in-memory listing flag is the fast path a cold start does not have.
+  if (business.data != null || listingIntent) {
+    return 'business';
+  }
+  const settled =
+    (business.isSuccess || business.isError) && (listing.isSuccess || listing.isError);
+  if (!settled) {
+    return 'unknown';
+  }
+  return listing.data === true ? 'business' : 'traveler';
 }
 
 /**

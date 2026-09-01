@@ -14,15 +14,15 @@ Postgres truth, not events. The publish workflows fail their preflight while
 the key is missing, so a bundle can no longer ship with analytics silently
 dead.
 
-| §6 metric                                | Source                                                                                    |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **Liquidity per city** (live trip/pin)   | `select * from admin_liquidity;`                                                          |
-| Map DAU vs matching DAU                  | PostHog: unique users on `map_viewed` / `travelers_viewed`, both filtered `guest = false` |
-| Request → accept rate                    | `select * from admin_request_funnel;` (+ `request_responded` event)                       |
-| % first messages blocked                 | `select * from admin_moderation_stats;` **plus** PostHog `draft_flagged` (see below)      |
-| Pin creation rate / heatmap views        | PostHog `pin_created`, `heatmap_viewed`; `admin_pin_stats` (live)                         |
-| D1/D7 retention **within trip window**   | PostHog retention, cohorted on `trip_created` (caveat below)                              |
-| **Pipeline health** (not in §6, but ops) | `select * from admin_ops_health;`                                                         |
+| §6 metric                                | Source                                                                                     |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Liquidity per city** (live trip/pin)   | `select * from admin_liquidity;`                                                           |
+| Map DAU vs matching DAU                  | PostHog: unique users on `map_viewed` / `travelers_viewed`, both `account_type='traveler'` |
+| Request → accept rate                    | `select * from admin_request_funnel;` — SQL only, not a PostHog funnel (insight 3)         |
+| % first messages blocked                 | `select * from admin_moderation_stats;` **plus** PostHog `draft_flagged` (see below)       |
+| Pin creation rate / heatmap views        | PostHog `pin_created`, `heatmap_viewed`; `admin_pin_stats` (live)                          |
+| D1/D7 retention **within trip window**   | PostHog retention, cohorted on `trip_created` (caveat below)                               |
+| **Pipeline health** (not in §6, but ops) | `select * from admin_ops_health;`                                                          |
 
 ## Admin query set (SQL editor)
 
@@ -104,26 +104,98 @@ fixed: adding audit rows to those two functions is its own change.
 ## PostHog insights to create (once the key exists)
 
 1. **Map-led thesis** — trend of unique users: `map_viewed` vs
-   `travelers_viewed`, daily, **both filtered `guest = false`**. Map should
-   lead. **Map DAU is defined as** unique users on `map_viewed` with
-   `guest = false`; **matching DAU** the same way on `travelers_viewed`. Both
-   events fire for guests too (tagged `guest = true`) so the guest funnel can
-   be read from the same pair — but a guest browsing is not a DAU, and the
-   flag is what keeps the two sides of the ratio honest.
-2. **Pin funnel** — `map_viewed → pin_created` conversion, and
-   `heatmap_viewed` per session. Renamed from `heatmap_rendered` on
-   2026-08-31 with a real semantic change: the old event fired when heat
-   DATA arrived, the new one requires drawn pixels on an uncovered map
-   (non-empty layer, no sheet over it, not place mode), once per city per
-   session — so the series legitimately drops at the rename.
-3. **Request funnel** — `request_sent` (property `delivered` true/false) →
-   `request_responded` (property `accepted`).
+   `travelers_viewed`, daily, **both filtered `account_type = 'traveler'`**.
+   Map should lead. **Map DAU is defined as** unique users on `map_viewed`
+   with `account_type = 'traveler'`; **matching DAU** the same way on
+   `travelers_viewed`.
+
+   **`guest = false` is no longer the filter, and the swap is the whole
+   point of this insight.** A business account can reach the Map tab
+   (`components/app-tabs.tsx` renders the map trigger unconditionally) and is
+   structurally barred from Travelers (`hidden={isBusiness}`), so filtering
+   only guests out left every listed hostel and bar counting toward the map
+   side of the ratio and toward nothing on the other. As listings grow that
+   drifts in the direction the founder wants to see, for a reason that has
+   nothing to do with travelers, and a flattering failure is the dangerous
+   kind. `account_type` splits them. The guest funnel still reads off the
+   same pair using `account_type = 'guest'` (a signed-out device says
+   `signed_out`), and `is_guest` is kept as a boolean for the old charts.
+
+   **`account_type = 'unknown'` is a real bucket and it is not noise.** The
+   business query settles a beat after the first paint — the same race
+   `components/app-tabs.tsx` documents for the tab list — so events fired in
+   that window say `unknown` rather than guessing `traveler`. Exclude it from
+   both sides of the ratio; if it ever grows past a few percent of
+   `map_viewed`, the fix is to hold the first `map_viewed` until
+   `businessSettled` the way `src/app/_layout.tsx` holds routing. An account
+   part way through listing a business counts as `business`, matching what
+   `useMapPins` already does with the same fact.
+
+2. **Pin funnel** — the composer, step by step, not one conversion. Pins are
+   the supply side of everything (no pins, no map, no heatmap, no reason to
+   open the app), and `map_viewed → pin_created` said the number was low and
+   nothing about why. The funnel is:
+
+   `map_viewed` → `pin_compose_started` → `pin_compose_step` (`spot_named`) →
+   `pin_compose_step` (`plan_written`) → `pin_compose_step` (`submitted`) →
+   `pin_created`
+
+   Each drop names a different lever:
+
+   - **map_viewed → pin_compose_started** — nobody is opening the composer.
+     A discovery problem: the map FAB, the empty state, the venue sheet.
+     Break down by `entry` to see which of the three is carrying it.
+   - **started → spot_named** — the composer opens with no name for the
+     spot. That is place search or the reverse geocode failing, not a copy
+     problem. This step counts a pre-filled name, so its absence is the
+     signal.
+   - **spot_named → plan_written** — people arrive at the one field the
+     submit button waits for and do not fill it. A composer-length or
+     motivation problem: read it next to `pin_compose_abandoned`'s
+     `last_step`, which says where they stopped.
+   - **plan_written → submitted** — the form was filled and the button never
+     pressed. Look at what sits between them on screen.
+   - **submitted → pin_created** — posts that failed. `pin_post_failed`
+     carries `reason` (a Postgres/PostgREST code, or `network`), `city_id`
+     and `joinable`; a spike in one `reason` in one city is a geofence or a
+     migration, not disinterest.
+
+   `heatmap_viewed` per session sits beside it. Renamed from
+   `heatmap_rendered` on 2026-08-31 with a real semantic change: the old
+   event fired when heat DATA arrived, the new one requires drawn pixels on
+   an uncovered map (non-empty layer, no sheet over it, not place mode), once
+   per city per session — so the series legitimately drops at the rename.
+
+3. **Request funnel — and it is NOT a PostHog funnel.** `request_sent` is
+   fired by the SENDER and `request_responded` by the RECIPIENT, which are
+   two different distinct_ids, so no PostHog funnel can ever join them
+   whatever the properties say. This page used to imply otherwise. The accept
+   rate comes from SQL:
+
+   ```sql
+   select * from admin_request_funnel;   -- by city and by source
+   ```
+
+   The view splits the denominator four ways — accepted, declined, still
+   pending, expired unanswered — instead of folding them into one, because
+   the same falling rate is produced by a push outage, by slow responses and
+   by people never seeing the hello, and those have different fixes. It also
+   carries median hours to respond, groups by `city_id` and `source`
+   (`trip_match` vs `pin`, which is the map-led thesis question), and buckets
+   rows with no city as `unknown` rather than dropping them.
+   `blocked_by_moderation` stays out of every denominator.
+
+   The two events remain, for breakdowns only. `request_responded` carries
+   `source` and `city_id` when the responding screen knows them; both read
+   null until `incoming_requests()` returns them (see "Not wired yet" below).
+
    **Derived: second-message rate** — of conversations opened by an accepted
    hello or a joined pin, the share that reach a second **inbound**
    `message_sent` (a `message_sent` on the same `chat_id` from the person who
    did not open it; `surface` says `direct` vs `room`). Accept rate is only a
    proxy — this is the marketplace-health number it stands in for: did the
    conversation actually start?
+
 4. **Trip-window retention** — retention insight, cohort event `trip_created`,
    return event "any event", horizon 7 days. Calendar retention is
    intentionally NOT the metric — travelers churn between trips by design.
@@ -147,6 +219,75 @@ fixed: adding audit rows to those two functions is its own change.
 5. **Safety pulse** — `user_blocked`, `user_reported`, `request_sent` with
    `delivered=false` over time.
 
+**Break every insight above down by `update_id` before believing a move in
+it.** This project ships JavaScript over the air most days, and PostHog's own
+`$app_version` comes from the NATIVE binary — so a fortnight of updates all
+report the same version and no metric change is attributable to the release
+that caused it. `update_id` is the eight characters `BuildStamp` prints at
+the bottom of the profile screen, read from `expo-updates` at launch, so the
+id on a founder's screen and the id on the chart are the same object
+(`release` in `src/lib/analytics.ts`). `is_embedded = true` means the phone
+was running the binary's built-in bundle, which every install does for
+exactly one launch — an update is never applied on the launch that downloads
+it — so a chart that suddenly fills with embedded launches is a fetch
+failing, not a rollback.
+
+## Properties on every event
+
+This is the REVIEWED list. Every property below was checked against one rule:
+city, account kind and release are the point, and identity is not. A display
+name, an email, a social handle, a message body, a business name and a raw
+user id may never be an event property, on any event, ever —
+`docs/PROGRESS.md` records a shipped bug where a real traveler's display name
+reached analytics from a signed-out screen. **Check any new property against
+this list before adding it**, and add it here in the same change.
+
+Carried automatically by `analytics.capture`, so no call site states them:
+
+| Property       | Values                                                       |
+| -------------- | ------------------------------------------------------------ |
+| `update_id`    | eight characters, or null on an embedded launch              |
+| `is_embedded`  | boolean                                                      |
+| `account_type` | `signed_out` / `guest` / `traveler` / `business` / `unknown` |
+| `is_guest`     | boolean (true for `guest` and `signed_out`)                  |
+| `city_id`      | integer, the city chip the map is on                         |
+
+Stated by individual events: `guest`, `source`, `surface`, `category`,
+`step`, `step_index`, `last_step`, `entry`, `reason`, `joinable`,
+`intent_date`, `delivered`, `queued`, `blocked`, `accepted`,
+`rewrote_after_warning`, `kind`, `state`, `answer`, `first_time`,
+`step_name`, `position`, `cells`, `business_id`, `chat_id`.
+
+The last two are the only remaining join keys into our own database, and they
+are on notice. `chat_id` (on `message_sent`) buys the second-message rate in
+insight 3 and has no substitute yet; `business_id` (on
+`business_page_viewed`, `business_link_tapped`) names a public listing rather
+than a person. `room_joined` and `room_left` used to carry `chat_id` and no
+longer do: a room belongs to one business, so those two events plus the
+database said which venue somebody was in and when, and nothing on this page
+counted rooms per room.
+
+**The distinct_id is PostHog's own per-install id, and nothing identifies
+against the Supabase uid.** Handing PostHog the raw auth uid made the
+distinct_id a join key into our database: anyone holding an export and the
+database could reconstruct who talked to whom and when, inside a third-party
+processor, for a product whose positioning is that it does not collect that,
+with users disproportionately in the EU. The settled answer is a salted hash,
+and **the salt has to be a server-side secret** — nothing in the app bundle
+is secret, an `EXPO_PUBLIC_` salt ships inside the app, and a hash whose salt
+the attacker holds is the same join key with extra steps. So until the server
+mints that id there is no user-level identity at all, which costs exactly one
+thing: looking a person's session up from a support ticket. Cross-device
+stitching is gone too, which for a phone-only app is close to free.
+`analytics.identify()` still exists, guarded so an unchanged id sends
+nothing, and is what the server-minted id gets handed to.
+
+**Opting out.** `analytics.setOptedOut(true)` calls the SDK's own opt-out,
+which is persisted, so it survives a relaunch; `analytics.reset()` re-states
+it, because PostHog's reset clears the flag and a sign-out would otherwise
+turn somebody back on silently. Policy 5.1.1(i) asks how consent is
+withdrawn, and this is the mechanism the answer names.
+
 Event inventory — every event below is a real `analytics.capture` call in
 `src/` and every capture call in `src/` is listed here; keep the two in step
 with `grep -rhoE "analytics[.]capture[(]'[a-z_]+'" src` before adding a chart.
@@ -155,7 +296,14 @@ workflows refuse to ship a bundle without it.)
 
 - **Map and pins**: `map_viewed`, `heatmap_viewed` (was `heatmap_rendered`;
   views need drawn pixels on an uncovered map, so the count is honest and
-  lower), `pin_created`, `pin_tapped`, `pin_joined`
+  lower), `pin_created`, `pin_tapped`, `pin_joined`, `pin_compose_step`
+  (`step` is one of `spot_named`, `plan_written`, `submitted` — three stable
+  names, and no step fires per keystroke), `pin_compose_abandoned`
+  (`last_step`, the FURTHEST step in that order rather than the most recent,
+  because the composer is a scroller and somebody can write the plan before
+  naming the spot), `pin_post_failed` (`reason`, `city_id`, `joinable` — the
+  reason is a Postgres/PostgREST code or one of `network`/`error`/`unknown`,
+  never the error message, which quotes what somebody typed)
 - **Matching and chat**: `travelers_viewed`, `request_sent` (carries
   `rewrote_after_warning`), `draft_flagged` (properties `category` and
   `surface`, never the draft and never the matched pattern),
@@ -180,6 +328,25 @@ workflows refuse to ship a bundle without it.)
 `src/` — each would have produced a permanently empty chart, and an empty
 chart reads as "nobody uses matching" rather than "this event was never
 written". Neither name may return: the vocabulary they came from is banned.
+
+**Not wired yet**, and listed separately for exactly that reason:
+
+- `pin_compose_started` (`entry` = `map_fab` / `empty_state` / `venue_sheet`)
+  is the first step of insight 2's funnel. It has to be fired where the
+  composer is OPENED (`src/features/pins/map-screen.tsx`) rather than inside
+  the sheet, because that is the only place that knows which of the three
+  entry points was used. Until it exists, read the funnel from `map_viewed`
+  straight to `pin_compose_step` (`spot_named`) and accept that the
+  discovery drop and the place-search drop are folded together.
+- `request_responded`'s `source` and `city_id` are wired through
+  `useRespondToRequest` but nothing can pass them: `incoming_requests()`
+  does not return either column, so both read null. Adding them means a
+  migration that drops and recreates that function (its OUT columns change)
+  and re-states its grants. The authoritative split is `admin_request_funnel`
+  either way; this is only for PostHog breakdowns.
+- `account_type` is `business` only once `useOwnBusiness` has answered. It is
+  set from the auth listener, which is mounted once at the root, so it
+  applies app-wide with no per-screen wiring.
 
 ## Launch-city operations
 

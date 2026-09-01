@@ -139,6 +139,29 @@ export async function signUpWithEmail(email: string, password: string) {
  *
  * Callers must NOT report whether the address had an account: that answer
  * turns this into an oracle anybody could use to learn who is on here.
+ *
+ * NOT A UNIVERSAL LINK, AND NOT BECOMING ONE. Decided 2026-09-01, against
+ * the batch that added `applinks:` for invites: a recovery token is single
+ * use, and link prefetchers spend it. Outlook Safe Links, corporate mail
+ * gateways and security scanners all fetch a URL before the person ever sees
+ * the mail, and Supabase's recovery URL consumes the token on that fetch. The
+ * person then taps a link that is already gone and reads 'That link has
+ * expired', which is honest and wrong, and there is nothing they can do about
+ * it because the next mail will be eaten the same way.
+ *
+ * Where this goes instead is a typed six-digit code: a scanner cannot consume
+ * one, it needs no entitlement and no domain, and it works when the mail is
+ * read on a laptop. The app already has the pattern end to end on the
+ * business side (supabase/migrations/
+ * 20260829150000_a_code_that_never_arrives_says_so.sql), so this is
+ * `verifyOtp({ type: 'recovery' })` against a recovery mail template that
+ * prints `{{ .Token }}`, plus a screen with six boxes on it. Until that
+ * lands, the custom scheme stays: it works today, and the hosted /reset page
+ * bridges a laptop click back into the app.
+ *
+ * `PASSWORD_RESET_REDIRECT` and its four preconditions live in
+ * src/constants/links.ts. Do not flip `UNIVERSAL_LINKS_LIVE` for the sake of
+ * this call.
  */
 export async function requestPasswordReset(email: string) {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {

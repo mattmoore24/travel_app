@@ -156,7 +156,13 @@ export function useJoinRoom(chatId: string) {
   return useMutation({
     mutationFn: (departureDate: string) => joinRoom(chatId, departureDate),
     onSuccess: () => {
-      analytics.capture('room_joined', { chat_id: chatId });
+      // NO chat_id. It is a join key straight into our own database: a room
+      // belongs to one business, so a processor holding these events and the
+      // database can say which venue's room a person joined and when, which
+      // is a presence fact this app does not otherwise hold about anybody.
+      // Nothing on docs/DASHBOARD.md counts rooms per room — the per-room
+      // question is a SQL question — so the id bought no metric at all.
+      analytics.capture('room_joined');
       queryClient.invalidateQueries({ queryKey: ['chats'] });
       queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
     },
@@ -168,7 +174,8 @@ export function useLeaveRoom(chatId: string) {
   return useMutation({
     mutationFn: () => leaveRoom(chatId),
     onSuccess: () => {
-      analytics.capture('room_left', { chat_id: chatId });
+      // Same reason as room_joined above.
+      analytics.capture('room_left');
       queryClient.invalidateQueries({ queryKey: ['chats'] });
     },
   });

@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   FAILURE_COPY_VALUES,
   GENERIC_SAVE_FAILURE,
+  NO_CONNECTION,
   isOffline,
   loadFailureMessage,
   saveFailureMessage,
@@ -35,6 +36,37 @@ describe('what a person is told when something fails', () => {
     expect(loadFailureMessage({ message: 'boom' }, 'your chats')).toBe(
       'Your chats could not load.'
     );
+  });
+});
+
+/**
+ * The connection banner (src/components/ui/connection-banner.tsx) appears
+ * above whatever the screen underneath is already saying about its failed
+ * load, so the two are read together. They are built from one phrase here so
+ * they cannot drift into two accounts of one fact.
+ */
+describe('one phrase for a dropped connection', () => {
+  it('leads every offline sentence with it', () => {
+    expect(saveFailureMessage(new TypeError('Network request failed'))).toMatch(
+      new RegExp(`^${NO_CONNECTION}`)
+    );
+    expect(loadFailureMessage({ message: 'Failed to fetch' }, 'the map')).toMatch(
+      new RegExp(`^${NO_CONNECTION}`)
+    );
+  });
+
+  it('is short enough and plain enough to sit in a bar under the notch', () => {
+    // Two words, no full stop: the bar is a label, not a sentence, and the
+    // sentence forms below it are what the SCREENS say.
+    expect(NO_CONNECTION).toBe('No connection');
+  });
+
+  it('carries none of the banned vocabulary it is about to be shown in', () => {
+    expect(NO_CONNECTION).not.toMatch(/\b(swipe|deck|match|unmatch|request)\b/i);
+    expect(NO_CONNECTION).not.toContain('—');
+    // A presence claim is the one thing a connection bar must never make:
+    // §7 rule 2 is why this app has no idea where anybody is.
+    expect(NO_CONNECTION).not.toMatch(/\b(here now|near you|nearby)\b/i);
   });
 });
 

@@ -32,7 +32,7 @@ export const GUIDELINE_SECTIONS = [
   },
   {
     title: 'Also not allowed',
-    body: 'Harassment, hate speech, or discrimination. Fake profiles or photos that are not you. Spam, scams, or commercial solicitation. Sharing someone else’s private information. Explicit or violent photos. Anyone under 18.',
+    body: "Harassment, hate speech, or discrimination. Fake profiles or photos that are not you. Spam, scams, or commercial solicitation. Sharing someone else's private information. Explicit or violent photos. Anyone under 18.",
   },
   {
     title: 'Your privacy',

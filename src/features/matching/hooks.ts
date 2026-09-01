@@ -263,10 +263,37 @@ export function useRespondToRequest() {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { requestId: string; accept: boolean }) =>
-      respondToRequest(input.requestId, input.accept),
-    onSuccess: (result) => {
-      analytics.capture('request_responded', { accepted: result.accepted });
+    mutationFn: (input: {
+      requestId: string;
+      accept: boolean;
+      /**
+       * Where the hello came from, mirrored onto the event so accept rate
+       * can be read by source. Never sent to the server — the row already
+       * knows, this is only so PostHog can break the answer down.
+       *
+       * Nullable because the recipient genuinely may not know it yet:
+       * incoming_requests() does not return `source` today, so nothing can
+       * pass it until that function's OUT columns grow one (which needs a
+       * drop-and-recreate migration). Null reads as "not stated" rather than
+       * as a source, and the authoritative split lives in
+       * admin_request_funnel either way.
+       */
+      source?: RequestSource | null;
+      /** The city the hello belongs to, same shape and same caveat as `source`. */
+      cityId?: number | null;
+    }) => respondToRequest(input.requestId, input.accept),
+    onSuccess: (result, input) => {
+      // AND THIS IS NOT HALF A FUNNEL. request_sent is fired by the SENDER
+      // and request_responded by the RECIPIENT — two different distinct_ids
+      // — so no PostHog funnel can ever join them, whatever the properties
+      // say. The accept rate comes from admin_request_funnel in SQL; these
+      // properties exist only so the PostHog side can be broken down the
+      // same way. docs/DASHBOARD.md insight 3 says the same thing at length.
+      analytics.capture('request_responded', {
+        accepted: result.accepted,
+        source: input.source ?? null,
+        city_id: input.cityId ?? null,
+      });
       queryClient.invalidateQueries({ queryKey: ['incoming-requests', userId] });
       if (result.accepted) {
         queryClient.invalidateQueries({ queryKey: ['chats', userId] });

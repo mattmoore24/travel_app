@@ -6,6 +6,7 @@ import { appleCredentialSnapshot } from '@/features/auth/apple-revoke';
 import { parseRecoveryLink } from '@/features/auth/recovery';
 import { signedOutReason } from '@/features/auth/signed-out-reason';
 import { useAuthStore } from '@/features/auth/store';
+import { useAccountType } from '@/features/guest/hooks';
 import { refreshPushToken } from '@/features/notifications/push';
 import { analytics } from '@/lib/analytics';
 import { queryClient } from '@/lib/query-client';
@@ -23,6 +24,23 @@ export function useAuthListener() {
   const recoveryReady = useAuthStore((s) => s.recoveryReady);
   const recoveryFailed = useAuthStore((s) => s.recoveryFailed);
   const signedOutUnasked = useAuthStore((s) => s.signedOutUnasked);
+  const accountType = useAccountType();
+  const isGuest = accountType === 'guest' || accountType === 'signed_out';
+
+  // The account kind, on every event from here on (docs/DASHBOARD.md).
+  //
+  // Here rather than at each capture() because there are about fifty call
+  // sites and only one of them would ever have been given it. It rides in
+  // the analytics context instead, which every event merges, and which
+  // analytics.reset() empties on sign-out so the next account on this device
+  // cannot inherit it.
+  //
+  // It re-runs as the answer sharpens: 'unknown' while useOwnBusiness is
+  // still in flight, then the real kind a beat later. Events fired in that
+  // window carry 'unknown' on purpose — see useAccountType.
+  useEffect(() => {
+    analytics.setContext({ account_type: accountType, is_guest: isGuest });
+  }, [accountType, isGuest]);
 
   // Password-recovery links, which nothing else would pick up: the client
   // runs with detectSessionInUrl:false (correct for a native app — there is
@@ -90,9 +108,31 @@ export function useAuthListener() {
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
-      if (session?.user.id) {
-        analytics.identify(session.user.id);
-      }
+      // NO identify() HERE, and the missing call is deliberate.
+      //
+      // This used to hand PostHog the raw Supabase auth uid, which made the
+      // analytics distinct_id a join key into our own database: anybody
+      // holding a PostHog export and the database could reconstruct who
+      // talked to whom and when, inside a third-party processor, for a
+      // product whose whole positioning is that it does not collect that,
+      // and whose users are disproportionately EU travelers. It also fired
+      // on INITIAL_SESSION at every cold start and on every token refresh,
+      // so it re-identified an id that had not changed several times a day.
+      //
+      // The settled answer is a SALTED HASH, salted from a server-side
+      // secret — and there is no such secret the client can reach. Nothing
+      // in the bundle is a secret: an EXPO_PUBLIC_ salt ships inside the app
+      // and protects against nobody, and a hash whose salt the attacker has
+      // is the same join key with extra steps. So until the server mints
+      // that id (see docs/DASHBOARD.md), the distinct_id is PostHog's own
+      // per-install random one, which is what it generates when nothing
+      // identifies. That id joins to nothing, which is strictly the outcome
+      // the hash was for; the only thing it costs is looking one person's
+      // session up from a support ticket, and that half needs the secret
+      // anyway.
+      //
+      // analytics.identify() still exists, guarded so an unchanged id fires
+      // nothing, and is what the server-minted id gets handed to.
       // The PKCE/web path establishes the session itself and announces it
       // with this event, so there is nothing to wait for.
       if (event === 'PASSWORD_RECOVERY') {
