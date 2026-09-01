@@ -549,6 +549,20 @@ export type ChatListRow = {
    * with no subject.
    */
   first_message_element: string | null;
+  /**
+   * The day the pin this room opened from is for. Null the moment that pin
+   * expires — the RPC guards on `expires_at > now()` rather than waiting for
+   * the fifteen-minute sweep, because hard rule 3 says nothing about an
+   * expired pin stays readable. Once the sweep does run, `groups.pin_id` goes
+   * null and the group carries on with no date at all: the conversation was
+   * never on the pin's timer.
+   */
+  plan_date: string | null;
+  /**
+   * Whether a business room can be read by anyone. Null for a traveler group,
+   * which is how the row tells a crew from a hostel.
+   */
+  public_preview: boolean | null;
 };
 
 /** One answered prompt on a profile (features/profile/prompts.ts). */

@@ -14,12 +14,14 @@ import { LoadError } from '@/components/ui/load-error';
 import { Radius, MaxContentWidth, Spacing } from '@/constants/theme';
 import {
   useBlockUser,
+  useBlocks,
   useMessages,
   useDiscardFailed,
   useSendMessage,
   useSendPhoto,
   useLeaveChat,
 } from '@/features/chat/hooks';
+import { closedNotice } from '@/features/chat/closed-notice';
 import { MessageThread } from '@/features/chat/message-thread';
 import { ThreadHeader } from '@/features/chat/thread-header';
 import { flattenPages } from '@/features/chat/paging';
@@ -248,6 +250,17 @@ export default function ChatScreen() {
   const chat = [...(chatsQuery.data ?? []), ...(archivedQuery.data ?? [])].find(
     (c) => c.chat_id === id
   );
+  // Whether the closure is one THIS person made. Read from the server rather
+  // than held as a local flag, so the answer survives a remount and a cold
+  // start - the moment somebody most wants to check is usually not the moment
+  // they blocked. isSuccess is the guard: until the list has an answer the
+  // notice says the neutral sentence, never the reverse, or a beat of loading
+  // state would tell somebody they had not blocked a person they just did.
+  const blocksQuery = useBlocks();
+  const iBlockedThem =
+    blocksQuery.isSuccess &&
+    chat?.other_user_id != null &&
+    (blocksQuery.data ?? []).some((blocked) => blocked.userId === chat.other_user_id);
   const messagesQuery = useMessages(chat?.chat_id ?? null);
   const sendMessage = useSendMessage(chat?.chat_id ?? null);
   const discardFailed = useDiscardFailed(chat?.chat_id ?? null);
@@ -475,8 +488,13 @@ export default function ChatScreen() {
           />
           {closed ? (
             <ThemedView type="backgroundElement" style={styles.closedNotice}>
+              {/* sever_on_block closes the chat, and so does the other person
+                  leaving, so "This chat is closed." was the same sentence for
+                  both - ambiguous by construction at the one moment somebody
+                  needs certainty. WhatsApp's grammar: say who did it when it
+                  was you, and say nothing more than that when it was not. */}
               <ThemedText type="small" themeColor="textSecondary">
-                This chat is closed.
+                {closedNotice(iBlockedThem, chat.title)}
               </ThemedText>
             </ThemedView>
           ) : (

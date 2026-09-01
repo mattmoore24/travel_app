@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import {
   MESSAGE_PAGE,
   flattenPages,
@@ -105,5 +108,36 @@ describe('the page helpers', () => {
     expect(pagesHave(data, 'b')).toBe(true);
     expect(pagesHave(data, 'c')).toBe(false);
     expect(pagesHave(undefined, 'a')).toBe(false);
+  });
+});
+
+/**
+ * The synthetic opening row, which is not a message and must never be paged
+ * as if it were.
+ *
+ * The first message of a chat lives on the chat ROW, not in `messages`, and
+ * the thread splices it in at the oldest end under a made-up `first:` id.
+ * Feeding that id back as a cursor would ask the server for everything older
+ * than a row it has never heard of.
+ */
+describe('the opening message is a render, not a page', () => {
+  const thread = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'app', 'chat', '[id].tsx'),
+    'utf8'
+  );
+
+  it('splices it into the rendered thread and never into the cache', () => {
+    expect(thread).toContain('id: `first:${chat.chat_id}`');
+    // Built from `messages`, which is what flattenPages returned, into a
+    // separate `thread` const. Nothing writes it back.
+    expect(thread).toContain('const thread =');
+    expect(thread).not.toContain("setQueryData(['messages'");
+  });
+
+  it('only shows it once there is nothing older left to load', () => {
+    // Otherwise the opening line and the note saying what it answered sat
+    // above message one hundred, claiming the conversation began there.
+    expect(thread).toContain('const atTheBeginning = !messagesQuery.hasNextPage;');
+    expect(thread).toContain('chat.first_message && atTheBeginning');
   });
 });

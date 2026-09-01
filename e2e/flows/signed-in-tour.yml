@@ -647,6 +647,24 @@ appId: com.mattmoore.samewhere
     visible: 'Groups'
     timeout: 15000
 - takeScreenshot: 20-chat-individual
+# The list is virtualized now, and everything that used to sit at the bottom
+# of a plain ScrollView - the skeletons, both LoadErrors, the empty state,
+# RoomDiscovery, the invite row and the Archived door - moved into the
+# SectionList's footer. A screenshot of the top proves none of it. Scroll to
+# the Archived row and assert it: it is the last thing in the footer, so
+# reaching it proves the whole tail survived the conversion.
+- scrollUntilVisible:
+    element:
+      text: 'Archived'
+    direction: DOWN
+    timeout: 12000
+- assertVisible: 'Archived'
+- takeScreenshot: 20a-chat-list-footer
+- scrollUntilVisible:
+    element:
+      text: 'Chats'
+    direction: UP
+    timeout: 12000
 - tapOn: 'Groups'
 # The tab body fades in over Motion.quick; an unwaited screenshot catches a
 # semi-transparent, mid-fade list.

@@ -3,7 +3,7 @@
 -- standing gates on suspended/banned senders, the photo moderation flag, the
 -- selfie verification flow, and the admin report queue.
 begin;
-select plan(82);
+select plan(85);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -196,6 +196,31 @@ select lives_ok(
      ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000c') $$,
   'recipient blocks the sender while the message is held'
 );
+
+-- WHO CAN READ THE BLOCK ITSELF. The app grew a Blocked list, and a list is
+-- only safe if the table under it cannot be read by anybody but its owner:
+-- a blocked person who could see the row naming them would learn the one
+-- fact a block must never tell, and a third party could enumerate who is
+-- avoiding whom. Written as the attack from both sides.
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select is(
+  (select count(*)::int from public.blocks),
+  0,
+  'the blocked person cannot see the row naming them'
+);
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+select is(
+  (select count(*)::int from public.blocks),
+  0,
+  'and a third party reading blocks in bulk gets nothing at all'
+);
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  (select count(*)::int from public.blocks),
+  1,
+  'while the blocker reads their own, which is what the Blocked list shows'
+);
+
 select pg_temp.admin();
 select is(
   (select status::text from public.message_requests

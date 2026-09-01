@@ -44,7 +44,11 @@ describe('the chat list a business reads', () => {
     const code = src(CHAT_TAB);
     const heading = code.indexOf('Your room');
     expect(heading).toBeGreaterThan(-1);
-    expect(code).toContain('<OwnRoomRow key={chat.chat_id} chat={chat} />');
+    // The inbox is a SectionList now, so the room is a section of its own
+    // with its own renderer rather than a mapped block.
+    expect(code).toContain("key: 'own-room'");
+    expect(code).toContain("data: ownRoom.map((chat) => ({ kind: 'ownRoom' as const, chat })),");
+    expect(code).toContain('<OwnRoomRow chat={item.chat} />');
     // Pin and archive are housekeeping for a list of many conversations. In a
     // section of one they change nothing anybody can see, so the row carries
     // mute and nothing else.
@@ -59,8 +63,10 @@ describe('the chat list a business reads', () => {
     const code = src(CHAT_TAB);
     // Nobody says hi to a business: travelers write in through
     // message_business, which opens a conversation rather than a request.
-    expect(code).toContain("{requests.length > 0 && tab === 'individual' && !isBusiness ? (");
-    expect(code).toContain("{tab === 'individual' && waitingOnThem.length > 0 && !isBusiness ? (");
+    expect(code).toContain("if (requests.length > 0 && tab === 'individual' && !isBusiness) {");
+    expect(code).toContain(
+      "if (tab === 'individual' && waitingOnThem.length > 0 && !isBusiness) {"
+    );
     expect(code).toContain('requestsQuery.isError && !chatsQuery.isError && !isBusiness ? (');
   });
 

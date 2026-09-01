@@ -37,6 +37,7 @@ import { invalidateDiscoverySurfaces } from '@/features/profile/discovery-cache'
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
 import type { MessageRow, ReportReason } from '@/lib/database.types';
+import { haptics } from '@/lib/haptics';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -299,6 +300,13 @@ export function useBlockUser() {
     mutationFn: (blockedId: string) => blockUser(userId!, blockedId),
     meta: { failureTitle: 'Could not block them' },
     onSuccess: () => {
+      // The one moment somebody most needs to be told it worked. Blocking
+      // used to do nothing anybody could feel: no navigation, no haptic, no
+      // confirmation, and after a refetch the SAME grey line that appears
+      // when the other person walks away on their own. First in the handler,
+      // because the invalidate below refetches the whole app and the answer
+      // must not wait behind it.
+      haptics.success();
       analytics.capture('user_blocked');
       // A block reshapes everything: matches, pins, chats, requests.
       queryClient.invalidateQueries();

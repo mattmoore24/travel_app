@@ -81,6 +81,8 @@ const row = (over: Partial<ChatListRow> = {}): ChatListRow => ({
   my_role: null,
   unread_count: 0,
   first_message_element: null,
+  plan_date: null,
+  public_preview: null,
   ...over,
 });
 

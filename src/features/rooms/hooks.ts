@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
+import { useAuthStore } from '@/features/auth/store';
+import { stampArchiveNoticeRead } from '@/features/chat/archive-notice';
 import { carryFailed, type RoomThreadMessage, type ThreadMessage } from '@/features/chat/outgoing';
 import {
   ROOM_MESSAGE_PAGE,
@@ -184,8 +186,16 @@ export function useChatPref() {
       muted?: boolean;
       archived?: boolean;
     }) => setChatPref(chatId, pref),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      // A hand archive stamps the notice as read on the spot. Both this and
+      // archive_idle_chats write chat_prefs.archived_at, and without the
+      // stamp the inbox would tell somebody "1 quiet chat moved to Archived"
+      // about the chat they had just archived themselves.
+      if (variables.archived === true) {
+        void stampArchiveNoticeRead(useAuthStore.getState().session?.user.id ?? null);
+      }
       queryClient.invalidateQueries({ queryKey: ['chats'] });
+      queryClient.invalidateQueries({ queryKey: ['archived-at'] });
     },
   });
 }

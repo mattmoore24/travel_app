@@ -3,9 +3,11 @@ import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Space, Spacing, Type } from '@/constants/theme';
+import { Radius, Space, Spacing, Type } from '@/constants/theme';
 import { useIsPlaceChat } from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
+import { useChatPhotoUrl } from '@/features/chat/hooks';
+import { planChipLabel, privacyTail, roomBadgeGlyph } from '@/features/chat/row-kind';
 import { rowTimestamp, unreadLabel } from '@/features/chat/separators';
 import { finiteDate } from '@/features/groups/closing';
 import { usePhotoUrl } from '@/features/profile/hooks';
@@ -78,6 +80,41 @@ export function PlaceAvatar({ path, size = 48 }: { path: string | null; size?: n
       ) : (
         <SymbolView
           name={{ ios: 'storefront.fill', android: 'storefront', web: 'storefront' }}
+          size={size / 2}
+          tintColor={theme.textSecondary}
+        />
+      )}
+    </View>
+  );
+}
+
+/**
+ * And again, signed against the bucket a GROUP's own picture lives in.
+ *
+ * Three buckets, three hooks, and the reason is a bug this row has already
+ * paid for: a path signed through the wrong one comes back a 404 wearing a
+ * perfectly valid URL, so the row silently falls back to a glyph and nobody
+ * can tell a missing photo from a mis-signed one.
+ */
+export function GroupAvatar({ path, size = 48 }: { path: string | null; size?: number }) {
+  const theme = useTheme();
+  const { data: url } = useChatPhotoUrl(path);
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        overflow: 'hidden',
+        backgroundColor: theme.backgroundSelected,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+      {url ? (
+        <Image source={{ uri: url }} style={styles.fill} contentFit="cover" />
+      ) : (
+        <SymbolView
+          name={{ ios: 'person.3.fill', android: 'groups', web: 'groups' }}
           size={size / 2}
           tintColor={theme.textSecondary}
         />
@@ -168,6 +205,24 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
             })}`
           : '')
       : null);
+  // Who else can open this. Three rows with three privacy models used to look
+  // identical, and the one that matters is the plan: post_joinable_pin opens
+  // it with speaking = 'everyone', so a crew you think is four people is
+  // whoever can see the pin.
+  const tail = privacyTail(chat);
+  // NOT concatenated onto the preview. The preview is two clamped lines in a
+  // fixed-height box, roughly sixty characters, so any message longer than
+  // about thirty clipped the tail clean off — and the row it clips it off is
+  // exactly the one the tail exists for, a plan room with conversation in it.
+  // It gets a line of its own, because it is a fact about the ROOM rather
+  // than about the last thing said in it.
+  const previewLine = preview;
+  // A plan's day used to vanish the instant anybody wrote in the room, because
+  // the preview falls through to the last message. The day is the whole reason
+  // the room exists, so it gets its own mark on the title line and stops
+  // competing with the message for the same line of text.
+  const planDay = planChipLabel(chat.plan_date);
+  const roomGlyph = roomBadgeGlyph(chat);
 
   return (
     <View style={styles.row}>
@@ -177,17 +232,26 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
       <View style={styles.unreadGutter}>
         {unread ? <View style={[styles.unreadDot, { backgroundColor: theme.highlight }]} /> : null}
       </View>
-      {isRoom ? (
+      {isRoom && chat.photo_path ? (
+        // A group that chose a picture gets to show it. my_chats returns
+        // `g.photo_path`, which only a traveler group ever has — a business
+        // room has no groups row, so this branch cannot reach for a cover in
+        // the wrong bucket and come back a 404 wearing a valid URL.
+        <GroupAvatar path={chat.photo_path} size={AVATAR} />
+      ) : isRoom ? (
         <View style={[styles.roomBadge, { backgroundColor: theme.accentSoft }]}>
-          {/* A house, not a group of figures. `kind === 'room'` covers a
-              hostel's own guest room as well as a travelers' group, and a
-              business room under three little people would be wrong about
-              what it is. */}
-          <SymbolView
-            name={{ ios: 'house.fill', android: 'home', web: 'home' }}
-            size={22}
-            tintColor={theme.accent}
-          />
+          {/* Three marks, not one house. The old note here defended one glyph
+              for two KINDS, and it was right about the thing it objected to:
+              nobody is putting three little people on a hostel. What the list
+              actually had was one glyph for three PRIVACY MODELS — a private
+              crew, a plan any stranger who can see the pin walks into, and a
+              room a signed-out visitor can read — and the plan, the one row
+              that is about to become residue, looked as permanent as the
+              hostel. So the business keeps a business mark (the storefront the
+              map and PlaceAvatar already use for one), the plan takes the
+              marker the person tapped to get in, and only a travelers' group
+              is drawn as people. */}
+          <SymbolView name={roomGlyph} size={22} tintColor={theme.accent} />
         </View>
       ) : isPlace ? (
         <PlaceAvatar path={chat.photo_path} size={AVATAR} />
@@ -220,14 +284,37 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
               tintColor={theme.textSecondary}
             />
           ) : null}
+          {planDay ? (
+            <View style={[styles.planChip, { backgroundColor: theme.surfaceSunken }]}>
+              {/* Clamped and shrinkable. At the largest accessibility sizes an
+                  unclamped date took ~170pt of a ~230pt title row and left the
+                  name as three characters — and the name is the thing the
+                  column is scanned for. The day is also in the tail below in
+                  words, so losing some of it here costs nothing. */}
+              <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1}>
+                {planDay}
+              </ThemedText>
+            </View>
+          ) : null}
         </View>
-        <ThemedText
-          type="callout"
-          themeColor={unread ? 'text' : 'textSecondary'}
-          numberOfLines={2}
-          style={[styles.rowPreview, { height: previewHeight }]}>
-          {preview ?? ''}
-        </ThemedText>
+        {/* One reserved box for both lines, so a row with a privacy tail is
+            exactly as tall as one without and the list does not jump as rows
+            arrive. The tail takes the second line when there is one; without
+            it the preview keeps both. */}
+        <View style={{ height: previewHeight }}>
+          <ThemedText
+            type="callout"
+            themeColor={unread ? 'text' : 'textSecondary'}
+            numberOfLines={tail ? 1 : 2}
+            style={styles.rowPreview}>
+            {previewLine}
+          </ThemedText>
+          {tail ? (
+            <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1}>
+              {tail}
+            </ThemedText>
+          ) : null}
+        </View>
       </View>
       {/* Stretched and top-aligned, so the stamp sits on the name's line
           while the avatar stays centred against the whole row. */}
@@ -261,19 +348,29 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
   );
 }
 
-/** One button behind a swiped row. */
+/**
+ * One button behind a swiped row.
+ *
+ * `onTint` exists because the content used to be hardcoded to `onAccent`, a
+ * near-black that is only legible on the two light fills. Any other fill and
+ * the button went dark-on-dark, so the fill could never change - which is how
+ * Archive ended up painted in danger red, the one colour that DID work with
+ * black on it. The pair travels together now.
+ */
 export function SwipeAction({
   label,
   icon,
   tint,
+  onTint,
   onPress,
 }: {
   label: string;
   icon: SymbolViewProps['name'];
   tint: string;
+  /** The colour the icon and label are drawn in, ON `tint`. */
+  onTint: string;
   onPress: () => void;
 }) {
-  const theme = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
@@ -284,8 +381,8 @@ export function SwipeAction({
         { backgroundColor: tint },
         pressed && styles.pressed,
       ]}>
-      <SymbolView name={icon} size={18} tintColor={theme.onAccent} />
-      <ThemedText type="caption" style={{ color: theme.onAccent }}>
+      <SymbolView name={icon} size={18} tintColor={onTint} />
+      <ThemedText type="caption" style={{ color: onTint }}>
         {label}
       </ThemedText>
     </Pressable>
@@ -320,6 +417,15 @@ const styles = StyleSheet.create({
      the timestamp off the end of the row. */
   rowName: {
     flexShrink: 1,
+  },
+  /* Quiet on purpose. The day is a fact about the plan, not a call to act on
+     it, and an accent pill on a list row would out-shout the unread mark that
+     is the only thing this column is scanned for. */
+  planChip: {
+    flexShrink: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: Radius.sm,
   },
   /* Semibold read, bold unread. The weight change is the second signal after
      the dot, and it is the one that survives a colourblind eye. */

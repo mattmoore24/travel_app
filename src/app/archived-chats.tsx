@@ -57,6 +57,7 @@ function ArchivedRow({ chat, last }: { chat: ChatListRow; last: boolean }) {
               web: 'settings_backup_restore',
             }}
             tint={theme.accent}
+            onTint={theme.onAccent}
             onPress={putBack}
           />
         </View>
