@@ -1166,6 +1166,33 @@ export type Database = {
         };
         Relationships: [];
       };
+      /**
+       * The owner's three private replies. Never delivered to anybody: the
+       * owner taps one into their composer, edits it if they want, and sends
+       * it as an ordinary message. Its own table rather than a column on
+       * `businesses`, whose select grant reaches anon - a traveler must never
+       * read the script the other side is answering from.
+       */
+      business_saved_replies: {
+        Row: {
+          id: string;
+          business_id: string;
+          /** 0, 1 or 2. The table refuses anything else. */
+          position: number;
+          body: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          business_id: string;
+          position: number;
+          body: string;
+        };
+        Update: {
+          body?: string;
+        };
+        Relationships: [];
+      };
       business_verifications: {
         Row: BusinessVerificationRow;
         // submit_business_verification owns this path: it checks both objects

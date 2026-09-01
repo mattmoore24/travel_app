@@ -620,3 +620,65 @@ export async function fetchTopRated(userId: string, cityId?: number | null) {
   }
   return (data ?? []) as TopRatedRow[];
 }
+
+/**
+ * The three replies an owner writes once.
+ *
+ * PRIVATE NOTES, never messages: nothing here is delivered to anybody. The
+ * owner taps one into their composer, reads it, edits it if they want, and
+ * presses send, at which point it becomes an ordinary message on the ordinary
+ * path. That is why they are their own table rather than a column on
+ * `businesses`, whose select grant reaches anon - a traveler must never be
+ * able to read the script the other side is answering from
+ * (20260902180000_three_replies_written_once.sql).
+ */
+export type SavedReply = { id: string; position: number; body: string };
+
+export async function fetchSavedReplies(businessId: string): Promise<SavedReply[]> {
+  const { data, error } = await supabase
+    .from('business_saved_replies')
+    .select('id, position, body')
+    .eq('business_id', businessId)
+    .order('position');
+  if (error) {
+    throw error;
+  }
+  return (data ?? []) as SavedReply[];
+}
+
+/**
+ * Write one slot, or clear it.
+ *
+ * Upsert on (business_id, position), which is the table's own unique
+ * constraint, so editing slot 1 twice cannot leave two rows in it. An empty
+ * body deletes rather than storing a blank: a chip with nothing on it is a
+ * control that does nothing, and the check constraint refuses length 0
+ * anyway.
+ */
+export async function setSavedReply(
+  businessId: string,
+  position: number,
+  body: string
+): Promise<void> {
+  const trimmed = body.trim();
+  if (!trimmed) {
+    const { error } = await supabase
+      .from('business_saved_replies')
+      .delete()
+      .eq('business_id', businessId)
+      .eq('position', position);
+    if (error) {
+      throw error;
+    }
+    return;
+  }
+  const { error } = await supabase
+    .from('business_saved_replies')
+    .upsert(
+      { business_id: businessId, position, body: trimmed },
+      { onConflict: 'business_id,position' }
+    );
+  if (error) {
+    throw error;
+  }
+}

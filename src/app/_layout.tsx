@@ -558,6 +558,7 @@ function RootNavigator() {
         <Stack.Screen name="business-storefront" options={{ presentation: 'modal' }} />
         <Stack.Screen name="business-edit" options={{ presentation: 'modal' }} />
         <Stack.Screen name="business-post" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="saved-replies" />
       </Stack.Protected>
       {/* Outside every guard so both policy screens are readable BEFORE
           sign-up (the welcome screen and the consent line link to them) and

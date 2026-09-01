@@ -43,7 +43,13 @@ import { useOwnUserId, usePhotoUrl, usePublicProfile } from '@/features/profile/
 import { presentMenu, travelerMenuItems } from '@/features/profile/actions-menu';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { useTheme } from '@/hooks/use-theme';
-import { useBusinessForChat, useIsBusiness, useIsPlaceChat } from '@/features/business/hooks';
+import {
+  useBusinessForChat,
+  useIsBusiness,
+  useIsPlaceChat,
+  useOwnBusiness,
+  useSavedReplies,
+} from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import type { ChatListRow } from '@/lib/database.types';
 
@@ -285,6 +291,11 @@ export default function ChatScreen() {
   // business reader this card can only ever come back empty, and asking is a
   // round trip for a promise the database already keeps.
   const viewerIsBusiness = useIsBusiness();
+  // The owner's three saved replies, asked for only where they can be used.
+  // A traveler's chat never asks: business_saved_replies has no policy for
+  // anybody but the owner, so the round trip could only come back empty.
+  const ownBusinessId = useOwnBusiness().data?.id ?? null;
+  const savedReplies = useSavedReplies(viewerIsBusiness ? ownBusinessId : null).data ?? [];
   const chatsQuery = useMyChats();
   // Both lists. Archiving a conversation used to make it unreadable: the
   // Archived screen still linked to it, and the thread it opened said "Chat
@@ -544,6 +555,7 @@ export default function ChatScreen() {
           ) : (
             <Composer
               inputTestID="chat-composer"
+              savedReplies={savedReplies}
               disabled={busy}
               photoBusy={sendPhoto.isPending}
               replyingTo={replyTo}

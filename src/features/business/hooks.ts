@@ -24,6 +24,8 @@ import {
   submitStorefrontPhotos,
   updateBusinessLocation,
   updateOwnBusiness,
+  fetchSavedReplies,
+  setSavedReply,
 } from '@/features/business/api';
 import type { BusinessCategory, ChatKind } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -387,5 +389,29 @@ export function useTopRated(userId: string | null, cityId?: number | null) {
     queryKey: ['top-rated', userId, cityId ?? null],
     queryFn: () => fetchTopRated(userId!, cityId ?? null),
     enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+/**
+ * The owner's three saved replies, and the write that changes one.
+ *
+ * Enabled only for an owner: `business_saved_replies` has no policy for
+ * anybody else, so asking as a traveler is a round trip that can only come
+ * back empty.
+ */
+export function useSavedReplies(businessId: string | null) {
+  return useQuery({
+    queryKey: ['saved-replies', businessId],
+    queryFn: () => fetchSavedReplies(businessId!),
+    enabled: isSupabaseConfigured && businessId != null,
+  });
+}
+
+export function useSetSavedReply(businessId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { position: number; body: string }) =>
+      setSavedReply(businessId!, input.position, input.body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['saved-replies', businessId] }),
   });
 }

@@ -1,13 +1,20 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View, useWindowDimensions } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoButton } from '@/components/ui/photo-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Fonts, Radius, Spacing, Type } from '@/constants/theme';
+import { Fonts, HitTarget, Radius, Space, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ComposerDraft = { text: string; photoUri: string | null };
@@ -35,6 +42,7 @@ export function Composer({
   inputTestID,
   replyingTo,
   onCancelReply,
+  savedReplies,
   onSend,
 }: {
   placeholder?: string;
@@ -49,6 +57,17 @@ export function Composer({
    */
   replyingTo?: { name: string; body: string | null } | null;
   onCancelReply?: () => void;
+  /**
+   * A business owner's three saved replies, or empty.
+   *
+   * Tapping one PUTS IT IN THE FIELD. It does not send: these are private
+   * notes, and the whole point is that the owner reads it, changes the bit
+   * that is wrong ("after six" becomes "after seven") and presses send
+   * themselves. A chip that sent on tap would make a stored sentence into a
+   * message nobody re-read, which is how a saved reply answers the wrong
+   * question confidently.
+   */
+  savedReplies?: readonly { id: string; body: string }[];
   /**
    * Send it. Resolve and the staged photo is cleared; throw and it stays put
    * so the same picture can go again without being found a second time.
@@ -108,6 +127,32 @@ export function Composer({
 
   return (
     <View>
+      {/* Above the field and below the reply banner, so the row a thumb
+          reaches first is the one nearest the keyboard. Hidden once there is
+          anything in the field: they are a way to START an answer, and a strip
+          of chips over a half-typed sentence is chrome in the way. */}
+      {savedReplies && savedReplies.length > 0 && draft.length === 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.chipRow}>
+          {savedReplies.map((reply) => (
+            <PressableScale
+              key={reply.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Use saved reply: ${reply.body}`}
+              haptic="light"
+              scaleTo={0.97}
+              onPress={() => setDraft(reply.body)}
+              style={[styles.chip, { backgroundColor: theme.surfaceSunken }]}>
+              <ThemedText type="footnote" numberOfLines={1} style={styles.chipText}>
+                {reply.body}
+              </ThemedText>
+            </PressableScale>
+          ))}
+        </ScrollView>
+      ) : null}
       {replyingTo ? (
         <View style={[styles.replyBanner, { borderLeftColor: theme.accent }]}>
           <View style={styles.replyText}>
@@ -217,6 +262,21 @@ export function Composer({
 }
 
 const styles = StyleSheet.create({
+  chipRow: {
+    gap: Space.sm,
+    paddingHorizontal: Space.md,
+    paddingBottom: Space.sm,
+  },
+  chip: {
+    maxWidth: 260,
+    minHeight: HitTarget,
+    justifyContent: 'center',
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.sm,
+  },
+  chipText: {
+    // One line: the chip is a handle for a sentence, not the sentence.
+  },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

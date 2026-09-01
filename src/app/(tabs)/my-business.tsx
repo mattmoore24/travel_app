@@ -828,6 +828,16 @@ export default function MyBusinessScreen() {
                         as reach — member_count is who joined the chat, not
                         who saw the listing, and an owner reading it as views
                         would be being lied to. */}
+                    {/* Written once, tapped into any chat. A bar mid-service
+                        either answers in three taps or does not answer, and
+                        the rating that judges it is largely a responsiveness
+                        score. */}
+                    <DetailRow
+                      label="Quick replies"
+                      icon={{ ios: 'text.bubble', android: 'chat_bubble', web: 'chat_bubble' }}
+                      value="Three answers you write once"
+                      onPress={() => router.push('/saved-replies')}
+                    />
                     <DetailRow
                       label={
                         detail && detail.member_count > 0
