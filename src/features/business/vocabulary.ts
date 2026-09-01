@@ -7,7 +7,7 @@ import type {
   RatingBucket,
   RatingTag,
 } from '@/lib/database.types';
-import { USES_24_HOUR_CLOCK } from '@/lib/locale';
+import { clocks } from '@/lib/locale';
 import { countOf, isAre } from '@/lib/plural';
 
 /**
@@ -175,58 +175,6 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function minutesOf(time: string): number {
   const [h, m] = time.split(':');
   return Number(h) * 60 + Number(m);
-}
-
-/**
- * ONE CLOCK, for every time of day this app prints.
- *
- * The app used to keep two, and they disagreed on the same evening: chat
- * separators formatted with `Intl.DateTimeFormat('en', ...)` and nothing
- * overriding `hour12`, which is 12-hour, while business hours came through
- * `shortTime` as a straight slice of '18:00:00', which is 24-hour. So a
- * traveler read "9:14 PM" on a message and "Open · till 02:00" on the bar it
- * was about.
- *
- * The fix people reach for first is to pin chat to 24-hour, and it is wrong in
- * a way that is easy to miss: it makes the two agree only on phones that were
- * already set to 24-hour, and leaves an American reading "9:14 PM" against
- * "till 02:00" exactly as before. The disagreement is not about which format
- * is right. It is about there being two answers to one question. So there is
- * one answer here, the PHONE's, and everything that prints a time asks it.
- *
- * `USES_24_HOUR_CLOCK` is `expo-localization`'s `uses24hourClock`, read once
- * at module load (see lib/locale). Somebody who changes the setting mid-session
- * keeps the old format until the app is relaunched, which is standard and is
- * not worth a subscription.
- *
- * The LOCALE stays 'en', deliberately, where the CONVENTION follows the phone.
- * Decision D5 keeps the app's strings English for v1, and a Portuguese phone
- * set to 12 hours would otherwise print "9:14 da tarde" into an English row.
- * Twelve-versus-twenty-four is the one convention that actually changes the
- * meaning of the digits; the day-period word is just a word, and this app's
- * words are English.
- *
- * Behind a memoised accessor rather than built at import time so a test can
- * stub the preference and load this module again.
- */
-let clockFormats: { instant: Intl.DateTimeFormat; wall: Intl.DateTimeFormat } | null = null;
-
-function clocks() {
-  if (clockFormats == null) {
-    const shape: Intl.DateTimeFormatOptions = {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: !USES_24_HOUR_CLOCK,
-    };
-    clockFormats = {
-      instant: new Intl.DateTimeFormat('en', shape),
-      // A wall-clock time carries no date and no zone: it is 18:00 at that
-      // door. Anchored to a fixed UTC instant and read back in UTC so no
-      // runner's timezone and no daylight-saving jump can move it.
-      wall: new Intl.DateTimeFormat('en', { ...shape, timeZone: 'UTC' }),
-    };
-  }
-  return clockFormats;
 }
 
 /** A moment, on the reader's own clock: '21:14', or '9:14 PM'. */

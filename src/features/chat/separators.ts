@@ -1,9 +1,15 @@
 import type { MessageRow } from '@/lib/database.types';
+import { clocks } from '@/lib/locale';
 
 /** Longer than this between messages and the thread gets a time stamp. */
 const TIMESTAMP_GAP_MS = 60 * 60 * 1000;
 
-const TIME = new Intl.DateTimeFormat('en', { hour: 'numeric', minute: '2-digit' });
+// No local formatter. This line was the other half of the two-clock bug: with
+// no `hour12` it is 12-hour on every phone in the world, so a traveler read
+// "9:14 PM" on a message and "Open · till 02:00" on the bar it was about.
+// lib/locale.clocks() is the app's one answer and it follows the phone.
+// Accessed per call rather than destructured at import, because the accessor
+// memoises and a test can stub the preference and reload.
 const DAY = new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' });
 
 export function dayLabel(iso: string) {
@@ -29,14 +35,14 @@ export function dayLabel(iso: string) {
 export function separatorFor(current: MessageRow, older: MessageRow | undefined): string | null {
   const at = new Date(current.created_at);
   if (older == null) {
-    return `${dayLabel(current.created_at)} ${TIME.format(at)}`;
+    return `${dayLabel(current.created_at)} ${clocks().instant.format(at)}`;
   }
   const previous = new Date(older.created_at);
   if (previous.toDateString() !== at.toDateString()) {
-    return `${dayLabel(current.created_at)} ${TIME.format(at)}`;
+    return `${dayLabel(current.created_at)} ${clocks().instant.format(at)}`;
   }
   if (at.getTime() - previous.getTime() >= TIMESTAMP_GAP_MS) {
-    return TIME.format(at);
+    return clocks().instant.format(at);
   }
   return null;
 }
@@ -64,7 +70,7 @@ export function rowTimestamp(iso: string | null, now: Date = new Date()): string
   }
   const label = dayLabel(iso);
   if (label === 'Today') {
-    return TIME.format(at);
+    return clocks().instant.format(at);
   }
   if (label === 'Yesterday') {
     return 'Yesterday';

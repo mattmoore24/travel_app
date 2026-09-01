@@ -45,12 +45,17 @@ import { useIsGuest } from '@/features/guest/hooks';
 import { useMyChats } from '@/features/matching/hooks';
 import { openInMaps } from '@/features/pins/open-in-maps';
 import { useTheme } from '@/hooks/use-theme';
+import { clocks } from '@/lib/locale';
 import { analytics } from '@/lib/analytics';
 import type { BusinessHourJson, BusinessLinkJson, BusinessPostJson } from '@/lib/database.types';
 import { countOf } from '@/lib/plural';
 
 /** 24-hour, so an event time reads next to "Open · till 2:00" as one clock. */
-const TIME = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit', hour12: false });
+// No local formatter, and the comment that used to sit here ("24-hour, so an
+// event time reads next to 'Open · till 2:00' as one clock") is now exactly
+// backwards: shortTime follows the PHONE since biz-one-clock, so a pinned
+// hour12:false printed "20:00" for the event beside "till 8:00 PM" for the
+// hours, on the same card. One clock means one source, not one format.
 
 /**
  * ONE ratio for every business photo a traveler sees.
@@ -135,7 +140,7 @@ function PostCard({ post }: { post: BusinessPostJson }) {
           // Warm light is this app's "happening now", the same signal the map
           // puts on a place with something on tonight.
           <ThemedText type="caption" themeColor={today ? 'highlight' : 'textSecondary'}>
-            {`${dayLabel(when)} · ${TIME.format(at)}`}
+            {`${dayLabel(when)} · ${clocks().instant.format(at)}`}
           </ThemedText>
         ) : null}
         <ThemedText type="callout">{post.title}</ThemedText>

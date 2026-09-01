@@ -73,3 +73,56 @@ export const FIRST_WEEKDAY: number = calendar.firstWeekday ?? 1;
 
 /** The device's IANA zone, e.g. 'Europe/Lisbon'. */
 export const DEVICE_TIME_ZONE: string = calendar.timeZone || 'UTC';
+
+/**
+ * THE app's clock, and there is exactly one.
+ *
+ * The app kept two and they disagreed on the same evening: chat separators
+ * used `Intl.DateTimeFormat('en', …)` with no `hour12`, which is 12-hour,
+ * while business hours came through as a slice of '18:00:00', which is 24.
+ * So a traveler read "9:14 PM" on a message and "Open · till 02:00" on the
+ * bar it was about.
+ *
+ * The fix people reach for first is to pin chat to 24-hour, and it is wrong
+ * in a way that is easy to miss: it makes the two agree only on phones
+ * already set to 24-hour, and leaves an American reading "9:14 PM" against
+ * "till 02:00" exactly as before. The disagreement was never about which
+ * format is right. It was about there being two answers to one question.
+ *
+ * So there is one answer, the PHONE's, and everything that prints a time asks
+ * HERE. It lives in lib rather than in either feature because both chat and
+ * business need it and neither should depend on the other — the first version
+ * of this put it inside features/business/vocabulary, and chat was never
+ * wired to it, so the app went right on keeping two clocks.
+ *
+ * The LOCALE stays 'en' while the CONVENTION follows the phone. D5 keeps the
+ * app's strings English for v1, and a Portuguese phone set to 12 hours would
+ * otherwise print "9:14 da tarde" into an English row. Twelve-versus-
+ * twenty-four changes what the digits MEAN; the day-period word is just a
+ * word, and this app's words are English.
+ *
+ * Memoised behind an accessor rather than built at import time, so a test can
+ * stub the preference and load the module again.
+ */
+let clockFormats: { instant: Intl.DateTimeFormat; wall: Intl.DateTimeFormat } | null = null;
+
+export function clocks(): { instant: Intl.DateTimeFormat; wall: Intl.DateTimeFormat } {
+  if (clockFormats == null) {
+    const shape: Intl.DateTimeFormatOptions = {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: !USES_24_HOUR_CLOCK,
+    };
+    clockFormats = {
+      /** A moment in time: a message, an event. Rendered in the device zone. */
+      instant: new Intl.DateTimeFormat('en', shape),
+      /**
+       * A wall-clock time, which carries no date and no zone: it is 18:00 at
+       * that door. Anchored to a fixed UTC instant and read back in UTC, so
+       * no runner's timezone and no daylight-saving jump can move it.
+       */
+      wall: new Intl.DateTimeFormat('en', { ...shape, timeZone: 'UTC' }),
+    };
+  }
+  return clockFormats;
+}

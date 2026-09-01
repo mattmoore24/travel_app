@@ -67,12 +67,17 @@ import {
 } from '@/features/notifications/notifications-row';
 import { useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
+import { clocks } from '@/lib/locale';
 import { analytics } from '@/lib/analytics';
 import type { BusinessPostJson, MyBusinessRow } from '@/lib/database.types';
 import { countOf } from '@/lib/plural';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
-const TIME = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit', hour12: false });
+// No local formatter, and the comment that used to sit here ("24-hour, so an
+// event time reads next to 'Open · till 2:00' as one clock") is now exactly
+// backwards: shortTime follows the PHONE since biz-one-clock, so a pinned
+// hour12:false printed "20:00" for the event beside "till 8:00 PM" for the
+// hours, on the same card. One clock means one source, not one format.
 
 const HERO_RATIO = 3 / 2;
 
@@ -248,7 +253,7 @@ function PostCard({
             // Warm light is this app's "happening now", the same signal the map
             // puts on a place with something on tonight.
             <ThemedText type="caption" themeColor={today ? 'highlight' : 'textSecondary'}>
-              {`${dayLabel(post.happens_at)} · ${TIME.format(at)}`}
+              {`${dayLabel(post.happens_at)} · ${clocks().instant.format(at)}`}
             </ThemedText>
           ) : null}
           <ThemedText type="callout">{post.title}</ThemedText>
