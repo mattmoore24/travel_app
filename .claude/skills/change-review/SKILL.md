@@ -9,7 +9,7 @@ Run the `engineering:*` skill you came for. This file is the brief it is
 missing: a solo-founder iOS app whose whole value proposition is a set of
 privacy promises, shipping to a phone through TestFlight.
 
-## The seven rules a diff may never break
+## The eight rules a diff may never break
 
 From `docs/PRODUCT_BRIEF.md` §7. These are not preferences; breaking one
 without explicit founder sign-off is a defect regardless of how the code
@@ -25,6 +25,17 @@ reads.
 6. Heatmap cells below the k-threshold are **never rendered**.
 7. Everything is committed and pushed; the project must be fully recoverable
    from a fresh clone.
+8. A **business account never initiates contact** with a traveler, never joins
+   a traveler's group or another business's chat, and never reads traveler
+   discovery surfaces. Its reach is its listing, its posts, its chat and its
+   replies.
+
+Rule 8 was signed off on 2026-08-27 and enforced in the schema from that day —
+six BEFORE INSERT triggers, `assert_not_business()`, `viewer_is_business()` and
+their pgTAP attack tests all cite "§7 rule 8" — but it was only written into
+the brief itself on 2026-09-01, and into this list with it. For that week the
+code enforced and cited a rule neither document contained, which is how a
+review reading only the brief could have passed a diff that broke it.
 
 Review a diff against these first. A change that adds a location permission,
 widens a pin's lifetime, exposes a handle earlier, or bypasses the moderation
