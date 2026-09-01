@@ -304,7 +304,13 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
       <PrimaryButton
         variant="ghost"
         label="Run a business? Put it on the map."
-        onPress={() => router.push('/business-signup')}
+        // Replace, for the reason written at the other two entrances: nothing
+        // may be left under business-signup, because registering flips a
+        // guard that filters whatever is under it out of the navigator. There
+        // is nothing to go back to here either — an account on its way to list
+        // a bar must not be able to walk back into traveler onboarding, which
+        // register_business refuses forever once it is finished.
+        onPress={() => router.replace('/business-signup')}
       />
       {signOutFooter}
     </>

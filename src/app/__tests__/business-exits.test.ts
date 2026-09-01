@@ -123,3 +123,28 @@ describe('registering a business changes exactly one thing', () => {
     expect(hooks).toContain('NOTHING ELSE GOES IN HERE');
   });
 });
+
+/**
+ * Nothing is ever left underneath business-signup.
+ *
+ * The screen's whole exit design assumes it: registering flips isBusiness,
+ * the root's Protected guards change, and any route still mounted below is
+ * filtered out from under a live screen. That is the crash at the top of this
+ * file, and the e2e suite reproduced it for three consecutive runs after a
+ * "Finish listing your business" row was added to the profile with a push.
+ *
+ * The tell is that the exit itself is unguarded — business-signup replaces to
+ * the tabs without checking canGoBack, on the stated grounds that canGoBack is
+ * false in the normal case. A push entrance makes that false, and then the
+ * unguarded exit and the guard flip are both wrong at once.
+ */
+describe('every door into business-signup is a replace', () => {
+  it.each(['profile-me.tsx', 'onboarding/index.tsx', '(auth)/join.tsx'])(
+    '%s does not push it',
+    (file) => {
+      const code = source(...file.split('/'));
+      expect(code).not.toContain("push('/business-signup')");
+      expect(code).toContain("replace('/business-signup')");
+    }
+  );
+});

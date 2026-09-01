@@ -750,7 +750,16 @@ export default function ProfileScreen() {
                     {wantsBusiness ? (
                       <SettingsRow
                         label="Finish listing your business"
-                        onPress={() => router.push('/business-signup')}
+                        // REPLACE, never push. business-signup's whole exit
+                        // design rests on nothing being underneath it: when
+                        // register_business succeeds it flips isBusiness, the
+                        // root's guards change, and any route left below is
+                        // filtered out from under a live screen — which is the
+                        // crash this file's tests exist to prevent, and which
+                        // a push from here reproduced on the e2e suite for
+                        // three runs. join.tsx enters the same screen with a
+                        // replace for the same reason.
+                        onPress={() => router.replace('/business-signup')}
                       />
                     ) : (
                       <SettingsRow
