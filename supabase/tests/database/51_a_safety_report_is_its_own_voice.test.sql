@@ -14,7 +14,7 @@
 -- first, exactly as it would in life, and the question is whether the safety
 -- report that follows it is heard.
 begin;
-select plan(9);
+select plan(12);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000e1', 'owner@example.com'),
@@ -90,6 +90,41 @@ select is(
 select lives_ok(
   $$ select public.report_business(pg_temp.biz(), 'unsafe') $$,
   'but a second conduct report from that account is a no-op in its turn'
+);
+
+-- ---------------------------------------------------------------------------
+-- The unclaimed venue, which is where a conduct report has no owner to hang on
+-- ---------------------------------------------------------------------------
+--
+-- The spine has two subject queries: "complaints against this account"
+-- (subject_user_id) and "everything filed about this business", which reads
+-- the (subject_business_id, created_at desc) index built for it. A row with
+-- neither set exists and answers neither, and an unclaimed venue - owner null
+-- by definition - is exactly the row that used to come out that way.
+
+insert into public.businesses (name, category, city_id, lat, lng, state, listed_at)
+values ('Tasca Sem Dono', 'bar', pg_temp.lisbon(), 38.7120, -9.1380, 'listed', now());
+
+select is(
+  (select owner_user_id from public.businesses where name = 'Tasca Sem Dono'),
+  null,
+  'the venue really is unclaimed, so there is no owner to file against'
+);
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000e3');
+select lives_ok(
+  $$ select public.report_business(
+       (select id from public.businesses where name = 'Tasca Sem Dono'),
+       'unsafe', 'the bouncer got physical') $$,
+  'a traveler reports how an unclaimed venue behaved'
+);
+
+select is(
+  (select count(*)::int from public.moderation_events
+    where action = 'conduct_report'
+      and subject_business_id = (select id from public.businesses where name = 'Tasca Sem Dono')),
+  1,
+  'and the event names the business, so the one index built for this finds it'
 );
 
 select * from finish();

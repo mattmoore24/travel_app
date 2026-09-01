@@ -417,17 +417,24 @@ export function weekLine({
   memberCount: number;
 }): string {
   if (chatsThisWeek > 0) {
-    const wrote = `${countOf(chatsThisWeek, 'traveler')} wrote to you this week.`;
+    // "started a conversation", not "wrote to you". countChatsSince counts
+    // rows by created_at, which is when the CHAT was opened - so a traveler
+    // who wrote again in a thread from last month is not in this number, and
+    // "wrote to you this week" would have been a claim the number does not
+    // support. Counting new conversations is the honest reading of the data
+    // that exists, and it is also the more useful one: it is the thing that
+    // grows when a listing starts working.
+    const wrote = `${countOf(chatsThisWeek, 'traveler')} started a conversation this week.`;
     return memberCount > 0
       ? `${wrote} ${countOf(memberCount, 'traveler')} ${isAre(memberCount)} in your chat.`
       : wrote;
   }
   if (memberCount > 0) {
-    return `${countOf(memberCount, 'traveler')} ${isAre(memberCount)} in your chat. Nobody wrote to you this week.`;
+    return `${countOf(memberCount, 'traveler')} ${isAre(memberCount)} in your chat. No new conversations this week.`;
   }
   // The floor, said as a fact and not as a failure. Photos and hours are what
   // move a listing up the map, which is what the section below is for.
-  return 'Nobody has written this week. A listing with photos and hours gets read more.';
+  return 'No new conversations this week. A listing with photos and hours gets read more.';
 }
 
 /**
