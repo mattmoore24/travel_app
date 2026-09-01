@@ -1,8 +1,9 @@
-// Claude moderation worker. Drains six server-side queues:
+// Claude moderation worker. Drains seven server-side queues:
 //
 //   1. message_requests in 'pending_moderation'  -> apply_message_verdict
 //   2. profile_photos   in 'pending'             -> apply_photo_verdict
 //   2b. business_photos in 'pending'             -> apply_business_photo_verdict
+//   2c. business_posts with a pending photo      -> apply_business_post_photo_verdict
 //   3. verification_requests in 'pending'        -> apply_verification_verdict
 //   4. messages with a pending photo             -> apply_chat_photo_verdict
 //   5. business_verifications in 'pending'       -> apply_business_verification_verdict
@@ -158,6 +159,7 @@ type WorkerReport = {
   messages: { approved: number; blocked: number; failed: number };
   photos: { approved: number; rejected: number; failed: number };
   businessPhotos: { approved: number; rejected: number; failed: number };
+  postPhotos: { approved: number; rejected: number; failed: number };
   chatPhotos: { approved: number; rejected: number; failed: number };
   verifications: { approved: number; rejected: number; failed: number };
   storefronts: { approved: number; rejected: number; uncertain: number; failed: number };
@@ -290,6 +292,7 @@ Deno.serve(async (req) => {
     messages: { approved: 0, blocked: 0, failed: 0 },
     photos: { approved: 0, rejected: 0, failed: 0 },
     businessPhotos: { approved: 0, rejected: 0, failed: 0 },
+    postPhotos: { approved: 0, rejected: 0, failed: 0 },
     chatPhotos: { approved: 0, rejected: 0, failed: 0 },
     verifications: { approved: 0, rejected: 0, failed: 0 },
     storefronts: { approved: 0, rejected: 0, uncertain: 0, failed: 0 },
@@ -632,6 +635,110 @@ Deno.serve(async (req) => {
         });
         report.notes.push(
           `business photo ${photo.id}: ${(error as Error).message}` +
+            (bumpError ? ` (attempts update failed: ${bumpError.message})` : '')
+        );
+      }
+    }
+  }
+
+  // -- 3c. Pending business POST photos ---------------------------------------
+  //
+  // The same bug as 3b, one table over, and it shipped with the migration that
+  // opened the door: 20260902170000 added business_posts.photo_status, a
+  // trigger that pins it to 'pending' when require_photo_moderation is on
+  // (production does — LAUNCH_RUNBOOK.md:72), and the two doors below. Nothing
+  // called them. business_detail returns photo_path only when the status is
+  // 'approved' or the reader owns the listing, so every traveler would have
+  // got photo_state 'checking' forever, the composer's chip would have read
+  // "In review" for good, and moderation_attempts would never move — so it
+  // would not even fail closed, it would just hang. The package's own spec
+  // says "Do the migration and the worker branch first or do not do the
+  // package"; three review lenses found the worker missing.
+  //
+  // Same shape as 3b, and deliberately the same prompt: a post photo is a
+  // photo OF the business, taken by the business, and the question is the same
+  // one. Only the sentence beside it changes, because a post is about tonight
+  // rather than about the room in general.
+  const { data: postPhotos } = await supabase
+    .from('business_posts')
+    .select('id, business_id, photo_path, moderation_attempts')
+    .eq('photo_status', 'pending')
+    .not('photo_path', 'is', null)
+    .lt('moderation_attempts', MAX_ATTEMPTS)
+    .order('created_at')
+    .limit(PHOTOS_PER_TICK);
+
+  for (const post of postPhotos ?? []) {
+    try {
+      const url = await signedUrl('business-photos', post.photo_path as string);
+      const verdict = await classify(
+        anthropic,
+        PROMPTS.photo,
+        [
+          { type: 'image', source: { type: 'url', url } },
+          {
+            type: 'text',
+            text:
+              'Moderate this photo attached to a post by the business that runs it, ' +
+              'about something happening there. It should show the place, its food, ' +
+              'its drinks, or the thing that is on.',
+          },
+        ],
+        PhotoVerdict
+      );
+      const payload = verdict
+        ? { ...verdict, engine: 'claude-moderator', model: MODEL }
+        : {
+            action: 'block',
+            category: 'refusal',
+            reason: 'the model refused to process this content',
+            engine: 'claude-moderator',
+            model: MODEL,
+          };
+      const { error } = await supabase.rpc('apply_business_post_photo_verdict', {
+        p_post_id: post.id,
+        p_verdict: payload,
+      });
+      if (error) {
+        throw new Error(`apply_business_post_photo_verdict: ${error.message}`);
+      }
+      if (payload.action === 'allow') {
+        report.postPhotos.approved += 1;
+      } else {
+        report.postPhotos.rejected += 1;
+      }
+    } catch (error) {
+      if (isAuthError(error)) {
+        return Response.json(
+          { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
+          { status: 503 }
+        );
+      }
+      report.postPhotos.failed += 1;
+      const attempts = (post.moderation_attempts ?? 0) + 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        // Fail closed and say so, rather than leaving an owner watching a chip
+        // that will never change.
+        const { error: rpcError } = await supabase.rpc('apply_business_post_photo_verdict', {
+          p_post_id: post.id,
+          p_verdict: {
+            action: 'block',
+            category: 'moderation_unavailable',
+            reason: `classification failed ${attempts} times`,
+            engine: 'failsafe',
+          },
+        });
+        report.notes.push(
+          rpcError
+            ? `post photo ${post.id}: failsafe reject failed: ${rpcError.message}`
+            : `post photo ${post.id}: failsafe reject after ${attempts} attempts`
+        );
+      } else {
+        const { error: bumpError } = await supabase.rpc('note_business_post_photo_attempt', {
+          p_post_id: post.id,
+        });
+        report.notes.push(
+          `post photo ${post.id}: ${(error as Error).message}` +
             (bumpError ? ` (attempts update failed: ${bumpError.message})` : '')
         );
       }

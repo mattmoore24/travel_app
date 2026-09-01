@@ -52,6 +52,16 @@ import { countOf } from '@/lib/plural';
 /** 24-hour, so an event time reads next to "Open · till 2:00" as one clock. */
 const TIME = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit', hour12: false });
 
+/**
+ * ONE ratio for every business photo a traveler sees.
+ *
+ * The hero was 3:2, the post photo 16:9 and the gallery strip 4:3, so a
+ * single uploaded square was cropped three different ways on one screen and
+ * an owner could not frame anything. The editor now draws a 3:2 trim guide
+ * over each tile (business-photos.tsx), and that guide is only honest if
+ * every surface it predicts actually uses this number. place-sheet.tsx is
+ * already 3:2.
+ */
 const HERO_RATIO = 3 / 2;
 
 function PlaceImage({
@@ -913,7 +923,7 @@ const styles = StyleSheet.create({
   },
   postPhoto: {
     width: '100%',
-    aspectRatio: 16 / 9,
+    aspectRatio: HERO_RATIO,
   },
   hours: {
     gap: Space.xs,
@@ -950,7 +960,7 @@ const styles = StyleSheet.create({
   },
   stripItem: {
     width: 140,
-    aspectRatio: 4 / 3,
+    aspectRatio: HERO_RATIO,
     borderRadius: Radius.md,
     borderCurve: 'continuous',
   },
