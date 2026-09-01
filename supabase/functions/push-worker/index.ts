@@ -86,6 +86,19 @@ Deno.serve(async (req) => {
     .from('push_tokens')
     .select('user_id, token')
     .in('user_id', userIds);
+  // The number for the home-screen icon, computed once for the whole batch.
+  // Deliberately NOT a column on push_queue: a value written at enqueue time
+  // is stale by the time the row drains, and it would need populating at
+  // every one of the thirty-odd places that write to the queue. One round
+  // trip per drain, always current.
+  //
+  // A failure here is not a reason to drop a notification: the badge is the
+  // sidecar, the banner is the message. Missing counts simply mean no badge
+  // on this batch.
+  const { data: waiting } = await supabase.rpc('waiting_counts', { p_users: userIds });
+  const waitingByUser = new Map<string, number>(
+    (waiting ?? []).map((row: any) => [row.user_id as string, row.waiting as number])
+  );
   const tokensByUser = new Map<string, string[]>();
   for (const row of tokens ?? []) {
     tokensByUser.set(row.user_id, [...(tokensByUser.get(row.user_id) ?? []), row.token]);
@@ -98,6 +111,7 @@ Deno.serve(async (req) => {
       body: item.body,
       data: item.data,
       sound: 'default',
+      badge: waitingByUser.get(item.user_id) ?? undefined,
     }))
   );
 

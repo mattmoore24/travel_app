@@ -19,7 +19,7 @@ dead.
 | **Liquidity per city** (live trip/pin)   | `select * from admin_liquidity;`                                                          |
 | Map DAU vs matching DAU                  | PostHog: unique users on `map_viewed` / `travelers_viewed`, both filtered `guest = false` |
 | Request → accept rate                    | `select * from admin_request_funnel;` (+ `request_responded` event)                       |
-| % first messages blocked                 | `select * from admin_moderation_stats;`                                                   |
+| % first messages blocked                 | `select * from admin_moderation_stats;` **plus** PostHog `draft_flagged` (see below)      |
 | Pin creation rate / heatmap views        | PostHog `pin_created`, `heatmap_viewed`; `admin_pin_stats` (live)                         |
 | D1/D7 retention **within trip window**   | PostHog retention, cohorted on `trip_created` (caveat below)                              |
 | **Pipeline health** (not in §6, but ops) | `select * from admin_ops_health;`                                                         |
@@ -29,7 +29,7 @@ dead.
 ```sql
 select * from admin_liquidity;        -- THE number: distinct users w/ live trip or pin, per city
 select * from admin_request_funnel;   -- last 30d: delivered, accepted, accept %
-select * from admin_moderation_stats; -- last 30d: attempts, blocked, % blocked (creep alarm)
+select * from admin_moderation_stats; -- last 30d: attempts, blocked, % blocked (HALF the creep alarm)
 select * from admin_pin_stats;        -- live pins + seeded share per city
 select * from admin_report_queue;     -- open reports, URGENT FIRST then oldest (see below)
 select * from admin_ops_health;       -- queue depths: are the workers alive?
@@ -64,8 +64,42 @@ pg_cron isn't running the 72h purge.
 
 Reading them: liquidity target is **500–1,000 in-season per city before
 opening a new one** (brief §6). A **collapsing accept rate** or a **rising
-blocked %** is the creep early-warning — check `admin_report_queue` and
-tighten moderation before growing supply.
+creep number** is the early warning — check `admin_report_queue` and tighten
+moderation before growing supply.
+
+**`admin_moderation_stats.blocked_pct` is not that number on its own. It is a
+lagging, deliberately suppressed one.** The composer warns about a risky draft
+before anybody presses send, and the whole purpose of that warning is to turn
+a would-be block into a rewrite — which removes the event from this
+numerator. So blocked_pct falls over time for a reason that has nothing to do
+with how many people are trying to send creepy first messages, and read alone
+it shows a safety improvement that is a measurement artefact. The same
+mechanism shifts the surviving mix toward `blocked_llm`, because the preview
+is prefilter-only while the send path adds the classifier, so the trend also
+imitates a classifier regression.
+
+The creep signal is therefore:
+
+```
+(prefilter_blocked + llm_blocked + draft_flagged) / (attempts + draft_flagged)
+```
+
+`prefilter_blocked` and `llm_blocked` are `admin_moderation_stats`'
+`blocked_prefilter` and `blocked_llm`; `attempts` is its `attempts`;
+`draft_flagged` is the PostHog event, counted over the same 30 days.
+`draft_flagged` is a PREFILTER signal only, so it must never be charted
+like-for-like against `blocked_llm` — the two see different classifiers. Its
+companion is `request_sent`'s `rewrote_after_warning`, which says how often a
+warning ended in a message being sent anyway.
+
+**Two send paths write no moderation_event at all**, so every block on them is
+invisible to `admin_moderation_stats`: `message_business`
+(20260828160000_businesses_not_places.sql:100) and `open_direct_chat`
+(20260830000000_a_business_is_served_no_travelers.sql:306). Both screen the
+text and both refuse silently as far as this view is concerned. `draft_flagged`
+carries `surface = 'business'` for the composer in front of the first of them,
+which is the only visibility that path has today. Documented rather than
+fixed: adding audit rows to those two functions is its own change.
 
 ## PostHog insights to create (once the key exists)
 
@@ -122,7 +156,9 @@ workflows refuse to ship a bundle without it.)
 - **Map and pins**: `map_viewed`, `heatmap_viewed` (was `heatmap_rendered`;
   views need drawn pixels on an uncovered map, so the count is honest and
   lower), `pin_created`, `pin_tapped`, `pin_joined`
-- **Matching and chat**: `travelers_viewed`, `request_sent`,
+- **Matching and chat**: `travelers_viewed`, `request_sent` (carries
+  `rewrote_after_warning`), `draft_flagged` (properties `category` and
+  `surface`, never the draft and never the matched pattern),
   `request_responded`, `message_sent`, `direct_chat_opened`, `left_chat`
 - **Trips**: `trip_created`, `trip_cancelled`, `trip_deleted`
 - **Groups and rooms**: `group_created`, `group_joined`,

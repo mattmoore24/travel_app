@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   fetchIncomingRequests,
@@ -79,21 +79,51 @@ export function useFirstMessageBudget() {
 }
 
 /**
+ * Which composer asked. Kept out of the analytics property as a free string
+ * so the two surfaces cannot drift into three spellings of the same one.
+ */
+export type DraftSurface = 'first_message' | 'business';
+
+/**
  * Ask, quietly, whether a draft is going to be stopped.
  *
  * Debounced and fire-and-forget: this is a nudge, not a gate. The send path
  * still runs the same check server-side, and this only exists so most
  * would-be rejections turn into a reword before anybody presses send.
+ *
+ * AND IT COUNTS ITSELF, which is the other half of why it exists. The
+ * brief's creep early-warning (§6) is "% of first messages blocked by
+ * moderation", and every warning this hook shows removes an event from that
+ * numerator on purpose: the whole point is to turn a would-be block into a
+ * reword before anybody presses send. Left uncounted, blocked_pct falls over
+ * time for a reason that has nothing to do with how many people are trying
+ * to send creepy first messages, and the founder reads a safety improvement
+ * that is a measurement artefact. `draft_flagged` is the missing term. See
+ * docs/DASHBOARD.md for the combined number.
+ *
+ * The category only, never the draft and never the matched pattern: the
+ * blocklist is a table of regexes and naming the trigger hands out the
+ * evasion rule, which is why previewFirstMessage does not return it either.
  */
 export function useDraftWarning(
   draft: string,
-  enabled: boolean
-): { risky: boolean; category: string | null } {
+  enabled: boolean,
+  surface: DraftSurface
+): { risky: boolean; category: string | null; everFlagged: boolean } {
   // What was FLAGGED, not whether something is. Storing the text itself
   // (with the category the preview named) is what lets the warning be
   // derived during render: editing a character clears it immediately, and
   // nothing has to be reset in an effect.
   const [flagged, setFlagged] = useState<{ text: string; category: string | null } | null>(null);
+  // Whether a warning was EVER shown in this composer, which outlives the
+  // rewrite that clears `flagged`. It is what tells a sender who rewrote
+  // after a warning apart from one who never saw one.
+  const [everFlagged, setEverFlagged] = useState(false);
+  // The last draft counted, keyed on the TEXT and not on the boolean: the
+  // effect re-runs on every keystroke, and a guard on "is it risky" would
+  // let somebody editing a blocked sentence character by character flood
+  // the metric and make the creep number worse than useless.
+  const counted = useRef<string | null>(null);
   const text = draft.trim();
   const checkable = enabled && isSupabaseConfigured && text.length >= DRAFT_CHECK_MIN;
 
@@ -106,6 +136,11 @@ export function useDraftWarning(
       previewFirstMessage(text).then(({ wouldBlock, category }) => {
         if (active && wouldBlock) {
           setFlagged({ text, category });
+          setEverFlagged(true);
+          if (counted.current !== text) {
+            counted.current = text;
+            analytics.capture('draft_flagged', { category, surface });
+          }
         }
       });
     }, DRAFT_CHECK_DEBOUNCE_MS);
@@ -113,10 +148,10 @@ export function useDraftWarning(
       active = false;
       clearTimeout(timer);
     };
-  }, [text, checkable]);
+  }, [text, checkable, surface]);
 
   const risky = checkable && flagged?.text === text;
-  return { risky, category: risky ? (flagged?.category ?? null) : null };
+  return { risky, category: risky ? (flagged?.category ?? null) : null, everFlagged };
 }
 
 /** Short enough that nobody is warned about "hi". */
@@ -147,6 +182,13 @@ export function useSendRequest() {
       source: RequestSource;
       firstMessage: string;
       profileElement: string | null;
+      /**
+       * Whether the composer ever showed the draft warning before this send.
+       * The other half of the creep metric: a sender who rewrote after being
+       * warned is a success of the warning, not a miss by the classifier.
+       * Never sent to the server.
+       */
+      everFlagged: boolean;
     }) =>
       sendMessageRequest(input.recipientId, input.source, input.firstMessage, input.profileElement),
     meta: { failureTitle: "Couldn't send that" },
@@ -158,6 +200,7 @@ export function useSendRequest() {
         // a hello: queued is the delivered of the moderated path.
         queued: result.queued,
         blocked: result.blocked,
+        rewrote_after_warning: input.everFlagged,
       });
       queryClient.invalidateQueries({ queryKey: ['sent-requests', userId] });
       queryClient.invalidateQueries({ queryKey: ['first-message-budget', userId] });
@@ -191,10 +234,29 @@ export function useIncomingRequests() {
 }
 
 /** What the Chat tab's badge counts (see features/chat/unread.ts). */
-export function useWaitingCount() {
-  const { data: chats = [] } = useMyChats();
-  const { data: requests = [] } = useIncomingRequests();
-  return waitingTotal(chats, requests.length);
+/**
+ * The waiting total, or null while it is genuinely unknown.
+ *
+ * Null matters for the icon badge. Both queries default to [] while pending
+ * and there is no persister, so on every cold launch the count is 0 before
+ * any data arrives — and a badge written from that 0 wipes the number off the
+ * home screen of somebody with three unread conversations who opened the app
+ * with no signal. Nothing puts it back until the fetch succeeds. The Chat
+ * tab's own badge is happy with 0 (a tab with no number reads as "nothing
+ * yet" and corrects itself in place), so only the caller that writes to the
+ * SYSTEM needs the distinction.
+ */
+export function useWaitingCount(): number {
+  return useSettledWaitingCount() ?? 0;
+}
+
+export function useSettledWaitingCount(): number | null {
+  const chatsQuery = useMyChats();
+  const requestsQuery = useIncomingRequests();
+  if (!chatsQuery.isSuccess || !requestsQuery.isSuccess) {
+    return null;
+  }
+  return waitingTotal(chatsQuery.data ?? [], (requestsQuery.data ?? []).length);
 }
 
 export function useRespondToRequest() {

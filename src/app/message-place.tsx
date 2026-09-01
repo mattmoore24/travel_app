@@ -48,7 +48,7 @@ export default function MessagePlaceScreen() {
   // Asked while the sentence is still being written, so something the
   // prefilter would stop becomes a reword rather than a refusal. Advisory
   // only: the send path runs the same check server-side either way.
-  const { risky, category: draftCategory } = useDraftWarning(message, !blockedNotice);
+  const { risky, category: draftCategory } = useDraftWarning(message, !blockedNotice, 'business');
 
   const submit = async () => {
     if (!businessId || message.trim().length === 0) {

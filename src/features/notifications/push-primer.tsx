@@ -13,21 +13,41 @@ import { useTheme } from '@/hooks/use-theme';
 /**
  * The ask, at the first moment there is something worth being told about.
  *
- * Two rules, both load-bearing. It only appears after the app has done the
- * thing a notification would follow — a hello sent, a pin posted — so the
- * question has an obvious answer instead of being an ambush at signup. And
- * the promise is specific and small, because the first notification that
- * falls outside it is the one that sends somebody to Settings to switch the
- * whole channel off.
+ * Two rules, both load-bearing. It only appears after something has happened
+ * that a notification would follow — a hello sent, a pin posted, somebody
+ * writing to you — so the question has an obvious answer instead of being an
+ * ambush at signup. And the promise is specific and small, because the first
+ * notification that falls outside it is the one that sends somebody to
+ * Settings to switch the whole channel off.
+ *
+ * THE PROMISE NAMES FOUR KINDS NOW, and the fourth arrived with the copy
+ * rather than after it. It used to read "Replies, hellos, and anything about
+ * your account. Nothing else, ever." Three within-trip clocks ship in this
+ * same bundle (20260902040000) and they are none of those, so the sentence is
+ * rewritten here BEFORE anybody is asked under it. The shape stays absolute:
+ * "nothing else, ever" is why people say yes, and softening it into a weasel
+ * sentence would cost more than the clocks are worth.
+ *
+ * The fourth kind is deliberately narrow: YOUR OWN trip and YOUR OWN plans.
+ * A push reporting somebody else's activity is not covered by this sentence
+ * and may not be added under it.
  */
 const COPY: Record<PrimerReason, { title: string; body: string }> = {
   'hello-sent': {
     title: 'Want to know when they answer?',
-    body: 'Replies, first messages, and anything about your account. Nothing else, ever.',
+    body: 'Replies, first messages, your own trips and plans, and anything about your account. Nothing else, ever.',
   },
   'pin-posted': {
     title: 'Want to know if somebody is in?',
-    body: 'We will ping you when somebody answers your pin or messages you, and if anything happens to your account. Nothing else, ever.',
+    body: 'We will ping you when somebody answers your pin or messages you, about your own trips and plans, and if anything happens to your account. Nothing else, ever.',
+  },
+  // The inbound one, and the only moment in the app that is not about
+  // something the reader just did. Somebody wrote to them and they found out
+  // by opening the app and looking, which is the whole argument for asking a
+  // second time.
+  'hello-received': {
+    title: 'Somebody said hi',
+    body: 'Want your phone to tell you next time? Replies, first messages, your own trips and plans, and anything about your account. Nothing else, ever.',
   },
 };
 

@@ -41,6 +41,13 @@ export function routeForPayload(
       return chatId == null ? '/(tabs)/chat' : `/chat/${chatId}`;
     case 'request':
       return '/(tabs)/chat';
+    case 'trip':
+      // "Bangkok tomorrow. 14 travelers are there on your dates." The screen
+      // that answers that sentence is Travelers, not the map: the number in
+      // the body is people, and a tap that opened a map of pins would be
+      // answering a different question. A clock that opens the wrong screen
+      // is worse than no clock.
+      return '/(tabs)/travelers';
     case 'moderation':
       return '/guidelines';
     case 'verification':

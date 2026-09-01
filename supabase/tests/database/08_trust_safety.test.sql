@@ -3,7 +3,7 @@
 -- standing gates on suspended/banned senders, the photo moderation flag, the
 -- selfie verification flow, and the admin report queue.
 begin;
-select plan(85);
+select plan(94);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -341,10 +341,91 @@ select is(
 select is(
   (select count(*)::int from public.moderation_events
     where subject_user_id = '00000000-0000-0000-0000-00000000000c'
-      and action in ('blocked', 'llm_blocked', 'photo_rejected', 'admin_strike')),
+      and public.is_strike_action(action)),
   1,
   'failsafe block did NOT add a strike (still just the real one)'
 );
+
+-- A REWORD IS NOT A STRIKE ----------------------------------------------------
+--
+-- The prefilter is a regex. It says maybe, nobody reads the sentence, and the
+-- composer then tells the writer to reword it and send again. Counting that as
+-- evidence closes an account for trying to arrange a beer at the night market,
+-- so a prefilter block is audited under its own action and left off
+-- is_strike_action's list - the same distinction apply_message_verdict already
+-- draws with 'blocked_failsafe'.
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  (public.send_message_request(
+     '00000000-0000-0000-0000-00000000000d', 'trip_match',
+     'you look so sexy in that photo', 'photo:0')) ->> 'blocked',
+  'true',
+  'the prefilter still stops a risky first message before delivery'
+);
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.moderation_events
+    where subject_user_id = '00000000-0000-0000-0000-00000000000a'
+      and entity_type = 'message_request'
+      and action = 'prefilter_blocked'),
+  1,
+  'a prefilter block is audited under its own action, never as "blocked"'
+);
+select is(
+  (select count(*)::int from public.moderation_events
+    where subject_user_id = '00000000-0000-0000-0000-00000000000a'
+      and public.is_strike_action(action)),
+  0,
+  'and it leaves the sender''s strike count exactly where it was'
+);
+-- The creep early-warning must not read as a safety improvement on the day a
+-- rename ships: admin_moderation_stats counts the new action too.
+select is(
+  (select blocked_prefilter::int from public.admin_moderation_stats),
+  1,
+  'the creep metric still counts the prefilter block after the rename'
+);
+select is(
+  (select blocked::int from public.admin_moderation_stats),
+  2,
+  'and it is still inside the blocked total, beside the LLM block'
+);
+
+-- NINETY DAYS, NOT FOR EVER ---------------------------------------------------
+--
+-- Six strikes from another season plus one today is one strike, not seven. A
+-- lifetime counter closes an account in month eighteen for four bad nights
+-- spread over two years.
+insert into public.moderation_events
+  (subject_user_id, entity_type, entity_id, action, source, created_at)
+select '00000000-0000-0000-0000-00000000000d', 'user',
+       '00000000-0000-0000-0000-00000000000d', 'admin_strike', 'test',
+       now() - interval '100 days'
+from generate_series(1, 6);
+insert into public.moderation_events (subject_user_id, entity_type, entity_id, action, source)
+  values ('00000000-0000-0000-0000-00000000000d', 'user',
+          '00000000-0000-0000-0000-00000000000d', 'admin_strike', 'test');
+select is(
+  (select count(*)::int from public.moderation_events
+    where subject_user_id = '00000000-0000-0000-0000-00000000000d'
+      and public.is_strike_action(action)),
+  7,
+  'seven strike rows sit on the account'
+);
+select is(
+  (select status::text from public.users
+    where id = '00000000-0000-0000-0000-00000000000d'),
+  'active',
+  'but six aged out, so the ladder counts one and the account stays open'
+);
+select is(
+  (select count(*)::int from public.moderation_events
+    where subject_user_id = '00000000-0000-0000-0000-00000000000d'
+      and action in ('warning_issued', 'suspended', 'banned')),
+  0,
+  'no rung is reached by strikes that have aged out'
+);
+
 
 -- Flag back off: direct delivery returns.
 update public.app_config set value = 'false'::jsonb where key = 'require_llm_moderation';
@@ -797,6 +878,12 @@ select is(
   (select reason::text from public.admin_report_queue limit 1),
   'underage',
   'an underage report sorts ahead of every older open report'
+);
+select is(
+  (select distinct reported_user_strikes::int from public.admin_report_queue
+    where reported_user_id = '00000000-0000-0000-0000-00000000000d'),
+  1,
+  'the triage queue counts strikes over the same ninety days the ladder does'
 );
 
 select * from finish();

@@ -41,6 +41,7 @@ import { LoadError } from '@/components/ui/load-error';
 import { HitTarget, MaxContentWidth, Motion, Radius, Spacing } from '@/constants/theme';
 import { useIncomingRequests, useMyChats, useSentRequests } from '@/features/matching/hooks';
 import { IncomingRequestCard } from '@/features/matching/incoming-request-card';
+import { waitingRows } from '@/features/matching/sent-rows';
 import { usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
 import { useTabBarInset } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
@@ -74,6 +75,13 @@ function SentHelloRow({ request, last = false }: { request: SentRequestRow; last
   const { data: photos = [] } = usePublicPhotos(request.recipient_id);
   const photoPath = photos.find((p) => p.position === 0)?.storage_path ?? null;
   const name = profile?.display_name ?? 'Traveler';
+  // Stopped by the classifier AFTER this screen had already said it was on
+  // its way. The row used to disappear on the next refetch, which meant the
+  // app confirmed a message and then deleted the only copy of it - and a
+  // first message is one shot per pair for ever, so there was no way back.
+  // This is the sender's own text and our own moderation of it, so saying so
+  // reveals nothing about the person it was aimed at.
+  const notDelivered = request.state === 'blocked' && request.blocked_after_send;
 
   // The same row geometry as a conversation, quieter. A hello with no answer
   // is not a chat yet — tapping it opens a profile, not a thread — so the
@@ -82,10 +90,34 @@ function SentHelloRow({ request, last = false }: { request: SentRequestRow; last
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={`You said hi to ${name}`}
-      accessibilityHint="Opens their profile"
+      accessibilityLabel={
+        notDelivered ? `Your message to ${name} was not delivered` : `You said hi to ${name}`
+      }
+      accessibilityHint={
+        notDelivered ? 'Opens the message so you can rewrite it' : 'Opens their profile'
+      }
       scaleTo={0.99}
-      onPress={() => router.push(`/profile/${request.recipient_id}`)}>
+      onPress={() =>
+        notDelivered
+          ? router.push({
+              pathname: '/compose-request',
+              params: {
+                userId: request.recipient_id,
+                name,
+                photoPath: photoPath ?? '',
+                source: request.source,
+                element: request.profile_element ?? 'trip',
+                // The whole reason the retry is cheap: the composer prefills
+                // from `draft`, so nothing anybody wrote has to be typed
+                // twice.
+                draft: request.first_message,
+                // So the composer can say the two things a rewriter cannot
+                // guess: it gets screened again, and it spends one of today's.
+                retry: '1',
+              },
+            })
+          : router.push(`/profile/${request.recipient_id}`)
+      }>
       <View style={rowStyles.row}>
         <View style={rowStyles.unreadGutter} />
         <Avatar path={photoPath} size={AVATAR - 8} />
@@ -107,11 +139,17 @@ function SentHelloRow({ request, last = false }: { request: SentRequestRow; last
               looked exactly as live as one from an hour ago - and that is
               the one thing this column may say. It is the conversation
               rows' own helper, so the vocabulary matches the list it sits
-              in; it must never become a status, because the row's whole
-              contract is that it never reveals a read, a decline or a
-              moderation stop. */}
-          <ThemedText type="footnote" themeColor="textSecondary">
-            {rowTimestamp(request.created_at)}
+              in.
+
+              The rule it must keep is about the RECIPIENT, not about status
+              in general: this column may never reveal a read, a decline, or
+              anything the person written to did. It may say the one thing
+              that is entirely the sender's own business — that their own
+              message never left — because a hello stopped by the classifier
+              is news the sender needs and news the recipient never had. So:
+              a time, or 'Not delivered', and nothing else ever. */}
+          <ThemedText type="footnote" themeColor={notDelivered ? 'warning' : 'textSecondary'}>
+            {notDelivered ? 'Not delivered' : rowTimestamp(request.created_at)}
           </ThemedText>
         </View>
         {last ? null : <View style={[rowStyles.separator, { backgroundColor: theme.hairline }]} />}
@@ -564,7 +602,13 @@ type ChatSectionRow =
   | { kind: 'waitingRow'; requests: IncomingRequestRow[] }
   | { kind: 'sent'; request: SentRequestRow; last: boolean };
 
-type ChatSection = { key: string; title: string | null; data: ChatSectionRow[] };
+type ChatSection = {
+  key: string;
+  title: string | null;
+  /** A standing line under the heading, for a section that needs explaining. */
+  note?: string;
+  data: ChatSectionRow[];
+};
 
 /**
  * The key a row is known by, which is also the key `onViewableItemsChanged`
@@ -717,9 +761,12 @@ export default function ChatScreen() {
   const pinned = inTab.filter((c) => c.pinned);
   const rest = inTab.filter((c) => !c.pinned);
   const tabs = tabsWithCounts(chats, requests.length);
-  // 'sent' only. An accepted request already has a chat row of its own, and
-  // 'blocked' is the sender's own doing — neither belongs in a waiting list.
-  const waitingOnThem = sentRequests.filter((request) => request.state === 'sent');
+  // An accepted hello already has a chat row of its own, and a block the
+  // PREFILTER made was refused in the composer with the text still in the box
+  // — neither belongs in a waiting list. A block the CLASSIFIER made after
+  // this screen confirmed the send does: nobody was told, and dropping the
+  // row is how the app deletes the only copy of what somebody wrote.
+  const waitingOnThem = waitingRows(sentRequests);
   // A message landing anywhere refreshes the rows while you are looking at
   // them, so the dot and the badge appear without a pull-to-refresh.
   useLiveChatList();
@@ -926,6 +973,19 @@ export default function ChatScreen() {
     sections.push({
       key: 'said-hi',
       title: 'You said hi',
+      // The durable half of the sent confirmation. That card lives about a
+      // second; this is where somebody comes looking a day later, wondering
+      // whether silence means no. It never does, and saying so here is what
+      // keeps the app from having to say anything about the other person.
+      // Only when something IS waiting. This section now also holds hellos
+      // the classifier stopped after sending, whose row reads 'Not delivered'
+      // — and a heading saying "waiting on an answer" directly above one of
+      // those tells somebody their message is with a person who has not
+      // replied, when in fact it never left. Scoped rather than reworded: the
+      // sentence is the right one for the rows it is true of.
+      note: waitingOnThem.some((request) => !request.blocked_after_send)
+        ? 'Waiting on an answer. You only hear back when somebody replies.'
+        : undefined,
       data: waitingOnThem.map((request, i) => ({
         kind: 'sent' as const,
         request,
@@ -1083,12 +1143,19 @@ export default function ChatScreen() {
             contentContainerStyle={{ paddingBottom: tabBarInset + Spacing.six }}
             renderSectionHeader={({ section }) =>
               section.title ? (
-                <ThemedText
-                  type="smallBold"
-                  themeColor="textSecondary"
-                  style={styles.listSectionHeading}>
-                  {section.title}
-                </ThemedText>
+                <View style={styles.listSectionHeading}>
+                  <ThemedText type="smallBold" themeColor="textSecondary">
+                    {section.title}
+                  </ThemedText>
+                  {section.note ? (
+                    <ThemedText
+                      type="footnote"
+                      themeColor="textSecondary"
+                      style={styles.listSectionNote}>
+                      {section.note}
+                    </ThemedText>
+                  ) : null}
+                </View>
               ) : (
                 // The gap a heading would have carried, so an unlabelled section
                 // does not run straight into the one above it.
@@ -1365,6 +1432,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     paddingTop: Spacing.three + Spacing.two,
     paddingBottom: Spacing.three,
+  },
+  /* The standing line some headings carry. Sits under the heading, in the
+     same gutter, so it reads as part of it rather than as a first row. */
+  listSectionNote: {
+    paddingTop: Spacing.one,
   },
   /* The line that says the other segment has something on it. Centred with
      the block it sits in. */

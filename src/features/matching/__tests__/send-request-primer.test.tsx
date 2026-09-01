@@ -60,6 +60,7 @@ const sendHello = async () => {
       source: 'trip_match',
       firstMessage: 'Both in Bangkok next week, up for a market run?',
       profileElement: 'trip',
+      everFlagged: false,
     });
   });
   // Let the mutation's own notify settle inside act, then drop everything.

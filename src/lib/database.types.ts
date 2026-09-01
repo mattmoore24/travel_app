@@ -512,6 +512,14 @@ export type SentRequestRow = {
   created_at: string;
   /** When the sweep ended this hello; null while it is still answerable. */
   expired_at: string | null;
+  /**
+   * True when the classifier stopped this message AFTER the app had already
+   * confirmed it was on its way, rather than the prefilter refusing it in
+   * the composer. The sender was never told about the first kind, so the row
+   * has to survive somewhere they can find it: see
+   * src/features/matching/sent-rows.ts.
+   */
+  blocked_after_send: boolean;
 };
 
 /** Row shape returned by my_chats(), pinned first then by last activity. */
@@ -799,7 +807,17 @@ export type PushPayload =
    * somebody on a screen that cannot help. `report_id` is carried for the
    * reviewer's own copy-paste, not for routing.
    */
-  | { type: 'report'; report_id: string };
+  | { type: 'report'; report_id: string }
+  /**
+   * One of the three within-trip clocks (20260902040000): your trip starts
+   * tomorrow. The other two are plan clocks and ride the 'message' payload,
+   * because what they open is the plan's own chat.
+   *
+   * `city_id` is carried for the reader's own copy, not for routing: the tap
+   * opens Travelers, which shows the city the app already knows they are
+   * browsing.
+   */
+  | { type: 'trip'; city_id: number };
 
 export type VerificationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -968,6 +986,18 @@ export type Database = {
         Row: ProfileRow;
         Insert: never;
         Update: ProfileUpdate;
+        Relationships: [];
+      };
+      /**
+       * The one notification switch this app owns. `chat` exists in the table
+       * and is deliberately absent here: nothing reads it and no screen
+       * offers it, so a client that could write it would be writing a
+       * preference that does nothing.
+       */
+      notification_prefs: {
+        Row: { user_id: string; trip_clocks: boolean; created_at: string };
+        Insert: { user_id: string; trip_clocks?: boolean };
+        Update: { trip_clocks?: boolean };
         Relationships: [];
       };
       profile_prompts: {

@@ -201,9 +201,9 @@ select is(
 reset role;
 select is(
   (select count(*)::int from public.moderation_events
-   where entity_type = 'message_request' and action = 'blocked'),
+   where entity_type = 'message_request' and action = 'prefilter_blocked'),
   1,
-  'blocked verdict is audit-logged'
+  'the prefilter verdict is audit-logged under its own non-strike action'
 );
 
 -- The sender can rewrite and retry after a block…

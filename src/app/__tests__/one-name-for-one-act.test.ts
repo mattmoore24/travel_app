@@ -34,9 +34,10 @@ function readableText(code: string): string[] {
   return [...literals, ...jsxText];
 }
 
-/** The two spellings that are not the noun: an email placeholder, and the
- *  PrimerReason literal a test elsewhere pins. */
-const allowed = (text: string): boolean => /hello@|hello-sent/i.test(text);
+/** The spellings that are not the noun: an email placeholder, and the
+ *  PrimerReason literals a test elsewhere pins. 'hello-received' is the
+ *  inbound ask's reason key and is never rendered. */
+const allowed = (text: string): boolean => /hello@|hello-(sent|received)/i.test(text);
 
 it('never shows a person the word "hello"', () => {
   const offenders = walk(SRC).flatMap((file) => {

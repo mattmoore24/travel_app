@@ -238,10 +238,19 @@ moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structure
   filed while held, a sender no longer plain-active, a recipient turned invisible, or a
   chat already formed via the reverse direction all end in a silent decline — and
   `sever_on_block` also declines held requests.
-- **Strike ladder** (trigger on `moderation_events`; strike actions: `blocked`,
-  `llm_blocked`, `photo_rejected`, `admin_strike`): 3 strikes → warning (event + push),
-  5 → 7-day suspension, 7 → permanent ban. Deterministic, advisory-locked per user,
-  audit-logged. Suspensions lift via `lift_expired_suspensions()` (pg_cron, guarded).
+- **Strike ladder** (trigger on `moderation_events`; strike actions: `llm_blocked`,
+  `photo_rejected`, `admin_strike`, and the historical `blocked`): 3 strikes → warning
+  (event + push), 5 → 7-day suspension, 7 → permanent ban, counted over a **rolling
+  90 days**. Deterministic, advisory-locked per user, audit-logged. Suspensions lift via
+  `lift_expired_suspensions()` (pg_cron, guarded).
+  **A prefilter block is not a strike.** The regex prefilter writes
+  `prefilter_blocked` (20260902010000), which is deliberately absent from
+  `is_strike_action`: it is a guess nobody read, and the composer's own copy tells the
+  writer to reword and send again, so three tries at the same unlucky phrase must not be
+  a warning. Same reasoning as `blocked_failsafe` on the LLM side. The action is still
+  audited, because `admin_moderation_stats` needs it for the creep early-warning.
+  `blocked` stays on the strike list only so pre-rename history keeps its meaning;
+  nothing writes it any more.
 - **Standing gates at the DB layer**: suspended/banned callers are refused by
   `send_message_request`, `respond_to_message_request`, `submit_verification`, and
   `can_send_in_chat` (chat RLS). Shadowbanned users get the full illusion instead: their
@@ -1177,6 +1186,28 @@ Hebrew to the listing is not a metadata change; it is that retrofit first.
 - **2026-08-17 (Phase 5)** — Strikes are derived from `moderation_events` (the audit spine)
   rather than a separate counter table: every strike is inherently evidence-backed, and the
   ladder is re-computable.
+- **2026-09-01** — Strikes decay: the ladder counts a **rolling 90 days**, and the regex
+  prefilter's blocks are not strikes at all. This reverses "strikes never expire in v1",
+  which was written before the prefilter's false-positive rate was known: a lifetime
+  counter closes an account in month eighteen for four bad nights spread over two years,
+  and every rung of the ladder was being fed by a guess the app itself invited people to
+  retry. `admin_report_queue` uses the same window so the reviewer's count and the
+  ladder's count cannot disagree.
+- **2026-09-01** — The app sends a **fourth kind of notification**: three within-trip clocks
+  (`push_trip_starts_tomorrow`, `push_plan_is_soon`, `push_last_call`, all hourly under the
+  pg_cron guard, 20260902040000). Every one is about the reader's OWN trip or OWN plan; a
+  push reporting somebody else's activity is explicitly not covered and may not be added
+  under this decision. The primer's promise was rewritten to name the fourth kind in the
+  same bundle, before anybody was asked under it. `notification_prefs.trip_clocks`
+  (default true, RLS to `auth.uid()`) switches only these three off; a chat push or an
+  account notice must NEVER consult it, which pgTAP 49 asserts. The trip clock's body
+  states an overlap count only when it is at least that city's `launch_cities.heat_k` —
+  hard rule 6 applied to a sentence rather than to a map cell.
+- **2026-09-01** — The home-screen badge is computed **at drain time**, not at enqueue
+  time: `waiting_counts(uuid[])` (definer, revoked from every client role) is called once
+  per push-worker batch. A `badge` column on `push_queue` would freeze the number at
+  enqueue and would need populating at thirty-odd write sites. The client half is
+  `useIconBadge(waiting)` beside the tab badge, so the icon and the tab cannot disagree.
 - **2026-08-17 (Phase 5)** — Selfie verification ships as an honest Claude-vision likeness
   check (labeled as such in the UI), not fake "identity verification"; certified liveness
   is a vendor decision deferred until fraud data justifies the cost.

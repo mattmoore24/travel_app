@@ -167,8 +167,13 @@ describe('the notification primer', () => {
   it('does not raise the traveler sheet to ask it', () => {
     // push-primer.tsx keys its copy on PrimerReason and speaks to travelers
     // ("Want to know when they answer?"). A business is asked on its own
-    // screen instead, so the sheet's slot stays a traveler's.
-    expect(store).toContain("export type PrimerReason = 'hello-sent' | 'pin-posted';");
+    // screen instead, so the sheet's slot stays a traveler's. PrimerReason
+    // grew a third traveler moment when the primer learned to ask twice;
+    // what must never happen is 'listing-live' joining it.
+    expect(store).toContain(
+      "export type PrimerReason = 'hello-sent' | 'pin-posted' | 'hello-received';"
+    );
+    expect(store.slice(0, store.indexOf('BusinessPrimerReason'))).not.toContain('listing-live');
     const askBusiness = store.slice(store.indexOf('askBusiness: async'));
     expect(askBusiness.slice(0, 400)).toContain('set({ asking: reason });');
   });

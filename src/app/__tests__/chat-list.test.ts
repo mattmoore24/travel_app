@@ -76,20 +76,29 @@ describe('the chat list is a list, not a stack of cards', () => {
     // age, so a hello from three weeks ago in a city you have left looked
     // exactly as live as one from an hour ago. It is the conversation rows'
     // own helper now, so the two vocabularies match.
-    expect(code).toContain('{rowTimestamp(request.created_at)}');
+    expect(code).toContain("notDelivered ? 'Not delivered' : rowTimestamp(request.created_at)");
     expect(code).toMatch(/import \{ rowTimestamp \} from '@\/features\/chat\/separators';/);
   });
 
-  it('never lets that column become a status', () => {
-    // Rules 4 and 5 live in this one row: a sender may never learn a read, a
-    // decline, or a moderation stop. sent_requests() collapses all three
-    // into a flat 'sent', and the nightly sweep does not even add a word -
-    // it stamps expired_at and leaves the state alone, so that an
-    // over-the-air update meeting an older bundle cannot break it. The
-    // screen has nothing to branch on, and must not try.
+  it('never lets that column say anything about the other person', () => {
+    // Rules 4 and 5 live in this one row: a sender may never learn a read or
+    // a decline. sent_requests() collapses delivered, declined and expired
+    // into a flat 'sent', and the nightly sweep does not even add a word - it
+    // stamps expired_at and leaves the state alone, so an over-the-air update
+    // meeting an older bundle cannot break it. The screen has nothing to
+    // branch on there, and must not try.
     expect(code).not.toContain("'declined'");
     expect(code).not.toContain("'expired'");
-    expect(code).not.toContain("'blocked'");
+    // The ONE thing it may now say, and the reason the rule reads this way
+    // rather than banning the word: a message the classifier stopped AFTER
+    // this screen confirmed it is our own moderation of the sender's own
+    // text. Nothing about the recipient is in it, and the alternative was
+    // deleting the only copy of what somebody wrote. So the only permitted
+    // branch on 'blocked' is the after-send one, in the row and in the
+    // filter that puts it there.
+    expect(code.match(/'blocked'/g)).toHaveLength(1);
+    expect(code).toContain("request.state === 'blocked' && request.blocked_after_send");
+    expect(code).toContain('const waitingOnThem = waitingRows(sentRequests);');
   });
 
   it('puts the unread mark outside the text column', () => {

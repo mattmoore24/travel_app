@@ -12,13 +12,14 @@ import {
   pushPossible,
   type PushPermission,
 } from '@/features/notifications/push';
+import { useTripClocks } from '@/features/notifications/use-notification-prefs';
 
 /**
- * The undo for the one-time primer.
+ * The undo for the primer.
  *
- * The primer asks once, at an earned moment, and never again - so without
- * this row a "not now" silences every reply and every account notice forever,
- * with nothing anywhere saying that is the state you are in.
+ * The primer asks at most twice, at earned moments, and then never again - so
+ * without this row a "not now" silences every reply and every account notice
+ * forever, with nothing anywhere saying that is the state you are in.
  *
  * The row reads the OS, never the AsyncStorage primer flag: the flag records
  * that we asked, not what iOS holds today, so an owner who flipped the switch
@@ -93,9 +94,12 @@ export function NotificationsRow() {
     <ThemedView type="backgroundElement" style={styles.card}>
       <ThemedText type="smallBold">Notifications</ThemedText>
       {state === 'granted' ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          On. First messages, replies, and anything about your account.
-        </ThemedText>
+        <>
+          <ThemedText type="small" themeColor="textSecondary">
+            On. First messages, replies, your own trips and plans, and anything about your account.
+          </ThemedText>
+          <TripClocksLine />
+        </>
       ) : null}
       {state === 'undetermined' ? (
         <>
@@ -126,6 +130,47 @@ export function NotificationsRow() {
         </>
       ) : null}
     </ThemedView>
+  );
+}
+
+/**
+ * The second line, and the only notification switch this app owns.
+ *
+ * Only under `granted`: a preference about which pushes arrive is nonsense
+ * on a phone that has refused all of them, and offering it there would be
+ * the same lie as a switch for a channel that cannot deliver.
+ *
+ * A ghost button rather than a platform Switch, because this app has no
+ * Switch anywhere and one control introduced for one row is a vocabulary of
+ * its own. It carries the switch ROLE and state so VoiceOver reads it as
+ * what it is.
+ */
+function TripClocksLine() {
+  const { on, set, saving } = useTripClocks();
+
+  return (
+    <>
+      <ThemedText type="small" themeColor="textSecondary">
+        {on
+          ? 'Trip reminders are on. The evening before a trip starts, and when a plan you are in is happening.'
+          : 'Trip reminders are off. Replies and account notices still arrive.'}
+      </ThemedText>
+      <PrimaryButton
+        variant="ghost"
+        label={on ? 'Turn off trip reminders' : 'Turn on trip reminders'}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: on, disabled: saving }}
+        // The SAME words that are written on it. PressableProps spread last
+        // in PrimaryButton, so an accessibility label here replaces the
+        // visible one outright — and it used to say "Trip reminders", which
+        // meant a Voice Control user reading the button in front of them and
+        // saying "Tap Turn off trip reminders" got nothing at all. Whatever
+        // is written on a control has to be part of what it answers to.
+        accessibilityLabel={on ? 'Turn off trip reminders' : 'Turn on trip reminders'}
+        disabled={saving}
+        onPress={() => set(!on)}
+      />
+    </>
   );
 }
 

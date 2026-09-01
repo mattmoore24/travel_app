@@ -59,6 +59,10 @@ describe('routeForPayload', () => {
     [{ type: 'message', chat_id: 'c1' }, '/chat/c1'],
     [{ type: 'accepted', chat_id: 'c2' }, '/chat/c2'],
     [{ type: 'request' }, '/(tabs)/chat'],
+    // "Bangkok tomorrow. 14 travelers are there on your dates." The sentence
+    // is about people, so the tap has to land on the screen that shows
+    // people. A clock that opens the wrong screen is worse than no clock.
+    [{ type: 'trip', city_id: 1609350 }, '/(tabs)/travelers'],
     [{ type: 'moderation' }, '/guidelines'],
     [{ type: 'verification' }, '/verification'],
     [{ type: 'support' }, '/contact'],

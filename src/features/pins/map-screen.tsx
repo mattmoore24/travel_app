@@ -1643,7 +1643,7 @@ export default function MapScreen() {
       return;
     }
     let alive = true;
-    void canAskPrimer().then((worth) => {
+    void canAskPrimer('pin-posted').then((worth) => {
       if (alive) {
         setFirstPinAskable(worth);
       }

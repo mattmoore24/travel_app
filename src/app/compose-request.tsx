@@ -66,12 +66,19 @@ export default function ComposeRequestScreen() {
     targetQuote?: string;
     /** Opening line supplied by the surface that sent you here (e.g. a pin). */
     draft?: string;
+    /**
+     * '1' when this is a rewrite of a hello the classifier stopped after the
+     * app had already confirmed it. The two facts a rewriter cannot guess:
+     * it gets screened again, and it spends one of the day's allowance.
+     */
+    retry?: string;
   }>();
   const { data: photoUrl } = usePhotoUrl(params.photoPath || null);
   const { data: targetPhotoUrl } = usePhotoUrl(params.targetPhoto || null);
   const sendRequest = useSendRequest();
 
   const source = params.source === 'pin' ? ('pin' as const) : ('trip_match' as const);
+  const isRetry = params.retry === '1';
   // Only Travelers floats a strip after a send, and only it clears the
   // store, so anything that did not come from Travelers has to say so or a
   // hello sent from the map paints a stale confirmation on a tab that had
@@ -112,7 +119,11 @@ export default function ComposeRequestScreen() {
   // rewriting a blocked message typing with no guidance and manufacturing
   // the second strike by pressing Send to find out. The preview RPC is
   // read-only and swallows its own errors, so leaving it on costs nothing.
-  const { risky, category: draftCategory } = useDraftWarning(message, true);
+  const {
+    risky,
+    category: draftCategory,
+    everFlagged,
+  } = useDraftWarning(message, true, 'first_message');
   // The composer's own confirmation. Sending used to dismiss the screen with
   // no acknowledgement at all: the same nothing you get from a failed tap.
   const [sent, setSent] = useState(false);
@@ -170,6 +181,7 @@ export default function ComposeRequestScreen() {
         source,
         firstMessage: message.trim(),
         profileElement: element,
+        everFlagged,
       });
       if (result.capped) {
         haptics.error();
@@ -273,7 +285,11 @@ export default function ComposeRequestScreen() {
       <StepScreen
         scrollRef={scrollRef}
         title={`Say hi to ${params.name ?? 'this traveler'}`}
-        subtitle="They see this and your profile. If they reply, your chat opens."
+        subtitle={
+          isRetry
+            ? "This one did not go through. A rewrite gets checked again and counts as one of today's first messages."
+            : 'They see this and your profile. If they reply, your chat opens.'
+        }
         continueLabel="Send"
         continueDisabled={message.trim().length === 0 || messageLength(message) > MESSAGE_MAX}
         continueLoading={sendRequest.isPending}

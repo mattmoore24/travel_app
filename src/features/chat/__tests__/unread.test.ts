@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { firstUnreadId, isWaiting, waitingInSegment, waitingTotal } from '@/features/chat/unread';
 import type { ChatListRow } from '@/lib/database.types';
 
@@ -123,5 +126,61 @@ describe('firstUnreadId', () => {
 
   it('is nothing at all in a thread of only your own messages', () => {
     expect(firstUnreadId([said('m1', 'me')], 'me', 1)).toBeNull();
+  });
+});
+
+/**
+ * The number the tab badge shows and the number the home-screen icon shows
+ * are the same number, and they are computed in two different languages.
+ *
+ * waitingTotal is TypeScript; waiting_counts() is SQL, because the push
+ * worker has to know the count for somebody whose app is not running. Two
+ * definitions of "waiting" that can drift apart is the whole risk in that
+ * change. The pgTAP asserts the SQL against my_chats; this asserts that the
+ * SQL still SAYS what this file does, clause by clause, so an edit to one
+ * side is visible from the other.
+ */
+describe('the badge number, in both languages', () => {
+  const sql = fs.readFileSync(
+    path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'supabase',
+      'migrations',
+      '20260902030000_the_icon_carries_the_count.sql'
+    ),
+    'utf8'
+  );
+
+  it('agrees with the SQL on a mixed inbox', () => {
+    const inbox = [
+      chat({ unread_count: 2 }),
+      chat({ unread_count: 1, muted: true }),
+      chat({ unread_count: 0 }),
+      chat({ unread_count: 5, kind: 'room' }),
+    ];
+    // What the SQL counts, read off its own predicate: not archived, not
+    // muted, and something in it from somebody else.
+    const asSqlCounts =
+      inbox.filter((c) => !c.archived && !c.muted && c.unread_count > 0).length + 1;
+    expect(waitingTotal(inbox, 1)).toBe(asSqlCounts);
+    expect(waitingTotal(inbox, 1)).toBe(3);
+  });
+
+  it('keeps the SQL saying the same four things', () => {
+    // Muting is somebody saying do not interrupt me about this.
+    expect(sql).toContain('and not coalesce(pref.muted, false)');
+    // my_chats(false) is what the app reads, so an archived thread is off
+    // the list on both sides.
+    expect(sql).toContain('where pref.archived_at is null');
+    // Your own message is not something you are waiting on.
+    expect(sql).toContain('msg.sender_id <> u.id');
+    // And nothing unscreened is ever counted.
+    expect(sql).toContain("msg.moderation_status = 'approved'");
+    // Plus the hellos, which is the term that is not about chats at all.
+    expect(sql).toContain("where mr.recipient_id = u.id and mr.status = 'pending'");
   });
 });

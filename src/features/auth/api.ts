@@ -2,6 +2,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { Platform } from 'react-native';
 
 import { PASSWORD_RESET_REDIRECT } from '@/constants/links';
+import { clearIconBadge } from '@/features/notifications/badge';
 import { forgetPushToken } from '@/features/notifications/push';
 import { forgetAppleUser, rememberAppleUser } from '@/lib/apple-user';
 import { forgetLastEmail, rememberLastEmail } from '@/lib/last-email';
@@ -244,6 +245,10 @@ export async function signOut({ scope = 'local' }: { scope?: 'local' | 'global' 
   // again: today it is one bounded delete from a cached token, but sign-out
   // must never wait on the network regardless.
   await Promise.race([forgetPushToken(), new Promise<void>((r) => setTimeout(r, 4000))]);
+  // A shared phone must not carry this account's waiting count onto the next
+  // person's home screen, and nothing else would clear it until they opened
+  // the Chat tab. Alongside the token, for the same reason.
+  await clearIconBadge();
   // Immediately before the call that fires the event, never before the race:
   // the flag's window is a second wide and the race is allowed four.
   markDeliberateSignOut();
@@ -295,6 +300,7 @@ export async function signOutEverywhere() {
  */
 export async function endRevokedSession() {
   await Promise.race([forgetPushToken(), new Promise<void>((r) => setTimeout(r, 4000))]);
+  await clearIconBadge();
   // Local: revoking the credential is Apple's business with this device, and
   // a global revoke would sign the person out of a phone they still hold.
   await supabase.auth.signOut({ scope: 'local' }).catch(() => {});

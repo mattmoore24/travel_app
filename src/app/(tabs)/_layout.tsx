@@ -8,6 +8,7 @@ import { useIsGuest } from '@/features/guest/hooks';
 import { ConnectedNotice } from '@/features/matching/connected-notice';
 import { useAcceptedCelebration } from '@/features/matching/use-accepted-celebration';
 import { PushPrimer } from '@/features/notifications/push-primer';
+import { useHelloReceivedPrimer } from '@/features/notifications/use-hello-received-primer';
 import { useNotificationRouting } from '@/features/notifications/use-notification-routing';
 
 /**
@@ -169,6 +170,11 @@ function SignInHandoff() {
  */
 function NotificationRouting() {
   useNotificationRouting();
+  // Same component, on purpose: both need a mounted stack and a live session,
+  // and the primer's own sheet (PushPrimer, below) is the only thing that
+  // presents. A second presentation path for a data-driven modal is exactly
+  // what the traps skill says never to add.
+  useHelloReceivedPrimer();
   return null;
 }
 

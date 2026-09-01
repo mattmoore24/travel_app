@@ -15,6 +15,7 @@ const row = (
   chat_id: null,
   created_at: '2026-08-01T10:00:00Z',
   expired_at: expiredAt,
+  blocked_after_send: false,
 });
 
 /**

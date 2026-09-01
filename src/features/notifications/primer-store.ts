@@ -4,14 +4,46 @@ import { create } from 'zustand';
 import {
   enablePushNotifications,
   pushPermissionGranted,
+  pushPermissionState,
   pushPossible,
 } from '@/features/notifications/push';
 import { analytics } from '@/lib/analytics';
 
-const KEY = 'samewhere.push.primer.v1';
+/**
+ * One key per reason, plus one counting them.
+ *
+ * v1 was a single key: asked once, ever, whichever moment spent it. That
+ * rule was written down in this file in the founder's own words, and it was
+ * wrong for a reason nobody could see until the moments existed. Both of the
+ * moments are OUTBOUND - you sent a hello, you posted a pin - so somebody who
+ * finishes signup and then just browses for a week is never asked at all, and
+ * the highest-value notification this product has, somebody said hi to YOU,
+ * is discoverable only by opening the app and looking.
+ *
+ * So: per reason, with a lifetime cap of two asks. Two is not nagging, the
+ * settings row is the always-available third path, and the same reason is
+ * never asked twice however the first went.
+ *
+ * The v1 to v2 rename un-asks every existing device once. On a pre-launch
+ * app with no users that is free; shipped after launch it would be a
+ * one-time re-ask of everybody, which is worth knowing before shipping it
+ * late.
+ */
+const KEY_PREFIX = 'samewhere.push.primer.v2.';
+const COUNT_KEY = 'samewhere.push.primer.v2.asks';
 
-/** Why we are asking, which changes the sentence people read. */
-export type PrimerReason = 'hello-sent' | 'pin-posted';
+/** Two, ever, across every reason. */
+export const ASK_CAP = 2;
+
+/**
+ * Why we are asking, which changes the sentence people read.
+ *
+ * 'hello-received' is the inbound one and the reason the cap exists: it is
+ * the first moment somebody has written TO this person, and under the
+ * single-ask rule it could never be reached, because the outbound moments
+ * always came first or never came at all.
+ */
+export type PrimerReason = 'hello-sent' | 'pin-posted' | 'hello-received';
 
 /**
  * The same question, for the account that can do neither of those things.
@@ -40,10 +72,19 @@ type PrimerState = {
   /**
    * Offer to turn notifications on, if there is anything to offer.
    *
-   * Silently does nothing when notifications are already on, when this device
-   * cannot receive them at all (simulator, Expo Go, no EAS project), or when
-   * the offer has been made once already. Asking twice is how an app teaches
-   * somebody to reflexively decline.
+   * Silently does nothing when notifications are already on, when the OS has
+   * already been told no, when this device cannot receive them at all
+   * (simulator, Expo Go, no EAS project), when this same reason has been
+   * offered before, or when both of the account's asks are spent.
+   *
+   * This file used to say "asking twice is how an app teaches somebody to
+   * reflexively decline", and stopped at one ask for ever. The rule it
+   * produced was worse than the one it feared: every moment that could ask
+   * was one the person had just acted on, so somebody who reads rather than
+   * writes was never asked at all and the first hello landed in silence.
+   * Two, keyed per reason, is the founder's answer (2026-09-01) - and the
+   * same reason still never asks twice, which is the half of the old rule
+   * that was right.
    */
   ask: (reason: PrimerReason) => Promise<void>;
   /**
@@ -62,14 +103,14 @@ type PrimerState = {
    * push impossible on this device, a question already open) must not be
    * offered at all. Read-only — records nothing, shows nothing.
    */
-  canAsk: () => Promise<boolean>;
+  canAsk: (reason: PrimerReason | BusinessPrimerReason) => Promise<boolean>;
   accept: () => Promise<void>;
   decline: () => Promise<void>;
 };
 
-async function alreadyOffered(): Promise<boolean> {
+async function offeredFor(reason: PrimerReason | BusinessPrimerReason): Promise<boolean> {
   try {
-    return (await AsyncStorage.getItem(KEY)) != null;
+    return (await AsyncStorage.getItem(KEY_PREFIX + reason)) != null;
   } catch {
     // A device that cannot read this is one that will be asked once more.
     // Better than never asking at all.
@@ -77,9 +118,27 @@ async function alreadyOffered(): Promise<boolean> {
   }
 }
 
-async function markOffered(): Promise<void> {
+/** How many of the account's two asks have been spent, across all reasons. */
+async function asksSpent(): Promise<number> {
   try {
-    await AsyncStorage.setItem(KEY, new Date().toISOString());
+    const raw = await AsyncStorage.getItem(COUNT_KEY);
+    const spent = raw == null ? 0 : Number.parseInt(raw, 10);
+    return Number.isFinite(spent) && spent > 0 ? spent : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function markOffered(reason: PrimerReason | BusinessPrimerReason): Promise<void> {
+  try {
+    // Idempotent: answering the same question twice (a re-render racing the
+    // OS dialog) must not burn both asks.
+    if ((await AsyncStorage.getItem(KEY_PREFIX + reason)) != null) {
+      return;
+    }
+    const spent = await asksSpent();
+    await AsyncStorage.setItem(KEY_PREFIX + reason, new Date().toISOString());
+    await AsyncStorage.setItem(COUNT_KEY, String(spent + 1));
   } catch {
     // Nothing to do: worst case the offer is made again next launch.
   }
@@ -95,11 +154,25 @@ async function markOffered(): Promise<void> {
  * alike — so a simulator, Expo Go, or a build with no EAS project id got the
  * sheet, and tapping "Notify me" registered nothing.
  */
-async function worthAsking(open: PrimerReason | BusinessPrimerReason | null): Promise<boolean> {
+async function worthAsking(
+  open: PrimerReason | BusinessPrimerReason | null,
+  reason: PrimerReason | BusinessPrimerReason
+): Promise<boolean> {
   if (!pushPossible()) {
     return false;
   }
-  return !(open != null || (await alreadyOffered()) || (await pushPermissionGranted()));
+  if (open != null || (await offeredFor(reason)) || (await asksSpent()) >= ASK_CAP) {
+    return false;
+  }
+  if (await pushPermissionGranted()) {
+    return false;
+  }
+  // The clause the single-key version could not express. pushPermissionGranted
+  // answers false for "not yet" and for "the OS has already been told no"
+  // alike, so a re-armed sheet would offer a Notify me that calls
+  // requestPermissionsAsync, gets 'denied' back in the same frame, and
+  // registers nothing. Once iOS has the answer, only Settings can change it.
+  return (await pushPermissionState()) !== 'denied';
 }
 
 export const usePushPrimer = create<PrimerState>((set, get) => ({
@@ -108,7 +181,7 @@ export const usePushPrimer = create<PrimerState>((set, get) => ({
   busy: false,
 
   ask: async (reason) => {
-    if (!(await worthAsking(get().asking ?? get().reason))) {
+    if (!(await worthAsking(get().asking ?? get().reason, reason))) {
       return;
     }
     analytics.capture('push_primer_shown', { reason });
@@ -116,7 +189,7 @@ export const usePushPrimer = create<PrimerState>((set, get) => ({
   },
 
   askBusiness: async (reason) => {
-    if (!(await worthAsking(get().asking ?? get().reason))) {
+    if (!(await worthAsking(get().asking ?? get().reason, reason))) {
       return false;
     }
     analytics.capture('push_primer_shown', { reason });
@@ -126,14 +199,16 @@ export const usePushPrimer = create<PrimerState>((set, get) => ({
     return true;
   },
 
-  canAsk: () => worthAsking(get().asking ?? get().reason),
+  canAsk: (reason) => worthAsking(get().asking ?? get().reason, reason),
 
   accept: async () => {
     const reason = get().asking ?? get().reason;
     set({ busy: true });
     // Marked before the OS dialog, not after: whichever way that goes, the
     // question has been asked, and iOS only ever shows it once anyway.
-    await markOffered();
+    if (reason != null) {
+      await markOffered(reason);
+    }
     const result = await enablePushNotifications();
     analytics.capture('push_primer_answered', { reason: reason ?? '', answer: result });
     set({ reason: null, asking: null, busy: false });
@@ -141,7 +216,9 @@ export const usePushPrimer = create<PrimerState>((set, get) => ({
 
   decline: async () => {
     const reason = get().asking ?? get().reason;
-    await markOffered();
+    if (reason != null) {
+      await markOffered(reason);
+    }
     analytics.capture('push_primer_answered', { reason: reason ?? '', answer: 'not_now' });
     set({ reason: null, asking: null });
   },

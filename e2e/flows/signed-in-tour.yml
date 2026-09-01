@@ -227,6 +227,59 @@ appId: com.mattmoore.samewhere
     timeout: 30000
 - tapOn: 'Travelers'
 - takeScreenshot: 17-travelers-signed-in
+# THE COMPOSER, PHOTOGRAPHED. The say-hi composer is this product's
+# chokepoint and not one of the tour's PNGs had ever shown it: no field, no
+# anchor card, no counter, no warning. Reading the source and imagining the
+# result is exactly how a screen with two concatenated fields passed review
+# once, so it gets photographed here, one tap from a screen that needs
+# nobody else on it.
+#
+# Nothing is SENT here. A first message is one shot per pair for ever
+# (20260816200000:394), and the tour already spends its one send further
+# down, on the strip after a hello. This visit types, gets warned, and
+# throws the draft away.
+#
+# The numbering skips 17a-17d, which the passed-undo, said-hi, safety and
+# anchor frames already hold. Two flows photographing the same screens under
+# clashing names is a gallery nobody can read.
+- tapOn: 'Say hi'
+# The FIELD's label, not the title: the title repeats the button's own words
+# and would match the Travelers screen behind it, the same trap the group
+# name step further down already guards against.
+- extendedWaitUntil:
+    visible: 'Your first message'
+    timeout: 15000
+- takeScreenshot: 17e-composer
+- tapOn:
+    id: 'first-message-input'
+- inputText: 'Hey, I am in Bangkok the same week. Any good night markets?'
+- takeScreenshot: 17f-composer-typed
+# The live warning. It is a debounced network round trip (700ms of debounce
+# plus the RPC), so this waits rather than asserting, and waits generously:
+# a cold function is slow the first time and a bare assertVisible here would
+# be a flake factory.
+- eraseText: 100
+- inputText: 'Want to hook up at the night market?'
+- extendedWaitUntil:
+    visible: 'This might not go through'
+    timeout: 15000
+- takeScreenshot: 17g-composer-warned
+# Out, through the announced exit and the guard that stops a pull-down
+# throwing away something somebody wrote. The assertNotVisible is what
+# proves the tap LANDED: the composer is a presented modal, and a Close that
+# silently did nothing is the shape of the dropped-presentation bug (traps).
+- tapOn: 'Close'
+- extendedWaitUntil:
+    visible: 'Discard'
+    timeout: 10000
+# The fourth frame the package asks for. The guard is exercised by the steps
+# above but was never photographed, so its copy and its button order were the
+# one part of this composer nobody could check by eye.
+- takeScreenshot: 17h-composer-discard
+- tapOn: 'Discard'
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertNotVisible: 'Your first message'
 # THE QUEUE HAS SCOPE NOW. The header line above the hero says how many
 # people are behind this one. The count depends on live supply, so the
 # pattern covers the three wordings the helper can produce — but nothing

@@ -19,6 +19,9 @@ import { consumeDeliberateSignOut, signOut, signOutWasDeliberate } from '@/featu
 // app makes, so the tests drive the exported pair around a simulated raise.
 jest.mock('@/features/notifications/push', () => ({
   forgetPushToken: jest.fn(async () => {}),
+  // signOut also wipes the icon badge on the way out, and badge.ts asks this
+  // first. Nothing here is about a device that can receive a push.
+  pushPossible: jest.fn(() => false),
 }));
 
 jest.mock('@/lib/apple-user', () => ({

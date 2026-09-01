@@ -30,6 +30,15 @@ jest.mock('@/features/notifications/push', () => ({
   enablePushNotifications: jest.fn(async () => 'registered'),
 }));
 
+// The one switch this app owns. Mocked here because the row's subject is the
+// OS state; what the switch DOES is a query and a write, tested where those
+// live.
+const mockSetClocks = jest.fn();
+const mockClocks = { on: true };
+jest.mock('@/features/notifications/use-notification-prefs', () => ({
+  useTripClocks: () => ({ on: mockClocks.on, set: mockSetClocks, saving: false }),
+}));
+
 const mockState = pushPermissionState as jest.Mock;
 const mockPossible = pushPossible as jest.Mock;
 const mockEnable = enablePushNotifications as jest.Mock;
@@ -38,6 +47,7 @@ let openSettings: jest.SpyInstance;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockClocks.on = true;
   mockPossible.mockReturnValue(true);
   openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
 });
@@ -50,9 +60,43 @@ describe('the Notifications row', () => {
   it('says what is on, exactly, when the OS says granted', async () => {
     mockState.mockResolvedValue('granted');
     render(<NotificationsRow />);
+    // FOUR kinds, not three. The three within-trip clocks ship as a fourth,
+    // and the sentence anybody reads here has to be the same promise the
+    // primer made before they said yes.
     expect(
-      await screen.findByText('On. First messages, replies, and anything about your account.')
+      await screen.findByText(
+        'On. First messages, replies, your own trips and plans, and anything about your account.'
+      )
     ).toBeTruthy();
+  });
+
+  it('offers the trip reminders switch only once the OS has said yes', async () => {
+    mockState.mockResolvedValue('granted');
+    render(<NotificationsRow />);
+    const control = await screen.findByLabelText(/Turn (on|off) trip reminders/);
+    expect(control).toBeTruthy();
+
+    fireEvent.press(control);
+    expect(mockSetClocks).toHaveBeenCalledWith(false);
+  });
+
+  it('says what stays on when the trip reminders are off', async () => {
+    mockClocks.on = false;
+    mockState.mockResolvedValue('granted');
+    render(<NotificationsRow />);
+    // The half that matters: switching off a digest must not read as
+    // switching off the conversation, and it does not switch one off either
+    // (pgTAP 49).
+    expect(
+      await screen.findByText('Trip reminders are off. Replies and account notices still arrive.')
+    ).toBeTruthy();
+  });
+
+  it('does not offer a preference about pushes on a phone that refuses them', async () => {
+    mockState.mockResolvedValue('denied');
+    render(<NotificationsRow />);
+    await screen.findByText('Off. Turn them on in Settings');
+    expect(screen.queryByLabelText(/Turn (on|off) trip reminders/)).toBeNull();
   });
 
   it('offers the OS dialog, never Settings, when iOS was never asked', async () => {

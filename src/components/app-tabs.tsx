@@ -4,7 +4,8 @@ import { useColorScheme } from 'react-native';
 import { Colors } from '@/constants/theme';
 import { useOwnBusiness } from '@/features/business/hooks';
 import { useWantsBusiness } from '@/features/guest/hooks';
-import { useWaitingCount } from '@/features/matching/hooks';
+import { useSettledWaitingCount, useWaitingCount } from '@/features/matching/hooks';
+import { useIconBadge } from '@/features/notifications/badge';
 
 // Three tabs, in the order people use them (docs/DESIGN.md). Profile lives
 // behind the avatar in the Map/Travelers headers, which buys the third slot
@@ -27,6 +28,13 @@ export default function AppTabs() {
   // nothing the app wants. A red dot that has cried wolf once is a red dot
   // people learn to ignore, and then real messages go unanswered.
   const waiting = useWaitingCount();
+  const settledWaiting = useSettledWaitingCount();
+  // The same number on the home-screen icon. One source of truth, so the icon
+  // and the tab badge cannot disagree - and useWaitingCount already refetches
+  // on focus and on every invalidation useMarkChatRead fires, so reading a
+  // thread clears the icon without anybody doing anything else.
+  // The SETTLED count: see useIconBadge on why null is not zero here.
+  useIconBadge(settledWaiting);
   const isBusiness = useOwnBusiness().data != null;
   // An account part way through listing is not a business YET, but Travelers
   // is the wrong room for it either way: the tab's empty state asks a bar
