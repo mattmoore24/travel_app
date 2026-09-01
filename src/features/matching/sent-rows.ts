@@ -28,6 +28,15 @@ import type { SentRequestRow } from '@/lib/database.types';
  */
 export function waitingRows(rows: SentRequestRow[]): SentRequestRow[] {
   return rows.filter(
-    (row) => row.state === 'sent' || (row.state === 'blocked' && row.blocked_after_send)
+    (row) =>
+      // A hello the sender took back is not one they are waiting on. It is
+      // carried as a COLUMN rather than a fourth state (see
+      // SentRequestRow.withdrawn_at for why), which means every reader has to
+      // remember it - and this is the reader that decides whether the row is
+      // still on screen. Without this clause the whole withdraw feature has
+      // no visible effect: the server stamps the row, the list refetches
+      // byte-identically, and "You said hi to Ana" stays up for ever.
+      row.withdrawn_at == null &&
+      (row.state === 'sent' || (row.state === 'blocked' && row.blocked_after_send))
   );
 }

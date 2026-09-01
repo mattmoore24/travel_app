@@ -51,3 +51,27 @@ export function helloExpired(rows: SentRequestRow[], userId: string | null | und
     (row) => row.recipient_id === userId && row.state === 'sent' && row.expired_at != null
   );
 }
+
+/**
+ * Did the SENDER take that hello back?
+ *
+ * The third thing that can have happened to a hello nobody answered, and the
+ * only one the sender did on purpose. Read off `withdrawn_at` rather than off
+ * `state`, for the same reason `helloExpired` reads `expired_at`: `state`
+ * deliberately never learns a new word, because an over-the-air bundle is
+ * never applied on the launch that downloads it.
+ *
+ * Note what this does NOT do: it does not free the pair.
+ * `unique(sender_id, recipient_id)` is one shot per direction for ever, and
+ * `withdraw_message_request` stamps the row rather than deleting it, so a
+ * second Say hi would still be refused. `saidHiAlready` therefore stays true
+ * and no surface offers a retry - which is why the copy below has to say
+ * that this one is over, rather than promising a reply that can no longer
+ * arrive.
+ */
+export function helloWithdrawn(rows: SentRequestRow[], userId: string | null | undefined): boolean {
+  if (!userId) {
+    return false;
+  }
+  return rows.some((row) => row.recipient_id === userId && row.withdrawn_at != null);
+}

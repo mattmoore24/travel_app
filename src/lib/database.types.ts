@@ -574,6 +574,18 @@ export type SentRequestRow = {
   /** When the sweep ended this hello; null while it is still answerable. */
   expired_at: string | null;
   /**
+   * When the SENDER took this hello back, or null.
+   *
+   * A column rather than a fourth `state`, deliberately: an over-the-air
+   * bundle is never applied on the launch that downloads it, so for one
+   * launch every phone runs the previous bundle against the new schema, and
+   * an unknown `state` would both drop the row out of "You said hi" and make
+   * saidHiAlready answer "nothing is out to this traveler" - offering a
+   * second Say hi the unique constraint refuses. Exactly the shape
+   * expired_at took, for exactly the same reason (20260902210000).
+   */
+  withdrawn_at: string | null;
+  /**
    * True when the classifier stopped this message AFTER the app had already
    * confirmed it was on its way, rather than the prefilter refusing it in
    * the composer. The sender was never told about the first kind, so the row

@@ -11,6 +11,7 @@ const row = (over: Partial<SentRequestRow>): SentRequestRow => ({
   chat_id: null,
   created_at: '2026-09-01T10:00:00Z',
   expired_at: null,
+  withdrawn_at: null,
   blocked_after_send: false,
   ...over,
 });
@@ -36,5 +37,35 @@ describe('waitingRows', () => {
   it('keeps an expired hello, which still reads as sent', () => {
     const rows = waitingRows([row({ id: 'r3', expired_at: '2026-09-02T00:00:00Z' })]);
     expect(rows.map((r) => r.id)).toEqual(['r3']);
+  });
+});
+
+describe('a hello the sender took back', () => {
+  it('leaves the list, which is the whole visible half of the feature', () => {
+    // The server stamps withdrawn_at and never touches `state` — a fourth
+    // state would break the launch that runs the previous bundle against the
+    // new schema. So every reader has to remember the column, and this is
+    // the reader that decides whether the row is still on screen. Without
+    // it the refetch returns a byte-identical list and "You said hi to Ana"
+    // stays up for ever.
+    expect(waitingRows([row({ withdrawn_at: '2026-09-01T11:00:00Z' })])).toEqual([]);
+  });
+
+  it('even when it is the blocked-after-send kind that is kept on purpose', () => {
+    // That row survives so the sender can find what they wrote and rewrite
+    // it. Taking it back is the sender saying they no longer want to.
+    expect(
+      waitingRows([
+        row({ state: 'blocked', blocked_after_send: true, withdrawn_at: '2026-09-01T11:00:00Z' }),
+      ])
+    ).toEqual([]);
+  });
+
+  it('and one that was not withdrawn is untouched', () => {
+    expect(
+      waitingRows([row({}), row({ id: 'r2', withdrawn_at: '2026-09-01T11:00:00Z' })]).map(
+        (r) => r.id
+      )
+    ).toEqual(['r1']);
   });
 });

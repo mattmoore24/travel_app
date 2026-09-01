@@ -22,10 +22,12 @@ const SURFACES = [
 describe('what a surface says about a hello that has run out', () => {
   it.each(SURFACES)('%s branches its note on the sweep stamp', (_where, file) => {
     const code = src(file);
-    expect(code).toContain(
-      "import { helloExpired, saidHiAlready } from '@/features/matching/already-sent'"
-    );
+    // Named imports rather than the exact line, so a surface may learn a
+    // fourth question without this failing for the wrong reason - but it
+    // must still ask BOTH of these.
+    expect(code).toContain("from '@/features/matching/already-sent'");
     expect(code).toContain('helloExpired(sentRequests,');
+    expect(code).toContain('saidHiAlready(sentRequests,');
     expect(code).toContain('You said hi a while back. That one has run out.');
   });
 
@@ -39,5 +41,19 @@ describe('what a surface says about a hello that has run out', () => {
     const code = src(file);
     expect(code).not.toMatch(/[Ss]ay hi again/);
     expect(code).not.toMatch(/[Tt]ry again.{0,40}hello/);
+  });
+
+  it.each(SURFACES)('%s also says so when the sender took it back', (_where, file) => {
+    // The third thing that can have happened to an unanswered hello, and the
+    // only one the sender chose. Withdrawing empties the recipient's inbox,
+    // so "it'll be in Chat if they answer" became a promise about a message
+    // nobody has. This test exists because the note was fixed on ONE of these
+    // two surfaces first, and the docstring above had already warned that
+    // both ask the same question.
+    const code = src(file);
+    expect(code).toContain('helloWithdrawn(sentRequests,');
+    expect(code).toContain('You took that one back.');
+    // Still no retry: withdrawing stamps the row, it does not free the pair.
+    expect(code).not.toMatch(/[Ss]ay hi again/);
   });
 });

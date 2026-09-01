@@ -126,7 +126,7 @@ import { crewLabel } from '@/features/pins/crew';
 import { useMyTrips } from '@/features/trips/hooks';
 import { toISODate } from '@/features/trips/dates';
 import { FilterButton, MapFilterSheet } from '@/features/pins/map-filter-sheet';
-import { helloExpired, saidHiAlready } from '@/features/matching/already-sent';
+import { helloExpired, helloWithdrawn, saidHiAlready } from '@/features/matching/already-sent';
 import { useMyChats, useSentRequests, useFirstMessageBudget } from '@/features/matching/hooks';
 import { chooseSlot } from '@/features/pins/message-slot';
 import { usePushPrimer } from '@/features/notifications/primer-store';
@@ -203,6 +203,9 @@ function PinCard({
   // is nobody left who could reply and the note below has to stop promising
   // one. Reads the sweep's stamp, never a state (see already-sent).
   const helloRanOut = helloExpired(sentRequests, pin.user_id);
+  // The third thing that can have happened, and the only one they did on
+  // purpose. The note below promised a reply to it until now.
+  const helloTakenBack = helloWithdrawn(sentRequests, pin.user_id);
   const openToJoin = pin.chat_id != null;
   const alreadyIn = openToJoin && chats.some((chat) => chat.chat_id === pin.chat_id);
   // pin_crew is granted to `authenticated` only — a guest account included,
@@ -557,14 +560,20 @@ function PinCard({
             <>
               <PrimaryButton label="Message sent" disabled onPress={() => {}} />
               <ThemedText type="footnote" themeColor="textSecondary" style={styles.joinNote}>
-                {helloRanOut
-                  ? // True for both halves of what the sweep ends, and it
-                    // tells the sender nothing about the person: expiry runs
-                    // on their own dates. It says only that this one is over,
-                    // and offers no retry, because one shot per direction is
-                    // for ever.
-                    'You said hi a while back. That one has run out.'
-                  : "You said hi. It'll be in Chat if they answer."}
+                {helloTakenBack
+                  ? // Their own doing, said plainly and with no retry:
+                    // withdrawing stamps the row rather than deleting it, and
+                    // one shot per direction is for ever, so the pair is
+                    // spent either way.
+                    'You took that one back.'
+                  : helloRanOut
+                    ? // True for both halves of what the sweep ends, and it
+                      // tells the sender nothing about the person: expiry runs
+                      // on their own dates. It says only that this one is
+                      // over, and offers no retry, because one shot per
+                      // direction is for ever.
+                      'You said hi a while back. That one has run out.'
+                    : "You said hi. It'll be in Chat if they answer."}
               </ThemedText>
             </>
           ) : (

@@ -1,10 +1,11 @@
-import { helloExpired, saidHiAlready } from '@/features/matching/already-sent';
+import { helloExpired, helloWithdrawn, saidHiAlready } from '@/features/matching/already-sent';
 import type { SentRequestRow } from '@/lib/database.types';
 
 const row = (
   recipient: string,
   state: SentRequestRow['state'],
-  expiredAt: string | null = null
+  expiredAt: string | null = null,
+  withdrawnAt: string | null = null
 ): SentRequestRow => ({
   id: `r-${recipient}-${state}`,
   recipient_id: recipient,
@@ -15,6 +16,7 @@ const row = (
   chat_id: null,
   created_at: '2026-08-01T10:00:00Z',
   expired_at: expiredAt,
+  withdrawn_at: withdrawnAt,
   blocked_after_send: false,
 });
 
@@ -79,5 +81,27 @@ describe('whether that hello has run out', () => {
     expect(helloExpired([stamped], 'u2')).toBe(false);
     expect(helloExpired([stamped], null)).toBe(false);
     expect(helloExpired([stamped], undefined)).toBe(false);
+  });
+});
+
+describe('a hello the sender took back', () => {
+  it('is recognised off the stamp, not off a state', () => {
+    // `state` deliberately never learns a new word: an over-the-air bundle is
+    // never applied on the launch that downloads it, so for one launch every
+    // phone reads the new schema with the old code.
+    expect(helloWithdrawn([row('u1', 'sent', null, '2026-09-01T11:00:00Z')], 'u1')).toBe(true);
+    expect(helloWithdrawn([row('u1', 'sent')], 'u1')).toBe(false);
+  });
+
+  it('does NOT free the pair', () => {
+    // unique(sender_id, recipient_id) is one shot per direction for ever, and
+    // withdraw stamps rather than deletes - so a second Say hi would still be
+    // refused, and no surface may offer one.
+    expect(saidHiAlready([row('u1', 'sent', null, '2026-09-01T11:00:00Z')], 'u1')).toBe(true);
+  });
+
+  it('is a different thing from the sweep ending it', () => {
+    expect(helloExpired([row('u1', 'sent', null, '2026-09-01T11:00:00Z')], 'u1')).toBe(false);
+    expect(helloWithdrawn([row('u1', 'sent', '2026-09-01T11:00:00Z')], 'u1')).toBe(false);
   });
 });

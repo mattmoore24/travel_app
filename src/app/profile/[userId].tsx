@@ -18,7 +18,7 @@ import {
   useSentRequests,
   useUnlockedSocialHandles,
 } from '@/features/matching/hooks';
-import { helloExpired, saidHiAlready } from '@/features/matching/already-sent';
+import { helloExpired, helloWithdrawn, saidHiAlready } from '@/features/matching/already-sent';
 import { openReply } from '@/features/matching/respond';
 import { presentMenu, travelerMenuItems } from '@/features/profile/actions-menu';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
@@ -85,6 +85,10 @@ export default function PublicProfileScreen() {
   // nightly sweep has ended it the note below cannot keep promising a
   // reply. Reads the sweep's stamp, never a state (see already-sent).
   const helloRanOut = helloExpired(sentRequests, userId);
+  // And whether they took it back themselves, which is the one thing here
+  // they did on purpose - and the one the note below was still promising a
+  // reply to.
+  const helloTakenBack = helloWithdrawn(sentRequests, userId);
   // The same cap the Travelers bar renders: identical chrome must not offer a
   // live "Say hi" the composer would immediately full-stop.
   const budget = useFirstMessageBudget();
@@ -311,14 +315,22 @@ export default function PublicProfileScreen() {
                   only full-width buttons. */}
               {!known && alreadySaidHi ? (
                 <ThemedText type="footnote" themeColor="textSecondary" style={styles.saidHiNote}>
-                  {helloRanOut
-                    ? // True for both halves of what the sweep ends, and it
-                      // tells the sender nothing about the person: expiry
-                      // runs on their own dates. It says only that this one
-                      // is over, and offers no retry, because one shot per
-                      // direction is for ever.
-                      'You said hi a while back. That one has run out.'
-                    : "You said hi. It'll be in Chat if they answer."}
+                  {helloTakenBack
+                    ? // Their own doing, so it is said plainly and without a
+                      // retry: withdrawing stamps the row rather than
+                      // deleting it, and one shot per direction is for ever,
+                      // so the pair is spent either way. Saying "it'll be in
+                      // Chat if they answer" here would promise a reply to a
+                      // message that is no longer in anybody's inbox.
+                      'You took that one back.'
+                    : helloRanOut
+                      ? // True for both halves of what the sweep ends, and it
+                        // tells the sender nothing about the person: expiry
+                        // runs on their own dates. It says only that this one
+                        // is over, and offers no retry, because one shot per
+                        // direction is for ever.
+                        'You said hi a while back. That one has run out.'
+                      : "You said hi. It'll be in Chat if they answer."}
                 </ThemedText>
               ) : null}
             </>
