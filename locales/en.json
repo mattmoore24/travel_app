@@ -1,5 +1,5 @@
 {
-  "NSCameraUsageDescription": "For a profile photo, a photo in a chat, or a verification selfie. Every photo is checked before it reaches anyone else, and verification selfies are deleted straight after.",
+  "NSCameraUsageDescription": "For a profile photo, a photo in a chat, or a verification selfie. Profile photos and chat photos are checked before anyone else sees them, and verification selfies are deleted straight after.",
   "NSPhotoLibraryUsageDescription": "For a profile photo, a photo in a chat, or your business listing. Profile and listing photos are seen by other travelers, a chat photo only by the people in it.",
   "NSMotionUsageDescription": "Samewhere does not track motion. Apple requires this notice because a software library the app is built with refers to the motion tools."
 }

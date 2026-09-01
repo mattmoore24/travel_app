@@ -86,8 +86,27 @@ let identified: string | null = null;
  * Mirror of the SDK's persisted opt-out, so the setting can be read back
  * before the client has finished loading its own storage (and so the whole
  * module still behaves without a key, where `client` is null).
+ *
+ * SEEDED FROM THE SDK, not from false. The persisted answer is the person's
+ * actual choice, and a mirror that starts false every launch made this
+ * mirror actively harmful rather than merely stale: `reset()` below only
+ * re-states the opt-out when the mirror says it is on, so a sign-out on a
+ * launch where nobody had touched the setting yet saw false, skipped the
+ * re-state, and let PostHog's own reset clear a choice made weeks earlier.
+ * The setting silently turned itself back on.
+ *
+ * `optedOut` is a getter on the core client (@posthog/core
+ * posthog-core-stateless.d.ts:129), read here rather than assumed. Wrapped
+ * because it reads storage that may not have loaded yet on the very first
+ * tick, and a throw here would take the whole module with it.
  */
-let optedOut = false;
+let optedOut = (() => {
+  try {
+    return client?.optedOut ?? false;
+  } catch {
+    return false;
+  }
+})();
 
 export const analytics = {
   /** §6 events: trip_created, travelers_viewed, request_sent, request_responded… */

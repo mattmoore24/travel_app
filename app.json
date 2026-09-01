@@ -50,7 +50,7 @@
         "expo-image-picker",
         {
           "photosPermission": "For a profile photo, a photo in a chat, or your business listing. Profile and listing photos are seen by other travelers, a chat photo only by the people in it.",
-          "cameraPermission": "For a profile photo, a photo in a chat, or a verification selfie. Every photo is checked before it reaches anyone else, and verification selfies are deleted straight after.",
+          "cameraPermission": "For a profile photo, a photo in a chat, or a verification selfie. Profile photos and chat photos are checked before anyone else sees them, and verification selfies are deleted straight after.",
           "microphonePermission": false
         }
       ],

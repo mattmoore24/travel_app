@@ -38,6 +38,7 @@ import { FinishYourProfileCard } from '@/features/profile/finish-card';
 import { useIsGuest, useIsGuestAccount, useWantsBusiness } from '@/features/guest/hooks';
 import { useMyTrips } from '@/features/trips/hooks';
 import { useTheme } from '@/hooks/use-theme';
+import { analytics } from '@/lib/analytics';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -357,6 +358,10 @@ export default function ProfileScreen() {
   // the same slots, so you can never notice that your bio has nothing worth
   // tapping.
   const [previewing, setPreviewing] = useState(false);
+  // Seeded from the SDK's persisted answer rather than from false, so a
+  // relaunch shows what the person actually chose last time instead of
+  // telling them analytics is on until they toggle it twice.
+  const [analyticsOff, setAnalyticsOff] = useState(() => analytics.optedOut());
   // Not "has a session": a guest has one. The member page below reads
   // photos, trips, prompts and handles, none of which a guest can have, so
   // the question is membership.
@@ -705,6 +710,26 @@ export default function ProfileScreen() {
                         findable again afterwards without re-reading the
                         rulebook. */}
                     <SettingsRow label="Privacy" onPress={() => router.push('/privacy')} />
+                    {/* The control the privacy policy's answer to App Store
+                        5.1.1(i) names. It existed in analytics.ts with no
+                        call site anywhere in the app, so the policy said
+                        there was no opt-out, DASHBOARD.md said this was the
+                        mechanism, and the code agreed with neither: it was
+                        there and unreachable.
+
+                        A row rather than a switch, because SettingsRow is
+                        what this group is made of and its `value` already
+                        carries the current state to a screen reader. */}
+                    <SettingsRow
+                      label="Usage analytics"
+                      value={analyticsOff ? 'Off' : 'On'}
+                      detail="Which screens get opened, never what you write."
+                      onPress={() => {
+                        const next = !analyticsOff;
+                        analytics.setOptedOut(next);
+                        setAnalyticsOff(next);
+                      }}
+                    />
                     {/* Straight to a human. It used to be two taps inside the
                         guidelines, which is a rulebook, not a help desk. */}
                     <SettingsRow

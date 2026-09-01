@@ -36,10 +36,12 @@ we collect, why, who touches it, and what you can ask us to do about it.
   recorded through PostHog. The PostHog mobile library also creates its own
   identifier for your installation and stores it on your device, and attaches
   your device model, operating system version, app version, language and time
-  zone to every event. Once you sign in, events are tied to your user id.
-  Events go to PostHog's **EU** cloud (`eu.i.posthog.com`). There is no
-  in-app analytics opt-out today; if that changes, this paragraph changes
-  with it.
+  zone to every event. **We do not tell PostHog who you are.** Signing in does
+  not attach your account to these events: the identifier PostHog uses is the
+  one it made up for your installation, and it does not join to anything in
+  our database. Events go to PostHog's **EU** cloud (`eu.i.posthog.com`). You
+  can turn usage analytics off in the app, under Account, and the choice
+  holds across relaunches and sign-outs.
 - **Support messages**: if you write to us from Contact us, we keep your
   message and the address you asked us to reply to, along with the one word
   you picked for what it is about, so an urgent message can be answered first.

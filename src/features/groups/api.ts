@@ -66,7 +66,21 @@ export async function updateGroup(input: {
   }
 }
 
-/** Group photos share the chat-photo bucket, and its moderation with it. */
+/**
+ * Group photos share the chat-photo BUCKET. They do not share its
+ * moderation, and the comment that used to sit here said they did.
+ *
+ * Moderation attaches to the `messages` row a chat photo creates, not to the
+ * bucket it is stored in: `groups.photo_path` (20260821010000:29) is a plain
+ * text column written by create_group/update_group with no trigger, no
+ * photo_state and no check. So a group photo reaches every member unchecked.
+ *
+ * This is a real gap and it is recorded rather than papered over. Closing it
+ * is a moderation-pipeline change, not a comment. What is fixed here is the
+ * app.json camera string, which used to promise that EVERY photo is checked
+ * before it reaches anyone else - a sentence Apple reads and a person
+ * believes, and one this path made false.
+ */
 export async function uploadGroupPhoto(userId: string, localUri: string): Promise<string> {
   return processAndUploadImage(CHAT_PHOTO_BUCKET, userId, localUri);
 }

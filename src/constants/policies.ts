@@ -110,7 +110,7 @@ export const PRIVACY_SECTIONS = [
   {
     title: 'What we collect',
     source: 'What we collect',
-    body: 'Your email address, and the profile you build: name, age, gender, home city, languages, bio, photos and any socials you add. Trips are a city and dates. Pins are a venue, a category and a day, and they are permanently deleted within 72 hours. Messages you send are stored so both sides of a chat can read them. If you sign in with Apple, we also keep one token Apple gives us, for the single purpose of telling Apple to forget your account when you delete it; nobody can read it and it is destroyed with your account. We also record which screens get opened, so we can tell which parts of the app are working.',
+    body: 'Your email address, and the profile you build: name, age, gender, home city, languages, bio, photos and any socials you add. Trips are a city and dates. Pins are a venue, a category and a day, and they are permanently deleted within 72 hours. Messages you send are stored so both sides of a chat can read them. If you sign in with Apple, we also keep one token Apple gives us, for the single purpose of telling Apple to forget your account when you delete it; nobody can read it and it is destroyed with your account. We also record which screens get opened, so we can tell which parts of the app are working. We do not tell our analytics provider who you are, and signing in does not change that. You can turn this off under Account.',
   },
   {
     title: 'The selfie check',

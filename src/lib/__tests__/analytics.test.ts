@@ -187,3 +187,54 @@ describe('opt-out', () => {
     expect(analytics.optedOut()).toBe(false);
   });
 });
+
+/**
+ * The opt-out has to be REACHABLE, and the documents have to agree with it.
+ *
+ * setOptedOut shipped with zero call sites outside this file: the control
+ * existed, the privacy policy said there was none, and DASHBOARD.md called it
+ * the answer to App Store 5.1.1(i). Three sources, three different claims,
+ * and the one a person could act on was the wrong one.
+ */
+describe('the opt-out a person can actually reach', () => {
+  // Required inside the describe, not at the top of the file: this suite
+  // resets the module registry per test to exercise the no-key path, and a
+  // top-level import of the module under test would defeat that.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const nodePath = require('node:path') as typeof import('node:path');
+  const read = (...p: string[]): string =>
+    fs.readFileSync(nodePath.join(__dirname, '..', '..', '..', ...p), 'utf8');
+
+  it('has a row in the account settings', () => {
+    const profile = read('src', 'app', 'profile-me.tsx');
+    expect(profile).toContain('analytics.setOptedOut(');
+    expect(profile).toContain('label="Usage analytics"');
+    // Seeded from the SDK's persisted answer, or a relaunch would show "On"
+    // to somebody who turned it off last week.
+    expect(profile).toContain('useState(() => analytics.optedOut())');
+  });
+
+  it('is seeded from the SDK rather than assumed off', () => {
+    const src = read('src', 'lib', 'analytics.ts');
+    // A mirror that starts false every launch is not merely stale: reset()
+    // only re-states the opt-out when the mirror says it is on, so a
+    // sign-out before anybody touched the setting silently cleared a choice
+    // made weeks earlier.
+    expect(src).toContain('client?.optedOut ?? false');
+  });
+
+  it('and the privacy policy no longer says there is none', () => {
+    const policy = read('docs', 'legal', 'PRIVACY_POLICY.md');
+    expect(policy).not.toContain('There is no in-app analytics opt-out today');
+    // The other sentence that stopped being true when identify() went.
+    expect(policy).not.toContain('events are tied to your user id');
+    expect(policy).toContain('We do not tell PostHog who you are.');
+  });
+
+  it('and the screen a person actually reads says the same', () => {
+    const inApp = read('src', 'constants', 'policies.ts');
+    expect(inApp).toContain('You can turn this off under Account.');
+  });
+});
