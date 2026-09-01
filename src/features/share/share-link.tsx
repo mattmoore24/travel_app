@@ -36,7 +36,16 @@ export function ShareLink({
   message: string;
   /** The line under the square, which differs by what is being shared. */
   caption: string;
-  shareLabel: string;
+  /**
+   * The button under the square, or null to render the square alone.
+   *
+   * Null is for a surface that ALREADY offers the share sheet next to this
+   * one: My business has a "Share this business" row above the QR toggle, so
+   * rendering this button too put two controls with the identical accessible
+   * name and the identical action on one screen, which is exactly the "one
+   * name for one act" bug LISTING_SHARE_LABEL exists to prevent.
+   */
+  shareLabel: string | null;
   disabled?: boolean;
   size?: number;
 }) {
@@ -80,9 +89,11 @@ export function ShareLink({
       <View style={[styles.divider, { backgroundColor: theme.hairline }]} />
       {/* Full width, like every other primary action: the centred column above
           it would otherwise shrink the button to its label. */}
-      <View style={styles.action}>
-        <PrimaryButton label={shareLabel} disabled={disabled} onPress={share} />
-      </View>
+      {shareLabel == null ? null : (
+        <View style={styles.action}>
+          <PrimaryButton label={shareLabel} disabled={disabled} onPress={share} />
+        </View>
+      )}
     </View>
   );
 }

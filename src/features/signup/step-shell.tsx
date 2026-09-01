@@ -125,7 +125,18 @@ export function StepShell({
             accessible
             accessibilityRole="progressbar"
             accessibilityLabel={`Step ${step} of ${total}`}
-            accessibilityValue={{ min: 1, max: total, now: step }}
+            // min 0, NOT 1, and this is not a taste call. React Native
+            // computes the spoken percentage as now / (max - min) - it does
+            // not subtract min from now, in either renderer:
+            //   Paper:  React/Views/RCTView.m:393
+            //           ([now intValue] * 100) / ([max intValue] - [min intValue])
+            //   Fabric: RCTViewComponentView.mm, accessibilityValue
+            //           now / (max - min)
+            // With min 1 and thirteen steps that is step/12, so VoiceOver
+            // announced 8% on the first screen and 108% on the last, while
+            // the bar beside it drew step/13. min 0 makes the same formula
+            // produce exactly what the fill draws, at every step.
+            accessibilityValue={{ min: 0, max: total, now: step }}
             style={[styles.track, { backgroundColor: theme.surfaceSunken }]}>
             <Animated.View style={[styles.fill, { backgroundColor: theme.accent }, fillStyle]} />
           </View>

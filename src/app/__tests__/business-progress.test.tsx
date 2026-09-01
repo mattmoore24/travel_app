@@ -40,7 +40,17 @@ describe('the signup progress bar', () => {
     show(5, SIGNUP_TOTAL_STEPS);
     const bar = screen.getByRole('progressbar');
     expect(bar.props.accessibilityLabel).toBe('Step 5 of 13');
-    expect(bar.props.accessibilityValue).toEqual({ min: 1, max: 13, now: 5 });
+    // min 0, because React Native speaks now / (max - min) and does NOT
+    // subtract min from now - Paper at React/Views/RCTView.m:393, Fabric in
+    // RCTViewComponentView.mm. With min 1 the last of thirteen steps
+    // announced 108 percent while the bar drew 100. min 0 makes the same
+    // formula produce step/total, which is exactly what the fill draws.
+    expect(bar.props.accessibilityValue).toEqual({ min: 0, max: 13, now: 5 });
+    // The property that matters, stated as arithmetic rather than as a
+    // constant, so a future edit to either number has to keep them agreeing.
+    const { min, max, now } = bar.props.accessibilityValue;
+    expect(now / (max - min)).toBeCloseTo(5 / 13);
+    expect(13 / (max - min)).toBeLessThanOrEqual(1);
   });
 
   it('prints the same number where a sighted reader can see it', () => {

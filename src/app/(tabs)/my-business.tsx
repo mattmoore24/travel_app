@@ -893,7 +893,11 @@ export default function MyBusinessScreen() {
                       url={listingUrl(business.id)}
                       message={listingShareMessage({ id: business.id, name: business.name })}
                       caption={LISTING_QR_CAPTION}
-                      shareLabel={LISTING_SHARE_LABEL}
+                      // The row above this one IS the share sheet. A second
+                      // button under the square with the same name and the
+                      // same action is two controls a screen reader cannot
+                      // tell apart.
+                      shareLabel={null}
                     />
                   ) : null}
                 </Section>

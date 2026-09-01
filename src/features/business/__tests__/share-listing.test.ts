@@ -131,7 +131,14 @@ describe('the words both surfaces use', () => {
     // doors onto one link, and two labels for it is the bug the design brief
     // has already paid for twice.
     expect(LISTING_SHARE_LABEL).toBe('Share this business');
-    expect(LISTING_QR_CAPTION).toBe('Point a camera at this to open the page.');
+    // The caption follows the same flag the message's last line does: while
+    // the square encodes a custom scheme it resolves to nothing on a phone
+    // without the app, and an owner who taped this to a counter on the
+    // promise that it "opens the page" would learn that from a guest.
+    expect(LISTING_QR_CAPTION).toBe(
+      'Point a camera at this to open the page in the Samewhere app.'
+    );
+    expect(LISTING_QR_CAPTION).toContain('Point a camera at this');
   });
 });
 

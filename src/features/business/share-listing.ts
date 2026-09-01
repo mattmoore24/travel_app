@@ -101,5 +101,18 @@ export async function shareListing({ id, name }: { id: string; name: string }): 
  */
 export const LISTING_SHARE_LABEL = 'Share this business';
 
-/** Under the square on My business: somebody is holding a phone up to a counter. */
-export const LISTING_QR_CAPTION = 'Point a camera at this to open the page.';
+/**
+ * Under the square on My business: somebody is holding a phone up to a
+ * counter.
+ *
+ * It says "in the app" for the same reason the shared message's last line
+ * does. While UNIVERSAL_LINKS_LIVE is false the square encodes a custom
+ * scheme, which resolves to nothing at all on a phone that has never
+ * installed Samewhere - and an owner who taped this to a counter on the
+ * promise that it "opens the page" would be finding that out from a guest.
+ * The sentence goes back to the shorter one when the flag flips, alongside
+ * the message's own apology line.
+ */
+export const LISTING_QR_CAPTION = UNIVERSAL_LINKS_LIVE
+  ? 'Point a camera at this to open the page.'
+  : 'Point a camera at this to open the page in the Samewhere app.';
