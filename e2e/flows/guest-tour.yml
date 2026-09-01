@@ -366,9 +366,14 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2000
 # ─────────────────────────────────────────────────────────────────────────
+# HARD, and it is the first hard step for a reason. Every step after it used
+# to be optional up to the assertVisible on 'Website' three steps later, so a
+# city with no venue on tonight went red pointing at a missing LINK when the
+# real cause was a missing ROW. That misdirection cost an hour once already.
+# If this fails, the venue has no live post: seed it back
+# (select seed_launch_business_content();) rather than loosening this.
 - tapOn:
     text: '.*, something on tonight'
-    optional: true
 - extendedWaitUntil:
     visible: 'See the whole page'
     timeout: 10000

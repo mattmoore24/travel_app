@@ -544,34 +544,58 @@ try {
       detailErr?.message
     );
 
-    // AND that it has something ON it. seed_launch_businesses() is proven
-    // above; seed_launch_business_content() is a SEPARATE call that gives each
-    // venue its opening hours, its Website link and its standing post, and
-    // nothing was watching whether it had ever been run. An e2e run
-    // photographed the answer: the plan list opens on six plans in Denpasar
-    // and no ON TONIGHT section, because that section is gated on
-    // has_live_post, which is an unarchived business_posts row. For real
-    // people that means the first place anybody taps is an empty page and the
-    // brighter "something is happening here" ring never fires anywhere.
+    // AND that it has something ON it, in EVERY active launch city.
     //
-    // Asserted here rather than fixed in a migration on purpose: the seeders
-    // are deliberately not run inline (a pgTAP fixture uses the same venue
-    // name, so seeding from a migration collides with it), so the remedy is a
-    // one-line call and this is what remembers to ask for it.
+    // The first version of this check was Lisbon-only, which is the one city
+    // the symptom did not appear in: the plan list came up empty in DENPASAR
+    // while Home Lisbon Hostel was fine. A watcher that cannot see the failure
+    // it was added for is worse than none, because it reports green. All four
+    // venues are seeded by one call, so a per-city gap is exactly what this
+    // has to catch.
     const placeRow = (detail ?? [])[0];
-    const links = placeRow?.links ?? [];
-    const posts = placeRow?.posts ?? [];
     check(
-      'and it carries the hours, link and post the content seeder puts there',
-      links.length > 0 && posts.length > 0,
-      'no links or posts on Home Lisbon Hostel — run select seed_launch_business_content();'
+      'the place page carries the link the content seeder puts there',
+      (placeRow?.links ?? []).length > 0,
+      'no links on Home Lisbon Hostel — run select seed_launch_business_content();'
     );
-    const lisbonRow = (places ?? []).find((p) => p.name === 'Home Lisbon Hostel');
     check(
-      'so the city list can say it has something on',
-      lisbonRow?.has_live_post === true,
-      'has_live_post is false — run select seed_launch_business_content();'
+      'and the standing post as well',
+      (placeRow?.posts ?? []).length > 0,
+      'no posts on Home Lisbon Hostel — run select seed_launch_business_content();'
     );
+
+    const LAUNCH_VENUES = [
+      ['Lisbon', 'Home Lisbon Hostel'],
+      ['Mexico City', 'Casa Pepe'],
+      ['Bangkok', 'Once Again Hostel'],
+      ['Denpasar', 'Puri Garden Ubud'],
+    ];
+    // Read the active launch cities exactly the way the app does
+    // (src/features/pins/api.ts fetchLaunchCities), with anon-key power only.
+    const { data: launchCities } = await guest
+      .from('launch_cities')
+      .select('city_id, active, cities(name)')
+      .eq('active', true);
+    for (const [cityName, venue] of LAUNCH_VENUES) {
+      const city = (launchCities ?? []).find((c) => c.cities?.name === cityName);
+      if (!city) {
+        check(
+          `${cityName} is an active launch city`,
+          false,
+          'not returned by launch_cities — a switched-off city shows no venues at all'
+        );
+        continue;
+      }
+      const { data: cityPlaces } = await guest.rpc('city_businesses', { p_city_id: city.city_id });
+      const row = (cityPlaces ?? []).find((p) => p.name === venue);
+      check(
+        `${cityName} has ${venue} with something on, so its map can draw ON TONIGHT`,
+        row?.has_live_post === true,
+        row
+          ? `${venue} is on the map but has_live_post is false — run select seed_launch_business_content();`
+          : `${venue} is not in city_businesses at all — check businesses.active and state, then run select seed_launch_businesses();`
+      );
+    }
 
     // --- ratings. Anyone may rate: the founder's call, on the grounds that
     // somebody may have been there without ever entering the trip here.

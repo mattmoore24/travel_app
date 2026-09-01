@@ -179,7 +179,7 @@ re-triggers on.
   a day, and the fact that a post is one card on one page. The composer's
   third option reads **"Keep it up until I take it down"**, so indefinite is a
   choice somebody makes, not a default they fall into. `archive_expired_posts()`
-  runs nightly over the two dated cases. Soft-archive, not delete: §7 rule 3's
+  runs hourly, at minute 7 over the two dated cases. Soft-archive, not delete: §7 rule 3's
   hard-delete is a promise about personal whereabouts and does not apply to a
   bar's happy-hour notice.
 
