@@ -402,9 +402,17 @@ appId: com.mattmoore.samewhere
 # because only the FIRST of the four steps had been made hard.
 #
 # So: if the sheet does not open on a business's post, this says so here.
+#
+# 30s, not the 10s it waited: the tap COMPLETED and the wait elapsed 11s
+# later, in a run where the photo pipeline was also overrunning a 45s budget,
+# so "the sheet is slow to fetch its business on a cold simulator" and "the
+# sheet has no such link" both fit the evidence and 10s cannot tell them
+# apart. A hard assertion with a budget the machine can actually meet can: if
+# this still fails at 30s, the link is genuinely not there and the place to
+# look is place-sheet.tsx's viewerIsBusiness branch, not the clock.
 - extendedWaitUntil:
     visible: 'See the whole page'
-    timeout: 10000
+    timeout: 30000
 - tapOn:
     text: 'See the whole page'
 - scrollUntilVisible:
