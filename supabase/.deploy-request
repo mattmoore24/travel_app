@@ -267,3 +267,12 @@
              gives the person who runs a room the admin role it already
              grants them through is_room_moderator.
              804 pgTAP assertions, 16 new and about exactly this.
+
+2026-09-01 — functions only, no migration: the moderation tick gets a wall-clock
+             budget with a slice per queue, one request gets a 90s timeout and
+             no SDK-level retries, and the npm imports are pinned to the
+             versions the last good deploy resolved. Live backend went red on
+             d0b690f with a clean first message held the full five minutes and
+             the SAME commit re-run passed in eleven seconds, so this is not a
+             regression being fixed — it is the mechanism that produces exactly
+             that symptom being removed.
