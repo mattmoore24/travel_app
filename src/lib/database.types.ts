@@ -255,6 +255,14 @@ export type BusinessLinkKind =
   | 'other';
 
 /** city_businesses() — one marker on the map. */
+/** city_whats_on() — the soonest live post at each listed business in a city. */
+export type CityWhatsOnRow = {
+  business_id: string;
+  post_id: string;
+  title: string;
+  happens_at: string | null;
+};
+
 export type CityBusinessRow = {
   id: string;
   chat_id: string | null;
@@ -267,6 +275,21 @@ export type CityBusinessRow = {
   /** Something on tonight. Earns a brighter ring, never a bigger marker. */
   has_live_post: boolean;
   member_count: number;
+  /**
+   * What that post actually says, or null when nobody has said.
+   *
+   * NOT a column of `city_businesses`, which returns only the boolean above:
+   * `fetchCityBusinesses` merges it in from `city_whats_on(p_city_id)`, whose
+   * filters are copied from `city_businesses` so the two cannot come to
+   * disagree about which listings exist. Null is also what a phone running
+   * an over-the-air update ahead of its database gets, which is why every
+   * reader treats it as an extra rather than as the answer.
+   *
+   * Optional for that reason and not as a convenience: absent, null and
+   * present are three states a reader has to survive, and `has_live_post`
+   * above stays the authority on whether there IS something on.
+   */
+  live_post?: CityWhatsOnRow | null;
 };
 
 export type BusinessPhotoJson = { id: string; storage_path: string };
@@ -278,11 +301,24 @@ export type BusinessLinkJson = {
 };
 /** `opens`/`closes` are 'HH:MM:SS'. closes < opens means past midnight. */
 export type BusinessHourJson = { weekday: number; opens: string; closes: string };
+/**
+ * Where a post's photo has got to, in the vocabulary `room_messages` settled
+ * on: 'none' is a post with no photo, 'ready' means `photo_path` above is
+ * real, 'checking' means the worker has it, 'blocked' means it was refused.
+ *
+ * The state is not a secret — every photo in this app is checked and saying so
+ * is the honest version of a blank rectangle — but the PATH is masked until
+ * the verdict lands, except to the owner, who can read their own upload
+ * anyway.
+ */
+export type PostPhotoState = 'none' | 'ready' | 'checking' | 'blocked';
+
 export type BusinessPostJson = {
   id: string;
   title: string;
   body: string | null;
   photo_path: string | null;
+  photo_state: PostPhotoState;
   happens_at: string | null;
   ends_at: string | null;
 };
@@ -1104,6 +1140,8 @@ export type Database = {
           title: string;
           body: string | null;
           photo_path: string | null;
+          /** Server-owned: a trigger sets it, and pins it against a client. */
+          photo_status: ModerationStatus;
           happens_at: string | null;
           ends_at: string | null;
           archived_at: string | null;
@@ -1121,6 +1159,7 @@ export type Database = {
         Update: {
           title?: string;
           body?: string | null;
+          photo_path?: string | null;
           happens_at?: string | null;
           ends_at?: string | null;
           archived_at?: string | null;
@@ -1491,6 +1530,10 @@ export type Database = {
       city_businesses: {
         Args: { p_city_id: number };
         Returns: CityBusinessRow[];
+      };
+      city_whats_on: {
+        Args: { p_city_id: number };
+        Returns: CityWhatsOnRow[];
       };
       business_detail: {
         Args: { p_business_id: string };

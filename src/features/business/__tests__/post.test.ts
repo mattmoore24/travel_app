@@ -25,6 +25,7 @@ const src = (file: string): string => fs.readFileSync(path.join(REPO, file), 'ut
 
 const POST = 'src/app/business-post.tsx';
 const API = 'src/features/business/api.ts';
+const LIST = 'src/features/pins/plan-list.tsx';
 
 describe('reading a stored post back into the form', () => {
   it('recovers the shape from the two dates', () => {
@@ -143,8 +144,125 @@ describe('the update itself', () => {
     // belonging to somebody else's listing comes back as no rows rather than
     // as somebody else's words. And never a star select.
     expect(code).toContain(
-      "const OWN_POST_COLUMNS = 'id, business_id, title, body, happens_at, ends_at, archived_at';"
+      "'id, business_id, title, body, photo_path, photo_status, happens_at, ends_at, archived_at'"
     );
     expect(code).toContain('.select(OWN_POST_COLUMNS)');
+  });
+});
+
+/**
+ * The photo a post can carry.
+ *
+ * `business_posts.photo_path` shipped with the table and place/[id].tsx has
+ * always drawn it; the composer had no picker, no upload and no field, so a
+ * bar posting "Live music, no cover" could not show the band. The half that is
+ * easy to get wrong is the check: moderation attaches to the ROW a photo
+ * creates, so sharing the photo grid's bucket buys a post photo neither the
+ * screening nor the readability, and shipping the picker without the migration
+ * would have put an unreviewed image on a page granted to anon.
+ */
+describe('the photo a post can carry', () => {
+  const code = src(POST);
+  const api = src(API);
+
+  it('never gates the post on having one', () => {
+    // The whole control is optional. `ready` decides the docked button, and it
+    // asks for a title and a shape and nothing else - a photo that could stop
+    // a post going up would be a worse feature than no photo at all.
+    const ready = code.slice(code.indexOf('const ready ='), code.indexOf('const note ='));
+    expect(ready).toContain('trimmedTitle.length >= TITLE_MIN');
+    expect(ready).toContain('shape != null');
+    expect(ready).not.toContain('photo');
+    expect(code).toContain('continueDisabled={!ready || atCap || missing}');
+  });
+
+  it('is actually rendered, and reaches both writes', () => {
+    // A control nobody can see is the failure this project has already paid
+    // for twice. It is mounted in the composer's own body, between the words
+    // and the shape rows.
+    expect(code).toContain('<PostPhotoField');
+    expect(code).toContain('onPick={() => void pickPhoto()}');
+    expect(code).toContain('onRemove={removePhoto}');
+    // And the value it holds is on the payload for a new post and an edit
+    // alike, which is the difference between a picker and a picker that works.
+    expect(code).toContain('photoPath,');
+    expect(code).toContain('photo_path: input.photoPath');
+    expect(api).toContain('photo_path: input.photoPath');
+  });
+
+  it('says the photo is checked before anybody spends a minute picking one', () => {
+    expect(code).toContain('Optional. Photos are checked before travelers see them.');
+    // And names the state of a stored one rather than showing a blank frame:
+    // the same two words the photo grid draws.
+    expect(code).toContain("'Removed' : 'In review'");
+  });
+
+  it('uploads through the same door every other business photo uses', () => {
+    // processAndUploadImage with the resolution floor on, because a post photo
+    // is drawn at cover width on the place page and is judged the same way.
+    const upload = api.slice(api.indexOf('export async function uploadPostPhoto'));
+    expect(upload).toContain('BUSINESS_PHOTO_BUCKET');
+    expect(upload).toContain('{ fillsAFrame: true }');
+  });
+
+  it('deletes only what no row has ever named', () => {
+    // A path that came from the database may be named by another row - a
+    // repeat carries the original's picture across - and an object nothing
+    // names is already unreadable, because every read resolves through a post
+    // row. So only this session's own strays are swept.
+    expect(code).toContain('strays.current.includes(path)');
+    expect(code).toContain('strays.current = [];');
+  });
+});
+
+/**
+ * A post reaching somebody.
+ *
+ * The map has always known WHICH businesses have news - city_businesses
+ * returns has_live_post, which is what brightens a marker's ring - and never
+ * what the news is. So the only way to learn that a hostel is running a quiz
+ * night was to tap that exact marker among six clusters, and the one piece of
+ * fresh content a business produces reached nobody. A bar that posts twice and
+ * hears nothing stops posting.
+ *
+ * Source-reading, in the idiom hours.test.ts sets out: the behaviour the
+ * function itself has is pinned by the pgTAP suite (54), and what these guard
+ * is that the words actually reach the row a person reads.
+ */
+describe('what is on, said out loud', () => {
+  const list = src(LIST);
+  const api = src(API);
+
+  it('puts the post words in the row, through the list it already has', () => {
+    // No new query and no new screen: the map already reads city_businesses
+    // and hands the rows to this list, so the words ride in on a call that is
+    // already being made and reach a surface that is already mounted.
+    expect(list).toContain('export function whatsOnLine(');
+    expect(list).toContain('{whatsOnLine(place, clock ?? new Date())}');
+    expect(api).toContain("supabase.rpc('city_whats_on', { p_city_id: cityId })");
+    expect(api).toContain('live_post: whatsOn.get(place.id) ?? null');
+  });
+
+  it('keeps the old line when the words are not there', () => {
+    // JavaScript ships over the air and the database deploys separately, so a
+    // phone can be minutes ahead of its own server. Losing every business on
+    // the map over a missing function would be a far worse trade than losing
+    // a line of text, and what is left is what the list said before.
+    expect(list).toContain("return 'Something on tonight';");
+    expect(api).toContain('fetchCityWhatsOn(cityId).catch(');
+  });
+
+  it('stops the heading claiming tonight about a post for Friday', () => {
+    // The rows carry a day now. A heading that says tonight over a row that
+    // says Friday is the heading contradicting the row underneath it.
+    expect(list).not.toContain('ON TONIGHT');
+    expect(list).toContain('WHAT&apos;S ON');
+  });
+
+  it('says the time on the venue clock rather than the reader one', () => {
+    // "21:00" has to mean nine at that door. Same approximation the open line
+    // already makes, from the same function, so the two cannot disagree.
+    expect(list).toContain('cityNow(new Date(post.happens_at), place.lng)');
+    expect(list).toContain('clockTime(at)');
   });
 });

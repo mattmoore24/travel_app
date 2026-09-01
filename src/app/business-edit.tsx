@@ -2,16 +2,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  View,
-  type LayoutChangeEvent,
-} from 'react-native';
+import { useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { FormTextField } from '@/components/form/form-text-field';
@@ -52,6 +44,32 @@ type LinkRow = Database['public']['Tables']['business_links']['Row'];
  * field the row named.
  */
 export type Section = 'details' | 'location' | 'hours' | 'links' | 'photos';
+
+/**
+ * The screen's own name, per section, and the list of sections there are.
+ *
+ * A caller that names a section gets ONLY that block, titled for it. It used
+ * to get the whole 1,430-line form scrolled to a heading, which is how three
+ * signup steps in a row promised a step and delivered somebody else's
+ * settings screen: run 49 photographed what an owner saw after asking for
+ * photos, which was 'Add different hours for some days', a links list, an
+ * orphaned 'What is it? / Pick one' showing no selection, '2 of 10', a dashed
+ * square, '0 of 10' and Save. A Save button that writes nine other fields is
+ * also the wrong control to put under a one-question step.
+ *
+ * Every field belongs to exactly one section, so nothing becomes unreachable:
+ * 'Finding the door' is location's (it is what a map cannot say) and
+ * 'Anything the hours miss' is hours'. The spec for this change named only
+ * name/description/website and address/city/marker, and those two would have
+ * had no home at all.
+ */
+const SECTION_TITLE: Record<Section, string> = {
+  details: 'Your name and description',
+  location: 'Where you are',
+  hours: 'Your hours',
+  links: 'Links and contact',
+  photos: 'Your photos',
+};
 
 const NAME_MIN = 2;
 const NAME_MAX = 80;
@@ -661,10 +679,16 @@ function BusinessEditForm({
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
   const updateBusiness = useUpdateOwnBusiness(business.id);
-  const { section } = useLocalSearchParams<{ section?: Section }>();
+  // Checked against the union rather than trusted: this is a route param, so
+  // anything at all can arrive in it, and an unrecognised value under a
+  // section gate would render a form with no fields in it and a Save button.
+  // Unknown means "the whole thing", which is what it used to mean.
+  const params = useLocalSearchParams<{ section?: string }>();
+  const section: Section | null =
+    params.section != null && params.section in SECTION_TITLE ? (params.section as Section) : null;
+  /** Whether this block is on screen at all. No section means all of them. */
+  const shows = (key: Section) => section == null || section === key;
 
-  const scroller = useRef<ScrollView>(null);
-  const [targetY, setTargetY] = useState<number | null>(null);
   /**
    * Whether anything on this screen has ALREADY been written.
    *
@@ -677,21 +701,11 @@ function BusinessEditForm({
   const [committed, setCommitted] = useState(false);
   const noteCommitted = () => setCommitted(true);
 
-  // Only the block that was asked for reports its position, and the scroll
-  // happens in an effect: a handler created during render may not touch a
-  // ref, and the scroller has its content height by the time this runs.
-  const measure = (key: Section) => (event: LayoutChangeEvent) => {
-    if (section === key) {
-      setTargetY(event.nativeEvent.layout.y);
-    }
-  };
-
-  useEffect(() => {
-    if (targetY == null) {
-      return;
-    }
-    scroller.current?.scrollTo({ y: Math.max(targetY - Space.md, 0), animated: false });
-  }, [targetY]);
+  // No measure-and-scroll any more, and deliberately none: the named block is
+  // the only thing mounted, so it is already at the top. The old version
+  // waited on an onLayout from a block that would now never mount, and a
+  // targetY that never arrives is a scroll that never happens on a screen
+  // that has quietly stopped saying why.
 
   const [name, setName] = useState(business.name);
   const [description, setDescription] = useState(business.description ?? '');
@@ -897,8 +911,11 @@ function BusinessEditForm({
 
   return (
     <StepScreen
-      title="Edit your business"
-      continueLabel="Save"
+      title={section ? SECTION_TITLE[section] : 'Edit your business'}
+      // Photos and links commit the moment they are tapped, so on those two
+      // sections there is nothing left for Save to save and the button is a
+      // way out. Everywhere else it still writes the fields above it.
+      continueLabel={section === 'photos' || section === 'links' ? 'Done' : 'Save'}
       continueDisabled={!valid}
       note={
         brokenRule
@@ -907,238 +924,255 @@ function BusinessEditForm({
       }
       continueLoading={updateBusiness.isPending || saveHours.isPending || moveBusiness.isPending}
       onContinue={save}
-      onClose={close}
-      scrollRef={scroller}>
-      <View onLayout={measure('details')} />
-      <FormTextField
-        label="Name"
-        value={name}
-        onChangeText={setName}
-        error={nameError}
-        maxLength={NAME_MAX + 20}
-      />
-      {/* Said here rather than in an alert afterwards, because by then the
-          place is already off the map: the rename trigger clears verified_at
-          and drops a listed place back to unconfirmed. */}
-      <ThemedText type="footnote" themeColor={nameResets ? 'warning' : 'textSecondary'}>
-        {nameResets
-          ? 'You changed the name. Saving takes your business off the map until you confirm your email again, and the check goes with it.'
-          : 'Accents and capitals are free to fix. A different name takes your business off the map until you confirm your email again, and the check goes with it.'}
-      </ThemedText>
+      onClose={close}>
+      {shows('details') ? (
+        <>
+          <FormTextField
+            label="Name"
+            value={name}
+            onChangeText={setName}
+            error={nameError}
+            maxLength={NAME_MAX + 20}
+          />
+          {/* Said here rather than in an alert afterwards, because by then the
+              place is already off the map: the rename trigger clears
+              verified_at and drops a listed place back to unconfirmed. */}
+          <ThemedText type="footnote" themeColor={nameResets ? 'warning' : 'textSecondary'}>
+            {nameResets
+              ? 'You changed the name. Saving takes your business off the map until you confirm your email again, and the check goes with it.'
+              : 'Accents and capitals are free to fix. A different name takes your business off the map until you confirm your email again, and the check goes with it.'}
+          </ThemedText>
 
-      <FormTextField
-        label="About the business"
-        placeholder="What it's like, who turns up, what to order."
-        multiline
-        numberOfLines={4}
-        style={styles.multiline}
-        value={description}
-        onChangeText={setDescription}
-        error={descriptionError}
-        hint={
-          description.length > DESCRIPTION_MAX - 100
-            ? `${DESCRIPTION_MAX - description.length} characters left`
-            : undefined
-        }
-        {...keyboardDoneProps}
-      />
+          <FormTextField
+            label="About the business"
+            placeholder="What it's like, who turns up, what to order."
+            multiline
+            numberOfLines={4}
+            style={styles.multiline}
+            value={description}
+            onChangeText={setDescription}
+            error={descriptionError}
+            hint={
+              description.length > DESCRIPTION_MAX - 100
+                ? `${DESCRIPTION_MAX - description.length} characters left`
+                : undefined
+            }
+            {...keyboardDoneProps}
+          />
+          {/* Moved up out of the middle of the location block, where it sat
+              between 'Finding the door' and the hours note for no reason but
+              column order. It is one of the words a traveler reads, so it
+              belongs with the other two. */}
+          <FormTextField
+            label="Website"
+            placeholder="https://"
+            value={website}
+            onChangeText={setWebsite}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            maxLength={WEBSITE_MAX}
+            error={websiteError ?? undefined}
+          />
+        </>
+      ) : null}
       {/* The address, the marker, and the bit a map cannot tell anyone. Three
           answers to three different questions, which is why moving one leaves
           the others alone. */}
-      <View onLayout={measure('location')} />
-      {city ? (
-        <BusinessAddressField
-          value={address}
-          cityName={city.cities.name}
-          cityLat={city.cities.lat}
-          cityLng={city.cities.lng}
-          onFocusChange={setAddressFocused}
-          onChangeText={(next) => setAddress(next.slice(0, ADDRESS_MAX))}
-          // Picking a result moves both, because somebody who searched for
-          // their own address meant the door and not the words.
-          onPick={(place) => {
-            setAddress(addressFrom(place));
-            setCoords({ lat: place.latitude, lng: place.longitude });
-          }}
-        />
-      ) : (
-        <FormTextField
-          label="Address"
-          placeholder="Rua da Rosa 12"
-          value={address}
-          onChangeText={setAddress}
-          maxLength={ADDRESS_MAX}
-          hint="What a traveler pastes into a taxi app."
-        />
-      )}
-      {city && !addressFocused ? (
+      {shows('location') ? (
         <>
-          {launchCities.length > 1 ? (
-            <SelectField
-              label="City"
-              options={launchCities.map((row) => ({
-                value: String(row.city_id),
-                label: row.cities.name,
-              }))}
-              value={String(cityId)}
-              onChange={(next) => {
-                const picked = launchCities.find((row) => String(row.city_id) === next);
-                if (!picked) {
-                  return;
-                }
-                setCityId(picked.city_id);
-                // The old marker is in the old city, and the geofence would
-                // refuse it. Start at the new centre and let them place it.
-                setCoords({ lat: picked.cities.lat, lng: picked.cities.lng });
+          {city ? (
+            <BusinessAddressField
+              value={address}
+              cityName={city.cities.name}
+              cityLat={city.cities.lat}
+              cityLng={city.cities.lng}
+              onFocusChange={setAddressFocused}
+              onChangeText={(next) => setAddress(next.slice(0, ADDRESS_MAX))}
+              // Picking a result moves both, because somebody who searched for
+              // their own address meant the door and not the words.
+              onPick={(place) => {
+                setAddress(addressFrom(place));
+                setCoords({ lat: place.latitude, lng: place.longitude });
               }}
-              hint="Where you are, not where you deliver."
             />
-          ) : null}
-          <LocationPicker
-            // Remounted per city for the same reason signup does it: the
-            // picker reads its centre once, through initialRegion.
-            key={`edit-${cityId}`}
-            centerLat={coords.lat}
-            centerLng={coords.lng}
-            lat={coords.lat}
-            lng={coords.lng}
-            // Street level. The question is whether the marker is on the door,
-            // and a city-wide view cannot answer it.
-            delta={0.004}
-            // The chip travelers tap, not MapKit's red balloon — the one
-            // colour the palette bans outside destructive actions.
-            marker={<PlaceGlyph category={business.category} />}
-            onChange={(lat, lng) => setCoords({ lat, lng })}
-          />
-          {/* A ten-metre nudge onto the real door produces no warning at
+          ) : (
+            <FormTextField
+              label="Address"
+              placeholder="Rua da Rosa 12"
+              value={address}
+              onChangeText={setAddress}
+              maxLength={ADDRESS_MAX}
+              hint="What a traveler pastes into a taxi app."
+            />
+          )}
+          {city && !addressFocused ? (
+            <>
+              {launchCities.length > 1 ? (
+                <SelectField
+                  label="City"
+                  options={launchCities.map((row) => ({
+                    value: String(row.city_id),
+                    label: row.cities.name,
+                  }))}
+                  value={String(cityId)}
+                  onChange={(next) => {
+                    const picked = launchCities.find((row) => String(row.city_id) === next);
+                    if (!picked) {
+                      return;
+                    }
+                    setCityId(picked.city_id);
+                    // The old marker is in the old city, and the geofence would
+                    // refuse it. Start at the new centre and let them place it.
+                    setCoords({ lat: picked.cities.lat, lng: picked.cities.lng });
+                  }}
+                  hint="Where you are, not where you deliver."
+                />
+              ) : null}
+              <LocationPicker
+                // Remounted per city for the same reason signup does it: the
+                // picker reads its centre once, through initialRegion.
+                key={`edit-${cityId}`}
+                centerLat={coords.lat}
+                centerLng={coords.lng}
+                lat={coords.lat}
+                lng={coords.lng}
+                // Street level. The question is whether the marker is on the door,
+                // and a city-wide view cannot answer it.
+                delta={0.004}
+                // The chip travelers tap, not MapKit's red balloon — the one
+                // colour the palette bans outside destructive actions.
+                marker={<PlaceGlyph category={business.category} />}
+                onChange={(lat, lng) => setCoords({ lat, lng })}
+              />
+              {/* A ten-metre nudge onto the real door produces no warning at
               all now, which is the whole point: the corrections that make the
               map better used to be the ones that cost the most. */}
-          <ThemedText type="footnote" themeColor={markerMovedFar ? 'warning' : 'textSecondary'}>
-            {markerMovedFar
-              ? 'You moved the marker a long way. Saving takes your business off the map until you confirm your email again, and the check goes with it.'
-              : 'Tap the map to put the marker on your door. Nudging it is free. Moving it to another street takes you off the map until you confirm your email again.'}
-          </ThemedText>
+              <ThemedText type="footnote" themeColor={markerMovedFar ? 'warning' : 'textSecondary'}>
+                {markerMovedFar
+                  ? 'You moved the marker a long way. Saving takes your business off the map until you confirm your email again, and the check goes with it.'
+                  : 'Tap the map to put the marker on your door. Nudging it is free. Moving it to another street takes you off the map until you confirm your email again.'}
+              </ThemedText>
+            </>
+          ) : null}
+          <FormTextField
+            label="Finding the door"
+            placeholder="Two minutes from the station, blue door"
+            value={placeLabel}
+            onChangeText={setPlaceLabel}
+            maxLength={PLACE_LABEL_MAX}
+            hint="The bit the map can't tell anyone."
+          />
         </>
       ) : null}
-      <FormTextField
-        label="Finding the door"
-        placeholder="Two minutes from the station, blue door"
-        value={placeLabel}
-        onChangeText={setPlaceLabel}
-        maxLength={PLACE_LABEL_MAX}
-        hint="The bit the map can't tell anyone."
-      />
-      <FormTextField
-        label="Anything the hours miss"
-        placeholder="Kitchen shuts at 22:00. Closed on public holidays."
-        value={hoursNote}
-        onChangeText={setHoursNote}
-        maxLength={HOURS_NOTE_MAX}
-      />
-      <FormTextField
-        label="Website"
-        placeholder="https://"
-        value={website}
-        onChangeText={setWebsite}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="url"
-        maxLength={WEBSITE_MAX}
-        error={websiteError ?? undefined}
-      />
 
-      <ThemedText type="smallBold" onLayout={measure('hours')}>
-        Hours
-      </ThemedText>
-      <View style={styles.block}>
-        {rules.map((rule, index) => {
-          const ruleName = index === 0 ? 'first set of hours' : `set of hours ${index + 1}`;
-          return (
-            <Animated.View
-              key={rule.id}
-              entering={FadeIn.duration(200)}
-              exiting={FadeOut.duration(150)}
-              layout={LinearTransition.springify()}
-              style={[styles.ruleCard, { backgroundColor: theme.surfaceSunken }]}>
-              <View style={styles.ruleHeader}>
-                <ThemedText type="footnote" themeColor="textSecondary" style={styles.flex}>
-                  {daysSummary(rule.days)}
-                </ThemedText>
-                {rules.length > 1 ? (
-                  <PressableScale
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove the ${ruleName}`}
-                    haptic="light"
-                    scaleTo={0.9}
-                    hitSlop={8}
-                    onPress={() =>
-                      setRules((current) => current.filter((other) => other.id !== rule.id))
-                    }
-                    style={styles.removeHit}>
-                    <SymbolView
-                      name={{ ios: 'xmark', android: 'close', web: 'close' }}
-                      size={13}
-                      tintColor={theme.textSecondary}
+      {shows('hours') ? (
+        <>
+          {section == null ? <ThemedText type="smallBold">Hours</ThemedText> : null}
+          <View style={styles.block}>
+            {rules.map((rule, index) => {
+              const ruleName = index === 0 ? 'first set of hours' : `set of hours ${index + 1}`;
+              return (
+                <Animated.View
+                  key={rule.id}
+                  entering={FadeIn.duration(200)}
+                  exiting={FadeOut.duration(150)}
+                  layout={LinearTransition.springify()}
+                  style={[styles.ruleCard, { backgroundColor: theme.surfaceSunken }]}>
+                  <View style={styles.ruleHeader}>
+                    <ThemedText type="footnote" themeColor="textSecondary" style={styles.flex}>
+                      {daysSummary(rule.days)}
+                    </ThemedText>
+                    {rules.length > 1 ? (
+                      <PressableScale
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove the ${ruleName}`}
+                        haptic="light"
+                        scaleTo={0.9}
+                        hitSlop={8}
+                        onPress={() =>
+                          setRules((current) => current.filter((other) => other.id !== rule.id))
+                        }
+                        style={styles.removeHit}>
+                        <SymbolView
+                          name={{ ios: 'xmark', android: 'close', web: 'close' }}
+                          size={13}
+                          tintColor={theme.textSecondary}
+                        />
+                      </PressableScale>
+                    ) : null}
+                  </View>
+                  <WeekdayChips
+                    days={rule.days}
+                    ruleName={ruleName}
+                    onToggle={(weekday) => toggleDay(rule.id, weekday)}
+                  />
+                  <View style={styles.times}>
+                    <TimeField
+                      label="Opens"
+                      value={rule.opens}
+                      accessibilityLabel={`Opening time, ${ruleName}`}
+                      onChange={(time) => setRuleTime(rule.id, 'opens', time)}
                     />
-                  </PressableScale>
-                ) : null}
-              </View>
-              <WeekdayChips
-                days={rule.days}
-                ruleName={ruleName}
-                onToggle={(weekday) => toggleDay(rule.id, weekday)}
-              />
-              <View style={styles.times}>
-                <TimeField
-                  label="Opens"
-                  value={rule.opens}
-                  accessibilityLabel={`Opening time, ${ruleName}`}
-                  onChange={(time) => setRuleTime(rule.id, 'opens', time)}
-                />
-                <TimeField
-                  label="Closes"
-                  value={rule.closes}
-                  accessibilityLabel={`Closing time, ${ruleName}`}
-                  onChange={(time) => setRuleTime(rule.id, 'closes', time)}
-                />
-              </View>
-            </Animated.View>
-          );
-        })}
-        <PrimaryButton
-          label="Add different hours for some days"
-          variant="tonal"
-          accessibilityLabel="Add different hours for some days"
-          onPress={() => {
-            ruleSeq.current += 1;
-            setRules((current) => [
-              ...current,
-              {
-                id: `rule-${ruleSeq.current}`,
-                days: [],
-                opens: DEFAULT_OPENS,
-                closes: DEFAULT_CLOSES,
-              },
-            ]);
-          }}
-        />
-        <ThemedText type="footnote" themeColor="textSecondary">
-          Past midnight is fine. 20:00 to 2:00 reads as one night.
-        </ThemedText>
-        <ThemedText type="footnote" themeColor="textSecondary">
-          A day you leave out reads as closed.
-        </ThemedText>
-      </View>
+                    <TimeField
+                      label="Closes"
+                      value={rule.closes}
+                      accessibilityLabel={`Closing time, ${ruleName}`}
+                      onChange={(time) => setRuleTime(rule.id, 'closes', time)}
+                    />
+                  </View>
+                </Animated.View>
+              );
+            })}
+            <PrimaryButton
+              label="Add different hours for some days"
+              variant="tonal"
+              accessibilityLabel="Add different hours for some days"
+              onPress={() => {
+                ruleSeq.current += 1;
+                setRules((current) => [
+                  ...current,
+                  {
+                    id: `rule-${ruleSeq.current}`,
+                    days: [],
+                    opens: DEFAULT_OPENS,
+                    closes: DEFAULT_CLOSES,
+                  },
+                ]);
+              }}
+            />
+            <ThemedText type="footnote" themeColor="textSecondary">
+              Past midnight is fine. 20:00 to 2:00 reads as one night.
+            </ThemedText>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              A day you leave out reads as closed.
+            </ThemedText>
+          </View>
+          {/* The note lives with the hours it is about, not four fields
+              further down between the door and the website. */}
+          <FormTextField
+            label="Anything the hours miss"
+            placeholder="Kitchen shuts at 22:00. Closed on public holidays."
+            value={hoursNote}
+            onChangeText={setHoursNote}
+            maxLength={HOURS_NOTE_MAX}
+          />
+        </>
+      ) : null}
 
-      <ThemedText type="smallBold" onLayout={measure('links')}>
-        Links and contact
-      </ThemedText>
-      <BusinessLinks businessId={business.id} onCommitted={noteCommitted} />
+      {shows('links') ? (
+        <>
+          {section == null ? <ThemedText type="smallBold">Links and contact</ThemedText> : null}
+          <BusinessLinks businessId={business.id} onCommitted={noteCommitted} />
+        </>
+      ) : null}
 
-      <ThemedText type="smallBold" onLayout={measure('photos')}>
-        Photos
-      </ThemedText>
-      <BusinessPhotos businessId={business.id} userId={userId} onCommitted={noteCommitted} />
+      {shows('photos') ? (
+        <>
+          {section == null ? <ThemedText type="smallBold">Photos</ThemedText> : null}
+          <BusinessPhotos businessId={business.id} userId={userId} onCommitted={noteCommitted} />
+        </>
+      ) : null}
     </StepScreen>
   );
 }

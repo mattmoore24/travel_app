@@ -13,6 +13,7 @@ import Animated, {
 import { ThemedText } from '@/components/themed-text';
 import { Elevation, Radius, Space, Springs } from '@/constants/theme';
 import { PlaceGlyph } from '@/features/business/business-marker';
+import { cityNow, clockTime } from '@/features/business/vocabulary';
 import {
   metersBetween,
   clusterCategory,
@@ -119,6 +120,37 @@ export function listableBusinesses(
 ): CityBusinessRow[] {
   const live = places.filter((place) => place.has_live_post);
   return isBusinessViewer ? live.filter((place) => place.id === ownBusinessId) : live;
+}
+
+/**
+ * What a business's row says under its name.
+ *
+ * "Something on tonight" was the whole of it, for every business, forever: the
+ * map has always known WHICH businesses have news (city_businesses returns
+ * has_live_post) and never what the news is, so the one piece of fresh content
+ * a business produces reached a traveler only if they tapped that exact marker
+ * among six clusters. A quiz night that nobody can read is a quiz night nobody
+ * goes to, which is why a bar stops posting.
+ *
+ * The time is the VENUE's, approximated from its longitude the same way the
+ * open line is (cityNow), because "21:00" has to mean nine at that door and
+ * not nine wherever the reader happens to be sitting. And the day comes first,
+ * so a post for Friday cannot read as tonight.
+ *
+ * Falls back to the old line whenever the words are missing rather than
+ * inventing any: `live_post` is merged in from a second call that a phone
+ * running ahead of its own database will not have.
+ */
+export function whatsOnLine(place: CityBusinessRow, clock: Date): string {
+  const post = place.live_post;
+  if (post == null) {
+    return 'Something on tonight';
+  }
+  if (post.happens_at == null) {
+    return post.title;
+  }
+  const at = cityNow(new Date(post.happens_at), place.lng);
+  return `${post.title} · ${intentLabel(toISODate(at), clock)} ${clockTime(at)}`;
 }
 
 export type PlanListDetent = 'peek' | 'half' | 'full';
@@ -335,14 +367,18 @@ export function PlanList({
 
           {businesses.length > 0 ? (
             <View style={styles.section}>
+              {/* The heading no longer claims tonight. The rows below now carry
+                  the day a post is for, and a standing notice or a Friday quiz
+                  night sitting under a heading that says tonight is a heading
+                  telling a traveler something the row beneath it denies. */}
               <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionTitle}>
-                ON TONIGHT
+                WHAT&apos;S ON
               </ThemedText>
               {businesses.map((place) => (
                 <Pressable
                   key={place.id}
                   accessibilityRole="button"
-                  accessibilityLabel={`${place.name}, something on tonight`}
+                  accessibilityLabel={`${place.name}. ${whatsOnLine(place, clock ?? new Date())}`}
                   onPress={() => onSelectBusiness(place.id)}
                   style={({ pressed }) => [
                     styles.row,
@@ -355,7 +391,7 @@ export function PlanList({
                       {place.name}
                     </ThemedText>
                     <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
-                      Something on tonight
+                      {whatsOnLine(place, clock ?? new Date())}
                     </ThemedText>
                   </View>
                   <SymbolView

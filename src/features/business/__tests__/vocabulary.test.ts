@@ -303,3 +303,68 @@ describe('openLine on a day with two shifts', () => {
     expect(openLine(SPLIT, wednesdayAt(23, 30))).toBe('Closed · opens 09:00 tomorrow');
   });
 });
+
+/**
+ * One clock, for the chat and for the door.
+ *
+ * The app kept two and they disagreed on the same evening: a chat separator
+ * printed "9:14 PM" (Intl's 'en' default, with nothing overriding hour12)
+ * while the bar being discussed printed "Open · till 02:00" (a slice of
+ * '02:00:00'). Pinning chat to 24-hour would have made them agree on a German
+ * phone and left an American reading exactly the same disagreement, so what
+ * is asserted here is that ONE preference decides both.
+ *
+ * Exact strings, both directions. A wildcard here would pass on the bug.
+ */
+function vocabularyOnA(uses24hourClock: boolean) {
+  let mod!: typeof import('@/features/business/vocabulary');
+  jest.isolateModules(() => {
+    jest.doMock('expo-localization', () => ({
+      getLocales: () => [{ languageTag: 'en-US', languageCode: 'en' }],
+      getCalendars: () => [{ uses24hourClock, firstWeekday: 1, timeZone: 'UTC' }],
+    }));
+    mod =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('@/features/business/vocabulary') as typeof import('@/features/business/vocabulary');
+  });
+  jest.dontMock('expo-localization');
+  return mod;
+}
+
+describe('one clock', () => {
+  // 21:14 in the runner's own zone, because clockTime formats an instant on
+  // the reader's clock and a UTC literal would move with the runner.
+  const evening = new Date(2026, 7, 23, 21, 14);
+
+  it('prints a moment the way the phone is set, and only that way', () => {
+    expect(vocabularyOnA(true).clockTime(evening)).toBe('21:14');
+    expect(vocabularyOnA(false).clockTime(evening)).toBe('9:14 PM');
+  });
+
+  it('reads the hours a business keeps off the same preference', () => {
+    // The hours themselves do not move - 18:00 is 18:00 at that door. Only
+    // how the two numbers are said aloud changes, which is the reader's
+    // business and not the venue's.
+    expect(vocabularyOnA(true).shortTime('18:00:00')).toBe('18:00');
+    expect(vocabularyOnA(false).shortTime('18:00:00')).toBe('6:00 PM');
+    expect(vocabularyOnA(true).shortTime('02:00:00')).toBe('02:00');
+    expect(vocabularyOnA(false).shortTime('02:00:00')).toBe('2:00 AM');
+  });
+
+  it('so the open line and a chat time can never disagree again', () => {
+    const nineToFive: BusinessHourJson[] = [hour(WED, '09:00:00', '17:00:00')];
+    const twelveHour = vocabularyOnA(false);
+    expect(twelveHour.openLine(nineToFive, at(WED, 12))).toBe('Open · till 5:00 PM');
+    expect(twelveHour.clockTime(at(WED, 17))).toBe('5:00 PM');
+
+    const twentyFourHour = vocabularyOnA(true);
+    expect(twentyFourHour.openLine(nineToFive, at(WED, 12))).toBe('Open · till 17:00');
+    expect(twentyFourHour.clockTime(at(WED, 17))).toBe('17:00');
+  });
+
+  it('hands back the two numbers it was given when the time is nonsense', () => {
+    // A malformed row must not become 'Invalid Date' in front of somebody
+    // standing outside a door.
+    expect(vocabularyOnA(true).shortTime('later')).toBe('later');
+  });
+});

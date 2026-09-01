@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useState } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { FormTextField } from '@/components/form/form-text-field';
@@ -14,11 +16,19 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
-import { fetchOwnBusinessPost, updateBusinessPost } from '@/features/business/api';
+import {
+  discardPostPhoto,
+  fetchOwnBusinessPost,
+  updateBusinessPost,
+  uploadPostPhoto,
+} from '@/features/business/api';
 import { useOwnBusiness } from '@/features/business/hooks';
+import { useBusinessPhotoUrl } from '@/features/business/photo-url';
+import { useOwnUserId } from '@/features/profile/hooks';
 import { formatDate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
+import type { ModerationStatus } from '@/lib/database.types';
 import { haptics } from '@/lib/haptics';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
@@ -124,6 +134,7 @@ async function createPost(input: {
   businessId: string;
   title: string;
   body: string | null;
+  photoPath: string | null;
   happensAt: string | null;
   endsAt: string | null;
 }) {
@@ -131,6 +142,7 @@ async function createPost(input: {
     business_id: input.businessId,
     title: input.title,
     body: input.body,
+    photo_path: input.photoPath,
     happens_at: input.happensAt,
     ends_at: input.endsAt,
   });
@@ -226,6 +238,9 @@ export default function BusinessPostScreen() {
   const queryClient = useQueryClient();
   const { data: business } = useOwnBusiness();
   const businessId = business?.id ?? null;
+  // The uploader keys objects by the caller's uid, because the storage write
+  // policy checks the first path segment against auth.uid().
+  const userId = useOwnUserId();
   /**
    * Three screens in one route, told apart by two params.
    *
@@ -260,6 +275,17 @@ export default function BusinessPostScreen() {
 
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [photoPath, setPhotoPath] = useState<string | null>(null);
+  /**
+   * The verdict on the photo that came WITH the row, and null for one just
+   * picked here.
+   *
+   * Null is not "approved": a photo this composer has only uploaded has no row
+   * yet, so nothing has judged it, and the chip must say nothing rather than
+   * guess. What it will be is said in the footnote below the frame instead,
+   * which is true before the post exists.
+   */
+  const [photoStatus, setPhotoStatus] = useState<ModerationStatus | null>(null);
   const [shape, setShape] = useState<Shape | null>(null);
   const [happensAt, setHappensAt] = useState(defaultHappensAt);
   const [endsAt, setEndsAt] = useState(defaultEndsAt);
@@ -281,6 +307,14 @@ export default function BusinessPostScreen() {
     setSeededFrom(seed.data.id);
     setTitle(seed.data.title);
     setBody(seed.data.body ?? '');
+    // The photo comes across for a repeat as well as for an edit, unlike the
+    // dates: a quiz night's picture is still the picture of that quiz night,
+    // and the reason the dates are dropped is that they have been and gone.
+    // Two rows naming one object is fine — every read resolves through a row,
+    // so the archived original simply stops being readable when it is
+    // archived, and the new row keeps the object alive on its own terms.
+    setPhotoPath(seed.data.photo_path);
+    setPhotoStatus(seed.data.photo_path != null ? seed.data.photo_status : null);
     setShape(shapeOfPost(seed.data));
     // The dates are seeded only when they are still ahead of us, and never
     // for a repeat. A picker whose value sits below its own minimumDate is a
@@ -324,6 +358,7 @@ export default function BusinessPostScreen() {
     mutationFn: (input: {
       title: string;
       body: string | null;
+      photoPath: string | null;
       happensAt: string | null;
       endsAt: string | null;
     }) =>
@@ -340,6 +375,72 @@ export default function BusinessPostScreen() {
       }
     },
   });
+
+  /**
+   * Objects this composer has put in the bucket that no row names yet.
+   *
+   * Only these are deleted when the photo is replaced or taken off. A path
+   * that came from the database is left alone: another row may name it (a
+   * repeat carries the original's picture across), and an object nothing names
+   * is already invisible, because every read resolves through a post row.
+   */
+  const strays = useRef<string[]>([]);
+  const dropStray = (path: string | null) => {
+    if (path == null || !strays.current.includes(path)) {
+      return;
+    }
+    strays.current = strays.current.filter((one) => one !== path);
+    void discardPostPhoto(path);
+  };
+
+  const photoUpload = useMutation({
+    mutationFn: (localUri: string) => uploadPostPhoto(userId!, localUri),
+  });
+
+  // A synchronous latch, for the reason the photo grid records beside its own:
+  // two taps in one frame must not both open a picker, and state read in the
+  // same frame would answer false to both.
+  const picking = useRef(false);
+
+  const pickPhoto = async () => {
+    if (userId == null || picking.current) {
+      return;
+    }
+    picking.current = true;
+    try {
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        // `aspect` is Android-only and the iOS editor is always square. The
+        // frame below is 3:2, which is the shape the place page draws, so what
+        // is cropped here is shown with the same trim either side.
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 1,
+      });
+      if (picked.canceled || picked.assets.length === 0) {
+        return;
+      }
+      const previous = photoPath;
+      const path = await photoUpload.mutateAsync(picked.assets[0].uri);
+      strays.current = [...strays.current, path];
+      setPhotoPath(path);
+      setPhotoStatus(null);
+      dropStray(previous);
+      haptics.success();
+    } catch {
+      // Surfaced by the global mutation error alert, which is where "that one
+      // is a bit small to fill the frame" comes through.
+    } finally {
+      picking.current = false;
+    }
+  };
+
+  const removePhoto = () => {
+    const previous = photoPath;
+    setPhotoPath(null);
+    setPhotoStatus(null);
+    dropStray(previous);
+    haptics.light();
+  };
 
   const cap = business?.verified ? CAP_VERIFIED : CAP_UNVERIFIED;
   const live = liveCountExcluding(livePosts.data, editing ? postId : null);
@@ -395,9 +496,12 @@ export default function BusinessPostScreen() {
       await post.mutateAsync({
         title: trimmedTitle,
         body: body.trim() || null,
+        photoPath,
         happensAt: shape === 'happens' ? happensAt.toISOString() : null,
         endsAt: shape === 'ends' ? endOfDay(endsAt).toISOString() : null,
       });
+      // Saved: the object now belongs to a row, so it is nobody's stray.
+      strays.current = [];
       haptics.success();
       analytics.capture(editing ? 'business_post_edited' : 'business_post_created', { shape });
       // Remembered only once it has actually been used, so a shape somebody
@@ -456,6 +560,15 @@ export default function BusinessPostScreen() {
         {...keyboardDoneProps}
       />
 
+      <PostPhotoField
+        path={photoPath}
+        status={photoStatus}
+        busy={photoUpload.isPending}
+        disabled={userId == null}
+        onPick={() => void pickPhoto()}
+        onRemove={removePhoto}
+      />
+
       <ThemedText type="smallBold">How long it stays up</ThemedText>
       {SHAPES.map((option) => (
         <ShapeRow
@@ -511,6 +624,125 @@ export default function BusinessPostScreen() {
         </View>
       )}
     </StepScreen>
+  );
+}
+
+/**
+ * The one picture a post can carry.
+ *
+ * `business_posts.photo_path` and the traveler page's PostCard have both been
+ * ready since the table shipped; there was simply no way to write it, so
+ * "Live music, no cover" could never show the band. Optional in the strongest
+ * sense: nothing about `ready` mentions it, so a post is still one title away
+ * from being up.
+ *
+ * The picture is CHECKED before a traveler sees it, and the footnote says so
+ * before anybody spends a minute picking one. That check is a trigger on this
+ * post's own row, not on the bucket: sharing `business-photos` with the photo
+ * grid buys a post photo neither the moderation nor the readability, because
+ * both resolve through the row a photo creates.
+ *
+ * One frame rather than the photo grid's tiles: a post has one photo, drawn at
+ * the 3:2 the place page draws it at, so what is cropped here is what lands
+ * there.
+ */
+function PostPhotoField({
+  path,
+  status,
+  busy,
+  disabled,
+  onPick,
+  onRemove,
+}: {
+  path: string | null;
+  /** The stored verdict, or null for a photo picked in this session. */
+  status: ModerationStatus | null;
+  busy: boolean;
+  disabled: boolean;
+  onPick: () => void;
+  onRemove: () => void;
+}) {
+  const theme = useTheme();
+  // Signed even while it is being checked: the storage policy lets an owner
+  // read their own upload by the uid in its first path segment, so the person
+  // who took the photo is never shown an empty frame.
+  const { data: url } = useBusinessPhotoUrl(path);
+  const rejected = status === 'rejected';
+  const waiting = status === 'pending';
+
+  return (
+    <View style={styles.photoBlock}>
+      <ThemedText type="smallBold">Photo</ThemedText>
+      {path ? (
+        <View style={[styles.photoFrame, { backgroundColor: theme.surfaceSunken }]}>
+          {url ? <Image source={{ uri: url }} style={styles.photoFill} contentFit="cover" /> : null}
+          {rejected || waiting ? (
+            <View
+              style={[
+                styles.photoChip,
+                { backgroundColor: rejected ? theme.danger : theme.surface },
+              ]}>
+              <ThemedText
+                type="caption"
+                style={rejected ? { color: theme.onHighlight } : undefined}>
+                {rejected ? 'Removed' : 'In review'}
+              </ThemedText>
+            </View>
+          ) : null}
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Take the photo off this post"
+            haptic="light"
+            scaleTo={0.88}
+            // 10 + 24 + 10 = 44. hitSlop is honoured by the Pressable itself,
+            // so the frame's overflow: hidden cannot clip the target.
+            hitSlop={10}
+            onPress={onRemove}
+            containerStyle={styles.photoRemoveAnchor}
+            style={[styles.photoRemoveDot, { backgroundColor: theme.surface }]}>
+            <SymbolView
+              name={{ ios: 'xmark', android: 'close', web: 'close' }}
+              size={11}
+              tintColor={theme.text}
+            />
+          </PressableScale>
+        </View>
+      ) : (
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel="Add a photo to this post"
+          haptic="soft"
+          scaleTo={0.97}
+          disabled={busy || disabled}
+          onPress={onPick}
+          containerStyle={styles.photoAddAnchor}
+          style={[
+            styles.photoFrame,
+            styles.photoAdd,
+            // Colour, never alpha: a faded control dims its label and its
+            // ground in the same proportion and stops being readable.
+            {
+              backgroundColor: theme.surfaceSunken,
+              borderColor: busy || disabled ? theme.hairline : theme.border,
+            },
+          ]}>
+          {busy ? (
+            <ActivityIndicator color={theme.accent} />
+          ) : (
+            <SymbolView
+              name={{ ios: 'photo', android: 'image', web: 'image' }}
+              size={22}
+              tintColor={theme.textSecondary}
+            />
+          )}
+        </PressableScale>
+      )}
+      <ThemedText type="footnote" themeColor="textSecondary">
+        {rejected
+          ? "That one didn't pass the check. Pick another and it goes back in."
+          : 'Optional. Photos are checked before travelers see them.'}
+      </ThemedText>
+    </View>
   );
 }
 
@@ -636,6 +868,53 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: Space.lg,
     borderRadius: Radius.md,
+  },
+  photoBlock: {
+    alignSelf: 'stretch',
+    gap: Space.sm,
+  },
+  // The shape a business photo is drawn at everywhere a traveler meets one.
+  photoFrame: {
+    alignSelf: 'stretch',
+    aspectRatio: 3 / 2,
+    borderRadius: Radius.lg,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoAddAnchor: {
+    alignSelf: 'stretch',
+  },
+  photoAdd: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+  },
+  photoFill: {
+    width: '100%',
+    height: '100%',
+  },
+  photoChip: {
+    position: 'absolute',
+    start: Space.sm,
+    bottom: Space.sm,
+    borderRadius: Radius.sm,
+    paddingHorizontal: Space.sm,
+    paddingVertical: 2,
+    minHeight: 24,
+    justifyContent: 'center',
+  },
+  photoRemoveAnchor: {
+    position: 'absolute',
+    end: Space.xs,
+    top: Space.xs,
+  },
+  photoRemoveDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   count: {
     gap: Space.xs,

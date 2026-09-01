@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ChipRow } from '@/components/form/chip-row';
@@ -26,13 +26,16 @@ import {
   useRegisterBusiness,
   useRequestBusinessEmailCode,
   useUpdateBusinessLocation,
+  useUpdateOwnBusiness,
 } from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import {
   CATEGORY_ICON,
   CATEGORY_LABEL,
   CATEGORY_ORDER,
+  LINK_LABEL,
   openLine,
+  weekdayLabel,
 } from '@/features/business/vocabulary';
 import { countOf } from '@/lib/plural';
 import { useLaunchCities } from '@/features/pins/hooks';
@@ -106,6 +109,8 @@ const ADDRESS_MAX = 160;
 
 const NAME_MIN = 2;
 const NAME_MAX = 80;
+/** businesses.description is capped at 600 in the column CHECK. */
+const DESCRIPTION_MAX = 600;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Six digits, and twenty minutes, both the migration's numbers. */
@@ -245,6 +250,21 @@ export default function BusinessSignupScreen() {
    */
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [registered, setRegistered] = useState(false);
+  /**
+   * The description, edited on its own step rather than in the settings form.
+   *
+   * Null means "nothing typed yet", and the field falls through to the saved
+   * row — which is what makes the step correct on the way BACK to it as well
+   * as the first time. A plain string seeded at mount would have been seeded
+   * from a row that had not landed, and an effect that reseeds it would fight
+   * whatever is being typed. The first keystroke makes it a string and it
+   * owns the value from then on, so an empty field stays empty and a draft
+   * somebody skipped past is still there when they come back.
+   */
+  const [description, setDescription] = useState<string | null>(null);
+  const [savingDescription, setSavingDescription] = useState(false);
+  const [descriptionProblem, setDescriptionProblem] = useState<string | null>(null);
+  const updateBusiness = useUpdateOwnBusiness(business?.id ?? null);
 
   // Chosen, never assumed. This used to fall back to `launchCities[0]`, so
   // somebody who never touched the chips registered in whatever city the query
@@ -482,6 +502,44 @@ export default function BusinessSignupScreen() {
       setContactProblem('We could not save those just then. Try that again.');
     } finally {
       setSavingContacts(false);
+    }
+  };
+
+  /**
+   * The description, saved on its own step. No handoff to the editor at all.
+   *
+   * `useUpdateOwnBusiness` is the mutation that owns this column and already
+   * invalidates the row, the traveler-facing detail and the map list, so the
+   * review step two screens later shows the words that were just typed.
+   */
+  const descriptionText = description ?? business?.description ?? '';
+  const descriptionError =
+    descriptionText.length > DESCRIPTION_MAX
+      ? `That is ${descriptionText.length - DESCRIPTION_MAX} characters too long.`
+      : null;
+
+  const saveDescription = async () => {
+    const trimmed = descriptionText.trim();
+    if (descriptionError != null) {
+      return;
+    }
+    // Nothing to write, so nothing to wait for. Also the path taken when the
+    // step is passed through untouched, which is most of them.
+    if (business == null || trimmed === (business.description ?? '')) {
+      go(10);
+      return;
+    }
+    setSavingDescription(true);
+    setDescriptionProblem(null);
+    try {
+      await updateBusiness.mutateAsync({ description: trimmed || null });
+      go(10);
+    } catch {
+      // Stay on the step. What was typed is the only copy of it, and moving
+      // on would leave somebody believing it had saved.
+      setDescriptionProblem('We could not save that just then. Try again.');
+    } finally {
+      setSavingDescription(false);
     }
   };
 
@@ -975,7 +1033,12 @@ export default function BusinessSignupScreen() {
         total={BUSINESS_TOTAL_STEPS}
         footer={listingFooter}
         title="Show your business"
-        subtitle="Photos of the business, not of a person. The first one that clears is your cover, and it is the thing travelers see on the map."
+        // The grid below owns the sentence about the cover now, and it is a
+        // true one wherever the list ends up: "the first one that clears"
+        // meant "the lowest surviving position" after any delete, which is
+        // not something a bar owner can reason about. Repeating it here would
+        // also have printed it twice, one line apart.
+        subtitle="The first thing a traveler sees when they tap you on the map."
         // The docked button drives the SAME picker as the dashed tile while
         // there is nothing to continue past, and turns into Continue the
         // moment a photo lands. Never a greyed Continue: opacity cannot
@@ -1012,35 +1075,37 @@ export default function BusinessSignupScreen() {
         title="What is it like?"
         subtitle="A couple of lines a traveler would actually want to read. Not a menu, not an advert."
         continueTestID="business-description-continue"
-        // Says what the press does. With nothing written yet the button
-        // opens the editor rather than moving on, and calling that
-        // "Continue" is the same lie step 8 already stopped telling.
-        continueLabel={detail?.description ? 'Continue' : 'Write it'}
-        note={CHANGE_LATER}
+        continueLoading={savingDescription}
+        note={descriptionProblem ?? descriptionError ?? CHANGE_LATER}
         onBack={() => go(8)}
         onSkip={() => go(10)}
-        onContinue={() =>
-          detail?.description
-            ? go(10)
-            : router.push({ pathname: '/business-edit', params: { section: 'details' } })
-        }>
-        {/* The card and the ghost button only once there is something to
-            show and something to change. Empty, this step drew a "Write it"
-            ghost directly above a docked button that did the same thing. */}
-        {detail?.description ? (
-          <>
-            <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
-              <ThemedText>{detail.description}</ThemedText>
-            </View>
-            <PrimaryButton
-              variant="ghost"
-              label="Change it"
-              onPress={() =>
-                router.push({ pathname: '/business-edit', params: { section: 'details' } })
-              }
-            />
-          </>
-        ) : null}
+        onContinue={() => void saveDescription()}>
+        {/* The text, in place. This step used to be a headline, a subtitle, a
+            thousand points of black and a button that pushed /business-edit
+            at the details section - so a step that asks one question handed
+            over a 1,430-line settings form with a Save that writes nine other
+            fields. Run 49 is the picture of it. The same field the editor
+            draws, down to the 600-character cap and the characters-left hint,
+            because it is the same text and two ways of typing it is two
+            things to keep in step. */}
+        <FormTextField
+          label="About the business"
+          testID="business-description-input"
+          placeholder="What it's like, who turns up, what to order."
+          autoFocus
+          multiline
+          numberOfLines={4}
+          style={styles.multiline}
+          value={descriptionText}
+          onChangeText={setDescription}
+          error={descriptionError}
+          hint={
+            descriptionText.length > DESCRIPTION_MAX - 100
+              ? `${DESCRIPTION_MAX - descriptionText.length} characters left`
+              : undefined
+          }
+          {...keyboardDoneProps}
+        />
       </StepShell>
     );
   }
@@ -1075,7 +1140,32 @@ export default function BusinessSignupScreen() {
               router.push({ pathname: '/business-edit', params: { section: 'hours' } })
             }
           />
-        ) : null}
+        ) : (
+          // Something to look at while deciding whether this app is real, at
+          // the size the real thing occupies: pick some days, pick two times.
+          <ExampleBlock what="One line of hours looks like this">
+            <ThemedText type="footnote" themeColor="textTertiary">
+              Mon to Fri
+            </ThemedText>
+            <View style={styles.exampleChips}>
+              {[1, 2, 3, 4, 5, 6, 0].map((weekday) => (
+                <View key={weekday} style={[styles.exampleChip, { borderColor: theme.hairline }]}>
+                  <ThemedText type="footnote" themeColor="textTertiary">
+                    {weekdayLabel(weekday)}
+                  </ThemedText>
+                </View>
+              ))}
+            </View>
+            <View style={styles.exampleTimes}>
+              <ThemedText type="footnote" themeColor="textTertiary">
+                Opens 09:00
+              </ThemedText>
+              <ThemedText type="footnote" themeColor="textTertiary">
+                Closes 17:00
+              </ThemedText>
+            </View>
+          </ExampleBlock>
+        )}
         <ThemedText type="footnote" themeColor="textSecondary">
           No hours is better than wrong hours. Somebody standing outside a closed door because your
           page said otherwise is worse than not knowing.
@@ -1115,7 +1205,25 @@ export default function BusinessSignupScreen() {
               router.push({ pathname: '/business-edit', params: { section: 'links' } })
             }
           />
-        ) : null}
+        ) : (
+          // Two rows in the shape the real ones take: what the button says,
+          // and what kind of link it is. Same two lines BusinessLinks draws.
+          <ExampleBlock what="Two links look like this">
+            {[
+              { label: 'Menu', kind: LINK_LABEL.menu },
+              { label: 'Book a table', kind: LINK_LABEL.reservations },
+            ].map((row) => (
+              <View key={row.label} style={styles.exampleRow}>
+                <ThemedText type="callout" themeColor="textTertiary">
+                  {row.label}
+                </ThemedText>
+                <ThemedText type="footnote" themeColor="textTertiary">
+                  {row.kind}
+                </ThemedText>
+              </View>
+            ))}
+          </ExampleBlock>
+        )}
       </StepShell>
     );
   }
@@ -1281,6 +1389,33 @@ function ConfirmEmailFooter({
           onPress={onResend}
         />
       ) : null}
+    </View>
+  );
+}
+
+/**
+ * Grey furniture at the size the real thing will occupy.
+ *
+ * The hours and links steps were a headline over an empty screen, and an
+ * owner deciding whether this app is real had nothing to look at while they
+ * decided. This is not data and must never be mistaken for it: textTertiary
+ * on a sunken card, a caption saying what it is, and ONE accessibility
+ * element for the whole thing, so VoiceOver reads "an example of..." rather
+ * than a set of opening hours the business does not have.
+ */
+function ExampleBlock({ what, children }: { what: string; children: ReactNode }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.block}>
+      <ThemedText type="footnote" themeColor="textSecondary">
+        {what}
+      </ThemedText>
+      <View
+        accessible
+        accessibilityLabel={what}
+        style={[styles.exampleCard, { backgroundColor: theme.surfaceSunken }]}>
+        {children}
+      </View>
     </View>
   );
 }
@@ -1469,6 +1604,40 @@ const styles = StyleSheet.create({
   },
   block: {
     gap: Space.sm,
+  },
+  multiline: {
+    minHeight: 110,
+    textAlignVertical: 'top',
+  },
+  // Furniture, not data: the same card the real thing sits in, with nothing
+  // in it that could be read as this business's own hours or links.
+  exampleCard: {
+    gap: Space.md,
+    padding: Space.md,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
+  exampleChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Space.sm,
+  },
+  exampleChip: {
+    minWidth: HitTarget,
+    minHeight: HitTarget - 8,
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  exampleTimes: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Space.lg,
+  },
+  exampleRow: {
+    gap: 2,
   },
   footerLine: {
     textAlign: 'center',

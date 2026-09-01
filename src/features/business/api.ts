@@ -6,6 +6,8 @@ import {
   type BusinessReportReason,
   type BusinessVerificationRow,
   type CityBusinessRow,
+  type CityWhatsOnRow,
+  type ModerationStatus,
   type MyBusinessRow,
   type MyRatingRow,
   type RatingBucket,
@@ -145,13 +147,52 @@ export async function updateOwnBusiness(
   }
 }
 
-/** Every place on the map in one city. */
-export async function fetchCityBusinesses(cityId: number) {
-  const { data, error } = await supabase.rpc('city_businesses', { p_city_id: cityId });
+/**
+ * What is on at each business in a city, keyed by business.
+ *
+ * The twin of `city_businesses.has_live_post`: that boolean is what brightens
+ * a marker's ring, and this is the words behind it. Separate from the list
+ * itself so the list's own signature never had to move.
+ */
+async function fetchCityWhatsOn(cityId: number) {
+  const { data, error } = await supabase.rpc('city_whats_on', { p_city_id: cityId });
   if (error) {
     throw error;
   }
-  return (data ?? []) as CityBusinessRow[];
+  return new Map(((data ?? []) as CityWhatsOnRow[]).map((row) => [row.business_id, row]));
+}
+
+/**
+ * Every place on the map in one city, each carrying what it has on.
+ *
+ * Two calls rather than one wider `city_businesses`, and the merge is here
+ * rather than in a second query so every existing caller reaches the words
+ * without a line of plumbing: the map already reads this, hands the rows to
+ * the plan list, and the list can now say what the news IS instead of only
+ * that there is some.
+ *
+ * The what's-on half is allowed to fail on its own. JavaScript ships over the
+ * air and the database deploys separately, so a phone can be a few minutes
+ * ahead of its own server, and losing every business on the map because the
+ * new function is not there yet would be a far worse trade than losing a line
+ * of text. What is left when it fails is exactly what the list said before
+ * this existed, which is true rather than merely quiet.
+ */
+export async function fetchCityBusinesses(cityId: number) {
+  const [{ data, error }, whatsOn] = await Promise.all([
+    supabase.rpc('city_businesses', { p_city_id: cityId }),
+    fetchCityWhatsOn(cityId).catch((whatsOnError: unknown) => {
+      console.warn(`city_whats_on(${cityId}) failed: ${String(whatsOnError)}`);
+      return new Map<string, CityWhatsOnRow>();
+    }),
+  ]);
+  if (error) {
+    throw error;
+  }
+  return ((data ?? []) as Omit<CityBusinessRow, 'live_post'>[]).map((place) => ({
+    ...place,
+    live_post: whatsOn.get(place.id) ?? null,
+  }));
 }
 
 /** One place's whole page, in one round trip. */
@@ -329,13 +370,22 @@ export type OwnBusinessPostRow = {
   business_id: string;
   title: string;
   body: string | null;
+  photo_path: string | null;
+  /**
+   * Where the photo's check has got to. Read straight from the table rather
+   * than from `business_detail`, for the reason the photo grid gives beside
+   * its own read: that RPC answers for a business a traveler can see, and the
+   * composer is open in exactly the cases where it does not answer.
+   */
+  photo_status: ModerationStatus;
   happens_at: string | null;
   ends_at: string | null;
   archived_at: string | null;
 };
 
 /** The columns the composer needs to reopen a post. Never a star select. */
-const OWN_POST_COLUMNS = 'id, business_id, title, body, happens_at, ends_at, archived_at';
+const OWN_POST_COLUMNS =
+  'id, business_id, title, body, photo_path, photo_status, happens_at, ends_at, archived_at';
 
 /**
  * Read back one of your own posts, to edit it or to put it up again.
@@ -379,6 +429,7 @@ export async function updateBusinessPost(input: {
   postId: string;
   title: string;
   body: string | null;
+  photoPath: string | null;
   happensAt: string | null;
   endsAt: string | null;
 }) {
@@ -387,6 +438,7 @@ export async function updateBusinessPost(input: {
     .update({
       title: input.title,
       body: input.body,
+      photo_path: input.photoPath,
       happens_at: input.happensAt,
       ends_at: input.endsAt,
     })
@@ -394,6 +446,36 @@ export async function updateBusinessPost(input: {
   if (error) {
     throw error;
   }
+}
+
+/**
+ * Put a picture on a post, and open its check.
+ *
+ * The bucket is the photo grid's, but that is a detail of where bytes live and
+ * nothing else: moderation attaches to the ROW a photo creates, so a post
+ * photo is screened by its own trigger on `business_posts` and read through
+ * its own arm of `can_view_business_photo`. Sharing a bucket buys none of it.
+ *
+ * Upload first, write the path second, delete the upload if the write fails —
+ * the same order and the same compensation as every other photo path here. The
+ * row is what makes an object readable, so an orphan is better than a path
+ * pointing at nothing.
+ */
+export async function uploadPostPhoto(userId: string, localUri: string): Promise<string> {
+  // A post photo is drawn at the same width as a listing's cover on the place
+  // page, so it is judged the same way and gets the same resolution floor.
+  return processAndUploadImage(BUSINESS_PHOTO_BUCKET, userId, localUri, { fillsAFrame: true });
+}
+
+/**
+ * Forget a post photo that no row points at any more.
+ *
+ * Best effort by design: storage-js reports a failure in the result rather
+ * than by throwing, and an orphaned object is invisible to everybody, because
+ * every read resolves through the post row that has just stopped naming it.
+ */
+export async function discardPostPhoto(storagePath: string) {
+  await removeUploadedImage(BUSINESS_PHOTO_BUCKET, storagePath);
 }
 
 // -- The badge ----------------------------------------------------------------

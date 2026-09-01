@@ -6,6 +6,7 @@ import {
   Alert,
   Linking,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   View,
@@ -36,7 +37,7 @@ import {
   shortTime,
   weekdayLabel,
 } from '@/features/business/vocabulary';
-import { hrefFor, opensInAppBrowser } from '@/features/business/links';
+import { hrefFor, linkCaution, opensInAppBrowser } from '@/features/business/links';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { LISTING_SHARE_LABEL, shareListing } from '@/features/business/share-listing';
 import { dayLabel } from '@/features/chat/separators';
@@ -252,6 +253,10 @@ function LinkRow({ link, businessId }: { link: BusinessLinkJson; businessId: str
   // with a Done button and land the reader back exactly here. Everything else
   // belongs to another app: see opensInAppBrowser for which and why.
   const inApp = opensInAppBrowser(link.kind);
+  // What this row cannot promise about where the tap lands. Null for almost
+  // every link; a sentence for a shortener, a bare IP address, or a social
+  // link filed under a platform it does not go to. See linkCaution.
+  const caution = linkCaution(link);
 
   // The glyph answers the same question as the hint, so it branches on the
   // same predicate. The leaving arrow stayed on the website and menu rows
@@ -272,7 +277,11 @@ function LinkRow({ link, businessId }: { link: BusinessLinkJson; businessId: str
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityHint={
+      // The caution is part of the hint, not decoration on top of it: a
+      // sighted reader gets the sentence under the label, and without this a
+      // VoiceOver reader would hear "Opens outside the app" and nothing at
+      // all about the link hiding its destination.
+      accessibilityHint={[
         phone
           ? 'Calls them'
           : email
@@ -281,8 +290,11 @@ function LinkRow({ link, businessId }: { link: BusinessLinkJson; businessId: str
               ? 'Opens WhatsApp'
               : inApp
                 ? 'Opens here, with a Done button'
-                : 'Opens outside the app'
-      }
+                : 'Opens outside the app',
+        caution,
+      ]
+        .filter(Boolean)
+        .join('. ')}
       haptic="light"
       scaleTo={0.98}
       onPress={() => {
@@ -314,6 +326,14 @@ function LinkRow({ link, businessId }: { link: BusinessLinkJson; businessId: str
         {phone || email || whatsapp ? (
           <ThemedText type="footnote" themeColor="textSecondary">
             {link.value}
+          </ThemedText>
+        ) : caution ? (
+          // Warning, not danger: red is this app's destructive colour and
+          // nothing here is destructive. The row still opens - the check that
+          // should refuse a link like this belongs at write time, and until
+          // it does, saying where the tap goes is the honest half.
+          <ThemedText type="footnote" themeColor="warning">
+            {caution}
           </ThemedText>
         ) : null}
       </View>
@@ -448,7 +468,26 @@ export default function PlaceScreen() {
   return (
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView
+          // The gesture every phone user reaches for when a screen looks
+          // stale. A traveler on a thin business page had no recovery at all
+          // short of leaving and coming back, and this page is often read on
+          // a hostel's wifi.
+          //
+          // isRefetching, not isFetching: the first load is already told by
+          // the skeletons above, and a spinner sitting at the top of a screen
+          // nobody pulled reads as a stuck page.
+          refreshControl={
+            <RefreshControl
+              refreshing={detailQuery.isRefetching || ratingQuery.isRefetching}
+              onRefresh={() => {
+                void detailQuery.refetch();
+                void ratingQuery.refetch();
+              }}
+              tintColor={theme.textSecondary}
+            />
+          }
+          contentContainerStyle={styles.content}>
           <PlaceImage
             path={cover?.storage_path ?? null}
             label={`Photo of ${place.name}`}

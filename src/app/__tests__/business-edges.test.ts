@@ -92,18 +92,64 @@ describe('the listing steps read as a business', () => {
 
   it('every docked button says what pressing it does', () => {
     const code = src(SIGNUP);
-    // Description, hours and links all open the editor when the section is
-    // empty. A button that opens a modal while saying "Continue" is the same
-    // lie three times over. The photo step is the fourth and it no longer
-    // opens anything: it drives the grid's own picker (below).
+    // Hours and links still open the editor when the section is empty, and a
+    // button that opens a modal while saying "Continue" is the same lie
+    // twice. The photo step drives the grid's own picker (below) and the
+    // description step now takes the text in place, so neither of those two
+    // has a handoff left to name.
     for (const label of [
       "continueLabel={usable ? 'Continue' : 'Add photos'}",
-      "continueLabel={detail?.description ? 'Continue' : 'Write it'}",
       "continueLabel={hourCount > 0 ? 'Continue' : 'Set your hours'}",
       "continueLabel={linkCount > 0 ? 'Continue' : 'Add a link'}",
     ]) {
       expect(code).toContain(label);
     }
+  });
+
+  it('takes the description in place instead of handing off to the editor', () => {
+    const code = src(SIGNUP);
+    // Three steps in a row promised a step and delivered a 1,430-line
+    // settings form scroll-positioned at a heading. This is the one that did
+    // not have to: it is a single text field, so it is one here.
+    const step = code.slice(code.indexOf('if (step === 9) {'));
+    const body = step.slice(0, step.indexOf('if (step === 10) {'));
+    // No handoff at all: nothing on this step pushes anywhere.
+    expect(body).not.toContain('router.');
+    expect(body).not.toContain("section: 'details'");
+    // The editor's own field, cap and hint, because it is the same text and
+    // two ways of typing it is two things to keep in step.
+    expect(body).toContain('label="About the business"');
+    expect(code).toContain('const DESCRIPTION_MAX = 600;');
+    expect(body).toContain('characters left');
+    // Saved through the mutation that owns the column, not held for a Save
+    // button this step does not have.
+    expect(code).toContain('await updateBusiness.mutateAsync({ description: trimmed || null });');
+    // And the field falls through to the saved row until somebody types, so
+    // the step is right on the way BACK to it as well as the first time. A
+    // string seeded at mount would have been seeded from a row that had not
+    // landed yet.
+    expect(code).toContain("const descriptionText = description ?? business?.description ?? '';");
+    // A failed save keeps the person on the step. Moving on would leave them
+    // believing words that never landed.
+    expect(code).toContain("setDescriptionProblem('We could not save that just then. Try again.')");
+  });
+
+  it('gives the empty hours and links steps something to look at', () => {
+    const code = src(SIGNUP);
+    // Two of the three content steps were mostly empty black before a
+    // handoff, so an owner deciding whether this app is real had nothing to
+    // decide on. The example is furniture and must read as furniture: one
+    // accessibility element saying what it is, so VoiceOver never reads a
+    // fake set of hours as this business's own.
+    expect(code).toContain('function ExampleBlock(');
+    expect(code).toContain('<ExampleBlock what="One line of hours looks like this">');
+    expect(code).toContain('<ExampleBlock what="Two links look like this">');
+    const block = code.slice(code.indexOf('function ExampleBlock('));
+    expect(block.slice(0, block.indexOf('\n/**'))).toContain('accessibilityLabel={what}');
+    // And only while the step is empty, or it would sit under the real thing
+    // as a second, greyed copy of it.
+    expect(code).toContain('{hourCount > 0 ? (');
+    expect(code).toContain('{linkCount > 0 ? (');
   });
 
   it('counts the photo the owner can see, not the one a traveler can', () => {
@@ -208,6 +254,95 @@ describe('the listing steps read as a business', () => {
     // instead of a silent quit.
     expect(code).toContain('Somewhere else? Tell us where.');
     expect(code).toContain("onPress={() => router.push('/contact')}");
+  });
+});
+
+describe('a named section gets that section, not the whole settings form', () => {
+  it('gates every block on the section param', () => {
+    const code = src(EDIT);
+    // Run 49: an owner asked for photos and got 'Add different hours for some
+    // days', a links list, an orphaned 'What is it? / Pick one' showing no
+    // selection, '2 of 10', a dashed square, '0 of 10' and Save. Every block
+    // is behind the gate now, and the screen wears the section's name.
+    expect(code).toContain('const shows = (key: Section) => section == null || section === key;');
+    for (const key of ['details', 'location', 'hours', 'links', 'photos']) {
+      expect(code).toContain(`{shows('${key}') ? (`);
+    }
+    expect(code).toContain("title={section ? SECTION_TITLE[section] : 'Edit your business'}");
+  });
+
+  it('treats an unrecognised section as no section at all', () => {
+    const code = src(EDIT);
+    // It is a route param, so anything can arrive in it. Under a gate, an
+    // unknown value would render a form with no fields and a Save button.
+    expect(code).toContain('params.section != null && params.section in SECTION_TITLE');
+  });
+
+  it('leaves nothing unreachable: every field belongs to a section', () => {
+    const code = src(EDIT);
+    // 'Finding the door' and 'Anything the hours miss' are not in the spec's
+    // list of what details and location render, and with a gate in front of
+    // them an unassigned field is a field no caller can ever open.
+    const location = code.slice(code.indexOf("{shows('location') ? ("));
+    expect(location.slice(0, location.indexOf("{shows('hours') ? ("))).toContain(
+      'label="Finding the door"'
+    );
+    const hours = code.slice(code.indexOf("{shows('hours') ? ("));
+    expect(hours.slice(0, hours.indexOf("{shows('links') ? ("))).toContain(
+      'label="Anything the hours miss"'
+    );
+    const details = code.slice(code.indexOf("{shows('details') ? ("));
+    expect(details.slice(0, details.indexOf("{shows('location') ? ("))).toContain(
+      'label="Website"'
+    );
+  });
+
+  it('drops the scroll-to, which a block that never mounts can never satisfy', () => {
+    const code = src(EDIT);
+    // measure() set targetY from an onLayout, and an unmounted block never
+    // calls onLayout. Leaving it in would mean waiting forever on a scroll
+    // that has nothing to scroll to. The named block is the only one on
+    // screen, so it is already at the top.
+    expect(code).not.toContain('const measure =');
+    expect(code).not.toContain('setTargetY');
+    expect(code).not.toContain('scrollTo(');
+    expect(code).not.toContain('scrollRef=');
+  });
+
+  it('commit() cannot save a block that is not on screen', () => {
+    const code = src(EDIT);
+    // The whole safety of the gate: an unmounted block leaves its state equal
+    // to the row it was seeded from, so its half of the dirty check is false
+    // and commit() skips the write. That holds only while every piece of
+    // state is seeded FROM the row and the comparison is against the row.
+    for (const seed of [
+      'useState(business.name)',
+      "useState(business.description ?? '')",
+      "useState(business.address ?? '')",
+      "useState(business.place_label ?? '')",
+      "useState(business.hours_note ?? '')",
+      "useState(business.website_url ?? '')",
+      'useState({ lat: business.lat, lng: business.lng })',
+      'useState(business.city_id)',
+    ]) {
+      expect(code).toContain(seed);
+    }
+    // And the hours seed is the one that is NOT literally the rows: a place
+    // with none gets a blank line to fill in. serializeRules drops a rule
+    // with no days, so the fingerprint still matches the empty week.
+    expect(code).toContain('.filter((rule) => rule.days.length > 0)');
+    expect(code).toContain(
+      'const hoursChanged = serializeRules(rules) !== serializeRules(rulesFromRows(hourRows));'
+    );
+  });
+
+  it('says Done where there is nothing left to save', () => {
+    const code = src(EDIT);
+    // Photos and links commit on the tap. A "Save" over a screen with nothing
+    // held is the same kind of lie the signup steps just stopped telling.
+    expect(code).toContain(
+      "continueLabel={section === 'photos' || section === 'links' ? 'Done' : 'Save'}"
+    );
   });
 });
 

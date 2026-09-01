@@ -1,4 +1,10 @@
-import { hrefFor, opensInAppBrowser } from '@/features/business/links';
+import {
+  hostOf,
+  hrefFor,
+  isShortLink,
+  linkCaution,
+  opensInAppBrowser,
+} from '@/features/business/links';
 import type { BusinessLinkJson, BusinessLinkKind } from '@/lib/database.types';
 
 const link = (kind: BusinessLinkKind, value: string): BusinessLinkJson =>
@@ -73,5 +79,98 @@ describe('opensInAppBrowser', () => {
     expect(opensInAppBrowser('reservations')).toBe(false);
     expect(opensInAppBrowser('tickets')).toBe(false);
     expect(opensInAppBrowser('other')).toBe(false);
+  });
+});
+
+/**
+ * Where a tap really lands, as opposed to what the row says.
+ *
+ * A business listing is the one place in this app where content somebody
+ * typed sends a traveler to an arbitrary address, and the tap happens on a
+ * screen wearing Samewhere's chrome. The database screens a link's LABEL
+ * through the same classifier a message goes through and has nothing to say
+ * about its VALUE, so these are the checks the reader's side can still make.
+ */
+describe('hostOf', () => {
+  it('answers the same for a handle and for the full link', () => {
+    expect(hostOf(link('instagram', '@yourplace'))).toBe('instagram.com');
+    expect(hostOf(link('instagram', 'https://www.instagram.com/yourplace'))).toBe(
+      'www.instagram.com'
+    );
+  });
+
+  it('drops the port and the case', () => {
+    expect(hostOf(link('website', 'https://Bar.COM:8443/menu'))).toBe('bar.com');
+  });
+
+  // The oldest way to make a link look like somewhere it is not: everything
+  // before the last @ is credentials, and the host is what follows it.
+  it('reads the host after the credentials, not before them', () => {
+    expect(hostOf(link('website', 'https://casaazul.com@evil.test/menu'))).toBe('evil.test');
+  });
+
+  it('has no host for the kinds that are not web addresses', () => {
+    expect(hostOf(link('phone', '+34 600 123 456'))).toBeNull();
+    expect(hostOf(link('email', 'hello@bar.com'))).toBeNull();
+  });
+
+  it('sends WhatsApp through wa.me, which is where hrefFor puts it', () => {
+    expect(hostOf(link('whatsapp', '+34 600 123 456'))).toBe('wa.me');
+  });
+});
+
+describe('isShortLink', () => {
+  it('knows the hosts whose whole job is hiding a destination', () => {
+    expect(isShortLink(link('website', 'https://bit.ly/x3f9'))).toBe(true);
+    expect(isShortLink(link('reservations', 'https://tinyurl.com/abc'))).toBe(true);
+    expect(isShortLink(link('tickets', 'https://ow.ly/abc'))).toBe(true);
+  });
+
+  // The four social kinds were the gap: the value check only ever ran on the
+  // else branch, so a shortener filed as an Instagram link met no check at all.
+  it('sees one filed as a social link too', () => {
+    expect(isShortLink(link('instagram', 'https://t.co/abc'))).toBe(true);
+  });
+
+  it('leaves a real address alone', () => {
+    expect(isShortLink(link('menu', 'https://casaazul.example/menu'))).toBe(false);
+    expect(isShortLink(link('phone', '+34 600 123 456'))).toBe(false);
+  });
+});
+
+describe('linkCaution', () => {
+  it('says a short link is hiding where it goes', () => {
+    expect(linkCaution(link('website', 'https://bit.ly/x3f9'))).toBe(
+      "Short link, so we can't show you where it ends up."
+    );
+  });
+
+  it('names a bare address, whatever kind it is filed under', () => {
+    expect(linkCaution(link('website', 'https://1.2.3.4/x'))).toBe('Goes to 1.2.3.4.');
+    expect(linkCaution(link('instagram', 'https://1.2.3.4/x'))).toBe('Goes to 1.2.3.4.');
+  });
+
+  it('says so when a social link leaves the platform it is filed under', () => {
+    expect(linkCaution(link('instagram', 'https://example.test/yourplace'))).toBe(
+      'Goes to example.test.'
+    );
+  });
+
+  it('is quiet about the links that are what they say they are', () => {
+    expect(linkCaution(link('instagram', '@yourplace'))).toBeNull();
+    expect(linkCaution(link('instagram', 'https://www.instagram.com/yourplace'))).toBeNull();
+    expect(linkCaution(link('facebook', 'https://m.facebook.com/yourplace'))).toBeNull();
+    expect(linkCaution(link('menu', 'casaazul.example/menu'))).toBeNull();
+    expect(linkCaution(link('phone', '+34 600 123 456'))).toBeNull();
+    expect(linkCaution(link('whatsapp', '+34 600 123 456'))).toBeNull();
+  });
+
+  // The shortener sentence wins over the destination one: this link is both
+  // a shortener and a TikTok link that does not go to TikTok, and naming
+  // bit.ly as the destination would read as if that were the end of it.
+  it('prefers the short-link sentence when both could apply', () => {
+    expect(linkCaution(link('tiktok', 'https://bit.ly/x3f9'))).toBe(
+      "Short link, so we can't show you where it ends up."
+    );
   });
 });

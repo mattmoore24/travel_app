@@ -3,7 +3,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useIsFocused } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  Linking,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -526,6 +534,27 @@ export default function MyBusinessScreen() {
     <ThemedView style={styles.root}>
       <View style={styles.column}>
         <ScrollView
+          // An owner whose listing came back thin had to find the Try again
+          // button; this is the gesture they reach for first. All three
+          // queries, because the sections below are drawn from all three and
+          // half a refresh is its own kind of stale.
+          //
+          // isRefetching, not isFetching: this screen renders its skeletons
+          // while the detail and rating queries are still on their first
+          // trip, and a spinner nobody pulled for reads as a stuck page.
+          refreshControl={
+            <RefreshControl
+              refreshing={
+                ownQuery.isRefetching || detailQuery.isRefetching || ratingQuery.isRefetching
+              }
+              onRefresh={() => {
+                void ownQuery.refetch();
+                void detailQuery.refetch();
+                void ratingQuery.refetch();
+              }}
+              tintColor={theme.textSecondary}
+            />
+          }
           contentContainerStyle={[styles.content, { paddingBottom: barHeight + Space.xl }]}
           showsVerticalScrollIndicator={false}>
           {/* No header above it: the cover IS the header, and a business
