@@ -365,13 +365,26 @@ appId: com.mattmoore.samewhere
     id: 'plan-list-peek'
 - waitForAnimationToEnd:
     timeout: 2000
+# ...and SCROLL to the row, which is the other half of reaching it. The ON
+# TONIGHT section renders LAST inside the sheet, after every dated pin section
+# (src/features/pins/plan-list.tsx), so in a city with six plans it sits below
+# the fold at the half detent the tap above opens. Opening the list is not the
+# same as being able to see the bottom of it, and a tap that lands on nothing
+# reports "no venue" when the truth is "not scrolled".
+- scrollUntilVisible:
+    element:
+      text: '.*, something on tonight'
+    direction: DOWN
+    timeout: 10000
 # ─────────────────────────────────────────────────────────────────────────
 # HARD, and it is the first hard step for a reason. Every step after it used
 # to be optional up to the assertVisible on 'Website' three steps later, so a
-# city with no venue on tonight went red pointing at a missing LINK when the
-# real cause was a missing ROW. That misdirection cost an hour once already.
-# If this fails, the venue has no live post: seed it back
-# (select seed_launch_business_content();) rather than loosening this.
+# run that could not reach the row went red pointing at a missing LINK. That
+# misdirection cost hours once already, and sent a wrong diagnosis to the
+# founder with it. Now the scroll above does the reaching and this says
+# whether the row is really there: if it fails, the venue genuinely has no
+# live post, and the answer is to seed it back
+# (select seed_launch_business_content();) rather than to loosen this.
 - tapOn:
     text: '.*, something on tonight'
 - extendedWaitUntil:
