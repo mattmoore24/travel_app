@@ -60,7 +60,13 @@ function base64urlText(text: string): string {
  * Accept both spellings: a key that "looks set" and cannot be parsed is the
  * worst version of this failure.
  */
-function pkcs8Bytes(pem: string): Uint8Array {
+// `Uint8Array<ArrayBuffer>`, not the bare `Uint8Array` this used to say. The
+// bare name widened to `Uint8Array<ArrayBufferLike>` in the TypeScript lib
+// Deno 2.x now ships, and `ArrayBufferLike` includes SharedArrayBuffer, which
+// `crypto.subtle.importKey` will not take. The bytes were always a plain
+// ArrayBuffer — `new Uint8Array(n)` allocates one — so this narrows the
+// annotation to what the function already returns and adds no runtime code.
+function pkcs8Bytes(pem: string): Uint8Array<ArrayBuffer> {
   const body = pem
     .replace(/\\n/g, '\n')
     .replace(/-----BEGIN PRIVATE KEY-----/, '')
