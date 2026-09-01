@@ -457,6 +457,42 @@ export default function BusinessSignupScreen() {
     }
   };
 
+  /**
+   * What the review step's button says and what the note under it promises.
+   *
+   * Both used to be fixed: "Email me a code" over "Almost there. We'll email
+   * you a code." Since biz-email-lands-early the code has ALREADY gone out
+   * from the contact step, and sendCode() below opens the code screen without
+   * sending when one is still live - so the normal path had three statements
+   * on one screen, two of them false: a footer saying a code had been sent
+   * and offering a box to type it in, a note promising one in the future, and
+   * a button offering to send a thing it was not going to send.
+   *
+   * Each branch is a state the owner can actually be in, and says the true
+   * thing about it.
+   */
+  const reviewAction = listed
+    ? {
+        label: 'You are on the map',
+        note: 'Every part of this is editable from your business page afterwards.',
+      }
+    : codeBounced
+      ? {
+          label: 'Use a different address',
+          note: 'That address did not take the mail. Try another one and we will send it again.',
+        }
+      : codeLive
+        ? {
+            label: 'Type in your code',
+            note: "We've emailed you a code. Type it in and you're on the map.",
+          }
+        : delivery?.sent_at != null
+          ? {
+              label: 'Email me a new code',
+              note: 'That code has run out. We will send a fresh one.',
+            }
+          : { label: 'Email me a code', note: EMAIL_PROMISE };
+
   /** The last thing this form does. The code screen takes it from here. */
   const sendCode = async () => {
     if (!emailOk) {
@@ -1070,14 +1106,10 @@ export default function BusinessSignupScreen() {
       footer={listingFooter}
       title="Here it is"
       subtitle="Exactly what a traveler sees when they tap you. Step back to change anything."
-      continueLabel={listed ? 'You are on the map' : 'Email me a code'}
+      continueLabel={reviewAction.label}
       continueTestID="business-review-continue"
       continueLoading={requestCode.isPending}
-      note={
-        listed
-          ? 'Every part of this is editable from your business page afterwards.'
-          : EMAIL_PROMISE
-      }
+      note={reviewAction.note}
       onBack={() => go(11)}
       onContinue={() => (listed ? router.replace('/(tabs)') : void sendCode())}>
       {/* The listing, not a receipt for it.

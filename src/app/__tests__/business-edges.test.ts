@@ -253,3 +253,33 @@ describe('the editor has one save model, or says it has two', () => {
     expect(code).toContain('if (markerMoved) {');
   });
 });
+
+describe('the review step says the true thing about the code', () => {
+  it('does not promise a send that already happened', () => {
+    const code = src(SIGNUP);
+    // Since the code goes out from the contact step, the review screen's
+    // normal path carried three statements and two were false: a footer
+    // saying a code had been sent and offering a box for it, a note
+    // promising one in the future, and a button offering to send a thing
+    // sendCode() was not going to send.
+    expect(code).toContain('const reviewAction =');
+    expect(code).toContain("label: 'Type in your code'");
+    expect(code).toContain("We've emailed you a code.");
+    // The fixed pair is gone from the screen.
+    expect(code).not.toContain("continueLabel={listed ? 'You are on the map' : 'Email me a code'}");
+  });
+
+  it('has a branch for every state the owner can be in', () => {
+    const code = src(SIGNUP);
+    const block = code.slice(code.indexOf('const reviewAction ='), code.indexOf('const sendCode'));
+    // Listed, bounced, live, run out, never sent. A bounce leads with the
+    // fix, because re-sending to an address that just bounced bounces again.
+    expect(block).toContain("label: 'You are on the map'");
+    expect(block).toContain("label: 'Use a different address'");
+    expect(block).toContain("label: 'Email me a new code'");
+    expect(block).toContain("label: 'Email me a code'");
+    // Every branch carries its own note, so none of them can inherit a
+    // sentence written for a different state.
+    expect((block.match(/note:/g) ?? []).length).toBe(5);
+  });
+});
