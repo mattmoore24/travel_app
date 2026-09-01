@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ChipRow } from '@/components/form/chip-row';
@@ -15,8 +15,12 @@ import { useAuthStore } from '@/features/auth/store';
 import { replaceBusinessContacts, type ContactKind } from '@/features/business/api';
 import { BusinessAddressField, addressFrom } from '@/features/business/address-field';
 import { PlaceGlyph } from '@/features/business/business-marker';
+import { BusinessPhotos, useBusinessPhotos } from '@/features/business/business-photos';
 import {
+  useBusinessCodeStatus,
   useBusinessDetail,
+  useCityBusinesses,
+  useConfirmBusinessEmail,
   useOwnBusiness,
   useRecordListingIntent,
   useRegisterBusiness,
@@ -33,6 +37,8 @@ import {
 import { countOf } from '@/lib/plural';
 import { useLaunchCities } from '@/features/pins/hooks';
 import { LocationPicker } from '@/features/pins/location-picker';
+import { useOwnUserId } from '@/features/profile/hooks';
+import { BUSINESS_TOTAL_STEPS } from '@/features/signup/steps';
 import { StepShell } from '@/features/signup/step-shell';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
@@ -47,18 +53,12 @@ import { haptics } from '@/lib/haptics';
  * sequence: a business account is one whose `onboarding_completed_at` stays
  * NULL forever (docs/BUSINESS_ACCOUNTS.md §3.1), so the offer can only be
  * taken BEFORE that stamp exists, which is while signup is still running.
- */
-
-/**
- * Twelve, counting the code screen that lives on its own route: typing the
- * emailed digits is the last step, and a bar that reads full while the place
- * is still dark would promise something that has not happened yet. Same
- * reason SIGNUP_TOTAL_STEPS counts across two navigation stacks.
  *
- * Two of the twelve — the email and the password — are on /join, so this form
- * starts at three. See docs/ONBOARDING.md §4.
+ * Thirteen screens, counted in features/signup/steps.ts because the sequence
+ * spans two navigation stacks: steps 1 and 2 (the email and the password) are
+ * on /join, steps 3 to 12 are this form, and step 13 is the emailed code on
+ * its own route. See docs/ONBOARDING.md §4.
  */
-const TOTAL_STEPS = 12;
 
 /**
  * "four cities", spelled out the way a sentence says it. Digits past nine,
@@ -75,10 +75,16 @@ function cityCountWord(count: number): string {
  * `{ step_index, step_name }` shape signup_step_completed sends, so one
  * funnel vocabulary covers both flows. Steps 1 and 2 (email, password) live
  * on /join and are counted there with `business: true`.
+ *
+ * `offer` was inserted at step 3 and every later index moved with it, so a
+ * funnel drawn across the change has a seam in it. The alternative was
+ * leaving the slugs pointing at the wrong screens, which is worse: a name
+ * that lies is harder to notice than a date the numbers jump on.
  */
 const BUSINESS_STEP_NAMES = [
   'email',
   'password',
+  'offer',
   'name',
   'address',
   'confirm',
@@ -102,12 +108,24 @@ const NAME_MIN = 2;
 const NAME_MAX = 80;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Six digits, and twenty minutes, both the migration's numbers. */
+const CODE_LENGTH = 6;
+const CODE_TTL_MS = 20 * 60 * 1000;
+
 // The old line said the confirmation address was "the address travelers will
 // reach you at". It never was: it lives in business_email_confirmations, a
 // table with no client grants at all, and no traveler has ever seen it. What
 // travelers reach you on is what you put on this step.
+//
+// And it now says what the email COSTS, on the screen that asks for it. The
+// consequence used to be sprung one screen from the end, under the heading
+// "Exactly what a traveler sees when they tap you", which made the whole
+// review step read as a bait: register_business has already inserted the row
+// as 'unconfirmed' and city_businesses filters on `state = 'listed'`, so an
+// owner who abandoned in their mail app had done nine screens of work that
+// produce a row no traveler can see.
 const EMAIL_REASON =
-  'The code goes here, and this is the address travelers write to. Change any of it later from your business page.';
+  'The code goes here, and this is the address travelers write to. Nobody can find you on the map until you type that code in.';
 const EMAIL_PROMISE = "Almost there. We'll email you a code. Type it in and you're on the map.";
 
 /**
@@ -135,6 +153,28 @@ function nameProblem(value: string): string | null {
   return null;
 }
 
+/**
+ * Whether the last code has run out, without reading the clock during render.
+ *
+ * Same shape as the code screen's own hook and the dashboard's: the timer is
+ * set for the exact minute the code dies, so a form left open on the photo
+ * step for half an hour changes its own words rather than offering a dead
+ * code, and nothing calls setState in the effect body.
+ */
+function useCodeRunOut(sentAt: string | null | undefined): boolean {
+  const sentAtMs = sentAt != null ? Date.parse(sentAt) : null;
+  const [runOutFor, setRunOutFor] = useState<number | null>(null);
+  useEffect(() => {
+    if (sentAtMs == null || Number.isNaN(sentAtMs)) {
+      return;
+    }
+    const left = sentAtMs + CODE_TTL_MS - Date.now();
+    const timer = setTimeout(() => setRunOutFor(sentAtMs), Math.max(left, 0));
+    return () => clearTimeout(timer);
+  }, [sentAtMs]);
+  return sentAtMs != null && runOutFor === sentAtMs;
+}
+
 export default function BusinessSignupScreen() {
   const theme = useTheme();
   // Arriving here is what the flag was for, so put it down. Left up, backing
@@ -153,6 +193,7 @@ export default function BusinessSignupScreen() {
     void recordListingIntent(true).catch(() => {});
   }, [listingDone, recordListingIntent]);
 
+  const userId = useOwnUserId();
   const launchCitiesQuery = useLaunchCities();
   const launchCities = launchCitiesQuery.data ?? [];
   const registerBusiness = useRegisterBusiness();
@@ -198,13 +239,47 @@ export default function BusinessSignupScreen() {
   // check either, so a marker in Bangkok could be filed under Lisbon.
   const city = cityId != null ? (launchCities.find((c) => c.city_id === cityId) ?? null) : null;
   const emailOk = EMAIL_PATTERN.test(email.trim());
+  const listed = business?.state === 'listed';
 
-  // The same funnel treatment traveler signup's go() got: one event from the
-  // one door every step leaves through, covering the ten screens that emitted
-  // nothing between business_registered and business_email_confirmed. Only a
-  // forward move is a completion — onBack routes through here too. Step 12's
-  // own exit is sendCode, whose success is business_email_confirmed on the
-  // code screen.
+  // THE OFFER STEP'S EXAMPLE.
+  //
+  // A real listing rather than a mock of one: what a traveler actually gets is
+  // the whole argument, and the seeded launch venues already are that. The
+  // city is whichever one has been picked, or the first we are open in,
+  // because at step 3 nobody has picked one yet. Only asked for on the step
+  // that draws it, so the other eleven pay nothing for it.
+  const exampleCityId = cityId ?? launchCities[0]?.city_id ?? null;
+  const exampleCity = launchCities.find((c) => c.city_id === exampleCityId) ?? null;
+  const { data: exampleList } = useCityBusinesses(step === 3 ? exampleCityId : null);
+  const example = exampleList?.find((row) => row.cover_path != null) ?? exampleList?.[0] ?? null;
+  const { data: exampleDetail } = useBusinessDetail(step === 3 ? (example?.id ?? null) : null);
+
+  // THE PHOTOS, owner-scoped.
+  //
+  // Not `detail?.photos`: business_detail is `security definer` and granted to
+  // anon, so it answers approved-only, and with require_photo_moderation ON —
+  // which is how production runs — an owner added their cover, watched it chip
+  // "In review", and was told by this form that they had none. Widening that
+  // RPC would tell any traveler a non-approved photo exists; the owner's own
+  // table read, gated by business_photos_select_own, is the safe door.
+  const photosQuery = useBusinessPhotos(business?.id ?? null);
+  const photos = photosQuery.data ?? [];
+  // One picker, driven from both the dashed tile in the grid and the docked
+  // button at the bottom of the shell. Run 87 photographed the alternative:
+  // two identical "Add photos" buttons adrift on one screen.
+  const pickPhoto = useRef<(() => void) | null>(null);
+  const registerPick = useCallback((pick: () => void) => {
+    pickPhoto.current = pick;
+  }, []);
+
+  // Whether the code emailed at the contact step is still a code. Asked only
+  // while the listing is waiting on one, and the query stops polling as soon
+  // as the answer is in.
+  const { data: delivery } = useBusinessCodeStatus(business != null && !listed);
+  const codeRunOut = useCodeRunOut(delivery?.sent_at);
+  const codeBounced = delivery?.failed === true;
+  const codeLive = delivery?.sent_at != null && !codeRunOut && !codeBounced;
+
   /**
    * The way out, on every step of the form.
    *
@@ -240,6 +315,14 @@ export default function BusinessSignupScreen() {
     setStep(next);
   };
 
+  /** A fresh code, for an owner whose first one died while they worked. */
+  const resendCode = () => {
+    if (!emailOk) {
+      return;
+    }
+    void requestCode.mutateAsync(email.trim()).catch(() => {});
+  };
+
   /**
    * Create the row, at the confirm step rather than at the end.
    *
@@ -273,7 +356,7 @@ export default function BusinessSignupScreen() {
         // the marker can be dragged back inside the city.
         return;
       }
-      go(6);
+      go(7);
       return;
     }
     try {
@@ -287,7 +370,7 @@ export default function BusinessSignupScreen() {
       });
       setRegistered(true);
       analytics.capture('business_registered', { category, city_id: city.city_id });
-      go(6);
+      go(7);
     } catch {
       // Surfaced by the global mutation error alert (lib/query-client). Three
       // refusals arrive this way: an account that has already finished a
@@ -314,7 +397,7 @@ export default function BusinessSignupScreen() {
       return;
     }
     // Registering invalidates this query and the refetch is not instant, so
-    // arriving here in the same breath as step 5 can find it empty. Wait for
+    // arriving here in the same breath as step 6 can find it empty. Wait for
     // it rather than doing nothing: the button shows its spinner meanwhile.
     let businessId = business?.id ?? null;
     if (businessId == null) {
@@ -347,7 +430,13 @@ export default function BusinessSignupScreen() {
         setRefused(rejected);
         return;
       }
-      go(7);
+      // The code, emailed the moment there is an address to email it to,
+      // rather than nine screens later. Deliberately not awaited into the
+      // Continue path: a mail failure must not hold up the form, and the
+      // footer on every step from here on, plus the code screen at the end,
+      // both surface a bounce through useBusinessCodeStatus.
+      void requestCode.mutateAsync(email.trim()).catch(() => {});
+      go(8);
     } catch {
       setContactProblem('We could not save those just then. Try that again.');
     } finally {
@@ -360,34 +449,107 @@ export default function BusinessSignupScreen() {
     if (!emailOk) {
       return;
     }
+    // Replace rather than push: the form has been submitted, and a back
+    // swipe onto it would offer to submit it a second time.
+    //
+    // The address travels WITH the route. Without it the code screen cannot
+    // name where the mail went and cannot offer to send it again, so a typo
+    // or a code lost to a spam folder ended the whole journey: the listing
+    // sits unconfirmed, which means dark, with no way forward from inside
+    // the app.
+    const openCodeScreen = () =>
+      router.replace({ pathname: '/business-email', params: { email: email.trim() } });
+    // A code has already gone out from the contact step. Sending a second one
+    // inside its own twenty minutes spends one of the five a business gets in
+    // a day AND invalidates the digits somebody may be holding in their other
+    // hand. A bounce is skipped from the other end, for the same economy: the
+    // code screen leads with "Use a different address", and re-sending to the
+    // address that just bounced would only bounce again.
+    if (codeLive || codeBounced) {
+      openCodeScreen();
+      return;
+    }
     try {
       await requestCode.mutateAsync(email.trim());
       haptics.success();
-      // Replace rather than push: the form has been submitted, and a back
-      // swipe onto it would offer to submit it a second time.
-      //
-      // The address travels WITH the route. Without it the code screen cannot
-      // name where the mail went and cannot offer to send it again, so a typo
-      // or a code lost to a spam folder ended the whole journey: the listing
-      // sits unconfirmed, which means dark, with no way forward from inside
-      // the app.
-      router.replace({ pathname: '/business-email', params: { email: email.trim() } });
+      openCodeScreen();
     } catch {
       // Surfaced by the global mutation error alert. The refusal that matters
       // is the fifth code of the day.
     }
   };
 
+  /**
+   * The footer from the photo step onwards: type the code without leaving.
+   *
+   * The mail may well arrive while somebody is still cropping photos, and
+   * before this the only way to use it was to finish every remaining screen
+   * first. It is deliberately NOT a link to /business-email: that screen ends
+   * with `router.replace('/(tabs)')`, which would drop a mid-signup owner out
+   * of the flow with an unfinished listing behind them.
+   */
+  const listingFooter = (
+    <>
+      <ConfirmEmailFooter
+        listed={listed}
+        codeRunOut={codeRunOut}
+        bounced={codeBounced}
+        onResend={resendCode}
+        resending={requestCode.isPending}
+      />
+      {leaveFooter}
+    </>
+  );
+
   if (step === 3) {
     return (
       <StepShell
         step={3}
-        total={TOTAL_STEPS}
+        total={BUSINESS_TOTAL_STEPS}
+        footer={leaveFooter}
+        title="What a listing gets you"
+        subtitle="Travelers tap your marker on the map and land on a page like this one."
+        onBack={router.canGoBack() ? () => router.back() : undefined}
+        continueTestID="business-offer-continue"
+        // No skip. It is one tap, and it is the offer: every screen after
+        // this one assumes the question it answers has been answered.
+        onContinue={() => go(4)}>
+        {example ? (
+          <>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              Somebody else&apos;s listing, as a traveler meets it.
+            </ThemedText>
+            <ListingPreview
+              detail={exampleDetail ?? null}
+              fallbackName={example.name}
+              category={example.category}
+              cityName={exampleCity?.cities.name ?? null}
+            />
+          </>
+        ) : null}
+        <ThemedText>
+          A listing puts your business on the map, with your photos, your hours and a way for
+          travelers to write to you.
+        </ThemedText>
+        {/* The word "free" appeared nowhere an owner could read it: a grep
+            across src/ returned two traveler-facing screens and nothing else,
+            while §7 rule 1 makes the whole app permanently free. A hostel
+            manager handed a flyer had no way to find that out. */}
+        <ThemedText>Free, always. No paid placement, no promoted listings.</ThemedText>
+      </StepShell>
+    );
+  }
+
+  if (step === 4) {
+    return (
+      <StepShell
+        step={4}
+        total={BUSINESS_TOTAL_STEPS}
         footer={leaveFooter}
         title="What's your business called?"
         subtitle="The name over the door, and what kind of business it is."
         note={category == null ? 'Pick what kind of business it is.' : null}
-        onBack={router.canGoBack() ? () => router.back() : undefined}
+        onBack={() => go(3)}
         continueTestID="business-name-continue"
         // Pressable while incomplete on purpose, exactly like the traveler
         // steps: pressing is what marks the field touched, and that is what
@@ -397,7 +559,7 @@ export default function BusinessSignupScreen() {
           if (nameProblem(name) != null || category == null) {
             return;
           }
-          go(4);
+          go(5);
         }}>
         <FormTextField
           label="Name"
@@ -417,11 +579,11 @@ export default function BusinessSignupScreen() {
     );
   }
 
-  if (step === 4) {
+  if (step === 5) {
     return (
       <StepShell
-        step={4}
-        total={TOTAL_STEPS}
+        step={5}
+        total={BUSINESS_TOTAL_STEPS}
         title="Where is it?"
         subtitle="Type your address, then check the marker is on your door."
         // Greyed while the answer is missing, like every other blocked step.
@@ -436,7 +598,7 @@ export default function BusinessSignupScreen() {
               ? 'Pick your street above, or tap the map on your door.'
               : null
         }
-        onBack={() => go(3)}
+        onBack={() => go(4)}
         continueTestID="business-place-continue"
         onContinue={() => {
           setTouched(true);
@@ -446,7 +608,7 @@ export default function BusinessSignupScreen() {
           // Forward to the confirm step. This said go(3) and sent an owner
           // back to the name screen instead, which is a loop with no way out
           // of the form: the founder's "Is this right?" was unreachable.
-          go(5);
+          go(6);
         }}
         footer={
           <>
@@ -566,16 +728,16 @@ export default function BusinessSignupScreen() {
     );
   }
 
-  if (step === 5) {
+  if (step === 6) {
     return (
       <StepShell
-        step={5}
-        total={TOTAL_STEPS}
+        step={6}
+        total={BUSINESS_TOTAL_STEPS}
         footer={leaveFooter}
         title="Is this right?"
         subtitle="This is what a traveler sees when they tap you on the map."
         continueLabel="Yes, that's us"
-        onBack={() => go(4)}
+        onBack={() => go(5)}
         continueTestID="business-confirm-place"
         continueLoading={registerBusiness.isPending || moveBusiness.isPending}
         onContinue={register}>
@@ -606,20 +768,23 @@ export default function BusinessSignupScreen() {
             onChange={(lat, lng) => setCoords({ lat, lng })}
           />
         ) : null}
-        <PrimaryButton variant="ghost" label="Fix the address" onPress={() => go(4)} />
+        <PrimaryButton variant="ghost" label="Fix the address" onPress={() => go(5)} />
+        {/* A small nudge onto the real door costs nothing since
+            20260902100000: only a city change or a move over seventy-five
+            metres sends a listed business back for another email check. */}
         <ThemedText type="footnote" themeColor="textSecondary">
-          Both of these are yours to change later. Moving the marker after you go live sends the
-          listing back for another email check, so it is worth getting right now.
+          Both of these are yours to change later. Moving the marker to another street after you go
+          live sends the listing back for another email check, so it is worth getting right now.
         </ThemedText>
       </StepShell>
     );
   }
 
-  if (step === 6) {
+  if (step === 7) {
     return (
       <StepShell
-        step={6}
-        total={TOTAL_STEPS}
+        step={7}
+        total={BUSINESS_TOTAL_STEPS}
         footer={leaveFooter}
         title="How do people reach you?"
         subtitle="The email is the one we need. The rest is up to you."
@@ -631,7 +796,7 @@ export default function BusinessSignupScreen() {
             ? `We could not save your ${refused.map(CONTACT_LABEL).join(' or ')}. Check the format, or clear it and carry on.`
             : null)
         }
-        onBack={() => go(5)}
+        onBack={() => go(6)}
         onContinue={saveContacts}>
         <FormTextField
           label="Email"
@@ -714,65 +879,72 @@ export default function BusinessSignupScreen() {
   // All four were in docs/BUSINESS_ACCOUNTS.md §5 and none of them was ever
   // built, so an owner finished signup and had to go and find the storefront
   // screen to discover that photos, hours and links existed at all. That is
-  // the confusion the founder hit. Each step says what the section is for and
-  // hands over to the editor that already owns it — the same editor they will
-  // use forever afterwards, rather than a second copy living inside signup.
+  // the confusion the founder hit. The photo step now owns the real grid
+  // rather than routing into the middle of the settings form; the other three
+  // still hand over to the editor that owns them.
 
-  if (step === 7) {
-    const photoCount = detail?.photos?.length ?? 0;
+  if (step === 8) {
+    // Anything not yet refused counts. A pending photo is a photo: the owner
+    // can see it, the worker will very likely clear it, and holding the wall
+    // shut until it does told somebody with a cover on screen that they had
+    // none. A rejection is the one state that does not count, and it is the
+    // one state this step can name a reason for.
+    const usable = photos.some((photo) => photo.moderation_status !== 'rejected');
+    const pending = photos.some((photo) => photo.moderation_status === 'pending');
+    const allRejected = photos.length > 0 && !usable;
     return (
       <StepShell
-        step={7}
-        total={TOTAL_STEPS}
-        footer={leaveFooter}
+        step={8}
+        total={BUSINESS_TOTAL_STEPS}
+        footer={listingFooter}
         title="Show your business"
-        subtitle="Photos of the business, not of a person. The first one is your cover, and it is the thing travelers see on the map."
-        continueLabel={photoCount > 0 ? 'Continue' : 'Add photos'}
+        subtitle="Photos of the business, not of a person. The first one that clears is your cover, and it is the thing travelers see on the map."
+        // The docked button drives the SAME picker as the dashed tile while
+        // there is nothing to continue past, and turns into Continue the
+        // moment a photo lands. Never a greyed Continue: opacity cannot
+        // express "unavailable" and stay legible (skills/traps), and a button
+        // that changes job says more than one that dims.
+        continueLabel={usable ? 'Continue' : 'Add photos'}
         continueTestID="business-photos-continue"
-        note={photoCount > 0 ? CHANGE_LATER : 'One photo is the only thing we need here.'}
-        onBack={() => go(6)}
-        onContinue={() =>
-          photoCount > 0
-            ? go(8)
-            : router.push({ pathname: '/business-edit', params: { section: 'photos' } })
-        }>
-        {/* Only once there is something to add TO. With no photos the docked
-            button already says "Add photos" and opens the same editor, so
-            this drew a second identical button adrift in an empty screen —
-            run 87 photographed it. */}
-        {photoCount > 0 ? (
-          <PrimaryButton
-            variant="ghost"
-            label={`${photoCount} added. Add more`}
-            testID="business-add-photos"
-            onPress={() =>
-              router.push({ pathname: '/business-edit', params: { section: 'photos' } })
-            }
-          />
+        note={
+          allRejected
+            ? "That one didn't pass. Try another, of the business rather than a person."
+            : pending
+              ? // The dashboard's own sentence, word for word, because it is
+                // the same wait and two wordings of it read as two states.
+                "We're having a look at your photos. This usually takes a minute."
+              : photos.length > 0
+                ? CHANGE_LATER
+                : 'One photo is the only thing we need here.'
+        }
+        onBack={() => go(7)}
+        onContinue={() => (usable ? go(9) : pickPhoto.current?.())}>
+        {business ? (
+          <BusinessPhotos businessId={business.id} userId={userId} registerPick={registerPick} />
         ) : null}
       </StepShell>
     );
   }
 
-  if (step === 8) {
+  if (step === 9) {
     return (
       <StepShell
-        step={8}
-        total={TOTAL_STEPS}
-        footer={leaveFooter}
+        step={9}
+        total={BUSINESS_TOTAL_STEPS}
+        footer={listingFooter}
         title="What is it like?"
         subtitle="A couple of lines a traveler would actually want to read. Not a menu, not an advert."
         continueTestID="business-description-continue"
         // Says what the press does. With nothing written yet the button
         // opens the editor rather than moving on, and calling that
-        // "Continue" is the same lie step 7 already stopped telling.
+        // "Continue" is the same lie step 8 already stopped telling.
         continueLabel={detail?.description ? 'Continue' : 'Write it'}
         note={CHANGE_LATER}
-        onBack={() => go(7)}
-        onSkip={() => go(9)}
+        onBack={() => go(8)}
+        onSkip={() => go(10)}
         onContinue={() =>
           detail?.description
-            ? go(9)
+            ? go(10)
             : router.push({ pathname: '/business-edit', params: { section: 'details' } })
         }>
         {/* The card and the ghost button only once there is something to
@@ -796,23 +968,23 @@ export default function BusinessSignupScreen() {
     );
   }
 
-  if (step === 9) {
+  if (step === 10) {
     const hourCount = detail?.hours?.length ?? 0;
     return (
       <StepShell
-        step={9}
-        total={TOTAL_STEPS}
-        footer={leaveFooter}
+        step={10}
+        total={BUSINESS_TOTAL_STEPS}
+        footer={listingFooter}
         title="When are you open?"
         subtitle="Past midnight is fine. 20:00 to 2:00 reads as one night."
         continueTestID="business-hours-continue"
         continueLabel={hourCount > 0 ? 'Continue' : 'Set your hours'}
         note={CHANGE_LATER}
-        onBack={() => go(8)}
-        onSkip={hourCount > 0 ? undefined : () => go(10)}
+        onBack={() => go(9)}
+        onSkip={hourCount > 0 ? undefined : () => go(11)}
         onContinue={() =>
           hourCount > 0
-            ? go(10)
+            ? go(11)
             : router.push({ pathname: '/business-edit', params: { section: 'hours' } })
         }>
         {/* Only once there is something to change. With no hours set this was
@@ -835,26 +1007,27 @@ export default function BusinessSignupScreen() {
     );
   }
 
-  if (step === 10) {
+  if (step === 11) {
     const linkCount = detail?.links?.length ?? 0;
     return (
       <StepShell
-        step={10}
-        total={TOTAL_STEPS}
-        footer={leaveFooter}
+        step={11}
+        total={BUSINESS_TOTAL_STEPS}
+        footer={listingFooter}
         title="Anywhere else to send people?"
         subtitle="A menu, a booking page, your Instagram. One list for links, socials and contact."
         continueTestID="business-links-continue"
-        // Continue and Skip for now both went to step 11, so the docked
-        // button and the quiet one under it were the same control wearing two
-        // words. Now the button adds a link until there is one to add to.
+        // Continue and Skip for now both went to the review step, so the
+        // docked button and the quiet one under it were the same control
+        // wearing two words. Now the button adds a link until there is one to
+        // add to.
         continueLabel={linkCount > 0 ? 'Continue' : 'Add a link'}
         note={CHANGE_LATER}
-        onBack={() => go(9)}
-        onSkip={() => go(11)}
+        onBack={() => go(10)}
+        onSkip={() => go(12)}
         onContinue={() =>
           linkCount > 0
-            ? go(11)
+            ? go(12)
             : router.push({ pathname: '/business-edit', params: { section: 'links' } })
         }>
         {linkCount > 0 ? (
@@ -870,59 +1043,172 @@ export default function BusinessSignupScreen() {
     );
   }
 
-  if (step === 11) {
+  // THE REVIEW, WHICH IS ALSO THE SEND.
+  //
+  // These were two screens: "Here it is" and then "One last thing", the
+  // second of which was a headline, an address in a card and a button. It
+  // also made the bar read 12 of 12 with the code screen still to come. The
+  // card and the ghost moved up under the listing, and the screen the flow
+  // ends on is the one that turns the lights on.
+  return (
+    <StepShell
+      step={12}
+      total={BUSINESS_TOTAL_STEPS}
+      footer={listingFooter}
+      title="Here it is"
+      subtitle="Exactly what a traveler sees when they tap you. Step back to change anything."
+      continueLabel={listed ? 'You are on the map' : 'Email me a code'}
+      continueTestID="business-review-continue"
+      continueLoading={requestCode.isPending}
+      note={
+        listed
+          ? 'Every part of this is editable from your business page afterwards.'
+          : EMAIL_PROMISE
+      }
+      onBack={() => go(11)}
+      onContinue={() => (listed ? router.replace('/(tabs)') : void sendCode())}>
+      {/* The listing, not a receipt for it.
+
+          This used to be a text card ending in "1 photo · 0 links · no
+          hours yet", which is a form's summary of itself. The founder asked
+          for "a final look of how your profile appears to other users", and
+          a traveler never sees a count — they see the cover photo first,
+          then the name, then whether you are open. So: the cover, at the
+          size the map card gives it, and the real words underneath. */}
+      <ListingPreview
+        detail={detail ?? null}
+        fallbackName={name.trim()}
+        category={category}
+        cityName={city?.cities.name ?? null}
+        // The heading promises what a traveler sees. While the listing is
+        // unconfirmed no traveler sees any of it, so the promise is qualified
+        // on the screen that makes it rather than one screen later.
+        badge={listed ? null : 'Not on the map yet'}
+      />
+      {listed ? null : (
+        <>
+          <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
+            {/* Title case, matching the app-wide retirement of all-caps labels
+                (DESIGN.md). */}
+            <ThemedText type="caption" themeColor="textSecondary">
+              Sending it to
+            </ThemedText>
+            <ThemedText type="headline">{email.trim()}</ThemedText>
+          </View>
+          <PrimaryButton variant="ghost" label="Use a different address" onPress={() => go(7)} />
+        </>
+      )}
+    </StepShell>
+  );
+}
+
+/**
+ * Type the emailed code without leaving the form.
+ *
+ * The code goes out at the contact step now, so it usually lands while
+ * somebody is still cropping photos. Before this the only way to use it was
+ * to finish every remaining screen first, and the code is good for twenty
+ * minutes.
+ *
+ * It confirms INLINE and navigates nowhere. Pushing /business-email would be
+ * the obvious shortcut and it is the wrong one: that screen ends with
+ * `router.replace('/(tabs)')`, so a mid-signup owner would be dropped out of
+ * the flow with an unfinished listing behind them.
+ *
+ * On success `business.state` flips to 'listed' underneath a mounted
+ * StepShell. useOwnBusiness holds its row for five minutes, so what makes the
+ * screen notice is the confirm mutation's existing invalidation of
+ * ['my-business', userId] — an active observer refetches on invalidate, which
+ * is why this needs no state of its own beyond the six digits.
+ */
+function ConfirmEmailFooter({
+  listed,
+  codeRunOut,
+  bounced,
+  onResend,
+  resending,
+}: {
+  listed: boolean;
+  codeRunOut: boolean;
+  bounced: boolean;
+  onResend: () => void;
+  resending: boolean;
+}) {
+  const confirm = useConfirmBusinessEmail();
+  const [code, setCode] = useState('');
+
+  const submit = async () => {
+    if (code.length !== CODE_LENGTH) {
+      return;
+    }
+    try {
+      const result = await confirm.mutateAsync(code);
+      analytics.capture('business_email_confirmed', { first_time: result.first_time });
+      haptics.success();
+      setCode('');
+    } catch {
+      // The global mutation alert carries the database's own words ("that
+      // code is not right", "that code has expired"). Empty the box, because
+      // the next attempt is six fresh digits rather than an edit of these.
+      haptics.error();
+      setCode('');
+    }
+  };
+
+  if (listed) {
     return (
-      <StepShell
-        step={11}
-        total={TOTAL_STEPS}
-        footer={leaveFooter}
-        title="Here it is"
-        subtitle="Exactly what a traveler sees when they tap you. Step back to change anything."
-        continueLabel="Looks right"
-        continueTestID="business-review-continue"
-        note="Every part of this is editable from your business page afterwards."
-        onBack={() => go(10)}
-        onContinue={() => go(12)}>
-        {/* The listing, not a receipt for it.
-            
-            This used to be a text card ending in "1 photo · 0 links · no
-            hours yet", which is a form's summary of itself. The founder asked
-            for "a final look of how your profile appears to other users", and
-            a traveler never sees a count — they see the cover photo first,
-            then the name, then whether you are open. So: the cover, at the
-            size the map card gives it, and the real words underneath. */}
-        <ListingPreview
-          detail={detail ?? null}
-          fallbackName={name.trim()}
-          category={category}
-          cityName={city?.cities.name ?? null}
-        />
-      </StepShell>
+      <ThemedText type="footnote" themeColor="textSecondary" style={styles.footerLine}>
+        You are on the map.
+      </ThemedText>
     );
   }
 
   return (
-    <StepShell
-      step={12}
-      total={TOTAL_STEPS}
-      title="One last thing"
-      subtitle="Nobody can find you until an email proves somebody reads that inbox. That is the whole of it."
-      continueLabel="Email me a code"
-      continueTestID="business-email-continue"
-      continueLoading={requestCode.isPending}
-      note={EMAIL_PROMISE}
-      onBack={() => go(11)}
-      onContinue={sendCode}>
-      <View style={[styles.confirmCard, { backgroundColor: theme.surfaceSunken }]}>
-        {/* Title case, matching the app-wide retirement of all-caps labels
-            (DESIGN.md). */}
-        <ThemedText type="caption" themeColor="textSecondary">
-          Sending it to
-        </ThemedText>
-        <ThemedText type="headline">{email.trim()}</ThemedText>
-      </View>
-      <PrimaryButton variant="ghost" label="Use a different address" onPress={() => go(6)} />
-    </StepShell>
+    <View style={styles.block}>
+      <ThemedText type="footnote" themeColor="textSecondary">
+        {bounced
+          ? 'That address bounced, so the code never arrived. You can fix the address on the last screen.'
+          : codeRunOut
+            ? 'The code we emailed you has run out. Send yourself a fresh one.'
+            : 'We emailed you a six-digit code. Type it in here whenever it turns up.'}
+      </ThemedText>
+      <FormTextField
+        label="Code"
+        testID="business-inline-code"
+        accessibilityLabel="Six-digit code"
+        keyboardType="number-pad"
+        // number-pad draws no return key at all on iOS, so the accessory bar
+        // is the only way off this keyboard (skills/traps).
+        maxLength={CODE_LENGTH}
+        textContentType="oneTimeCode"
+        autoComplete="one-time-code"
+        placeholder="123456"
+        value={code}
+        // Paste from a mail app arrives with whatever was around it.
+        onChangeText={(next) => setCode(next.replace(/\D/g, '').slice(0, CODE_LENGTH))}
+        {...keyboardDoneProps}
+      />
+      <PrimaryButton
+        variant="ghost"
+        label="Confirm your email"
+        accessibilityLabel="Confirm your email with this code"
+        disabled={code.length !== CODE_LENGTH}
+        loading={confirm.isPending}
+        onPress={submit}
+      />
+      {/* Only once the last one is dead. A business gets five codes a day and
+          a freely pressable resend on five consecutive screens would burn
+          them in a minute, so the run-out timer is what unlocks this. */}
+      {codeRunOut && !bounced ? (
+        <PrimaryButton
+          variant="ghost"
+          label="Send a fresh code"
+          accessibilityLabel="Send a fresh code"
+          loading={resending}
+          onPress={onResend}
+        />
+      ) : null}
+    </View>
   );
 }
 
@@ -993,17 +1279,24 @@ function CategoryGrid({
  * still `unconfirmed` — dark, unlisted, unmessageable. Offering three buttons
  * that cannot work is worse than not offering them. So this draws the same
  * things in the same order, and nothing that does anything.
+ *
+ * The photo it draws stays `detail.photos[0]`, which business_detail has
+ * already filtered to approved. That is the one place in this file where the
+ * approved-only read is the RIGHT one: this preview is honestly showing what
+ * a traveler gets, and a traveler gets nothing until the check clears.
  */
 function ListingPreview({
   detail,
   fallbackName,
   category,
   cityName,
+  badge,
 }: {
   detail: BusinessDetailRow | null;
   fallbackName: string;
   category: BusinessCategory | null;
   cityName: string | null;
+  badge?: string | null;
 }) {
   const theme = useTheme();
   const { data: cover } = useBusinessPhotoUrl(detail?.photos?.[0]?.storage_path ?? null);
@@ -1024,6 +1317,13 @@ function ListingPreview({
         </View>
       )}
       <View style={styles.previewBody}>
+        {badge ? (
+          <View style={[styles.previewBadge, { backgroundColor: theme.surface }]}>
+            <ThemedText type="caption" themeColor="warning">
+              {badge}
+            </ThemedText>
+          </View>
+        ) : null}
         <ThemedText type="headline">{detail?.name ?? fallbackName}</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
           {category ? CATEGORY_LABEL[category] : ''}
@@ -1075,6 +1375,13 @@ const styles = StyleSheet.create({
     padding: Space.md,
     gap: Space.xs,
   },
+  previewBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: Space.sm,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
+    borderCurve: 'continuous',
+  },
   previewChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1089,6 +1396,9 @@ const styles = StyleSheet.create({
   },
   block: {
     gap: Space.sm,
+  },
+  footerLine: {
+    textAlign: 'center',
   },
   // A quiet full-height row: 44pt to tap, footnote-sized to read.
   elsewhere: {

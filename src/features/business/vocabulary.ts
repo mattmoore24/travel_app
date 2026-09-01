@@ -7,6 +7,7 @@ import type {
   RatingBucket,
   RatingTag,
 } from '@/lib/database.types';
+import { countOf, isAre } from '@/lib/plural';
 
 /**
  * The words a traveler sees, in one place.
@@ -94,13 +95,44 @@ export const LINK_LABEL: Record<BusinessLinkKind, string> = {
   other: 'Link',
 };
 
+/**
+ * The two conduct reasons lead, and the four map corrections follow.
+ *
+ * The order is the triage order the person reading it walks down, and the
+ * traveler report form settled the same argument the same way: a list that
+ * puts "It's in the wrong spot" above "It felt unsafe" has said something
+ * about which of the two this app takes seriously. The spec asked only that
+ * these two sit above "Spam or something offensive"; leading with them
+ * satisfies that and matches REASON_OPTIONS in app/report.tsx.
+ *
+ * "Somebody here" is locative, about the venue, and not a presence claim: it
+ * means the people at that bar, on a form that is already about that one
+ * business.
+ */
 export const REPORT_REASONS: { value: BusinessReportReason; label: string }[] = [
+  { value: 'harassment_or_conduct', label: 'Somebody here treated me badly' },
+  { value: 'unsafe', label: 'It felt unsafe' },
   { value: 'not_this_business', label: "This isn't the real business" },
   { value: 'not_a_real_place', label: "It doesn't exist" },
   { value: 'permanently_closed', label: "It's closed for good" },
   { value: 'wrong_location', label: "It's in the wrong spot" },
   { value: 'spam_or_offensive', label: 'Spam or something offensive' },
 ];
+
+/**
+ * The reasons that are about the people rather than about the pin.
+ *
+ * The database asks the same question from the other end (anything that is
+ * not one of the five listing-accuracy reasons), because a migration cannot
+ * name an enum label it added in the same transaction. Here there is no such
+ * constraint, so the list says plainly which two it means.
+ */
+export const CONDUCT_REPORT_REASONS: BusinessReportReason[] = ['harassment_or_conduct', 'unsafe'];
+
+/** Whether this report is about how a business behaved. */
+export function isConductReason(reason: BusinessReportReason | null): boolean {
+  return reason != null && CONDUCT_REPORT_REASONS.includes(reason);
+}
 
 export const BUCKET_LABEL: Record<RatingBucket, string> = {
   loved: 'Loved it',
@@ -351,4 +383,91 @@ function pickMiddle(inBucket: MyRatingRow[], lo: number, hi: number): MyRatingRo
       ? row
       : best
   );
+}
+
+/**
+ * The "How it's going" line on My business: what came back from the world
+ * this week, in one sentence.
+ *
+ * My business is otherwise five sections of what the owner typed in
+ * themselves, and the one signal from outside — the rating — renders nothing
+ * until five travelers have rated. So an owner who signed up on Monday has
+ * no reason to open the app on Tuesday, and §6 wants liquidity legible from
+ * day one.
+ *
+ * WHAT THIS DELIBERATELY IS NOT
+ * -----------------------------
+ * Founder ruling, this batch: one sentence from numbers already on the
+ * screen. Not a counter, not a chart, not a time series, and no new table —
+ * the moment it needs one it has stopped being this package and become the
+ * views/taps/saves product §10 defers.
+ *
+ * It counts CONVERSATIONS, never senders, and names nobody. Which travelers
+ * wrote and which rated is the anti-retaliation control the rating block
+ * already records; a "how it's going" line that leaked a name beside it
+ * would undo that control from one section away.
+ */
+export function weekLine({
+  chatsThisWeek,
+  memberCount,
+}: {
+  /** Conversations a traveler opened with this business in the last 7 days. */
+  chatsThisWeek: number;
+  /** Travelers currently in the business's own chat room. */
+  memberCount: number;
+}): string {
+  if (chatsThisWeek > 0) {
+    const wrote = `${countOf(chatsThisWeek, 'traveler')} wrote to you this week.`;
+    return memberCount > 0
+      ? `${wrote} ${countOf(memberCount, 'traveler')} ${isAre(memberCount)} in your chat.`
+      : wrote;
+  }
+  if (memberCount > 0) {
+    return `${countOf(memberCount, 'traveler')} ${isAre(memberCount)} in your chat. Nobody wrote to you this week.`;
+  }
+  // The floor, said as a fact and not as a failure. Photos and hours are what
+  // move a listing up the map, which is what the section below is for.
+  return 'Nobody has written this week. A listing with photos and hours gets read more.';
+}
+
+/**
+ * How many conversations a traveler opened with this business inside seven
+ * days of `now`.
+ *
+ * Pure, and takes the clock as an argument, so the screen reads it once per
+ * data change (the shape openLine already set) instead of once per render —
+ * a count that moves under a re-render is how a number on a dashboard stops
+ * being believable.
+ *
+ * `kind === 'business'` is the whole filter: my_chats hands an owner one such
+ * row per traveler who wrote in, plus their own room, which is a different
+ * kind. So this counts inbound conversations and nothing else.
+ */
+export function countChatsSince(
+  rows: { kind: string; created_at: string }[] | null,
+  now: Date
+): number {
+  if (rows == null) {
+    return 0;
+  }
+  const since = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+  return rows.filter((row) => row.kind === 'business' && Date.parse(row.created_at) >= since)
+    .length;
+}
+
+/** How many of the five things a listing is judged on are filled in. */
+export function detailsDone({
+  hasAddress,
+  photos,
+  hasHours,
+  hasDescription,
+  links,
+}: {
+  hasAddress: boolean;
+  photos: number;
+  hasHours: boolean;
+  hasDescription: boolean;
+  links: number;
+}): number {
+  return [hasAddress, photos > 0, hasHours, hasDescription, links > 0].filter(Boolean).length;
 }

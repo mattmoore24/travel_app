@@ -133,9 +133,18 @@ function GuestProfile({ guestName }: { guestName: string | null }) {
  * somebody who runs one.
  *
  * Everything a business actually manages lives on the My business tab, so this
- * page is deliberately short: the way there, the rules a business is held to,
- * the way to a human, and the two account controls App Review requires to be
- * reachable from inside the app.
+ * page is deliberately short: the rules a business is held to, the way to a
+ * human, and the two account controls App Review requires to be reachable from
+ * inside the app.
+ *
+ * And it is SETTINGS, not a second front door. It used to open with a large
+ * "Manage your business" button and a subtitle explaining it, which made the
+ * account page and the My business tab two doors onto one room: an owner who
+ * came here from the tab was handed a button back to the tab. The way back is
+ * the back gesture, which is also what avatar-button offers from Map and Chat,
+ * and it returns to whatever tab the owner came from - correct for a settings
+ * screen, and it is the surface the removed button's own bug lived on.
+ * Retitled to match: a business account has no profile.
  */
 function BusinessAccount({ name }: { name: string | null }) {
   const theme = useTheme();
@@ -145,23 +154,11 @@ function BusinessAccount({ name }: { name: string | null }) {
 
   return (
     <ThemedView style={styles.root}>
-      <Stack.Screen options={{ headerTitle: 'Your profile' }} />
+      <Stack.Screen options={{ headerTitle: 'Account' }} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.guestContent}>
         <ThemedText type="display" style={styles.guestText}>
           {name ?? 'Your account'}
         </ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.guestText}>
-          Everything about your business lives on the My business tab.
-        </ThemedText>
-        {/* navigate, not back: this button named a tab and then returned to
-            whichever one the owner had come from, so an owner who opened it
-            from Chat was handed Chat again. navigate pops to the tabs that
-            are already underneath this page and selects the one named,
-            rather than stacking a second copy of the whole navigator. */}
-        <PrimaryButton
-          label="Manage your business"
-          onPress={() => router.navigate('/(tabs)/my-business')}
-        />
         {/* The undo for the one-time push primer - the same row travelers
             get, because a reply to a room lands the same way. */}
         <NotificationsRow />

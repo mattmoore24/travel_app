@@ -5,7 +5,7 @@
 -- chat with a business never unlocks anybody's personal handles in either
 -- direction.
 begin;
-select plan(30);
+select plan(37);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a3', 'ana@example.com'),
@@ -284,6 +284,77 @@ select is(
   (select count(*)::int from public.top_rated_by('00000000-0000-0000-0000-0000000000c3')),
   0,
   'and go dark exactly where the rest of that profile does'
+);
+
+-- REPORTING HOW A BUSINESS BEHAVED ------------------------------------------
+--
+-- The five original reasons were all complaints about the LISTING. A hostel
+-- is a room this app sends strangers into, so "somebody there treated me
+-- badly" has to be sayable, and it has to reach the same queue a report about
+-- a person reaches. 20260902110000 adds the two labels and teaches the
+-- escalation trigger to tell the two kinds apart.
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000b3');
+-- The owner of Casa Azul, refused - and refused one line EARLIER than you
+-- would guess. report_business checks is_business_account before it checks
+-- owns_business, so the owner never reaches "that is your own listing": they
+-- are turned away for being a business account at all, which is rule 8 and is
+-- also the answer for a rival bar trying to file against this one.
+select throws_ok(
+  $$ select public.report_business(pg_temp.biz(), 'harassment_or_conduct') $$,
+  'a business account cannot do that',
+  'a business account reports nobody, its own listing included'
+);
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000a3');
+select lives_ok(
+  $$ select public.report_business(pg_temp.biz(), 'harassment_or_conduct',
+       'the guy on the door followed me out') $$,
+  'a traveler can report how a business behaved, not only whether the pin is right'
+);
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.moderation_events
+    where entity_type = 'business' and action = 'conduct_report'
+      and entity_id = pg_temp.biz()),
+  1,
+  'and it lands in the moderation spine, beside the reports about people'
+);
+
+-- The other half of the same branch. An accuracy complaint is a map
+-- correction, and a map correction is not an accusation about anybody.
+select pg_temp.admin();
+update public.users set status = 'active' where id = '00000000-0000-0000-0000-0000000000c3';
+select pg_temp.login('00000000-0000-0000-0000-0000000000c3');
+select lives_ok(
+  $$ select public.report_business(pg_temp.biz(), 'wrong_location') $$,
+  'an accuracy complaint still files exactly as it always did'
+);
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.moderation_events
+    where entity_type = 'business' and action = 'conduct_report'),
+  1,
+  'and adds nothing to that queue, because it is not about a person'
+);
+
+-- The reporter learns nothing, second time included. The unique index takes
+-- one report per account and the insert silently does nothing on the second,
+-- so the app can say the same sentence both times - "you already reported
+-- this" would be the app telling whoever is holding the phone what this
+-- account did before.
+select pg_temp.login('00000000-0000-0000-0000-0000000000a3');
+select lives_ok(
+  $$ select public.report_business(pg_temp.biz(), 'unsafe') $$,
+  'reporting the same business again says the same nothing'
+);
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.business_reports
+    where business_id = pg_temp.biz()
+      and reporter_user_id = '00000000-0000-0000-0000-0000000000a3'),
+  1,
+  'and there is still one report from that account rather than two'
 );
 
 select * from finish();

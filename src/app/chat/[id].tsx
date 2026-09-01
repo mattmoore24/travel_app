@@ -40,12 +40,24 @@ import {
   useUnsendMessage,
 } from '@/features/rooms/hooks';
 import { useOwnUserId, usePhotoUrl, usePublicProfile } from '@/features/profile/hooks';
-import { openTravelerMenu } from '@/features/profile/actions-menu';
+import { presentMenu, travelerMenuItems } from '@/features/profile/actions-menu';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { useTheme } from '@/hooks/use-theme';
 import { useBusinessForChat, useIsBusiness, useIsPlaceChat } from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import type { ChatListRow } from '@/lib/database.types';
+
+/**
+ * The label the shared action sheet gives its Report row.
+ *
+ * Written down here because this screen re-points that one row on a business
+ * thread and has nothing but the label to find it by. Exported so
+ * app/__tests__/report-place.test.tsx can assert the builder still emits
+ * exactly one row with this label: if somebody renames it there, the swap
+ * below would silently stop happening and every report about a hostel would
+ * quietly go back to naming its owner.
+ */
+export const REPORT_ROW = 'Report';
 
 function ChatHeader({ chat }: { chat: ChatListRow }) {
   const theme = useTheme();
@@ -136,8 +148,18 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
   // surfaces that offer them (here, a stranger's profile, and the Travelers
   // card) cannot drift. What is local to a thread is the tail: a traveler
   // can leave the chat, a business archives it.
-  const openMenu = () =>
-    openTravelerMenu({
+  //
+  // And, on a business thread, the SUBJECT of the report. The builder files
+  // against `userId`, which on this screen is `other_user_id` - the owner as
+  // a private person, not the hostel. So a traveler harassed by whoever is
+  // behind the bar's account filed a report about a stub profile they have
+  // never seen, in the person queue, named after the wrong subject. Rerouted
+  // here rather than in the builder because the other two surfaces that use
+  // it have no business to report. The builder should grow an `onReport`
+  // override the day somebody owns that file; until then this screen swaps
+  // the one row by its label, and a sibling test keeps the label honest.
+  const openMenu = () => {
+    const items = travelerMenuItems({
       userId: chat.other_user_id,
       context: `chat:${chat.chat_id}`,
       canViewProfile: !viewerIsBusiness,
@@ -148,6 +170,28 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
           : { label: 'Leave chat', destructive: true, run: confirmLeaveChat },
       ],
     });
+    // placeId is the listing this thread belongs to, and it is null until
+    // that query lands. Falling back to the person report is the behaviour
+    // this screen has always had: one report in the older queue beats a
+    // Report row that opens a form whose Send button cannot fire.
+    const business = isPlace && placeId != null ? placeId : null;
+    presentMenu(
+      business == null
+        ? items
+        : items.map((item) =>
+            item.label === REPORT_ROW
+              ? {
+                  ...item,
+                  run: () =>
+                    router.push({
+                      pathname: '/report-place',
+                      params: { id: business, name: chat.title ?? '' },
+                    }),
+                }
+              : item
+          )
+    );
+  };
 
   // Where the name at the top of the screen goes, or null when it goes
   // nowhere. A business reading its own inbox is the null case: the name

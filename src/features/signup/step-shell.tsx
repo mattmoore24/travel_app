@@ -110,10 +110,36 @@ export function StepShell({
               </PressableScale>
             ) : null}
           </View>
-          <View style={[styles.track, { backgroundColor: theme.surfaceSunken }]}>
+          {/* Two plain Views carried the whole of "how much is left" until
+              now: no role, no value, no text alternative, so somebody swiping
+              thirteen screens with VoiceOver got a Back button and a form and
+              nothing else. A progressbar with min/max/now is what iOS speaks
+              as "step five of thirteen"; the label is there because a bare
+              percentage says nothing about screens. */}
+          <View
+            // `accessible` as well as the role: a plain View with a role but
+            // no accessible flag is not an accessibility element on iOS at
+            // all, so VoiceOver would walk straight past it and the role
+            // would be decoration. Its only child is the animated fill, so
+            // there is no text for the grouping to swallow.
+            accessible
+            accessibilityRole="progressbar"
+            accessibilityLabel={`Step ${step} of ${total}`}
+            accessibilityValue={{ min: 1, max: total, now: step }}
+            style={[styles.track, { backgroundColor: theme.surfaceSunken }]}>
             <Animated.View style={[styles.fill, { backgroundColor: theme.accent }, fillStyle]} />
           </View>
-          <View style={styles.backSlot} />
+          {/* The slot on the right was an empty mirror of the back chevron,
+              there only to centre the bar. It holds the number now, which
+              costs no layout and gives a sighted reader the same fact the 4pt
+              hairline was trying to carry on its own. */}
+          <View style={[styles.backSlot, styles.countSlot]}>
+            {/* One string rather than three children, so a screenshot
+                driver matching "12 of 13" matches one element. */}
+            <ThemedText type="caption" themeColor="textSecondary">
+              {`${step} of ${total}`}
+            </ThemedText>
+          </View>
         </View>
 
         {/* KeyboardFloor, not KeyboardAvoidingView. The avoider measures its
@@ -239,6 +265,15 @@ const styles = StyleSheet.create({
     width: HitTarget,
     height: HitTarget,
     justifyContent: 'center',
+  },
+  // The number sits where the mirrored chevron slot was, so the bar stays
+  // centred. Right-aligned against the screen edge rather than centred in the
+  // slot, because at large Dynamic Type "12 of 13" is wider than 44pt and
+  // centring it would push it under the safe area instead of the padding.
+  countSlot: {
+    width: 'auto',
+    minWidth: HitTarget,
+    alignItems: 'flex-end',
   },
   back: {
     width: HitTarget,

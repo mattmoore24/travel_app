@@ -31,8 +31,25 @@ import {
   useOwnBusiness,
   useRatingSummary,
 } from '@/features/business/hooks';
-import { CATEGORY_ICON, CATEGORY_LABEL, TAG_LABEL, openLine } from '@/features/business/vocabulary';
+import {
+  LISTING_QR_CAPTION,
+  LISTING_SHARE_LABEL,
+  listingShareMessage,
+  listingUrl,
+  shareListing,
+} from '@/features/business/share-listing';
+import {
+  CATEGORY_ICON,
+  CATEGORY_LABEL,
+  TAG_LABEL,
+  countChatsSince,
+  detailsDone,
+  openLine,
+  weekLine,
+} from '@/features/business/vocabulary';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
+import { useMyChats } from '@/features/matching/hooks';
+import { ShareLink } from '@/features/share/share-link';
 import { dayLabel } from '@/features/chat/separators';
 import { usePushPrimer } from '@/features/notifications/primer-store';
 import {
@@ -295,6 +312,14 @@ export default function MyBusinessScreen() {
   // The live OS state for the Notifications row below. Same hook as the
   // account pages, so the two renderings can never disagree.
   const { state: pushState, enable: enablePush } = useNotificationPermission();
+  // The one signal on this screen that comes back from the world rather than
+  // out of the owner's own typing. Conversations, never senders: see
+  // vocabulary.weekLine.
+  const chats = useMyChats().data ?? null;
+  // Whether the square is on screen. Off by default - it is the counter case,
+  // not the common one, and a 200pt QR above 'Your account' on every open
+  // would push the settings rows below the fold for everybody.
+  const [qrOpen, setQrOpen] = useState(false);
 
   // One reading of the clock per data change rather than one per render, so
   // the Hours row cannot flip from open to closed mid-scroll.
@@ -302,6 +327,17 @@ export default function MyBusinessScreen() {
     () => (detail ? openLine(detail.hours, new Date(), detail.lng) : null),
     [detail]
   );
+
+  // Conversations a traveler opened with this business inside seven days.
+  // Counted off the list this screen's own tab already holds, so it costs no
+  // query: my_chats returns kind 'business' rows to an owner, one per
+  // traveler who wrote in.
+  //
+  // Same shape as hoursLine above, and for the same two reasons: the clock is
+  // read once per data change rather than once per render, and the counting
+  // itself is a pure function in vocabulary.ts, so it can be tested without a
+  // component and cannot drift with the render schedule.
+  const chatsThisWeek = useMemo(() => countChatsSince(chats, new Date()), [chats]);
 
   useEffect(() => {
     analytics.capture('my_business_viewed');
@@ -400,6 +436,13 @@ export default function MyBusinessScreen() {
   const posts = detail?.posts ?? [];
   const photos = detail?.photos ?? [];
   const links = detail?.links ?? [];
+  const done = detailsDone({
+    hasAddress: business.address != null,
+    photos: photos.length,
+    hasHours: hoursLine != null,
+    hasDescription: business.description != null,
+    links: links.length,
+  });
   const dark = business.state !== 'listed' || !business.active;
 
   // The screen's biggest button is whatever this owner has to do next.
@@ -549,10 +592,10 @@ export default function MyBusinessScreen() {
                 onRetry={detailQuery.refetch}
               />
             ) : detailQuery.isPending || ratingQuery.isPending ? (
-              // Shapes, not empty states. Every row below reads "Nothing yet"
-              // before its query lands, and telling a business it has no
-              // hours, no links and no rating while we are still asking is
-              // the same lie LoadError exists to stop.
+              // Shapes, not empty states. Every row below falls back to its
+              // "add this" line before its query lands, and telling a
+              // business to add hours it already has while we are still
+              // asking is the same lie LoadError exists to stop.
               <View style={styles.loadingSections}>
                 <Skeleton width="35%" height={14} />
                 <Skeleton height={56} />
@@ -594,6 +637,12 @@ export default function MyBusinessScreen() {
                 <Section
                   title="Your details"
                   icon={{ ios: 'list.bullet', android: 'list', web: 'list' }}>
+                  {/* Somewhere to get to. Five rows with no total is a list
+                      that never ends; '3 of 5 done' is the same five rows
+                      with a finish line on them. */}
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    {`${done} of 5 done`}
+                  </ThemedText>
                   {/* A business that moved premises had a listing on the wrong
                       door forever: this screen covered hours, links, words and
                       photos and had no way to the address, the city or the
@@ -610,17 +659,36 @@ export default function MyBusinessScreen() {
                     }}
                     value={business.address ?? 'No address yet'}
                   />
+                  {/* Ordered by what each one does to the listing on the
+                      map, not by the order the columns happen to sit in:
+                      photos are the cover a traveler decides on, hours are
+                      the question they opened the page to answer, and links
+                      are the last of the five. 'Where you are' stays first
+                      because a listing on the wrong door is not a listing.
+
+                      And every empty value says what filling it BUYS. Four
+                      rows reading 'Nothing yet' is a column of the same
+                      shrug, and it tells an owner who has just signed up
+                      that this screen is a list of their failures. */}
+                  <DetailRow
+                    label="Photos"
+                    section="photos"
+                    icon={{
+                      ios: 'photo.on.rectangle',
+                      android: 'photo_library',
+                      web: 'photo_library',
+                    }}
+                    value={
+                      photos.length > 0
+                        ? countOf(photos.length, 'photo')
+                        : 'Add photos so you have a cover'
+                    }
+                  />
                   <DetailRow
                     label="Hours"
                     section="hours"
                     icon={{ ios: 'clock', android: 'schedule', web: 'schedule' }}
-                    value={hoursLine ?? 'Nothing yet'}
-                  />
-                  <DetailRow
-                    label="Links"
-                    section="links"
-                    icon={{ ios: 'link', android: 'link', web: 'link' }}
-                    value={links.length > 0 ? countOf(links.length, 'link') : 'Nothing yet'}
+                    value={hoursLine ?? 'Add hours so travelers know when to come'}
                   />
                   <DetailRow
                     label="Description"
@@ -630,17 +698,17 @@ export default function MyBusinessScreen() {
                     // scrolling to the field the row named.
                     section="details"
                     icon={{ ios: 'text.alignleft', android: 'notes', web: 'notes' }}
-                    value={business.description ?? 'Nothing yet'}
+                    value={business.description ?? 'Say what it is like'}
                   />
                   <DetailRow
-                    label="Photos"
-                    section="photos"
-                    icon={{
-                      ios: 'photo.on.rectangle',
-                      android: 'photo_library',
-                      web: 'photo_library',
-                    }}
-                    value={photos.length > 0 ? countOf(photos.length, 'photo') : 'Nothing yet'}
+                    label="Links"
+                    section="links"
+                    icon={{ ios: 'link', android: 'link', web: 'link' }}
+                    value={
+                      links.length > 0
+                        ? countOf(links.length, 'link')
+                        : 'A menu, a booking page, your socials'
+                    }
                   />
                 </Section>
 
@@ -669,6 +737,23 @@ export default function MyBusinessScreen() {
                     />
                   </Section>
                 ) : null}
+
+                {/* The only section on this screen that is not the owner's
+                    own typing read back to them. One sentence, from numbers
+                    the screen already holds - see vocabulary.weekLine for
+                    why it is a sentence and not a dashboard, and why it
+                    counts conversations rather than people. */}
+                <Section
+                  title="How it's going"
+                  icon={{
+                    ios: 'chart.line.uptrend.xyaxis',
+                    android: 'trending_up',
+                    web: 'trending_up',
+                  }}>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    {weekLine({ chatsThisWeek, memberCount: detail?.member_count ?? 0 })}
+                  </ThemedText>
+                </Section>
 
                 <Section
                   title="Your rating"
@@ -713,6 +798,46 @@ export default function MyBusinessScreen() {
                       ) : null}
                     </View>
                   )}
+                </Section>
+
+                {/* The map was the only route to a business page, so a
+                    hostel that wanted "we're on Samewhere" behind reception
+                    had nothing to point at. The square is the counter case
+                    and is closed by default; the share sheet is the one for
+                    a booking confirmation or an Instagram bio. */}
+                <Section
+                  title="Share your page"
+                  icon={{
+                    ios: 'square.and.arrow.up',
+                    android: 'ios_share',
+                    web: 'ios_share',
+                  }}>
+                  <DetailRow
+                    label={LISTING_SHARE_LABEL}
+                    icon={{
+                      ios: 'square.and.arrow.up',
+                      android: 'ios_share',
+                      web: 'ios_share',
+                    }}
+                    value="Send the link to your page"
+                    onPress={() => {
+                      void shareListing({ id: business.id, name: business.name });
+                    }}
+                  />
+                  <DetailRow
+                    label="Show a QR code"
+                    icon={{ ios: 'qrcode', android: 'qr_code', web: 'qr_code' }}
+                    value={qrOpen ? 'Hide the square' : 'For the counter'}
+                    onPress={() => setQrOpen((open) => !open)}
+                  />
+                  {qrOpen ? (
+                    <ShareLink
+                      url={listingUrl(business.id)}
+                      message={listingShareMessage({ id: business.id, name: business.name })}
+                      caption={LISTING_QR_CAPTION}
+                      shareLabel={LISTING_SHARE_LABEL}
+                    />
+                  ) : null}
                 </Section>
 
                 {/* The account controls, from the tab the account page sends

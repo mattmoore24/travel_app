@@ -334,12 +334,20 @@ export type BusinessVerificationRow = {
   reviewed_at: string | null;
 };
 
+/**
+ * The first five are complaints about the LISTING. The last two are about the
+ * people behind it, and they are why 20260902110000 exists: a hostel or a bar
+ * is a room this app sends strangers into, so "somebody there treated me
+ * badly" has to be sayable without dressing it up as a map correction.
+ */
 export type BusinessReportReason =
   | 'not_a_real_place'
   | 'permanently_closed'
   | 'not_this_business'
   | 'wrong_location'
-  | 'spam_or_offensive';
+  | 'spam_or_offensive'
+  | 'harassment_or_conduct'
+  | 'unsafe';
 
 export type RatingBucket = 'not_for_me' | 'fine' | 'loved';
 

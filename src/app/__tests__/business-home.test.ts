@@ -32,13 +32,18 @@ function businessAccount(): string {
 }
 
 describe('the account page a business gets', () => {
-  it('goes to the My business tab it names, rather than back to wherever you came from', () => {
+  it('is settings, and no longer a door back to the tab that sent you', () => {
     const branch = businessAccount();
-    expect(branch).toContain('label="Manage your business"');
-    expect(branch).toContain("router.navigate('/(tabs)/my-business')");
-    // The old shape: back(), which returned an owner who came from Chat to
-    // Chat, and never once opened the tab the button is named after.
+    // This page used to open with a large "Manage your business" button
+    // pointing at the My business tab - which is the tab whose avatar is the
+    // only way in here. Two doors to one room, and the button was the
+    // second one. The back gesture is the way back now.
+    expect(branch).not.toContain('label="Manage your business"');
+    expect(branch).not.toContain("router.navigate('/(tabs)/my-business')");
+    // Still not back(): nothing here navigates for you at all.
     expect(branch).not.toContain('router.back()');
+    // And it says what it is, under the business name.
+    expect(branch).toContain("headerTitle: 'Account'");
   });
 
   it('shows a business the rules for a business, not the traveler rulebook', () => {
@@ -176,5 +181,92 @@ describe('the notification primer', () => {
     expect(store.slice(0, store.indexOf('BusinessPrimerReason'))).not.toContain('listing-live');
     const askBusiness = store.slice(store.indexOf('askBusiness: async'));
     expect(askBusiness.slice(0, 400)).toContain('set({ asking: reason });');
+  });
+});
+
+/**
+ * The three things biz-my-business-worth-opening and biz-share-your-listing
+ * put on the tab, pinned as source shape for the same reason as everything
+ * above it: these are orderings and absences, and an assertion about a
+ * rendered tree would not catch either.
+ */
+describe('My business is worth opening on a Tuesday', () => {
+  it('orders Your details by what each one does to the listing', () => {
+    const code = src(MY_BUSINESS);
+    const at = (label: string) => code.indexOf(`label="${label}"`);
+    // Where you are stays first: a listing on the wrong door is not a
+    // listing. Then photos (the cover a traveler decides on), hours (the
+    // question they opened the page to answer), description, links.
+    const order = ['Where you are', 'Photos', 'Hours', 'Description', 'Links'].map(at);
+    order.forEach((index) => expect(index).toBeGreaterThan(-1));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('says what filling a row buys instead of four shrugs', () => {
+    const code = src(MY_BUSINESS);
+    // The whole defect: four rows reading the same two words, telling an
+    // owner who just signed up that this screen is a list of failures.
+    // The fallbacks themselves, not the prose about them: both comments
+    // above still quote the old string to say what it was.
+    expect(code).not.toContain(": 'Nothing yet'");
+    expect(code).not.toContain("?? 'Nothing yet'");
+    expect(code).toContain('Add photos so you have a cover');
+    expect(code).toContain('Add hours so travelers know when to come');
+    expect(code).toContain('Say what it is like');
+    expect(code).toContain('A menu, a booking page, your socials');
+    // 'No address yet' is kept as it was: there is no version of an address
+    // that is partly filled in.
+    expect(code).toContain('No address yet');
+  });
+
+  it('gives the five rows a finish line', () => {
+    const code = src(MY_BUSINESS);
+    expect(code).toContain('of 5 done');
+    expect(code).toContain('detailsDone({');
+  });
+
+  it('builds How it is going from the two numbers already on the screen', () => {
+    const code = src(MY_BUSINESS);
+    expect(code).toContain('title="How it\'s going"');
+    expect(code).toContain('weekLine({ chatsThisWeek, memberCount:');
+    // Conversations, never senders. The rating block's own comment records
+    // the anti-retaliation control; a line naming a traveler one section
+    // above it would undo that control from next door.
+    const section = code.slice(code.indexOf("How it's going"), code.indexOf('title="Your rating"'));
+    expect(section).not.toMatch(/user_id|sender|other_user/);
+  });
+
+  it('reads the clock once per data change, not once per render', () => {
+    const code = src(MY_BUSINESS);
+    // Same shape as hoursLine directly above it. The counting itself lives in
+    // vocabulary.countChatsSince, which takes the clock as an argument - a
+    // Date.now() inside the memo is both untestable and a number that moves
+    // under a re-render.
+    expect(code).toContain('countChatsSince(chats, new Date())');
+    // Scoped to this memo, not the file: the code-delivery countdown at the
+    // top legitimately reads Date.now() inside an interval, which is a
+    // different thing from reading it during render.
+    const memo = code.slice(code.indexOf('const chatsThisWeek'), code.indexOf('useEffect('));
+    expect(memo).not.toContain('Date.now()');
+    // And it is hoisted above every early return: the tab has three of them
+    // (error, pending, no business), and a hook below one of those is the
+    // crash this repo has already paid for once.
+    expect(code.indexOf('countChatsSince')).toBeLessThan(code.indexOf('if (ownQuery.isError)'));
+  });
+
+  it('offers the listing as a link and as a square, with the square closed', () => {
+    const code = src(MY_BUSINESS);
+    expect(code).toContain('title="Share your page"');
+    expect(code).toContain('shareListing({ id: business.id, name: business.name })');
+    expect(code).toContain('<ShareLink');
+    // Closed by default: a 200pt square on every open pushes the account
+    // rows below the fold for everybody, to serve the counter case.
+    expect(code).toContain('useState(false)');
+    expect(code).toContain('qrOpen ? (');
+    // Above the account section, which is where the spec puts it and where
+    // an owner looking for "how do I show people this" would look.
+    expect(code.indexOf('title="Share your page"')).toBeLessThan(
+      code.indexOf('title="Your account"')
+    );
   });
 });

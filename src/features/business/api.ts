@@ -323,6 +323,79 @@ export async function archiveBusinessPost(postId: string) {
   }
 }
 
+/** One post as its owner sees it, archived ones included. */
+export type OwnBusinessPostRow = {
+  id: string;
+  business_id: string;
+  title: string;
+  body: string | null;
+  happens_at: string | null;
+  ends_at: string | null;
+  archived_at: string | null;
+};
+
+/** The columns the composer needs to reopen a post. Never a star select. */
+const OWN_POST_COLUMNS = 'id, business_id, title, body, happens_at, ends_at, archived_at';
+
+/**
+ * Read back one of your own posts, to edit it or to put it up again.
+ *
+ * `business_posts_select_own` is what makes this work on an ARCHIVED row:
+ * `business_posts_select_visible` filters those out for everybody, which is
+ * correct for travelers and would make "post this again" impossible. No
+ * business id is passed and none is needed - the policy is `owns_business`,
+ * so a post id belonging to somebody else's listing comes back as no rows
+ * rather than as somebody else's words.
+ */
+export async function fetchOwnBusinessPost(postId: string): Promise<OwnBusinessPostRow | null> {
+  const { data, error } = await supabase
+    .from('business_posts')
+    .select(OWN_POST_COLUMNS)
+    .eq('id', postId)
+    .maybeSingle();
+  if (error) {
+    throw error;
+  }
+  return (data ?? null) as OwnBusinessPostRow | null;
+}
+
+/**
+ * Fix a post rather than delete it and retype it.
+ *
+ * The permission already existed: `grant insert, update, delete` and
+ * `business_posts_write_own` cover the whole table, so this is the client
+ * half of something the database has always allowed. `screen_business_post`
+ * runs on UPDATE too, so an edit is screened exactly as the first draft was
+ * (20260827110000), and its cap check deliberately does NOT fire on an edit
+ * that leaves `archived_at` alone - an edit puts nothing new up.
+ *
+ * archived_at is not in the payload and must not be: un-archiving by hand
+ * would put a post back up while bypassing nothing at all (the trigger
+ * counts that case), but it would skip the composer, and the composer is
+ * where somebody sees that last week's date is still on it. Putting a post up
+ * again goes through the composer as a new row.
+ */
+export async function updateBusinessPost(input: {
+  postId: string;
+  title: string;
+  body: string | null;
+  happensAt: string | null;
+  endsAt: string | null;
+}) {
+  const { error } = await supabase
+    .from('business_posts')
+    .update({
+      title: input.title,
+      body: input.body,
+      happens_at: input.happensAt,
+      ends_at: input.endsAt,
+    })
+    .eq('id', input.postId);
+  if (error) {
+    throw error;
+  }
+}
+
 // -- The badge ----------------------------------------------------------------
 
 /**

@@ -96,32 +96,62 @@ Step 13 renders `ProfileView` in owner mode with every section's edit
 affordance wired to jump back to the step that owns it, then `Looks right,
 finish`. That is the only place `onboarding_completed_at` is stamped.
 
-## 4. A business: twelve steps
+## 4. A business: thirteen steps
 
 Steps 1 and 2 are on `/join`, exactly as for a person, so the bar is
-continuous across the two stacks.
+continuous across the two stacks. Step 13 is on its own route for the same
+reason, and `BUSINESS_TOTAL_STEPS` in `features/signup/steps.ts` is what keeps
+the three stacks agreeing about the count.
 
-| #   | Screen               | Asks                                     | Skippable      | Note                                                       |
-| --- | -------------------- | ---------------------------------------- | -------------- | ---------------------------------------------------------- |
-| 1   | Email                | sign-in email                            | no             | founder's copy: just for signing in                        |
-| 2   | Password             | password                                 | no             | —                                                          |
-| 3   | Name and kind        | name, category                           | no             | —                                                          |
-| 4   | Where is it          | city, **address**, pin                   | no             | address first, pin adjustable — §5 below                   |
-| 5   | Is this right        | confirm address + pin                    | no             | the row is created here (`register_business`)              |
-| 6   | How to reach you     | business email, phone, WhatsApp, website | email required | the code goes to the business email                        |
-| 7   | Photos               | cover + more                             | **no**         | "Photos of the business, not of a person."                 |
-| 8   | What it is           | description                              | yes            | "A couple of lines a traveler would want to read."         |
-| 9   | Hours                | weekly hours + note                      | yes            | "Past midnight is fine. 20:00 to 2:00 reads as one night." |
-| 10  | Links                | menu, booking, socials                   | yes            | one list for links, socials and contact                    |
-| 11  | Here is your listing | review                                   | —              | as a traveler sees it                                      |
-| 12  | The code             | six digits                               | no             | this is what turns the lights on                           |
+| #   | Screen                  | Asks                                     | Skippable      | Note                                                                |
+| --- | ----------------------- | ---------------------------------------- | -------------- | ------------------------------------------------------------------- |
+| 1   | Email                   | sign-in email                            | no             | founder's copy: just for signing in                                 |
+| 2   | Password                | password                                 | no             | —                                                                   |
+| 3   | What a listing gets you | nothing                                  | no             | the offer, and the word free — §7 rule 1 in a sentence              |
+| 4   | Name and kind           | name, category                           | no             | —                                                                   |
+| 5   | Where is it             | city, **address**, pin                   | no             | address first, pin adjustable — §5 below                            |
+| 6   | Is this right           | confirm address + pin                    | no             | the row is created here (`register_business`)                       |
+| 7   | How to reach you        | business email, phone, WhatsApp, website | email required | the code is emailed here, and the reason is said here               |
+| 8   | Photos                  | cover + more                             | **no**         | the real grid, in place; "Photos of the business, not of a person." |
+| 9   | What it is              | description                              | yes            | "A couple of lines a traveler would want to read."                  |
+| 10  | Hours                   | weekly hours + note                      | yes            | "Past midnight is fine. 20:00 to 2:00 reads as one night."          |
+| 11  | Links                   | menu, booking, socials                   | yes            | one list for links, socials and contact                             |
+| 12  | Here is your listing    | review                                   | —              | as a traveler sees it, and sends the code                           |
+| 13  | The code                | six digits                               | no             | this is what turns the lights on                                    |
 
-The business row is created at step 5 rather than at the end. It is
-`unconfirmed` until step 12, and `unconfirmed` is fully dark — no marker, no
+The business row is created at step 6 rather than at the end. It is
+`unconfirmed` until step 13, and `unconfirmed` is fully dark — no marker, no
 chat, no messages — so building the page while it waits is exactly what
-`docs/BUSINESS_ACCOUNTS.md` §3.9 already describes. That also makes steps 7
-through 10 ordinary edits of an existing row, which is how they will work
+`docs/BUSINESS_ACCOUNTS.md` §3.9 already describes. That also makes steps 8
+through 11 ordinary edits of an existing row, which is how they will work
 forever afterwards from the storefront screen.
+
+Three things about this shape are load-bearing and easy to undo by accident.
+
+**Step 3 is the offer, and it removes work rather than adding a screen.** The
+entire value proposition a business used to get was a fourteen-word radio
+subtitle on a screen headlined "What is your email?", and then twelve steps of
+work began. The word _free_ appeared nowhere an owner could read it. Every
+later step assumes that question has been answered, so answering it costs one
+tap and is the reason the rest is worth doing. It draws the same
+`ListingPreview` step 12 does, filled with a real seeded venue, because what a
+traveler gets is the argument.
+
+**The code is emailed at step 7, not at step 12.** Sending it where the
+address is asked for is what stops step 12 reading as a bait: `city_businesses`
+filters on `state = 'listed'`, so an owner who abandons in their mail app has
+built a row no traveler can see. Steps 8 to 12 carry a six-digit box in the
+footer so the code can be typed the minute it lands, and that box confirms
+**inline** — it must never push `/business-email`, which ends with
+`router.replace('/(tabs)')` and would drop a mid-signup owner out of the flow.
+Step 12 does not spend a second code when the first is still live.
+
+**Step 8 owns the photo grid.** It used to be a headline and a thousand points
+of black with a button that routed into the middle of the settings form, and
+it gated on `business_detail`, which is approved-only — so with photo
+moderation on, an owner with a cover on screen was told they had none. The grid
+is `features/business/business-photos.tsx`, shared with the editor, and the
+step counts the owner's own rows.
 
 ## 5. Where is it: an address, then the pin
 

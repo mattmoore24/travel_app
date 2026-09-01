@@ -71,13 +71,37 @@ describe('no screen replaces the root without checking it can go back', () => {
 
   it('business-signup keeps an unguarded exit on every step of the form', () => {
     const code = source('business-signup.tsx');
-    // One shared element, so the nine steps cannot drift apart.
+    // One shared element, so the ten steps cannot drift apart.
     expect(code).toContain("router.replace('/(tabs)')");
     expect(code).toContain('const leaveFooter =');
-    // Steps 3 to 11. Step 12 is the code screen's own hand-off and has its
-    // own footer; steps 1 and 2 live in the auth stack.
-    const uses = code.match(/leaveFooter/g) ?? [];
-    expect(uses.length).toBeGreaterThanOrEqual(10);
+    // Every StepShell in the file hands its footer slot one of exactly two
+    // elements, and both of them end in leaveFooter: the plain one, and
+    // listingFooter, which is the inline code box stacked on top of it. So
+    // the count that matters is not how many times leaveFooter appears but
+    // whether any step passes something else, or nothing at all.
+    const footers = code.match(/footer=\{(\w+)\}/g) ?? [];
+    const shells = code.match(/<StepShell/g) ?? [];
+    expect(shells.length).toBe(10);
+    expect(footers.length).toBe(shells.length - 1);
+    for (const footer of footers) {
+      expect(['footer={leaveFooter}', 'footer={listingFooter}']).toContain(footer);
+    }
+    // The one step whose footer is written inline rather than named is "Where
+    // is it?", which adds a Try again above the same element.
+    expect(code).toContain('{leaveFooter}');
+    expect(code).toContain('const listingFooter = (');
+  });
+
+  it('business-email keeps its own way out, now that it has no close button', () => {
+    // It used to be a StepScreen with an onClose. StepShell has no such slot,
+    // and this screen is arrived at by `replace`, so without a footer exit the
+    // only way off a code that never arrives is to kill the app - which is
+    // the trap the whole of this file exists to keep shut.
+    const code = source('business-email.tsx');
+    expect(code).toContain('label="Finish this later"');
+    expect(code).toContain(
+      "onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}"
+    );
   });
 });
 

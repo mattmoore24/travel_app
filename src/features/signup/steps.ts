@@ -27,6 +27,25 @@ export const SIGNUP_TOTAL_STEPS = 13;
 export const SIGNUP_REVIEW_STEP = SIGNUP_TOTAL_STEPS;
 
 /**
+ * A business is thirteen screens too, and for the same reason the count lives
+ * here: the sequence spans two navigation stacks. Steps 1 and 2 (email,
+ * password) are on /join, steps 3 to 12 are the listing form, and step 13 is
+ * the emailed code on its own route.
+ *
+ * The arithmetic used to be wrong twice. /join handed both account kinds
+ * SIGNUP_TOTAL_STEPS, so a business read 1/13 and 2/13 and then 3/12 and the
+ * bar jumped backwards in meaning; and the form's own last screen filled the
+ * bar to 12 of 12 before handing over one more screen — the code entry, which
+ * in the flow's own words is what turns the lights on — drawn with no bar at
+ * all.
+ *
+ * It happens to equal SIGNUP_TOTAL_STEPS today. /join still branches on the
+ * account kind rather than collapsing to one constant, which costs nothing and
+ * stays honest the next time the two sequences diverge.
+ */
+export const BUSINESS_TOTAL_STEPS = 13;
+
+/**
  * A stable slug per 1-based step, for analytics. `signup_step_completed`
  * sends `{ step_index, step_name, skipped }`: the index is what a PostHog
  * funnel orders by (six of the thirteen steps used to emit nothing, and the

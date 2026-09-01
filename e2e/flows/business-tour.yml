@@ -61,13 +61,29 @@ appId: com.mattmoore.samewhere
     text: 'Not Now'
     optional: true
 
-# NAME AND KIND
+# THE OFFER, which is the first thing the form says now.
+#
+# The whole value proposition a business used to get was a fourteen-word radio
+# subtitle on the email screen, and the word "free" appeared nowhere an owner
+# could read it at all. This is the screen that decides whether a bar owner
+# handed a flyer keeps going, so the picture is the evidence.
 - extendedWaitUntil:
-    visible: "What's your business called?"
+    visible: 'What a listing gets you'
     timeout: 30000
 - tapOn:
     text: 'Not Now'
     optional: true
+- waitForAnimationToEnd:
+    timeout: 2500
+- assertVisible: 'Free, always. No paid placement, no promoted listings.'
+- takeScreenshot: 40c-business-offer
+- tapOn:
+    id: 'business-offer-continue'
+
+# NAME AND KIND
+- extendedWaitUntil:
+    visible: "What's your business called?"
+    timeout: 30000
 - tapOn:
     id: 'business-name-input'
 - inputText: 'Maestro Cafe'
@@ -100,6 +116,12 @@ appId: com.mattmoore.samewhere
     timeout: 12000
 - takeScreenshot: 40b-business-resume-row
 - tapOn: 'Finish listing your business'
+# Back in at the top of the form, which is the offer rather than the name.
+- extendedWaitUntil:
+    visible: 'What a listing gets you'
+    timeout: 20000
+- tapOn:
+    id: 'business-offer-continue'
 - extendedWaitUntil:
     visible: "What's your business called?"
     timeout: 20000
@@ -200,35 +222,45 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'business-contact-continue'
 
-# STEP 7 — photos, and the wall. A listing cannot go on without one.
+# STEP 8 — photos, and the wall. A listing cannot go on without one.
+#
+# The grid is ON this step now (features/business/business-photos.tsx). It
+# used to be a headline, three lines of subtitle and roughly a thousand points
+# of black, with a button that routed into the middle of a 1,430-line settings
+# form, and the wall gated on business_detail - which is approved-only, so an
+# owner with a cover on screen was told they had none.
 - extendedWaitUntil:
     visible: 'Show your business'
     timeout: 20000
 - assertVisible: 'One photo is the only thing we need here.'
+# Dashed tiles, not void, which is half of what the audit was about and what
+# the picture is evidence of. The tile is a Pressable carrying its own
+# accessibilityLabel, so its spoken label is what Maestro can see (skills/
+# traps); '0 of 10' is the grid's own footer and proves the read-back ran.
+- assertVisible: 'Add your cover photo'
+- assertVisible: '0 of 10'
 - takeScreenshot: 48-business-photos
 # The docked button, which is the only one on this step when there are no
-# photos yet. The ghost duplicate above it was removed after run 87
+# photos yet, and which now drives the grid's own picker rather than opening
+# the editor. The ghost duplicate above it was removed after run 87
 # photographed two identical "Add photos" on one screen.
 - tapOn:
     id: 'business-photos-continue'
 - waitForAnimationToEnd:
     timeout: 3000
-- tapOn:
-    text: 'Add your cover photo'
-    optional: true
 - runFlow: ../subflows/pick-a-photo.yml
 - waitForAnimationToEnd:
     timeout: 3000
-# The photo has to COME BACK before Save: '1 of 10' is the grid's own
-# read-back of the row, not a local echo of the picker (runs 90 to 92 watched
-# uploads land while this counter sat at zero, an ungranted column having
-# turned the grid's `select *` into `permission denied` —
+# The photo has to COME BACK: '1 of 10' is the grid's own read-back of the
+# row, not a local echo of the picker (runs 90 to 92 watched uploads land
+# while this counter sat at zero, an ungranted column having turned the grid's
+# `select *` into `permission denied` -
 # 20260831120000_an_ungranted_column_hid_the_photos.sql).
 #
 # The patience here matches the pipeline's own contract, not a guess: each
 # stage is bounded (image-upload.ts), so within 150s the photo has either
-# come back or "Could not save … so try again" is on screen. Run 95 failed
-# with a 60s wait and an alert check made ten seconds after the pick — the
+# come back or "Could not save ... so try again" is on screen. Run 95 failed
+# with a 60s wait and an alert check made ten seconds after the pick - the
 # render alone is allowed 90s on a cold simulator, so the check ran before
 # the alert could exist and the wait gave up while the pipeline was still
 # working. Wait out the budget once, recover through the app's own retry if
@@ -248,86 +280,83 @@ appId: com.mattmoore.samewhere
       - runFlow: ../subflows/pick-a-photo.yml
       - waitForAnimationToEnd:
           timeout: 3000
-- takeScreenshot: 49-business-photo-added
 - extendedWaitUntil:
     visible: '1 of 10'
     timeout: 150000
-# Save, not the header's Close. The editor is a long form and by this point it
-# is scrolled to the photo grid, so the X at the top is off screen and cannot
-# be tapped — run 86 sat in the editor for the rest of the flow. Save is
-# docked at the bottom, always reachable, and is what a person would press.
-- tapOn:
-    text: 'Save'
-    optional: true
-- extendedWaitUntil:
-    visible: 'Show your business'
-    timeout: 20000
+- takeScreenshot: 49-business-photo-added
 
-# The count has to catch up before Continue will move. On the live project
-# require_photo_moderation is ON, so a fresh photo holds at 'pending' until
-# the worker's next tick — and until 20260829180000 there was no worker branch
-# and no trigger at all, so this number sat at zero forever and the step could
-# never be passed. Waiting for the label to change is the end-to-end proof
-# that the pipeline exists.
+# THE CHIP, not a count that waits on a worker.
+#
+# On the live project require_photo_moderation is ON, so a fresh photo holds
+# at 'pending' until the worker's next tick. This step used to wait up to two
+# minutes for a label that only changes when the photo CLEARS, and it waited
+# `optional: true`, so a photo that never cleared read as a pass and the eight
+# screens after it were never photographed at all. What the owner sees the
+# moment the upload lands is the tile chipped "In review", and Continue is
+# enabled on it, because a pending photo is a photo.
 - extendedWaitUntil:
-    visible: '1 added. Add more'
-    timeout: 120000
-    optional: true
+    visible: 'In review'
+    timeout: 30000
+- assertVisible: 'Nobody sees a cover until one of these clears.'
 - takeScreenshot: 50-business-photo-counted
 
-# Everything below runs only if a photo actually landed. Driving Apple's
-# picker is the one part of this suite that depends on somebody else's UI, so
-# it is allowed to fail without taking the run with it — the four screenshots
-# above are the founder's two asks either way, and the pictures say plainly
-# whether the wall was climbed.
-- runFlow:
-    when:
-      visible: '1 added. Add more'
-    commands:
-      - tapOn:
-          id: 'business-photos-continue'
-      - extendedWaitUntil:
-          visible: 'What is it like?'
-          timeout: 15000
-      # Description and hours both open the business editor rather than
-      # taking text inline, and that editor has its own pictures elsewhere.
-      # What matters here is that a skippable step SAYS it is skippable, in
-      # the founder's words, and that skipping works.
-      - takeScreenshot: 60-business-description
-      - tapOn:
-          text: 'Skip for now'
-      - extendedWaitUntil:
-          visible: 'When are you open?'
-          timeout: 15000
-      - takeScreenshot: 61-business-hours
-      - tapOn:
-          text: 'Skip for now'
-      - extendedWaitUntil:
-          visible: 'Anywhere else to send people?'
-          timeout: 15000
-      - takeScreenshot: 62-business-links
-      - tapOn:
-          text: 'Skip for now'
-      # THE LISTING AS A TRAVELER MEETS IT. The founder's "final look of how
-      # your profile appears to other users": the cover photo at the top, the
-      # name, whether you are open, the address. Not a count of what you
-      # filled in.
-      - extendedWaitUntil:
-          visible: 'Here it is'
-          timeout: 15000
-      - waitForAnimationToEnd:
-          timeout: 2500
-      - takeScreenshot: 63-business-review
-      - tapOn:
-          id: 'business-review-continue'
-      # THE LAST STEP, showing the address the code is going to. Stops before
-      # sending: the mail cannot leave Resend until a domain is verified
-      # (docs/LAUNCH_RUNBOOK.md step 2), and a code sent to a .test address
-      # nobody reads proves nothing.
-      - extendedWaitUntil:
-          visible: 'One last thing'
-          timeout: 15000
-      - takeScreenshot: 64-business-code-step
+# AND THE CODE BOX, on the same screen.
+#
+# The code is emailed at the contact step now, so it usually lands while
+# somebody is still cropping photos. Confirming happens inline: pushing
+# /business-email from here would end in router.replace('/(tabs)') and drop a
+# mid-signup owner out of the flow with an unfinished listing.
+- assertVisible: 'Confirm your email'
+- takeScreenshot: 50a-business-inline-code
+
+- tapOn:
+    id: 'business-photos-continue'
+- extendedWaitUntil:
+    visible: 'What is it like?'
+    timeout: 15000
+# Description and hours both open the business editor rather than
+# taking text inline, and that editor has its own pictures elsewhere.
+# What matters here is that a skippable step SAYS it is skippable, in
+# the founder's words, and that skipping works.
+- takeScreenshot: 60-business-description
+- tapOn:
+    text: 'Skip for now'
+- extendedWaitUntil:
+    visible: 'When are you open?'
+    timeout: 15000
+- takeScreenshot: 61-business-hours
+- tapOn:
+    text: 'Skip for now'
+- extendedWaitUntil:
+    visible: 'Anywhere else to send people?'
+    timeout: 15000
+- takeScreenshot: 62-business-links
+- tapOn:
+    text: 'Skip for now'
+# THE LISTING AS A TRAVELER MEETS IT, and the send, which used to be two
+# screens. The founder's "final look of how your profile appears to other
+# users": the cover photo at the top, the name, whether you are open, the
+# address. Not a count of what you filled in. It is badged with the one thing
+# the heading cannot promise yet.
+- extendedWaitUntil:
+    visible: 'Here it is'
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 2500
+- assertVisible: 'Not on the map yet'
+- takeScreenshot: 63-business-review
+- tapOn:
+    id: 'business-review-continue'
+# THE CODE SCREEN, wearing the same shell and the same bar as every step
+# before it. It used to draw no bar at all, one screen after the form had
+# already filled one to 12 of 12 - so the sequence promised it was over
+# before the screen that turns the lights on.
+- extendedWaitUntil:
+    visible: '13 of 13'
+    timeout: 20000
+- assertVisible:
+    id: 'business-code-input'
+- takeScreenshot: 64-business-code-step
 
 # ---------------------------------------------------------------------------
 # THE APP AS A BUSINESS ACTUALLY LIVES IN IT

@@ -6,7 +6,6 @@ import { StyleSheet } from 'react-native';
 import { FormTextField } from '@/components/form/form-text-field';
 import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
-import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { Type } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store';
@@ -15,6 +14,8 @@ import {
   useConfirmBusinessEmail,
   useRequestBusinessEmailCode,
 } from '@/features/business/hooks';
+import { StepShell } from '@/features/signup/step-shell';
+import { BUSINESS_TOTAL_STEPS } from '@/features/signup/steps';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 
@@ -179,7 +180,14 @@ export default function BusinessEmailScreen() {
   };
 
   return (
-    <StepScreen
+    // The same shell every other step of this sequence wears, carrying the
+    // same bar. This screen owned its own chrome and so drew no bar at all,
+    // while the form behind it had already filled one to 12 of 12 — the
+    // sequence promised it was over one screen before the screen that turns
+    // the lights on.
+    <StepShell
+      step={BUSINESS_TOTAL_STEPS}
+      total={BUSINESS_TOTAL_STEPS}
       title={
         bounced
           ? 'That address bounced'
@@ -204,11 +212,10 @@ export default function BusinessEmailScreen() {
       continueDisabled={code.length !== CODE_LENGTH}
       continueLoading={confirm.isPending}
       note={code.length === CODE_LENGTH ? null : 'Six digits, from the email.'}
-      // Somewhere to go. This screen is reached by `replace`, so there is no
-      // back chevron underneath it, and it is no longer a modal to swipe away
-      // either: without this the only way out of a code that never arrives is
-      // to kill the app.
-      onClose={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+      // No back chevron: this screen is arrived at by `replace`, so there is
+      // nothing behind it to go back TO. The way out is the last thing in the
+      // footer, in the words the form itself uses, because without one the
+      // only exit from a code that never arrives is to kill the app.
       onContinue={submit}
       footer={
         changing ? (
@@ -283,6 +290,12 @@ export default function BusinessEmailScreen() {
                 That code had already been used. You&apos;re on the map either way.
               </ThemedText>
             ) : null}
+            <PrimaryButton
+              variant="ghost"
+              label="Finish this later"
+              accessibilityLabel="Finish this later"
+              onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+            />
           </>
         )
       }>
@@ -304,7 +317,7 @@ export default function BusinessEmailScreen() {
         style={styles.code}
         {...keyboardDoneProps}
       />
-    </StepScreen>
+    </StepShell>
   );
 }
 

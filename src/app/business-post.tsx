@@ -1,8 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -13,6 +14,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
+import { fetchOwnBusinessPost, updateBusinessPost } from '@/features/business/api';
 import { useOwnBusiness } from '@/features/business/hooks';
 import { formatDate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
@@ -53,6 +55,58 @@ const SHAPES: { value: Shape; title: string; detail: string }[] = [
     detail: 'No end date. It sits on your page until you take it off.',
   },
 ];
+
+/** Which of the three shapes a stored row has, read back off its two dates. */
+export function shapeOfPost(row: { happens_at: string | null; ends_at: string | null }): Shape {
+  if (row.happens_at != null) {
+    return 'happens';
+  }
+  if (row.ends_at != null) {
+    return 'ends';
+  }
+  return 'open';
+}
+
+/**
+ * The shape this business picked last time, remembered per listing.
+ *
+ * The founder was asked whether the composer should DEFAULT to a dated event
+ * at eight tonight and said no: the comment above SHAPES records the reason
+ * in as many words, and a default is the app choosing on somebody's behalf.
+ * Remembering is a different thing. A bar that has posted "it's happening on
+ * a date" four times running is not being told what it wants; it is being
+ * handed back its own last answer, which it made itself, and which it can
+ * change with one tap. A business that has never posted still gets nothing
+ * preselected, which is the case the founder was protecting.
+ *
+ * Per listing rather than per device: two accounts on one phone do not
+ * inherit each other's habits.
+ */
+export const LAST_SHAPE_KEY = 'samewhere.business.post.shape.v1';
+
+export function lastShapeKey(businessId: string | null): string {
+  return `${LAST_SHAPE_KEY}.${businessId ?? 'none'}`;
+}
+
+/** A stored value only counts if it is still one of the three shapes. */
+export function parseShape(value: string | null): Shape | null {
+  return SHAPES.some((option) => option.value === value) ? (value as Shape) : null;
+}
+
+/**
+ * How many posts are up, not counting the one being edited.
+ *
+ * Without the exclusion, opening your third live post to fix a typo told you
+ * you were at the cap and disabled the button that saves it. The database
+ * never thought so: `screen_business_post` counts an INSERT, and an UPDATE
+ * only when it un-archives (20260827110000), so an edit was always free.
+ */
+export function liveCountExcluding(
+  rows: { id: string }[] | undefined,
+  editingId: string | null
+): number {
+  return (rows ?? []).filter((row) => row.id !== editingId).length;
+}
 
 async function fetchLivePosts(businessId: string) {
   const { data, error } = await supabase
@@ -172,11 +226,36 @@ export default function BusinessPostScreen() {
   const queryClient = useQueryClient();
   const { data: business } = useOwnBusiness();
   const businessId = business?.id ?? null;
+  /**
+   * Three screens in one route, told apart by two params.
+   *
+   * Nothing        a new post.
+   * postId         that post, opened to be fixed. Saves over the same row.
+   * postId + again that post's words on a NEW row, with a date somebody has
+   *                to look at. This is how a weekly quiz night goes back up,
+   *                and it goes through the composer rather than flipping
+   *                archived_at, because un-archiving by hand would put last
+   *                week's date back on the map.
+   */
+  const params = useLocalSearchParams<{ postId?: string; again?: string }>();
+  const postId = params.postId?.trim() || null;
+  // `again` only means anything with a post to copy: a stray param on its own
+  // must not leave a blank form headed "Put this up again".
+  const again = postId != null && params.again === '1';
+  const editing = postId != null && !again;
 
   const livePosts = useQuery({
     queryKey: ['business-posts', businessId],
     queryFn: () => fetchLivePosts(businessId!),
     enabled: isSupabaseConfigured && businessId != null,
+  });
+
+  // A straight table read under business_posts_select_own, which is the
+  // policy that also covers archived rows - the one "post this again" needs.
+  const seed = useQuery({
+    queryKey: ['business-post', postId],
+    queryFn: () => fetchOwnBusinessPost(postId!),
+    enabled: isSupabaseConfigured && postId != null,
   });
 
   const [title, setTitle] = useState('');
@@ -185,20 +264,88 @@ export default function BusinessPostScreen() {
   const [happensAt, setHappensAt] = useState(defaultHappensAt);
   const [endsAt, setEndsAt] = useState(defaultEndsAt);
   const [pickingDate, setPickingDate] = useState(false);
+  // The clock, read once when the screen opened. Seeding happens during
+  // render (below) and `Date.now()` there is impure: two renders could
+  // disagree about whether a date has passed, and react-hooks/purity refuses
+  // it outright. One reading is also the more honest question, because it is
+  // the one the person in front of the form is answering.
+  const [openedAt] = useState(() => Date.now());
+
+  // Fill the form from the row the moment it lands, DURING render (the
+  // sanctioned adjust-state-in-render pattern) rather than from an effect, so
+  // the fields never paint empty for a frame and then fill themselves in.
+  // Keyed on the row's own id, so it happens once and typing survives every
+  // refetch after it.
+  const [seededFrom, setSeededFrom] = useState<string | null>(null);
+  if (seed.data != null && seededFrom !== seed.data.id) {
+    setSeededFrom(seed.data.id);
+    setTitle(seed.data.title);
+    setBody(seed.data.body ?? '');
+    setShape(shapeOfPost(seed.data));
+    // The dates are seeded only when they are still ahead of us, and never
+    // for a repeat. A picker whose value sits below its own minimumDate is a
+    // control that argues with itself, and "post this again" exists precisely
+    // because the old date has been and gone.
+    const was = seed.data.happens_at ? new Date(seed.data.happens_at) : null;
+    if (!again && was != null && was.getTime() > openedAt) {
+      setHappensAt(was);
+    }
+    const until = seed.data.ends_at ? new Date(seed.data.ends_at) : null;
+    if (!again && until != null && until.getTime() > openedAt) {
+      setEndsAt(until);
+    }
+  }
+
+  // The last shape this listing used, for a NEW post only: a post being
+  // opened has a shape of its own and memory must not argue with it. The
+  // updater form never overwrites a choice made while storage was reading.
+  useEffect(() => {
+    if (businessId == null || postId != null) {
+      return;
+    }
+    let live = true;
+    AsyncStorage.getItem(lastShapeKey(businessId))
+      .then((value) => {
+        const remembered = parseShape(value);
+        if (live && remembered != null) {
+          setShape((current) => current ?? remembered);
+        }
+      })
+      .catch(() => {
+        // No memory is the first-post case, which is a form with nothing
+        // preselected. That is the founder's answer, not a failure.
+      });
+    return () => {
+      live = false;
+    };
+  }, [businessId, postId]);
 
   const post = useMutation({
-    mutationFn: createPost,
+    mutationFn: (input: {
+      title: string;
+      body: string | null;
+      happensAt: string | null;
+      endsAt: string | null;
+    }) =>
+      editing && postId != null
+        ? updateBusinessPost({ postId, ...input })
+        : createPost({ businessId: businessId!, ...input }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['business-posts', businessId] });
       queryClient.invalidateQueries({ queryKey: ['business-detail', businessId] });
       // A live post earns the place a brighter ring on the map.
       queryClient.invalidateQueries({ queryKey: ['city-businesses'] });
+      if (postId != null) {
+        queryClient.invalidateQueries({ queryKey: ['business-post', postId] });
+      }
     },
   });
 
   const cap = business?.verified ? CAP_VERIFIED : CAP_UNVERIFIED;
-  const live = livePosts.data?.length ?? 0;
-  const atCap = livePosts.data != null && live >= cap;
+  const live = liveCountExcluding(livePosts.data, editing ? postId : null);
+  // An edit puts nothing new up, so no cap sentence, no disabled button and
+  // no counter: every one of them is about adding, and this is not adding.
+  const atCap = !editing && livePosts.data != null && live >= cap;
   // More up than the cap allows, which is not a broken count: renaming a
   // verified business clears the check (business_rename_resets), so the cap
   // drops from ten to three with ten posts already live. The counter read
@@ -206,6 +353,9 @@ export default function BusinessPostScreen() {
   // cannot be true. Nothing goes down on its own, so this holds until they
   // take some off.
   const overCap = livePosts.data != null && live > cap;
+  // The row is gone: taken down and cleaned up, or opened from a stale list.
+  // Saying so beats a blank form headed "Edit your post".
+  const missing = postId != null && !seed.isPending && seed.data == null;
   // Whether anybody but the owner can see a new post. A listing waiting on
   // its email code, or one moderation has taken down, is dark: the subtitle
   // promised a marker lighting up on the map either way.
@@ -223,32 +373,38 @@ export default function BusinessPostScreen() {
   const ready =
     trimmedTitle.length >= TITLE_MIN && titleError == null && bodyError == null && shape != null;
 
-  const note = overCap
-    ? `You have ${live} up and ${cap} is the most at once. Take some down on My business first.`
-    : atCap
-      ? `That's ${cap} up, which is the most at once. Tap one on My business to take it down.`
-      : (titleError ??
-        bodyError ??
-        (trimmedTitle.length < TITLE_MIN
-          ? 'Give it a title.'
-          : shape == null
-            ? 'Say how long it stays up.'
-            : null));
+  const note = missing
+    ? "That post isn't there any more."
+    : !editing && overCap
+      ? `You have ${live} up and ${cap} is the most at once. Take some down on My business first.`
+      : atCap
+        ? `That's ${cap} up, which is the most at once. Tap one on My business to take it down.`
+        : (titleError ??
+          bodyError ??
+          (trimmedTitle.length < TITLE_MIN
+            ? 'Give it a title.'
+            : shape == null
+              ? 'Say how long it stays up.'
+              : null));
 
   const submit = async () => {
-    if (!ready || businessId == null) {
+    if (!ready || businessId == null || missing) {
       return;
     }
     try {
       await post.mutateAsync({
-        businessId,
         title: trimmedTitle,
         body: body.trim() || null,
         happensAt: shape === 'happens' ? happensAt.toISOString() : null,
         endsAt: shape === 'ends' ? endOfDay(endsAt).toISOString() : null,
       });
       haptics.success();
-      analytics.capture('business_post_created', { shape });
+      analytics.capture(editing ? 'business_post_edited' : 'business_post_created', { shape });
+      // Remembered only once it has actually been used, so a shape somebody
+      // tapped and then thought better of is not what greets them next time.
+      if (shape != null) {
+        void AsyncStorage.setItem(lastShapeKey(businessId), shape).catch(() => {});
+      }
       router.back();
     } catch {
       // Surfaced by the global mutation error alert, which is where the
@@ -259,18 +415,20 @@ export default function BusinessPostScreen() {
 
   return (
     <StepScreen
-      title="Post something"
+      title={editing ? 'Edit your post' : again ? 'Put this up again' : 'Post something'}
       subtitle={
         onTheMap
           ? 'It shows on your page, and your marker lights up on the map.'
           : 'It goes on your page. Only you can see it while your listing is off the map.'
       }
-      continueLabel="Put it up"
+      // "Save it" rather than "Put it up", because it is already up: the
+      // button has to say what it does to the thing in front of you.
+      continueLabel={editing ? 'Save it' : 'Put it up'}
       // Disabled at the cap because a button that fires a refusal we already
       // know about is a button that lies. The database still has the last
       // word: another device can fill the last slot while this is open, and
       // that refusal arrives as an alert rather than a surprise.
-      continueDisabled={!ready || atCap}
+      continueDisabled={!ready || atCap || missing}
       continueLoading={post.isPending}
       note={note}
       onContinue={submit}
@@ -331,23 +489,27 @@ export default function BusinessPostScreen() {
         </ShapeRow>
       ))}
 
-      {/* Said before they write, not after the database refuses. */}
-      <View style={[styles.count, { backgroundColor: theme.surfaceSunken }]}>
-        <ThemedText type="footnote">
-          {livePosts.data == null
-            ? 'Checking what you have up.'
-            : overCap
-              ? `${live} up right now, which is over the ${cap} you can have at once.`
-              : live === 0
-                ? `Nothing up right now. You can have ${cap} at once.`
-                : `${live} of ${cap} up right now.`}
-        </ThemedText>
-        {business != null && !business.verified ? (
-          <ThemedText type="footnote" themeColor="textSecondary">
-            Get the check on your business and you can keep ten up at once.
+      {/* Said before they write, not after the database refuses. Not said at
+          all while editing: the cap counts what is up, an edit changes what
+          is already up, and a number about the wrong question is noise. */}
+      {editing ? null : (
+        <View style={[styles.count, { backgroundColor: theme.surfaceSunken }]}>
+          <ThemedText type="footnote">
+            {livePosts.data == null
+              ? 'Checking what you have up.'
+              : overCap
+                ? `${live} up right now, which is over the ${cap} you can have at once.`
+                : live === 0
+                  ? `Nothing up right now. You can have ${cap} at once.`
+                  : `${live} of ${cap} up right now.`}
           </ThemedText>
-        ) : null}
-      </View>
+          {business != null && !business.verified ? (
+            <ThemedText type="footnote" themeColor="textSecondary">
+              Get the check on your business and you can keep ten up at once.
+            </ThemedText>
+          ) : null}
+        </View>
+      )}
     </StepScreen>
   );
 }

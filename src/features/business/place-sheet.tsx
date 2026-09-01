@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -20,6 +20,7 @@ import { useIsGuest } from '@/features/guest/hooks';
 import { useMyChats } from '@/features/matching/hooks';
 import { openInMaps } from '@/features/pins/open-in-maps';
 import { useTheme } from '@/hooks/use-theme';
+import { analytics } from '@/lib/analytics';
 import type { BusinessPostJson } from '@/lib/database.types';
 import { countOf } from '@/lib/plural';
 
@@ -61,7 +62,8 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
   // Both are refused by the database (assert_not_business, 20260829190000),
   // so the founder's "under no circumstances" was a pair of buttons that
   // failed after the tap.
-  const ownBusiness = useOwnBusiness().data ?? null;
+  const ownBusinessQuery = useOwnBusiness();
+  const ownBusiness = ownBusinessQuery.data ?? null;
   const viewerIsBusiness = ownBusiness != null;
   const detail = useBusinessDetail(businessId);
   const rating = useRatingSummary(businessId);
@@ -88,6 +90,33 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
     const post = currentPost(place.posts, now);
     return post ? { post, when: whenLabel(post, now) } : null;
   }, [place]);
+
+  // The other half of business_page_viewed. Most readings of a business happen
+  // here rather than on the whole page - the marker is the front door - so a
+  // count that only knew about /place/[id] would be a count of the people who
+  // tapped twice. `source` separates the two surfaces without splitting the
+  // event, which is the one shape features/chat/analytics.ts asks for.
+  //
+  // A view needs something on screen, so this waits for the card to have an
+  // answer rather than firing on the tap. A disabled query never leaves
+  // `isPending`, and useOwnBusiness is disabled for a guest, a signed-out
+  // visitor and a keyless dev build, so "we know whose listing this is" has to
+  // include "nobody is going to ask". PlaceCard is keyed on the id, so the ref
+  // is per business rather than per app run.
+  const ownerKnown = !ownBusinessQuery.isPending || ownBusinessQuery.fetchStatus === 'idle';
+  const viewCounted = useRef(false);
+  useEffect(() => {
+    if (viewCounted.current || place == null || !ownerKnown) {
+      return;
+    }
+    // The owner's own taps would dominate the history: theirs is the one
+    // marker an owner opens over and over.
+    if (ownBusiness != null && ownBusiness.id === place.id) {
+      return;
+    }
+    viewCounted.current = true;
+    analytics.capture('business_page_viewed', { business_id: place.id, source: 'sheet' });
+  }, [ownBusiness, ownerKnown, place]);
 
   if (detail.isPending) {
     // Shaped like the card it becomes — name, meta line, one button — rather
@@ -188,8 +217,16 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
             </ThemedText>
             {place.verified ? <PlaceSeal /> : null}
           </View>
+          {/* "Hours not set" rather than a category on its own. `openLine`
+              returns null when a business skipped step 9, and the card used to
+              drop the clause silently - so the sheet and the page disagreed
+              about whether anybody had said when the door is open, and a
+              traveler on a street at 22:00 could not tell an unset field from
+              a line that failed to load. The page names the same gap inside
+              its Hours section; this card has no such section, so the meta
+              line is the only place it can be named. */}
           <ThemedText type="footnote" themeColor="textSecondary">
-            {[CATEGORY_LABEL[place.category], open].filter(Boolean).join(' · ')}
+            {[CATEGORY_LABEL[place.category], open ?? 'Hours not set'].join(' · ')}
           </ThemedText>
           {address ? (
             <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>

@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Alert,
   Linking,
@@ -38,11 +38,13 @@ import {
 } from '@/features/business/vocabulary';
 import { hrefFor, opensInAppBrowser } from '@/features/business/links';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
+import { LISTING_SHARE_LABEL, shareListing } from '@/features/business/share-listing';
 import { dayLabel } from '@/features/chat/separators';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useMyChats } from '@/features/matching/hooks';
 import { openInMaps } from '@/features/pins/open-in-maps';
 import { useTheme } from '@/hooks/use-theme';
+import { analytics } from '@/lib/analytics';
 import type { BusinessHourJson, BusinessLinkJson, BusinessPostJson } from '@/lib/database.types';
 import { countOf } from '@/lib/plural';
 
@@ -146,7 +148,23 @@ function dayRanges(hours: BusinessHourJson[], weekday: number): string {
   return rows.map((h) => `${shortTime(h.opens)} to ${shortTime(h.closes)}`).join(', ');
 }
 
-function Hours({ hours, note }: { hours: BusinessHourJson[]; note: string | null }) {
+function Hours({
+  hours,
+  note,
+  name,
+  onMessage,
+}: {
+  hours: BusinessHourJson[];
+  note: string | null;
+  /** Whose door it is, for the spoken label on the button below. */
+  name: string;
+  /**
+   * The one move left when nobody has said when the door is open, or null when
+   * this reader has no such move: a guest, a business account, or the owner
+   * looking at their own listing. See the ask-them branch below.
+   */
+  onMessage: (() => void) | null;
+}) {
   const theme = useTheme();
   const [openWeek, setOpenWeek] = useState(false);
   // Starting at today rather than at Monday: the row somebody came for is the
@@ -154,9 +172,37 @@ function Hours({ hours, note }: { hours: BusinessHourJson[]; note: string | null
   const today = new Date().getDay();
   const week = Array.from({ length: 7 }, (_, offset) => (today + offset) % 7);
   const shown = openWeek ? week : week.slice(0, 1);
+  // Signup is right not to make an owner guess their hours, and step 9 is
+  // skippable. The consequence was on the traveler's side: no open line in the
+  // meta row and no Hours section at all, so "should I go there tonight" was
+  // neither answered nor acknowledged, and an absent section is
+  // indistinguishable from one that failed to load.
+  const unknown = hours.length === 0 && !note;
 
   return (
     <Section title="Hours" icon={{ ios: 'clock', android: 'schedule', web: 'schedule' }}>
+      {unknown ? (
+        <>
+          <ThemedText type="footnote" themeColor="textSecondary">
+            Hours not set
+          </ThemedText>
+          {/* The next move, where there is somebody on the other end to make
+              it. It sits here rather than three sections down because this is
+              the line that raises the question: a traveler standing on a
+              street at 22:00 wants to know whether the door is open, and
+              asking is the only way left to find out. The actions block below
+              gives its Message button up while this one stands, so the page
+              never carries the same control twice. */}
+          {onMessage ? (
+            <PrimaryButton
+              variant="tonal"
+              label="Message"
+              accessibilityLabel={`Message ${name}`}
+              onPress={onMessage}
+            />
+          ) : null}
+        </>
+      ) : null}
       {hours.length > 0 ? (
         <View style={styles.hours}>
           {shown.map((weekday, index) => (
@@ -196,7 +242,7 @@ function Hours({ hours, note }: { hours: BusinessHourJson[]; note: string | null
   );
 }
 
-function LinkRow({ link }: { link: BusinessLinkJson }) {
+function LinkRow({ link, businessId }: { link: BusinessLinkJson; businessId: string }) {
   const theme = useTheme();
   const label = link.label.trim() || LINK_LABEL[link.kind];
   const phone = link.kind === 'phone';
@@ -240,6 +286,13 @@ function LinkRow({ link }: { link: BusinessLinkJson }) {
       haptic="light"
       scaleTo={0.98}
       onPress={() => {
+        // The KIND, never the value. "Somebody called this hostel" is the
+        // signal an owner is owed; the phone number itself is the business's
+        // own contact detail and has no business leaving the app inside an
+        // analytics payload. business_id rides along so a tap can be joined
+        // to the page view that produced it - one event, one shape, the
+        // lesson features/chat/analytics.ts already wrote down.
+        analytics.capture('business_link_tapped', { business_id: businessId, kind: link.kind });
         const href = hrefFor(link);
         // Two openers, two failures, two answers. The old single message
         // ("nothing on this phone opens that kind of link") is true of a
@@ -313,6 +366,32 @@ export default function PlaceScreen() {
   const cover = place?.photos[0] ?? null;
   const rest = place?.photos.slice(1) ?? [];
 
+  // An owner is given no reason to open the app on a Tuesday, and until now no
+  // return was even recorded: analytics.capture fired nowhere on this page or
+  // on the sheet, so the first time the founder wants a Tuesday number there
+  // would be no history to draw it from. Three lines, no table, no new column.
+  //
+  // A disabled query never leaves `isPending` (the same trap the skeleton
+  // branch below is written around), and useOwnBusiness is disabled for
+  // exactly the accounts that can never own anything: a guest, a signed-out
+  // visitor, a dev build with no Supabase keys. So "we know whose listing this
+  // is" has to include "nobody is going to ask".
+  const ownerKnown = !ownBusiness.isPending || ownBusiness.fetchStatus === 'idle';
+  // Once per mount, by ref rather than by deps: the account-kind answer lands
+  // a beat after the first paint, and a deps-driven refire would count one
+  // reading twice.
+  const viewCounted = useRef(false);
+  useEffect(() => {
+    if (viewCounted.current || place == null || !ownerKnown || isOwner) {
+      return;
+    }
+    viewCounted.current = true;
+    // `source` on BOTH surfaces, never on one. The sheet sends 'sheet'; a page
+    // that sent nothing would break down as sheet versus undefined, which is
+    // the exact shape features/chat/analytics.ts exists to stop.
+    analytics.capture('business_page_viewed', { business_id: place.id, source: 'page' });
+  }, [isOwner, ownerKnown, place]);
+
   if (detailQuery.isError) {
     return (
       <ThemedView style={styles.root}>
@@ -354,6 +433,17 @@ export default function PlaceScreen() {
       </ThemedView>
     );
   }
+
+  const openMessage = () =>
+    router.push({ pathname: '/message-place', params: { id: place.id, name: place.name } });
+  // Nobody has said when the door is open. Where somebody actually runs this
+  // listing, asking them is the traveler's remaining move, so the Message
+  // button goes up beside the gap rather than sitting three sections below it.
+  // The actions block gives the same button up while this holds, so the page
+  // never carries it twice: it is one control, moved. `isBusinessAccount`
+  // covers the owner too, who is a business account by definition.
+  const askAboutHours =
+    hours.length === 0 && !place.hours_note && place.claimed && !isGuest && !isBusinessAccount;
 
   return (
     <ThemedView style={styles.root}>
@@ -453,14 +543,21 @@ export default function PlaceScreen() {
               </Section>
             ) : null}
 
-            {hours.length > 0 || place.hours_note ? (
-              <Hours hours={hours} note={place.hours_note} />
-            ) : null}
+            {/* Always, now. The section used to be gated on there being hours
+                to show, which meant a business that skipped step 9 answered
+                "should I go there tonight" with silence, and silence reads as
+                a section that failed to load. */}
+            <Hours
+              hours={hours}
+              note={place.hours_note}
+              name={place.name}
+              onMessage={askAboutHours ? openMessage : null}
+            />
 
             {links.length > 0 ? (
               <Section title="Find and book" icon={{ ios: 'link', android: 'link', web: 'link' }}>
                 {links.map((link) => (
-                  <LinkRow key={link.id} link={link} />
+                  <LinkRow key={link.id} link={link} businessId={place.id} />
                 ))}
               </Section>
             ) : null}
@@ -524,6 +621,17 @@ export default function PlaceScreen() {
                 <ThemedText type="footnote" themeColor="textSecondary">
                   This is your listing, as a traveler sees it.
                 </ThemedText>
+                {/* The one thing an owner standing on this page actually wants
+                    to do with it. Same button and same words as the row on My
+                    business: one name for one act. */}
+                <PrimaryButton
+                  variant="ghost"
+                  label={LISTING_SHARE_LABEL}
+                  accessibilityLabel={`Share ${place.name}`}
+                  onPress={() => {
+                    shareListing({ id: place.id, name: place.name });
+                  }}
+                />
                 <PrimaryButton
                   variant="ghost"
                   label="Back to My business"
@@ -605,24 +713,24 @@ export default function PlaceScreen() {
                 ) : null}
                 {/* Only where somebody is on the other end. message_business
                     refuses an unclaimed venue, and it does it after five
-                    hundred characters have been typed and Send pressed. */}
-                {place.claimed ? (
-                  <PrimaryButton
-                    variant="tonal"
-                    label="Message"
-                    accessibilityLabel={`Message ${place.name}`}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/message-place',
-                        params: { id: place.id, name: place.name },
-                      })
-                    }
-                  />
-                ) : (
+                    hundred characters have been typed and Send pressed.
+                    And only where the Hours section is not already carrying
+                    this same button: when nobody has said when the door is
+                    open, asking about it is what the tap is FOR, so the
+                    control moves up beside the gap instead of appearing
+                    twice. See askAboutHours. */}
+                {!place.claimed ? (
                   <ThemedText type="footnote" themeColor="textSecondary">
                     Nobody runs this business on Samewhere yet. The chat is open to anyone passing
                     through.
                   </ThemedText>
+                ) : askAboutHours ? null : (
+                  <PrimaryButton
+                    variant="tonal"
+                    label="Message"
+                    accessibilityLabel={`Message ${place.name}`}
+                    onPress={openMessage}
+                  />
                 )}
                 {/* Its own button, not a footnote beside Report. Rating is
                     the feature; reporting is the safety valve. They were the
@@ -637,6 +745,18 @@ export default function PlaceScreen() {
                       params: { id: place.id, name: place.name, category: place.category },
                     })
                   }
+                />
+                {/* A traveler who liked a hostel is the cheapest way another
+                    traveler hears about it, and until now the app could share
+                    a group chat and nothing else. Ghost, below the two things
+                    a traveler came here to do. */}
+                <PrimaryButton
+                  variant="ghost"
+                  label={LISTING_SHARE_LABEL}
+                  accessibilityLabel={`Share ${place.name}`}
+                  onPress={() => {
+                    shareListing({ id: place.id, name: place.name });
+                  }}
                 />
                 <View style={styles.quietRow}>
                   <Pressable

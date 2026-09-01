@@ -602,6 +602,36 @@ chat here**; **Hours** (today bold, "See the week"); **Find and book** (labeled
 rows — "Book a table", "Buy tickets", never a raw URL); **Photos**;
 **Socials**; and **Rate this business**, open to anyone with an account.
 
+**Hours are always a section, even when there are none.** Signup is right not
+to make an owner guess their hours and step 9 is skippable, but the traveler
+side used to hide the whole section in that case, so "should I go there
+tonight" was neither answered nor acknowledged — and an absent section is
+indistinguishable from one that failed to load. The section now renders
+**"Hours not set"**, and the tapped-marker card says the same on its meta line
+(the card has no Hours section to put it in), so the two surfaces cannot
+disagree about whether a business has told anyone when it is open. The meta row
+on the page is deliberately left silent: an open line there is a fact about
+today, and stating the gap in two places on one screen makes it louder than the
+business. Where the listing is **claimed**, the existing **[Message]** button
+moves up beneath that line rather than sitting three sections down — asking is
+the traveler's one remaining move, and it is the same control moved, never a
+second copy.
+
+**Share this business** — one ghost button on the listing page, on the
+traveler's reading of it and on the owner's own "See it as a traveler" view.
+`src/features/business/share-listing.ts` owns the link and the words;
+`src/features/share/share-link.tsx` owns the QR square and the share sheet, the
+same pair the group invite uses. **The link is the custom scheme
+(`samewhere://place/<id>`) and not an https one** — founder ruling: no
+universal links in this batch, `UNIVERSAL_LINKS_LIVE` stays false, because an
+`apple-app-site-association` entry for a path we do not serve is a broken link
+rather than a half-working one, and flipping it costs an EAS build. So the QR
+at a hostel counter is the case this is good at today and Instagram is the case
+it is half good at. The https spelling is already written behind the same flag,
+so turning it on later is a flag flip plus one build — plus, for this path
+specifically, a `/place/*` component in the association file and a hosted page
+answering it.
+
 **Two rows, never confused** **[review]**: a traveler who joins the chat and
 messages the team has two conversations with one name. The group chat sits in
 Groups; the DM sits in Chats with a storefront glyph and the standing subtitle
@@ -667,6 +697,22 @@ travelers have rated; and "See it as a traveler". The verified check renders
 beside the name once earned, and nowhere else. Map shows their own marker
 with a "You" ring and traveler pins anonymously, with no drop-pin button. Chat
 pins their own room and hides the join list.
+
+**Share your page.** A section on My business with two rows: the share sheet,
+and a QR square the owner can hold up or print for the counter. Both are the
+same link and the same one string (`listingShareMessage`), and the QR needs no
+native module, so the whole thing ships over the air. §2.6's go-to-market is
+hostel partnerships and creator marketing and both of those are links, so this
+is the cheapest liquidity lever in the product; until it existed, `Share`
+appeared exactly once in all of `src/` and it was the group invite.
+
+**The account page behind the header avatar is settings, not a second front
+door.** It used to open with a large "Manage your business" button under a
+subtitle explaining it, which made it and the My business tab two doors onto
+one room — an owner who arrived from the tab was handed a button back to the
+tab. Both are gone, the page is titled **Account** (a business account has no
+profile), and the way back is the back gesture, which returns to whichever tab
+the avatar was tapped from.
 
 **Editors.** Hours is rule-based rather than a 7×2 grid: a row of day chips
 plus two time wheels covers most venues, "Different hours on some days" adds a
@@ -881,5 +927,18 @@ never offered. **Implementation is cleared to proceed.**
   field would reintroduce every dynamic the comparative model avoids.
 - Paid placement, sponsored ranking, any business payment surface.
 - Guests joining business chats; "open now" filtering; a holiday hours
-  calendar; a Places directory tab; business analytics; LLM screening of
-  business posts (prefilter only at v1); business-to-business anything.
+  calendar; a Places directory tab; **a business analytics product** — counters,
+  charts, time series, a views/taps/saves dashboard nobody asked for; LLM
+  screening of business posts (prefilter only at v1); business-to-business
+  anything.
+
+**What "business analytics is deferred" does not mean.** Two events now fire:
+`business_page_viewed` (`business_id`, `source: 'page' | 'sheet'`, and never on
+the owner's own reading of their own listing) and `business_link_tapped`
+(`business_id` and the link **kind**, never the link's value — a phone number is
+the business's own contact detail and does not leave the app in an analytics
+payload). They cost no table, no column and no screen; they are the history that
+makes a Tuesday number possible later, and §6 asks for liquidity metrics from
+day one. Founder ruling: the one honest sentence on My business built from
+numbers already on that screen ("How it's going") ships with them. The moment
+either needs a table, it has stopped being this and has become the thing above.

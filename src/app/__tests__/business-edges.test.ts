@@ -22,6 +22,7 @@ const src = (file: string): string => fs.readFileSync(path.join(REPO, file), 'ut
 const INVITE = 'src/app/join-group/[token].tsx';
 const POST = 'src/app/business-post.tsx';
 const SIGNUP = 'src/app/business-signup.tsx';
+const EDIT = 'src/app/business-edit.tsx';
 
 describe('a business opening an invite link', () => {
   it('is turned round before the join flow renders', () => {
@@ -91,11 +92,12 @@ describe('the listing steps read as a business', () => {
 
   it('every docked button says what pressing it does', () => {
     const code = src(SIGNUP);
-    // Photos, description, hours and links all open the editor when the
-    // section is empty. A button that opens a modal while saying "Continue"
-    // is the same lie four times over.
+    // Description, hours and links all open the editor when the section is
+    // empty. A button that opens a modal while saying "Continue" is the same
+    // lie three times over. The photo step is the fourth and it no longer
+    // opens anything: it drives the grid's own picker (below).
     for (const label of [
-      "continueLabel={photoCount > 0 ? 'Continue' : 'Add photos'}",
+      "continueLabel={usable ? 'Continue' : 'Add photos'}",
       "continueLabel={detail?.description ? 'Continue' : 'Write it'}",
       "continueLabel={hourCount > 0 ? 'Continue' : 'Set your hours'}",
       "continueLabel={linkCount > 0 ? 'Continue' : 'Add a link'}",
@@ -104,11 +106,83 @@ describe('the listing steps read as a business', () => {
     }
   });
 
+  it('counts the photo the owner can see, not the one a traveler can', () => {
+    const code = src(SIGNUP);
+    // business_detail filters to moderation_status = 'approved' and is
+    // granted to anon, so with require_photo_moderation ON — which is how
+    // production runs — an owner added their cover, watched it chip "In
+    // review", and was told by this step that they had none. The fix is the
+    // owner-scoped table read, NOT a wider business_detail: a pending count
+    // added there would tell any traveler that a non-approved photo exists.
+    expect(code).toContain(
+      "import { BusinessPhotos, useBusinessPhotos } from '@/features/business/business-photos';"
+    );
+    expect(code).toContain('const photosQuery = useBusinessPhotos(business?.id ?? null);');
+    expect(code).toContain(
+      "const usable = photos.some((photo) => photo.moderation_status !== 'rejected');"
+    );
+    // And the step draws the grid in place rather than routing into the
+    // middle of a 1,430-line settings form.
+    expect(code).toContain('<BusinessPhotos');
+    expect(code).not.toContain("params: { section: 'photos' }");
+  });
+
+  it('says what the email costs on the screen that asks for it', () => {
+    const code = src(SIGNUP);
+    // The consequence used to be sprung one screen from the end, under the
+    // heading "Exactly what a traveler sees when they tap you", which made
+    // the review step read as a bait.
+    expect(code).toContain('Nobody can find you on the map until you type that code in.');
+    // The code goes out the moment there is an address to send it to, before
+    // the photo step rather than nine screens later.
+    const send = code.indexOf(
+      'void requestCode.mutateAsync(email.trim()).catch(() => {});\n      go(8);'
+    );
+    expect(send).toBeGreaterThan(-1);
+  });
+
+  it('lets the code be typed mid-flow without leaving the form', () => {
+    const code = src(SIGNUP);
+    expect(code).toContain('function ConfirmEmailFooter(');
+    expect(code).toContain('const confirm = useConfirmBusinessEmail();');
+    // NEVER a push to /business-email from inside the footer: that screen
+    // ends with router.replace('/(tabs)'), which would drop a mid-signup
+    // owner out of the flow with an unfinished listing behind them.
+    const footer = code.slice(code.indexOf('function ConfirmEmailFooter('));
+    const footerBody = footer.slice(0, footer.indexOf('\nfunction CategoryGrid'));
+    expect(footerBody).not.toContain('router.');
+    // The resend is capped on the run-out timer. A business gets five codes a
+    // day and a freely pressable resend on five consecutive screens would
+    // burn them in a minute.
+    expect(footerBody).toContain('{codeRunOut && !bounced ? (');
+  });
+
+  it('qualifies the promise the review step makes', () => {
+    const code = src(SIGNUP);
+    expect(code).toContain("badge={listed ? null : 'Not on the map yet'}");
+    // And does not spend a second code when one is already live.
+    expect(code).toContain('if (codeLive || codeBounced) {');
+  });
+
+  it('opens with what a listing is, and that it is free', () => {
+    const code = src(SIGNUP);
+    const offer = code.indexOf('title="What a listing gets you"');
+    expect(offer).toBeGreaterThan(-1);
+    // Before the name step, which is where the work starts.
+    expect(offer).toBeLessThan(code.indexOf('title="What\'s your business called?"'));
+    expect(code).toContain('Free, always. No paid placement, no promoted listings.');
+    // The real listing component, not a bespoke card built for one screen.
+    expect(code).toContain('<ListingPreview');
+    // No skip: it is one tap and it is the offer.
+    const step3 = code.slice(offer, code.indexOf('if (step === 4)'));
+    expect(step3).not.toContain('onSkip');
+  });
+
   it('the links step no longer has two buttons doing one thing', () => {
     const code = src(SIGNUP);
-    // Continue and "Skip for now" both went to step 11, with a ghost "Add a
-    // link" between them.
-    expect(code).not.toContain('onContinue={() => go(11)}');
+    // Continue and "Skip for now" both went to the review step, with a ghost
+    // "Add a link" between them.
+    expect(code).not.toContain('onContinue={() => go(12)}');
   });
 
   it('greys the blocked Continue on Where is it, instead of a note that lies', () => {
@@ -128,5 +202,50 @@ describe('the listing steps read as a business', () => {
     // instead of a silent quit.
     expect(code).toContain('Somewhere else? Tell us where.');
     expect(code).toContain("onPress={() => router.push('/contact')}");
+  });
+});
+
+describe('the editor has one save model, or says it has two', () => {
+  it('no longer promises you only lose what you typed', () => {
+    const code = src(EDIT);
+    // Photos and links commit the moment they are tapped. That sentence was
+    // true of the text and false of the photo already destroyed, so an owner
+    // who tidied their page and changed their mind found the photos gone and
+    // the description restored, with no way to tell which was which.
+    expect(code).not.toContain("You'll lose what you just typed.");
+    expect(code).toContain('Photos and links are already saved. The rest goes back to how it was.');
+  });
+
+  it('keeps photos and links out of `dirty`, which drives Save', () => {
+    const code = src(EDIT);
+    // Widening `dirty` would make Save start saving photos, which it has
+    // never owned and must not begin owning. The guard reads a separate
+    // session flag the two children set.
+    expect(code).toContain('const dirty = detailsChanged || hoursChanged || markerMoved;');
+    expect(code).toContain('const [committed, setCommitted] = useState(false);');
+    expect(code).toContain(
+      '<BusinessPhotos businessId={business.id} userId={userId} onCommitted={noteCommitted} />'
+    );
+    expect(code).toContain(
+      '<BusinessLinks businessId={business.id} onCommitted={noteCommitted} />'
+    );
+  });
+
+  it('stops warning about the corrections that now cost nothing', () => {
+    const code = src(EDIT);
+    // A ten-metre nudge and an accent both used to null verified_at and drop
+    // a listed business off the map (20260902100000 narrowed the trigger).
+    // The warnings follow the trigger, or the screen goes on telling owners
+    // that the safest thing they can do is leave a wrong name alone.
+    expect(code).toContain(
+      'const nameResets = normalizedName(name) !== normalizedName(business.name);'
+    );
+    expect(code).toContain(
+      'const markerMovedFar = cityChanged || movedFar({ lat: business.lat, lng: business.lng }, coords);'
+    );
+    expect(code).toContain('if (!nameResets && !markerMovedFar) {');
+    // But any move at all is still saved: update_business_location owns the
+    // columns and an owner who nudges the marker means it.
+    expect(code).toContain('if (markerMoved) {');
   });
 });
