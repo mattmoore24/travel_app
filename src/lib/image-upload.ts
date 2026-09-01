@@ -84,15 +84,24 @@ export async function processAndUploadImage(bucket: string, userId: string, loca
   if (width == null || width > MAX_DIMENSION) {
     context.resize({ width: MAX_DIMENSION });
   }
-  // 45s, not the 20s these started at: e2e run 93 photographed a WORKING
-  // render being killed at 20s — a cold CI simulator takes 16-60s over what a
-  // phone does in 1-3s, and the bound exists to end hangs, not to race slow
-  // hardware. A budget this size still turns an infinite spinner into an
-  // error with a retry, which is its whole job.
-  const rendered = await within(45_000, 'preparing it', context.renderAsync());
+  // 90s, up from 45s, up from the 20s these started at. Run 93 photographed a
+  // WORKING render being killed at 20s; run 97 lost the business tour twice to
+  // the same alert at 45s, on a bound the comment beside it already described
+  // as covering "16-60s on a cold CI simulator" — a budget set inside the
+  // range of times it is meant to allow will fail there sooner or later, and
+  // it did. The bound exists to end HANGS, not to race slow hardware, and 90s
+  // still turns an infinite spinner into an error with a retry, which is its
+  // whole job. The flow that waits on it allows 150s, so this stays inside it.
+  //
+  // The two stages are named apart on purpose. They shared the word
+  // "preparing it", so an alert in a failure screenshot could not say whether
+  // the RENDER or the JPEG ENCODE had stalled, and the next person debugging
+  // this had a screenshot that ruled nothing out. One word each is cheap, and
+  // both are honest sentences to read on a phone.
+  const rendered = await within(90_000, 'preparing it', context.renderAsync());
   const result = await within(
-    45_000,
-    'preparing it',
+    90_000,
+    'compressing it',
     rendered.saveAsync({ compress: 0.8, format: SaveFormat.JPEG })
   );
 

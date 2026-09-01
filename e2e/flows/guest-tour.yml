@@ -393,13 +393,20 @@ appId: com.mattmoore.samewhere
 # (select seed_launch_business_content();) rather than to loosen this.
 - tapOn:
     text: '.*, something on tonight'
+# HARD, for the same reason the tap above is, and this is the step run 97
+# proved was still optional one too long. The row was tapped and COMPLETED,
+# the sheet's 'See the whole page' WARNED (not found), the scroll WARNED, and
+# the flow finally went red on 'Website' - pointing at a missing link when
+# what was actually missing was the sheet three steps earlier. That is the
+# exact misdirection the paragraph above this describes, left in place
+# because only the FIRST of the four steps had been made hard.
+#
+# So: if the sheet does not open on a business's post, this says so here.
 - extendedWaitUntil:
     visible: 'See the whole page'
     timeout: 10000
-    optional: true
 - tapOn:
     text: 'See the whole page'
-    optional: true
 - scrollUntilVisible:
     element:
       text: 'Website'

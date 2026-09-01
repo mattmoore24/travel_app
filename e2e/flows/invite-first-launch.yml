@@ -46,6 +46,23 @@ appId: com.mattmoore.samewhere
 - stopApp
 - openLink: samewhere://join-group/e2e-first-launch-token
 
+# iOS asks before handing a custom-scheme URL to an app that is not running,
+# and that confirmation is a SYSTEM alert: it is not in the app's view
+# hierarchy, so every assertion made while it is up reads the alert instead of
+# the app, and it outlives stopApp. Run 97 lost four whole flows to one
+# undismissed "Open in Samewhere?" - this flow, then large-text-tour,
+# onboarding-tour and signed-in-tour, each failing on its first assertion with
+# the tour plainly visible behind the dialog in the failure screenshot.
+#
+# Optional because the dialog is a springboard behaviour rather than a
+# contract: a future build with a universal link would not raise it, and this
+# flow must not start failing the day that changes.
+- tapOn:
+    text: 'Open'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
 # The tour is the proof this is a genuine first launch. If this fails, storage
 # was not reset and the flow is answering a different question.
 - extendedWaitUntil:
