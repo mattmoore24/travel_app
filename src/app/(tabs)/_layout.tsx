@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
 import AppTabs from '@/components/app-tabs';
@@ -21,7 +21,34 @@ import { useNotificationRouting } from '@/features/notifications/use-notificatio
  * here, at the first moment there is a mounted stack and a real session. It
  * renders nothing.
  */
+/**
+ * Nothing mounted in here may navigate while the tabs are not the top of the
+ * root stack.
+ *
+ * These five components render nothing and exist to act on state that arrives
+ * late. That is fine while the tabs ARE the screen. It stopped being fine when
+ * a listing account started keeping the tabs mounted underneath
+ * business-signup (features/auth/routing.ts, the wantsBusiness arm): a
+ * `router.navigate` fired from a route BELOW the focused one does not replace
+ * anything, because expo-router's StackRouter compares the action's root
+ * against `routes[index]`, finds they differ, and appends — pushing a SECOND
+ * `(tabs)` route, and with it a second native tab controller, into a live
+ * navigation stack. That is the ingredient this project has already died from
+ * once (docs/PROGRESS.md, and the note in app/_layout.tsx above
+ * business-signup).
+ *
+ * BusinessLanding tried to express this with `listingIntent`, and that guard
+ * is dead: business-signup clears the flag in its own mount effect, so by the
+ * time the account becomes a business the brake is off. Focus is the honest
+ * test, because the thing being asserted IS "the tabs are what somebody is
+ * looking at".
+ */
+function useTabsAreOnScreen(): boolean {
+  return useIsFocused();
+}
+
 function PendingInviteHandoff() {
+  const onScreen = useTabsAreOnScreen();
   const token = useAuthStore((s) => s.pendingInvite);
   const signedIn = useAuthStore((s) => s.session != null);
   const inviteHandled = useAuthStore((s) => s.inviteHandled);
@@ -39,6 +66,9 @@ function PendingInviteHandoff() {
   const viewerIsBusiness = useIsBusiness();
 
   useEffect(() => {
+    if (!onScreen) {
+      return;
+    }
     if (!signedIn || !token || listingIntent) {
       return;
     }
@@ -51,7 +81,7 @@ function PendingInviteHandoff() {
     // store would push it straight back on.
     inviteHandled();
     router.push(`/join-group/${token}`);
-  }, [signedIn, token, listingIntent, viewerIsBusiness, inviteHandled]);
+  }, [onScreen, signedIn, token, listingIntent, viewerIsBusiness, inviteHandled]);
 
   return null;
 }
@@ -71,14 +101,21 @@ function PendingInviteHandoff() {
 function BusinessLanding() {
   const viewerIsBusiness = useIsBusiness();
   const listingIntent = useAuthStore((s) => s.listingIntent);
+  const onScreen = useTabsAreOnScreen();
   const landed = useRef(false);
   useEffect(() => {
-    if (landed.current || !viewerIsBusiness || listingIntent) {
+    // `onScreen` first: registering a business flips viewerIsBusiness while
+    // the listing form is on top of these tabs, and this navigate is what
+    // pushed a second tab host into the stack underneath it. See
+    // useTabsAreOnScreen. The landing still happens — the moment the form
+    // finishes and the tabs come back, or on the next cold start — because
+    // focus is in the deps and the one-shot ref has not been spent.
+    if (landed.current || !onScreen || !viewerIsBusiness || listingIntent) {
       return;
     }
     landed.current = true;
     router.navigate('/(tabs)/my-business');
-  }, [viewerIsBusiness, listingIntent]);
+  }, [onScreen, viewerIsBusiness, listingIntent]);
   return null;
 }
 
@@ -104,9 +141,10 @@ function PendingIntentHandoff() {
   const intentHandled = useAuthStore((s) => s.intentHandled);
   const listingIntent = useAuthStore((s) => s.listingIntent);
   const viewerIsBusiness = useIsBusiness();
+  const onScreen = useTabsAreOnScreen();
 
   useEffect(() => {
-    if (isGuest || intent == null || listingIntent) {
+    if (!onScreen || isGuest || intent == null || listingIntent) {
       return;
     }
     if (viewerIsBusiness) {
@@ -130,7 +168,7 @@ function PendingIntentHandoff() {
     if (userId != null) {
       router.push(`/profile/${userId}`);
     }
-  }, [isGuest, intent, listingIntent, viewerIsBusiness, intentHandled]);
+  }, [onScreen, isGuest, intent, listingIntent, viewerIsBusiness, intentHandled]);
 
   return null;
 }
@@ -147,16 +185,20 @@ function PendingIntentHandoff() {
  * not put it straight back on.
  */
 function SignInHandoff() {
+  const onScreen = useTabsAreOnScreen();
   const wanted = useAuthStore((s) => s.pendingSignIn);
   const signInHandled = useAuthStore((s) => s.signInHandled);
 
   useEffect(() => {
+    if (!onScreen) {
+      return;
+    }
     if (!wanted) {
       return;
     }
     signInHandled();
     router.push('/email');
-  }, [wanted, signInHandled]);
+  }, [onScreen, wanted, signInHandled]);
 
   return null;
 }

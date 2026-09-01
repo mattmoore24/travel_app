@@ -84,7 +84,10 @@ describe('every origin writes, every replay clears first', () => {
     expect(end).toBeGreaterThan(start);
     const handoff = layout.slice(start, end);
     expect(handoff).toContain('useIsGuest()');
-    expect(handoff).toContain('if (isGuest || intent == null || listingIntent)');
+    // The guest guard is still the load-bearing half; `onScreen` was added in
+    // front of it so a handoff mounted under a pushed route cannot navigate
+    // (see useTabsAreOnScreen in the same file).
+    expect(handoff).toContain('if (!onScreen || isGuest || intent == null || listingIntent)');
     expect(handoff).not.toContain('session != null');
   });
 

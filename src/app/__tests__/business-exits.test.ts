@@ -148,3 +148,49 @@ describe('every door into business-signup is a replace', () => {
     }
   );
 });
+
+/**
+ * Nothing mounted in the tabs may navigate while the tabs are not on screen.
+ *
+ * The rule exists because of a crash that took three wrong fixes to find. A
+ * listing account now keeps `(tabs)` mounted for the whole business signup
+ * (features/auth/routing.ts, the wantsBusiness arm — that is what makes
+ * "Finish this later" able to land on the map). So the render-nothing handoffs
+ * inside (tabs)/_layout.tsx are alive UNDERNEATH the listing form, and when
+ * register_business flips the account kind, BusinessLanding fired a
+ * `router.navigate('/(tabs)/my-business')` from a route below the focused one.
+ *
+ * expo-router does not treat that as "go back to the tabs". Its StackRouter
+ * compares the action's root against routes[index], finds `(tabs)` and
+ * `business-signup` differ, and APPENDS — pushing a second `(tabs)` route, and
+ * with it a second native tab controller, into a live stack. That is the
+ * ingredient this project has already died from once.
+ *
+ * BusinessLanding did try to express this, with `listingIntent`. That guard is
+ * dead: business-signup clears the flag in its own mount effect, so the brake
+ * is off by the time the account becomes a business. Focus is the honest test.
+ */
+describe('the tab handoffs do not navigate from underneath', () => {
+  const layout = source('(tabs)', '_layout.tsx');
+
+  it('every one of them is gated on the tabs being on screen', () => {
+    // Four render-nothing components navigate: the invite, the business
+    // landing, the pending intent and the sign-in door.
+    const guards = layout.match(/const onScreen = useTabsAreOnScreen\(\);/g);
+    expect(guards).toHaveLength(4);
+    expect(layout).toContain('function useTabsAreOnScreen()');
+    expect(layout).toContain('useIsFocused()');
+  });
+
+  it('and the business landing checks it before the account kind', () => {
+    expect(layout).toContain(
+      'if (landed.current || !onScreen || !viewerIsBusiness || listingIntent)'
+    );
+  });
+
+  it('keeps focus in the deps, so the landing still happens later', () => {
+    // Gating is not cancelling: D8 says a business lands on My business, and
+    // it still does — the moment the form finishes and the tabs come back.
+    expect(layout).toContain('}, [onScreen, viewerIsBusiness, listingIntent]);');
+  });
+});
