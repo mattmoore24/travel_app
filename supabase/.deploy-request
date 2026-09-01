@@ -294,3 +294,22 @@
              Publishing the OTA first would 400 every trip write until this
              applies, exact trips included, because trips.approximate would not
              exist yet.
+
+2026-09-01 — deploy BEFORE the OTA. Four migrations, two of them fixes to
+             triggers on public.profiles that the same batch's own once-per-
+             launch locale write turned into something else:
+             20260903000000 user_muted_words (new table, RLS, select/insert/
+             delete only - update revoked by name);
+             20260903010000 profiles.locale plus reason_en on the two verdicts
+             the moderation worker writes about a person's face or livelihood;
+             20260903020000 profiles_updated_at becomes an ALLOW-list of the
+             thirteen columns that are an edit, so a bookkeeping write cannot
+             stamp a client-readable timestamp - the deny-list version does NOT
+             work, measured, see the file;
+             20260903030000 screen_profile_text stops spending its 30-per-day
+             cap on writes that changed no text, which past thirty launches was
+             locking an account out of its own profile.
+             The moderation-worker function is redeployed with them: the two
+             verdict schemas now require reason_en and the prompts carry the
+             subject's locale. `db push` then `functions deploy` are one job,
+             so they land together.
