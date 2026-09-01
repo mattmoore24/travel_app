@@ -307,10 +307,30 @@ export function BusinessPhotos({
     return null;
   };
 
+  // A synchronous latch, not `upload.isPending`. Two surfaces drive this one
+  // picker - the dashed tile in the grid and the docked button the signup
+  // step hands it to through registerPick - and only the tile is disabled
+  // while an upload runs. So the button could open a second picker over the
+  // first, and because `nextPosition()` is computed from a list the first
+  // upload has not landed in yet, both picks resolved to the SAME slot: two
+  // photos at one position, which is how a cover stops being a single thing.
+  // A ref rather than state because two taps in one frame must not both read
+  // false, and this is checked and set before any await.
+  const picking = useRef(false);
+
   const pick = async () => {
-    if (userId == null) {
+    if (userId == null || picking.current) {
       return;
     }
+    picking.current = true;
+    try {
+      await pickOne();
+    } finally {
+      picking.current = false;
+    }
+  };
+
+  const pickOne = async () => {
     const picked = await ImagePicker.launchImageLibraryAsync({
       // `aspect` is Android-only and the iOS editor is always square, so the
       // grid below shows squares: what they cropped is what they get.

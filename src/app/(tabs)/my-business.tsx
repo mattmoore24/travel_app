@@ -290,7 +290,13 @@ function DetailRow({
       <SymbolView name={icon} size={16} tintColor={theme.textSecondary} />
       <View style={styles.rowText}>
         <ThemedText type="callout">{label}</ThemedText>
-        <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+        {/* Two lines, not one. The values used to be "Nothing yet" and a
+            count; they are now sentences saying what filling the row buys
+            ("Add hours so travelers know when to come"), and at the larger
+            text sizes one line elided them to about three words - which is
+            the row saying nothing again, in a longer way. Two lines lets the
+            row grow instead of the sentence disappearing. */}
+        <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
           {value}
         </ThemedText>
       </View>
@@ -345,7 +351,12 @@ export default function MyBusinessScreen() {
   // The one signal on this screen that comes back from the world rather than
   // out of the owner's own typing. Conversations, never senders: see
   // vocabulary.weekLine.
-  const chats = useMyChats().data ?? null;
+  const chatsQuery = useMyChats();
+  const chats = chatsQuery.data ?? null;
+  // A disabled query never leaves isPending, and this one is disabled for
+  // anybody without a session, so "settled" has to include "never going to
+  // ask" - the same shape place/[id].tsx needed for its owner check.
+  const chatsKnown = !chatsQuery.isPending || chatsQuery.fetchStatus === 'idle';
   // The owner's own photos, NOT business_detail's, which is filtered to
   // approved. This is the second half of biz-photo-grid-in-place and it is
   // the half that bites hardest: with require_photo_moderation on (which is
@@ -808,9 +819,19 @@ export default function MyBusinessScreen() {
                     android: 'trending_up',
                     web: 'trending_up',
                   }}>
-                  <ThemedText type="footnote" themeColor="textSecondary">
-                    {weekLine({ chatsThisWeek, memberCount: detail?.member_count ?? 0 })}
-                  </ThemedText>
+                  {chatsKnown ? (
+                    <ThemedText type="footnote" themeColor="textSecondary">
+                      {weekLine({ chatsThisWeek, memberCount: detail?.member_count ?? 0 })}
+                    </ThemedText>
+                  ) : (
+                    // Not the zero sentence. countChatsSince(null) is 0, so
+                    // rendering while the list is still in flight told an
+                    // owner "no new conversations this week" and then changed
+                    // its mind - which is the same lie the skeletons above
+                    // exist to prevent, on the one line of this screen that
+                    // is supposed to be believable.
+                    <Skeleton width="80%" height={14} />
+                  )}
                 </Section>
 
                 <Section

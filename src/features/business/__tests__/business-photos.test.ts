@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { coverIdOf } from '@/features/business/business-photos';
 
 /**
@@ -43,5 +46,29 @@ describe('coverIdOf', () => {
 
   it('has no cover when the only photo was rejected', () => {
     expect(coverIdOf([photo('a', 'rejected')])).toBeNull();
+  });
+});
+
+describe('one picker, however many buttons drive it', () => {
+  const code = fs.readFileSync(path.join(__dirname, '..', 'business-photos.tsx'), 'utf8');
+
+  it('latches before the picker opens, not on the mutation flag', () => {
+    // Two surfaces share this picker: the dashed tile in the grid and the
+    // docked button the signup step is handed through registerPick. Only the
+    // tile is disabled while an upload runs, so the button could open a
+    // second picker over the first - and nextPosition() is computed from a
+    // list the first upload has not landed in yet, so both picks resolved to
+    // the SAME slot and made two photos at one position.
+    expect(code).toContain('picking.current');
+    expect(code).toContain('picking.current = true');
+    // A ref, not state: two taps in one frame must not both read false.
+    expect(code).toContain('const picking = useRef(false)');
+    // Set before any await, and cleared in a finally so a cancelled picker
+    // or a failed upload does not wedge the button shut.
+    const guard = code.slice(code.indexOf('const pick = async'));
+    const body = guard.slice(0, guard.indexOf('const pickOne'));
+    expect(body.indexOf('picking.current = true')).toBeLessThan(body.indexOf('await'));
+    expect(body).toContain('finally');
+    expect(body).toContain('picking.current = false');
   });
 });
