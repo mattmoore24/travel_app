@@ -111,6 +111,23 @@ export type TripRow = {
  * `kind === 'business'` branch in the client was typed as unreachable and
  * quietly deleted by the compiler's narrowing.
  */
+/**
+ * What a message IS, not who wrote it.
+ *
+ * 'said' is a person's words. The rest are the room's own voice, written by
+ * SECURITY DEFINER paths with moderation_status 'approved' — a line the room
+ * wrote has no author to moderate. They still carry a sender_id, because
+ * messages.sender_id is NOT NULL and the shipped convention (20260831130000)
+ * puts the person the line is ABOUT there; messages_kind_is_earned refuses
+ * any kind but 'said' from anon or authenticated, so the system voice cannot
+ * be forged.
+ *
+ * 'left', 'removed' and 'ends' arrived with the group membership log
+ * (20260902200000). Anything filtering for "what a person actually wrote"
+ * must test `kind === 'said'` rather than assume these do not exist.
+ */
+export type MessageKind = 'said' | 'joined' | 'left' | 'removed' | 'ends';
+
 export type ChatKind = 'direct' | 'room' | 'business';
 
 /** Row shape returned by the get_matches() RPC. */
@@ -481,7 +498,7 @@ export type RoomMessageRow = {
    * ("Ana is in"), written by join_pin_chat. The thread renders the second
    * as a centred line, never as a bubble somebody appears to have typed.
    */
-  kind: 'said' | 'joined';
+  kind: MessageKind;
 };
 
 export type ReactionSummaryRow = {
@@ -761,7 +778,7 @@ export type MessageRow = {
    * carry a 'joined' row today — the column arrives whether or not a cached
    * row was fetched before the migration added it.
    */
-  kind?: 'said' | 'joined';
+  kind?: MessageKind;
 };
 
 /**

@@ -543,10 +543,21 @@ export default function RoomScreen() {
                     })
             }
             noteFor={(m) => (byId.get(m.id)?.removed ? 'Message removed by the host' : null)}
-            // "Ana is in" - the room recording an arrival, centred, no
+            // "Ana is in" - the room recording its own churn, centred, no
             // bubble. The kind lives on the RPC row, so it is looked up the
             // same way the sender's name is.
-            systemFor={(m) => (byId.get(m.id)?.kind === 'joined' ? m.body : null)}
+            //
+            // ANY kind but 'said', not a list of the ones that existed when
+            // this was written. The membership log (20260902200000) added
+            // 'left', 'removed' and 'ends', and a check against 'joined'
+            // alone would have drawn "Ana left" as an ordinary BUBBLE
+            // attributed to Ana - a line the room wrote, wearing the face of
+            // the person it is about. message-thread's own systemLine helper
+            // already tests it this way; this was the copy that did not.
+            systemFor={(m) => {
+              const kind = byId.get(m.id)?.kind;
+              return kind != null && kind !== 'said' ? m.body : null;
+            }}
             onToggleReaction={(messageId, emoji, on) => toggle.mutate({ messageId, emoji, on })}
             onUnsend={(messageId) =>
               Alert.alert('Unsend this message?', 'It disappears for everyone.', [

@@ -380,14 +380,25 @@ try {
 
           if (converted) {
             users[users.length - 1].email = samEmail;
+            // Filtered to what they SAID, and checked against the actual
+            // words. The old shape counted every row from this sender and
+            // asserted exactly one, which was a proxy that stopped being
+            // true the moment a group started logging its own churn: the
+            // arrival line (20260902200000) carries the arriving person as
+            // sender_id, by the convention messages.sender_id being NOT NULL
+            // forces, so this sender now has two rows and only one of them
+            // is theirs. This is tighter than the count it replaces, not
+            // looser - it now also proves the words survived, which is what
+            // the assertion is named after.
             const { data: stillIn } = await sam
               .from('messages')
-              .select('id')
+              .select('id, body, kind')
               .eq('chat_id', joined.chat_id)
               .eq('sender_id', samId);
+            const said = (stillIn ?? []).filter((row) => row.kind === 'said');
             check(
               'keeping the chat they joined and what they said in it',
-              (stillIn ?? []).length === 1
+              said.length === 1 && said[0].body === 'just checked in, hi all'
             );
 
             // And the refusals lift in the same statement that converted them.
