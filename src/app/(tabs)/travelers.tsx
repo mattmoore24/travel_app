@@ -54,11 +54,13 @@ import {
 import {
   useDailySpotlight,
   useFirstMessageBudget,
+  useJustSentHello,
   useMatches,
   useMyChats,
   useSentRequests,
 } from '@/features/matching/hooks';
 import { useSaidHi } from '@/features/matching/said-hi';
+import { SentRequestCard } from '@/features/matching/sent-request-card';
 import { usePassedTravelers } from '@/features/matching/passed';
 import { useNextTravelersPrefetch } from '@/features/matching/prefetch';
 import { sharedLanguages } from '@/features/matching/shared-language';
@@ -661,6 +663,21 @@ function ProfileCorner() {
  */
 function SaidHiStrip({ name, bottom }: { name: string; bottom: number }) {
   const theme = useTheme();
+  // The id of the message the sentence is about, read HERE rather than passed
+  // in: both render sites below would otherwise have to carry a prop that is
+  // the same store lookup twice, and the strip is the only thing that wants
+  // it. Null on a stamp made by an older bundle, and then the bar simply does
+  // not offer the action - withdrawing a first message matched by NAME could
+  // take back the wrong one, and the anti-pester constraint makes that
+  // unrecoverable.
+  const requestId = useJustSentHello((s) => s.requestId);
+  // Local, and only forward: the bar has one beat to live and the write it
+  // reports cannot be undone, so there is nothing to reconcile with a refetch.
+  const [takenBack, setTakenBack] = useState(false);
+  // Said out loud, because the sentence changing under a button that has just
+  // vanished is invisible to VoiceOver: `accessibilityLiveRegion` is
+  // Android-only in React Native, so this is the mechanism and not a fallback.
+  useAnnounce(takenBack ? 'Taken back' : null);
   return (
     <Animated.View
       entering={FadeInDown.duration(Motion.standard)}
@@ -668,25 +685,39 @@ function SaidHiStrip({ name, bottom }: { name: string; bottom: number }) {
       style={[styles.undoDock, { bottom }]}
       pointerEvents="box-none">
       <ThemedView type="surface" style={[styles.undoCard, Elevation.floating]}>
-        {/* No accessibilityLabel on the press: on iOS a labelled Pressable
-            becomes one element and hides the words inside it, and these
-            words are the whole point of the bar. */}
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityHint="Opens your chats"
-          haptic="light"
-          scaleTo={0.99}
-          onPress={() => {
-            useSaidHi.getState().clear();
-            // navigate, not push: pushing a tab route from inside the tabs
-            // stacks a second copy of the navigator.
-            router.navigate('/chat');
-          }}
-          style={styles.saidHiText}>
-          <ThemedText type="footnote" numberOfLines={2}>
-            {`Said hi to ${name}. It's in Chat under "You said hi".`}
+        {takenBack ? (
+          // The control said "Take it back" and the confirmation says those
+          // words back. Nothing about the other person: whether they had seen
+          // it is not something this app knows or may imply.
+          <ThemedText type="footnote" style={styles.undoText}>
+            Taken back.
           </ThemedText>
-        </PressableScale>
+        ) : (
+          <>
+            {/* No accessibilityLabel on the press: on iOS a labelled Pressable
+                becomes one element and hides the words inside it, and these
+                words are the whole point of the bar. */}
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityHint="Opens your chats"
+              haptic="light"
+              scaleTo={0.99}
+              onPress={() => {
+                useSaidHi.getState().clear();
+                // navigate, not push: pushing a tab route from inside the tabs
+                // stacks a second copy of the navigator.
+                router.navigate('/chat');
+              }}
+              style={styles.saidHiText}>
+              <ThemedText type="footnote" numberOfLines={2}>
+                {`Said hi to ${name}. It's in Chat under "You said hi".`}
+              </ThemedText>
+            </PressableScale>
+            {requestId ? (
+              <SentRequestCard requestId={requestId} onTakenBack={() => setTakenBack(true)} />
+            ) : null}
+          </>
+        )}
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel="Dismiss"
@@ -1243,6 +1274,12 @@ const UNDO_MS = 5000;
  * How long the said-hi strip stands, in screen time. Shorter than the undo
  * bar because nothing is waiting on a decision: it is an acknowledgement,
  * and the next traveler is already underneath it.
+ *
+ * It now also carries "Take it back", which is an argument for the undo bar's
+ * five seconds rather than four - four is a short window in which to read a
+ * sentence and reach a button. Left at four deliberately: the number is
+ * pinned by src/app/__tests__/travelers-said-hi.test.ts, which belongs to
+ * another implementer this session, and the report asks for the call.
  */
 const SAID_HI_MS = 4000;
 

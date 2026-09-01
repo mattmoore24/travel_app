@@ -1,11 +1,23 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { MESSAGE_PAGE } from '@/features/chat/paging';
-import type { MessageRow, ReportReason } from '@/lib/database.types';
+import type { Database, MessageRow, ReportReason } from '@/lib/database.types';
 import { processAndUploadImage, removeUploadedImage } from '@/lib/image-upload';
 import { supabase } from '@/lib/supabase';
 
 export const CHAT_PHOTO_BUCKET = 'chat-photos';
+
+/**
+ * The insert payload for `messages`, plus the column 20260902200000 added.
+ *
+ * Folded into database.types.ts's `messages.Insert` the moment that file is
+ * back in one pair of hands — see the report. Declared here so the pin can be
+ * sent at all, and declared as a type rather than reached with `as never` so
+ * the rest of the payload keeps its checking.
+ */
+type MessageInsert = Database['public']['Tables']['messages']['Insert'] & {
+  pin_id?: string;
+};
 
 /**
  * One page of a conversation, newest first.
@@ -29,21 +41,35 @@ export async function fetchMessages(chatId: string, before?: string | null) {
  * `replyToMessageId` is the message this one answers, or null for an ordinary
  * one. The database refuses a parent from another chat outright
  * (messages_reply_same_chat), so this is a door rather than a lock.
+ *
+ * `pinId` attaches one of the sender's own live plans. Same shape and the same
+ * reasoning: messages_pin_is_own_and_live refuses somebody else's pin and
+ * refuses an expired one, so this is a door too — and hard rule 3 keeps
+ * holding afterwards, because room_messages nulls the plan the moment it
+ * expires rather than trusting anybody's client to stop drawing it.
  */
 export async function sendMessage(
   chatId: string,
   senderId: string,
   body: string,
-  replyToMessageId?: string | null
+  replyToMessageId?: string | null,
+  pinId?: string | null
 ) {
+  // Built against MessageInsert so every column IS checked, then handed over
+  // as the narrower type PostgREST's generics know about: that generic rejects
+  // a property it has never heard of, and `pin_id` is the one it has not heard
+  // of yet (src/lib/database.types.ts belongs to another implementer this
+  // session; the report names the line to add it on).
+  const payload: MessageInsert = {
+    chat_id: chatId,
+    sender_id: senderId,
+    body,
+    ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
+    ...(pinId ? { pin_id: pinId } : {}),
+  };
   const { data, error } = await supabase
     .from('messages')
-    .insert({
-      chat_id: chatId,
-      sender_id: senderId,
-      body,
-      ...(replyToMessageId ? { reply_to_message_id: replyToMessageId } : {}),
-    })
+    .insert(payload as Database['public']['Tables']['messages']['Insert'])
     .select()
     .single();
   if (error) {

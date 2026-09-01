@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { create } from 'zustand';
 
 import {
   fetchIncomingRequests,
@@ -13,6 +14,8 @@ import {
   previewFirstMessage,
   respondToRequest,
   sendMessageRequest,
+  touchLastSeen,
+  withdrawMessageRequest,
 } from '@/features/matching/api';
 import { useIsBusiness } from '@/features/business/hooks';
 import { waitingTotal } from '@/features/chat/unread';
@@ -214,10 +217,110 @@ export function useSendRequest() {
         // the primer, so the strip is already there when the sheet (if there
         // is one) comes down.
         useSaidHi.getState().note(input.recipientName, input.origin);
+        // And the ID of what was just sent, which is what lets that beat
+        // offer to take it back. It is a second store beside useSaidHi only
+        // because said-hi.ts belongs to another implementer this session; the
+        // right shape is one `requestId` field on the said-hi stamp, and the
+        // report names the line. Matching on the NAME instead was the
+        // tempting shortcut and is a safety bug: two travelers can share a
+        // display name, and withdrawing the wrong hello is unrecoverable
+        // because the anti-pester constraint refuses a second one.
+        useJustSentHello.getState().note(result.request_id ?? null);
         usePushPrimer.getState().ask('hello-sent');
       }
     },
   });
+}
+
+/**
+ * The hello whose beat is still running, by id.
+ *
+ * Travelers shows a strip for a few seconds after a first message leaves, and
+ * that strip is the one moment somebody realises they have written to the
+ * wrong person or written the wrong thing. Offering "Take it back" there
+ * needs the request's ID and nothing else will do - see the note in
+ * useSendRequest above for why a name will not.
+ *
+ * In memory, not on disk, and deliberately tiny: it is the beat's other half,
+ * not a record. The record is the row in Chat under "You said hi".
+ */
+type JustSentHelloState = {
+  requestId: string | null;
+  note: (requestId: string | null) => void;
+  clear: () => void;
+};
+
+export const useJustSentHello = create<JustSentHelloState>((set) => ({
+  requestId: null,
+  note: (requestId) => set({ requestId }),
+  clear: () => set({ requestId: null }),
+}));
+
+/**
+ * Take a hello back.
+ *
+ * Nothing about this reaches the recipient beyond the message leaving their
+ * inbox: no tombstone, no notification, and the server pulls the hello's own
+ * unsent push out of the queue. And nothing about the RECIPIENT reaches back:
+ * withdraw_message_request answers the same for a pending, a declined and an
+ * expired row, so a sender can never read a decline out of whether this
+ * worked (invariant 4).
+ *
+ * `false` is an ordinary outcome - already taken back, or already accepted -
+ * so it is not surfaced as a failure. The refetch below is what tells the
+ * truth either way.
+ */
+export function useWithdrawHello() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      requestId: string;
+      /** Which surface offered it, for the funnel. Never sent to the server. */
+      surface: 'said_hi_strip' | 'sent_row';
+    }) => withdrawMessageRequest(input.requestId),
+    meta: { failureTitle: "Couldn't take that back" },
+    onSuccess: (withdrawn, input) => {
+      analytics.capture('first_message_withdrawn', { withdrawn, surface: input.surface });
+      // The list this row lives in, and the budget: a withdrawn hello still
+      // spent one of today's, so nothing about the count changes and the
+      // refetch is only here to keep the two in step if the server ever
+      // decides otherwise.
+      queryClient.invalidateQueries({ queryKey: ['sent-requests', userId] });
+      useJustSentHello.getState().clear();
+    },
+  });
+}
+
+/**
+ * Say that this account opened the app today, once per launch.
+ *
+ * WHY IT HANGS OFF useMyChats. `liquidity_reachable` is null for everybody
+ * until something calls touch_last_seen(), and a metric that reads zero for
+ * every city is worse than no metric - it is a wrong one the founder would
+ * act on. So it needs a call site on every launch, and the tab navigator
+ * mounts useMyChats for the icon badge (src/components/app-tabs.tsx:30)
+ * before any tab is chosen. That is the app's one reliable "we are open"
+ * moment reachable from this file. A root-layout call would read better and
+ * belongs there the day somebody owns that file; this hook is exported so it
+ * can move without a second implementation.
+ *
+ * Keyed on the user rather than a plain boolean, so a sign-out and a sign-in
+ * inside one process do not leave the second account uncounted. Silent on
+ * failure: this is bookkeeping, and nobody opening the app should be shown an
+ * error about it.
+ */
+let touchedFor: string | null = null;
+
+export function useTouchLastSeen() {
+  const userId = useOwnUserId();
+  useEffect(() => {
+    if (!isSupabaseConfigured || userId == null || touchedFor === userId) {
+      return;
+    }
+    touchedFor = userId;
+    touchLastSeen().catch(() => {});
+  }, [userId]);
 }
 
 export function useIncomingRequests() {
@@ -310,6 +413,11 @@ export function useRespondToRequest() {
 
 export function useMyChats(archived = false) {
   const userId = useOwnUserId();
+  // The launch stamp rides here because this is the query the tab navigator
+  // mounts on every launch (see useTouchLastSeen for the whole argument). It
+  // is one no-op RPC per process, and it is the difference between
+  // admin_liquidity's reachable column being a number and being zero.
+  useTouchLastSeen();
   return useQuery({
     queryKey: ['chats', userId, String(archived)],
     queryFn: () => fetchMyChats(archived),

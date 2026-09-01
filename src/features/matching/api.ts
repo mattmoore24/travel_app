@@ -1,3 +1,5 @@
+import type { PostgrestError } from '@supabase/supabase-js';
+
 import type {
   ChatListRow,
   IncomingRequestRow,
@@ -98,12 +100,87 @@ export async function fetchFirstMessageBudget() {
   return { used: row?.used ?? 0, allowed: row?.allowed ?? 8 };
 }
 
+/**
+ * A hello you sent, plus the one fact 20260902210000 added to it.
+ *
+ * Declared here rather than widening SentRequestRow in
+ * src/lib/database.types.ts because that file is owned by another implementer
+ * this session - the report's "NEEDS WIRING" section names the line it
+ * belongs on. sent_requests() already returns the column, so this widening is
+ * a description of what arrives rather than a hope.
+ *
+ * `withdrawn_at` and not a fourth `state`: an over-the-air update is never
+ * applied on the launch that downloads it, so for at least one launch every
+ * phone runs the PREVIOUS bundle against the new schema, and a state it has
+ * never heard of drops the sender's own hello out of "You said hi" (see
+ * SentRequestRow's own note in database.types).
+ */
+export type SentRequest = SentRequestRow & { withdrawn_at: string | null };
+
 export async function fetchSentRequests() {
   const { data, error } = await supabase.rpc('sent_requests');
   if (error) {
     throw error;
   }
-  return (data ?? []) as SentRequestRow[];
+  return (data ?? []) as SentRequest[];
+}
+
+/**
+ * withdraw_message_request is not in database.types.ts's Functions map yet
+ * (same reason as SentRequest above), and `supabase.rpc` only accepts a name
+ * it finds there. One narrow door, and a door rather than an `any`: the
+ * argument object and the answer are both still typed at the call below.
+ * Delete it the moment the Functions entry lands - features/rooms/api.ts
+ * carries the same door for the same reason.
+ */
+type UntypedRpc = <T>(
+  name: string,
+  args: Record<string, unknown>
+) => PromiseLike<{ data: T | null; error: PostgrestError | null }>;
+
+const untypedRpc = supabase.rpc as unknown as UntypedRpc;
+
+/**
+ * Take back a hello you sent.
+ *
+ * The row is NOT deleted. `unique (sender_id, recipient_id)` is one shot per
+ * direction, ever - the anti-pester constraint - and deleting frees that
+ * slot, so a delete would turn "take it back" into unlimited re-sends at the
+ * person who did not answer. The server stamps `withdrawn_at` instead.
+ *
+ * `withdrawn: false` is an ordinary answer and never an error: the row was
+ * already taken back, or was already accepted, or was never the caller's. It
+ * is deliberately the SAME answer for all three, because a refusal that said
+ * which would tell a sender what the recipient did - the one thing
+ * sent_requests() exists to never say (invariant 4).
+ */
+export async function withdrawMessageRequest(requestId: string) {
+  const { data, error } = await untypedRpc<{ withdrawn: boolean }>('withdraw_message_request', {
+    p_request_id: requestId,
+  });
+  if (error) {
+    throw error;
+  }
+  return data?.withdrawn === true;
+}
+
+/**
+ * Say that this account opened the app today.
+ *
+ * A DATE and nothing else - no time, no city, no coordinates. It is what
+ * makes admin_liquidity's `liquidity_reachable` countable: a trip can be
+ * posted weeks ahead and run for weeks, so without this the number gating a
+ * second city counts people who installed once and never came back. Kept to a
+ * day on purpose: a per-minute last-seen is a presence signal, and presence is
+ * one step from the live-location promise the product refuses (hard rule 2).
+ *
+ * Never surfaced to another user; no client can even read the column.
+ */
+export async function touchLastSeen() {
+  const { error } = await untypedRpc<null>('touch_last_seen', {});
+  if (error) {
+    throw error;
+  }
 }
 
 export async function fetchMyChats(archived = false) {

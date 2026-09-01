@@ -160,6 +160,17 @@ export type OutgoingMessage = {
    * on the placeholder. Absent for an ordinary send.
    */
   replyTo?: { messageId: string; name: string; body: string | null } | null;
+  /**
+   * One of the sender's own live plans, attached to this message.
+   *
+   * The optimistic bubble does NOT carry the card: the venue and the day are
+   * columns room_messages joins, and optimisticMessage lives in
+   * features/chat/outgoing.ts, which is not this session's file (the report
+   * names it). So the words appear at once and the plan lands with the row a
+   * moment later, which is the same shape a reply's quoted strip already has
+   * in a room.
+   */
+  pinId?: string | null;
 };
 
 export function useSendMessage(chatId: string | null, kind: 'direct' | 'room' = 'direct') {
@@ -169,7 +180,13 @@ export function useSendMessage(chatId: string | null, kind: 'direct' | 'room' = 
 
   return useMutation({
     mutationFn: (input: OutgoingMessage) =>
-      sendMessage(chatId!, userId!, input.body, input.replyTo?.messageId ?? null),
+      sendMessage(
+        chatId!,
+        userId!,
+        input.body,
+        input.replyTo?.messageId ?? null,
+        input.pinId ?? null
+      ),
     meta: { failureTitle: "Couldn't send that" },
 
     onMutate: (input: OutgoingMessage) => {

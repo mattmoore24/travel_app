@@ -17,6 +17,7 @@ import { HitTarget, Radius, Space, Type } from '@/constants/theme';
 import { useCreatePin } from '@/features/pins/hooks';
 import {
   MAX_PIN_HOURS,
+  NO_INTENT_TIME,
   categoryForPlan,
   categoryForPoi,
   cityClockNow,
@@ -24,8 +25,9 @@ import {
   expiryForHours,
   hoursLabel,
   intentDateOptions,
-  intentLabel,
+  intentTimeOptions,
   minHoursForIntent,
+  whenLabel,
 } from '@/features/pins/pin-helpers';
 import { openInMaps } from '@/features/pins/open-in-maps';
 import { toISODate } from '@/features/trips/dates';
@@ -118,6 +120,10 @@ export function PinFormSheet({
     defaultHoursForIntent(toISODate(cityClockNow(cityTimezone, coords.lng)))
   );
   const [hoursTouched, setHoursTouched] = useState(false);
+  // NO DEFAULT, and that is the whole design of this field. Most plans are
+  // "sometime that evening" and a pre-filled hour would turn every one of
+  // them into a small lie the poster has to notice and undo.
+  const [intentTime, setIntentTime] = useState<string>(NO_INTENT_TIME);
   // Founder: some people want an open plan and some want to be asked first,
   // and neither is the odd one out. Open is the default because it is the
   // thing the app could not do before, and because a plan nobody has to
@@ -239,6 +245,22 @@ export function PinFormSheet({
   const effectiveHours = hoursTouched
     ? Math.min(Math.max(hours, minHours), MAX_PIN_HOURS)
     : defaultHoursForIntent(effectiveIntent);
+  const expiresAt = expiryForHours(effectiveHours);
+  // Only hours this pin can honestly reach: nothing already gone on the
+  // city's clock, nothing past the moment the pin itself disappears. The
+  // database refuses that second one outright (§7 rule 3), so offering it
+  // would be a chip that posts an error.
+  const timeOptions = intentTimeOptions(effectiveIntent, expiresAt, cityClock);
+  // Dragging the lifetime down can take the chosen hour out of range, and
+  // when it does the pin quietly goes back to having no hour rather than
+  // keeping one the server will refuse. The readout line below says so.
+  const effectiveTime = timeOptions.some((option) => option.value === intentTime)
+    ? intentTime
+    : NO_INTENT_TIME;
+  const when = whenLabel(
+    { intent_date: effectiveIntent, intent_time: effectiveTime || null },
+    cityClock
+  );
 
   // The footnote answers whichever question the button is asking right now:
   // grey, it says which box it is waiting for; live, it repeats the promise.
@@ -294,7 +316,8 @@ export function PinFormSheet({
         lat: coords.lat,
         lng: coords.lng,
         intentDate: effectiveIntent,
-        expiresAt: expiryForHours(effectiveHours).toISOString(),
+        intentTime: effectiveTime || null,
+        expiresAt: expiresAt.toISOString(),
         joinable,
       });
       haptics.success();
@@ -456,6 +479,19 @@ export function PinFormSheet({
             selected={effectiveIntent}
             onSelect={setIntentDate}
           />
+          {/* OPTIONAL, and it leads with saying so: 'Any time' is the first
+              chip and the one that is selected until somebody chooses
+              otherwise. The rail is absent entirely when no hour would fit
+              inside this pin's lifetime, because a rail holding one chip is
+              a control that cannot be used. */}
+          {timeOptions.length > 1 ? (
+            <ChipRail
+              label="Time"
+              options={timeOptions}
+              selected={effectiveTime}
+              onSelect={setIntentTime}
+            />
+          ) : null}
           <View
             style={styles.sliderBlock}
             onLayout={(event) => {
@@ -545,7 +581,7 @@ export function PinFormSheet({
           slider: tapping it scrolls the real control into view. */}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${intentLabel(effectiveIntent, cityClock)}, gone in ${hoursLabel(effectiveHours)}. Shows the expiry control.`}
+        accessibilityLabel={`${when}, gone in ${hoursLabel(effectiveHours)}. Shows the expiry control.`}
         hitSlop={4}
         onPress={() => {
           scrollRef.current?.scrollTo({
@@ -558,7 +594,7 @@ export function PinFormSheet({
           themeColor="textSecondary"
           numberOfLines={1}
           style={styles.expiryReadout}>
-          {intentLabel(effectiveIntent, cityClock)} · gone in {hoursLabel(effectiveHours)}
+          {when} · gone in {hoursLabel(effectiveHours)}
         </ThemedText>
       </Pressable>
       <PrimaryButton

@@ -15,7 +15,9 @@ import {
   setReaction,
   fetchCityRooms,
   fetchReactions,
+  fetchReactors,
   fetchRoomMessages,
+  joinPlanFromMessage,
   joinRoom,
   leaveRoom,
   removeReaction,
@@ -203,6 +205,59 @@ export function useChatPref() {
       }
       queryClient.invalidateQueries({ queryKey: ['chats'] });
       queryClient.invalidateQueries({ queryKey: ['archived-at'] });
+    },
+  });
+}
+
+/**
+ * Who reacted to one message, for the sheet a long press on the chip opens.
+ *
+ * Enabled only once there is a message to ask about, which is what keeps a
+ * thread from firing a round trip per bubble: the sheet sets the id when it
+ * opens and clears it when it closes, so exactly one of these is ever live.
+ *
+ * Rooms and groups only, and that is the SERVER's rule rather than this
+ * hook's — message_reactors returns nothing for a chat whose kind is not
+ * 'room'. The thread still declines to offer the control in a one-to-one
+ * chat, because an action that comes back empty is worse than one that was
+ * never offered, but the enforcement is not here.
+ */
+export function useReactors(messageId: string | null) {
+  return useQuery({
+    queryKey: ['reactors', messageId],
+    queryFn: () => fetchReactors(messageId!),
+    enabled: isSupabaseConfigured && messageId != null,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Joining a plan somebody sent into the conversation: your own pin, at the
+ * same venue, on the same day.
+ *
+ * The map's own pin lists are invalidated because that is where the new pin
+ * has to appear — the whole argument for this action over a link is that a
+ * plan agreed in a chat reaches the map and the heat.
+ */
+export function useJoinPlanFromMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (messageId: string) => joinPlanFromMessage(messageId),
+    meta: { failureTitle: 'Could not join that plan' },
+    onSuccess: () => {
+      analytics.capture('pin_joined');
+      // No pin id and no chat id in the payload, the same reasoning
+      // room_joined carries above: a venue plus a person is a presence fact
+      // this app does not otherwise hold about anybody.
+      //
+      // The city is not known here — the thread has a message, not a map —
+      // so the four map keys are invalidated by PREFIX, which covers whatever
+      // city the plan was in. The lists are small and this happens once per
+      // tap.
+      queryClient.invalidateQueries({ queryKey: ['city-pins'] });
+      queryClient.invalidateQueries({ queryKey: ['map-pins'] });
+      queryClient.invalidateQueries({ queryKey: ['heat-cells'] });
+      queryClient.invalidateQueries({ queryKey: ['map-heat'] });
     },
   });
 }

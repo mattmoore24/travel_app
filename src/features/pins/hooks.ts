@@ -4,20 +4,19 @@ import { useIsFocused } from 'expo-router';
 import { useRefetchOnRefocus } from '@/hooks/use-refetch-on-refocus';
 
 import {
-  createPin,
   deletePin,
   fetchCityPins,
   fetchHeatCells,
   fetchLaunchCities,
   fetchPinCrew,
   joinPinChat,
-  postJoinablePin,
 } from '@/features/pins/api';
-import { useOwnUserId } from '@/features/profile/hooks';
+import { useIsBusiness } from '@/features/business/hooks';
+import { useIsGuest, useWantsBusiness } from '@/features/guest/hooks';
 import { usePushPrimer } from '@/features/notifications/primer-store';
 import { analytics } from '@/lib/analytics';
-import type { PinCategory } from '@/lib/database.types';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import type { HeatCellRow, PinCategory } from '@/lib/database.types';
+import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 export function useLaunchCities() {
   return useQuery({
@@ -62,6 +61,36 @@ export function useHeatCells(cityId: number | null, date: string | null) {
   return query;
 }
 
+/**
+ * THE CALLS 20260902190000 ADDED, AND THE ONE IT WIDENED.
+ *
+ * `supabase.rpc` is typed from src/lib/database.types.ts, which enumerates
+ * every function by name and by argument, and that file is not this
+ * package's to edit — so the typed client refuses these four calls outright
+ * even though the functions exist and are granted. This is the narrowest
+ * hole that lets them through: one indirection, in one file, named so nobody
+ * mistakes it for a convenience. Delete it and send the calls back through
+ * `supabase.rpc` the moment database.types.ts carries
+ *
+ *   city_pin_counts        Args: {}                  Returns: CityPinCountRow[]
+ *   public_city_pin_counts Args: {}                  Returns: CityPinCountRow[]
+ *   heat_history_cells     Args: { p_city_id }       Returns: HeatCellRow[]
+ *   request_city           Args: { p_name }          Returns: void
+ *
+ * and post_joinable_pin's Args grow `p_intent_time?: string | null` and
+ * `p_joinable?: boolean`.
+ */
+function callRpc(fn: string, args: Record<string, unknown> = {}) {
+  // Through the client rather than a detached method, so `this` survives.
+  const client = supabase as unknown as {
+    rpc: (
+      name: string,
+      params: Record<string, unknown>
+    ) => PromiseLike<{ data: unknown; error: unknown }>;
+  };
+  return client.rpc(fn, args);
+}
+
 export type NewPin = {
   cityId: number;
   venueName: string;
@@ -73,6 +102,12 @@ export type NewPin = {
   lat: number;
   lng: number;
   intentDate: string;
+  /**
+   * The hour the plan is for, 'HH:MM', or null for "sometime that day".
+   * Optional end to end: no default in the form, no default in the column,
+   * and a pin without one is a first-class pin.
+   */
+  intentTime?: string | null;
   expiresAt: string;
   /**
    * Ticked "anyone can join": the pin arrives carrying a group chat and one
@@ -92,25 +127,41 @@ type PostedPin = {
 };
 
 export function useCreatePin() {
-  const userId = useOwnUserId();
   const queryClient = useQueryClient();
   return useMutation({
-    // Both shapes answer with the same four things, because that is all
+    // ONE WRITE PATH, and the hour is why. Pins are immutable to the client
+    // (no UPDATE grant, 20260816210000), so an optional hour has to arrive
+    // with the insert or never — and the message-me-first shape used to go
+    // through a plain column-listed insert in features/pins/api.ts that has
+    // no room for it. Both shapes come through post_joinable_pin now, with
+    // p_joinable saying which; nothing is loosened by the move, since the
+    // function sets user_id from auth.uid() and seeded to false (exactly what
+    // the pins_insert_own policy checks) and additionally refuses a suspended
+    // account and a business.
+    //
+    // Both shapes still answer with the same four things, because that is all
     // anybody downstream reads: the id to select the new pin's card, and the
     // three fields the analytics event wants. The joinable path also carries
     // the chat it opened.
     mutationFn: async ({ joinable, ...input }: NewPin): Promise<PostedPin> => {
-      if (!joinable) {
-        const row = await createPin({ userId: userId!, ...input });
-        return {
-          id: row.id,
-          city_id: row.city_id,
-          category: row.category,
-          intent_date: row.intent_date,
-          chat_id: null,
-        };
+      const { data, error } = await callRpc('post_joinable_pin', {
+        p_city_id: input.cityId,
+        p_venue_name: input.venueName,
+        p_note: input.note ?? null,
+        p_plan: input.plan ?? null,
+        p_place_label: input.placeLabel ?? null,
+        p_category: input.category,
+        p_lat: input.lat,
+        p_lng: input.lng,
+        p_intent_date: input.intentDate,
+        p_intent_time: input.intentTime ?? null,
+        p_expires_at: input.expiresAt,
+        p_joinable: joinable === true,
+      });
+      if (error) {
+        throw error;
       }
-      const { pin_id, chat_id } = await postJoinablePin(input);
+      const { pin_id, chat_id } = data as { pin_id: string; chat_id: string | null };
       return {
         id: pin_id,
         city_id: input.cityId,
@@ -133,6 +184,9 @@ export function useCreatePin() {
       queryClient.invalidateQueries({ queryKey: ['heat-cells', pin.city_id] });
       queryClient.invalidateQueries({ queryKey: ['map-pins', pin.city_id] });
       queryClient.invalidateQueries({ queryKey: ['map-heat', pin.city_id] });
+      // The rail prints the same number the map draws, so it goes stale on
+      // exactly the same event.
+      queryClient.invalidateQueries({ queryKey: ['city-pin-counts'] });
       // A pin is an invitation, so this is the other moment where being told
       // somebody answered is obviously worth something.
       usePushPrimer.getState().ask('pin-posted');
@@ -147,9 +201,10 @@ export function useCreatePin() {
       analytics.capture('pin_post_failed', {
         reason: pinPostFailureReason(error),
         city_id: input.cityId,
-        // Which of the two write paths broke. They are different functions
-        // with different validations, and a failure in one says nothing
-        // about the other.
+        // Which SHAPE of pin failed. One function serves both now, but they
+        // take different branches through it — the joinable one opens a
+        // group and answers to a daily cap the other never meets — so a
+        // failure in one still says nothing about the other.
         joinable: input.joinable === true,
       });
     },
@@ -227,6 +282,105 @@ export function useDeletePin(cityId: number | null) {
       queryClient.invalidateQueries({ queryKey: ['heat-cells', cityId] });
       queryClient.invalidateQueries({ queryKey: ['map-pins', cityId] });
       queryClient.invalidateQueries({ queryKey: ['map-heat', cityId] });
+      queryClient.invalidateQueries({ queryKey: ['city-pin-counts'] });
+    },
+  });
+}
+
+/** One city chip's number: null below that city's own k, never a 1 or a 2. */
+export type CityPinCountRow = {
+  city_id: number;
+  /** Plans this caller can see in that city, or null when there are too few. */
+  pin_count: number | null;
+};
+
+/**
+ * How busy each launch city is, for the rail.
+ *
+ * The SAME door useMapPins picks, and for the same reason: two feeds computed
+ * under different visibility rules would put a number on a chip that the map
+ * behind it does not draw. A business and a signed-out visitor both read the
+ * identity-free side; a member reads the one RLS answers.
+ *
+ * No city id in the key. It is one row per city in one round trip, which is
+ * what makes it a rail rather than four requests.
+ */
+export function useCityPinCounts() {
+  const isGuest = useIsGuest();
+  const isBusiness = useIsBusiness();
+  const wantsBusiness = useWantsBusiness();
+  const anonymous = isGuest || isBusiness || wantsBusiness;
+  const focused = useIsFocused();
+  const query = useQuery({
+    queryKey: ['city-pin-counts', anonymous ? 'anonymous' : 'identified'],
+    queryFn: async () => {
+      const rpc = anonymous ? 'public_city_pin_counts' : 'city_pin_counts';
+      const { data, error } = await callRpc(rpc);
+      if (error) {
+        throw error;
+      }
+      return (data ?? []) as CityPinCountRow[];
+    },
+    enabled: isSupabaseConfigured,
+    // Slower than the pins themselves: a chip that is one plan out of date
+    // for a minute is telling the truth about a minute ago, and the rail is
+    // read at a glance rather than counted.
+    staleTime: 60_000,
+    refetchInterval: focused ? 120_000 : false,
+  });
+  useRefetchOnRefocus(focused, query);
+  return query;
+}
+
+/**
+ * Where a city has usually been busy at this hour on this weekday, drawn
+ * under the live layer so a quiet Tuesday still says something.
+ *
+ * No day parameter and no hour parameter. The server knows the city's own
+ * clock (launch_cities.timezone) and answers for its right now, so there is
+ * nothing here for a caller to get wrong and no option defaulted off. The
+ * k-threshold is entirely the server's, twice over: every stored bucket
+ * already cleared it live, and a cell needs at least k separate days before
+ * it is returned at all.
+ */
+export function useHeatHistory(cityId: number | null) {
+  const focused = useIsFocused();
+  const query = useQuery({
+    queryKey: ['heat-history', cityId],
+    queryFn: async () => {
+      const { data, error } = await callRpc('heat_history_cells', { p_city_id: cityId! });
+      if (error) {
+        throw error;
+      }
+      return (data ?? []) as HeatCellRow[];
+    },
+    enabled: isSupabaseConfigured && cityId != null,
+    // History moves at the speed of an hour band, so this is the one map
+    // query with no polling at all: it is refetched when the tab comes back
+    // and otherwise left alone.
+    staleTime: 30 * 60 * 1000,
+  });
+  useRefetchOnRefocus(focused, query);
+  return query;
+}
+
+/**
+ * "My city is not on here." Recorded, never answered.
+ *
+ * The name goes to the database and nowhere else — no analytics property, on
+ * purpose: it is free text a person typed, and this repo already has an
+ * incident about user text reaching analytics by accident.
+ */
+export function useRequestCity() {
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const { error } = await callRpc('request_city', { p_name: name.trim() });
+      if (error) {
+        throw error;
+      }
+    },
+    onSuccess: () => {
+      analytics.capture('city_requested');
     },
   });
 }

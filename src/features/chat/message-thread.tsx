@@ -18,14 +18,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoCheck } from '@/components/ui/photo-check';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { SHEET_SETTLE_MS, useRegisterNativeModal } from '@/components/ui/sheet';
+import { Sheet, SHEET_SETTLE_MS, useRegisterNativeModal } from '@/components/ui/sheet';
 import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
+import { useIsBusiness } from '@/features/business/hooks';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { splitLinks } from '@/features/chat/links';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { isLocalId, type ThreadMessage } from '@/features/chat/outgoing';
 import type { Quote } from '@/features/chat/reply';
 import { separatorFor } from '@/features/chat/separators';
+import { PinGlyph } from '@/features/pins/pin-marker';
+import { pinOnMessage, type MessagePin } from '@/features/rooms/message-pin';
+import { useJoinPlanFromMessage, useReactors } from '@/features/rooms/hooks';
+import { formatDate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import type { MessageRow, ReactionSummaryRow } from '@/lib/database.types';
@@ -164,12 +169,19 @@ function Reactions({
   rows,
   mine,
   onToggle,
+  onOpenReactors,
 }: {
   rows: ReactionSummaryRow[];
   /** On your own right-aligned bubble the chip hangs off the bubble's own
    * trailing edge rather than drifting to the column's far side. */
   mine: boolean;
   onToggle: (emoji: string, on: boolean) => void;
+  /**
+   * Name the people behind this chip. Absent in a one-to-one chat, where the
+   * bare pill is already correct — there is only one other person it could be,
+   * and naming them would be a reciprocal-interest reveal by another route.
+   */
+  onOpenReactors?: () => void;
 }) {
   const theme = useTheme();
   if (rows.length === 0) {
@@ -182,11 +194,16 @@ function Reactions({
           key={row.emoji}
           accessibilityRole="button"
           accessibilityLabel={`${row.emoji} ${row.count}`}
+          // The tap stays the toggle. That is the iMessage grammar people
+          // already have in their thumbs and it must not move; the hold is the
+          // spare gesture, which is where the names go.
+          accessibilityHint={onOpenReactors ? 'Press and hold to see who reacted' : undefined}
           haptic="light"
           scaleTo={0.9}
           // The chip is drawn at ~22pt because a taller one would crowd the
           // bubble it hangs off. The TARGET is 44, which is what this buys.
           hitSlop={{ top: 11, bottom: 11, left: 6, right: 6 }}
+          onLongPress={onOpenReactors}
           onPress={() => onToggle(row.emoji, !row.reacted_by_me)}
           style={[
             styles.reactionChip,
@@ -305,6 +322,92 @@ function QuotedStrip({ quote, mine }: { quote: Quote; mine: boolean }) {
   );
 }
 
+/**
+ * A plan, inside the bubble that carries it.
+ *
+ * A LEFT RULE, not a filled card, and that is the same answer QuotedStrip
+ * reached for the same reason: on your own accentDeep bubble a fill would have
+ * to be a third colour, and the rule reads identically on both sides.
+ *
+ * The glyph is the map's own PinGlyph rather than a category emoji, so the
+ * line from marker to card survives the trip into a conversation — the pin
+ * marker's comment holds the history of the emoji labels that broke it twice.
+ *
+ * There is no clock on it. room_messages nulls every pin column the moment the
+ * plan expires (hard rule 3), so a card that is on screen at all is a plan
+ * that is still on, and a countdown here would only ever be counting down to
+ * the card disappearing.
+ */
+function PinCard({ pin, mine }: { pin: MessagePin; mine: boolean }) {
+  const theme = useTheme();
+  const join = useJoinPlanFromMessage();
+  // "Under no circumstances should a business account ever have the option to
+  // join... any other pin of any kind" (the founder, and
+  // src/app/__tests__/business-cannot-join.test.ts). The database refuses it
+  // too (assert_not_business), but a refusal nobody could have predicted is
+  // worse than no button.
+  const viewerIsBusiness = useIsBusiness();
+  // A guest never reaches this at all: room_messages hands the pin columns to
+  // members and moderators only, so a public-preview reader gets the message
+  // with no plan on it and this component is never built.
+  const ink = mine ? theme.onAccentDeep : theme.text;
+  const quiet = mine ? theme.onAccentDeep : theme.textSecondary;
+
+  return (
+    <View style={[styles.planCard, { borderStartColor: mine ? theme.onAccentDeep : theme.accent }]}>
+      <View style={styles.planHead}>
+        <PinGlyph category={pin.category} size={26} />
+        <View style={styles.planText}>
+          <ThemedText type="smallBold" style={{ color: ink }} numberOfLines={2}>
+            {pin.venueName}
+          </ThemedText>
+          {pin.plan ? (
+            <ThemedText type="footnote" style={{ color: quiet }} numberOfLines={2}>
+              {pin.plan}
+            </ThemedText>
+          ) : null}
+          <ThemedText type="footnote" style={{ color: quiet }}>
+            {formatDate(pin.intentDate)}
+          </ThemedText>
+        </View>
+      </View>
+      {/* Not on your own plan: the pin is already yours, and the server would
+          answer the tap with the very pin the card is drawn from. */}
+      {mine || viewerIsBusiness ? null : (
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`Join this plan. ${pin.venueName}, ${formatDate(pin.intentDate)}.`}
+          accessibilityState={{ disabled: join.isPending }}
+          haptic="light"
+          scaleTo={0.97}
+          // The label is drawn small so it does not shout over the message it
+          // sits under; the slop is what makes the TARGET 44. The pill is
+          // about 26pt tall (a footnote line plus Space.xs top and bottom), so
+          // ten each way clears the floor rather than landing just under it.
+          hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
+          onPress={() => {
+            if (join.isPending) {
+              return;
+            }
+            join.mutate(pin.messageId, {
+              // The map is where the answer shows up, so the confirmation is
+              // the one the map already gives a posted pin.
+              onSuccess: () => haptics.success(),
+              // No local onError: the global mutation alert answers with the
+              // shared vocabulary (src/lib/failure-message.ts), which is where
+              // "active pin limit reached" already has a written sentence.
+            });
+          }}
+          style={[styles.planJoin, { borderColor: theme.accent }]}>
+          <ThemedText type="footnote" themeColor="accent">
+            {join.isSuccess ? 'You are in' : 'Join this plan'}
+          </ThemedText>
+        </PressableScale>
+      )}
+    </View>
+  );
+}
+
 function BubbleBody({
   message,
   mine,
@@ -331,6 +434,12 @@ function BubbleBody({
   const { data: imageUrl } = useChatPhotoUrl(message.image_path);
   const tail = tailed ? Radius.xs : Radius.bubble;
   const checking = message.moderation_status === 'pending';
+  // Straight off the row rather than through a prop the caller has to
+  // remember to pass. room_messages joins the plan onto every message it
+  // returns, so a group thread renders the card with no change at either call
+  // site — which is the difference between a feature that ships and a
+  // component nothing mounts.
+  const pin = pinOnMessage(message);
 
   return (
     <View
@@ -349,6 +458,11 @@ function BubbleBody({
           list flips a cell's children and a strip emitted as a sibling would
           land under the message it belongs to (traps). */}
       {quote ? <QuotedStrip quote={quote} mine={mine} /> : null}
+      {/* The plan this message carries, above the words that came with it.
+          `pin` is null in a direct chat, for a public-preview reader, and for
+          any plan that has expired — room_messages decides all three, so
+          nothing here has to remember hard rule 3 on its own. */}
+      {pin ? <PinCard pin={pin} mine={mine} /> : null}
       {/* `checking` rather than `image_path`, because a room MASKS the path
           until a verdict lands — so keying off the path drew nothing at all
           for everybody but the sender, which is the empty bubble people were
@@ -414,6 +528,7 @@ function Bubble({
   last,
   reactions,
   onToggleReaction,
+  onOpenReactors,
   onOpenMenu,
   onRetry,
   avatarPath,
@@ -433,6 +548,8 @@ function Bubble({
   last: boolean;
   reactions: ReactionSummaryRow[];
   onToggleReaction: (emoji: string, on: boolean) => void;
+  /** Groups and rooms only; see Reactions. */
+  onOpenReactors?: () => void;
   onOpenMenu?: (rect: Rect | null) => void;
   /** Re-send a message that failed. Absent for anything already delivered. */
   onRetry?: () => void;
@@ -580,7 +697,12 @@ function Bubble({
         {/* The marks under a bubble stack in one column — reaction first,
             delivery status beneath it — so both read as marks ON the message
             above rather than a two-column row of unrelated controls. */}
-        <Reactions rows={reactions} mine={mine} onToggle={onToggleReaction} />
+        <Reactions
+          rows={reactions}
+          mine={mine}
+          onToggle={onToggleReaction}
+          onOpenReactors={onOpenReactors}
+        />
         {/* The delivery ladder, in full: Sending, then Sent, or Not sent with
             the way out. "Sending" is honest about the pause the first-message
             moderation check creates; "Sent" is the confirmation the founder
@@ -884,6 +1006,98 @@ function sideOf(mine: boolean) {
 }
 
 /**
+ * The line a ROOM wrote about itself, rather than something anybody typed.
+ *
+ * Read off the row's own `kind`, not from a caller. The kinds have grown —
+ * 'joined' was the first, and 20260902200000 adds 'left', 'removed' and
+ * 'ends' — and every one of them arrives on the same column through the same
+ * RPC. A thread that asked its caller to enumerate them would render the next
+ * one as a BUBBLE the person appears to have typed ("Pia was removed",
+ * signed by Pia, with her face beside it), which is the exact failure the
+ * centred line exists to prevent. `systemFor` still wins where a caller
+ * passes one, so the room screen's existing answer is untouched.
+ *
+ * `kind` is optional because a direct chat reads the `messages` table and its
+ * rows predate the column; undefined means an ordinary message.
+ */
+function systemLine(message: ThreadMessage): string | null {
+  const kind = message.kind;
+  return kind != null && kind !== 'said' ? (message.body ?? null) : null;
+}
+
+/**
+ * Who reacted, for the sheet a long press on a chip opens.
+ *
+ * The list is small by nature — a chip with twelve people behind it is a
+ * twelve-person room, not a scroll — so this is a plain column rather than a
+ * list, and it is the sheet's own scroller that handles the day somebody
+ * proves that wrong.
+ */
+function ReactorRow({
+  name,
+  photoPath,
+  emoji,
+}: {
+  name: string | null;
+  photoPath: string | null;
+  emoji: string;
+}) {
+  const theme = useTheme();
+  const { data: url } = usePhotoUrl(photoPath);
+  const initial = name?.trim()?.[0]?.toUpperCase() ?? null;
+  return (
+    <View style={styles.reactorRow}>
+      <View style={[styles.reactorFace, { backgroundColor: theme.surfaceSunken }]}>
+        {url ? (
+          <Image source={{ uri: url }} style={styles.runAvatarImage} contentFit="cover" />
+        ) : initial ? (
+          <ThemedText type="caption" themeColor="textSecondary" style={styles.runAvatarInitial}>
+            {initial}
+          </ThemedText>
+        ) : null}
+      </View>
+      <ThemedText style={styles.reactorName} numberOfLines={1}>
+        {name ?? 'Traveler'}
+      </ThemedText>
+      <ThemedText type="footnote">{emoji}</ThemedText>
+    </View>
+  );
+}
+
+function ReactorSheet({ messageId, onClose }: { messageId: string; onClose: () => void }) {
+  const { data: reactors, isPending, isError } = useReactors(messageId);
+  return (
+    <Sheet onClose={onClose} scrolls>
+      <ThemedText type="title">Who reacted</ThemedText>
+      {isPending ? (
+        <ActivityIndicator style={styles.loadingMore} />
+      ) : isError ? (
+        // Not folded into the empty state below. "Nobody reacted" is a claim
+        // about the room, and making it because a request failed on hostel
+        // wifi is telling somebody something untrue.
+        <ThemedText type="footnote" themeColor="textSecondary">
+          Could not load who reacted. Close this and open it again.
+        </ThemedText>
+      ) : (reactors ?? []).length === 0 ? (
+        // A reaction taken back between the press and the answer lands here.
+        <ThemedText type="footnote" themeColor="textSecondary">
+          Nobody on this one any more.
+        </ThemedText>
+      ) : (
+        (reactors ?? []).map((reactor) => (
+          <ReactorRow
+            key={`${reactor.user_id}-${reactor.emoji}`}
+            name={reactor.display_name}
+            photoPath={reactor.photo_path}
+            emoji={reactor.emoji}
+          />
+        ))
+      )}
+    </Sheet>
+  );
+}
+
+/**
  * The conversation itself, shaped like every messaging app people already
  * use: newest at the bottom, own messages on the right, consecutive messages
  * from one person grouped under a single tail, time stamps between clusters
@@ -1006,6 +1220,17 @@ export function MessageThread({
   unreadFrom?: string | null;
 }) {
   const [menu, setMenu] = useState<MenuTarget | null>(null);
+  /**
+   * The message whose reactors are on screen, or null.
+   *
+   * Groups and rooms only, and the discriminator is `avatarFor` — the prop a
+   * room passes and a one-to-one chat does not, because a chat with two people
+   * in it needs neither faces nor names. No new option defaulted off for
+   * somebody to forget to set: the surface that already says "this thread has
+   * more than two people in it" says it once, here as well.
+   */
+  const [reactorsFor, setReactorsFor] = useState<string | null>(null);
+  const namesReactors = avatarFor != null;
   const { height: windowHeight } = useWindowDimensions();
   const theme = useTheme();
   const loadingTint = theme.textSecondary;
@@ -1132,8 +1357,9 @@ export function MessageThread({
           // joiner's sender_id, so without this the first thing somebody says
           // after "X is in" groups against the caption: no author line above
           // their opening bubble, grouped corners butting a centred line.
-          const olderIsRun = older != null && systemFor?.(older) == null;
-          const newerIsRun = newer != null && systemFor?.(newer) == null;
+          const systemOf = (m: ThreadMessage) => systemFor?.(m) ?? systemLine(m);
+          const olderIsRun = older != null && systemOf(older) == null;
+          const newerIsRun = newer != null && systemOf(newer) == null;
           const grouped =
             olderIsRun &&
             older.sender_id === item.sender_id &&
@@ -1147,7 +1373,7 @@ export function MessageThread({
           // The opening message is carried on the chat row, not the messages
           // table, so there is no id for a reaction to hang off.
           const note = noteFor?.(item) ?? null;
-          const system = systemFor?.(item) ?? null;
+          const system = systemOf(item);
           // A message the server has never seen has no id to hang a reaction
           // or a report off, so the menu stays shut until it lands.
           //
@@ -1242,6 +1468,17 @@ export function MessageThread({
                   quote={quoteFor?.(item) ?? null}
                   reactions={byMessage.get(item.id) ?? []}
                   onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
+                  // Never while the long-press menu is up: its own <Modal> is
+                  // over the whole screen, and iOS silently drops a
+                  // presentation begun while another is dismissing — on Fabric
+                  // that does not lose a sheet, it kills touch for the app
+                  // (traps). The chip is behind the scrim anyway; this is the
+                  // belt.
+                  onOpenReactors={
+                    namesReactors && !isLocalId(item.id) && menu == null
+                      ? () => setReactorsFor(item.id)
+                      : undefined
+                  }
                   onRetry={item.local === 'failed' && onRetry ? () => onRetry(item) : undefined}
                   delivered={item.id === deliveredId}
                   lifted={menu?.message.id === item.id}
@@ -1412,6 +1649,14 @@ export function MessageThread({
           />
         ) : null}
       </Modal>
+
+      {/* Its own Sheet rather than a row inside the message menu: the menu is
+          a raw <Modal>, and presenting the sheet's Modal out of it is exactly
+          the collision above. Opened from the thread, there is nothing to
+          collide with. */}
+      {reactorsFor ? (
+        <ReactorSheet messageId={reactorsFor} onClose={() => setReactorsFor(null)} />
+      ) : null}
     </View>
   );
 }
@@ -1513,6 +1758,51 @@ const styles = StyleSheet.create({
     paddingLeft: Space.sm,
     marginBottom: 2,
     gap: 1,
+  },
+  planCard: {
+    // Logical, not physical: this rule is new, so there is no reason for it to
+    // start out unable to mirror itself in a right-to-left locale. The quote
+    // strip above it is grandfathered, not a precedent.
+    borderStartWidth: 2,
+    paddingStart: Space.sm,
+    marginBottom: Space.xs,
+    gap: Space.xs,
+  },
+  planHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+  },
+  planText: {
+    // The words take whatever is left after the glyph, so a long venue name
+    // wraps inside the bubble instead of pushing the glyph off it.
+    flex: 1,
+    gap: 1,
+  },
+  planJoin: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: Radius.pill,
+    borderCurve: 'continuous',
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.xs,
+  },
+  reactorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    minHeight: HitTarget,
+  },
+  reactorFace: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reactorName: {
+    flex: 1,
   },
   loadingMore: {
     paddingVertical: Space.md,

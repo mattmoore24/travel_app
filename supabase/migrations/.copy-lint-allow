@@ -135,3 +135,12 @@
 20260902150000_a_funnel_that_names_its_city.sql:126
 20260902150000_a_funnel_that_names_its_city.sql:174
 20260902150000_a_funnel_that_names_its_city.sql:204
+
+# 20260902210000 re-states respond_to_message_request verbatim to add one
+# clause to its lookup (a first message that has been taken back can no longer
+# be accepted), so both raise literals in it are HISTORICAL strings moved, not
+# new ones written. Both already sit on this list under 20260817090000, which
+# is where they were last carried. Neither is a new sentence and neither says
+# anything the deployed function did not already say.
+20260902210000_a_hello_can_be_taken_back.sql:241
+20260902210000_a_hello_can_be_taken_back.sql:250

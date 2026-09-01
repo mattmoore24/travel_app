@@ -35,7 +35,15 @@ import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Type, Elevation, HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
-import { useDeletePin, useJoinPinChat, useLaunchCities, usePinCrew } from '@/features/pins/hooks';
+import {
+  useCityPinCounts,
+  useDeletePin,
+  useHeatHistory,
+  useJoinPinChat,
+  useLaunchCities,
+  usePinCrew,
+  useRequestCity,
+} from '@/features/pins/hooks';
 import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker';
 import { useCityBusinesses, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
 import { listingNotice } from '@/features/business/listing-notice';
@@ -59,7 +67,14 @@ import {
   type PinCluster,
   type ScreenCluster,
 } from '@/features/pins/cluster';
-import { heatRings, heatViewReady, heatWithFallback, mergeHeatCells } from '@/features/pins/heat';
+import {
+  HEAT_CELL_RADIUS_M,
+  heatFill,
+  heatRings,
+  heatViewReady,
+  heatWithFallback,
+  mergeHeatCells,
+} from '@/features/pins/heat';
 import { useHeatEmptyLegend, useHeatLegend, usePlacesLegend } from '@/features/pins/heat-legend';
 import {
   CityCountView,
@@ -80,18 +95,21 @@ import {
   type PlanListDetent,
 } from '@/features/pins/plan-list';
 import { PinFormSheet } from '@/features/pins/pin-form-sheet';
+import { FormTextField } from '@/components/form/form-text-field';
 import { PinSearchField } from '@/features/pins/pin-search-field';
 import { nearbyPlaces, type LocalSearchResult } from '@/modules/local-search';
 import { PlacePinOverlay } from '@/features/pins/place-pin-overlay';
 import {
   GEOCODE_FLOOR_MS,
+  type MapPin,
   burnOutLabel,
+  byIntentMoment,
   cityClockNow,
-  intentLabel,
   isLaterCityDay,
   pinSubtitle,
   pinTitle,
   shouldGeocode,
+  whenLabel,
 } from '@/features/pins/pin-helpers';
 import {
   DEFAULT_FILTERS,
@@ -133,13 +151,19 @@ function PinCard({
   cityId,
   clock,
   onClose,
+  onOpenBusiness,
   onNeedsAccount,
 }: {
-  pin: CityPinRow;
+  pin: MapPin;
   cityId: number;
   /** The browsed city's wall clock (cityClockNow): "Today" is ITS today. */
   clock: Date;
   onClose: () => void;
+  /**
+   * This plan is at a listed business and the reader wants to see it. The map
+   * owns the swap because both cards are the map's, not each other's.
+   */
+  onOpenBusiness: (businessId: string) => void;
   /**
    * Somebody with no session at all tapped Join. A guest ACCOUNT can join —
    * it has a name and the group can hold it accountable — but a signed-out
@@ -277,12 +301,36 @@ function PinCard({
             </ThemedText>
           ) : null}
           <ThemedText type="footnote" themeColor="textSecondary">
-            {intentLabel(pin.intent_date, clock)} · {burnOutLabel(pin.expires_at)}
+            {whenLabel(pin, clock)} · {burnOutLabel(pin.expires_at)}
           </ThemedText>
           {pin.place_label ? (
             <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
               {pin.place_label}
             </ThemedText>
+          ) : null}
+          {/* The two map layers finally meet. A plan at a listed business
+              carries its id (20260902190000 links them by name and sixty
+              metres at insert time), so the card can hand the reader the
+              business page instead of making them leave, find the spot again
+              and read about it there. Both cards are inline sheets, so this
+              is a swap rather than a presentation, and there is no modal to
+              lose (see the traps skill). */}
+          {pin.business_id ? (
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={`See the business page for ${pin.venue_name}`}
+              hitSlop={8}
+              onPress={() => onOpenBusiness(pin.business_id!)}
+              style={styles.mapsLink}>
+              <SymbolView
+                name={{ ios: 'storefront', android: 'store', web: 'store' }}
+                size={13}
+                tintColor={theme.accent}
+              />
+              <ThemedText type="footnote" themeColor="accent">
+                See the business
+              </ThemedText>
+            </Pressable>
           ) : null}
           {/* Getting there is somebody else's job, and the phone already has
               an app for it. */}
@@ -627,6 +675,18 @@ function CrewFace({ person, first }: { person: PinCrewRow; first: boolean }) {
   );
 }
 
+/**
+ * How dim the remembered layer is.
+ *
+ * Well under heatPeakAlpha's 0.1-to-0.3 (features/pins/heat.ts), because the
+ * two layers say different things and the eye has to be able to tell which
+ * one it is looking at: today is a light on, and this is the shape it usually
+ * makes. Capped so a street stays readable through both at once.
+ */
+function historyAlpha(count: number): number {
+  return Math.min(0.03 + count * 0.015, 0.09);
+}
+
 const SEEDED_LABEL = 'One of our picks. Show up.';
 /** The same fact, without the invitation: nobody is asking a bar to show up. */
 const BUSINESS_SEEDED_LABEL = 'One of our picks in this city.';
@@ -700,7 +760,7 @@ function CityPinMarker({
   clock,
   onPress,
 }: {
-  pin: CityPinRow;
+  pin: MapPin;
   selected: boolean;
   /** The browsed city's clock — the one authority for Today and the dim. */
   clock: Date;
@@ -738,7 +798,7 @@ function CityPinMarker({
         pin.venue_name,
         pin.display_name,
         pin.chat_id ? 'open to join' : null,
-        intentLabel(pin.intent_date, clock),
+        whenLabel(pin, clock),
         burnOutLabel(pin.expires_at),
       ]
         .filter(Boolean)
@@ -970,8 +1030,19 @@ export default function MapScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filters.day, cityDayISO, deviceDayISO]
   );
+  // What each chip in the rail is worth saying. One round trip for every
+  // city, counted under the same visibility rules the map applies and
+  // floored at each city's own k, so a chip can never advertise a plan the
+  // map behind it will not draw.
+  const { data: cityCounts = [] } = useCityPinCounts();
   const pinsQuery = useMapPins(activeCityId);
-  const { data: allPins = [], isSuccess: pinsLoaded } = pinsQuery;
+  const { data: allPinRows = [], isSuccess: pinsLoaded } = pinsQuery;
+  // Both map feeds return intent_time and business_id since 20260902190000.
+  // src/lib/database.types.ts is not this package's file, so the row type
+  // does not know that yet and the widening happens here, once, at the
+  // boundary rather than at every read. Delete the cast when CityPinRow
+  // carries the two columns.
+  const allPins = allPinRows as MapPin[];
   // Both halves of the heat ask: the day-filtered layer, and the all-days
   // pool it may fall back to (the same physical query when no day is chosen,
   // so the keys collide and react-query dedupes). Error and pending are read
@@ -986,16 +1057,38 @@ export default function MapScreen() {
     allDaysHeatQuery.data ?? []
   );
   const heatCells = useMemo(() => mergeHeatCells(heatRows), [heatRows]);
+  // WHERE THIS CITY IS USUALLY BUSY, under the live layer. Live heat only
+  // knows about pins that exist right now and pins burn out within 72 hours,
+  // so a quiet Tuesday in Lisbon drew nothing at all — the layer failing the
+  // brief's own test for it. The server answers for the city's own weekday
+  // and hour band and re-applies the k-threshold twice (every stored bucket
+  // already cleared it live, and a cell needs k separate days before it is
+  // returned), so there is nothing for this screen to threshold and nothing
+  // for it to pass. It is not day-filtered: "usually" is a habit, not a date.
+  const historyQuery = useHeatHistory(activeCityId);
+  const historyCells = useMemo(() => mergeHeatCells(historyQuery.data ?? []), [historyQuery.data]);
+  const historySettled = historyQuery.isSuccess || historyQuery.isError;
   // Settled means THIS city's ask settled: on a city switch the new key
   // starts pending and the empty-state chip must not flash while it does.
   const heatSettled = heatQuery.isSuccess && (filterISO == null || allDaysHeatQuery.isSuccess);
   // The glow explanation, only when a glow is actually drawn and drawn
-  // unlabelled — the fallback branch carries its own footnote.
-  const legend = useHeatLegend(heatShown && heatCells.length > 0 && !heatFallback);
+  // unlabelled — the fallback branch carries its own footnote. The
+  // remembered layer counts as a glow: it is dimmer, but it is exactly as
+  // unlabelled, and its sentence is a different one (below).
+  const legend = useHeatLegend(
+    heatShown && (heatCells.length > 0 || historyCells.length > 0) && !heatFallback
+  );
   // And the honest third state: the ask settled and there is nothing to
-  // draw. Its own one-shot key (see heat-legend).
+  // draw. Its own one-shot key (see heat-legend). "Nothing here" must not be
+  // said over a remembered glow, which is why the history ask has to have
+  // settled too.
   const heatEmptyLegend = useHeatEmptyLegend(
-    heatShown && heatSettled && !heatQuery.isError && heatCells.length === 0
+    heatShown &&
+      heatSettled &&
+      historySettled &&
+      !heatQuery.isError &&
+      heatCells.length === 0 &&
+      historyCells.length === 0
   );
   const isGuest = useIsGuest();
   // A guest has no setting of their own, and the hook is disabled without a
@@ -1030,6 +1123,14 @@ export default function MapScreen() {
   // somebody else's plan. One piece of state rather than two booleans,
   // because only one sheet may ever be up.
   const [gate, setGate] = useState<'drop' | 'join' | null>(null);
+  // The rail's fifth chip, and what somebody typed into it. `requestedCity`
+  // is the sheet's second face: it holds the name that was just sent, so the
+  // confirmation can say it back rather than being a toast over a form still
+  // holding the same words.
+  const [cityRequestOpen, setCityRequestOpen] = useState(false);
+  const [cityWanted, setCityWanted] = useState('');
+  const [requestedCity, setRequestedCity] = useState<string | null>(null);
+  const requestCity = useRequestCity();
   // Which stack of plans is open, if any. Separate from selectedPinId: a
   // stack is a list of plans, and picking one out of it opens the pin card.
   const [venueKey, setVenueKey] = useState<string | null>(null);
@@ -1689,8 +1790,34 @@ export default function MapScreen() {
   // tomorrow's). It is drawn only while its footnote owns the strip — the
   // day-filtered layer was empty anyway.
   const heatFallbackActive = heatFallback && slot === 'heat-fallback';
-  const drawnHeatCells = !heatShown || (heatFallback && !heatFallbackActive) ? [] : heatCells;
+  // Memoised only so its identity is stable: the history layer below filters
+  // against it, and a fresh array every render would rebuild that set on
+  // every frame of a pan.
+  const drawnHeatCells = useMemo(
+    () => (!heatShown || (heatFallback && !heatFallbackActive) ? [] : heatCells),
+    [heatShown, heatFallback, heatFallbackActive, heatCells]
+  );
   const drawnHeatCellCount = drawnHeatCells.length;
+  // Only where today has nothing to say. Two glows stacked on one square
+  // would read as one brighter cell, and the brighter number would be a
+  // count of two different things. Gated on the same Busy areas toggle: one
+  // control for one idea, and the filter sheet is not this package's file.
+  const drawnHistoryCells = useMemo(() => {
+    if (!heatShown) {
+      return [];
+    }
+    const live = new Set(drawnHeatCells.map((cell) => cell.key));
+    return historyCells.filter((cell) => !live.has(cell.key));
+  }, [heatShown, drawnHeatCells, historyCells]);
+  // Which sentence the one-shot legend carries. Today leads when both layers
+  // are drawn; on a quiet Tuesday the only glow on the map is the remembered
+  // one and it must not be described as plans that exist. Never "nearby" and
+  // never "busy now" in either: the map is scoped to a city chip that may be
+  // a continent away, and this app does not say where anybody is.
+  const heatLegendLine =
+    drawnHeatCells.length > 0
+      ? 'Glowing spots are where the plans are'
+      : 'Dimmer spots are where this city is usually busy';
   useEffect(() => {
     if (
       activeCityId == null ||
@@ -2007,6 +2134,20 @@ export default function MapScreen() {
               boundary. See features/pins/heat.ts for both. Gated on the
               client-side Busy-areas toggle; the k-threshold stays entirely
               the server's. */}
+          {/* The remembered layer, drawn FIRST so every live ring composites
+              over it, and at one flat low alpha rather than three stacked
+              rings so it reads as ground rather than as today. The alpha
+              ramp belongs beside heatFill in features/pins/heat.ts; it is
+              here because that file is not this package's. */}
+          {drawnHistoryCells.map((cell) => (
+            <Circle
+              key={`history:${cell.key}`}
+              center={{ latitude: cell.lat, longitude: cell.lng }}
+              radius={HEAT_CELL_RADIUS_M}
+              strokeColor="transparent"
+              fillColor={heatFill(cell.count, historyAlpha(cell.count))}
+            />
+          ))}
           {drawnHeatCells.map((cell) =>
             heatRings(cell).map((ring) => (
               <Circle
@@ -2191,11 +2332,21 @@ export default function MapScreen() {
                 style={styles.cityScroll}>
                 {launchCities.map((city) => {
                   const selected = city.city_id === activeCityId;
+                  // Null below that city's own k, and null is a real answer:
+                  // the chip says nothing rather than "1". Never a badge —
+                  // a badge turns the chip into a card and the rail into two
+                  // rows on a 375pt screen.
+                  const count =
+                    cityCounts.find((row) => row.city_id === city.city_id)?.pin_count ?? null;
                   return (
                     <PressableScale
                       key={city.city_id}
                       accessibilityRole="button"
-                      accessibilityLabel={city.cities.name}
+                      accessibilityLabel={
+                        count != null
+                          ? `${city.cities.name}, ${countOf(count, 'plan')}`
+                          : city.cities.name
+                      }
                       accessibilityState={{ selected }}
                       hitSlop={4}
                       haptic="selection"
@@ -2220,10 +2371,53 @@ export default function MapScreen() {
                           }>
                           {city.cities.name}
                         </ThemedText>
+                        {/* Caption-size in both states, so the count never
+                          changes the chip's height and the rail never
+                          reflows — the same lesson as the line above. The
+                          COLOUR follows the chip, because textSecondary on
+                          the accent fill is the one pairing in this palette
+                          that does not carry. */}
+                        {count != null ? (
+                          <ThemedText
+                            type="caption"
+                            style={{ color: selected ? theme.onAccent : theme.textSecondary }}>
+                            {count}
+                          </ThemedText>
+                        ) : null}
                       </View>
                     </PressableScale>
                   );
                 })}
+                {/* THE FIFTH CHIP, and the first answer this app has ever had
+                    for a traveler in Chiang Mai or Porto. Outlined rather
+                    than filled so it reads as a different kind of thing from
+                    the four cities, and last so it never sits between two of
+                    them. */}
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Somewhere else? Ask for a city we have not opened"
+                  hitSlop={4}
+                  haptic="selection"
+                  scaleTo={0.94}
+                  onPress={() => {
+                    // The same clears the filter button makes: three sheets
+                    // at the bottom of one map is a pile.
+                    setSelectedPinId(null);
+                    setSelectedPlaceId(null);
+                    setVenueKey(null);
+                    setRequestedCity(null);
+                    setCityRequestOpen(true);
+                  }}>
+                  <View
+                    style={[
+                      styles.cityChip,
+                      { backgroundColor: theme.surface, borderColor: theme.border },
+                    ]}>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      Somewhere else?
+                    </ThemedText>
+                  </View>
+                </PressableScale>
               </ScrollView>
             </View>
           )}
@@ -2894,7 +3088,7 @@ export default function MapScreen() {
             accessibilityRole="button"
             // Never "nearby": the map is scoped to a city chip that may be a
             // continent away, and the app never knows where anybody is.
-            accessibilityLabel="Glowing spots are where the plans are"
+            accessibilityLabel={heatLegendLine}
             accessibilityHint="Dismisses this"
             scaleTo={0.96}
             haptic="light"
@@ -2905,7 +3099,9 @@ export default function MapScreen() {
                 { backgroundColor: theme.surface, borderColor: theme.hairline },
               ]}>
               <View style={[styles.legendDot, { backgroundColor: 'rgba(255, 154, 90, 0.85)' }]} />
-              <ThemedText type="footnote">Glowing spots are where the plans are</ThemedText>
+              <ThemedText type="footnote" style={styles.legendText}>
+                {heatLegendLine}
+              </ThemedText>
               <SymbolView
                 name={{ ios: 'xmark', android: 'close', web: 'close' }}
                 size={11}
@@ -3053,7 +3249,11 @@ export default function MapScreen() {
             </Pressable>
           </View>
           <ScrollView style={styles.venueList} contentContainerStyle={styles.venueListContent}>
-            {openVenue.pins.map((pin) => (
+            {/* Earliest first, and the plans that named no hour after the
+                ones that did. The server orders both feeds this way; the
+                clusterer regroups them by venue and this puts the stack back
+                in the order somebody reads it in. */}
+            {[...openVenue.pins].sort(byIntentMoment).map((pin) => (
               <PressableScale
                 key={pin.id}
                 accessibilityRole="button"
@@ -3080,9 +3280,7 @@ export default function MapScreen() {
                       {pinSubtitle(pin) ?? pinTitle(pin)}
                     </ThemedText>
                     <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
-                      {[pin.display_name, intentLabel(pin.intent_date, cityClock)]
-                        .filter(Boolean)
-                        .join(' · ')}
+                      {[pin.display_name, whenLabel(pin, cityClock)].filter(Boolean).join(' · ')}
                     </ThemedText>
                   </View>
                   <SymbolView
@@ -3131,6 +3329,13 @@ export default function MapScreen() {
               cityId={activeCityId}
               clock={cityClock}
               onClose={() => setSelectedPinId(null)}
+              onOpenBusiness={(businessId) => {
+                // A straight swap, not a presentation: both cards are
+                // `Sheet inline`, so there is no <Modal> being dismissed for
+                // iOS to race against and no settle delay to wait out.
+                setSelectedPinId(null);
+                setSelectedPlaceId(businessId);
+              }}
               onNeedsAccount={() => {
                 // By the time the join gate's navigate runs the card is
                 // closed, so the plan's id is parked here for it.
@@ -3147,6 +3352,76 @@ export default function MapScreen() {
           swaps it in place rather than making you dismiss this one first. */}
       {mode === 'browse' && selectedPlaceId ? (
         <PlaceSheet businessId={selectedPlaceId} onClose={() => setSelectedPlaceId(null)} />
+      ) : null}
+
+      {/* SOMEWHERE ELSE. The demand map §2.6 asks for, and the first thing
+          this app has ever offered a traveler whose city is not one of the
+          four: a name, recorded, and no promise it cannot keep.
+
+          A real Sheet rather than an inline one, because this is a form and
+          it wants the keyboard handling: `avoidKeyboard` grows the floor
+          instead of lifting the sheet, and the button lives outside any
+          scroller. Opened only from a tap, never from a data event, so it is
+          not the presentation iOS drops (see the traps skill). */}
+      {mode === 'browse' && cityRequestOpen ? (
+        <Sheet
+          onClose={() => {
+            setCityRequestOpen(false);
+            setCityWanted('');
+          }}
+          avoidKeyboard>
+          {requestedCity == null ? (
+            <>
+              <ThemedText type="headline">Somewhere else?</ThemedText>
+              <ThemedText type="body" themeColor="textSecondary">
+                We open cities where there are enough travelers. Tell us yours and it counts toward
+                the next one.
+              </ThemedText>
+              <FormTextField
+                label="City"
+                testID="city-request-input"
+                placeholder="Chiang Mai"
+                value={cityWanted}
+                onChangeText={setCityWanted}
+                maxLength={80}
+                autoCapitalize="words"
+                returnKeyType="done"
+              />
+              <PrimaryButton
+                label="Ask for it"
+                loading={requestCity.isPending}
+                disabled={cityWanted.trim().length < 2}
+                accessibilityHint="Records the city. Nothing is shared with anybody."
+                onPress={async () => {
+                  const name = cityWanted.trim();
+                  try {
+                    await requestCity.mutateAsync(name);
+                    haptics.success();
+                    setRequestedCity(name);
+                    setCityWanted('');
+                  } catch {
+                    // Surfaced by the global mutation error alert, the same
+                    // way a failed pin post is.
+                  }
+                }}
+              />
+            </>
+          ) : (
+            <>
+              <ThemedText type="headline">{`Thanks. ${requestedCity} is on the list.`}</ThemedText>
+              <ThemedText type="body" themeColor="textSecondary">
+                The more people who ask for a city, the sooner it opens.
+              </ThemedText>
+              <PrimaryButton
+                label="Done"
+                onPress={() => {
+                  setRequestedCity(null);
+                  setCityRequestOpen(false);
+                }}
+              />
+            </>
+          )}
+        </Sheet>
       ) : null}
 
       {/* The map is not a StepScreen, so it mounts its own. The pin search
@@ -3214,6 +3489,12 @@ const styles = StyleSheet.create({
     top: 0,
   },
   cityChip: {
+    // A row now that a count rides beside the name. Centre-aligned rather
+    // than baseline: two different type roles on one baseline pull the
+    // smaller one down and the chip grows to fit it.
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
     paddingHorizontal: Space.lg,
     paddingVertical: Space.sm,
     borderRadius: Radius.pill,

@@ -1,7 +1,25 @@
-import { cityNow } from '@/features/business/vocabulary';
+import { cityNow, shortTime } from '@/features/business/vocabulary';
 import { metersBetween } from '@/features/pins/cluster';
 import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
-import type { PinCategory } from '@/lib/database.types';
+import type { CityPinRow, PinCategory } from '@/lib/database.types';
+
+/**
+ * The two columns 20260902190000 added to both map feeds.
+ *
+ * Declared here rather than on CityPinRow because src/lib/database.types.ts
+ * is not this package's file. Fold them into the row type when it is; every
+ * helper below takes them as OPTIONAL, so a plain CityPinRow still passes and
+ * nothing has to be cast at a call site in the meantime.
+ */
+export type PinExtras = {
+  /** Postgres `time` as 'HH:MM:SS'. Null means "sometime that day". */
+  intent_time?: string | null;
+  /** The listed business this plan is at, when the two are the same place. */
+  business_id?: string | null;
+};
+
+/** A pin as the map actually receives it today. */
+export type MapPin = CityPinRow & PinExtras;
 
 /**
  * ONE answer to "what is this pin called", wherever it is met. The card, the
@@ -278,6 +296,104 @@ export function burnOutLabel(expiresAtISO: string, now = new Date()): string {
   // "burns out in 22h" on the very next screen, which reads as the app
   // quietly taking an hour off you.
   return `burns out in ${Math.round(msLeft / 3_600_000)}h`;
+}
+
+/**
+ * '19:00', or '7:00 PM'. Null for a plan that never named an hour, which is
+ * a real answer and not a missing one.
+ *
+ * Goes through lib/locale's single clock (business/vocabulary's shortTime is
+ * its wall-clock caller), because the app prints an hour from exactly one
+ * place and src/lib/__tests__/one-clock.test.ts fails otherwise.
+ */
+export function intentTimeLabel(time: string | null | undefined): string | null {
+  if (!time) {
+    return null;
+  }
+  return shortTime(time);
+}
+
+/**
+ * When a plan is, in one line: 'Today', or 'Today at 19:00'.
+ *
+ * "at" and never "here": an hour on a pin is future intent exactly like the
+ * date beside it, and the app does not make presence claims (§7 rule 2).
+ */
+export function whenLabel(pin: { intent_date: string } & PinExtras, now = new Date()): string {
+  const day = intentLabel(pin.intent_date, now);
+  const at = intentTimeLabel(pin.intent_time);
+  return at ? `${day} at ${at}` : day;
+}
+
+/**
+ * Earliest plan first, and a plan with no hour sits after the ones that named
+ * one for the same day. The server already orders both map feeds this way;
+ * this is the client's copy of the same rule, for the lists it builds itself
+ * out of clustered rows.
+ */
+export function byIntentMoment(
+  a: { intent_date: string } & PinExtras,
+  b: { intent_date: string } & PinExtras
+): number {
+  if (a.intent_date !== b.intent_date) {
+    return a.intent_date < b.intent_date ? -1 : 1;
+  }
+  const left = a.intent_time ?? null;
+  const right = b.intent_time ?? null;
+  if (left === right) {
+    return 0;
+  }
+  if (left == null) {
+    return 1;
+  }
+  if (right == null) {
+    return -1;
+  }
+  return left < right ? -1 : 1;
+}
+
+/** The chip that means "I have not said". Empty, so it is falsy on submit. */
+export const NO_INTENT_TIME = '';
+
+/**
+ * The hours a pin may actually name, and no others.
+ *
+ * Two refusals, and between them they are why an optional hour cannot become
+ * a way around the 72-hour ceiling (§7 rule 3). An hour already gone on the
+ * CITY's clock is not a plan, and an hour that falls after the pin's own
+ * expiry is a plan the map would advertise past the moment it goes dark. The
+ * database refuses that second one outright (validate_pin resolves the
+ * intent moment in the city's zone and compares it to expires_at), so this
+ * is the same rule stated where a person can see it rather than a form that
+ * offers a choice the server will reject.
+ *
+ * The offset between the two clocks is the difference between the city's
+ * wall time and this device's: cityClockNow hands back a Date whose LOCAL
+ * getters read the city's hour, so subtracting is exactly that gap.
+ */
+export function intentTimeOptions(
+  intentISO: string,
+  expiresAt: Date,
+  cityClock: Date,
+  now = new Date()
+): { value: string; label: string }[] {
+  const offsetMs = cityClock.getTime() - now.getTime();
+  const day = parseISODate(intentISO);
+  const options = [{ value: NO_INTENT_TIME, label: 'Any time' }];
+  for (let hour = 0; hour < 24; hour += 1) {
+    // Built from the calendar parts rather than by adding milliseconds, so a
+    // clock change inside the day cannot slide every chip by an hour.
+    const wall = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour);
+    if (wall.getTime() <= cityClock.getTime()) {
+      continue;
+    }
+    if (wall.getTime() - offsetMs > expiresAt.getTime()) {
+      break;
+    }
+    const value = `${String(hour).padStart(2, '0')}:00`;
+    options.push({ value, label: intentTimeLabel(value) ?? value });
+  }
+  return options;
 }
 
 /** "Tonight" / "Tomorrow" / weekday label for a pin's intent date. */

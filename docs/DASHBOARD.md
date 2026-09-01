@@ -4,7 +4,9 @@ Every metric the brief says to instrument from day one, and exactly where it
 lives. Two sources: **PostHog** (app behavior; needs
 `EXPO_PUBLIC_POSTHOG_API_KEY` in `.env`) and **admin SQL views** (marketplace
 truth straight from Postgres; run in the Supabase SQL editor — they are
-service-role-only and invisible to clients).
+service-role-only and invisible to clients). One of them, `liquidity_daily`,
+is a table rather than a view: it is the only history in the schema, because
+pins delete themselves and cannot be counted afterwards.
 
 **Until the PostHog key exists as a repo secret and in the EAS environment
 (docs/APP_STORE.md), every PostHog-derived number on this page reads zero** —
@@ -16,7 +18,8 @@ dead.
 
 | §6 metric                                | Source                                                                                     |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
-| **Liquidity per city** (live trip/pin)   | `select * from admin_liquidity;`                                                           |
+| **Liquidity per city** (live trip/pin)   | `select * from admin_liquidity;` — read `liquidity` and `liquidity_reachable` together     |
+| Liquidity over time                      | `select * from liquidity_daily order by day desc;` — one row per city per night            |
 | Map DAU vs matching DAU                  | PostHog: unique users on `map_viewed` / `travelers_viewed`, both `account_type='traveler'` |
 | Request → accept rate                    | `select * from admin_request_funnel;` — SQL only, not a PostHog funnel (insight 3)         |
 | % first messages blocked                 | `select * from admin_moderation_stats;` **plus** PostHog `draft_flagged` (see below)       |
@@ -28,6 +31,8 @@ dead.
 
 ```sql
 select * from admin_liquidity;        -- THE number: distinct users w/ live trip or pin, per city
+select * from liquidity_daily         -- the same counts, one row per city per night
+  where day > current_date - 30 order by day desc, city_id;
 select * from admin_request_funnel;   -- last 30d: delivered, accepted, accept %
 select * from admin_moderation_stats; -- last 30d: attempts, blocked, % blocked (HALF the creep alarm)
 select * from admin_pin_stats;        -- live pins + seeded share per city
@@ -55,6 +60,36 @@ raises `this report names a chat and not a person: act on somebody in it, or
 dismiss` - it is not a bug, it is the queue refusing to guess who you meant.
 Open the room, decide who is doing it, act on that person by their user id, or
 dismiss the report if the room is fine.
+
+**`admin_liquidity` has two numbers now, and the pair is the point.**
+`liquidity` is what it always was: distinct users in that city with a live pin
+or an active trip. `liquidity_reachable` is the subset who have opened the app
+in the last seven days (`profiles.last_seen_on`, written once a day by
+`touch_last_seen()`). A trip can be posted weeks ahead and run for weeks, so
+somebody who installed once, posted a trip and never came back counts toward
+`liquidity` for that whole window - which means the 500-1,000 gate on opening a
+second city can be met entirely by people who will never answer a first
+message. Read them side by side: liquidity 800 with reachable 90 is a
+different city from liquidity 800 with reachable 700, and only the second one
+is ready.
+
+Two cautions on the reachable column. It reads LOW for the first week after
+the deploy, because `last_seen_on` is null for everybody until they next open
+the app, and null counts as unreachable. And it is a date and never a time on
+purpose: a per-minute last-seen is a presence signal, and this app's strongest
+safety claim is that it never collects one (hard rule 2). Nothing surfaces the
+column to another user and no client can read it at all.
+
+**`liquidity_daily` is the history the live view cannot keep.** Pins hard-
+expire within 72 hours and are deleted within 15 minutes of expiry (rule 3),
+so a trend cannot be reconstructed after the fact - it is recorded as it
+happens or it does not exist. A pg_cron job (`snapshot-liquidity`, 03:50 UTC,
+after the message-request sweep at 03:40) writes one row per launch city with
+the same counts the view shows. COUNTS ONLY and never rows: the table holds no
+pin, no trip, no person and no coordinate, so rule 3 is untouched. Re-running
+the job on the same day corrects that day rather than failing, so a manual
+catch-up after a missed night is safe. Both it and the view are service-role
+only.
 
 **`admin_ops_health` is the daily smoke test.** `oldest_held_message_minutes`
 or `oldest_unsent_push_minutes` climbing past ~10 means a worker schedule is

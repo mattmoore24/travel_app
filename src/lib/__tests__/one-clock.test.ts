@@ -15,6 +15,13 @@ import path from 'node:path';
  * formatter. Two review lenses caught that the file the package is about was
  * never touched. So the guard is not "does the shared clock exist" - it did -
  * but "is there anything ELSE that prints an hour".
+ *
+ * The DATE half is the same defect one field over, and it is guarded the same
+ * way below. Thirteen formatters named 'en' by hand and four passed
+ * `undefined`, which is the device, so a Portuguese phone drew "agosto 2026"
+ * as a calendar header with "Aug 30 to Sep 2" in the summary directly beneath
+ * it. lib/locale's `dates()` is the one answer; ADOPTION_OUTSTANDING is every
+ * file that has not moved onto it yet, and it may only ever shrink.
  */
 const REPO = path.join(__dirname, '..', '..', '..');
 const SRC = path.join(REPO, 'src');
@@ -76,5 +83,154 @@ describe('the app prints an hour from exactly one place', () => {
     expect(chat).toContain('clocks().instant');
     expect(biz).toContain("from '@/lib/locale'");
     expect(biz).toContain('clocks().wall');
+  });
+});
+
+/**
+ * The files that still name a locale of their own, one line each, each
+ * belonging to a subsystem this package could not reach.
+ *
+ * This list is a DEBT, not an allowance. A file may leave it; nothing may
+ * join it. The guard below is deliberately a subset check rather than an
+ * equality check, so the package that finally moves `features/trips/dates.ts`
+ * does not have to come back and edit this file to stay green - it just gets
+ * one entry deader than it was.
+ *
+ * The four that pass `undefined` are the ones producing the actual bug on a
+ * non-English phone; the rest say 'en' and are merely a second engine that
+ * will drift. They are marked so whoever picks this up knows which half is
+ * user-visible today.
+ */
+const ADOPTION_OUTSTANDING = new Set([
+  // Device locale today, so these are the four screens a Portuguese phone
+  // renders in Portuguese beside English rows.
+  path.join('src', 'app', 'room', '[id].tsx'),
+  path.join('src', 'features', 'chat', 'chat-row.tsx'),
+  path.join('src', 'features', 'groups', 'closing.ts'),
+  path.join('src', 'features', 'trips', 'trip-calendar.tsx'),
+  // `toLocaleDateString()` with no argument at all, which is both the device
+  // locale AND the numeric shape lib/locale deliberately does not offer.
+  path.join('src', 'features', 'auth', 'gate-copy.ts'),
+  // Pinned to 'en', so they read correctly today and are a second engine.
+  path.join('src', 'features', 'chat', 'row-kind.ts'),
+  path.join('src', 'features', 'pins', 'map-filter-sheet.tsx'),
+  path.join('src', 'features', 'pins', 'pin-helpers.ts'),
+  path.join('src', 'features', 'trips', 'dates.ts'),
+]);
+
+describe('the app prints a day from exactly one place too', () => {
+  const files = sourceFiles(SRC).filter((f) => !f.endsWith(path.join('lib', 'locale.ts')));
+
+  /**
+   * A formatter somebody READS. Two constructions are computations and are
+   * not second engines:
+   *
+   *   * `.formatToParts` reads the numbers back out (cityClockNow builds a
+   *     Date in a city's zone with it), and must stay locale-independent
+   *     precisely because nobody ever sees its output.
+   *   * `.resolvedOptions()` asks the platform what zone it is in and formats
+   *     nothing at all.
+   */
+  function renderedFormatters(code: string): string[] {
+    const found: string[] = [];
+    for (const m of code.matchAll(/new Intl\.DateTimeFormat\([^)]*\)(\s*\.\w+)?/gs)) {
+      if (!m[0].includes('.formatToParts') && !m[0].includes('.resolvedOptions')) {
+        found.push(m[0].replace(/\s+/g, ' ').slice(0, 90));
+      }
+    }
+    for (const m of code.matchAll(/\.toLocale(Date|Time)?String\(/g)) {
+      found.push(m[0]);
+    }
+    return found;
+  }
+
+  it('has no NEW file naming a locale of its own', () => {
+    const offenders = new Set<string>();
+    for (const file of files) {
+      const rel = path.relative(REPO, file);
+      if (ADOPTION_OUTSTANDING.has(rel)) {
+        continue;
+      }
+      if (renderedFormatters(fs.readFileSync(file, 'utf8')).length > 0) {
+        offenders.add(rel);
+      }
+    }
+    // Sorted so the failure names the file rather than a Set's insertion
+    // order, and the fix is always "call lib/locale's dates() instead".
+    expect([...offenders].sort()).toEqual([]);
+  });
+
+  it('and every entry on the outstanding list is still a real file', () => {
+    // A stale path is worse than a missing guard: it silently exempts nothing
+    // while looking like it exempts something, and the day somebody renames
+    // that file the exemption quietly becomes a hole.
+    for (const rel of ADOPTION_OUTSTANDING) {
+      expect(fs.existsSync(path.join(REPO, rel))).toBe(true);
+    }
+  });
+
+  it('is reached by the chat list, whose two engines started this', () => {
+    const chat = fs.readFileSync(path.join(SRC, 'features', 'chat', 'separators.ts'), 'utf8');
+    expect(chat).toContain('dates().weekdayMonthDay');
+    expect(chat).toContain('dates().monthDay');
+    expect(chat).toContain('dates().weekday.');
+  });
+
+  it('names its locale once, and it is not the device', () => {
+    const locale = fs.readFileSync(path.join(SRC, 'lib', 'locale.ts'), 'utf8');
+    expect(locale).toContain("export const LOCALE = 'en'");
+    // Every formatter in the file is built from that one constant. A literal
+    // tag inside `dates()` or `clocks()` is exactly the drift this guards.
+    const built = [...locale.matchAll(/new Intl\.DateTimeFormat\(\s*([A-Za-z_'"][^,)]*)/g)].map(
+      (m) => m[1].trim()
+    );
+    expect(built.length).toBeGreaterThan(2);
+    expect(new Set(built)).toEqual(new Set(['LOCALE']));
+  });
+});
+
+/**
+ * A Portuguese phone, so the assertions below are about what a non-English
+ * device gets rather than about what the runner happens to be set to. This is
+ * the exact configuration that used to draw "agosto 2026" as a calendar
+ * header with "Aug 30 to Sep 2" in the summary directly beneath it.
+ */
+jest.mock('expo-localization', () => ({
+  getLocales: () => [{ languageTag: 'pt-PT', languageCode: 'pt' }],
+  getCalendars: () => [{ uses24hourClock: true, firstWeekday: 2, timeZone: 'UTC' }],
+}));
+
+describe('one language on one screen', () => {
+  // Required lazily so the mock above is in place before the module reads it.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const locale = require('@/lib/locale') as typeof import('@/lib/locale');
+  // Midday UTC, so no runner's timezone can move it into a different month.
+  const day = new Date('2026-08-30T12:00:00Z');
+
+  it('writes its months in English however the phone is set', () => {
+    expect(locale.dates().monthDay.format(day)).toContain('Aug');
+    expect(locale.dates().weekdayMonthDay.format(day)).toContain('Aug');
+    expect(locale.dates().monthYear.format(day)).toContain('August');
+    // The bug this closes is not "Portuguese" - it is TWO languages on one
+    // screen. Nothing below may come back in the device's language while the
+    // rest of the row is English.
+    expect(locale.dates().monthYear.format(day)).not.toContain('agosto');
+  });
+
+  it('still lets the CONVENTIONS follow the phone, which is the clock', () => {
+    // Twelve-versus-twenty-four changes what the digits MEAN, so it follows
+    // the device. A month name is just a word, and this app's words are
+    // English. That split is the whole design of lib/locale.
+    expect(locale.USES_24_HOUR_CLOCK).toBe(true);
+    expect(locale.clocks().instant.format(day)).not.toMatch(/AM|PM/i);
+  });
+
+  it('offers no numeric date at all', () => {
+    // "3/4" is March 4 to an American and 3 April to nearly everyone else
+    // this app is for, and its readers are by definition abroad. Keeping the
+    // shape out of the vocabulary is how that stays true of every screen.
+    for (const format of Object.values(locale.dates())) {
+      expect(format.format(day)).toMatch(/[A-Za-z]/);
+    }
   });
 });

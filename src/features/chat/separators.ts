@@ -1,16 +1,18 @@
 import type { MessageRow } from '@/lib/database.types';
-import { clocks } from '@/lib/locale';
+import { clocks, dates } from '@/lib/locale';
 
 /** Longer than this between messages and the thread gets a time stamp. */
 const TIMESTAMP_GAP_MS = 60 * 60 * 1000;
 
-// No local formatter. This line was the other half of the two-clock bug: with
-// no `hour12` it is 12-hour on every phone in the world, so a traveler read
-// "9:14 PM" on a message and "Open · till 02:00" on the bar it was about.
-// lib/locale.clocks() is the app's one answer and it follows the phone.
-// Accessed per call rather than destructured at import, because the accessor
-// memoises and a test can stub the preference and reload.
-const DAY = new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' });
+// No local formatter, for either half of a stamp. The clock was the first
+// half: with no `hour12` it is 12-hour on every phone in the world, so a
+// traveler read "9:14 PM" on a message and "Open · till 02:00" on the bar it
+// was about. The DAY was the second, and it failed the other way round - a
+// formatter here said 'en' while the "you leave" line one row down passed
+// `undefined`, so a Portuguese phone drew both languages on one screen.
+// lib/locale is the app's one answer to both questions.
+// Accessed per call rather than destructured at import, because the accessors
+// memoise and a test can stub the preference and reload.
 
 export function dayLabel(iso: string) {
   const date = new Date(iso);
@@ -23,7 +25,7 @@ export function dayLabel(iso: string) {
   if (sameDay(date, yesterday)) {
     return 'Yesterday';
   }
-  return DAY.format(date);
+  return dates().weekdayMonthDay.format(date);
 }
 
 /**
@@ -53,13 +55,6 @@ export function separatorFor(current: MessageRow, older: MessageRow | undefined)
  * same vocabulary as the in-thread separators above, compressed to the width
  * a row can spare.
  */
-const WEEKDAY = new Intl.DateTimeFormat('en', { weekday: 'short' });
-// 'Mar 4', never '3/4': a numeric date means March 4 to an American and
-// 3 April to nearly everyone else this app is for. Unambiguous in every
-// Latin-script locale, and one or two characters wider in a column already
-// sized for 'Yesterday'.
-const SHORT_DATE = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' });
-
 export function rowTimestamp(iso: string | null, now: Date = new Date()): string {
   if (!iso) {
     return '';
@@ -79,9 +74,14 @@ export function rowTimestamp(iso: string | null, now: Date = new Date()): string
   // how every messaging app people already use reads.
   const days = (now.getTime() - at.getTime()) / 86400000;
   if (days >= 0 && days < 7) {
-    return WEEKDAY.format(at);
+    return dates().weekday.format(at);
   }
-  return SHORT_DATE.format(at);
+  // 'Mar 4', never '3/4': a numeric date means March 4 to an American and
+  // 3 April to nearly everyone else this app is for. Unambiguous in every
+  // Latin-script locale, and one or two characters wider in a column already
+  // sized for 'Yesterday'. lib/locale's `dates()` has no numeric shape at
+  // all, which is how that stays true of every screen rather than of this one.
+  return dates().monthDay.format(at);
 }
 
 /** 12 becomes '12'; anything past 99 becomes '99+' rather than a wide pill. */

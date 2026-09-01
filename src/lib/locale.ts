@@ -11,8 +11,13 @@ import { getCalendars, getLocales, type Calendar, type Locale } from 'expo-local
  * summary directly beneath it, and chat times are locked to 12-hour AM/PM
  * worldwide while business hours in the same app are 24-hour. expo-
  * localization was a declared dependency with zero call sites; this file is
- * the one call site, and migrating the eleven formatters onto it is its own
- * package (docs/ARCHITECTURE.md, D5).
+ * the one call site (docs/ARCHITECTURE.md, D5).
+ *
+ * Both halves of the answer now live below: `clocks()` for anything that
+ * prints an hour, `dates()` for anything that prints a day. Moving the last
+ * formatters in `src/features` onto them is the tail of the same package, and
+ * `src/lib/__tests__/one-clock.test.ts` names every site still outstanding so
+ * the list can only shrink.
  *
  * READ AT MODULE LOAD, so the values are frozen for the life of the process.
  * Somebody who changes their phone's language or region mid-session keeps the
@@ -75,6 +80,35 @@ export const FIRST_WEEKDAY: number = calendar.firstWeekday ?? 1;
 export const DEVICE_TIME_ZONE: string = calendar.timeZone || 'UTC';
 
 /**
+ * THE locale every formatter in the app is built with, and there is exactly
+ * one of it.
+ *
+ * It is 'en' and not `DEVICE_LOCALE`, which is the same call the clock above
+ * already made and for the same reason: decision D5 keeps the app's WORDS
+ * English for v1, and a formatter handed the phone's tag writes its words in
+ * the phone's language. That is how a Portuguese phone got "agosto 2026" as a
+ * calendar header with "Aug 30 to Sep 2" in the summary directly beneath it -
+ * one screen in two languages, which reads as a half-finished translation
+ * rather than as a product decision.
+ *
+ * Being uniformly English is a decision somebody made. Being English in
+ * thirteen places and Portuguese in four is a bug, and it is the bug this
+ * constant exists to make unrepresentable.
+ *
+ * The CONVENTIONS that carry no words still follow the phone - the clock's
+ * `hour12` below is the whole example - because twelve-versus-twenty-four
+ * changes what the digits MEAN. A month name is just a word, and this app's
+ * words are English.
+ *
+ * If the founder later decides the dates should localise, this is the one
+ * line that changes, and `src/lib/__tests__/one-clock.test.ts` is what keeps
+ * it the one line. Note what that costs before flipping it: every date string
+ * changes width overnight (German month names, Japanese ordering), so every
+ * fixed-width date container has to be re-photographed, not just typechecked.
+ */
+export const LOCALE = 'en';
+
+/**
  * THE app's clock, and there is exactly one.
  *
  * The app kept two and they disagreed on the same evening: chat separators
@@ -115,14 +149,92 @@ export function clocks(): { instant: Intl.DateTimeFormat; wall: Intl.DateTimeFor
     };
     clockFormats = {
       /** A moment in time: a message, an event. Rendered in the device zone. */
-      instant: new Intl.DateTimeFormat('en', shape),
+      instant: new Intl.DateTimeFormat(LOCALE, shape),
       /**
        * A wall-clock time, which carries no date and no zone: it is 18:00 at
        * that door. Anchored to a fixed UTC instant and read back in UTC, so
        * no runner's timezone and no daylight-saving jump can move it.
        */
-      wall: new Intl.DateTimeFormat('en', { ...shape, timeZone: 'UTC' }),
+      wall: new Intl.DateTimeFormat(LOCALE, { ...shape, timeZone: 'UTC' }),
     };
   }
   return clockFormats;
+}
+
+/**
+ * THE app's dates, and there is exactly one set of them.
+ *
+ * The clock above closed the two-engine bug for TIMES and left the same bug
+ * standing for DAYS: thirteen call sites named 'en' by hand and four passed
+ * `undefined`, which is the device. So the shapes below are named by what
+ * they SAY rather than by their options, and every screen that prints a day
+ * asks here - the same rule, and the same one place to change, as the clock.
+ *
+ * Six shapes, not one per call site. A seventh means a screen is saying
+ * something none of the others say, which is worth a moment's thought before
+ * it is worth a formatter.
+ *
+ * A numeric date is deliberately NOT among them. "3/4" is March 4 to an
+ * American and 3 April to nearly everyone else this app is for, and the app's
+ * readers are by definition abroad.
+ *
+ * Memoised behind an accessor rather than built at import time, for the same
+ * reason as the clock: a test can stub the preference and load the module
+ * again.
+ */
+type DateFormats = {
+  /** "Mar 4" - the everyday date, and the one most rows want. */
+  monthDay: Intl.DateTimeFormat;
+  /** "Mar 4, 2027" - the same date once the year is not this one. */
+  monthDayYear: Intl.DateTimeFormat;
+  /** "Sat" - inside the last week, a weekday says more than a date. */
+  weekday: Intl.DateTimeFormat;
+  /** "Sat, Mar 4" - a day separator, and the day a plan is for. */
+  weekdayMonthDay: Intl.DateTimeFormat;
+  /** "Saturday" - a day picker's third chip, where there is room to say it. */
+  weekdayLong: Intl.DateTimeFormat;
+  /** "Saturday, Mar 4" - a plan's day, spelled out. */
+  weekdayLongMonthDay: Intl.DateTimeFormat;
+  /** "March 2027" - a calendar's month header. */
+  monthYear: Intl.DateTimeFormat;
+  /**
+   * "Saturday, 4 March" - a date SPOKEN. VoiceOver reads a calendar cell,
+   * and "Mar 4" is read as an abbreviation there; this is the one shape that
+   * exists for the ear rather than for the eye.
+   */
+  spokenDate: Intl.DateTimeFormat;
+};
+
+let dateFormats: DateFormats | null = null;
+
+export function dates(): DateFormats {
+  if (dateFormats == null) {
+    dateFormats = {
+      monthDay: new Intl.DateTimeFormat(LOCALE, { month: 'short', day: 'numeric' }),
+      monthDayYear: new Intl.DateTimeFormat(LOCALE, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }),
+      weekday: new Intl.DateTimeFormat(LOCALE, { weekday: 'short' }),
+      weekdayMonthDay: new Intl.DateTimeFormat(LOCALE, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+      }),
+      weekdayLong: new Intl.DateTimeFormat(LOCALE, { weekday: 'long' }),
+      weekdayLongMonthDay: new Intl.DateTimeFormat(LOCALE, {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+      }),
+      monthYear: new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric' }),
+      spokenDate: new Intl.DateTimeFormat(LOCALE, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+      }),
+    };
+  }
+  return dateFormats;
 }

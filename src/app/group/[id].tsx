@@ -34,7 +34,9 @@ import { ThreadHeader } from '@/features/chat/thread-header';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { haptics } from '@/lib/haptics';
 import { closeDayLabel, useHasGroupClosed } from '@/features/groups/closing';
-import { addDays, formatDate, parseISODate, toISODate } from '@/features/trips/dates';
+import { seedEndDate } from '@/features/rooms/end-date';
+import { useMyTrips } from '@/features/trips/hooks';
+import { formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { pickImage } from '@/lib/pick-image';
 import { INVITE_OPTIONS, canInviteToGroup } from '@/features/groups/invites';
@@ -205,12 +207,18 @@ function MemberRow({
  * the clamped minimum instead — and then confirming the day it is showing
  * fires no onChange and does nothing, which makes the one control that
  * reopens a chat look broken.
+ *
+ * `fallbackISO` is what to open on when the stored date cannot be shown, and
+ * it comes from the creator's own trip (features/rooms/end-date) so that this
+ * control and the one on the creation screen agree about what an unset end
+ * date should be prefilled with. It was a bare thirty days in both places,
+ * separately.
  */
-function pickerDay(maxStayUntil: string | null): Date {
+function pickerDay(maxStayUntil: string | null, fallbackISO: string): Date {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const stored = maxStayUntil ? parseISODate(maxStayUntil) : null;
-  return stored != null && stored.getTime() >= today.getTime() ? stored : addDays(new Date(), 30);
+  return stored != null && stored.getTime() >= today.getTime() ? stored : parseISODate(fallbackISO);
 }
 
 export default function GroupScreen() {
@@ -251,7 +259,10 @@ export default function GroupScreen() {
   const closed = useHasGroupClosed(group?.max_stay_until ?? null);
   // Always a day the control is allowed to display: today's minimum rules out
   // a stored date in the past, and a chat with no end date has none at all.
-  const pickerValue = pickerDay(group?.max_stay_until ?? null);
+  // The same trip-shaped seed the creation screen offers, so the after-the-fact
+  // control and the creation control cannot disagree.
+  const { data: trips } = useMyTrips();
+  const pickerValue = pickerDay(group?.max_stay_until ?? null, seedEndDate(trips).iso);
 
   const confirmLeave = () => {
     // The confirmation echoes the control and the footnote under it — the
