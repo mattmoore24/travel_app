@@ -258,9 +258,11 @@ describe('the contact step does not burn a code per back-navigation', () => {
     // phone number, and each pass spent one of the five daily sends AND
     // invalidated the digits already in the owner's inbox. sendCode() thirty
     // lines below carried the guard already.
-    expect(signup).toContain('if (!codeLive && !codeBounced) {');
+    expect(signup).toContain('if (sentTo !== target || !(codeLive || codeBounced))');
     // Both senders read the same two flags, so they cannot drift on what
-    // counts as a code already in flight.
+    // counts as a code already in flight. The contact step additionally
+    // scopes them to the address, because it is the step somebody comes back
+    // to in order to FIX that address - see business-edges.test.ts.
     expect((signup.match(/codeLive/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 });

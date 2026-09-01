@@ -231,6 +231,19 @@ export default function BusinessSignupScreen() {
   const [refused, setRefused] = useState<ContactKind[]>([]);
   const [contactProblem, setContactProblem] = useState<string | null>(null);
   const [savingContacts, setSavingContacts] = useState(false);
+  /**
+   * The address the last code ACTUALLY went to, or null.
+   *
+   * my_business_code_status (20260829150000:173-198) returns sent_at,
+   * delivered, attempts and failed - and no address. So `codeLive` means "a
+   * code is live", never "a code is live FOR THIS ADDRESS", and a guard built
+   * on it alone cannot tell a second Continue on the same address from a
+   * corrected typo. This is the missing half, and it fails SAFE: when it is
+   * stale or reset the send happens, which is the old behaviour. Only a send
+   * that actually resolved advances it, so a refusal (the fifth of the day)
+   * cannot leave a live-looking record of a code nobody got.
+   */
+  const [sentTo, setSentTo] = useState<string | null>(null);
   const [registered, setRegistered] = useState(false);
 
   // Chosen, never assumed. This used to fall back to `launchCities[0]`, so
@@ -436,18 +449,33 @@ export default function BusinessSignupScreen() {
       // footer on every step from here on, plus the code screen at the end,
       // both surface a bounce through useBusinessCodeStatus.
       //
-      // Guarded exactly as sendCode() is, and for the reason written there:
-      // a second code inside the first one's twenty minutes spends one of the
-      // five a business gets in a day AND invalidates the digits somebody may
-      // be holding in their other hand. This step is not a one-way door -
+      // Guarded as sendCode() is, and for the reason written there: a second
+      // code inside the first one's twenty minutes spends one of the five a
+      // business gets in a day AND invalidates the digits somebody may be
+      // holding in their other hand. This step is not a one-way door -
       // Continue, back one screen, Continue again is an ordinary thing to do
-      // while checking a phone number - so an unguarded send here burned a
-      // daily allowance per back-navigation and silently killed the code
-      // already in the owner's inbox. A bounce is skipped from the same end:
-      // re-sending to an address that just bounced only bounces again, and
-      // the code screen leads with "Use a different address".
-      if (!codeLive && !codeBounced) {
-        void requestCode.mutateAsync(email.trim()).catch(() => {});
+      // while checking a phone number - so an unguarded send burned an
+      // allowance per back-navigation and killed the live code.
+      //
+      // But SCOPED TO THE ADDRESS, which sendCode does not have to be and
+      // this does. The commonest reason to come back to this step is that the
+      // email was wrong, and codeLive cannot see an address (the status RPC
+      // does not return one), so guarding on it alone skipped the send for a
+      // CORRECTED address and left the owner with a listing whose code went
+      // to the typo - stuck, with no way to ask for one that was never sent.
+      // That is a worse failure than the one the guard is for, so the guard
+      // only bites when the live-or-bounced code belongs to this same
+      // address. A bounce is scoped the same way: re-sending to the address
+      // that just bounced bounces again, but a different address is exactly
+      // the fix for it.
+      const target = email.trim();
+      if (sentTo !== target || !(codeLive || codeBounced)) {
+        void requestCode
+          .mutateAsync(target)
+          // Only a send that resolved counts. A refusal must not record an
+          // address as covered, or the next pass would skip it too.
+          .then(() => setSentTo(target))
+          .catch(() => {});
       }
       go(8);
     } catch {

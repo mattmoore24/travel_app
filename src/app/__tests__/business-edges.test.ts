@@ -139,10 +139,12 @@ describe('the listing steps read as a business', () => {
     // ordinary thing to do while checking a phone number, and an unguarded
     // send spent one of the five daily codes on each pass while invalidating
     // the digits already in the owner's inbox.
-    const send = code.indexOf(
-      'if (!codeLive && !codeBounced) {\n        void requestCode.mutateAsync(email.trim()).catch(() => {});\n      }\n      go(8);'
-    );
-    expect(send).toBeGreaterThan(-1);
+    // The code goes out the moment there is an address to send it to, before
+    // the photo step rather than nine screens later - but only when one is
+    // not already in flight TO THAT ADDRESS.
+    expect(code).toContain('if (sentTo !== target || !(codeLive || codeBounced))');
+    expect(code).toContain('void requestCode');
+    expect(code).toContain('go(8);');
   });
 
   it('lets the code be typed mid-flow without leaving the form', () => {
@@ -281,5 +283,36 @@ describe('the review step says the true thing about the code', () => {
     // Every branch carries its own note, so none of them can inherit a
     // sentence written for a different state.
     expect((block.match(/note:/g) ?? []).length).toBe(5);
+  });
+});
+
+describe('the contact step guard is scoped to the address', () => {
+  it('still sends when the address changed, which is why people come back', () => {
+    const code = src(SIGNUP);
+    // my_business_code_status returns sent_at/delivered/attempts/failed and
+    // NO address, so codeLive means "a code is live", never "for this
+    // address". A guard on codeLive alone skipped the send for a CORRECTED
+    // email and left the owner with a listing whose code went to the typo -
+    // no way to ask for one that was never sent. The commonest reason to
+    // come back to this step is exactly that correction.
+    expect(code).toContain('const [sentTo, setSentTo] = useState<string | null>(null)');
+    expect(code).toContain('sentTo !== target');
+  });
+
+  it('records an address only when the send actually resolved', () => {
+    const code = src(SIGNUP);
+    // Optimistically recording it would mean a refusal (the fifth of the
+    // day) left an address looking covered by a code nobody received, and
+    // the next pass would skip it too.
+    expect(code).toContain('.then(() => setSentTo(target))');
+    const block = code.slice(code.indexOf('const target = email.trim()'));
+    expect(block.slice(0, block.indexOf('go(8)'))).not.toContain('setSentTo(target);');
+  });
+
+  it('fails safe: an unset mirror sends rather than staying silent', () => {
+    const code = src(SIGNUP);
+    // null !== target, so the first pass and any remount send. The guard can
+    // only ever suppress a send it can prove is redundant.
+    expect(code).toContain('useState<string | null>(null)');
   });
 });
