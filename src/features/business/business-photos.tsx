@@ -70,10 +70,14 @@ async function uploadBusinessPhoto(input: {
   localUri: string;
   position: number;
 }) {
+  // The other caller the floor is for. The first approved photo becomes the
+  // cover, drawn at map-card size on the listing a traveler taps, so a soft
+  // one is soft in the one place a business is judged.
   const storagePath = await processAndUploadImage(
     BUSINESS_PHOTO_BUCKET,
     input.userId,
-    input.localUri
+    input.localUri,
+    { fillsAFrame: true }
   );
   const { error } = await supabase.from('business_photos').insert({
     business_id: input.businessId,

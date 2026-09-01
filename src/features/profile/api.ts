@@ -185,7 +185,14 @@ export async function fetchPhotos(userId: string) {
  * server-side moderation chokepoint).
  */
 export async function uploadPhoto(userId: string, localUri: string, position: number) {
-  const storagePath = await processAndUploadImage(PHOTO_BUCKET, userId, localUri);
+  // A profile photo IS the hero: it fills the card a stranger decides on, so
+  // an upscaled thumbnail off a chat app is soft at exactly the size that
+  // matters. This is one of the two callers the floor is for; the pipeline's
+  // default is off because the same function carries chat and group photos,
+  // where a small screenshot is legitimate.
+  const storagePath = await processAndUploadImage(PHOTO_BUCKET, userId, localUri, {
+    fillsAFrame: true,
+  });
   const { data, error } = await supabase
     .from('profile_photos')
     .insert({ user_id: userId, storage_path: storagePath, position })

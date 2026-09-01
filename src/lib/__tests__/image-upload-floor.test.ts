@@ -14,6 +14,9 @@
  * property of the phone, not of the photo, and blocking there would turn a
  * soft picture into no picture at all.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { Image } from 'react-native';
 
 import { HERO_MIN_SHORT_EDGE, isPhotoTooSmall, processAndUploadImage } from '@/lib/image-upload';
@@ -127,5 +130,45 @@ describe('a photo that does not fill a frame', () => {
       /^u1\//
     );
     expect(mockUpload).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * The floor is worth nothing until somebody passes the flag.
+ *
+ * `fillsAFrame` is off by default and correctly so - the same pipeline
+ * carries chat and group photos, where a small screenshot of a ticket or a
+ * map is legitimate and refusing it would put an honest-sounding sentence
+ * that is wrong in front of somebody. But a default-off option that no
+ * caller ever sets is a feature that ships dark, which is exactly what the
+ * batch before this one did with a whole edit screen.
+ */
+describe('the two callers the floor exists for', () => {
+  const src = (file: string): string =>
+    fs.readFileSync(path.join(__dirname, '..', '..', '..', file), 'utf8');
+
+  it('a profile photo is held to it', () => {
+    // It fills the card a stranger decides on.
+    const code = src('src/features/profile/api.ts');
+    const call = code.slice(code.indexOf('export async function uploadPhoto'));
+    expect(call.slice(0, call.indexOf('supabase'))).toContain('fillsAFrame: true');
+  });
+
+  it('a business photo is held to it', () => {
+    // The first approved one becomes the cover, drawn at map-card size.
+    const code = src('src/features/business/business-photos.tsx');
+    expect(code).toContain('fillsAFrame: true');
+  });
+
+  it('a chat photo is NOT, and neither is a group photo', () => {
+    // A screenshot of a ticket renders at bubble width and is fine there.
+    expect(src('src/features/chat/api.ts')).not.toContain('fillsAFrame');
+    expect(src('src/features/groups/api.ts')).not.toContain('fillsAFrame');
+  });
+
+  it('and neither is a verification selfie, which nobody but the worker sees', () => {
+    expect(src('src/features/profile/api.ts')).not.toContain(
+      'VERIFICATION_BUCKET, userId, localUri, {'
+    );
   });
 });
