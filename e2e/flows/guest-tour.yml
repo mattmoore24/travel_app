@@ -393,6 +393,13 @@ appId: com.mattmoore.samewhere
 # (select seed_launch_business_content();) rather than to loosen this.
 - tapOn:
     text: '.*, something on tonight'
+# A photograph OF THE TAP, before anything is asserted about it. Run 105
+# failed the next step twice and its failure screenshot showed the app on a
+# different tab with the default city - taken thirty seconds later, so it
+# could not say whether the sheet never opened or the app went somewhere
+# afterwards. This one is taken immediately, so the next run distinguishes
+# those two without anybody having to reason about it.
+- takeScreenshot: 09a-what-the-business-row-did
 # HARD, for the same reason the tap above is, and this is the step run 97
 # proved was still optional one too long. The row was tapped and COMPLETED,
 # the sheet's 'See the whole page' WARNED (not found), the scroll WARNED, and

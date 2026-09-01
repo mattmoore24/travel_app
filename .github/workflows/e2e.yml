@@ -118,7 +118,14 @@ jobs:
     # and a job killed by ITS timeout cancels the publish step — the run's
     # screenshots die with it, which is the worst outcome a slow runner can
     # buy. Green runs finish in ~35 minutes regardless.
-    timeout-minutes: 55
+    #
+    # 75, not 55: run 105 was cancelled mid-flow with signed-in-tour still to
+    # go. The flows now get MUCH further than they did when 55 was chosen -
+    # business-tour reaches the code screen rather than dying at the photo
+    # step - and each failing flow is retried once, so the ceiling that used
+    # to be generous became the thing deciding the result. A cancelled job
+    # answers nothing and costs a full macOS hour anyway.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
@@ -366,6 +373,37 @@ jobs:
           xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
           xcrun simctl ui "$UDID" content_size medium || true
           ls -la
+
+      # DID THE APP DIE, OR DID THE SCREEN JUST NOT APPEAR?
+      #
+      # Run 105 failed guest-tour twice on a sheet that did not open, and the
+      # failure screenshot showed the app on a DIFFERENT TAB with the default
+      # city thirty seconds after the tap - which is what a crash and
+      # relaunch looks like, and is not something a Maestro assertion can
+      # tell you. A screenshot cannot distinguish "the sheet is missing" from
+      # "the process died"; iOS writes a report either way, so read it.
+      #
+      # `|| true` throughout and never a gate: this is evidence for whoever
+      # reads the run, and a missing directory (no crashes, which is the
+      # normal case) must not fail the job.
+      - name: Any crash reports the simulator wrote
+        if: always()
+        run: |
+          set +e
+          DIR="$HOME/Library/Logs/DiagnosticReports"
+          echo "Looking in $DIR"
+          ls -la "$DIR" 2>/dev/null || echo "(no DiagnosticReports directory: nothing crashed)"
+          for f in "$DIR"/*amewhere*.ips "$DIR"/*amewhere*.crash; do
+            [ -e "$f" ] || continue
+            echo "=================================================="
+            echo "CRASH REPORT: $f"
+            echo "=================================================="
+            # The first 120 lines carry the exception type, the termination
+            # reason and the crashing thread's top frames, which is what
+            # names the bug. The rest is every other thread's stack.
+            head -120 "$f"
+          done
+          exit 0
 
       # BEFORE the publish step: publishing checks out an orphan branch,
       # which deletes e2e/account.mjs from the working tree.
