@@ -258,6 +258,20 @@ appId: com.mattmoore.samewhere
     text: 'Add your profile photo'
     optional: true
 - runFlow: ../subflows/pick-a-photo.yml
+# The photo is IN the tile before it is anywhere near the server. Both
+# conditions together are exactly "a local upload is in flight": the empty
+# add tile is gone (something occupies slot 0) and the row has not landed
+# (the footer still asks for a photo). The old grid could satisfy neither -
+# it kept the empty dashed box, spun every other one with it, and held no
+# copy of the file to show or to retry. Guarded because the picker above is
+# Apple's, not ours, and may simply not have produced a photo.
+- runFlow:
+    when:
+      notVisible: 'Add your profile photo'
+      visible: 'A profile photo is the one thing we need.'
+    commands:
+      - assertVisible: 'Your profile photo, uploading'
+      - takeScreenshot: 54b-photo-uploading
 - waitForAnimationToEnd:
     timeout: 4000
 # The pipeline's bounded stages (image-upload.ts) promise that within 150s a
@@ -368,6 +382,25 @@ appId: com.mattmoore.samewhere
           timeout: 15000
       - assertVisible: 'Got it'
       - takeScreenshot: 72-signup-audience
+      # A LOCKED ROW IS A DOOR, NOT A WALL. The step named the badge, said it
+      # lived somewhere else, and did nothing at all when a locked row was
+      # tapped - so a woman finishing signup was set to Everyone and never
+      # asked again. router.push('/verification') cannot work from here
+      # (that route is behind `signedIn && onboarded`, which an onboarding
+      # account is neither half of), so the capture opens in place. Tapped by
+      # its spoken label, which carries the appended reason.
+      - tapOn: 'Verified women.*'
+      - extendedWaitUntil:
+          visible: 'Get your badge'
+          timeout: 15000
+      - assertVisible: 'Take a selfie'
+      - takeScreenshot: 72b-signup-badge-door
+      # Back closes the door rather than leaving step 12, because the capture
+      # is this step with the door open and not a step of its own.
+      - tapOn: 'Back'
+      - extendedWaitUntil:
+          visible: 'Who can see you'
+          timeout: 15000
       - tapOn: 'Got it'
       # STEP 13 — THE PROFILE ITSELF, which is the founder's "final look of
       # how your profile appears to other users", rendered by the component a
@@ -380,6 +413,29 @@ appId: com.mattmoore.samewhere
       - takeScreenshot: 73-signup-review
       - scroll
       - takeScreenshot: 74-signup-review-scrolled
+      # THE REVIEW IS A DOOR, NOT A WALL. The step used to render the
+      # stranger's copy under "step back to change anything", where back was
+      # a one-step chevron: fixing the bio from here cost six Back taps
+      # through six animated transitions. Owner mode puts an Edit on every
+      # section, each one jumps to the step that owns it, and Continue comes
+      # straight back to the review.
+      - scrollUntilVisible:
+          element:
+            text: 'Edit about'
+          direction: DOWN
+          timeout: 10000
+      - tapOn: 'Edit about'
+      - extendedWaitUntil:
+          visible: 'A bit about you'
+          timeout: 15000
+      - takeScreenshot: 74b-review-jumped-to-the-bio
+      - tapOn: 'Continue'
+      - extendedWaitUntil:
+          visible: 'Here you are'
+          timeout: 15000
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: 74c-review-came-back
       - tapOn:
           id: 'finish-profile'
       # And out into the app, which is the proof the stamp landed.

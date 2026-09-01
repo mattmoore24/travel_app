@@ -33,6 +33,14 @@ delete-account teardown. Re-run it any time from the Actions tab.
 > has no confirmation deep-link flow, so every real signup silently dead-ends —
 > the canary caught this. Before public launch, either keep it off knowingly or
 > build the deep-linked confirmation flow first, then re-enable.
+>
+> While it is off, nothing but the app itself can reveal a typed address. Two
+> places do: signup warns on the near-miss domains
+> (`src/features/auth/email-typos.ts`) and echoes the address back on the
+> password step, and Settings shows the address the account is under. A change
+> of address still goes through `supabase.auth.updateUser({ email })`, which
+> sends a confirmation to the NEW address, so `src/app/account-credentials.tsx`
+> writes nothing anywhere until that link is opened.
 
 **a. Keys** — add `ANTHROPIC_API_KEY` **and `MODERATION_PROMPTS`** to GitHub
 repo secrets and touch `supabase/.deploy-request`; the deploy workflow syncs

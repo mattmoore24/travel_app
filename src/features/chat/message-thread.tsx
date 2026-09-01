@@ -16,6 +16,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { PhotoCheck } from '@/components/ui/photo-check';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { SHEET_SETTLE_MS, useRegisterNativeModal } from '@/components/ui/sheet';
 import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
@@ -353,7 +354,7 @@ function BubbleBody({
           for everybody but the sender, which is the empty bubble people were
           looking at. */}
       {checking ? (
-        <PhotoCheck url={imageUrl ?? null} />
+        <PhotoCheck url={imageUrl ?? null} style={styles.photo} />
       ) : message.image_path ? (
         imageUrl ? (
           <Image source={{ uri: imageUrl }} style={styles.photo} contentFit="cover" />
@@ -402,64 +403,6 @@ function BubbleBody({
           )}
         </ThemedText>
       ) : null}
-    </View>
-  );
-}
-
-/**
- * How long people should expect to wait for a photo to clear.
- *
- * An estimate from the measured chain rather than a hope: the insert now pokes
- * the worker directly (20260828170000) instead of waiting on a once-a-minute
- * cron, chat photos drain before every other queue, and the classification
- * runs at low effort. That is a cold start, a signed URL and one vision call.
- *
- * `admin_moderation_latency` measures the real thing, per queue, over the last
- * seven days. When there is enough live traffic to read a p95 off it, this
- * number comes from there — and a promise nobody can keep is worse than no
- * promise, so if it turns out slower this says so instead.
- */
-const PHOTO_CHECK_SECONDS = 5;
-
-/**
- * A photo waiting on its verdict, at the size the photo itself will be.
- *
- * It used to be the words "Photo in review" in a text bubble — a tiny grey
- * rectangle that then jumped to 220pt square when the picture arrived, which
- * is the founder's "tiny bubble". Reserving the real frame means nothing in
- * the thread moves when the verdict lands, and saying WHY out loud is the
- * honest version of a blank space: every photo in this app is checked, and a
- * person who knows that is waiting rather than wondering.
- *
- * The sender sees their own picture behind the scrim (storage lets them read
- * their own upload before it clears, and the room RPC unmasks it for them);
- * everybody else sees the frame. Both read the same sentence.
- */
-function PhotoCheck({ url }: { url: string | null }) {
-  const theme = useTheme();
-  return (
-    <View style={[styles.photo, styles.photoCheck, { backgroundColor: theme.surfaceSunken }]}>
-      {url ? (
-        <Image source={{ uri: url }} style={StyleSheet.absoluteFill} contentFit="cover" />
-      ) : null}
-      <View
-        style={[StyleSheet.absoluteFill, styles.photoCheckVeil, { backgroundColor: theme.scrim }]}>
-        {/* On a solid card, not straight onto the scrim. The scrim sits over
-            the sender's own photo, so the effective background is whatever
-            they photographed: textSecondary over a 0.62 veil on a bright
-            picture measures 2.5:1, and no veil opacity fixes that without
-            hiding the photo this card exists to show. A card makes the ratio
-            the palette's, whatever is behind it. */}
-        <View style={[styles.photoCheckCard, { backgroundColor: theme.surface }]}>
-          <ActivityIndicator color={theme.textSecondary} />
-          <ThemedText type="callout" style={styles.photoCheckTitle}>
-            Checking this photo
-          </ThemedText>
-          <ThemedText type="footnote" themeColor="textSecondary" style={styles.photoCheckNote}>
-            We check every photo before it goes out. Usually about {PHOTO_CHECK_SECONDS} seconds.
-          </ThemedText>
-        </View>
-      </View>
     </View>
   );
 }
@@ -1542,29 +1485,6 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: Radius.md,
-  },
-  photoCheck: {
-    overflow: 'hidden',
-    borderCurve: 'continuous',
-  },
-  photoCheckVeil: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Space.md,
-  },
-  photoCheckCard: {
-    alignItems: 'center',
-    gap: Space.sm,
-    padding: Space.md,
-    borderRadius: Radius.md,
-    borderCurve: 'continuous',
-  },
-  photoCheckTitle: {
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  photoCheckNote: {
-    textAlign: 'center',
   },
   unsentRow: {
     marginTop: Space.sm,

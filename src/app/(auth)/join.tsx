@@ -10,6 +10,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { signUpWithEmail, upgradeGuestToAccount } from '@/features/auth/api';
 import { AppleSignInButton, useAppleSignInAvailable } from '@/features/auth/apple-button';
 import { ConsentNote } from '@/features/auth/consent-note';
+import { likelyEmailTypo } from '@/features/auth/email-typos';
 import { AccountKindChoice, type AccountKind } from '@/features/auth/account-kind';
 import { useRecordListingIntent } from '@/features/business/hooks';
 import { useAuthStore } from '@/features/auth/store';
@@ -75,6 +76,12 @@ export default function JoinScreen() {
   const [loading, setLoading] = useState(false);
 
   const emailOk = EMAIL_PATTERN.test(email.trim());
+  // The shape check passes `a@gmial.com` perfectly, and with email
+  // confirmation off for v1 nothing downstream ever reveals the mistake: no
+  // mail arrives, password reset is deliberately oracle-free, and the account
+  // is unrecoverable including through support. A nudge, never a gate - it is
+  // their address, not ours.
+  const meant = likelyEmailTypo(email);
   const passwordOk = password.length >= PASSWORD_MIN;
 
   // The denominator for the largest drop-off in the product: arriving here
@@ -263,6 +270,11 @@ export default function JoinScreen() {
           onSubmitEditing={submitEmail}
           error={touched && !emailOk ? 'Check that address and try again.' : null}
         />
+        {meant ? (
+          <ThemedText type="footnote" themeColor="warning">
+            Did you mean {meant}?
+          </ThemedText>
+        ) : null}
       </StepShell>
     );
   }
@@ -325,6 +337,14 @@ export default function JoinScreen() {
         hint={`At least ${PASSWORD_MIN} characters.`}
         error={touched && !passwordOk ? `At least ${PASSWORD_MIN} characters.` : null}
       />
+      {/* The address, back once, on the last screen where Back can still fix
+          it. Nothing after this ever shows it: confirmation is off for v1
+          (docs/LAUNCH_RUNBOOK.md), so no mail arrives to reveal a typo, and
+          the reset flow answers the same way whether or not the address
+          exists. */}
+      <ThemedText type="footnote" themeColor="textSecondary">
+        Signing up as {email.trim()}. This is where we will send a reset link if you ever need one.
+      </ThemedText>
       {passwordOk ? (
         <View style={styles.matchRow}>
           <ThemedText type="footnote" themeColor="textSecondary">

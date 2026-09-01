@@ -198,6 +198,30 @@ export async function uploadPhoto(userId: string, localUri: string, position: nu
   return data;
 }
 
+/**
+ * Move photos into new slots, one statement per row, IN THE ORDER GIVEN.
+ *
+ * The order is the safety property, not an implementation detail: PostgREST
+ * cannot carry per-row values in a single PATCH, and the only write a client
+ * has on this table is `grant update (position)` (20260816190000:359-362), so
+ * an RPC would mean opening a second and wider door to the same rows. The
+ * plan comes from features/profile/photo-order.ts, which is where the reason
+ * each write can safely happen when it does is written down.
+ */
+export async function setPhotoPositions(updates: { id: string; position: number }[]) {
+  for (const update of updates) {
+    // No .select(): a returning clause rides the same grants as select * and
+    // this call has nothing to read back.
+    const { error } = await supabase
+      .from('profile_photos')
+      .update({ position: update.position })
+      .eq('id', update.id);
+    if (error) {
+      throw error;
+    }
+  }
+}
+
 export async function deletePhoto(photoId: string, storagePath: string) {
   const { error } = await supabase.from('profile_photos').delete().eq('id', photoId);
   if (error) {

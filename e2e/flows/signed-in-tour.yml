@@ -287,6 +287,27 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 3000
 - assertNotVisible: 'Moved past .*'
+# THE BLOCK IS THE TAP TARGET. The trip card is the largest, most obvious
+# object in the section and it did nothing when tapped, while the affordance
+# that worked was a 26pt caption chip in the header beside it. Tapped
+# straight after Undo re-mounts the page, which is the case the old per-row
+# stagger could not survive: a view at opacity 0 is skipped by UIKit
+# hit-testing entirely (traps), so the rows were untappable while they
+# landed. The city is Bangkok because that is where the E2E account's own
+# trip is and Travelers only surfaces overlapping ones.
+- scrollUntilVisible:
+    element:
+      text: 'Bangkok.*Say hi about this\.'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Bangkok.*Say hi about this\.'
+- extendedWaitUntil:
+    visible: 'Saying hi about their travel plans'
+    timeout: 15000
+- takeScreenshot: 17d-anchor-from-the-trip-card
+- tapOn: 'Close'
+- waitForAnimationToEnd:
+    timeout: 3000
 # THE BEAT AFTER A HELLO. Saying hi used to end in a face swap nobody asked
 # for: the composer's confirmation popped after about a second, a different
 # stranger had silently taken the page underneath, and Travelers carried no
@@ -372,6 +393,21 @@ appId: com.mattmoore.samewhere
     visible: 'Maestro Test.*'
     timeout: 15000
 - takeScreenshot: 18-profile-me
+# YOUR PROFILE AS A STRANGER GETS IT. The page claims in its own comment to
+# be exactly that, and in the way that matters it was not: a stranger's copy
+# is covered in reply chips and yours has Edit buttons in the same slots, so
+# you could never see that your bio had nothing worth tapping. Same
+# component, owner off, handles empty (hard rule 4).
+- tapOn: 'Preview your profile as a stranger sees it'
+- extendedWaitUntil:
+    visible: 'This is what .* sees'
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 18d-profile-preview
+- tapOn: 'Stop previewing your profile'
+- waitForAnimationToEnd:
+    timeout: 2000
 # THE SECOND ASK, when this account has anything left to answer.
 #
 # Steps 6 to 11 of signup are one-tap skips, and nothing used to notice
@@ -411,6 +447,15 @@ appId: com.mattmoore.samewhere
     visible: 'Verified non-binary.*'
     timeout: 15000
 - takeScreenshot: 18b-who-can-see-you
+# THE SENTENCE THAT USED TO BE WRONG. "Chat is separate: anyone can still
+# message you" implied the say-hi gate applies to everybody, and it does not:
+# open_direct_chat checks standing, guest/business, the blocked pair and
+# SHARED GROUP membership, so eleven strangers in one open plan can each open
+# a one-to-one thread nobody accepted. The founder's decision stays; the
+# sentence had to. The new clause is longer and this screen has pushed a line
+# off the fold before, which is what 18b above is for: assert the words, look
+# at the picture for the wrap.
+- assertVisible: 'One setting, both ways\..*group with you can write to you directly\.'
 # A LOCKED ROW IS A DOOR, NOT A DEAD END. This account is unverified, so
 # 'Verified women' cannot be picked — tapping it must open verification
 # rather than swallow the tap, which is what the dimmed rows used to do.
@@ -426,6 +471,59 @@ appId: com.mattmoore.samewhere
     visible: 'Verified non-binary.*'
     timeout: 15000
 - tapOn: 'Done'
+
+# A SETTINGS SPINE, NOT A STACK OF GHOST BUTTONS. The page used to end in
+# eight identical full-width ghost buttons where Edit profile weighed the
+# same as House rules and House rules weighed the same as Sign out, and
+# reaching a human was four taps and two long scrolls through a rulebook
+# written for somebody else. One heading, grouped rows with chevrons, and the
+# two controls App Review requires to be reachable in-app sitting apart from
+# everything above them at the bottom.
+- scrollUntilVisible:
+    element:
+      text: 'Settings'
+    direction: DOWN
+    timeout: 12000
+- takeScreenshot: 18e-settings
+# THE INVENTORY A BLOCK NEVER HAD. Blocking cuts visibility both ways and had
+# nowhere at all to look afterwards, so blocking the wrong person from a
+# crowded group thread was a one-way door and the founder got "my friend has
+# disappeared" as a support case. What a live tour can prove is the door, the
+# screen and its empty state; what unblocking does and does NOT undo is
+# pinned by pgTAP 44, which can attack it without blocking a real traveler
+# mid-run.
+- scrollUntilVisible:
+    element:
+      text: 'Blocked'
+    direction: DOWN
+    timeout: 12000
+- tapOn: 'Blocked'
+- extendedWaitUntil:
+    visible: 'Nobody blocked'
+    timeout: 15000
+- assertVisible: 'Nobody here can see you.*'
+- takeScreenshot: 18g-blocked
+- tapOn: 'Done'
+- waitForAnimationToEnd:
+    timeout: 2000
+- scrollUntilVisible:
+    element:
+      text: 'Delete account'
+    direction: DOWN
+    timeout: 12000
+# Structural, not a picture: the separation IS the finding, so it is asserted
+# rather than left to whoever looks at the screenshot.
+- assertVisible:
+    text: 'Delete account'
+    below: 'Sign out'
+- takeScreenshot: 18f-settings-exits
+# Back up to the head of the list, so the blocks below still scroll DOWN to
+# rows that are now above the bottom of the page.
+- scrollUntilVisible:
+    element:
+      text: 'Settings'
+    direction: UP
+    timeout: 12000
 
 # THE PRIVACY POLICY — App Review 5.1.1(i) wants it readable inside the app,
 # not only on the store listing. The asserted line is the promise the whole
@@ -453,10 +551,19 @@ appId: com.mattmoore.samewhere
 # screen; an Apple account draws a sentence in their place instead.
 - scrollUntilVisible:
     element:
-      text: 'Email and password'
+      text: 'Email and password.*'
     direction: DOWN
     timeout: 12000
-- tapOn: 'Email and password'
+# THE ADDRESS THE ACCOUNT IS UNDER, on the row that opens it. Email
+# confirmation is off for v1, so a typo at signup makes a working account
+# that never receives a single piece of mail revealing the mistake, and
+# nothing in the app used to show it back. The run's account is
+# `<base>+sw-e2e-<run>@<domain>`, so '+sw-e2e-' is the part that is ours
+# whatever inbox the runner is configured with. Asserted as the row's SPOKEN
+# label: a Pressable with its own accessibilityLabel hides the words inside
+# it from Maestro (traps).
+- assertVisible: 'Email and password, .*\+sw-e2e-.*'
+- tapOn: 'Email and password.*'
 - extendedWaitUntil:
     visible: 'Current password'
     timeout: 15000
@@ -477,6 +584,16 @@ appId: com.mattmoore.samewhere
 # wrong here before (a field hidden behind the keyboard renders fine in a
 # test and is unusable on a phone). Nothing is sent: the keyboard stays up on
 # purpose so the shot shows the message field clear of it.
+# UP first. The settings spine put 'Help and rules' ABOVE 'Account', and the
+# step before this one tapped 'Email and password' in the Account group - so
+# the scroll position is already at or below the target and scrollUntilVisible
+# only ever moves one way. Going back to the head of the list makes the DOWN
+# search below mean what it says.
+- scrollUntilVisible:
+    element:
+      text: 'Settings'
+    direction: UP
+    timeout: 12000
 - scrollUntilVisible:
     element:
       text: 'House rules and help'

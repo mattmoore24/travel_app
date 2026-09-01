@@ -171,6 +171,59 @@ export async function blockUser(blockerId: string, blockedId: string) {
 }
 
 /**
+ * Who this account has blocked, newest first.
+ *
+ * Two queries rather than an embed: the blocks FK points at `public.users`,
+ * not `public.profiles`, so there is no relationship for PostgREST to follow.
+ * The second read is legal - is_visible_owner is only `status = 'active'` and
+ * says nothing about blocked pairs - which is exactly what makes a list with
+ * names on it possible at all.
+ */
+export async function fetchBlocks(): Promise<{ userId: string; name: string | null }[]> {
+  const { data, error } = await supabase
+    .from('blocks')
+    .select('blocked_id, created_at')
+    .order('created_at', { ascending: false });
+  if (error) {
+    throw error;
+  }
+  const ids = (data ?? []).map((row) => row.blocked_id);
+  if (ids.length === 0) {
+    return [];
+  }
+  const { data: profiles, error: profileError } = await supabase
+    .from('profiles')
+    .select('user_id, display_name')
+    .in('user_id', ids);
+  if (profileError) {
+    throw profileError;
+  }
+  const names = new Map((profiles ?? []).map((row) => [row.user_id, row.display_name]));
+  // Order comes from `blocks`, not from the name query: a person whose
+  // profile row is gone still has to appear, or the list quietly under-reports
+  // what it claims to be an inventory of.
+  return ids.map((id) => ({ userId: id, name: names.get(id) ?? null }));
+}
+
+/**
+ * Undo a block.
+ *
+ * Deleting the row is ALL this does, and both halves of that matter. It does
+ * not reopen the chat the block closed - sever_on_block is one-way by design
+ * (20260816200000) - and it does not withdraw a report, because reports are
+ * the moderation audit trail. The block's own audit row in moderation_events
+ * also survives, which is what stops unblock-cycling laundering the daily cap
+ * (20260817150000: the count is taken from that trail 'because unblocking
+ * deletes the blocks row').
+ */
+export async function unblockUser(blockedId: string) {
+  const { error } = await supabase.from('blocks').delete().eq('blocked_id', blockedId);
+  if (error) {
+    throw error;
+  }
+}
+
+/**
  * File a report about a person, a chat, or both.
  *
  * A report needs a subject and does not need a PERSON: when the problem is

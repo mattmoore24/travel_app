@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 
 import {
   blockUser,
+  fetchBlocks,
   fetchMessages,
   reportUser,
   sendMessage,
@@ -10,6 +11,7 @@ import {
   signedChatPhotoUrl,
   subscribeToMessages,
   subscribeToMyMessages,
+  unblockUser,
   leaveChat,
 } from '@/features/chat/api';
 import {
@@ -31,6 +33,7 @@ import {
   type ThreadPages,
 } from '@/features/chat/paging';
 import { captureMessageSent } from '@/features/chat/analytics';
+import { invalidateDiscoverySurfaces } from '@/features/profile/discovery-cache';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
 import type { MessageRow, ReportReason } from '@/lib/database.types';
@@ -299,6 +302,40 @@ export function useBlockUser() {
       analytics.capture('user_blocked');
       // A block reshapes everything: matches, pins, chats, requests.
       queryClient.invalidateQueries();
+    },
+  });
+}
+
+/**
+ * The inventory a block never had.
+ *
+ * Blocking cut visibility both ways with nothing anywhere to look at
+ * afterwards, so blocking the wrong person from a crowded group thread was a
+ * one-way door - and a safety feature people are afraid to use pushes
+ * travelers toward the weaker option of not replying at all.
+ */
+export function useBlocks() {
+  const userId = useOwnUserId();
+  return useQuery({
+    queryKey: ['blocks', userId],
+    queryFn: fetchBlocks,
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+export function useUnblockUser() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (blockedId: string) => unblockUser(blockedId),
+    meta: { failureTitle: 'Could not unblock them' },
+    onSuccess: () => {
+      analytics.capture('user_unblocked');
+      queryClient.invalidateQueries({ queryKey: ['blocks', userId] });
+      // Who the map and Travelers may show has just changed, and the list of
+      // surfaces that depend on it lives in one place because a call site got
+      // it wrong once (features/profile/discovery-cache).
+      invalidateDiscoverySurfaces(queryClient);
     },
   });
 }

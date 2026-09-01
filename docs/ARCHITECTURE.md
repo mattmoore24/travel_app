@@ -770,9 +770,11 @@ make an older sentence in this document false:
 
 - **`people_you_know` is not audience-filtered.** The audience setting governs
   discovery — the map and Travelers — and has never governed chat ("anyone can
-  still message you", in the picker's own words). Somebody you are already in a
-  chat with is not a discovery result, so narrowing your audience does not
-  remove you from the address book of people you have already talked to.
+  say hi, and anyone in a group with you can write to you directly", in the
+  picker's own words since the group-consent copy pass). Somebody you are
+  already in a chat with is not a discovery result, so narrowing your audience
+  does not remove you from the address book of people you have already talked
+  to.
 - **Adding somebody to a group is a new privilege level, not just a new
   mechanism.** `group_invite_token` refuses a non-moderator, so before this an
   ordinary member had no way at all to bring anyone in. `add_to_group` gives

@@ -19,6 +19,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Colors, MaxContentWidth, Spacing, SplashField } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useAppleRevokeWatch } from '@/features/auth/apple-revoke';
+import { accountLoadFailure } from '@/features/auth/load-error';
 import { signedOutNoticeCopy, type SignedOutReason } from '@/features/auth/signed-out-reason';
 import { useAuthStore } from '@/features/auth/store';
 import { ResetPasswordScreen } from '@/features/auth/reset-password-screen';
@@ -80,26 +81,38 @@ function CenteredPage({ children }: { children: ReactNode }) {
 // a blank onboarding stack with no way out.
 function AccountLoadError({
   title,
+  error,
   onRetry,
   retrying,
 }: {
   title: string;
+  /** The failure itself, so the screen can tell a bad wifi from a gone row. */
+  error: unknown;
   onRetry: () => void;
   retrying: boolean;
 }) {
+  // "Check your connection and try again" over a Try again button was what
+  // this said when the account no longer EXISTS - deleted on another device,
+  // swept by the guest janitor, removed by an admin - and that button can
+  // never succeed. Read off the error rather than guessed: PostgrestError is
+  // not an Error, so instanceof would swallow it (features/auth/load-error).
+  const closed = accountLoadFailure(error) === 'gone';
   return (
     <CenteredPage>
       <ThemedText type="title" style={styles.errorText}>
-        {title}
+        {closed ? 'This account has been closed' : title}
       </ThemedText>
       <ThemedText themeColor="textSecondary" style={styles.errorText}>
-        Check your connection and try again.
+        {closed
+          ? 'We cannot find it any more. It may have been deleted from another device. Sign out and you can make a new one.'
+          : 'Check your connection and try again.'}
       </ThemedText>
       {/* The same words as the body copy above it. "Retry" is a
           developer's word, and two labels for one act is one too many. */}
-      <PrimaryButton label="Try again" loading={retrying} onPress={onRetry} />
+      {closed ? null : <PrimaryButton label="Try again" loading={retrying} onPress={onRetry} />}
       <PrimaryButton
-        variant="ghost"
+        // The only thing left to do, so it looks like it.
+        variant={closed ? 'filled' : 'ghost'}
         label="Sign out"
         onPress={() => {
           signOut().catch(() => {});
@@ -313,6 +326,7 @@ function RootNavigator() {
     return (
       <AccountLoadError
         title="Can't load your profile"
+        error={profileQuery.error}
         onRetry={() => profileQuery.refetch()}
         retrying={profileQuery.isFetching}
       />
@@ -333,6 +347,7 @@ function RootNavigator() {
     return (
       <AccountLoadError
         title="Can't load your account"
+        error={businessQuery.error}
         onRetry={() => businessQuery.refetch()}
         retrying={businessQuery.isFetching}
       />
@@ -473,6 +488,10 @@ function RootNavigator() {
         <Stack.Screen name="report-place" options={{ presentation: 'modal' }} />
         <Stack.Screen name="verification" options={{ presentation: 'modal' }} />
         <Stack.Screen name="visibility" options={{ presentation: 'modal' }} />
+        {/* The inventory a block never had. Beside visibility because it is
+            the same kind of thing: who can see you, and who you have already
+            decided cannot. */}
+        <Stack.Screen name="blocked" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compose-request" options={{ presentation: 'modal' }} />
         <Stack.Screen
           name="profile/[userId]"

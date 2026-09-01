@@ -35,11 +35,14 @@ export function AudiencePicker({
   disabled?: boolean;
   onChange: (next: ProfileAudience) => void;
   /**
-   * What a tap on a locked row does. The picker screen routes to
-   * verification; onboarding passes nothing because the verification route
-   * is not registered yet at that point in the stack.
+   * What a tap on a locked row does, and WHICH row it was.
+   *
+   * The picker screen routes to verification. Signup cannot - that route sits
+   * behind `signedIn && onboarded` and an onboarding account is neither - so
+   * it presents the capture in place and keeps the audience that was reached
+   * for, to apply the moment the badge clears.
    */
-  onLockedPress?: () => void;
+  onLockedPress?: (wanted: ProfileAudience) => void;
 }) {
   const theme = useTheme();
 
@@ -50,7 +53,7 @@ export function AudiencePicker({
     if (next !== 'everyone' && !verified) {
       // Never a silent nothing: a dimmed row that swallows the tap reads as
       // a broken app to the person the women-only filter exists for.
-      onLockedPress?.();
+      onLockedPress?.(next);
       return;
     }
     if (next === value) {

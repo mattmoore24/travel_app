@@ -120,13 +120,30 @@ describe('skip is only on the steps that may be skipped', () => {
 describe('the last step is the profile, not a summary of it', () => {
   const code = stripped('onboarding', 'index.tsx');
 
-  it('renders the same component a stranger gets, as a stranger gets it', () => {
-    // owner mode adds edit affordances that push to routes behind the
-    // `onboarded` guard, which this account is not yet — so every one of them
-    // would be a tap that does nothing, and the founder asked for a look at
-    // what OTHER people see anyway.
+  it('renders the same component, in owner mode, with every edit going to a step', () => {
+    // The step used to render the stranger's copy and tell people to "step
+    // back to change anything", where back was a one-step chevron: a typo in
+    // the name was ten Back taps away. Owner mode is safe here precisely
+    // because ProfileView navigates nowhere itself — every affordance is a
+    // caller-supplied callback, and here every one of them is a step jump,
+    // not a route behind the `onboarded` guard this account cannot satisfy.
     expect(code).toContain('<ProfileView');
-    expect(code).toContain('owner={false}');
+    expect(code).toMatch(/<ProfileView[\s\S]*?\n\s+owner\n/);
+    expect(code).not.toContain('owner={false}');
+    expect(code).toMatch(/onEditSection=\{\(section\) =>[\s\S]{0,200}?jumpToStep\(/);
+    expect(code).toContain('onEditPrompt={() => jumpToStep(8)}');
+    expect(code).toContain('onEditPriorities={() => jumpToStep(9)}');
+    // And the jump is a round trip: Continue from the step you landed on
+    // comes back to the review rather than walking signup a second time.
+    expect(code).toContain('setReturnTo(REVIEW_STEP)');
+    expect(code).toMatch(/if \(returnTo != null\) \{[\s\S]{0,120}?setStep\(returnTo\)/);
+    // Not the TripEditor sheet: a modal presented from inside StepShell is
+    // the Fabric touch-death trap.
+    expect(code).toContain('onEditTrips={() => jumpToStep(10)}');
+    // Steps 8 and 9 push /edit-prompt and /edit-priorities for real, so the
+    // check is scoped to the review block: nothing in it navigates.
+    const review = code.slice(code.indexOf('<ProfileView'));
+    expect(review).not.toContain('router.');
   });
 
   it('is the only place the stamp is written', () => {

@@ -275,6 +275,18 @@ export default function PublicProfileScreen() {
                   }
                 />
               ) : null}
+              {/* The recipient's side of a fact the SENDER is already told
+                  (src/app/message/[userId].tsx). open_direct_chat checks
+                  standing, guest/business, the blocked pair and shared group
+                  membership, and nothing else - so being in a group together
+                  is what removes the accept step, and the person about to be
+                  written to should learn that where it happens rather than
+                  when a stranger's message arrives. */}
+              {known && !connected ? (
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  You are both in a group, so this goes straight through.
+                </ThemedText>
+              ) : null}
               {known ? (
                 <PrimaryButton
                   variant="ghost"

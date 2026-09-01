@@ -1,13 +1,15 @@
 import { Image } from 'expo-image';
 import { router, Stack } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { SymbolView } from 'expo-symbols';
+import { useState, type ReactNode } from 'react';
+import { Alert, PixelRatio, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { BuildStamp } from '@/components/ui/build-stamp';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { PressableScale } from '@/components/ui/pressable-scale';
 import { heldPhotoNotice } from '@/constants/moderation';
 import { BrandDeep, MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { BUSINESS_RULE_SECTIONS, BUSINESS_ZERO_TOLERANCE } from '@/constants/policies';
@@ -21,9 +23,12 @@ import {
   useLatestVerification,
   useOwnPhotos,
   useOwnProfile,
+  useOwnEmail,
   useOwnSocialHandles,
   useOwnVisibility,
 } from '@/features/profile/hooks';
+import { AUDIENCE_LABEL } from '@/features/profile/audience';
+import { useApplyWantedAudience } from '@/features/profile/wanted-audience';
 import { AudienceCard } from '@/features/profile/audience-picker';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { useDropListingIntent, useOwnBusiness } from '@/features/business/hooks';
@@ -253,11 +258,108 @@ function BusinessAccount({ name }: { name: string | null }) {
   );
 }
 
+/** Past this font scale the card-plus-pill row becomes a column. */
+const PREVIEW_STACK_SCALE = 1.3;
+
+/**
+ * One row of the Settings list.
+ *
+ * The page used to end in a stack of eight identical full-width ghost
+ * buttons: Edit profile weighted the same as House rules, which weighted the
+ * same as Sign out. Apple's grouped-list grammar is what every iPhone owner
+ * already reads settings in - a label, a value, a chevron, hairlines between
+ * and a heading over each group - and it is the only way somebody scanning
+ * for their email address or a blocked list can tell "not here" from
+ * "further down".
+ */
+function SettingsRow({
+  label,
+  value,
+  detail,
+  tone = 'normal',
+  first = false,
+  onPress,
+}: {
+  label: string;
+  /** The current setting, where the row has one. Sits at the right. */
+  value?: string | null;
+  /** A second line under the label, for a fact rather than a setting. */
+  detail?: string | null;
+  /** 'action' is a thing that happens here rather than a place to go. */
+  tone?: 'normal' | 'action';
+  first?: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={[label, detail, value].filter(Boolean).join(', ')}
+      haptic="light"
+      scaleTo={0.99}
+      onPress={onPress}
+      style={[
+        styles.settingsRow,
+        // Hairlines BETWEEN rows, not around them: a border on every row
+        // draws a double line at every join.
+        first ? null : { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.hairline },
+        tone === 'action' ? styles.settingsRowAction : null,
+      ]}>
+      {tone === 'action' ? (
+        <ThemedText themeColor="accent">{label}</ThemedText>
+      ) : (
+        <View style={styles.flex}>
+          <ThemedText>{label}</ThemedText>
+          {detail ? (
+            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+              {detail}
+            </ThemedText>
+          ) : null}
+        </View>
+      )}
+      {tone === 'action' ? null : (
+        <>
+          {value ? (
+            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+              {value}
+            </ThemedText>
+          ) : null}
+          <SymbolView
+            name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+            size={13}
+            tintColor={theme.textSecondary}
+          />
+        </>
+      )}
+    </PressableScale>
+  );
+}
+
+/** A titled group of rows, drawn as one card. */
+function SettingsGroup({ title, children }: { title: string; children: ReactNode }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.settingsGroup}>
+      <ThemedText type="caption" themeColor="textSecondary" style={styles.settingsGroupTitle}>
+        {title}
+      </ThemedText>
+      <View style={[styles.settingsCard, { backgroundColor: theme.surface }]}>{children}</View>
+    </View>
+  );
+}
+
 export default function ProfileScreen() {
+  const theme = useTheme();
   // Deleting is a round trip to an Edge Function that empties five storage
   // buckets, so the button has to say it is working. See the business branch
   // above for the rest of the reasoning.
   const [deleting, setDeleting] = useState(false);
+  // Reading your own page as a stranger gets it. The page below claims in its
+  // own comment to be exactly that, and in the way that matters it is not: a
+  // stranger's copy is covered in reply chips and yours has Edit buttons in
+  // the same slots, so you can never notice that your bio has nothing worth
+  // tapping.
+  const [previewing, setPreviewing] = useState(false);
   // Not "has a session": a guest has one. The member page below reads
   // photos, trips, prompts and handles, none of which a guest can have, so
   // the question is membership.
@@ -272,14 +374,33 @@ export default function ProfileScreen() {
   const listingDone = useAuthStore((s) => s.listingDone);
   const { data: profile } = useOwnProfile();
   const { data: audience = 'everyone' } = useOwnVisibility();
+  // The address the account is under. Email confirmation is off for v1, so a
+  // typo at signup produces a working account that never receives a single
+  // piece of mail revealing the mistake - and until now nothing in the app
+  // ever showed it back.
+  const email = useOwnEmail();
+  // An Apple account has no password of ours; the credentials screen says so,
+  // and the row that opens it should say so first.
+  const signsInWithApple = useAuthStore((s) => s.session?.user.app_metadata?.provider === 'apple');
   const ownPhotos = useOwnPhotos();
   const photos = ownPhotos.data ?? [];
   // What a stranger would actually be served. The page below says it is
   // exactly what they see, and it was showing photos they cannot: with photo
   // moderation on, a rejected shot stayed on your own profile looking live,
   // so the removal notification and the page disagreed and the page won.
-  const visiblePhotos = photos.filter((photo) => photo.moderation_status === 'approved');
-  const heldBack = photos.length - visiblePhotos.length;
+  const approvedPhotos = photos.filter((photo) => photo.moderation_status === 'approved');
+  const heldBack = photos.length - approvedPhotos.length;
+  // The one exception to "show them exactly what a stranger sees": while the
+  // ONLY photo is still being checked, showing nothing meant the page fell
+  // through to the photo-less band and offered an "Add a photo" button to
+  // somebody who had just added one. It renders behind the same scrim and the
+  // same sentence a chat photo gets, so the page says "we are looking at it"
+  // rather than "there is nothing here".
+  const checkingHero =
+    approvedPhotos.length === 0
+      ? (photos.find((photo) => photo.moderation_status !== 'rejected') ?? null)
+      : null;
+  const visiblePhotos = checkingHero ? [checkingHero] : approvedPhotos;
   // A check that gave up is NOT a rules breach - the database records
   // photo_rejected_failsafe and no strike is counted - so it must not be
   // announced in the same sentence and the same red as one.
@@ -302,6 +423,11 @@ export default function ProfileScreen() {
   });
   const { data: handles = [] } = useOwnSocialHandles();
   const { data: verification } = useLatestVerification();
+  // Spend the audience somebody reached for on signup step 12 but could not
+  // have yet. The check takes minutes; that step is seconds. This is the
+  // screen that lands after signup and already reads profile.verified, so it
+  // is where the promise the note made is actually kept.
+  useApplyWantedAudience(profile?.verified === true, audience);
   const { data: prompts = [] } = useProfilePrompts(useOwnUserId());
   const { data: priorities = [] } = useProfilePriorities(useOwnUserId());
   const { data: trips = [] } = useMyTrips();
@@ -334,6 +460,12 @@ export default function ProfileScreen() {
     );
   }
 
+  // At accessibility sizes the card and the pill laddered side by side; a
+  // full-width card with the pill under it reads.
+  const stackPreview = PixelRatio.getFontScale() > PREVIEW_STACK_SCALE;
+  // Just the city, not "Bangkok, Thailand": the banner is a sentence.
+  const previewCity = trips[0]?.cities.name ?? null;
+
   const profileTrips: ProfileTrip[] = trips.map((trip) => ({
     id: trip.id,
     cityId: trip.city_id,
@@ -360,249 +492,400 @@ export default function ProfileScreen() {
             verified, which is where a setting gets found by accident rather
             than on purpose. It shows the current value, because a control
             that does not say what it is set to is a link, not a selector. */}
-        <AudienceCard audience={audience} onPress={() => router.push('/visibility')} />
+        <View style={[styles.audienceRow, stackPreview && styles.audienceRowStacked]}>
+          <View style={styles.flex}>
+            <AudienceCard audience={audience} onPress={() => router.push('/visibility')} />
+          </View>
+          {/* The whole value of one component rendering both sides is being
+              able to LOOK at the other one. It is the same page, not a second
+              layout: owner off, handles empty (hard rule 4 - a preview that
+              kept your own handles would teach the opposite of the promise),
+              and the reply chips a stranger sees drawn where yours says
+              Edit. */}
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={
+              previewing
+                ? 'Stop previewing your profile'
+                : 'Preview your profile as a stranger sees it'
+            }
+            accessibilityState={{ selected: previewing }}
+            haptic="light"
+            scaleTo={0.94}
+            hitSlop={8}
+            onPress={() => setPreviewing((on) => !on)}
+            style={[
+              styles.previewPill,
+              { backgroundColor: previewing ? theme.accent : theme.surfaceSunken },
+            ]}>
+            <ThemedText
+              type="footnote"
+              style={previewing ? { color: theme.onAccent } : undefined}
+              themeColor={previewing ? undefined : 'accent'}>
+              {previewing ? 'Done' : 'Preview'}
+            </ThemedText>
+          </PressableScale>
+        </View>
 
-        {/* The second ask for the six sections signup let people skip.
+        {previewing ? (
+          <>
+            {/* Named, so it cannot be mistaken for the real page. The city is
+                the one a stranger would be reading this in; without a trip
+                there is no city to name and the sentence says who instead. */}
+            <View style={[styles.previewBanner, { backgroundColor: theme.surfaceSunken }]}>
+              <SymbolView
+                name={{ ios: 'eye', android: 'visibility', web: 'visibility' }}
+                size={15}
+                tintColor={theme.textSecondary}
+              />
+              <ThemedText type="footnote" themeColor="textSecondary" style={styles.flex}>
+                {previewCity
+                  ? `This is what ${previewCity} sees`
+                  : 'This is what other travelers see'}
+              </ThemedText>
+            </View>
+            <ProfileView
+              photosPending={ownPhotos.data === undefined}
+              profile={profile}
+              photos={approvedPhotos}
+              prompts={prompts}
+              priorities={priorities}
+              trips={profileTrips}
+              handles={[]}
+              owner={false}
+              // The chips have to be THERE - they are what a stranger's copy
+              // is covered in and the reason to look - but they lead to a
+              // composer for yourself. Leaving preview is the honest thing
+              // for them to do: a no-op handler still fired the PressableScale
+              // haptic and animation on every trip card and every prompt
+              // answer, so the page buzzed and confirmed an action that had
+              // not happened. Now the tap means "take me back to my profile",
+              // which is the only thing it could sensibly mean here.
+              onRespondTo={() => setPreviewing(false)}
+            />
+          </>
+        ) : (
+          <>
+            {/* The second ask for the six sections signup let people skip.
             Nothing anywhere used to notice that a profile had no prompt, no
             priorities and no bio, while the Travelers screen is built to show
             all three - so somebody who skipped everything ended with a photo
             and a name and was never told. It draws nothing at all once the
             last gap closes, and it can be put away for the session. */}
-        {/* Never to an account part way through listing a business. It is on
+            {/* Never to an account part way through listing a business. It is on
             this page only because the tabs are mounted for it, and asking a
             bar owner for a trip and a bio is asking them to finish the one
             flow register_business refuses. */}
-        {wantsBusiness ? null : (
-          <FinishYourProfileCard
-            profile={profile}
-            prompts={prompts}
-            priorities={priorities}
-            trips={trips}
-            handles={handles}
-          />
-        )}
+            {wantsBusiness ? null : (
+              <FinishYourProfileCard
+                profile={profile}
+                prompts={prompts}
+                priorities={priorities}
+                trips={trips}
+                handles={handles}
+              />
+            )}
 
-        {/* Exactly the page a stranger gets, with edit affordances on top —
+            {/* Exactly the page a stranger gets, with edit affordances on top —
             the only way to know what your profile actually looks like. */}
-        {heldBack > 0 ? (
-          /* The label is the sentence itself, not "Manage your photos". A
+            {heldBack > 0 ? (
+              /* The label is the sentence itself, not "Manage your photos". A
              Pressable's own accessibilityLabel REPLACES its children, so the
              static label meant the one reader who cannot see the notice never
              heard why a photo was held, which is its entire content. Built
              from the same helper so the two can never say different things;
              the hint carries what tapping does. */
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={photoNotice}
-            accessibilityHint="Opens your photos."
-            onPress={() =>
-              router.push({ pathname: '/edit-profile', params: { section: 'photos' } })
-            }
-            style={styles.photoNotice}>
-            <ThemedText
-              type="footnote"
-              themeColor={
-                photoRuleRejectedCount > 0
-                  ? 'danger'
-                  : photoFailsafeCount > 0
-                    ? 'warning'
-                    : 'textSecondary'
-              }>
-              {photoNotice}
-            </ThemedText>
-          </Pressable>
-        ) : null}
-        <ProfileView
-          photosPending={ownPhotos.data === undefined}
-          profile={profile}
-          photos={visiblePhotos}
-          prompts={prompts}
-          priorities={priorities}
-          trips={profileTrips}
-          handles={handles}
-          owner
-          onEditSection={(section) =>
-            router.push({ pathname: '/edit-profile', params: { section } })
-          }
-          onEditPrompt={(slot) =>
-            router.push({
-              pathname: '/edit-prompt',
-              params: slot == null ? {} : { slot: String(slot) },
-            })
-          }
-          onEditPriorities={(slot) =>
-            router.push({
-              pathname: '/edit-priorities',
-              params: slot == null ? {} : { slot: String(slot) },
-            })
-          }
-          actions={
-            <>
-              <PrimaryButton label="Edit profile" onPress={() => router.push('/edit-profile')} />
-              {!profile.verified ? (
-                <PrimaryButton
-                  variant="ghost"
-                  label={verification?.status === 'pending' ? 'In review' : 'Get verified'}
-                  onPress={() => router.push('/verification')}
-                />
-              ) : null}
-              {/* The undo for the one-time push primer. Reads the OS, and
-                  renders nothing where push can never work. */}
-              <NotificationsRow />
-              {/* The remedy after a phone goes missing, and the only route to
-                  a new address. Both used to live on the SIGNED OUT screen
-                  behind "Forgot your password?", so using either meant giving
-                  up the session first. */}
-              <PrimaryButton
-                variant="ghost"
-                label="Email and password"
-                onPress={() => router.push('/account-credentials')}
-              />
-              {/* No "Who you see, and who sees you" here any more. It is the
-                  card at the top of this page: a setting this consequential
-                  should not be the fourth ghost button under the fold. */}
-              <PrimaryButton
-                variant="ghost"
-                label="House rules and help"
-                onPress={() => router.push('/guidelines')}
-              />
-              {/* The policy the consent line promised at sign-up, findable
-                  again afterwards without re-reading the rulebook. */}
-              <PrimaryButton
-                variant="ghost"
-                label="Privacy"
-                onPress={() => router.push('/privacy')}
-              />
-              {/* Two different people, and telling them apart is the whole
-                  point. An account carrying the listing flag has already
-                  started: it needs the door back into the form, not a lecture
-                  about signing out. Everyone else gets the explanation,
-                  because a business is its own account by design (decision 5)
-                  and register_business refuses an account that has already
-                  finished a traveler profile. */}
-              {wantsBusiness ? (
-                <PrimaryButton
-                  variant="ghost"
-                  label="Finish listing your business"
-                  onPress={() => router.push('/business-signup')}
-                />
-              ) : (
-                <PrimaryButton
-                  variant="ghost"
-                  label="Run a business?"
-                  onPress={() =>
-                    Alert.alert(
-                      'A business gets its own account',
-                      "Yours is a traveler account, and the two work differently, so a business needs one of its own. It's free. Sign out, make a new account, and the offer is on the first screen.",
-                      [
-                        { text: 'Not now', style: 'cancel' },
-                        {
-                          text: 'Sign out',
-                          onPress: () => {
-                            signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
-                          },
-                        },
-                      ]
-                    )
-                  }
-                />
-              )}
-              {/* And the way to say the listing is off. Without it the flag is
-                  one-way: the tabs stay mounted, traveler onboarding is never
-                  asked for again, and the row above offers a form the person
-                  has decided against. */}
-              {wantsBusiness ? (
-                <PrimaryButton
-                  variant="ghost"
-                  label="Not listing a business after all"
-                  onPress={() =>
-                    Alert.alert(
-                      'Drop the listing?',
-                      'You will finish a traveler profile instead, starting now. Listing a business later needs its own separate account, so this one cannot go back.',
-                      [
-                        { text: 'Keep it', style: 'cancel' },
-                        {
-                          text: 'Drop it',
-                          onPress: () => {
-                            listingDone();
-                            dropListingIntent.mutate();
-                          },
-                        },
-                      ]
-                    )
-                  }
-                />
-              ) : null}
-              <PrimaryButton
-                variant="ghost"
-                label="Sign out"
-                onPress={() => {
-                  signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
-                }}
-              />
-              {/* The one place the global scope belongs: the standard remedy
-                  after a lost phone. Everywhere else "Sign out" means this
-                  device, which is what the words say. */}
-              <PrimaryButton
-                variant="ghost"
-                label="Sign out on all devices"
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={photoNotice}
+                accessibilityHint="Opens your photos."
                 onPress={() =>
-                  Alert.alert(
-                    'Sign out on all devices?',
-                    'Signs you out here and on every other phone or tablet where you are signed in.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Sign out everywhere',
-                        onPress: () => {
-                          signOutEverywhere().catch(() =>
-                            Alert.alert('Sign out failed', 'Try again.')
-                          );
-                        },
-                      },
-                    ]
-                  )
+                  router.push({ pathname: '/edit-profile', params: { section: 'photos' } })
                 }
-              />
-              {/* App Review 5.1.1(v): account deletion must be available in-app. */}
-              <PrimaryButton
-                variant="danger"
-                label="Delete account"
-                loading={deleting}
-                onPress={() => {
-                  Alert.alert(
-                    'Delete your account?',
-                    "Deletes your profile, photos, trips, pins and chats, for both sides. Can't be undone.",
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Delete forever',
-                        style: 'destructive',
-                        onPress: async () => {
-                          setDeleting(true);
-                          try {
-                            await deleteAccount();
-                          } catch {
-                            setDeleting(false);
-                            Alert.alert('Deletion failed', 'Check your connection and try again.');
-                            return;
-                          }
-                          // The auth user no longer exists, and this screen is
-                          // outside every route guard, so it survives its own
-                          // sign-out still showing a deleted profile. Both
-                          // halves, in the order they have to happen.
-                          await signOut().catch(() => {});
-                          router.replace('/join');
-                        },
-                      },
-                    ]
-                  );
-                }}
-              />
-              <BuildStamp />
-            </>
-          }
-        />
+                style={styles.photoNotice}>
+                <ThemedText
+                  type="footnote"
+                  themeColor={
+                    photoRuleRejectedCount > 0
+                      ? 'danger'
+                      : photoFailsafeCount > 0
+                        ? 'warning'
+                        : 'textSecondary'
+                  }>
+                  {photoNotice}
+                </ThemedText>
+              </Pressable>
+            ) : null}
+            <ProfileView
+              photosPending={ownPhotos.data === undefined}
+              photoChecking={checkingHero != null}
+              profile={profile}
+              photos={visiblePhotos}
+              prompts={prompts}
+              priorities={priorities}
+              trips={profileTrips}
+              handles={handles}
+              owner
+              onEditSection={(section) =>
+                router.push({ pathname: '/edit-profile', params: { section } })
+              }
+              onEditPrompt={(slot) =>
+                router.push({
+                  pathname: '/edit-prompt',
+                  params: slot == null ? {} : { slot: String(slot) },
+                })
+              }
+              onEditPriorities={(slot) =>
+                router.push({
+                  pathname: '/edit-priorities',
+                  params: slot == null ? {} : { slot: String(slot) },
+                })
+              }
+              actions={
+                /* A Settings spine, not eight identical ghost buttons.
+                   Reaching a human used to be four taps and two long scrolls
+                   through a rulebook written for somebody else, and somebody
+                   looking for their email address or a blocked list had no
+                   way to tell that those things were further down rather
+                   than absent. Every row leads somewhere real: the founder's
+                   own rule is that a row opening nothing is worse than no
+                   row, which is why there is no Notifications row here (the
+                   card below is the whole notification control there is). */
+                <View style={styles.settingsList}>
+                  <ThemedText type="title">Settings</ThemedText>
+
+                  <SettingsGroup title="Your profile">
+                    <SettingsRow
+                      first
+                      label="Edit profile"
+                      onPress={() => router.push('/edit-profile')}
+                    />
+                    {/* The same destination as the card at the top of the
+                        page. The card stays where it is - it is the founder's
+                        key selector and this list must not demote it - but a
+                        person hunting through Settings for a privacy control
+                        looks in Settings. */}
+                    <SettingsRow
+                      label="Who you see, and who sees you"
+                      value={AUDIENCE_LABEL[audience]}
+                      onPress={() => router.push('/visibility')}
+                    />
+                    {profile.verified ? null : (
+                      <SettingsRow
+                        label="Get verified"
+                        value={verification?.status === 'pending' ? 'In review' : null}
+                        onPress={() => router.push('/verification')}
+                      />
+                    )}
+                    {/* The undo for a one-way door. Blocking cuts visibility
+                        both ways and had no inventory at all, so blocking the
+                        wrong person from a crowded group thread could not be
+                        undone or even looked at. */}
+                    {/* Only for an account that finished onboarding.
+                        /blocked is registered inside
+                        `Stack.Protected guard={signedIn && onboarded}`, and an
+                        account part way through listing a business reaches
+                        this branch (owesOnboarding returns false for it so the
+                        tabs mount) while `onboarded` is still false - so for
+                        them this row led to a route the navigator does not
+                        have, and did nothing at all. */}
+                    {profile.onboarding_completed_at == null ? null : (
+                      <SettingsRow label="Blocked" onPress={() => router.push('/blocked')} />
+                    )}
+                  </SettingsGroup>
+
+                  {/* The undo for the one-time push primer. Reads the OS, and
+                      renders nothing where push can never work. */}
+                  <NotificationsRow />
+
+                  <SettingsGroup title="Help and rules">
+                    <SettingsRow
+                      first
+                      label="House rules and help"
+                      onPress={() => router.push('/guidelines')}
+                    />
+                    {/* The policy the consent line promised at sign-up,
+                        findable again afterwards without re-reading the
+                        rulebook. */}
+                    <SettingsRow label="Privacy" onPress={() => router.push('/privacy')} />
+                    {/* Straight to a human. It used to be two taps inside the
+                        guidelines, which is a rulebook, not a help desk. */}
+                    <SettingsRow
+                      label="Send us a message"
+                      onPress={() => router.push('/contact')}
+                    />
+                  </SettingsGroup>
+
+                  <SettingsGroup title="Account">
+                    {/* The remedy after a phone goes missing, and the only
+                        route to a new address. Both used to live on the
+                        SIGNED OUT screen behind "Forgot your password?", so
+                        using either meant giving up the session first. */}
+                    <SettingsRow
+                      first
+                      label="Email and password"
+                      // Both facts, on one line: the address the account is
+                      // under, and how it signs in. An Apple account has no
+                      // password of ours at all, and somebody who tapped
+                      // through expecting one should know before they do.
+                      detail={
+                        email
+                          ? signsInWithApple
+                            ? `${email}, through Apple`
+                            : email
+                          : signsInWithApple
+                            ? 'Through Apple'
+                            : null
+                      }
+                      onPress={() => router.push('/account-credentials')}
+                    />
+                    {/* Two different people, and telling them apart is the
+                        whole point. An account carrying the listing flag has
+                        already started: it needs the door back into the form,
+                        not a lecture about signing out. Everyone else gets
+                        the explanation, because a business is its own account
+                        by design (decision 5) and register_business refuses
+                        an account that has already finished a traveler
+                        profile. */}
+                    {wantsBusiness ? (
+                      <SettingsRow
+                        label="Finish listing your business"
+                        onPress={() => router.push('/business-signup')}
+                      />
+                    ) : (
+                      <SettingsRow
+                        label="Run a business?"
+                        onPress={() =>
+                          Alert.alert(
+                            'A business gets its own account',
+                            "Yours is a traveler account, and the two work differently, so a business needs one of its own. It's free. Sign out, make a new account, and the offer is on the first screen.",
+                            [
+                              { text: 'Not now', style: 'cancel' },
+                              {
+                                text: 'Sign out',
+                                onPress: () => {
+                                  signOut().catch(() =>
+                                    Alert.alert('Sign out failed', 'Try again.')
+                                  );
+                                },
+                              },
+                            ]
+                          )
+                        }
+                      />
+                    )}
+                    {/* And the way to say the listing is off. Without it the
+                        flag is one-way: the tabs stay mounted, traveler
+                        onboarding is never asked for again, and the row above
+                        offers a form the person has decided against. */}
+                    {wantsBusiness ? (
+                      <SettingsRow
+                        label="Not listing a business after all"
+                        onPress={() =>
+                          Alert.alert(
+                            'Drop the listing?',
+                            'You will finish a traveler profile instead, starting now. Listing a business later needs its own separate account, so this one cannot go back.',
+                            [
+                              { text: 'Keep it', style: 'cancel' },
+                              {
+                                text: 'Drop it',
+                                onPress: () => {
+                                  listingDone();
+                                  dropListingIntent.mutate();
+                                },
+                              },
+                            ]
+                          )
+                        }
+                      />
+                    ) : null}
+                  </SettingsGroup>
+
+                  {/* Its own group at the bottom, which is the whole weighting
+                      fix: Sign out used to be a ghost button identical to
+                      House rules directly above it. */}
+                  <SettingsGroup title="Leaving">
+                    <SettingsRow
+                      first
+                      tone="action"
+                      label="Sign out"
+                      onPress={() => {
+                        signOut().catch(() => Alert.alert('Sign out failed', 'Try again.'));
+                      }}
+                    />
+                    {/* The one place the global scope belongs: the standard
+                        remedy after a lost phone. Everywhere else "Sign out"
+                        means this device, which is what the words say. */}
+                    <SettingsRow
+                      tone="action"
+                      label="Sign out on all devices"
+                      onPress={() =>
+                        Alert.alert(
+                          'Sign out on all devices?',
+                          'Signs you out here and on every other phone or tablet where you are signed in.',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Sign out everywhere',
+                              onPress: () => {
+                                signOutEverywhere().catch(() =>
+                                  Alert.alert('Sign out failed', 'Try again.')
+                                );
+                              },
+                            },
+                          ]
+                        )
+                      }
+                    />
+                  </SettingsGroup>
+
+                  {/* App Review 5.1.1(v): account deletion must be available
+                      in-app, and it keeps the weight its own act deserves
+                      rather than becoming a row like the rest. */}
+                  <PrimaryButton
+                    variant="danger"
+                    label="Delete account"
+                    loading={deleting}
+                    onPress={() => {
+                      Alert.alert(
+                        'Delete your account?',
+                        "Deletes your profile, photos, trips, pins and chats, for both sides. Can't be undone.",
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Delete forever',
+                            style: 'destructive',
+                            onPress: async () => {
+                              setDeleting(true);
+                              try {
+                                await deleteAccount();
+                              } catch {
+                                setDeleting(false);
+                                Alert.alert(
+                                  'Deletion failed',
+                                  'Check your connection and try again.'
+                                );
+                                return;
+                              }
+                              // The auth user no longer exists, and this
+                              // screen is outside every route guard, so it
+                              // survives its own sign-out still showing a
+                              // deleted profile. Both halves, in the order
+                              // they have to happen.
+                              await signOut().catch(() => {});
+                              router.replace('/join');
+                            },
+                          },
+                        ]
+                      );
+                    }}
+                  />
+                  <BuildStamp />
+                </View>
+              }
+            />
+          </>
+        )}
       </ScrollView>
     </ThemedView>
   );
@@ -617,6 +900,62 @@ const styles = StyleSheet.create({
   },
   rulesSection: {
     gap: Space.xs,
+  },
+  flex: {
+    flex: 1,
+  },
+  audienceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    paddingHorizontal: Space.lg,
+  },
+  audienceRowStacked: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  previewPill: {
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.pill,
+  },
+  settingsGroup: {
+    gap: Space.xs,
+  },
+  settingsGroupTitle: {
+    paddingHorizontal: Space.sm,
+  },
+  settingsCard: {
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+    overflow: 'hidden',
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    // 44 is the floor, and the row grows past it with Dynamic Type rather
+    // than clipping its own label.
+    minHeight: 48,
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.sm,
+  },
+  settingsRowAction: {
+    justifyContent: 'center',
+  },
+  settingsList: {
+    gap: Space.lg,
+  },
+  previewBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    marginHorizontal: Space.lg,
+    padding: Space.md,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
   },
   photoNotice: {
     paddingHorizontal: Space.lg,

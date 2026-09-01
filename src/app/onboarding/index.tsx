@@ -1,5 +1,5 @@
 import { Redirect, router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { LanguageField } from '@/components/form/language-field';
@@ -15,6 +15,7 @@ import { useAuthStore } from '@/features/auth/store';
 import {
   useOwnPhotos,
   useOwnProfile,
+  useOwnSocialHandles,
   useOwnUserId,
   useOwnVisibility,
   useProfilePriorities,
@@ -24,10 +25,17 @@ import {
 } from '@/features/profile/hooks';
 import {
   AUDIENCE_BOTH_WAYS,
+  AUDIENCE_LABEL,
   AUDIENCE_GENDER_NOTE,
   AUDIENCE_NEEDS_BADGE,
 } from '@/features/profile/audience';
 import { AudiencePicker } from '@/features/profile/audience-picker';
+import {
+  useVerificationCapture,
+  VerificationCaptureBody,
+  VERIFICATION_SUBTITLE,
+  VERIFICATION_TITLE,
+} from '@/features/profile/verification-capture';
 import { SocialHandlesEditor } from '@/features/profile/social-handles-editor';
 import {
   BIO_MAX,
@@ -39,6 +47,7 @@ import {
 } from '@/features/profile/validation';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { MAX_PROMPTS, promptLabelInline } from '@/features/profile/prompts';
+import { rememberWantedAudience } from '@/features/profile/wanted-audience';
 import { MAX_PRIORITIES } from '@/features/profile/priorities';
 import { useMyTrips } from '@/features/trips/hooks';
 import { formatDateRange } from '@/features/trips/dates';
@@ -48,7 +57,7 @@ import { SIGNUP_TOTAL_STEPS, signupStepName } from '@/features/signup/steps';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 import { useTheme } from '@/hooks/use-theme';
-import type { Gender, ProfileRow } from '@/lib/database.types';
+import type { Gender, ProfileAudience, ProfileRow } from '@/lib/database.types';
 
 /**
  * The same sentence on every step that has one, in the same place.
@@ -59,6 +68,9 @@ import type { Gender, ProfileRow } from '@/lib/database.types';
  * filler.
  */
 const CHANGE_LATER = 'You can change this any time, from your profile.';
+
+/** The last step: the profile itself, and where an edit jump comes back to. */
+const REVIEW_STEP = SIGNUP_TOTAL_STEPS;
 
 const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: 'woman', label: 'Woman' },
@@ -130,6 +142,11 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   const { data: prompts = [] } = useProfilePrompts(userId);
   const { data: priorities = [] } = useProfilePriorities(userId);
   const { data: trips = [] } = useMyTrips();
+  // Warm from step 11's editor, so the review step shows what was actually
+  // entered rather than the "None yet" an empty array would draw. Not part of
+  // the hold above: a socials list that has not landed yet is a section that
+  // says nothing for a beat, not a wrong profile.
+  const { data: handles = [] } = useOwnSocialHandles();
   const profileTrips: ProfileTrip[] = trips.map((trip) => ({
     id: trip.id,
     cityId: trip.city_id,
@@ -148,6 +165,16 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   const [step, setStep] = useState(() =>
     resumeStep({ profile, hasProfilePhoto, prompts, priorities, trips })
   );
+  // Set while somebody is off fixing one section from the review step.
+  const [returnTo, setReturnTo] = useState<number | null>(null);
+  // Step 12's door. A brand-new account can never be verified, so every row
+  // but Everyone is locked - and the step used to name the badge, say it
+  // lives somewhere else, and hand you no way to get one. `wantedAudience` is
+  // the row that was reached for, kept so it can be applied the moment the
+  // badge clears rather than asking again.
+  const [capturingBadge, setCapturingBadge] = useState(false);
+  const [wantedAudience, setWantedAudience] = useState<ProfileAudience | null>(null);
+  const appliedWanted = useRef(false);
   const [name, setName] = useState(profile.display_name ?? '');
   const [age, setAge] = useState(profile.age != null ? String(profile.age) : '');
   const [gender, setGender] = useState<Gender>(profile.gender);
@@ -197,6 +224,40 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         skipped,
       });
     }
+    // A jump out of the review step is a round trip: fix the one thing, tap
+    // Continue (or Back, which is also the review), and you are looking at
+    // the profile again. Without it, editing the bio from step 13 dropped
+    // somebody into the middle of signup with six steps to walk a second
+    // time - which is the ten-Back-taps problem the jump exists to end.
+    if (returnTo != null) {
+      setReturnTo(null);
+      setStep(returnTo);
+      return;
+    }
+    setStep(next);
+  };
+
+  // The capture, mounted for the whole of ProfileSteps rather than only while
+  // step 12 shows it: the hook holds the selfie somebody just took, and a
+  // component that unmounts between the shot and the submit throws it away.
+  const badge = useVerificationCapture({ onDone: () => setCapturingBadge(false) });
+
+  // The row that was reached for, applied the moment the badge is real. A
+  // ref rather than clearing state, because a setState inside an effect is a
+  // cascading render (and the lint rule that says so) - and the mutation is
+  // idempotent enough that "once" is the only guarantee needed.
+  useEffect(() => {
+    if (!appliedWanted.current && profile.verified && wantedAudience) {
+      appliedWanted.current = true;
+      setAudience.mutate(wantedAudience);
+    }
+  }, [profile.verified, wantedAudience, setAudience]);
+
+  /** Leave the review step for the one that owns a section, and come back. */
+  const jumpToStep = (next: number) => {
+    haptics.light();
+    setTouched(false);
+    setReturnTo(REVIEW_STEP);
     setStep(next);
   };
 
@@ -616,24 +677,53 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   }
 
   if (step === 12) {
+    // THE DOOR. Presented in place, not pushed: `/verification` sits inside
+    // `Stack.Protected guard={signedIn && onboarded}` and an onboarding
+    // account satisfies neither half, so a push from here is a tap that
+    // silently does nothing. In place also means no second modal over a
+    // dismissing one, which on Fabric does not lose a sheet - it kills touch
+    // for the whole app (traps).
     return (
       <StepShell
         step={12}
         total={SIGNUP_TOTAL_STEPS}
+        // One shell, two faces. The capture is not a step of its own: it is
+        // this step with the door open, so the chrome, the progress bar and
+        // the sign-out footer stay exactly where they were and nothing
+        // remounts under the person's finger.
+        //
         // A statement for a brand-new account, because the step is a reading
         // screen for them: set_visibility refuses a narrowed audience without
         // the badge, so every row but Everyone is inert and a question whose
         // only possible answer is the default is not a question. The question
         // form comes back the day the account is verified and the choice is
         // real.
-        title={profile.verified ? 'Who you see, and who sees you' : 'Who can see you'}
-        subtitle={AUDIENCE_BOTH_WAYS}
+        title={
+          capturingBadge
+            ? VERIFICATION_TITLE
+            : profile.verified
+              ? 'Who you see, and who sees you'
+              : 'Who can see you'
+        }
+        subtitle={capturingBadge ? VERIFICATION_SUBTITLE : AUDIENCE_BOTH_WAYS}
         // "Got it" rather than "Continue" for the same reason: the button
         // acknowledges a fact, it does not submit an answer.
-        continueLabel={profile.verified ? 'Continue' : 'Got it'}
+        continueLabel={
+          capturingBadge ? badge.continueLabel : profile.verified ? 'Continue' : 'Got it'
+        }
+        continueLoading={capturingBadge && badge.submitting}
+        // What the badge is FOR, while it is being taken: the row that was
+        // reached for is applied the moment the check passes, so nobody has
+        // to come back and set it again.
+        note={
+          capturingBadge && wantedAudience
+            ? `Once the badge lands we will set you to ${AUDIENCE_LABEL[wantedAudience].toLowerCase()}.`
+            : null
+        }
         footer={signOutFooter}
-        onBack={() => go(11)}
-        onContinue={() => go(13)}>
+        onBack={capturingBadge ? () => setCapturingBadge(false) : () => go(11)}
+        onContinue={capturingBadge ? badge.onContinue : () => go(13)}>
+        {capturingBadge ? <VerificationCaptureBody capture={badge} /> : null}
         {/* Everything but Everyone is inert here, and that is the server's
             rule rather than this screen's: set_visibility refuses a narrowed
             audience from an account without the badge, and a brand-new
@@ -642,25 +732,46 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
             is exactly who the founder wanted this step for. */}
         {/* WHY the rows below are locked, read before they are tapped rather
             than discovered after. */}
-        {profile.verified ? null : (
+        {capturingBadge || profile.verified ? null : (
           <ThemedText type="footnote" themeColor="textSecondary">
-            {AUDIENCE_NEEDS_BADGE} The selfie check lives on your profile once you are in.
+            {AUDIENCE_NEEDS_BADGE} Tap one and you can take the selfie here.
           </ThemedText>
         )}
-        <AudiencePicker
-          value={audience}
-          verified={profile.verified}
-          disabled={setAudience.isPending}
-          onChange={(next) => setAudience.mutate(next)}
-        />
-        <ThemedText type="footnote" themeColor="textSecondary">
-          {AUDIENCE_GENDER_NOTE}
-        </ThemedText>
-        {/* Said plainly, because a setting that feels permanent is one people
-            get wrong and then live with. */}
-        <ThemedText type="footnote" themeColor="textSecondary">
-          You can change this any time, at the top of your profile.
-        </ThemedText>
+        {capturingBadge ? null : (
+          <>
+            <AudiencePicker
+              value={audience}
+              verified={profile.verified}
+              disabled={setAudience.isPending}
+              onChange={(next) => setAudience.mutate(next)}
+              // A locked row is a door now. It kept naming the badge, saying
+              // it lives somewhere else, and doing nothing at all when tapped
+              // - so a woman finishing signup was set to Everyone and never
+              // asked again. router.push cannot work from here:
+              // <Stack.Screen name="verification"> sits inside
+              // `Stack.Protected guard={signedIn && onboarded}` and an
+              // onboarding account satisfies neither half.
+              onLockedPress={(wanted) => {
+                setWantedAudience(wanted);
+                // ...and on the DEVICE as well, because this step cannot keep
+                // the promise its note makes. The check takes minutes and the
+                // rest of signup takes seconds, so this component is always
+                // long gone by the time the badge arrives; the profile picks
+                // the wish up from storage and spends it there.
+                void rememberWantedAudience(wanted);
+                setCapturingBadge(true);
+              }}
+            />
+            <ThemedText type="footnote" themeColor="textSecondary">
+              {AUDIENCE_GENDER_NOTE}
+            </ThemedText>
+            {/* Said plainly, because a setting that feels permanent is one
+                people get wrong and then live with. */}
+            <ThemedText type="footnote" themeColor="textSecondary">
+              You can change this any time, at the top of your profile.
+            </ThemedText>
+          </>
+        )}
       </StepShell>
     );
   }
@@ -672,14 +783,15 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   // back and edit any portion before completing the initial onboarding."
   //
   // The same component a stranger gets, in owner mode, so this is not a
-  // preview of the profile — it IS the profile. Backing up from here lands on
-  // the step that owns whatever looks wrong.
+  // preview of the profile — it IS the profile. Every section's edit
+  // affordance jumps to the step that owns it, which is what the subtitle
+  // promises; the shell's Back still walks one step at a time.
   return (
     <StepShell
       step={13}
       total={SIGNUP_TOTAL_STEPS}
       title="Here you are"
-      subtitle="Exactly what a stranger sees. Step back to change anything."
+      subtitle="Your profile. Tap any part of it to change it."
       continueLabel="Looks right, finish"
       continueTestID="finish-profile"
       continueLoading={updateProfile.isPending}
@@ -704,16 +816,28 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
           prompts={prompts}
           priorities={priorities}
           trips={profileTrips}
-          handles={[]}
-          // NOT owner mode, and that is the point of the step: the founder
-          // asked for "a final look of how your profile appears to other
-          // users", and owner mode adds edit affordances that push to routes
-          // sitting behind the `onboarded` guard — which this account is not
-          // yet, so every one of them would be a tap that does nothing. The
-          // way back is the shell's own Back, through the step that owns
-          // whatever looks wrong.
-          owner={false}
+          handles={handles}
+          // Owner mode, and every affordance wired to a STEP rather than a
+          // route. The step used to render the stranger's copy and tell
+          // people to "step back to change anything", where back was a
+          // one-step chevron: fixing a typo in your name cost ten Back taps
+          // through ten animated transitions. ProfileView has no router
+          // import and makes no navigation of its own - every owner
+          // affordance is a caller-supplied callback - so the same component
+          // that pushes guarded routes from the profile page jumps steps
+          // here. docs/ONBOARDING.md section 3 specifies exactly this.
+          owner
           connected={false}
+          onEditSection={(section) =>
+            jumpToStep(
+              section === 'photos' ? 5 : section === 'details' ? 4 : section === 'about' ? 7 : 11
+            )
+          }
+          onEditPrompt={() => jumpToStep(8)}
+          onEditPriorities={() => jumpToStep(9)}
+          // Not the TripEditor sheet: opening a modal from inside StepShell
+          // is the Fabric touch-death trap the traps skill records.
+          onEditTrips={() => jumpToStep(10)}
         />
       </View>
     </StepShell>

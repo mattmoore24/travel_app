@@ -111,7 +111,17 @@ describe('no verification screen can reach the photo library', () => {
   // Every screen where a photo is EVIDENCE rather than content. Profile
   // photos and a business gallery are content and rightly come from wherever
   // people keep their pictures.
-  const VERIFYING = ['app/verification.tsx', 'app/business-storefront.tsx', 'lib/live-camera.ts'];
+  // The selfie capture is a COMPONENT now, not a screen: signup has to
+  // present it inline, because /verification lives behind
+  // `signedIn && onboarded` and an account halfway through signup is neither.
+  // The rule follows the code, so the module is what gets scanned.
+  const VERIFYING = [
+    'features/profile/verification-capture.tsx',
+    'app/verification.tsx',
+    'app/onboarding/index.tsx',
+    'app/business-storefront.tsx',
+    'lib/live-camera.ts',
+  ];
 
   const read = (file: string) => fs.readFileSync(path.join(SRC, file), 'utf8');
 
@@ -131,12 +141,23 @@ describe('no verification screen can reach the photo library', () => {
   // Stronger than the line above: the screens do not talk to the picker at
   // all. Going through the one helper is what makes the rule reviewable in a
   // single file rather than re-argued at every call site.
-  it.each(['app/verification.tsx', 'app/business-storefront.tsx'])(
+  it.each(['features/profile/verification-capture.tsx', 'app/business-storefront.tsx'])(
     '%s captures through the shared helper and nothing else',
     (file) => {
       const text = code(file);
       expect(text).not.toContain("from 'expo-image-picker'");
       expect(text).toContain("from '@/lib/live-camera'");
+    }
+  );
+
+  // And the two places that PRESENT the capture reach it through that module
+  // rather than growing a second capture of their own.
+  it.each(['app/verification.tsx', 'app/onboarding/index.tsx'])(
+    '%s presents the shared capture rather than its own',
+    (file) => {
+      const text = code(file);
+      expect(text).not.toContain("from 'expo-image-picker'");
+      expect(text).toContain("from '@/features/profile/verification-capture'");
     }
   );
 });

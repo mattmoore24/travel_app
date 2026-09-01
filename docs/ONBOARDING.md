@@ -83,7 +83,7 @@ bar, exactly as the two stacks already share `SIGNUP_TOTAL_STEPS`.
 | 10  | Your trips           | one trip                       | yes                | "Dates in a city. This is the whole matching engine, so one trip is worth more than everything above it." |
 | 11  | Socials              | handles                        | yes                | "Nobody sees these until you are both in a chat."                                                         |
 | 12  | Who sees you         | audience                       | no (has a default) | the existing `AUDIENCE_BOTH_WAYS` copy                                                                    |
-| 13  | Here is your profile | review                         | —                  | "This is exactly what a stranger sees."                                                                   |
+| 13  | Here is your profile | review                         | —                  | "Your profile. Tap any part of it to change it."                                                          |
 
 Step 10 is the one that earns the extra length: the app's core loop cannot run
 for a profile with no trip, and today nothing asks.

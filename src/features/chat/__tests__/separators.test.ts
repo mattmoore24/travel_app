@@ -22,7 +22,12 @@ describe('separatorFor', () => {
   });
 
   it('says nothing between messages minutes apart', () => {
+    // Anchored at midday, like the gap case below: subtracting minutes from
+    // the real clock crosses midnight when CI happens to run at 00:0x, and
+    // then "three minutes earlier" is YESTERDAY and the separator rightly
+    // appears. That is the test being wrong about the time, not the code.
     const now = new Date();
+    now.setHours(12, 0, 0, 0);
     const older = at(new Date(now.getTime() - 3 * MINUTE));
     expect(separatorFor(at(now), older)).toBeNull();
   });
@@ -47,7 +52,10 @@ describe('separatorFor', () => {
 
 describe('rowTimestamp', () => {
   it('shows the time for something that happened today', () => {
+    // Midday for the same reason: two minutes before 00:01 is yesterday, and
+    // this case flaked in CI at exactly that minute.
     const now = new Date();
+    now.setHours(12, 0, 0, 0);
     const at = new Date(now.getTime() - 2 * MINUTE);
     // Not asserting the exact string: the locale decides between "3:04 PM"
     // and "15:04". What matters is that it is a clock time, not a date.
@@ -68,6 +76,7 @@ describe('rowTimestamp', () => {
 
   it('uses the weekday inside the last week', () => {
     const now = new Date();
+    now.setHours(12, 0, 0, 0);
     const at = new Date(now.getTime() - 4 * 24 * HOUR);
     expect(rowTimestamp(at.toISOString(), now)).toMatch(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/);
   });

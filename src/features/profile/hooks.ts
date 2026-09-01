@@ -19,6 +19,7 @@ import {
   saveProfilePriority,
   saveProfilePrompt,
   setOwnVisibility,
+  setPhotoPositions,
   signedPhotoUrl,
   submitVerificationSelfie,
   updateOwnProfile,
@@ -195,7 +196,13 @@ export function useUploadPhoto() {
       // Continue button: a photo that lands emits this even if the person
       // then quits on the gate.
       analytics.capture('profile_photo_added', { position });
-      queryClient.invalidateQueries({ queryKey: ['photos', userId] });
+      // RETURNED, so mutateAsync does not resolve until the refetch has
+      // landed. That is what lets PhotoGrid retire its local tile the moment
+      // the await returns, with the real row already on screen: dropping it
+      // any earlier flashes the empty dashed box, and keeping it any longer
+      // means keeping a dead entry that reappears the next time that slot is
+      // freed.
+      return queryClient.invalidateQueries({ queryKey: ['photos', userId] });
     },
   });
 }
@@ -207,6 +214,50 @@ export function useDeletePhoto() {
     mutationFn: (photo: ProfilePhotoRow) => deletePhoto(photo.id, photo.storage_path),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['photos', userId] });
+    },
+  });
+}
+
+/**
+ * Move a photo to a new place in the order, and with it decide which one
+ * leads.
+ *
+ * Optimistic, because this is a rearrangement somebody is doing with their
+ * eyes on the grid: waiting several round trips to see the tile move would
+ * read as a broken drag. The plan is computed by the caller (photo-order.ts)
+ * so the same arithmetic that produced the new list produced the writes.
+ */
+export function useReorderPhotos() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      writes,
+    }: {
+      writes: { id: string; position: number }[];
+      next: ProfilePhotoRow[];
+    }) => setPhotoPositions(writes),
+    onMutate: async ({ next }) => {
+      // Cancel first, or a refetch already in flight lands the old order on
+      // top of the optimistic one.
+      await queryClient.cancelQueries({ queryKey: ['photos', userId] });
+      const previous = queryClient.getQueryData<ProfilePhotoRow[]>(['photos', userId]);
+      queryClient.setQueryData(['photos', userId], next);
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['photos', userId], context.previous);
+      }
+    },
+    onSuccess: () => {
+      analytics.capture('profile_photos_reordered');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['photos', userId] });
+      // The public copy is a different key, and the hero it feeds is the
+      // whole point of the reorder.
+      queryClient.invalidateQueries({ queryKey: ['public-photos', userId] });
     },
   });
 }
