@@ -367,6 +367,19 @@ appId: com.mattmoore.samewhere
 # the same reason the 05e segment does it: the peek strip is a Pressable
 # carrying its own accessibility label, so its printed words are not elements
 # on iOS.
+# WHICH TAB IS THIS? The step above relaunches the app to prove the city
+# survives a cold start, and its proof that the app came up is `assertVisible:
+# 'Travelers'` - which is the TAB BAR LABEL, present on every tab. So nothing
+# in this flow has ever asserted it is on the MAP before doing map things.
+#
+# Run 106 is why that matters. 09-city-remembered photographed the map in
+# Denpasar; the screenshot taken immediately after the row tap below
+# photographed the TRAVELERS TAB showing Bangkok. onSelectBusiness only sets
+# local state and cannot navigate, and no crash report was written, so the
+# cause is still open - but a run that started on the wrong tab would look
+# identical to that one right up to the failure, and this flow could not tell
+# the difference. Now it can: 'Drop a pin' is on the map and nowhere else.
+- assertVisible: 'Drop a pin'
 - tapOn:
     id: 'plan-list-peek'
 - waitForAnimationToEnd:
