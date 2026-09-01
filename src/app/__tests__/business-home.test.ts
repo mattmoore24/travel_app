@@ -270,3 +270,55 @@ describe('My business is worth opening on a Tuesday', () => {
     );
   });
 });
+
+/**
+ * The two halves of this batch that landed in nobody's file list, found by
+ * the review pass rather than by a screen: my-business.tsx was not in any
+ * implementer's ownership block, so the second half of
+ * biz-photo-grid-in-place and the entire entry point for
+ * biz-post-edit-and-repeat were written nowhere.
+ */
+describe('the owner sees their own listing, not the public read of it', () => {
+  it('counts the photos the owner can see', () => {
+    const code = src(MY_BUSINESS);
+    // business_detail filters to moderation_status = 'approved'. With
+    // require_photo_moderation on - which is how production runs - an owner
+    // adds a cover, sees it chipped "In review" one tap away in the editor,
+    // and comes back to a screen telling them to add photos. This batch made
+    // that worse before it fixed it: the row now reads "Add photos so you
+    // have a cover" and the counter scores it 0, so the lie was stated twice
+    // and quantified.
+    expect(code).toContain('useBusinessPhotos(business?.id ?? null)');
+    expect(code).toContain('const photos = ownPhotos ?? detail?.photos ?? []');
+  });
+
+  it('still shows the public cover at the top, because that is what a traveler sees', () => {
+    const code = src(MY_BUSINESS);
+    // The hero image is the one honest use of the approved-only read on this
+    // screen: it is a photograph of what a stranger gets.
+    expect(code).toContain('useBusinessPhotoUrl(detail?.photos[0]?.storage_path ?? null)');
+  });
+});
+
+describe('a post can be fixed and put up again', () => {
+  it('has an entry point at all', () => {
+    const code = src(MY_BUSINESS);
+    // business-post.tsx has supported both since biz-post-edit-and-repeat -
+    // postId opens a post to be fixed, postId + again copies its words onto a
+    // new row - but nothing in the app navigated to it with either param, so
+    // the screen was reachable only as a blank composer and every string
+    // written for the other two paths was dead code.
+    expect(code).toContain('params: { postId: post.id }');
+    expect(code).toContain("params: { postId: post.id, again: '1' }");
+  });
+
+  it('keeps taking it down the only destructive choice', () => {
+    const code = src(MY_BUSINESS);
+    expect(code).toContain("{ text: 'Fix it', onPress: onFix }");
+    expect(code).toContain("{ text: 'Put it up again', onPress: onAgain }");
+    expect(code).toContain("{ text: 'Take it down', style: 'destructive', onPress: onTakeDown }");
+    // And the card says all three, so the label is not a lie about what a tap
+    // will offer.
+    expect(code).toContain('Fix it, put it up again, or take it down.');
+  });
+});

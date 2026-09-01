@@ -226,7 +226,17 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
               its Hours section; this card has no such section, so the meta
               line is the only place it can be named. */}
           <ThemedText type="footnote" themeColor="textSecondary">
-            {[CATEGORY_LABEL[place.category], open ?? 'Hours not set'].join(' · ')}
+            {[
+              CATEGORY_LABEL[place.category],
+              // `hours_note` counts as hours. The page's own gap test is
+              // `hours.length === 0 && !note`, and a sheet that said "Hours
+              // not set" about a business whose note reads "open when the
+              // lights are on" would contradict the page one tap behind it -
+              // which is the disagreement this line was written to END, not
+              // to relocate. openLine() only reads the grid, so the note has
+              // to be consulted here.
+              open ?? (place.hours_note?.trim() ? place.hours_note.trim() : 'Hours not set'),
+            ].join(' · ')}
           </ThemedText>
           {address ? (
             <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>

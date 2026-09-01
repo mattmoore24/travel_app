@@ -84,8 +84,25 @@ describe('the tapped-marker card says the same thing', () => {
     // The card has no Hours section to carry it, so the one line under the
     // name is where it goes. Without this the sheet and the page disagreed
     // about whether a business had told anyone when it is open.
-    expect(code).toContain("[CATEGORY_LABEL[place.category], open ?? 'Hours not set'].join(' · ')");
+    expect(code).toContain("'Hours not set'");
+    expect(code).toContain('CATEGORY_LABEL[place.category],');
+    expect(code).toContain(".join(' · ')");
     // filter(Boolean) was how the clause used to vanish.
     expect(code).not.toContain('[CATEGORY_LABEL[place.category], open].filter(Boolean)');
+  });
+
+  it('counts a note as hours, because the page does', () => {
+    const code = src(SHEET);
+    // openLine() reads only the grid, so a business whose hours live in
+    // hours_note ("open when the lights are on") has open === null. Saying
+    // "Hours not set" about it would contradict the page one tap behind,
+    // whose own gap test is `hours.length === 0 && !note` - and moving a
+    // disagreement is not the same as ending one.
+    expect(code).toContain('place.hours_note');
+    const meta = code.slice(code.indexOf('CATEGORY_LABEL[place.category],'));
+    const line = meta.slice(0, meta.indexOf(".join(' · ')"));
+    expect(line).toContain('hours_note');
+    // Trimmed: a note of three spaces is not hours.
+    expect(line).toContain('trim()');
   });
 });

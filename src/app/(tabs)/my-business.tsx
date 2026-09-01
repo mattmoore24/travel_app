@@ -47,6 +47,7 @@ import {
   openLine,
   weekLine,
 } from '@/features/business/vocabulary';
+import { useBusinessPhotos } from '@/features/business/business-photos';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { useMyChats } from '@/features/matching/hooks';
 import { ShareLink } from '@/features/share/share-link';
@@ -187,7 +188,34 @@ function Section({
  * whole screen to host one destructive button is more ceremony than the
  * decision deserves.
  */
-function PostCard({ post, onTakeDown }: { post: BusinessPostJson; onTakeDown: () => void }) {
+/**
+ * One live post, and the three things an owner can do to it.
+ *
+ * The card used to have exactly one action - take it down - so a typo in a
+ * quiz night's time could only be answered by deleting the post and writing
+ * it again from nothing, and last week's quiz night could not go back up at
+ * all. business-post.tsx has supported both since biz-post-edit-and-repeat
+ * (`postId` opens a post to be fixed, `postId + again` copies its words onto
+ * a new row with a date somebody has to look at), but nothing in the app
+ * navigated to it with either param, so the whole screen was reachable only
+ * as a blank composer and every string written for the other two was dead.
+ *
+ * An alert rather than three buttons on the card: the card is a summary and
+ * the actions are all one tap deep, which is the shape "Take this down?"
+ * already had. Fix it first because it is the commonest and the least
+ * destructive; take it down stays last and stays the only destructive one.
+ */
+function PostCard({
+  post,
+  onTakeDown,
+  onFix,
+  onAgain,
+}: {
+  post: BusinessPostJson;
+  onTakeDown: () => void;
+  onFix: () => void;
+  onAgain: () => void;
+}) {
   const at = post.happens_at ? new Date(post.happens_at) : null;
   const today = at != null && at.toDateString() === new Date().toDateString();
   const theme = useTheme();
@@ -195,13 +223,15 @@ function PostCard({ post, onTakeDown }: { post: BusinessPostJson; onTakeDown: ()
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={`${post.title}. Take it down.`}
+      accessibilityLabel={`${post.title}. Fix it, put it up again, or take it down.`}
       scaleTo={0.99}
       haptic="soft"
       onPress={() =>
-        Alert.alert('Take this down?', post.title, [
-          { text: 'Keep it up', style: 'cancel' },
+        Alert.alert(post.title, undefined, [
+          { text: 'Fix it', onPress: onFix },
+          { text: 'Put it up again', onPress: onAgain },
           { text: 'Take it down', style: 'destructive', onPress: onTakeDown },
+          { text: 'Cancel', style: 'cancel' },
         ])
       }>
       <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -316,6 +346,15 @@ export default function MyBusinessScreen() {
   // out of the owner's own typing. Conversations, never senders: see
   // vocabulary.weekLine.
   const chats = useMyChats().data ?? null;
+  // The owner's own photos, NOT business_detail's, which is filtered to
+  // approved. This is the second half of biz-photo-grid-in-place and it is
+  // the half that bites hardest: with require_photo_moderation on (which is
+  // how production runs) an owner adds their cover, sees it chipped "In
+  // review" one tap away in the editor, comes back here and is told to add
+  // photos. This batch made that worse before it made it better - the row
+  // now reads "Add photos so you have a cover" and the new counter scores it
+  // 0, so the screen states the lie twice and quantifies it.
+  const ownPhotos = useBusinessPhotos(business?.id ?? null).data ?? null;
   // Whether the square is on screen. Off by default - it is the counter case,
   // not the common one, and a 200pt QR above 'Your account' on every open
   // would push the settings rows below the fold for everybody.
@@ -434,7 +473,10 @@ export default function MyBusinessScreen() {
 
   const status = statusOf(business);
   const posts = detail?.posts ?? [];
-  const photos = detail?.photos ?? [];
+  // What the OWNER has, for the rows and the counter below. `detail.photos`
+  // is the public read and still owns the cover thumbnail at the top of this
+  // screen, which is right: that image IS what a traveler sees.
+  const photos = ownPhotos ?? detail?.photos ?? [];
   const links = detail?.links ?? [];
   const done = detailsDone({
     hasAddress: business.address != null,
@@ -622,6 +664,22 @@ export default function MyBusinessScreen() {
                           onTakeDown={() => {
                             archivePost.mutate(post.id);
                           }}
+                          onFix={() =>
+                            router.push({
+                              pathname: '/business-post',
+                              params: { postId: post.id },
+                            })
+                          }
+                          // `again: '1'` copies the words onto a NEW row with
+                          // a date the owner has to look at, rather than
+                          // clearing archived_at - un-archiving by hand would
+                          // put last week's date back on the map.
+                          onAgain={() =>
+                            router.push({
+                              pathname: '/business-post',
+                              params: { postId: post.id, again: '1' },
+                            })
+                          }
                         />
                       ))}
                     </>
