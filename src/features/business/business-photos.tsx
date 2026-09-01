@@ -116,6 +116,23 @@ export function useBusinessPhotos(businessId: string | null) {
     queryKey: ['business-photos', businessId],
     queryFn: () => fetchBusinessPhotos(businessId!),
     enabled: isSupabaseConfigured && businessId != null,
+    // A verdict lands in the database, not in this app, and this is the
+    // screen most likely to be open while it does: somebody has just added a
+    // photo and is watching the tile that says "In review". Without a watch
+    // it says that until the screen is left and come back to, and a rejected
+    // photo never gets to explain itself at all - which is the whole point of
+    // the chip beside it.
+    //
+    // A poll rather than a realtime subscription: it needs no channel, no
+    // teardown and no policy, and it STOPS on its own. The moment every photo
+    // has settled the interval returns false, so an owner reading their own
+    // finished listing is not paying for a socket. Ten seconds is the
+    // moderation worker's own order of magnitude; a person watching a
+    // spinner will not count it.
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((photo) => photo.moderation_status !== 'approved')
+        ? 10_000
+        : false,
   });
 }
 

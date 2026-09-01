@@ -72,3 +72,24 @@ describe('one picker, however many buttons drive it', () => {
     expect(body).toContain('picking.current = false');
   });
 });
+
+describe('a verdict reaches the screen that is watching for it', () => {
+  const code = fs.readFileSync(path.join(__dirname, '..', 'business-photos.tsx'), 'utf8');
+
+  it('watches while anything is unsettled', () => {
+    // This is the screen most likely to be open when a verdict lands:
+    // somebody has just added a photo and is looking at the tile that says
+    // "In review". Without a watch it says that until the screen is left and
+    // come back to, and a rejected photo never gets to explain itself - which
+    // is what the chip beside it exists for.
+    expect(code).toContain('refetchInterval:');
+    expect(code).toContain("photo.moderation_status !== 'approved'");
+  });
+
+  it('stops once everything has settled', () => {
+    // The poll must end on its own, or an owner reading a finished listing
+    // pays for it forever.
+    const watch = code.slice(code.indexOf('refetchInterval:'));
+    expect(watch.slice(0, watch.indexOf('});'))).toContain(': false');
+  });
+});
