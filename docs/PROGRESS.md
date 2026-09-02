@@ -122,13 +122,13 @@ binary never asks and never crashes.
 
 **To fill in when the build has run** (the hand-runs are in APP_STORE.md):
 
-| Fact                                                                                      | Answer                             |
-| ----------------------------------------------------------------------------------------- | ---------------------------------- |
-| 0.2.0 build number and EAS build id                                                       | _pending_                          |
-| `aps-environment` per the step summary                                                    | _pending_ (must read `production`) |
-| `StoreReviewModule` linked and PostHog key baked in, per the step summary                 | _pending_                          |
-| Push hand-run: the notification landed on the lock screen with the icon and tint          | _pending_                          |
-| Review-ask hand-run: `review_prompt_requested { available: false }` in PostHog, timestamp | _pending_                          |
+| Fact                                                                                      | Answer                                                                                                                                                                                                                                                        |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.2.0 build number and EAS build id                                                       | **build 17**, `c351bf03-c26f-449e-9ed6-bfa47c19f16d`, commit `f477025`, submitted 2026-09-02 04:41 UTC                                                                                                                                                        |
+| `aps-environment` per the step summary                                                    | **`production`**, read off the binary's own code signature (the profile branch fell through; either source answering is enough, and this one did)                                                                                                             |
+| `StoreReviewModule` linked and PostHog key baked in, per the step summary                 | **both yes**, plus `LocalSearchModule` and a real Supabase host. The EAS `production` environment was also confirmed to carry all four `EXPO_PUBLIC_*` values BEFORE the builder ran — the thing three docs recorded as not done and no build had ever proved |
+| Push hand-run: the notification landed on the lock screen with the icon and tint          | _pending_                                                                                                                                                                                                                                                     |
+| Review-ask hand-run: `review_prompt_requested { available: false }` in PostHog, timestamp | _pending_                                                                                                                                                                                                                                                     |
 
 ## **Four things this pass owes the next one** (2026-09-01)
 
