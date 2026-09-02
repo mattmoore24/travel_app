@@ -31,6 +31,11 @@ export function useGroup(chatId: string | null) {
   // has not cleared, however it spells the column. `select` runs on the
   // observer, which is why the cache and the poll below still hold the raw
   // row.
+  //
+  // Since 20260903130000 the raw row IS the masked row: fetchGroup reads
+  // group_detail, which hands a member null for both photo columns while
+  // somebody else's photo is being checked. So this is UX on top of the
+  // server's answer, not the thing deciding it.
   const select = useCallback((row: GroupRow | null) => groupView(row, ownUserId), [ownUserId]);
   return useQuery({
     queryKey: ['group', chatId],
@@ -44,9 +49,14 @@ export function useGroup(chatId: string | null) {
     // and a refused photo never gets to say "pick another". A poll rather
     // than a subscription, for the reasons useBusinessPhotos gives: no
     // channel, no policy, and it stops on its own the moment the row has
-    // nothing pending. On the raw row, so a member's page (which shows the
-    // glyph while a photo is checked) still picks the picture up when it
-    // clears.
+    // nothing pending.
+    //
+    // Only the SETTER polls, and that is the rule rather than an oversight:
+    // the row is masked server-side now, so a member is handed no pending
+    // status to poll on - and a member whose app polled every five seconds
+    // BECAUSE a photo was pending would be a phone that knows the fact the
+    // server declined to tell it. Their page picks the picture up on the
+    // next refetch once it clears, the same way it picks up a name change.
     refetchInterval: (query) =>
       query.state.data?.photo_status === 'pending' && query.state.data.photo_path != null
         ? 5_000

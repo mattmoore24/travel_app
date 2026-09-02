@@ -18,10 +18,15 @@ const BRUNO = '00000000-0000-0000-0000-0000000000b5';
 const PHOTO = `${ANA}/two.jpg`;
 
 /**
- * Who may see a group's photo, on the client. The server masks the path in
- * my_chats and group_invite_preview and the bucket refuses to sign it; this
- * is the same rule applied to the one read that comes straight off the
- * table (`fetchGroup` is `select *`), and it has to agree with the server.
+ * Who may see a group's photo, on the client — and only on the client. The
+ * server is the boundary and asserts this itself: `my_chats`,
+ * `group_invite_preview` and `group_detail` mask the columns, the bucket
+ * refuses to sign an unapproved object, `groups` grants a client none of the
+ * three photo columns, and `74_a_verdict_is_for_its_subject_alone` is that
+ * written as the attack. What is tested here is that the screens agree with
+ * that answer rather than second-guessing it: until 20260903130000 this file
+ * WAS the enforcement, which is how a member could read `photo_status` off
+ * the table and watch a refusal happen while every test here passed.
  */
 describe('groupPhotoView', () => {
   it('draws an approved photo for everybody', () => {
@@ -227,6 +232,32 @@ describe('no screen holds the raw group row', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('reads the row through the masking RPC, and never with a star', () => {
+    // The leak this pair of files used to hide rather than close: a
+    // table-level select grant, so `select photo_status from groups` answered
+    // any member. group_detail masks it server-side now.
+    //
+    // The table read is NOT forbidden outright, and the first draft of this
+    // assertion had it that way. It has to stay, because 20260903130000
+    // revokes a grant instead of adding a column, so it breaks the bundle
+    // already on the phone rather than the new one - the update ships first
+    // and has to answer against a project without the function. What is
+    // forbidden is the shape that migration refuses: `select('*')` expands to
+    // every column including the three that are no longer granted, so it is
+    // `permission denied` after the migration and a step backwards before it.
+    const api = source('src/features/groups/api.ts');
+    const fetchGroupFn = between(
+      api,
+      'export async function fetchGroup(',
+      '\nexport async function'
+    );
+    expect(fetchGroupFn).toContain("supabase.rpc('group_detail'");
+    expect(fetchGroupFn).not.toContain("select('*')");
+    // And the fallback is reachable only on the one error that means the
+    // function is not there yet, so a real failure is never mistaken for it.
+    expect(fetchGroupFn).toContain("error.code !== 'PGRST202'");
+  });
+
   it('and useGroup hands out the view, not the row', () => {
     const block = between(
       source('src/features/groups/hooks.ts'),
@@ -284,5 +315,42 @@ describe('no screen holds the raw group row', () => {
     // And the sheet is built from the one list, so an option cannot exist
     // on the phone without an action behind it.
     expect(page).toContain('groupPhotoActions(photo)');
+  });
+});
+
+/**
+ * The deploy window, in the one direction the house rule does not cover.
+ *
+ * 20260903130000 REVOKES a grant rather than adding a column, so the bundle
+ * already on the phone breaks the moment it applies - the opposite of the
+ * usual case, where the new bundle is the one that needs the new schema. That
+ * inverts the order: this JavaScript ships first and has to answer correctly
+ * against a project where `group_detail` does not exist yet.
+ */
+describe('fetchGroup reads the schema on either side of the migration', () => {
+  const root = path.join(__dirname, '..', '..', '..', '..');
+  const api = fs.readFileSync(path.join(root, 'src', 'features', 'groups', 'api.ts'), 'utf8');
+  const fetchGroup = between(api, 'export async function fetchGroup(', '\nexport async function');
+
+  it('asks the RPC first', () => {
+    expect(fetchGroup).toContain("supabase.rpc('group_detail'");
+  });
+
+  it('falls back to the table when the function is not there yet', () => {
+    // PGRST202 is PostgREST for "no such function", which before this
+    // migration applies is the only way the RPC can fail.
+    expect(fetchGroup).toContain("error.code !== 'PGRST202'");
+    expect(fetchGroup).toContain("from('groups')");
+  });
+
+  it('and still throws every other error rather than showing an empty group', () => {
+    expect(fetchGroup).toMatch(/if \(error\.code !== 'PGRST202'\) \{\s*throw error;/);
+  });
+
+  it('names its columns, so the fallback cannot ask for one it may not read', () => {
+    // `select('*')` is what the OLD client does and what the migration
+    // refuses; a named list is the same list group_detail returns.
+    expect(fetchGroup).not.toContain("select('*')");
+    expect(fetchGroup).toContain('photo_status');
   });
 });

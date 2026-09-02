@@ -9,6 +9,18 @@ import type { GroupRow } from '@/lib/database.types';
  * one place the client reads the two together, so the group page and the
  * room header cannot come to disagree about who may see what.
  *
+ * THIS FILE IS UX, NOT THE BOUNDARY, and for a day it was the only thing
+ * enforcing half of the rule below. `grant select on public.groups` was
+ * table-level until 20260903130000, so a member could read `photo_status`
+ * straight off the table and watch 'pending' become 'rejected' — the exact
+ * inference the rule forbids — no matter what this function returned. The
+ * server decides now: `group_detail` hands a member null for both columns
+ * unless the photo is approved or they set it, the storage bucket refuses to
+ * sign an unapproved object, and 74_a_verdict_is_for_its_subject_alone is
+ * that written as the attack. What is left here is a screen never drawing a
+ * frame the server would refuse to fill, which is worth keeping and is not a
+ * lock.
+ *
  *   ready      approved. Everybody draws it.
  *   checking   waiting on the worker, and you are the one who uploaded it.
  *              You get the path (the bucket lets you read your own upload
@@ -23,12 +35,17 @@ import type { GroupRow } from '@/lib/database.types';
  *              member who could watch "being checked" turn into nothing would
  *              know the admin's picture was refused, which is a moderation
  *              outcome reaching somebody it is not about. To a member there is
- *              no photo until there is one.
+ *              no photo until there is one. A member's row arrives with both
+ *              columns already null, so this branch is what the screen draws
+ *              rather than what hides anything.
  *
  * The uploader is the path's first segment. Every group photo is uploaded
  * into the uploader's own folder (the bucket's insert policy enforces it) and
  * the trigger refuses any other path, so the prefix IS who set it, and it is
  * the same comparison my_chats and group_invite_preview make server-side.
+ * `group_detail` compares `groups.photo_set_by` instead, for the one case a
+ * path cannot answer: a REFUSED photo has had its path removed by the verdict
+ * it is about, and the subject still has to be told.
  *
  * A row from BEFORE the migration reached the phone (the deploy window: an
  * expo-updates bundle is applied on the launch after the one that fetched

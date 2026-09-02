@@ -247,8 +247,10 @@ export default function GroupScreen() {
   // The photo, as useGroup hands it out: an approved picture is everybody's,
   // a pending one is its uploader's alone (to everybody else there is no
   // photo yet), a refused one has been removed and the admin is told. The
-  // raw columns are not on the row this screen holds, and the bucket
-  // enforces the same rule on the URL, so this is UX, not the lock.
+  // raw columns are not on the row this screen holds, group_detail has
+  // already masked them for anybody but the person who set the photo
+  // (20260903130000), and the bucket enforces the same rule on the URL. This
+  // is UX; none of the three is the lock.
   const photo = group?.photo ?? NO_GROUP_PHOTO;
   const { data: photoUrl } = useChatPhotoUrl(photo.path);
   const leaveRoom = useLeaveRoom(id!);
@@ -481,9 +483,13 @@ export default function GroupScreen() {
               </ThemedText>
             ) : photo.state === 'blocked' && isAdmin ? (
               // Removed server-side, not a strike. Said to the person who can
-              // do something about it; a plain member just sees no photo. The
-              // tile above offers another photo, or none, which is how this
-              // sentence goes away.
+              // do something about it; a plain member just sees no photo —
+              // and since 20260903130000 cannot see anything else either,
+              // because group_detail hands them no verdict to read. The
+              // `isAdmin` term is belt to that braces: the setter of a group
+              // photo is always a moderator, since update_group refuses
+              // anybody else. The tile above offers another photo, or none,
+              // which is how this sentence goes away.
               <ThemedText type="footnote" themeColor="textSecondary">
                 That photo was not approved and has been removed. Pick another.
               </ThemedText>

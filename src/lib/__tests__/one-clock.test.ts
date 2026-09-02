@@ -20,8 +20,8 @@ import path from 'node:path';
  * way below. Thirteen formatters named 'en' by hand and four passed
  * `undefined`, which is the device, so a Portuguese phone drew "agosto 2026"
  * as a calendar header with "Aug 30 to Sep 2" in the summary directly beneath
- * it. lib/locale's `dates()` is the one answer; ADOPTION_OUTSTANDING is every
- * file that has not moved onto it yet, and it may only ever shrink.
+ * it. lib/locale's `dates()` is the one answer, and every file under src/ is
+ * now on it, so the scan below allows no exceptions at all.
  */
 const REPO = path.join(__dirname, '..', '..', '..');
 const SRC = path.join(REPO, 'src');
@@ -87,24 +87,31 @@ describe('the app prints an hour from exactly one place', () => {
 });
 
 /**
- * The files that still name a locale of their own. EMPTY, since 2026-09-02,
- * and it stays empty: the guard below is a subset check, so nothing can be
- * added here without first being added to this list, and this list is not
- * to be added to.
+ * THE ADOPTION IS FINISHED, so there is no exemption list any more.
  *
- * It held nine entries the day it was written, each belonging to a subsystem
- * the first package could not reach. Four of them passed `undefined` - the
- * device - and were the actual two-languages-on-one-screen bug (the room
- * header's "you leave" line, the chat row's, the group close day, the trip
- * calendar's month header and its spoken cells); one was a bare
+ * There was one, and it is worth saying what it held so nobody rebuilds it.
+ * Nine files named a locale of their own the day it was written, each in a
+ * subsystem the first package could not reach. Four of them passed
+ * `undefined` - the device - and were the actual two-languages-on-one-screen
+ * bug (the room header's "you leave" line, the chat row's, the group close
+ * day, the trip calendar's month header and its spoken cells); one was a bare
  * `toLocaleDateString()` (the account gate's pause date, numeric AND in the
  * device's language); four said 'en' by hand and were merely a second engine
- * waiting to drift. All nine now call lib/locale's `dates()`, and the
- * assertions further down name the four user-visible ones so a revert of any
- * one of them fails by file rather than by "something under src/".
+ * waiting to drift. All nine call lib/locale's `dates()` as of 2026-09-02.
+ *
+ * The list went with them, and deliberately: an allowlist emptied to zero is
+ * a loop over nothing, and the "every entry is still a real file" guard that
+ * used to sit beside it became a test with no assertions in it that passed
+ * whatever anybody did. The scan below is now unconditional - every file
+ * under src/ except lib/locale itself - which is strictly stronger than a
+ * subset check against an empty set, and it fails by file name. If a file
+ * ever has to be exempted again, the honest form is an assertion naming that
+ * file and why, not a set the guard reads.
+ *
+ * The assertions further down still name the four user-visible sites, so a
+ * revert of any one of them fails by file rather than by "something under
+ * src/".
  */
-const ADOPTION_OUTSTANDING = new Set<string>([]);
-
 describe('the app prints a day from exactly one place too', () => {
   const files = sourceFiles(SRC).filter((f) => !f.endsWith(path.join('lib', 'locale.ts')));
 
@@ -131,29 +138,16 @@ describe('the app prints a day from exactly one place too', () => {
     return found;
   }
 
-  it('has no NEW file naming a locale of its own', () => {
+  it('has no file naming a locale of its own', () => {
     const offenders = new Set<string>();
     for (const file of files) {
-      const rel = path.relative(REPO, file);
-      if (ADOPTION_OUTSTANDING.has(rel)) {
-        continue;
-      }
       if (renderedFormatters(fs.readFileSync(file, 'utf8')).length > 0) {
-        offenders.add(rel);
+        offenders.add(path.relative(REPO, file));
       }
     }
     // Sorted so the failure names the file rather than a Set's insertion
     // order, and the fix is always "call lib/locale's dates() instead".
     expect([...offenders].sort()).toEqual([]);
-  });
-
-  it('and every entry on the outstanding list is still a real file', () => {
-    // A stale path is worse than a missing guard: it silently exempts nothing
-    // while looking like it exempts something, and the day somebody renames
-    // that file the exemption quietly becomes a hole.
-    for (const rel of ADOPTION_OUTSTANDING) {
-      expect(fs.existsSync(path.join(REPO, rel))).toBe(true);
-    }
   });
 
   it('is reached by the chat list, whose two engines started this', () => {

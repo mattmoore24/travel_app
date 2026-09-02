@@ -7,15 +7,43 @@
 -- pins the shape the worker depends on and the one privacy fact about it.
 --
 -- EVERY ASSERTION HERE WAS RUN AGAINST THE MUTATION THAT REMOVES WHAT IT
--- NAMES (2026-09-02). With `add column attempts integer` deleted from the
--- migration, 1 and 3 fail and 7 dies on the unknown column; with it made
--- `not null default 0`, 2 fails ("should allow NULL"); with `last_error`
--- deleted, 4 and 6 fail and 7 dies; with `text` changed to `varchar(80)`, 6
--- fails; with `grant select (attempts, last_error) on public.push_queue to
--- authenticated` appended to the migration, 8 comes back "lives" instead of
--- 42501. 7 is the worker's own bookkeeping statement, run as the role the
--- worker runs as, and it asserts the thing the round is about: sent_at is
--- still NULL on a refused row.
+-- NAMES (2026-09-02, second pass on a rebuilt cluster), and this record
+-- replaces a wrong one: three of the five lines below named the wrong
+-- assertions, and two of them under-counted what a missing column does to a
+-- pgTAP file. What actually happens, measured:
+--
+--   `add column attempts integer` deleted from the migration
+--     1, 2 AND 3 fail (2 reports "Column public.push_queue.attempts does not
+--     exist" rather than "should allow NULL"), 4 to 6 still run and pass,
+--     and then the worker's UPDATE - assertion 7's setup, not an assertion -
+--     raises 42703 and takes the whole file with it: 6 of 8 planned, so 7
+--     and 8 never run. A missing column is louder than an assertion -
+--     pg_prove reports "Bad plan. You planned 8 tests but ran 6" on top of
+--     the three failures.
+--
+--   `attempts integer` made `not null default 0`
+--     2 alone ("should allow NULL"). This is the only mutation of the five
+--     that fails exactly one assertion and leaves the file intact.
+--
+--   `add column last_error text` deleted
+--     4, 5 and 6 fail, and the same UPDATE kills the file, so 7 and 8 never
+--     run (6 of 8 planned). Symmetrical with the first.
+--
+--   `text` changed to `varchar(80)`
+--     6 AND 7 fail. 7 is not a second opinion about the type: results_eq
+--     compares the two queries column by column and raises "cannot compare
+--     dissimilar column types character varying and text at record column
+--     2", so the bookkeeping assertion cannot even run against a narrowed
+--     column. A ticket error is not a length-bounded thing and this is what
+--     holds it open.
+--
+--   `grant select (attempts, last_error) on public.push_queue to
+--   authenticated` appended
+--     8 alone, "caught: no exception / wanted: 42501".
+--
+-- 7 is the worker's own bookkeeping statement, run as the role the worker
+-- runs as, and it asserts the thing the round is about: sent_at is still
+-- NULL on a refused row.
 begin;
 select plan(8);
 

@@ -28,11 +28,26 @@ enumeration tables for the three closures are in
    storage policy tightened to approved-only, and `my_chats` and `group_invite_preview`
    masking the path from everyone but its uploader until it clears. On the phone: the group
    page shows the admin their picture behind a spinner with "Checking this photo. Only you can
-   see it until it clears.", other members see the glyph and "A new group photo is being
-   checked.", and a refused photo is removed with "That photo was not approved and has been
-   removed. Pick another." The room header says "Checking your group photo" to the uploader
-   for the few seconds it takes. Not a strike. A phone still on the previous bundle draws the
-   group glyph for an unapproved photo, because the bucket refuses to sign it.
+   see it until it clears."; other members see the group glyph and NOTHING said beside it (an
+   earlier draft of this line said they are told "A new group photo is being checked.", which
+   the code never did and must not — a member who could watch that sentence turn into nothing
+   would know the picture was refused); and a refused photo is removed with "That photo was
+   not approved and has been removed. Pick another." The room header says "Checking your group
+   photo" to the uploader for the few seconds it takes. Not a strike. A phone still on the
+   previous bundle draws the group glyph for an unapproved photo, because the bucket refuses
+   to sign it.
+
+   **The status half of that was enforced by the client alone until 20260903130000.**
+   `grant select on public.groups` was table-level, so any member could
+   `select photo_status from public.groups where name = '...'` and read 'pending', then
+   'rejected' — the very inference the paragraph above forbids — whatever `photo.ts`
+   returned. `groups` is column-granted now (the three photo columns and the new
+   `photo_set_by` are granted to nobody), the app reads the row through `group_detail()`,
+   the `chat_photos_select_group` policy reads the columns through `can_view_group_photo()`
+   because an RLS expression runs with the READER's privileges, and
+   `74_a_verdict_is_for_its_subject_alone` is the attack. Cost: one launch of the old bundle
+   sees a LoadError on the group settings page, because `select('*')` on a column-granted
+   table is `permission denied`.
 
    Two things this did not do, on purpose. The chat list row shows the uploader their own
    pending photo without a "checking" label: saying it there needs a `photo_state` column

@@ -67,13 +67,20 @@ insert into auth.users (id, email) values
 create function pg_temp.crew() returns uuid language sql as
   $$ select chat_id from public.groups where name = 'Porto crew' $$;
 
-create function pg_temp.status() returns text language sql as
+-- SECURITY DEFINER, since 20260903130000: these three report what the ROW
+-- says, which is a different question from what a role may read. The three
+-- photo columns are no longer granted to `authenticated` at all - not even to
+-- the setter, who reads their own through group_detail - so an invoker-rights
+-- helper would answer 42501 here for the assertions that are about the
+-- verdict itself rather than about who may see it. Who may see it is
+-- 74_a_verdict_is_for_its_subject_alone, written as the attack.
+create function pg_temp.status() returns text language sql security definer as
   $$ select photo_status::text from public.groups where name = 'Porto crew' $$;
 
-create function pg_temp.path() returns text language sql as
+create function pg_temp.path() returns text language sql security definer as
   $$ select photo_path from public.groups where name = 'Porto crew' $$;
 
-create function pg_temp.attempts() returns int language sql as
+create function pg_temp.attempts() returns int language sql security definer as
   $$ select moderation_attempts from public.groups where name = 'Porto crew' $$;
 
 -- What the chat list hands the current role for this group.

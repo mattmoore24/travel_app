@@ -537,9 +537,9 @@ describe('never after a bad moment', () => {
 });
 
 describe('the four things land together', () => {
-  // docs/APP_STORE.md, "The App Store review prompt": the dependency, the
-  // version bump that moves runtimeVersion with it, the call after the
-  // dismiss, and the hand-run. The first two are in files, so they are held
+  // docs/APP_STORE.md, "Shipped in 0.2.0: the App Store review prompt": the
+  // dependency, the version bump that moves runtimeVersion with it, the call
+  // after the dismiss, and the hand-run. The first two are in files, so they are held
   // together here: a module in package.json with the version still at the
   // last build's would let an update built against the module reach a binary
   // that cannot load it.

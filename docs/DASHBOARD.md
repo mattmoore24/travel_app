@@ -113,6 +113,17 @@ broken — messages are failing closed (nothing unscreened is delivered) but
 users are waiting. `expired_pins_awaiting_sweep` staying above zero means
 pg_cron isn't running the 72h purge.
 
+All nine of the moderation worker's queues have a depth column
+(20260903070000 added the four photo ones, 20260903140000 the last two).
+`pending_photos` is PROFILE photos and `pending_verifications` is SELFIE
+verifications; the rest name their queue. Two of them deserve a second look
+every time: **`pending_storefronts` and `pending_scans` are the only queues
+that can be switched OFF**, because each worker branch is skipped entirely
+when its key is missing from the `MODERATION_PROMPTS_BUSINESS` secret. Either
+one climbing while the others drain means that secret, not the schedule — the
+worker will keep posting 200s throughout. Before 20260903140000 they had no
+column at all, so a paused queue read here as all zeros.
+
 Reading them: liquidity target is **500–1,000 in-season per city before
 opening a new one** (brief §6). A **collapsing accept rate** or a **rising
 creep number** is the early warning — check `admin_report_queue` and tighten

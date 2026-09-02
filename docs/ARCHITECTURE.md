@@ -1385,7 +1385,7 @@ so the wider sentence could be restored if the founder chooses:
 
 | Piece                                                           | Entry point                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `groups.photo_status` (nullable)                                | set by the trigger; read by `my_chats`, `group_invite_preview`, the `chat_photos_select_group` storage policy, and `src/features/groups/photo.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `groups.photo_status` (nullable)                                | set by the trigger; read by `my_chats`, `group_invite_preview`, `group_detail`, the `chat_photos_select_group` storage policy (through `can_view_group_photo`), and `src/features/groups/photo.ts`. Granted to no client role since 20260903130000                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `groups_moderate_photo`                                         | `BEFORE INSERT OR UPDATE OF photo_path`; early-returns when the path did not move, so a rename or the worker's counter costs nothing persistent (the profiles rule)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `groups_poke_moderation_insert`, `_update`                      | poke the worker on a pending photo, so the admin watching "Checking this photo" waits seconds, not a cron minute. Two triggers: the UPDATE one is guarded on `old.photo_path is distinct from new.photo_path`, because `update_group` names `photo_path` on every call and a rename while a photo was pending poked the worker (a `worker_pokes` write and an HTTP request: persistent). A WHEN clause on an INSERT OR UPDATE trigger cannot mention OLD, which is why it is two                                                                                                                                                                                                                                                                           |
 | `apply_group_photo_verdict(p_chat_id, p_photo_path, p_verdict)` | walked through by `moderation-worker/index.ts` queue 3d, with its own 4s slice of the 50s tick; `moderation-worker-queues.test.ts` fails if a door has no caller. Keyed on the chat AND the path the worker classified: a group is one row, so a verdict keyed on the chat alone would land on whatever photo the row wore by the time it arrived (the admin replaces the picture mid-classification, the trigger sets the new path pending, an allow approves a photo nobody looked at). Returns `false` and writes nothing when the group no longer wears that photo; the worker reports it as a note, not a failure, so the counter of the replacement is not bumped for a try it never had. The failsafe goes through the same door with the same path |
@@ -1403,7 +1403,8 @@ else a pending photo is NO photo, not a photo being checked: the first version o
 told every member "A new group photo is being checked." and then, on refusal, nothing, so any
 member could infer the admin's picture was refused. A verdict is for its subject alone.
 `groupPhotoView` answers `none` for a non-uploader while a photo is pending, the tile draws
-the glyph, and the only "checking" sentence, veil and spoken label are the uploader's.
+the glyph, and the only "checking" sentence, veil and spoken label are the uploader's — and
+since 20260903130000 that answer is the server's, not the client's (below).
 Rejected: nobody; the verdict removes the path and leaves the status so the group page can
 tell the admin "That photo was not approved and has been removed. Pick another." Not a
 strike: the ledger action is `group_photo_rejected`, which `is_strike_action` does not count,
@@ -1416,7 +1417,8 @@ this migration `create_group` accepted any string as `p_photo_path`, which meant
 could name any object in the bucket they had learned the path of and
 `chat_photos_select_group` would let every member read it. Your own upload, or nothing.
 
-**Deploy window, established rather than assumed.** A phone on the previous bundle reads
+**Deploy window, established rather than assumed** (for 20260903050000; 20260903130000 took
+the table-wide grant away and has its own, below). A phone on the previous bundle reads
 `groups.photo_path` through `select *` (table-wide grant, so the new columns ride in unread)
 and holds, for an unapproved photo, a path the bucket refuses to sign; `useChatPhotoUrl`
 errors and the tile falls back to the group glyph, which is what a group with no photo draws.
@@ -1463,6 +1465,68 @@ with the guard removed (3, 5, 7, 8, 12 fail: the verdict UPDATE raises 23514 ins
 `lives_ok`, so the stamp assertion after it passes and the two failures the old record
 named could never happen in one run).
 
+### A verdict is for its subject alone, at the table (20260903130000)
+
+20260903050000's header says a pending group photo is "the person who uploaded it, and
+nobody else... To everybody else there is NO photo, not a photo being checked", because a
+member who could watch "being checked" become nothing would know the picture was refused.
+The PATH half was enforced — `my_chats`, `group_invite_preview` and
+`chat_photos_select_group` all mask it. The STATUS half was enforced by
+`src/features/groups/photo.ts` and by nothing else. `grant select on public.groups to
+authenticated` (20260821010000:42) is TABLE-level and `groups_select_member` admits every
+member of the room, so:
+
+```sql
+select photo_status from public.groups where name = 'Porto crew';  -- 'pending'
+-- and, seconds later
+select photo_status from public.groups where name = 'Porto crew';  -- 'rejected'
+```
+
+Those two reads are the forbidden inference, and they need an anon key and the group's name,
+not the app. `67_a_group_photo_is_checked` did not catch it because every `pg_temp.status()`
+call in it asserts the VALUE, never a refusal, so deleting the client guard failed nothing.
+Client code is UX; Postgres is the boundary.
+
+| Piece                               | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the column grant                    | `revoke select on public.groups from public, anon, authenticated`, then `grant select (chat_id, created_by, name, speaking, invites, max_stay_until, pin_id, plan_ended_at, created_at)`. The three photo columns and `photo_set_by` are granted to no client role — not even the setter, who reads their own through the function below. The idiom `profiles` (20260816190000:353) and `message_requests` (20260902210000:82) already use                                                                                                                                                                                                                                                                                             |
+| `groups.photo_set_by`               | NEW. Written by the trigger on every change of `photo_path` and KEPT when a verdict removes the path, which is the one moment the subject can no longer be read off the path's first segment. No FK: a seeded or service-role path need not begin with a uuid that exists in `public.users`                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `group_detail(p_chat_id)`           | NEW. `SECURITY DEFINER`, membership-gated exactly as `groups_select_member` is (a definer function gets no RLS of its own), masking with the rule `my_chats` already uses: approved is everybody's, pending and refused are `photo_set_by`'s. `moderation_attempts` is masked to 0 rather than dropped, so `GroupRow` keeps its shape. `fetchGroup` is its only caller                                                                                                                                                                                                                                                                                                                                                                 |
+| `can_view_group_photo(object_name)` | NEW, and load-bearing rather than tidy. **An RLS policy's expression is evaluated with the READER's privileges**, so `chat_photos_select_group`, which names `g.photo_path` and `g.photo_status` inline, would not have answered false once the grant went column-level — it would have RAISED, and a policy that raises takes the whole select with it. Measured: with the policy left inline, every authenticated read of `storage.objects` dies with `permission denied for table groups`, and three test files (`03_chats_storage_rls`, `67`, `74`) die at their first storage read. Same shape as `can_view_business_photo` (20260827110000:103) and `can_view_photo_object` (20260816190100:15), which exist for the same reason |
+| `fetchGroup`                        | `supabase.rpc('group_detail', ...)` instead of `.from('groups').select('*')`. `photo.test.ts` asserts the function body contains the RPC and does not contain `from('groups')`; `database.types.ts` types the table's `Row` as `never` so nothing can select it and typecheck                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+
+**What is enforced, and what is said instead of claimed.** Approved: path and status to every
+member. Pending: both to the setter alone — the row says `null, null` to everybody else,
+not "pending with the path withheld", which is the same tell one step removed. Rejected: the
+status to the setter alone, matched on `photo_set_by` precisely because the verdict removed
+the path it would otherwise have been read from. NOT enforced, and written into the
+migration header rather than claimed away: a photo **refused before this migration ran** has
+no setter to backfill (its path is gone), so its `rejected` row is shown to nobody and its
+admin sees no "pick another" until they choose a new picture. Fail closed. There are no
+production users.
+
+**Deploy window, and it is a real cost this time.** An OTA bundle is never applied on the
+launch that downloads it, so for one launch every phone runs the previous client, whose
+`fetchGroup` is `select('*')` — and Postgres refuses a star select unless every column is
+granted. That read is `permission denied`: the group SETTINGS page shows its `LoadError`
+with a Retry that keeps failing until the new bundle runs; the room HEADER destructures only
+`data`, so it draws the group glyph and skips the plan banner; the chat list, the invite
+screen and everything else in a room read RPCs and are untouched. Taken deliberately, in
+preference to leaving a documented privacy promise on a client guard for another release.
+`31_select_star_stays_readable` drops `groups` from its list in the same commit, which is
+what documents that the app no longer star-reads this table.
+
+**`74_a_verdict_is_for_its_subject_alone`** is written as the attack: a member who is not the
+setter reaches for the fact by the table and by the function, and the setter's own read is
+asserted beside it so a "fix" that hid the verdict from the person it is about would fail
+too. Every assertion was run against the mutation that removes what it names; the file's
+header carries the record, mutation by mutation, including the one that matters most — with
+the table-level grant put back (the leak exactly as found), seven refusals come back "lives"
+and nothing else in the suite moves, which is what proves the client guard was never the
+thing holding it. The revoke names `public`, `anon` and `authenticated` and not
+`service_role`, and test 32 is that: extend it to `service_role` and the file dies where the
+moderation worker's own queue read is, because bypassrls is not bypass-grants.
+
 ### Every moderation queue is visible to the daily smoke test (20260903070000)
 
 `admin_ops_health` (20260817150000) is the one-query liveness check `docs/DASHBOARD.md` calls
@@ -1477,11 +1541,32 @@ seven, each counted by the predicate the worker selects with: `pending_business_
 its name and its meaning (profile photos): the runbook's thresholds are written against it
 and a view's columns cannot be renamed by `create or replace`. Entry point: `select * from
 admin_ops_health;` in the SQL editor; no RPC, no client.
-`69_every_queue_the_smoke_test_can_see` puts one item in each of the five photo queues with
-the flag on and asserts each column says one; each subquery's `pending` term replaced fails
-exactly the assertion that names its queue, the group subquery deleted outright kills the
-file at the first read of the missing column, and the revoke deleted fails 'clients cannot
-read the smoke test'.
+`69_every_queue_the_smoke_test_can_see` puts one item in each queue with the flag on and
+asserts each column says one; a subquery's `pending` term replaced fails exactly the
+assertion that names its queue, a subquery deleted outright kills the file at the first read
+of the missing column, and the revoke deleted fails 'clients cannot read the smoke test'.
+The title of this migration overclaims by two queues — see the section directly below, which
+is the correction; the file itself is applied and untouched but for a comment saying so.
+
+### The two queues that can pause (20260903140000)
+
+20260903070000's title says "every moderation queue" and its body does not: it took the view
+from three moderation-queue counts to seven, and the worker drains NINE. The two with no
+column were storefront photos (`business_verifications` at `pending`) and impersonation scans
+(`business_scans` at `pending`) — which are the two worst ones to leave out, because they are
+the only queues in the product that PAUSE. Both worker branches are wrapped in `if (!prompt)
+{ ... queue paused }`, so a `MODERATION_PROMPTS_BUSINESS` secret missing either key switches
+that queue off while the worker keeps posting 200s. It has happened twice (`supabase/.deploy-request`,
+2026-08-27: "until then those two queues pause and everything else keeps running") and both
+times the smoke test read all zeros. This migration adds `pending_storefronts` and
+`pending_scans` — the worker's own names for them — at the END, so the eleven existing columns
+keep their names and order; drop-and-recreate, revoke restated.
+`69_every_queue_the_smoke_test_can_see` now fills the eight queues a pgTAP file can fill
+(held first messages are the ninth and 09_launch_hardening has held that column since 20260817150000) and asserts each column says one. Measured: each of the eight subqueries with
+its `pending` term flipped to `approved` fails exactly the assertion that names its queue
+(9 to 16) and nothing else; `pending_scans` deleted outright kills the file at the first read
+of the missing column (planned 17, ran 0); the revoke deleted turns 17 'clients cannot read
+the smoke test' into "lives".
 
 ### `screen_business_text` runs only for an edit (20260903060000)
 

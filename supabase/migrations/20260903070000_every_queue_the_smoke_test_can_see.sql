@@ -1,5 +1,16 @@
 -- EVERY MODERATION QUEUE IS VISIBLE TO THE DAILY SMOKE TEST
 --
+-- CORRECTION, 2026-09-02 (comment only - not one statement in this file has
+-- changed since it was applied, and it must not: docs/LAUNCH_RUNBOOK.md,
+-- "fix forward, never edit an applied one"). The title above overclaims and
+-- the body below is the honest version: this migration added the four
+-- photo-and-message queues it names, taking the view from three moderation
+-- queues to seven, and the worker drains NINE. The two it left out are
+-- storefront photos and impersonation scans - the only two queues that can
+-- be PAUSED by a missing prompt secret, so exactly the two a smoke test
+-- exists to surface. 20260903140000 adds them and the title becomes true of
+-- the pair of files.
+--
 -- `admin_ops_health` (20260817150000:488) is the one-query liveness check:
 -- docs/DASHBOARD.md calls it the daily smoke test, docs/LAUNCH_RUNBOOK.md
 -- reads it before launch and quotes its thresholds, and `select * from

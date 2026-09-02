@@ -162,13 +162,31 @@ select ok(
   'the revoke survived the restate'
 );
 
--- AND THE HOST IT READS IS THE HOST THE PHONE OPENS. The list has to match
--- src/features/business/links.ts SHORT_LINK_HOSTS; there is no RPC the
--- client could read it from, so this pins the server's copy.
+-- AND THE SERVER'S LIST IS THE LIST IT IS SUPPOSED TO BE.
+--
+-- Read what this does and does not do. Postgres cannot open
+-- src/features/business/links.ts, so this assertion compares the installed
+-- function against a literal typed HERE: it catches a shortener quietly
+-- dropped from `v_short`, or the array reordered, and it says nothing at all
+-- about whether links.ts still holds the same nine. It used to claim it did
+-- ("the list has to match ... SHORT_LINK_HOSTS"), and it did not: editing
+-- SHORT_LINK_HOSTS failed nothing, anywhere.
+--
+-- The cross-language half now lives where it can read both files, in jest:
+-- src/features/business/__tests__/links.test.ts, "the shortener denylist is
+-- one list in three places", which reads SHORT_LINK_HOSTS, `v_short` out of
+-- the newest migration that defines the function, and the literal below, and
+-- fails by name when any one of the three moves without the others.
+--
+-- Note also what the whole-file mutation record above does NOT cover: with
+-- the shortener block deleted but `v_short` left declared, 1 to 6, 14 and 17
+-- fail and THIS assertion still passes, because the array is still in the
+-- function definition. It pins the list, never the branch that reads it -
+-- assertions 1 to 6 are what hold that.
 select matches(
   pg_get_functiondef('public.validate_business_link()'::regprocedure),
   $$'bit\.ly',\s*'tinyurl\.com',\s*'t\.co',\s*'is\.gd',\s*'goo\.gl',\s*'rb\.gy',\s*'cutt\.ly',\s*'shorturl\.at',\s*'ow\.ly'$$,
-  'the server carries the client''s nine hosts, in the client''s order'
+  'the server''s array still names the nine hosts, in that order'
 );
 
 select * from finish();

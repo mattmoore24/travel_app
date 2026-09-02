@@ -169,9 +169,10 @@ export default function RoomScreen() {
   const isModerator = membership?.my_role === 'admin' || isOwnRoom;
   // The two faces this header can wear. The group's own photo is asked for
   // when the group is made and was then never shown to the person who chose
-  // it; chat_photos_select_group already lets any member read it, which is
-  // why the group page can draw it too. The business cover comes from the
-  // same detail query the place page runs, so it is usually already cached.
+  // it; chat_photos_select_group lets a member read it once it is approved
+  // (and its uploader read their own before that), which is why the group
+  // page can draw it too. The business cover comes from the same detail
+  // query the place page runs, so it is usually already cached.
   //
   // As useGroup hands it out, through the one client rule for who may see a
   // group's photo (features/groups/photo.ts): approved for everybody, pending

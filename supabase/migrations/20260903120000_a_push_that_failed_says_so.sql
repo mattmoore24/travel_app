@@ -35,8 +35,11 @@
 --
 -- Neither column is in any client grant. push_queue has been revoked from
 -- anon and authenticated since it was created (20260816220000:208) at the
--- table level, so a new column inherits nothing; 70_a_push_that_failed_says_so
--- asserts the refusal rather than assuming it.
+-- table level, so a new column inherits nothing; 73_a_push_that_failed_says_so
+-- asserts the refusal rather than assuming it. (This line said 70_ until
+-- 2026-09-02; 70_ is a_face_can_stay_behind_the_door, about the guest
+-- preview. Comment only — no statement in this file has changed since it was
+-- applied.)
 --
 -- No trigger fires on this table. `grep -n "on public.push_queue"
 -- supabase/migrations` finds the revoke and nothing else, so the worker's

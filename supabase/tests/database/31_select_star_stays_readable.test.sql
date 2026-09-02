@@ -17,8 +17,15 @@
 -- columns (profiles, message_requests, businesses…) must NEVER be
 -- star-selected from the app; keeping it out of this list is what documents
 -- that.
+--
+-- `groups` LEFT this list on 2026-09-03 (20260903130000). It hides columns
+-- now — photo_path, photo_status and moderation_attempts say what a photo's
+-- verdict is, and a verdict is for its subject alone — so its select grant is
+-- column-level and `fetchGroup` reads `group_detail()` instead. The refusal a
+-- direct read now gets is asserted in 74_a_verdict_is_for_its_subject_alone,
+-- where it is the point rather than a regression.
 begin;
-select plan(11);
+select plan(10);
 
 create function pg_temp.login(uid uuid) returns void language plpgsql as $$
 begin
@@ -43,7 +50,6 @@ select pg_temp.login('00000000-0000-0000-0000-0000000000c9');
 select lives_ok($$ select * from public.business_hours      limit 1 $$, 'select * works on business_hours');
 select lives_ok($$ select * from public.business_links      limit 1 $$, 'select * works on business_links');
 select lives_ok($$ select * from public.business_photos     limit 1 $$, 'select * works on business_photos');
-select lives_ok($$ select * from public.groups              limit 1 $$, 'select * works on groups');
 select lives_ok($$ select * from public.messages            limit 1 $$, 'select * works on messages');
 select lives_ok($$ select * from public.profile_photos      limit 1 $$, 'select * works on profile_photos');
 select lives_ok($$ select * from public.profile_priorities  limit 1 $$, 'select * works on profile_priorities');

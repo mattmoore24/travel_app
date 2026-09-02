@@ -4,19 +4,34 @@
 -- selfie verifications, so a stuck business, post, chat or group photo
 -- queue - each holds at 'pending' behind its own trigger and its own door -
 -- read as all zeros to the one query the founder runs (docs/DASHBOARD.md).
--- 20260903070000 counts all five photo queues. This file puts exactly one
--- item in each, with the flag on so each genuinely holds, and asks the view.
+-- 20260903070000 added the four photo queues. 20260903140000 added the last
+-- two, which are the two that matter most: storefront checks and
+-- impersonation scans are the only queues in the product that PAUSE, because
+-- each is wrapped in `if (!prompt) { ... queue paused }` and a
+-- MODERATION_PROMPTS_BUSINESS secret missing a key switches it off silently
+-- (it has happened twice - see supabase/.deploy-request, 2026-08-27).
+--
+-- This file puts exactly one item in each of the EIGHT queues a pgTAP file
+-- can fill, with the photo flag on so each photo queue genuinely holds, and
+-- asks the view. Held first messages are the ninth queue and the one column
+-- this file does not fill: 09_launch_hardening has asserted it since
+-- 20260817150000, and holding one here would need the moderation flag and a
+-- second traveler for no new information.
 --
 -- EVERY ASSERTION HERE WAS RUN AGAINST THE MUTATION THAT REMOVES WHAT IT
--- NAMES (2026-09-02). Each of the five photo subqueries with its
--- `= 'pending'` term replaced by `= 'approved'` fails exactly the assertion
--- that names its queue (7, 9, 10, 11, 12) with 0 and nothing else; the group
--- subquery deleted from the view outright kills the file at the first read
--- of the missing column (planned 13, ran 0), which is a failure too, just a
--- louder one; the revoke deleted turns 13 'clients cannot read the smoke
--- test' into "lives".
+-- NAMES (2026-09-02, re-measured on a rebuilt cluster when the last two
+-- queues were added). Each of the eight queue subqueries in turn, with its
+-- `= 'pending'` term replaced by `= 'approved'`, fails exactly the assertion
+-- that names its queue and nothing else: 9, 10, 11, 12, 13, 14, 15 and 16,
+-- in the order they are written below. Assertion 1 goes on passing under
+-- every one of them - zero equals zero on a quiet database, which is why
+-- the counts after the fixture are the real guard and 1 is only the
+-- baseline. `pending_scans` deleted from the view outright kills the file at
+-- the FIRST read of the missing column, which is assertion 1's query
+-- (planned 17, ran 0) - a failure too, just a louder one. The revoke deleted
+-- turns 17 'clients cannot read the smoke test' into "lives".
 begin;
-select plan(13);
+select plan(17);
 
 create function pg_temp.login(uid uuid) returns void language plpgsql as $$
 begin
@@ -58,9 +73,10 @@ select pg_temp.admin();
 select results_eq(
   $$ select held_messages::int, pending_photos::int, pending_verifications::int,
             pending_business_photos::int, pending_post_photos::int,
-            pending_chat_photos::int, pending_group_photos::int
+            pending_chat_photos::int, pending_group_photos::int,
+            pending_storefronts::int, pending_scans::int
        from public.admin_ops_health $$,
-  $$ values (0, 0, 0, 0, 0, 0, 0) $$,
+  $$ values (0, 0, 0, 0, 0, 0, 0, 0, 0) $$,
   'the smoke test answers all zeros on a quiet database'
 );
 
@@ -90,6 +106,16 @@ values ('00000000-0000-0000-0000-0000000000a9',
         '00000000-0000-0000-0000-0000000000a9/selfie.jpg');
 insert into public.business_photos (business_id, storage_path, position)
 values (pg_temp.biz(), 'biz/casa-lumen/cover.jpg', 0);
+-- The two queues that pause. Both rows are written as the service role for
+-- the same reason as the selfie above: submit_business_verification and
+-- report_business are the phone's doors, and what the view counts is the
+-- row, so the row is what is put there. Both tables default status to
+-- 'pending' - there is no flag to turn on and nothing to hold them back.
+insert into public.business_verifications (business_id, wide_path, close_path)
+values (pg_temp.biz(),
+        '00000000-0000-0000-0000-0000000000b9/wide.jpg',
+        '00000000-0000-0000-0000-0000000000b9/close.jpg');
+insert into public.business_scans (business_id) values (pg_temp.biz());
 select pg_temp.login('00000000-0000-0000-0000-0000000000b9');
 insert into public.business_posts (business_id, title, photo_path, happens_at)
 values (pg_temp.biz(), 'Live music, no cover',
@@ -107,6 +133,10 @@ select is((select moderation_status::text from public.messages), 'pending',
   'the chat photo holds');
 select is((select photo_status::text from public.groups), 'pending',
   'the group photo holds');
+select is((select status::text from public.business_verifications), 'pending',
+  'the storefront check holds');
+select is((select status::text from public.business_scans), 'pending',
+  'the impersonation scan holds');
 
 -- And the smoke test sees every one of them.
 select is((select pending_photos::int from public.admin_ops_health), 1,
@@ -121,6 +151,10 @@ select is((select pending_chat_photos::int from public.admin_ops_health), 1,
   'and the pending chat photo');
 select is((select pending_group_photos::int from public.admin_ops_health), 1,
   'and the pending group photo, which was the invisible one');
+select is((select pending_storefronts::int from public.admin_ops_health), 1,
+  'and the pending storefront check, one of the two queues that can pause');
+select is((select pending_scans::int from public.admin_ops_health), 1,
+  'and the pending impersonation scan, the other one');
 
 -- Nobody but the service role reads it: the revoke is restated after the
 -- drop, and this is what proves it.

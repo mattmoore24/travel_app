@@ -114,7 +114,7 @@ export type AcceptedMatch = {
  * thread, usually to type) that Apple's own guidance says not to interrupt.
  * The rules, in the order they matter: once per install, ever; never during
  * onboarding; never after a bad moment; no custom pre-prompt. See
- * docs/APP_STORE.md, "The App Store review prompt".
+ * docs/APP_STORE.md, "Shipped in 0.2.0: the App Store review prompt".
  */
 export function useAcceptedCelebration() {
   const sentQuery = useSentRequests();

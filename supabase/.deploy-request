@@ -324,8 +324,14 @@
              20260903060000 screen_business_text stops screening and stamping
              on writes that changed no text (the profiles fix, applied to the
              one trigger with the same shape);
-             20260903070000 admin_ops_health counts every moderation queue,
-             not two of eight, so a stuck backlog is visible to the smoke test;
+             20260903070000 admin_ops_health goes from three moderation-queue
+             counts (held first messages, profile photos, selfie
+             verifications) to seven, adding the business, post, chat and
+             group photo queues, so a stuck photo backlog is visible to the
+             smoke test. It is NOT every queue despite its title: the worker
+             drains nine after the group branch in 20260903050000, and
+             storefront checks and impersonation scans still have no column
+             (20260903140000, below, adds them);
              20260903080000 a traveler can keep their face out of the
              signed-out preview (D22), enforced in featured_traveler;
              20260903090000 validate_business_link refuses shortener hosts and
@@ -339,3 +345,65 @@
              instead of being stamped as sent.
              The moderation-worker function is redeployed with them (ninth
              queue). db push then functions deploy are one job.
+
+2026-09-02 — deploy: the two queues the smoke test still could not see.
+             20260903140000: admin_ops_health gains
+             pending_storefronts (business_verifications) and pending_scans
+             (business_scans), the last two of the moderation worker's nine
+             queues and the only two that PAUSE when
+             MODERATION_PROMPTS_BUSINESS is missing a key — which has
+             happened twice (see the 2026-08-27 runs above) and both times
+             read as all zeros to `select * from admin_ops_health;`. View
+             only: dropped and recreated with the eleven existing columns
+             unchanged in name and order, revoke restated. No function
+             change, so migrations alone.
+
+2026-09-03 — deploy BEFORE the OTA, and it is the OTA's precondition rather
+             than a nicety: the new bundle's fetchGroup calls an RPC that does
+             not exist until this applies.
+             20260903130000 a verdict is for its subject alone, at the table.
+             20260903050000 wrote down that a group photo being checked is
+             "the person who uploaded it, and nobody else", and the PATH half
+             was enforced (my_chats, group_invite_preview, the storage policy)
+             while the STATUS half was enforced by the client alone:
+             `grant select on public.groups to authenticated` is table-level,
+             so any member could `select photo_status from public.groups where
+             name = '...'` and watch 'pending' become 'rejected' — the exact
+             inference the paragraph forbids, with an anon key and no app.
+             The grant is column-level now (the three photo columns and the
+             new photo_set_by are granted to no client role), group_detail()
+             is the app's only read of a group row and masks them, and
+             can_view_group_photo() carries the storage policy's predicate
+             because an RLS expression runs with the READER's privileges and
+             an inline one would RAISE rather than answer false — measured:
+             every authenticated read of storage.objects dies without it.
+             photo_set_by is what remembers the subject after a verdict
+             removes the path it was read from.
+             KNOWN COST, deliberate: for one launch every phone runs the old
+             bundle, whose `select('*')` on a column-granted table is
+             permission denied, so the group SETTINGS page shows its LoadError
+             and the room header falls back to the glyph. Publish the OTA
+             promptly after this run. 74_a_verdict_is_for_its_subject_alone is
+             the attack, 32 assertions, every one run against the mutation
+             that removes what it names. Migrations only; no function change.
+
+2026-09-02 — THE ORDER IS INVERTED FOR THIS ONE, and it is the only migration
+             here that has to go AFTER the over-the-air update rather than
+             before it.
+             20260903130000 REVOKES the table-level select on public.groups
+             (the three photo columns are granted to nobody) and puts the row
+             behind group_detail(). Every other migration in this repo adds
+             something the new bundle reads, so the schema goes first. This one
+             takes away something the bundle ALREADY ON THE PHONE selects
+             through: build 17 ships `.from('groups').select('*')`, which
+             answers `permission denied` the moment this applies, and an
+             expo-updates bundle is never applied on the launch that downloads
+             it - so migrating first means at least one launch of a broken
+             group page on the build the founder is installing right now.
+             So: publish the update, let it land, then push this.
+             fetchGroup reads both schemas (the RPC when it exists, the named
+             columns when PGRST202 says it does not), so the update is correct
+             against the project before and after.
+             Also here: 20260903140000, admin_ops_health counts the two queues
+             that can pause (storefront photos and impersonation scans), which
+             20260903070000 left out while its title claimed every queue.

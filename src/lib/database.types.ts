@@ -1454,8 +1454,12 @@ export type Database = {
         Relationships: [];
       };
       groups: {
-        Row: GroupRow;
-        // Every write goes through create_group / update_group.
+        // Not readable from a client since 20260903130000: `select` on this
+        // table is column-level and the three photo columns are not in the
+        // grant, so `select('*')` is `permission denied` and a named list
+        // could never carry the masking a verdict needs. `group_detail()` is
+        // the read; `create_group` / `update_group` are the writes.
+        Row: never;
         Insert: never;
         Update: never;
         Relationships: [];
@@ -1817,6 +1821,16 @@ export type Database = {
       group_invite_preview: {
         Args: { p_token: string };
         Returns: GroupInvitePreviewRow[];
+      };
+      /**
+       * The group row a member may hold. Members only, and the photo columns
+       * carry the server's masking: an approved photo is everybody's, a
+       * pending or refused one is its setter's alone. The table itself grants
+       * a client none of the three.
+       */
+      group_detail: {
+        Args: { p_chat_id: string };
+        Returns: GroupRow[];
       };
       join_group_with_invite: {
         Args: { p_token: string; p_stay_until: string };
