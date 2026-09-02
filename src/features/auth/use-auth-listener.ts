@@ -135,7 +135,12 @@ export function useAuthListener() {
       // analytics.identify() still exists, guarded so an unchanged id fires
       // nothing, and is what the server-minted id gets handed to.
       // The PKCE/web path establishes the session itself and announces it
-      // with this event, so there is nothing to wait for.
+      // with this event, so there is nothing to wait for. So does the typed
+      // six-digit code: auth-js emits PASSWORD_RECOVERY rather than
+      // SIGNED_IN for verifyOtp({ type: 'recovery' }) (features/auth/api,
+      // verifyRecoveryCode), and this branch runs in the same synchronous
+      // callback as the setSession above it, so the guards never see a
+      // frame in which a recovery looks like an ordinary sign-in.
       if (event === 'PASSWORD_RECOVERY') {
         recoveryReady();
       }

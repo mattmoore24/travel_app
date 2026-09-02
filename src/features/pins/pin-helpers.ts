@@ -2,6 +2,7 @@ import { cityNow, shortTime } from '@/features/business/vocabulary';
 import { metersBetween } from '@/features/pins/cluster';
 import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
 import type { CityPinRow, PinCategory } from '@/lib/database.types';
+import { dates } from '@/lib/locale';
 
 /**
  * The two columns 20260902190000 added to both map feeds.
@@ -77,11 +78,7 @@ export function intentDateOptions(now = new Date()): { value: string; label: str
   return [0, 1, 2].map((offset) => {
     const date = addDays(now, offset);
     const label =
-      offset === 0
-        ? 'Today'
-        : offset === 1
-          ? 'Tomorrow'
-          : new Intl.DateTimeFormat('en', { weekday: 'long' }).format(date);
+      offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' : dates().weekdayLong.format(date);
     return { value: toISODate(date), label };
   });
 }
@@ -405,9 +402,7 @@ export function intentLabel(intentISO: string, now = new Date()): string {
   if (intentISO === toISODate(addDays(now, 1))) {
     return 'Tomorrow';
   }
-  return new Intl.DateTimeFormat('en', { weekday: 'long', month: 'short', day: 'numeric' }).format(
-    parseISODate(intentISO)
-  );
+  return dates().weekdayLongMonthDay.format(parseISODate(intentISO));
 }
 
 /**

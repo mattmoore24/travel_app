@@ -100,6 +100,10 @@ const HINT_COPY: Record<string, string> = {
   not_authenticated: SIGNED_OUT,
   trip_past: 'That trip has already finished.',
   guidelines: 'That breaks our house rules. Reword it and try again.',
+  // validate_business_link (20260903090000): the two links the database
+  // refuses because of where they go rather than how they are written.
+  short_link: 'Use the real address rather than a short link, so travelers can see where it goes.',
+  bare_address: 'That link needs a real domain, not a bare address.',
 };
 
 /**
@@ -164,6 +168,8 @@ const DB_COPY: Record<string, string> = {
     'That is the guest limit for today. Make an account to keep going.',
   // Small written checks from the business editors.
   'links have to start with https://': 'A link has to start with https://.',
+  'use the real address, not a short link': HINT_COPY.short_link,
+  'that link needs a real domain': HINT_COPY.bare_address,
   'that does not look like an email address': 'That does not look like an email address.',
   'that does not look like a phone number': 'That does not look like a phone number.',
   'ten links is plenty': 'Ten links is plenty.',

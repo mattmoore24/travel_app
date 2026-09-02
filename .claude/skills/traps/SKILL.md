@@ -305,16 +305,23 @@ Merging matters as much as subscribing: a handler that treats a known id as
   fix in `e2e.yml`: publish, launch once to fetch, poll `expo-v2.db` for the
   published update id at `status = 1`, then reset only the app's own storage
   between flows. Never re-introduce a state clear into a flow.
-- **The iOS Simulator on GitHub's macOS runners cannot reach `u.expo.dev`.**
-  expo-updates' own log says
-  `checkError: "Unknown error: A TLS error caused the secure connection to
-failed"` on every check, while the same simulator talks to Supabase over
-  HTTPS without trouble, and expo-updates uses a plain
-  `URLSessionConfiguration.default`. So it is the environment, not the
-  config. The consequence is that **the E2E suite cannot be run against a
-  reused binary**: `build: true` is the default and the only honest setting
-  there, because it embeds the code under test rather than relying on a
-  fetch that always fails.
+- **The iOS Simulator on GitHub's macOS runners CAN reach `u.expo.dev`, and
+  this entry used to say the opposite.** The evidence for "cannot" was
+  expo-updates' log line `checkError: "Unknown error: A TLS error caused the
+secure connection to failed"`, read off a step that had died 0.1s after
+  launching the app: `DB=$(ls ... | tail -1)` under `bash -e` with pipefail
+  took the step down the first time the updates database was missing, which
+  is exactly the case the wait loop exists to wait out, so the log was read
+  before the app had waited for anything. With that fixed, run 43 fetched
+  the published update and drove the flows against it. So **`build: false`
+  is the honest default for a JavaScript change** (`e2e.yml`'s own input
+  description says so): the reused binary fetches the `e2e` channel's update,
+  and the workflow fails outright rather than falling back to embedded JS
+  when the fetch does not land, printing the updates table and expo-updates'
+  own log so the next "cannot fetch" is read rather than assumed.
+  `build: true` is for a native change, and once after a `version` bump: a
+  runtime-0.1.0 simulator binary cannot take a runtime-0.2.0 update, so the
+  first run after 2026-09-02's bump to 0.2.0 needs a fresh binary.
 - **The updates database is `expo-v11.db` today, and was `expo-v2.db` not
   long ago.** `UpdatesDatabaseInitialization.swift` bumps the filename with
   every schema migration. Anything inspecting it must glob `expo-v*.db`;

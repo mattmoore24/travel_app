@@ -38,7 +38,23 @@ select * from admin_moderation_stats; -- last 30d: attempts, blocked, % blocked 
 select * from admin_pin_stats;        -- live pins + seeded share per city
 select * from admin_report_queue;     -- open reports, URGENT FIRST then oldest (see below)
 select * from admin_ops_health;       -- queue depths: are the workers alive?
+select * from admin_verification_queue;          -- selfie verdicts, newest first: `reason` beside `reason_en` (what they were shown, and what it says)
+select * from admin_business_verification_queue; -- the same for storefront verifications, with the business named
 ```
+
+**The two verification queues are for an appeal, and they are the only
+reader the selfie verdict's English has.** `reason_en` is required on both
+moderation verdict schemas so that a refusal written in the subject's own
+language stays adjudicable, but the selfie half was written into
+`verification_requests.verdict` and read by nothing until 20260903040000
+created these two views (modelled on `admin_report_queue`: service-role only,
+`revoke all ... from anon, authenticated` on the line after each `create`, no
+RPC, no client). Open the matching one when somebody appeals a refused selfie
+or storefront through Contact us: `reason` is the sentence the person was
+shown, `reason_en` is what it says, `engine` is which check decided, and
+`attempts` is how many times it was tried. Nothing here re-runs a
+verification; that stays a separate decision with consequences for
+`profiles.verified`.
 
 **`admin_report_queue` is ordered by urgency, not by age.** A report whose
 reason is `underage` or `immediate_danger` sorts ahead of everything else,
@@ -240,17 +256,21 @@ fixed: adding audit rows to those two functions is its own change.
    trip's actual date range, so a trip posted weeks ahead dilutes D1/D7. For
    a true in-window number, filter the insight to users whose
    `trip_created` had `starts_within_days` ≤ 2 (that property is on the
-   event). There is no database fallback: in-trip-window retention has **no
-   server-side implementation today** — no migration defines a `last_seen`,
-   `last_active` or `seen_at` column anywhere, so a visit is never recorded
-   in Postgres and nothing can be joined against a trip's date range.
-   Building one means a day-granularity `users.last_seen_on` column written
-   on app open plus an `admin_trip_window_retention` view — which is new
-   personal data collection on an app whose pitch is what it does not store,
-   needs a line in the privacy policy, and sits one join away from a
-   per-user activity history. That is a founder decision, not a footnote;
-   until it is made, the filtered PostHog insight above is the only
-   implementation this metric has.
+   event). The database has exactly one last-seen fact, and it is not a
+   fallback for this metric: `profiles.last_seen_on` (20260902210000), a
+   DATE, written by `touch_last_seen()` at most once per calendar day when
+   the app opens, service-role only, never a time. It is what
+   `admin_liquidity.liquidity_reachable` reads (above). What it CAN answer:
+   whether an account opened the app in the last N days. What it CANNOT
+   answer: in-trip-window retention, or any D1/D7 — it is one date per
+   person, overwritten daily, so there is no visit history to join against
+   a trip's date range, and `liquidity_daily` holds counts, never people.
+   Building that answer means a per-day activity history plus an
+   `admin_trip_window_retention` view — new personal data collection on an
+   app whose pitch is what it does not store, a line in the privacy policy,
+   and a table one join away from a per-user movement record. That is a
+   founder decision, not a footnote; until it is made, the filtered PostHog
+   insight above is the only implementation this metric has.
 5. **Safety pulse** — `user_blocked`, `user_reported`, `request_sent` with
    `delivered=false` over time.
 

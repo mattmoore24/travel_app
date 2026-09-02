@@ -134,9 +134,13 @@ export async function signUpWithEmail(email: string, password: string) {
 }
 
 /**
- * Send a "set a new password" link. The link opens the app through the
- * scheme registered in app.json, which lands on /reset-password with a
- * recovery session already established by the SDK's deep-link handler.
+ * Send the recovery mail. What it carries is the mail template's decision
+ * (docs/SUPABASE_SETUP.md §5): a six-digit code, typed into /reset-code and
+ * checked by `verifyRecoveryCode` below, or a link that opens the app through
+ * the scheme registered in app.json and lands on /reset-password with a
+ * recovery session already established. The app takes either. The code is
+ * the one that works when the mail is read on a laptop, and the one a link
+ * prefetcher cannot spend.
  *
  * Callers must NOT report whether the address had an account: that answer
  * turns this into an oracle anybody could use to learn who is on here.
@@ -150,15 +154,16 @@ export async function signUpWithEmail(email: string, password: string) {
  * expired', which is honest and wrong, and there is nothing they can do about
  * it because the next mail will be eaten the same way.
  *
- * Where this goes instead is a typed six-digit code: a scanner cannot consume
- * one, it needs no entitlement and no domain, and it works when the mail is
- * read on a laptop. The app already has the pattern end to end on the
- * business side (supabase/migrations/
- * 20260829150000_a_code_that_never_arrives_says_so.sql), so this is
- * `verifyOtp({ type: 'recovery' })` against a recovery mail template that
- * prints `{{ .Token }}`, plus a screen with six boxes on it. Until that
- * lands, the custom scheme stays: it works today, and the hosted /reset page
- * bridges a laptop click back into the app.
+ * The typed code is where this went instead (2026-09-02), on the pattern the
+ * business side already had end to end (supabase/migrations/
+ * 20260829150000_a_code_that_never_arrives_says_so.sql). One thing about it
+ * is not obvious and decides the template: THE CODE AND THE LINK ARE ONE
+ * TOKEN. GoTrue keeps a single recovery hash per user and either path
+ * consumes it, so a template that prints `{{ .Token }}` beside the link keeps
+ * the prefetch problem exactly as it was - a scanner spends the link and the
+ * six digits die with it. The setup doc says to replace the link, not to add
+ * the code under it. The custom scheme stays in the app for the mails an
+ * older template already sent, and for a founder who keeps both anyway.
  *
  * `PASSWORD_RESET_REDIRECT` and its four preconditions live in
  * src/constants/links.ts. Do not flip `UNIVERSAL_LINKS_LIVE` for the sake of
@@ -170,6 +175,41 @@ export async function requestPasswordReset(email: string) {
   });
   if (error) {
     throw error;
+  }
+}
+
+/**
+ * Turn the six digits from the recovery mail into the recovery session that
+ * `ResetPasswordScreen` finishes. The other end of /reset-code.
+ *
+ * auth-js emits PASSWORD_RECOVERY rather than SIGNED_IN for `type:
+ * 'recovery'` (the installed GoTrueClient.js, verifyOtp: `params.type ==
+ * 'recovery' ? 'PASSWORD_RECOVERY' : 'SIGNED_IN'`), and the auth listener
+ * answers that event with recoveryReady() in the same synchronous callback
+ * that stores the session, so the route guards never see a frame in which
+ * this is an ordinary sign-in. The screen calls recoveryReady() itself once
+ * this resolves as well - idempotent, and the belt under that braces: an
+ * auth-js that emitted SIGNED_IN instead would cost a flash of the tabs, not
+ * a person left inside them with the old password live.
+ *
+ * GoTrue answers a wrong code and an expired one with the same 403
+ * (`otp_expired`, "Token has expired or is invalid"), so nothing here can
+ * tell them apart and the screen's sentence names both.
+ */
+export async function verifyRecoveryCode(email: string, token: string) {
+  const { data, error } = await supabase.auth.verifyOtp({
+    type: 'recovery',
+    email: email.trim(),
+    token,
+  });
+  if (error) {
+    throw error;
+  }
+  if (data.session == null) {
+    // auth-js returns a session for a recovery verify; a success without
+    // one would leave nothing for the password screen to update. Treat it
+    // as the failure it is rather than declaring the code accepted.
+    throw new Error('That code did not open a session.');
   }
 }
 

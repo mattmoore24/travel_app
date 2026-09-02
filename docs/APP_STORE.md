@@ -113,7 +113,8 @@ returns a token, the token still looks fine, and delivery silently never
 happens. That is the one failure in this subsystem that cannot be told apart
 from any other, so it is written down rather than remembered.
 
-**None of it is on a phone yet, and an update will not put it there.** The
+**None of it is on a phone yet (as of 2026-09-02, with the 0.2.0 build not yet
+run), and an update will not put it there.** The
 whole `expo-notifications` plugin block is native config — the icon, the
 colour, the Android channel id and `mode` are all read at prebuild and written
 into the generated `ios/` and `android/` projects. An installed build cannot
@@ -121,15 +122,21 @@ see a line of it. And the block is NEW: before this pass app.json had no
 expo-notifications entry at all, so no build in existence was made with any of
 it.
 
-The trap is that shipping it over the air looks like it worked.
-`runtimeVersion` is `{ policy: "appVersion" }` and `version` is unchanged at
-`0.1.0`, so an `update` carrying this app.json is **accepted** by the
-TestFlight build already installed — the runtime versions match, the workflow
-goes green, the founder force-quits and reopens and gets the new JavaScript.
-What they do not get is a rebuilt binary, so whatever `aps-environment` that
-build was signed with is still what it has. If that value is `development`,
-push registration keeps succeeding against the APNs sandbox and delivery keeps
-never happening, on an app that just reported a successful deploy.
+The trap, for as long as `version` was still `0.1.0`, was that shipping it
+over the air looked like it worked. `runtimeVersion` is
+`{ policy: "appVersion" }`, so while the version matched the installed
+build's, an `update` carrying this app.json was **accepted** by the TestFlight
+build already on the phone — the runtime versions matched, the workflow went
+green, the founder force-quit and reopened and got the new JavaScript. What
+they did not get was a rebuilt binary, so whatever `aps-environment` that
+build was signed with was still what it had. If that value was `development`,
+push registration kept succeeding against the APNs sandbox and delivery kept
+never happening, on an app that had just reported a successful deploy.
+
+That window closed with the bump to 0.2.0 ("The version moved to 0.2.0"
+below): an update now publishes against runtime 0.2.0 and reaches no 0.1.0
+install at all, which trades the silent-acceptance trap for the orphaning
+one. Neither is a rebuilt binary; only the build changes the answer.
 
 So: **a green `update` run is evidence about JavaScript and about nothing
 else.** It is not evidence that push is configured, and it is not evidence
@@ -188,7 +195,31 @@ repo, this sandbox, or those two pages proves it fires under EAS's manual
 signing. There is no Xcode and no Apple account here, so it could not be
 checked; setting `mode` explicitly means it does not have to be.
 
-**How to settle it on the first build**, which is worth doing once:
+**How it is settled, on every production build from now on.** The
+`TestFlight` workflow's "Prove the binary carries what it should" step
+downloads the finished .ipa from EAS, unzips it, and reads `aps-environment`
+out of it in the two places the value lives. It runs on an ubuntu runner, so
+there is no `codesign`; what there is, is the artifact itself:
+
+- `Payload/Samewhere.app/embedded.mobileprovision`, the provisioning profile
+  the build was signed with: a CMS (PKCS#7) envelope around an XML plist.
+  `openssl smime -verify -noverify -inform der` opens the envelope and
+  Python's `plistlib` reads `Entitlements.aps-environment` out of it. (Apple
+  strips this file when it re-signs the app for delivery, which is why the
+  installed app on a phone does not have one; the .ipa EAS hands over is the
+  pre-upload export, and does.)
+- The executable's own code signature, where the signed entitlements plist is
+  embedded verbatim. That is exactly what `codesign -d --entitlements :-`
+  prints, and it is greppable, so it is read too.
+
+Both must say `production`, and the step fails the run if either says
+anything else or if neither can be read. The answer is written to the run's
+step summary next to the build number and the EAS build id, both read back
+from the finished build rather than promised. Record them in
+`docs/PROGRESS.md`. Until a run has been read, "push is configured" is a
+guess in exactly the way the change-review skill means.
+
+The by-hand version, for anyone with a Mac and a reason:
 
 ```bash
 # after `eas build --platform ios --profile production`, download the .ipa
@@ -196,9 +227,7 @@ unzip -o -q app.ipa -d ipa && codesign -d --entitlements :- ipa/Payload/*.app
 ```
 
 `<key>aps-environment</key><string>production</string>` is the answer you
-want. Record the build id next to it in `docs/PROGRESS.md`. Until somebody has
-run that, "push is configured" is a guess in exactly the way the change-review
-skill means.
+want.
 
 ## Privacy nutrition labels (App Store Connect, App Privacy)
 
@@ -306,74 +335,199 @@ native, it only exists in builds made after it was added: the JS side uses
 binaries, and the pin search falls back to address geocoding there. So the
 feature ships dark over the air and lights up at the next build.
 
-### Queued for the next build: the whole notification config
+### Shipped in 0.2.0: the notification config
 
-**Batch these two.** There is now more than one thing waiting on a build, and
-neither is worth one on its own.
+The 0.2.0 build is the first one made with any of it. Everything in this
+table is prebuild input, so no build before it carried a line of it, and
+no update could have:
 
-| Waiting                                                  | Why it cannot ship over the air                                                                                                    |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| The `expo-notifications` plugin block in app.json        | `plugins` is prebuild input: the notification icon, the tint colour, the Android channel id and `mode` all land in native projects |
-| `assets/images/notification-icon.png`                    | referenced by that block; on iOS an absent icon is a grey square, and a bad path fails the prebuild minutes into a run             |
-| `mode: "production"` → `aps-environment`                 | an entitlement, and the one whose wrong value is silent (see "The APNs entitlement" above)                                         |
-| The App Store review prompt (`expo-store-review`, below) | a native module, and it needs a `version` bump as well                                                                             |
+| Landed in 0.2.0                                   | Why it could not ship over the air                                                                                                    |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| The `expo-notifications` plugin block in app.json | `plugins` is prebuild input: the notification icon, the tint colour, the Android channel id and `mode` all land in native projects    |
+| `assets/images/notification-icon.png`             | referenced by that block; on iOS an absent icon is a grey square, and a bad path fails the prebuild minutes into a run                |
+| `mode: "production"` → `aps-environment`          | an entitlement, and the one whose wrong value is silent (see "The APNs entitlement" above); the workflow now reads it off every build |
+| The App Store review prompt (`expo-store-review`) | a native module, and it needed the `version` bump that moves `runtimeVersion` with it (below)                                         |
 
-The JavaScript half of push already ships over the air and already works
-against whatever binary is installed: `push.ts` (registration, the foreground
-handler, `setNotificationChannelAsync` for the Android channel app.json names),
-the primer, the routing, and the settings row. So the update is worth
-publishing on its own — just do not read its green run as anything about
-delivery.
+The JavaScript half of push already shipped over the air and already worked
+against whatever binary was installed: `push.ts` (registration, the
+foreground handler, `setNotificationChannelAsync` for the Android channel
+app.json names), the primer, the routing, and the settings row. What the
+build adds is the native half: the entitlement value, the icon, the channel
+id in the manifest.
 
-Note the ordering trap if the review prompt goes in the same build: bumping
-`version` for it moves `runtimeVersion`, which orphans every existing install
-from further updates until that build is out. Do the build, confirm it
-installs, and only then publish updates against the new version.
+**The hand-run, on the first 0.2.0 install.** The workflow proves the
+entitlement; only a phone proves delivery.
 
-The check that closes this out is one line, after the first build carrying it:
+1. Read the run's step summary: `aps-environment: production`, the build
+   number and the EAS build id. If the step is red, stop; nothing below can
+   pass.
+2. Install the build from TestFlight, open the app, and accept the push
+   primer when it asks. Nothing on the phone shows the token: the
+   Notifications row on the profile page (`NotificationsRow`) says whether
+   notifications are on and offers to turn them on, and that is all it
+   renders. Read it from the database instead, in the SQL editor:
+   `select token, platform, updated_at from push_tokens where user_id = '<your user id>';`
+   (`push_tokens`, 20260816220000: one row per device token, reassigned to
+   whichever account last registered on that phone).
+3. Send yourself one notification from the Expo push tool at
+   <https://expo.dev/notifications> against that token, with the app in the
+   background. Watch it land on the lock screen with the app's icon and tint.
+4. Record the build id and both answers in `docs/PROGRESS.md`.
 
-```bash
-unzip -o -q app.ipa -d ipa && codesign -d --entitlements :- ipa/Payload/*.app
-```
+A push that never arrives on a build whose summary says `production` is a
+different bug from the one this section is about; look at the worker and the
+token table before the entitlement.
 
-Then send yourself one notification from the Expo push tool and watch it land.
-Record the build id and both answers in `docs/PROGRESS.md`.
+### The version moved to 0.2.0, and what that orphans
 
-### Queued for the next build: the App Store review prompt
+`runtimeVersion` is `{ policy: "appVersion" }`, so an update only ever reaches
+builds whose `version` matches the one it was published against. Bumping
+`version` to 0.2.0 for the native module therefore has a consequence
+`app.json` cannot carry a comment for, so it is written here:
 
-**Not in the tree yet, and deliberately.** Everything about this product is
-free, so the star rating and search ranking are the whole of paid
-acquisition — and with nothing asking for a review, the rating will be shaped
-entirely by the minority who arrive at the listing angry. The moment worth
-converting already exists and is already detected: `useAcceptedCelebration`
-fires when a first message you sent turns into a chat, and it already refuses
-to fire in a burst on a fresh install.
+**Every 0.1.0 install is orphaned from updates until the 0.2.0 build is
+installed.** From the moment the bump is on the branch, an `update` run
+publishes against runtime 0.2.0, and a phone still on a 0.1.0 build stops
+receiving it: it keeps the JavaScript it last downloaded, and no run goes red
+to say so. That is the intended half. The half to manage by hand is the
+order of operations:
 
-It is a native module, so it cannot ship over the air. Four things have to
-land in the same change or it is worse than nothing:
+1. Do the build (`build-then-submit`) with the bump in it. It is the last
+   thing to land in a batch of native changes, never the first.
+2. Confirm the build installs from TestFlight and opens.
+3. Only then publish updates. An update published between the bump and the
+   install reaches nobody, and one published before the bump would have
+   reached 0.1.0 phones with JavaScript that expects the module.
 
-1. `package.json` — add `expo-store-review`. Nothing goes under `plugins`:
-   it has no config plugin and needs no Info.plist key.
-2. `app.json` — bump `version`. `runtimeVersion` follows it, so without the
-   bump the build carrying the native module and every build without it share
-   a runtime version, and an update built against the module reaches a binary
-   that cannot load it.
-3. `src/features/matching/use-accepted-celebration.ts` — call `requestReview()`
-   **after** the notice is dismissed, never on top of the card, and gate it on
-   the same AsyncStorage seen-set that already marks a fresh install's history
-   as old news. One flag, in that store, not a second one.
-4. A hand-run on TestFlight. Apple owns the dialog and throttles it, so there
-   is no screenshot and the E2E suite cannot photograph it.
+The e2e simulator binary is a 0.1.0 build too, so the next E2E run needs
+`build=true` once: the "Fetch the published update" gate cannot find a
+runtime-0.2.0 update on a runtime-0.1.0 binary, and says so rather than
+screenshotting the old JavaScript.
 
-The rules, in the order they matter: **once per install, ever**; never during
-onboarding; never after a bad moment (a block, a report, a moderation
-refusal); and no custom pre-prompt, because Apple already throttles the real
-one and a second ask in front of it is the thing App Review dislikes. Asking
-at the wrong moment, or twice, is worse than not asking at all.
+### Shipped in 0.2.0: the App Store review prompt
 
-Batch it with whatever other native change is queued. On a pre-launch app
-with no users the prompt has nothing to convert yet, and a build spent on it
-alone is a build not spent on a native change that unblocks something.
+Everything about this product is free, so the star rating and search ranking
+are the whole of paid acquisition, and with nothing asking for a review the
+rating would be shaped entirely by the minority who arrive at the listing
+angry. The moment worth converting already existed and was already detected:
+`useAcceptedCelebration` fires when a first message you sent turns into a
+chat, and it already refuses to fire in a burst on a fresh install.
+
+The four things that had to land in the same change, and did:
+
+1. `package.json`: `expo-store-review` at `~57.0.2`, the version
+   `expo@57.0.13`'s own `bundledNativeModules.json` pins for SDK 57. Nothing
+   under `plugins`: it has no config plugin and needs no Info.plist key.
+   `src/features/matching/__tests__/use-accepted-celebration.test.tsx` fails
+   if it is dropped, if anything appears under `plugins` for it, or if the
+   version bump below is reverted while the module stays.
+2. `app.json`: `version` 0.2.0, and `package.json` agrees. See the section
+   above for what the bump orphans.
+3. `src/features/matching/use-accepted-celebration.ts`: the ask follows the
+   notice being dismissed with its X, a beat (`Motion.slow`) after the card
+   has left the screen, never on top of it. Gated on the same AsyncStorage
+   seen-set that marks a fresh install's history as old news: one sentinel
+   entry (`store-review:asked`) in that set, under the same key, not a second
+   key. The stored value stays readable by a bundle that predates it, which
+   matters because an update is never applied on the launch that downloads
+   it.
+4. A hand-run, below. Apple owns the dialog and throttles it, so there is no
+   screenshot and the E2E suite cannot photograph it.
+
+**The rules, and how each is kept.** All of them are proved in the test file
+named above; each assertion was watched going red with its guard removed
+before it was kept.
+
+- **Once per install, ever.** The sentinel is written before Apple is called,
+  so nothing inside the call can lead to a second one; a later launch reads
+  it back.
+- **Never during onboarding.** `onboarding_completed_at` must be set on the
+  own profile. The tabs are not mounted for a traveler who owes onboarding,
+  but the rule is the hook's to keep, not the router's.
+- **Never after a bad moment, as far as the hook can see one.** Five signals
+  are readable from the queries the hook already has, the root layout
+  already keeps live, or the screens that show the moment already hold: the
+  account's standing is not `active` (moderation acted on it); a hello of
+  theirs was refused by moderation in the last 24 hours (`sent_requests`
+  rows in state `blocked`); a chat closed this session (a block in either
+  direction severs it, and a leave closes it); a block was made this
+  session, from anywhere in the app (the `blocks` count, baselined at its
+  first answer, read through the same cache entry as the Blocked screen and
+  only while the ask is unspent); and **a photo of theirs was refused**, in
+  either of the two places the app says so. A profile photo: the grid's own
+  `['photos', userId]` entry (same key, same fetch as `useOwnPhotos`, run
+  only while the ask is unspent), a rules rejection on a photo uploaded in
+  the last 24 hours — the row carries no verdict time, and the verdict lands
+  within the worker's tick of the upload, so the upload time stands in the
+  way a hello's does. A failsafe hold ("could not be checked, try again",
+  `moderation_engine = 'failsafe'`) is nobody's fault and is not counted; it
+  is read through the same `photoRejection` helper the grid uses to draw it
+  on warning rather than danger. A group photo: the group page's
+  `['group', chatId]` entry, which polls every five seconds while a photo is
+  pending, watched through the query cache for a row moving INTO `rejected`
+  this sitting — that is the admin having just read "That photo was not
+  approved and has been removed. Pick another." `groups` carries no verdict
+  time, so a group first seen already refused is history, and a group open
+  on no screen is not watched. (A business owner's photos are not here
+  because a business never sends a hello, so the ask never arises for one.)
+  A **report** is the one bad moment the hook cannot see: nothing in the app
+  reads reports back, so there is no query to baseline. The "block them too"
+  that follows a report of a person is caught by the block signals; a report
+  on its own is not.
+- **Never from "Go to chat".** That button is a departure into a task, a
+  thread the person is usually about to type in, and Apple's guidance is not
+  to interrupt one. The X is the one moment the person has registered good
+  news and is doing nothing else. The card calls a different callback for
+  each so the hook can tell them apart, and the ask is kept for a later X.
+- **Never on top of a card.** With several accepts queued, the ask waits for
+  the last X; a card that comes up in the beat before Apple is called cancels
+  the ask for that moment.
+- **Never on a binary that cannot show it.** The package is required at the
+  moment it is needed, inside a catch: its native entry is
+  `requireNativeModule('ExpoStoreReview')`, which throws on a build made
+  before the module existed, and a static import would take the whole tabs
+  layout down with it. `isAvailableAsync()` must answer exactly `true`; a
+  `false`, an `undefined` (what jest's native mock answers), or a missing
+  module all leave the ask unspent for a build that can.
+- **No custom pre-prompt.** Apple already throttles the real one, and a
+  second ask in front of it is the thing App Review dislikes.
+
+**What TestFlight can and cannot show.** `StoreReviewModule.swift`'s
+`isAvailableAsync` answers `!isRunningFromTestFlight()`, and it detects
+TestFlight by the sandbox receipt with no embedded provisioning profile. That
+is Apple's own rule surfacing: `requestReview` has no effect in an app
+distributed through TestFlight. So on a TestFlight build the dialog will
+never appear, by design, and the ask is not spent. What a TestFlight hand-run
+CAN prove is the wiring: every time the moment is earned and every gate
+passes, the hook captures `review_prompt_requested` to PostHog with
+`available: true | false`. On TestFlight it arrives as `available: false`.
+The dialog itself is seen in exactly two places: a development build
+(Xcode or a dev client, where Apple shows it every time) and the App Store
+release, where Apple throttles it to a few times a year per person.
+
+**The hand-run, on TestFlight.** Two traveler accounts, both with a trip in
+the same city on overlapping dates.
+
+1. From account A, say hi to account B from Travelers. From account B, accept
+   it.
+2. Back on account A: the "Connected with B" card comes up at the bottom of
+   whatever tab is open. Tap the **X**, not "Go to chat".
+3. Nothing visible happens next; that is correct on TestFlight. Open PostHog
+   and find `review_prompt_requested` with `available: false` on account A's
+   `distinct_id`, within the minute.
+4. Repeat with a third account accepting. The card comes up, the X dismisses
+   it, and a SECOND `available: false` event arrives. That is correct too:
+   the once-per-install flag is only written when Apple could be asked, and
+   on TestFlight it never can be, so the ask stays unspent for the App Store
+   install this phone may become. The once-per-install proof is the jest
+   file's, and the App Store build's.
+5. Record the event's timestamp and the build number in `docs/PROGRESS.md`.
+
+**The hand-run, on the App Store build**, once there is one: step 2 again,
+on an install that has never been asked. The sheet comes up a beat after the
+card has gone. Whether it does on any given tap is Apple's throttle, not a
+defect; the event with `available: true` is the evidence the moment was
+converted.
 
 ## App Review notes (paste into the Review Notes field)
 

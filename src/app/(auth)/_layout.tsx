@@ -19,6 +19,13 @@ export default function AuthLayout() {
         name="email"
         options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
       />
+      {/* The six digits from a recovery mail. Pushed from /email's "Forgot
+          your password?", so the chevron goes back to the address it was
+          sent to; the same bar as /email for the same reason. */}
+      <Stack.Screen
+        name="reset-code"
+        options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+      />
     </Stack>
   );
 }

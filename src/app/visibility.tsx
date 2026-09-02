@@ -15,7 +15,13 @@ import {
   AUDIENCE_NEEDS_BADGE,
 } from '@/features/profile/audience';
 import { AudiencePicker } from '@/features/profile/audience-picker';
-import { useOwnProfile, useOwnVisibility, useSetVisibility } from '@/features/profile/hooks';
+import {
+  useOwnGuestPreview,
+  useOwnProfile,
+  useOwnVisibility,
+  useSetGuestPreview,
+  useSetVisibility,
+} from '@/features/profile/hooks';
 
 /**
  * Who can see you, on the map and in Travelers.
@@ -25,6 +31,15 @@ import { useOwnProfile, useOwnVisibility, useSetVisibility } from '@/features/pr
  * gendered options match the gender on a profile, so anyone who has not set
  * one is in none of them. Said once here beats being found out later as a
  * bug report.
+ *
+ * And a fourth, since D22: whether a device with NO ACCOUNT may be shown
+ * your face. The audience rows above are the rule between two accounts. The
+ * signed-out preview (three travelers per city, before the account wall) is
+ * a different door, and it has its own row here, rendered only while the
+ * audience is Everyone because a narrowed audience already keeps every
+ * guest out (audience_admits, 20260823040000). It is enforced inside
+ * featured_traveler (20260903080000), so it holds for the card call and the
+ * face call alike, and it changes nothing for anybody who is signed in.
  *
  * The rows themselves and every string on them now live in
  * features/profile/audience-picker, because signup asks the same question and
@@ -38,7 +53,15 @@ export default function VisibilityScreen() {
   const save = useSetVisibility();
   const { data: groupAdds = 'known' } = useGroupAdds();
   const setAdds = useSetGroupAdds();
+  // Shown is the server's own default, so it is the screen's too: a row that
+  // read "hidden" while the answer was still on its way would be a lie for
+  // the length of a round trip.
+  const { data: shownToGuests = true } = useOwnGuestPreview();
+  const setPreview = useSetGuestPreview();
   const verified = profile?.verified === true;
+  const previewLabel = shownToGuests
+    ? 'Hide me from people without an account'
+    : 'Show me to people without an account';
 
   return (
     <StepScreen
@@ -88,6 +111,35 @@ export default function VisibilityScreen() {
         </>
       )}
 
+      {/* The signed-out preview (D22). Only while the audience is Everyone:
+          under anything narrower a guest is already nobody, and a control
+          that could not change anything would be a control that lies. A
+          ghost button carrying the switch role rather than a platform
+          Switch, for the reason notifications-row gives: this app has no
+          Switch anywhere, and one control introduced for one row is a
+          vocabulary of its own. */}
+      {audience === 'everyone' ? (
+        <View style={styles.previewBlock}>
+          <ThemedText type="smallBold">Before somebody has an account</ThemedText>
+          <ThemedText type="footnote" themeColor="textSecondary">
+            {shownToGuests
+              ? 'Anyone opening the app without an account can be shown up to three travelers with plans in a city: face, name, age and dates. You can be one of them.'
+              : 'Only people with an account can see you. Anyone opening the app without one is shown other travelers, never you.'}
+          </ThemedText>
+          <PrimaryButton
+            variant="ghost"
+            label={previewLabel}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: shownToGuests, disabled: setPreview.isPending }}
+            // The same words that are written on it, so a Voice Control user
+            // reading the button can say them and be heard.
+            accessibilityLabel={previewLabel}
+            disabled={setPreview.isPending}
+            onPress={() => setPreview.mutate(!shownToGuests)}
+          />
+        </View>
+      ) : null}
+
       {/* The second thing this screen decides, and the reason it belongs here:
           being added to a group is the one place the app's consent-before-
           exposure grammar used to break, and this is the screen a person looks
@@ -135,6 +187,9 @@ export default function VisibilityScreen() {
 }
 
 const styles = StyleSheet.create({
+  previewBlock: {
+    gap: Space.xs,
+  },
   addRows: {
     gap: Space.sm,
   },

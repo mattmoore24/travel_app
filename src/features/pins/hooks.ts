@@ -115,6 +115,13 @@ export type NewPin = {
    * with a hello that has to be accepted.
    */
   joinable?: boolean;
+  /**
+   * The listed business this plan names, when the form was opened from that
+   * business's page ('Plan to go', src/app/place/[id].tsx). Null or absent
+   * for a pin dropped on the map, where validate_pin may still infer one by
+   * exact name and sixty metres (20260902190000).
+   */
+  businessId?: string | null;
 };
 
 type PostedPin = {
@@ -157,6 +164,12 @@ export function useCreatePin() {
         p_intent_time: input.intentTime ?? null,
         p_expires_at: input.expiresAt,
         p_joinable: joinable === true,
+        // Sent ONLY when it has a value. PostgREST resolves an RPC by the
+        // argument names it is given, so naming p_business_id against a
+        // server that predates 20260903110000 would fail EVERY pin post for
+        // as long as the bundle led the deploy. Left out, an ordinary pin
+        // keeps working in either order; only 'Plan to go' waits on it.
+        ...(input.businessId ? { p_business_id: input.businessId } : {}),
       });
       if (error) {
         throw error;

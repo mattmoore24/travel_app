@@ -503,11 +503,24 @@ select isnt(
   'and it still opens the group that makes it joinable'
 );
 
+-- The expiry is anchored to the PLAN, not to the wall clock, and that is the
+-- whole point of the change. It was `now() + interval '40 hours'` against a
+-- plan at 21:30 tomorrow, which is only later than the plan when the suite
+-- happens to run after 05:30 UTC: before that, now + 40h lands earlier the
+-- same evening and validate_pin correctly refuses a plan that outlives its
+-- own pin. So the test failed on the clock, roughly a quarter of the time,
+-- and PROGRESS recorded the window as 00:00-03:00, which is not the window
+-- either. A test that is red on the hour of the day teaches people to read
+-- red as weather.
+--
+-- Tomorrow at 23:00 is after the 21:30 plan by construction, and at most ~47
+-- hours out, so it is inside rule 3's 72 and needs no clock to be true.
 select lives_ok(
   format($$
     select public.post_joinable_pin(
       %s, 'A Tasca do Chico', null, null, 'other',
-      38.7107, -9.1447, current_date + 1, now() + interval '40 hours',
+      38.7107, -9.1447, current_date + 1,
+      (current_date + 1)::timestamptz + interval '23 hours',
       'Fado', time '21:30', false)
   $$, pg_temp.lisbon()),
   'and so can a message-me-first plan, which used to be a plain insert'

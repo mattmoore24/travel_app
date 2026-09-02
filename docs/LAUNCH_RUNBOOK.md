@@ -190,6 +190,12 @@ matters), `admin_request_funnel` (accept rate — a collapse means creep),
 name a chat and not a person - act on somebody in the room by their user id, or
 dismiss it; `admin_resolve_report` refuses to guess. See DASHBOARD.md.
 
+When somebody appeals a refused selfie or storefront through Contact us, open
+`admin_verification_queue` or `admin_business_verification_queue`
+(20260903040000): `reason` is the sentence they were shown, in their own
+language, and `reason_en` beside it is what it says. Service-role views for
+the SQL editor, nothing on the client.
+
 Target before opening city #2: **500–1,000 in-season users with a live trip
 or pin** in city #1.
 

@@ -23,6 +23,7 @@ import { PIN_CATEGORIES } from '@/features/pins/pin-helpers';
 import { PinGlyph } from '@/features/pins/pin-marker';
 import { addDays } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
+import { dates } from '@/lib/locale';
 import { countOf } from '@/lib/plural';
 
 /**
@@ -119,9 +120,7 @@ export function MapFilterSheet({
   // The third day has no name of its own — "later" is vague and the date is
   // noise — so it says which weekday it is, the way the pin form already
   // does. Derived from the city clock: the chip filters the city's days.
-  const laterLabel = new Intl.DateTimeFormat('en', { weekday: 'long' }).format(
-    addDays(clock ?? new Date(), 2)
-  );
+  const laterLabel = dates().weekdayLong.format(addDays(clock ?? new Date(), 2));
   const dayOptions: ChipOption<DayFilter>[] = [
     { value: 'any', label: 'Any day' },
     { value: 'today', label: 'Today' },

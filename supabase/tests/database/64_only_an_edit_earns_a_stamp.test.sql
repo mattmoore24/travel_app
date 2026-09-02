@@ -191,7 +191,7 @@ select is(
   pg_temp.named_in_trigger(true),
   array['age', 'bio', 'display_name', 'gender', 'group_adds', 'home_city',
         'home_country', 'languages', 'occupation', 'onboarding_completed_at',
-        'verification', 'verified', 'visible_to']::text[],
+        'shown_to_guests', 'verification', 'verified', 'visible_to']::text[],
   'these columns are what an edit MEANS, and a change to one of them stamps'
 );
 

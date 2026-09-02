@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -43,8 +43,11 @@ import { LISTING_SHARE_LABEL, shareListing } from '@/features/business/share-lis
 import { dayLabel } from '@/features/chat/separators';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useMyChats } from '@/features/matching/hooks';
+import { useLaunchCities } from '@/features/pins/hooks';
 import { openInMaps } from '@/features/pins/open-in-maps';
+import { PinFormSheet } from '@/features/pins/pin-form-sheet';
 import { useTheme } from '@/hooks/use-theme';
+import { haptics } from '@/lib/haptics';
 import { clocks } from '@/lib/locale';
 import { analytics } from '@/lib/analytics';
 import type { BusinessHourJson, BusinessLinkJson, BusinessPostJson } from '@/lib/database.types';
@@ -372,6 +375,13 @@ export default function PlaceScreen() {
   const ratingQuery = useRatingSummary(id ?? null);
   const summary = ratingQuery.data;
   const chatsQuery = useMyChats();
+  // 'Plan to go': the pin form, opened from here rather than from the map,
+  // pre-filled with this business and posting its id explicitly. The form
+  // wants the city's name and clock, which a business row does not carry;
+  // the launch-city list does, and a listed business is always in one.
+  const launchCitiesQuery = useLaunchCities();
+  const [planning, setPlanning] = useState(false);
+  const [planned, setPlanned] = useState(false);
 
   // The PLACE's clock, not the reader's: somebody in Lisbon reading a Bangkok
   // bar would otherwise be told "Open" seven hours out.
@@ -479,9 +489,17 @@ export default function PlaceScreen() {
   // covers the owner too, who is a business account by definition.
   const askAboutHours =
     hours.length === 0 && !place.hours_note && place.claimed && !isGuest && !isBusinessAccount;
+  const planCity =
+    (launchCitiesQuery.data ?? []).find((city) => city.city_id === place.city_id) ?? null;
 
   return (
     <ThemedView style={styles.root}>
+      {/* The name goes in the bar HERE, not in _layout: it only exists once
+          the detail query resolves, and profile/[userId] does the same for
+          the same reason. The hero below keeps its copy on purpose: that one
+          carries the verified seal and the category line, and a native
+          title cannot. */}
+      <Stack.Screen options={{ headerTitle: place.name }} />
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
         <ScrollView
           // The gesture every phone user reaches for when a screen looks
@@ -698,7 +716,10 @@ export default function PlaceScreen() {
               // behind an account at the router. Buttons that silently do
               // nothing are worse than the ask, so this is the ask.
               <View style={styles.actions}>
-                <SignUpGate reason="Join the chat, rate it, or send them a message" where="place" />
+                <SignUpGate
+                  reason="Join the chat, plan to go, rate it, or send them a message"
+                  where="place"
+                />
                 {/* Outside the gate on purpose. A guest browsing the map is
                     exactly the person most likely to spot a listing that
                     should not be there, and the ask below names reporting
@@ -786,6 +807,33 @@ export default function PlaceScreen() {
                     onPress={openMessage}
                   />
                 )}
+                {/* The hero mechanic, from the page that names the venue. "I
+                    want to go to X on Y" used to mean leaving this page,
+                    finding the spot on the map and retyping X. The form
+                    opens here, pre-filled, and posts the business's id with
+                    the pin (map-pins-link-to-a-business, the half that
+                    shipped without an entry point). Hidden until the launch
+                    cities have loaded, because the form needs the city's
+                    name and clock; a button that opened a half-filled form
+                    would be worse than one that arrives a beat later. */}
+                {planCity ? (
+                  planned ? (
+                    <ThemedText type="footnote" themeColor="textSecondary">
+                      Your plan is on the map. It disappears on its own.
+                    </ThemedText>
+                  ) : (
+                    <PrimaryButton
+                      variant="tonal"
+                      label="Plan to go"
+                      accessibilityLabel={`Plan to go to ${place.name}`}
+                      accessibilityHint="Opens the pin form with this business filled in"
+                      onPress={() => {
+                        haptics.light();
+                        setPlanning(true);
+                      }}
+                    />
+                  )
+                ) : null}
                 {/* Its own button, not a footnote beside Report. Rating is
                     the feature; reporting is the safety valve. They were the
                     same size, in the same row, below the fold. */}
@@ -834,6 +882,31 @@ export default function PlaceScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
+      {/* The same sheet the map presents, over this page instead. Nothing
+          navigates from inside it: posting closes it and the line above
+          takes the button's place, so the scrim-survives-a-push trap
+          (traps: leavingSheet) has nothing to bite. The address rides along
+          because the form's own reverse geocode is skipped for a business,
+          which already knows its street. */}
+      {planning && planCity ? (
+        <PinFormSheet
+          cityId={place.city_id}
+          cityName={planCity.cities.name}
+          cityTimezone={planCity.timezone}
+          coords={{ lat: place.lat, lng: place.lng }}
+          business={{
+            id: place.id,
+            name: place.name,
+            category: place.category,
+            address: place.address,
+          }}
+          onClose={() => setPlanning(false)}
+          onPosted={() => {
+            setPlanning(false);
+            setPlanned(true);
+          }}
+        />
+      ) : null}
     </ThemedView>
   );
 }

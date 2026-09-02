@@ -35,9 +35,18 @@ import { haptics } from '@/lib/haptics';
 export function ConnectedNotice({
   match,
   onDismiss,
+  onGoToChat,
 }: {
   match: AcceptedMatch;
+  /** The X: the notice is put away and nothing else happens. */
   onDismiss: () => void;
+  /**
+   * "Go to chat": the notice is put away because the person is leaving for
+   * the thread. A different callback from the X on purpose — the App Store
+   * review ask may follow a dismissal and must not follow a departure, and
+   * the hook that owns the ask can only tell the two apart if the card does.
+   */
+  onGoToChat: () => void;
 }) {
   const theme = useTheme();
   const dockBottom = useTabDockBottom();
@@ -85,7 +94,7 @@ export function ConnectedNotice({
         <PrimaryButton
           label="Go to chat"
           onPress={() => {
-            onDismiss();
+            onGoToChat();
             router.push(`/chat/${match.chatId}`);
           }}
         />

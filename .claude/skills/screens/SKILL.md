@@ -13,9 +13,18 @@ concatenated into one and the suite was still green. **Always look.**
 
 GitHub Actions → **E2E simulator** → `workflow_dispatch`.
 
-Leave `build` **false** unless native code changed — a false run reuses the
-last simulator binary and pushes the current JS to it over the `e2e` channel,
-which costs no EAS build quota. `build: true` spends one.
+Leave `build` **false** unless native code changed or `app.json`'s `version`
+moved — a false run reuses the last simulator binary and pushes the current
+JS to it over the `e2e` channel, which costs no EAS build quota. `build: true`
+spends one.
+
+**One-time exception after the 0.2.0 bump (2026-09-02).** The last simulator
+binary is build 13 (2026-08-22), a runtime-0.1.0 build, and `version` is now
+0.2.0. The "Fetch the published update" gate cannot find a runtime-0.2.0
+update on a runtime-0.1.0 binary and fails outright rather than screenshotting
+the old JavaScript, so the first E2E run after the bump needs `build: true`
+once. Every run after that reuses the 0.2.0 simulator binary with `build`
+false again. The same applies to any later `version` bump.
 
 The run takes ~15 minutes. Do not poll it in a tight loop; check back.
 

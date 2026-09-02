@@ -1,6 +1,14 @@
 // Date-only helpers for trips. Trips are calendar ranges ("Mar 4–9"), so
 // everything works on YYYY-MM-DD strings and local dates — never UTC
 // timestamps, which shift a day depending on the traveler's timezone.
+//
+// No formatter of its own. Every string this file prints comes from
+// lib/locale's `dates()`, which is the app's one date engine: this file used
+// to pin four formatters to 'en' beside four other files that followed the
+// device, and src/lib/__tests__/one-clock.test.ts now refuses a second engine
+// anywhere under src/.
+
+import { dates } from '@/lib/locale';
 
 export function toISODate(date: Date): string {
   const y = date.getFullYear();
@@ -26,17 +34,11 @@ export function daysUntil(iso: string): number {
   return Math.round((parseISODate(iso).getTime() - today.getTime()) / 86_400_000);
 }
 
-const SHORT = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' });
-const SHORT_YEAR = new Intl.DateTimeFormat('en', {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
-
 /** "2026-03-04" -> "Mar 4" (with the year once it is not this one). */
 export function formatDate(iso: string): string {
   const date = parseISODate(iso);
-  const fmt = date.getFullYear() === new Date().getFullYear() ? SHORT : SHORT_YEAR;
+  const fmt =
+    date.getFullYear() === new Date().getFullYear() ? dates().monthDay : dates().monthDayYear;
   return fmt.format(date);
 }
 
@@ -46,12 +48,13 @@ export function formatDateRange(startISO: string, endISO: string): string {
   const end = parseISODate(endISO);
   const sameYear = start.getFullYear() === end.getFullYear();
   const currentYear = start.getFullYear() === new Date().getFullYear();
-  const fmt = sameYear && currentYear ? SHORT : SHORT_YEAR;
+  const { monthDay, monthDayYear } = dates();
+  const fmt = sameYear && currentYear ? monthDay : monthDayYear;
   if (startISO === endISO) {
     return fmt.format(start);
   }
   if (sameYear && start.getMonth() === end.getMonth()) {
-    return `${SHORT.format(start)} – ${end.getDate()}${currentYear ? '' : `, ${end.getFullYear()}`}`;
+    return `${monthDay.format(start)} – ${end.getDate()}${currentYear ? '' : `, ${end.getFullYear()}`}`;
   }
   return `${fmt.format(start)} – ${fmt.format(end)}`;
 }
@@ -90,24 +93,18 @@ export function formatTripDates(startISO: string, endISO: string, approximate?: 
   return approximate ? `Around ${range}` : range;
 }
 
-// Beside SHORT and SHORT_YEAR above, and pinned to 'en' the same way they
-// are, because this file is one of the sites lib/locale has not reached yet
-// (src/lib/__tests__/one-clock.test.ts names them all). They move together
-// when it does; what must not happen is a NEW file starting a second engine,
-// which is why rough-dates.tsx asks here for its chip labels rather than
-// building its own.
-const MONTH_SHORT = new Intl.DateTimeFormat('en', { month: 'short' });
-const MONTH_LONG = new Intl.DateTimeFormat('en', { month: 'long' });
-
 /**
  * A month on its own: "Sep", "September", and the year on the end once it is
  * not this one ("Jan 2027").
  *
  * Takes any date in the month, so both an ISO date and a "YYYY-MM" work.
+ * rough-dates.tsx asks here for its chip labels rather than building its
+ * own, and this asks lib/locale, whose bare-month shapes exist for this one
+ * caller.
  */
 export function formatMonth(iso: string, style: 'short' | 'long' = 'short'): string {
   const date = parseISODate(iso.length === 7 ? `${iso}-01` : iso);
-  const month = (style === 'short' ? MONTH_SHORT : MONTH_LONG).format(date);
+  const month = (style === 'short' ? dates().month : dates().monthLong).format(date);
   return date.getFullYear() === new Date().getFullYear() ? month : `${month} ${date.getFullYear()}`;
 }
 

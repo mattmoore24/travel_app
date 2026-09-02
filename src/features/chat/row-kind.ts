@@ -1,6 +1,7 @@
 import type { SymbolViewProps } from 'expo-symbols';
 
 import type { ChatListRow } from '@/lib/database.types';
+import { dates } from '@/lib/locale';
 
 /**
  * What kind of thing a conversation row is, in words and in a date.
@@ -15,16 +16,11 @@ import type { ChatListRow } from '@/lib/database.types';
  * as the sentences they are.
  */
 
-/**
- * `pins.intent_date` is a DATE, so it has no time on it and nothing to show
- * beyond the day. Short weekday, day, short month: unambiguous in every
- * Latin-script locale, and narrow enough to sit beside a name.
- */
-const PLAN_DAY = new Intl.DateTimeFormat('en', {
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-});
+// `pins.intent_date` is a DATE, so it has no time on it and nothing to show
+// beyond the day. Short weekday, day, short month - lib/locale's
+// `weekdayMonthDay`, the same shape the thread's day separators use, so the
+// row and the thread it opens name the day in one voice. Unambiguous in every
+// Latin-script locale, and narrow enough to sit beside a name.
 
 /**
  * The day a plan is for, or null when there is nothing worth saying.
@@ -52,7 +48,7 @@ export function planChipLabel(planDate: string | null, now: Date = new Date()): 
   if (!year || !month || !day) {
     return null;
   }
-  return PLAN_DAY.format(new Date(year, month - 1, day));
+  return dates().weekdayMonthDay.format(new Date(year, month - 1, day));
 }
 
 /**

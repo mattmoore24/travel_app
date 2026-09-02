@@ -3,7 +3,15 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { ActionSheetIOS, Alert, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActionSheetIOS,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
@@ -34,6 +42,12 @@ import { ThreadHeader } from '@/features/chat/thread-header';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { haptics } from '@/lib/haptics';
 import { closeDayLabel, useHasGroupClosed } from '@/features/groups/closing';
+import {
+  NO_GROUP_PHOTO,
+  groupPhotoActions,
+  groupPhotoControlLabel,
+  type GroupPhotoAction,
+} from '@/features/groups/photo';
 import { seedEndDate } from '@/features/rooms/end-date';
 import { useMyTrips } from '@/features/trips/hooks';
 import { formatDate, parseISODate, toISODate } from '@/features/trips/dates';
@@ -230,7 +244,13 @@ export default function GroupScreen() {
   const { data: members = [] } = useGroupMembers(id ?? null);
   const update = useUpdateGroup(id!);
   const revokeInvites = useRevokeGroupInvites(id!);
-  const { data: photoUrl } = useChatPhotoUrl(group?.photo_path ?? null);
+  // The photo, as useGroup hands it out: an approved picture is everybody's,
+  // a pending one is its uploader's alone (to everybody else there is no
+  // photo yet), a refused one has been removed and the admin is told. The
+  // raw columns are not on the row this screen holds, and the bucket
+  // enforces the same rule on the URL, so this is UX, not the lock.
+  const photo = group?.photo ?? NO_GROUP_PHOTO;
+  const { data: photoUrl } = useChatPhotoUrl(photo.path);
   const leaveRoom = useLeaveRoom(id!);
 
   // The chat row, for the one preference this screen can set. Both lists,
@@ -324,6 +344,62 @@ export default function GroupScreen() {
 
   const shownName = name ?? group.name;
 
+  const choosePhoto = async () => {
+    const uri = await pickImage();
+    if (!uri || !ownUserId) {
+      return;
+    }
+    try {
+      const path = await uploadGroupPhoto(ownUserId, uri);
+      update.mutate({ photoPath: path });
+    } catch {
+      Alert.alert('Could not upload', 'Check your connection and try again.');
+    }
+  };
+
+  // The second option is how a refused photo's notice goes: update_group's
+  // p_clear_photo nulls the verdict along with the path. The migration
+  // documented that escape a day before any screen could send it.
+  const runPhotoAction = (action: GroupPhotoAction) => {
+    if (action === 'remove') {
+      update.mutate({ clearPhoto: true });
+    } else {
+      void choosePhoto();
+    }
+  };
+
+  const openPhotoControl = () => {
+    const options = groupPhotoActions(photo);
+    if (options.length === 0) {
+      // Nothing to choose between: the tap picks.
+      void choosePhoto();
+      return;
+    }
+    const labels = [...options.map((o) => o.label), 'Cancel'];
+    const destructive = options.findIndex((o) => o.destructive);
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: labels,
+          destructiveButtonIndex: destructive >= 0 ? destructive : undefined,
+          cancelButtonIndex: labels.length - 1,
+          title: 'Group photo',
+        },
+        (index) => {
+          const chosen = options[index];
+          if (chosen) {
+            runPhotoAction(chosen.action);
+          }
+        }
+      );
+    } else {
+      Alert.alert('Group photo', undefined, [
+        ...options.map((o) => ({ text: o.label, onPress: () => runPhotoAction(o.action) })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]);
+    }
+  };
+
   // Refusing a name used to be the same statement as throwing it away:
   // setName(null) ran before the length guard, so renaming a group to one
   // letter reverted the field to the old name and said nothing. The one
@@ -367,22 +443,11 @@ export default function GroupScreen() {
           <View style={styles.identity}>
             <PressableScale
               accessibilityRole="button"
-              accessibilityLabel={isAdmin ? 'Change group photo' : 'Group photo'}
+              accessibilityLabel={groupPhotoControlLabel(photo, isAdmin)}
               haptic={isAdmin ? 'light' : 'none'}
               scaleTo={isAdmin ? 0.94 : 1}
               disabled={!isAdmin || !ownUserId}
-              onPress={async () => {
-                const uri = await pickImage();
-                if (!uri || !ownUserId) {
-                  return;
-                }
-                try {
-                  const path = await uploadGroupPhoto(ownUserId, uri);
-                  update.mutate({ photoPath: path });
-                } catch {
-                  Alert.alert('Could not upload', 'Check your connection and try again.');
-                }
-              }}
+              onPress={openPhotoControl}
               style={[styles.groupPhoto, { backgroundColor: theme.surfaceSunken }]}>
               {photoUrl ? (
                 <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
@@ -393,7 +458,36 @@ export default function GroupScreen() {
                   tintColor={theme.textSecondary}
                 />
               )}
+              {photo.state === 'checking' ? (
+                // The same veil a chat photo wears while it waits, at a size
+                // the sentence would not fit: the spinner over the frame, and
+                // the words on the line below the tile. Only ever the
+                // uploader's: to everybody else a photo being checked is no
+                // photo, so a member cannot watch this turn into nothing and
+                // learn what the verdict was.
+                <View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    styles.checking,
+                    { backgroundColor: theme.scrim },
+                  ]}>
+                  <ActivityIndicator color={theme.text} />
+                </View>
+              ) : null}
             </PressableScale>
+            {photo.state === 'checking' ? (
+              <ThemedText type="footnote" themeColor="textSecondary">
+                Checking this photo. Only you can see it until it clears.
+              </ThemedText>
+            ) : photo.state === 'blocked' && isAdmin ? (
+              // Removed server-side, not a strike. Said to the person who can
+              // do something about it; a plain member just sees no photo. The
+              // tile above offers another photo, or none, which is how this
+              // sentence goes away.
+              <ThemedText type="footnote" themeColor="textSecondary">
+                That photo was not approved and has been removed. Pick another.
+              </ThemedText>
+            ) : null}
             {isAdmin ? (
               <FormTextField
                 label="Name"
@@ -815,6 +909,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderCurve: 'continuous',
     overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checking: {
     alignItems: 'center',
     justifyContent: 'center',
   },

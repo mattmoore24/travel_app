@@ -313,8 +313,10 @@ select is(
   (select body from public.push_queue
     where user_id = '00000000-0000-0000-0000-00000000000c'
       and title = 'Message not delivered'),
-  'Your message wasn''t delivered. It came across as explicit, so reword it and try again.',
-  'the refusal push is plain sentences, no em dash'
+  'Your message wasn''t delivered. It came across as explicit, so reword it and try again. '
+  'An automatic check made that call, and a person will look again if you write to us from '
+  'House rules and help.',
+  'the refusal push is plain sentences, no em dash, and says a machine decided (20260903100000)'
 );
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select is(

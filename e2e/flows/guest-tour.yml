@@ -138,7 +138,20 @@ appId: com.mattmoore.samewhere
 # "Verified travelers only", which sits under the Done button and the tab bar:
 # the element is in the hierarchy with coordinates behind the tab bar, so the
 # tap landed on Travelers and the flow carried on somewhere else entirely.
-# Anything asserted here has to be on screen without scrolling.
+#
+# SCROLL FIRST, because the same thing happened again in run 107 and the rule
+# above is why. "Anything asserted here has to be on screen without scrolling"
+# was true when it was written and the sheet has grown since: "What to show"
+# now carries four description cards, and "Kind of plan" sits below the "16
+# plans on the map" footer, clipped. The chip is in the hierarchy, so `tapOn`
+# reports COMPLETED and lands on the footer instead, and the flow then fails
+# four steps later on a count that was never turned on. scrollUntilVisible
+# taps what a person would tap after the same scroll.
+- scrollUntilVisible:
+    element:
+      id: 'filter-category-bar'
+    direction: DOWN
+    timeout: 8000
 - tapOn:
     id: 'filter-category-bar'
 - waitForAnimationToEnd:

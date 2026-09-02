@@ -306,7 +306,13 @@ appId: com.mattmoore.samewhere
 # somebody is still cropping photos. Confirming happens inline: pushing
 # /business-email from here would end in router.replace('/(tabs)') and drop a
 # mid-signup owner out of the flow with an unfinished listing.
-- assertVisible: 'Confirm your email'
+# The SPOKEN label, not the printed one. The button prints "Confirm your
+# email" and carries accessibilityLabel="Confirm your email with this code",
+# and the traps skill's rule is that a Pressable with its own label hides its
+# text from Maestro - so the printed string is unassertable even though
+# 50-business-photo-counted.png shows it plainly on screen. This assertion has
+# been failing since c1e481d added the label and the string in one commit.
+- assertVisible: 'Confirm your email with this code'
 - takeScreenshot: 50a-business-inline-code
 
 - tapOn:

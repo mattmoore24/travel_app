@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { between } from '@/lib/__tests__/source';
+
 /**
  * Every queue a migration opens has to have a worker branch that drains it.
  *
@@ -57,13 +59,30 @@ describe('every verdict door has a worker behind it', () => {
     // forever instead of failing closed.
     expect(worker).toContain('note_business_post_photo_attempt');
   });
+
+  it('drains group photos, the door 20260903050000 opened', () => {
+    // A group's own picture is a column on `groups`, not a messages row, so
+    // no other queue can reach it. The door and the counter are both named
+    // by the branch, and the failsafe walks through the same door with the
+    // engine that says so - without it a photo the model keeps refusing
+    // would sit at 'pending' behind "Checking this photo" for ever.
+    // Cut by anchors that have to exist: `between` throws on a missing one
+    // rather than answering the empty string every assertion passes against.
+    const branch = between(worker, "from('groups')", '// -- 4. Pending selfie verifications');
+    expect(branch).toContain("eq('photo_status', 'pending')");
+    expect(branch).toContain("signedUrl('chat-photos'");
+    expect(branch).toContain('apply_group_photo_verdict');
+    expect(branch).toContain('note_group_photo_attempt');
+    expect(branch).toContain('attempts >= MAX_ATTEMPTS');
+    expect(branch).toContain("engine: 'failsafe'");
+  });
 });
 
 /**
  * And every queue has to be reachable, which is a different thing from
  * existing.
  *
- * The eight queues run in sequence inside one HTTP request and every item is
+ * The nine queues run in sequence inside one HTTP request and every item is
  * a model call. Nothing bounded how long that took, so a slow queue starved
  * every queue behind it — and starved them for ever, because past the
  * platform's wall clock the isolate is killed mid-item, the `note_*_attempt`
@@ -79,8 +98,8 @@ describe('no queue can eat the tick', () => {
   /** `for (const x of y ?? []) {` — one per queue, and nothing else matches. */
   const QUEUE_LOOP = /for \(const \w+ of \w+ \?\? \[\]\) \{\n(\s*)(.*)\n/g;
 
-  it('finds all eight queue loops', () => {
-    expect([...worker.matchAll(QUEUE_LOOP)]).toHaveLength(8);
+  it('finds all nine queue loops', () => {
+    expect([...worker.matchAll(QUEUE_LOOP)]).toHaveLength(9);
   });
 
   it('asks for time before every item, in every one of them', () => {
@@ -101,7 +120,7 @@ describe('no queue can eat the tick', () => {
     }));
 
     expect(tick).toBeGreaterThan(0);
-    expect(slices).toHaveLength(8);
+    expect(slices).toHaveLength(9);
     expect(slices.filter((s) => s.ms <= 0)).toEqual([]);
     // The invariant that makes "reached" true rather than likely: the worst a
     // queue can do to the one behind it is spend its own slice. Raise the tick

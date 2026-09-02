@@ -32,6 +32,11 @@ jest.mock('@/features/profile/hooks', () => ({
   useOwnProfile: () => ({ data: { verified: mockState.verified } }),
   useOwnVisibility: () => ({ data: mockState.audience }),
   useSetVisibility: () => ({ mutate: mockMutate, isPending: false }),
+  // The signed-out preview row (D22, 20260903080000). Left at the server's
+  // default here; src/features/profile/__tests__/guest-preview.test.tsx is
+  // the file that exercises it.
+  useOwnGuestPreview: () => ({ data: true }),
+  useSetGuestPreview: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 
 beforeEach(() => {

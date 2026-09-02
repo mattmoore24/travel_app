@@ -5,19 +5,19 @@ import { getCalendars, getLocales, type Calendar, type Locale } from 'expo-local
  *
  * Decision D5: the app's STRINGS stay English for v1, but the traveler's own
  * data (dates, times, the week's first day) is to render in their
- * conventions. The app guesses today: eleven formatters are pinned to
- * `Intl.DateTimeFormat('en')` while six follow the device, so a Portuguese
- * phone shows "agosto 2026" as a calendar header and "Aug 30 to Sep 2" in the
- * summary directly beneath it, and chat times are locked to 12-hour AM/PM
- * worldwide while business hours in the same app are 24-hour. expo-
- * localization was a declared dependency with zero call sites; this file is
- * the one call site (docs/ARCHITECTURE.md, D5).
+ * conventions. Before this file the app guessed: eleven formatters were
+ * pinned to `Intl.DateTimeFormat('en')` while six followed the device, so a
+ * Portuguese phone showed "agosto 2026" as a calendar header and "Aug 30 to
+ * Sep 2" in the summary directly beneath it, and chat times were locked to
+ * 12-hour AM/PM worldwide while business hours in the same app were 24-hour.
+ * expo-localization was a declared dependency with zero call sites; this file
+ * is the one call site (docs/ARCHITECTURE.md, D5).
  *
- * Both halves of the answer now live below: `clocks()` for anything that
- * prints an hour, `dates()` for anything that prints a day. Moving the last
- * formatters in `src/features` onto them is the tail of the same package, and
- * `src/lib/__tests__/one-clock.test.ts` names every site still outstanding so
- * the list can only shrink.
+ * Both halves of the answer live below: `clocks()` for anything that prints
+ * an hour, `dates()` for anything that prints a day. Every formatter in
+ * `src/features` and `src/app` is built here now (chat-one-locale-for-dates,
+ * closed 2026-09-02), and `src/lib/__tests__/one-clock.test.ts` fails the
+ * build if a file starts a second engine.
  *
  * READ AT MODULE LOAD, so the values are frozen for the life of the process.
  * Somebody who changes their phone's language or region mid-session keeps the
@@ -192,9 +192,11 @@ export function clocks(): { instant: Intl.DateTimeFormat; wall: Intl.DateTimeFor
  * they SAY rather than by their options, and every screen that prints a day
  * asks here - the same rule, and the same one place to change, as the clock.
  *
- * Six shapes, not one per call site. A seventh means a screen is saying
+ * Ten shapes, not one per call site. An eleventh means a screen is saying
  * something none of the others say, which is worth a moment's thought before
- * it is worth a formatter.
+ * it is worth a formatter. The last two to arrive were the bare months, for
+ * a trip whose owner picked a month and nothing narrower ("in September"):
+ * nothing else in the app says a month without a day.
  *
  * A numeric date is deliberately NOT among them. "3/4" is March 4 to an
  * American and 3 April to nearly everyone else this app is for, and the app's
@@ -219,6 +221,10 @@ type DateFormats = {
   weekdayLongMonthDay: Intl.DateTimeFormat;
   /** "March 2027" - a calendar's month header. */
   monthYear: Intl.DateTimeFormat;
+  /** "Sep" - a month on a chip, where a trip is only roughly when. */
+  month: Intl.DateTimeFormat;
+  /** "September" - the same month inside a sentence: "in September". */
+  monthLong: Intl.DateTimeFormat;
   /**
    * "Saturday, 4 March" - a date SPOKEN. VoiceOver reads a calendar cell,
    * and "Mar 4" is read as an abbreviation there; this is the one shape that
@@ -251,6 +257,8 @@ export function dates(): DateFormats {
         day: 'numeric',
       }),
       monthYear: new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric' }),
+      month: new Intl.DateTimeFormat(LOCALE, { month: 'short' }),
+      monthLong: new Intl.DateTimeFormat(LOCALE, { month: 'long' }),
       spokenDate: new Intl.DateTimeFormat(LOCALE, {
         weekday: 'long',
         day: 'numeric',

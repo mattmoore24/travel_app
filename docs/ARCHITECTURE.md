@@ -1347,6 +1347,181 @@ reports success and changes nothing. `63_words_i_would_rather_not_see` asserts t
 from both a stranger and the owner, plus the privilege set itself, because a silent zero-row
 update is not a refusal anybody can see.
 
+## Three closures before the build (2026-09-02)
+
+The founder asked for the one EAS build the native changes have been waiting on, and for
+everything else to land first so the build is the last thing that moves. Three things were
+open. Each is recorded here with the entry point of every piece, because the failure this
+project keeps paying for is a capability with nothing on the other end of it.
+
+### `admin_verification_queue` and `admin_business_verification_queue` (20260903040000)
+
+`reason_en` became required on both verdict schemas on 2026-09-01 so that a rejection
+written in the subject's own language stays adjudicable. The storefront half had a reader
+(the `uncertain` mail quotes it); the selfie half was written into
+`verification_requests.verdict` and read by nothing. Two views now exist, modelled exactly on
+`admin_report_queue`: a service-role surface for the SQL editor, `reason` and `reason_en`
+side by side, `revoke all ... from anon, authenticated` on the line after each `create`.
+No RPC, no client, no `admin_resolve_verification` (re-running a verification is a separate
+decision with consequences for `profiles.verified`).
+
+**The revoke is the whole security of the file**, and the local shim mirrors Supabase's
+default privileges (`local_supabase_shim.sql:98`), which is what lets
+`66_a_verdict_the_founder_can_read` prove it: with either revoke deleted, the two refusals
+for that view come back "lives" instead of `42501`. With the `->> 'reason_en'` expression
+replaced by `null`, the "not a silent null" assertion fails on that view. All four mutations
+were run.
+
+### A group's own photo is checked before anybody but its uploader sees it (20260903050000)
+
+`src/features/groups/api.ts` recorded the gap on 2026-09-01: a photo posted INTO a chat is
+moderated through the `messages` row it creates, but a group's OWN picture is a column on
+`groups`, written by `create_group`/`update_group` with no trigger, so it reached every
+member and every invite holder unchecked. `app.json`'s camera string had promised Apple that
+every photo is checked first; it was narrowed to "profile photos and chat photos" the same
+day (cc82431) because this gap made the wider sentence untrue, and a group photo is neither.
+Closed the way business photos (20260829180000) and post photos (20260902170000) were closed,
+so the wider sentence could be restored if the founder chooses:
+
+| Piece                                                           | Entry point                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `groups.photo_status` (nullable)                                | set by the trigger; read by `my_chats`, `group_invite_preview`, the `chat_photos_select_group` storage policy, and `src/features/groups/photo.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `groups_moderate_photo`                                         | `BEFORE INSERT OR UPDATE OF photo_path`; early-returns when the path did not move, so a rename or the worker's counter costs nothing persistent (the profiles rule)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `groups_poke_moderation_insert`, `_update`                      | poke the worker on a pending photo, so the admin watching "Checking this photo" waits seconds, not a cron minute. Two triggers: the UPDATE one is guarded on `old.photo_path is distinct from new.photo_path`, because `update_group` names `photo_path` on every call and a rename while a photo was pending poked the worker (a `worker_pokes` write and an HTTP request: persistent). A WHEN clause on an INSERT OR UPDATE trigger cannot mention OLD, which is why it is two                                                                                                                                                                                                                                                                           |
+| `apply_group_photo_verdict(p_chat_id, p_photo_path, p_verdict)` | walked through by `moderation-worker/index.ts` queue 3d, with its own 4s slice of the 50s tick; `moderation-worker-queues.test.ts` fails if a door has no caller. Keyed on the chat AND the path the worker classified: a group is one row, so a verdict keyed on the chat alone would land on whatever photo the row wore by the time it arrived (the admin replaces the picture mid-classification, the trigger sets the new path pending, an allow approves a photo nobody looked at). Returns `false` and writes nothing when the group no longer wears that photo; the worker reports it as a note, not a failure, so the counter of the replacement is not bumped for a try it never had. The failsafe goes through the same door with the same path |
+| `note_group_photo_attempt`                                      | the counter that makes MAX_ATTEMPTS reachable; the failsafe removes the photo (engine `failsafe`) rather than leaving it pending                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `chat_photos_select_group`                                      | now approved-only; the uploader keeps reading their own upload through `chat_photos_select_own`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `update_group`                                                  | `p_clear_photo` also clears `photo_status`, so an admin told "pick another" can choose no photo and the notice goes with it. Sent by the group page's photo control: tapping the tile opens a sheet, "Change photo" / "Remove photo" while a picture is up, "Pick another photo" / "Go without a photo" after a refusal (`groupPhotoActions` in `photo.ts`; `photo.test.ts` holds that the page maps `remove` onto `clearPhoto: true`). For a day this branch was a documented escape no screen could take                                                                                                                                                                                                                                                 |
+| `my_chats`, `group_invite_preview`                              | restated (same OUT columns, `create or replace`): the path is handed out only when approved or the reader uploaded it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `src/features/groups/photo.ts`                                  | `groupPhotoView(group, ownUserId)`: the one client reading of the two columns together. `groupView(row, ownUserId)` is the row with `photo_path`, `photo_status` and `moderation_attempts` REMOVED and `photo: GroupPhotoView` in their place                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `useGroup`                                                      | hands screens `groupView(...)` through react-query's `select`, so no screen can spell `.photo_path` on a group row however it binds it: the property is not on the object, and typecheck is in the gate. `photo.test.ts` also confines `GroupRow`, `fetchGroup` and `.from('groups')` to `api.ts`, `hooks.ts` and `photo.ts` (a `Pick<GroupRow, ...>` that leaves `photo_path` out is allowed: the celebration hook reads `photo_status` off the query cache). Polls every 5s while the raw row is pending, and stops on its own; without it the page said "checking" until it was left and reopened                                                                                                                                                       |
+
+**Who sees what.** Approved: everyone in the group. Pending: the person who uploaded it and
+nobody else (their own upload is readable to them regardless, so withholding it would hide
+nothing and leave the person who chose the picture looking at an empty frame). To everybody
+else a pending photo is NO photo, not a photo being checked: the first version of the page
+told every member "A new group photo is being checked." and then, on refusal, nothing, so any
+member could infer the admin's picture was refused. A verdict is for its subject alone.
+`groupPhotoView` answers `none` for a non-uploader while a photo is pending, the tile draws
+the glyph, and the only "checking" sentence, veil and spoken label are the uploader's.
+Rejected: nobody; the verdict removes the path and leaves the status so the group page can
+tell the admin "That photo was not approved and has been removed. Pick another." Not a
+strike: the ledger action is `group_photo_rejected`, which `is_strike_action` does not count,
+and the test asserts the uploader's strike count stays at zero.
+
+**The setter is the path.** Every group photo is uploaded into the uploader's own folder
+(`chat_photos_insert_own` enforces it), so `split_part(photo_path, '/', 1)` is who set it,
+and that is what the RPCs compare against `auth.uid()`. The trigger now requires it. Before
+this migration `create_group` accepted any string as `p_photo_path`, which meant an admin
+could name any object in the bucket they had learned the path of and
+`chat_photos_select_group` would let every member read it. Your own upload, or nothing.
+
+**Deploy window, established rather than assumed.** A phone on the previous bundle reads
+`groups.photo_path` through `select *` (table-wide grant, so the new columns ride in unread)
+and holds, for an unapproved photo, a path the bucket refuses to sign; `useChatPhotoUrl`
+errors and the tile falls back to the group glyph, which is what a group with no photo draws.
+The uploader still sees their own picture, with nothing said beside it. The chat list and the
+invite screen read RPCs, and both mask server-side, so the old bundle draws the glyph there
+too. Existing rows with a photo were put through the same check a new photo gets.
+
+**Worker budget.** The ninth slice was paid for by trimming four others (chat photos 9 to 8,
+messages 11 to 10, post photos 5 to 4, scans 4 to 3), not by raising the tick: 50s against a
+cron that fires every minute, and a tick that overran would have the next one classify the
+same rows twice. A slice is a floor, not a ceiling. The sum is still held at 50s by the test.
+
+**What was NOT done, and why.** The chat list row (`src/features/chat/chat-row.tsx`) shows
+the uploader their own pending photo with no "checking" beside it; saying so there would
+need a `photo_state` OUT column on `my_chats` and a reader in that file, and a column with
+no reader is the orphan pattern. The invite screen (`src/app/join-group/[token].tsx`) was
+another agent's this round and needs **nothing**: the RPC masks the path server-side, so
+its `photoUrl` is null for everyone but the uploader of an approved-or-own photo, and the
+frame already falls back to its glyph. If it ever wants to say "checking" to the uploader,
+it would need the same `photo_state` column on `group_invite_preview`, which would be an
+OUT-column change (drop, recreate, restate both grants).
+
+**Seen in passing, not fixed.** `apply_business_photo_verdict` and
+`apply_business_post_photo_verdict` record a refusal as `photo_rejected` against the
+owner's `subject_user_id`, and `is_strike_action('photo_rejected')` is true, so a business
+owner's rejected photo DOES count toward the strike ledger that suspends accounts, while the
+migration comments beside them say "explicitly NOT a strike". Out of this round's files;
+recorded in PROGRESS.md for the founder.
+
+**Every pgTAP assertion in `67_a_group_photo_is_checked` was run against the mutation that
+removes what it names**, twice. The second pass (2026-09-02) added the race written as the
+attack (the door's path guard removed: the stale allow lands on the replacement, tests 24,
+25, 27, 30, 32, 33), the poke guard (removed: 'and does not poke the worker' alone), and the
+attempts reset in the new-picture branch, which the first pass had asserted through a clear
+that zeroed the counter on the way (the null-path branch's reset), so the assertion passed
+with the line it named deleted; it now replaces a photo with three failed attempts on it and
+no clear in between, and fails 46 and 47 under that mutation. The file's header carries the
+full record, mutation by mutation, downstream failures included. `68`'s first assertion had
+the same shape of hole: "an edit stamps updated_at" compared `now()` against a row
+`register_business` had inserted with default `now()` in the same transaction, so it passed
+with the stamp line deleted; it parks the stamp in 2020 first now (2 and 11 fail with the
+stamp deleted), and its header's mutation record was rewritten to what actually happens
+with the guard removed (3, 5, 7, 8, 12 fail: the verdict UPDATE raises 23514 inside
+`lives_ok`, so the stamp assertion after it passes and the two failures the old record
+named could never happen in one run).
+
+### Every moderation queue is visible to the daily smoke test (20260903070000)
+
+`admin_ops_health` (20260817150000) is the one-query liveness check `docs/DASHBOARD.md` calls
+the daily smoke test and `docs/LAUNCH_RUNBOOK.md` reads before launch. It counted held first
+messages, pending PROFILE photos and selfie verifications, so a stuck business, post, chat or
+group photo queue (each holds at `pending` behind its own trigger and its own door) read as
+all zeros to the founder, and the failure `moderation-worker-queues.test.ts` exists for (a
+door with no worker behind it) would have been invisible in production. The view is
+recreated (`drop view`, so the revoke is restated) with four more columns after the existing
+seven, each counted by the predicate the worker selects with: `pending_business_photos`,
+`pending_post_photos`, `pending_chat_photos`, `pending_group_photos`. `pending_photos` keeps
+its name and its meaning (profile photos): the runbook's thresholds are written against it
+and a view's columns cannot be renamed by `create or replace`. Entry point: `select * from
+admin_ops_health;` in the SQL editor; no RPC, no client.
+`69_every_queue_the_smoke_test_can_see` puts one item in each of the five photo queues with
+the flag on and asserts each column says one; each subquery's `pending` term replaced fails
+exactly the assertion that names its queue, the group subquery deleted outright kills the
+file at the first read of the missing column, and the revoke deleted fails 'clients cannot
+read the smoke test'.
+
+### `screen_business_text` runs only for an edit (20260903060000)
+
+`businesses_screen` fires `BEFORE INSERT OR UPDATE` with no `WHEN`, and the function
+screened five text columns and stamped `updated_at` on every write to the row. The
+enumeration of every write that is not an owner editing text, so it is not re-asked:
+
+| Write                                 | Columns                                                             | Source                 |
+| ------------------------------------- | ------------------------------------------------------------------- | ---------------------- |
+| `confirm_business_email`              | `state`, `listed_at`                                                | 20260827160000:566     |
+| `apply_business_verification_verdict` | `verified_at`                                                       | 20260903010000:115     |
+| `admin_resolve_business_verification` | `verified_at`                                                       | 20260827160000:246     |
+| `apply_business_scan_verdict`         | `state`, `verified_at`                                              | 20260827120000:703     |
+| `admin_resolve_business_report`       | `state`, `verified_at`, `active`                                    | 20260827120000:753-759 |
+| `update_business_location`            | `lat`, `lng`, `city_id`, `address`                                  | 20260829160000:218     |
+| owner toggling `public_preview`       | the RLS update grant; a switch                                      | 20260827100000:142-146 |
+| `businesses_rename_resets`            | amends NEW in the same statement; its body is guarded top to bottom | 20260902120000         |
+| cron                                  | none writes this table                                              |                        |
+| photo or post counters                | none live on it; those are rows elsewhere                           |                        |
+
+**What each cost.** (1) The classifier re-ran. `screen_first_message` is the regex
+blocklist, not a model call, so the CPU is small, but the blocklist is a table the founder
+grows, and a pattern added after a business wrote its description turned every write above
+into `that text breaks our house rules`. Followed through: `apply_business_scan_verdict`'s
+`state = 'flagged'` is the write that takes a plausible impersonator off the map, and it
+would have failed on the impersonator's own old bio; the verification verdict would have
+failed ten times and failsafe-refused a real business for a sentence it did not change; an
+owner flipping `public_preview` would have been told their text breaks the rules on a screen
+with no text on it. (2) `updated_at` was stamped. Unlike `profiles.updated_at` this is NOT a
+leak: the column is absent from the client select grant, no RPC returns it, no client-readable
+view carries it. It was still wrong ("last edited" meant "last touched by anything") and one
+grant away from being the profiles leak, so it goes inside the same guard.
+
+**The shape** is 20260903030000's: the condition lives in the function body beside the list
+of five columns it screens, not in a `WHEN` clause that would be a second copy of that list
+drifting in the direction that fails open. `68_only_an_edit_screens_a_business` parks
+`updated_at` in 2020 with the trigger disabled and asks whether it moved (the `now()`-equals-
+`now()` trap 59 fell into); with the guard removed, five of its assertions fail, on both
+halves.
+
 ## Technical flags (raised to founder, non-blocking)
 
 1. **`expo-router/unstable-native-tabs`** — the native tabs API is new in the SDK 5x line and

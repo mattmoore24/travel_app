@@ -9,6 +9,7 @@ import {
   deleteSocialHandle,
   fetchAccountStanding,
   fetchLatestVerification,
+  fetchOwnGuestPreview,
   fetchOwnProfile,
   fetchOwnSocialHandles,
   fetchOwnVisibility,
@@ -19,6 +20,7 @@ import {
   removeProfilePriority,
   saveProfilePriority,
   saveProfilePrompt,
+  setOwnGuestPreview,
   setOwnVisibility,
   setPhotoPositions,
   signedPhotoUrl,
@@ -358,6 +360,39 @@ export function useSetVisibility() {
       // invalidated nothing and the map sat on the old audience for up to a
       // minute. That was the "takes a while to update".
       invalidateDiscoverySurfaces(queryClient);
+    },
+  });
+}
+
+/**
+ * Whether the signed-out preview may include you (D22). Its own query, for
+ * the same reason visibility is: the column has no client SELECT grant, so
+ * it comes back through its own RPC. Undefined while loading and on a server
+ * that predates the column; the screen reads either as shown, which is the
+ * server's own default.
+ */
+export function useOwnGuestPreview() {
+  const userId = useOwnUserId();
+  return useQuery({
+    queryKey: ['shown-to-guests', userId],
+    queryFn: fetchOwnGuestPreview,
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+export function useSetGuestPreview() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setOwnGuestPreview,
+    meta: { failureTitle: 'Could not save that' },
+    // Optimistic, like the group-adds row beside it: it is a choice, and a
+    // control that waits on a round trip before it moves reads as dead.
+    onMutate: (shown: boolean) => {
+      queryClient.setQueryData(['shown-to-guests', userId], shown);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['shown-to-guests', userId] });
     },
   });
 }

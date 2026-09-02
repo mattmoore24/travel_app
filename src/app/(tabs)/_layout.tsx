@@ -222,13 +222,15 @@ function NotificationRouting() {
 
 export default function TabsLayout() {
   // Mounted above the tabs so the moment can land wherever you happen to be
-  // when the accept comes through.
-  const { match, dismiss } = useAcceptedCelebration();
+  // when the accept comes through. Two ways off the card, wired separately
+  // because they mean different things to the hook: the X may be followed by
+  // the App Store review ask, "Go to chat" never is.
+  const { match, dismiss, goToChat } = useAcceptedCelebration();
 
   return (
     <>
       <AppTabs />
-      {match ? <ConnectedNotice match={match} onDismiss={dismiss} /> : null}
+      {match ? <ConnectedNotice match={match} onDismiss={dismiss} onGoToChat={goToChat} /> : null}
       {/* Mounted above the tabs for the same reason the celebration is: the
           moment that earns the question can happen on any of them. It renders
           nothing until something asks it to. */}

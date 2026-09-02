@@ -67,19 +67,26 @@ export async function updateGroup(input: {
 }
 
 /**
- * Group photos share the chat-photo BUCKET. They do not share its
- * moderation, and the comment that used to sit here said they did.
+ * Group photos share the chat-photo BUCKET, and since 20260903050000 they
+ * are checked too - by their own trigger, not the bucket's.
  *
- * Moderation attaches to the `messages` row a chat photo creates, not to the
- * bucket it is stored in: `groups.photo_path` (20260821010000:29) is a plain
- * text column written by create_group/update_group with no trigger, no
- * photo_state and no check. So a group photo reaches every member unchecked.
+ * Moderation attaches to the ROW a photo creates, never to the bucket it is
+ * stored in. A chat photo is moderated through its `messages` row; a group's
+ * own picture is `groups.photo_path`, which for two weeks was a plain column
+ * with no trigger, so it reached every member and every invite holder
+ * unchecked. app.json's camera string had promised Apple that every photo is
+ * checked first; it was narrowed to profile and chat photos on 2026-09-01
+ * (cc82431) because this gap made the wider claim untrue. Now:
+ * `groups.photo_status` is set pending by a trigger on every change of the
+ * path (with require_photo_moderation on, which is how production runs), the
+ * moderation worker's group-photo queue hands down the verdict against the
+ * path it classified, the two RPCs and the storage policy mask an unapproved
+ * picture from everyone but the person who uploaded it, and
+ * features/groups/photo.ts is the one client reading of the two columns
+ * together: useGroup hands screens the view, never the raw columns.
  *
- * This is a real gap and it is recorded rather than papered over. Closing it
- * is a moderation-pipeline change, not a comment. What is fixed here is the
- * app.json camera string, which used to promise that EVERY photo is checked
- * before it reaches anyone else - a sentence Apple reads and a person
- * believes, and one this path made false.
+ * The path has to be under this user's own folder: the trigger refuses any
+ * other prefix, because the prefix is how the server knows who set it.
  */
 export async function uploadGroupPhoto(userId: string, localUri: string): Promise<string> {
   return processAndUploadImage(CHAT_PHOTO_BUCKET, userId, localUri);

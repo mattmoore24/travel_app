@@ -63,14 +63,51 @@ npx supabase db push                    # applies everything in supabase/migrati
 paste it into the session along with the project ref and DB password. (Treat the token as
 disposable — revoke it afterwards from the same page.)
 
-## 5. Auth settings (~2 min)
+## 5. Auth settings (~4 min)
 
 In the dashboard: **Authentication → Sign In / Providers → Email**:
 
 - For fast early testing, turn **off** "Confirm email" (the app handles both modes, but
   off means instant sign-ups on TestFlight). Turn it back on before public launch.
+- Leave **Email OTP expiration** at its default of `3600` seconds and **Email OTP length**
+  at `6`. The reset-code screen says "six-digit" and "good for an hour" and flips its own
+  copy at that age; change either number here and the app's words go stale.
 
 Apple Sign-In stays off until the Apple Developer account exists — email auth works today.
+
+### The password-reset mail carries a code, not a link
+
+**Authentication → Email Templates → Reset Password.** The app's "Forgot your password?"
+path (`src/app/(auth)/email.tsx` → `src/app/(auth)/reset-code.tsx`) asks for six digits
+typed from the mail, and Supabase's default template does not print them: it prints a link.
+Replace the template body with this, exactly:
+
+```html
+<h2>Reset your password</h2>
+<p>Type this code into Samewhere to set a new password:</p>
+<p style="font-size: 32px; letter-spacing: 8px; font-family: monospace;">{{ .Token }}</p>
+<p>It is good for an hour. If you did not ask for this, ignore this email and nothing changes.</p>
+```
+
+Subject: `Your Samewhere code`.
+
+**Take the link out; do not add the code under it.** `{{ .ConfirmationURL }}` and
+`{{ .Token }}` are the SAME token on the server (GoTrue keeps one recovery hash per user
+and either path consumes it), so a template that keeps the link beside the code keeps the
+problem the code exists to fix: Outlook Safe Links, corporate gateways and mail scanners
+fetch every URL before the person sees the mail, that fetch spends the link, and the six
+digits die with it. The person then types a code the server has already used and reads
+"That code is not right, or it has run out."
+
+What still works without this edit: nothing breaks, it is only slower. A mail sent from the
+old template carries a link, the reset-code screen says "Got a link and no code? Open the
+email on the phone that has Samewhere on it and tap the link", and the link path
+(`samewhere://reset-password`, kept in **Authentication → URL Configuration → Redirect
+URLs**) opens the app on the same set-a-new-password screen the code reaches. A laptop
+cannot open that link, which is why the code is the path.
+
+`{{ .Token }}` is the only variable the body needs. `{{ .SiteURL }}`, `{{ .TokenHash }}` and
+`{{ .ConfirmationURL }}` all stay out of it.
 
 ## 6. Deploy the Edge Functions (~3 min, optional but recommended)
 
@@ -89,6 +126,14 @@ you're not at a computer.
 
 Then in the dashboard: **Edge Functions → each function → add a schedule** (every minute).
 Details: [`supabase/functions/README.md`](../supabase/functions/README.md).
+
+**When a push does not arrive, ask the queue.** `push-worker` keeps every Expo refusal
+(`InvalidCredentials` with no APNs key on EAS, `MessageTooBig`, `MessageRateExceeded`) on
+the row instead of stamping it sent: `push_queue.attempts` counts the ticks that tried it and
+`push_queue.last_error` names the refusal, and the worker gives up after ten with both still
+on the row. `select last_error, count(*) from public.push_queue where last_error is not
+null group by 1;` in the SQL Editor is the one query; the same names are in the function's
+log, one line per error per tick.
 
 **To turn on live Claude moderation** (first-message classification, photo review, selfie
 verification) you additionally need an Anthropic API key

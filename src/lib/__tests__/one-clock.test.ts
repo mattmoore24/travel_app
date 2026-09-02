@@ -87,36 +87,23 @@ describe('the app prints an hour from exactly one place', () => {
 });
 
 /**
- * The files that still name a locale of their own, one line each, each
- * belonging to a subsystem this package could not reach.
+ * The files that still name a locale of their own. EMPTY, since 2026-09-02,
+ * and it stays empty: the guard below is a subset check, so nothing can be
+ * added here without first being added to this list, and this list is not
+ * to be added to.
  *
- * This list is a DEBT, not an allowance. A file may leave it; nothing may
- * join it. The guard below is deliberately a subset check rather than an
- * equality check, so the package that finally moves `features/trips/dates.ts`
- * does not have to come back and edit this file to stay green - it just gets
- * one entry deader than it was.
- *
- * The four that pass `undefined` are the ones producing the actual bug on a
- * non-English phone; the rest say 'en' and are merely a second engine that
- * will drift. They are marked so whoever picks this up knows which half is
- * user-visible today.
+ * It held nine entries the day it was written, each belonging to a subsystem
+ * the first package could not reach. Four of them passed `undefined` - the
+ * device - and were the actual two-languages-on-one-screen bug (the room
+ * header's "you leave" line, the chat row's, the group close day, the trip
+ * calendar's month header and its spoken cells); one was a bare
+ * `toLocaleDateString()` (the account gate's pause date, numeric AND in the
+ * device's language); four said 'en' by hand and were merely a second engine
+ * waiting to drift. All nine now call lib/locale's `dates()`, and the
+ * assertions further down name the four user-visible ones so a revert of any
+ * one of them fails by file rather than by "something under src/".
  */
-const ADOPTION_OUTSTANDING = new Set([
-  // Device locale today, so these are the four screens a Portuguese phone
-  // renders in Portuguese beside English rows.
-  path.join('src', 'app', 'room', '[id].tsx'),
-  path.join('src', 'features', 'chat', 'chat-row.tsx'),
-  path.join('src', 'features', 'groups', 'closing.ts'),
-  path.join('src', 'features', 'trips', 'trip-calendar.tsx'),
-  // `toLocaleDateString()` with no argument at all, which is both the device
-  // locale AND the numeric shape lib/locale deliberately does not offer.
-  path.join('src', 'features', 'auth', 'gate-copy.ts'),
-  // Pinned to 'en', so they read correctly today and are a second engine.
-  path.join('src', 'features', 'chat', 'row-kind.ts'),
-  path.join('src', 'features', 'pins', 'map-filter-sheet.tsx'),
-  path.join('src', 'features', 'pins', 'pin-helpers.ts'),
-  path.join('src', 'features', 'trips', 'dates.ts'),
-]);
+const ADOPTION_OUTSTANDING = new Set<string>([]);
 
 describe('the app prints a day from exactly one place too', () => {
   const files = sourceFiles(SRC).filter((f) => !f.endsWith(path.join('lib', 'locale.ts')));
@@ -174,6 +161,35 @@ describe('the app prints a day from exactly one place too', () => {
     expect(chat).toContain('dates().weekdayMonthDay');
     expect(chat).toContain('dates().monthDay');
     expect(chat).toContain('dates().weekday.');
+  });
+
+  it.each([
+    // [file, the shape it prints, the line it prints on]
+    [path.join('src', 'app', 'room', '[id].tsx'), 'dates().monthDay', 'you leave'],
+    [path.join('src', 'features', 'chat', 'chat-row.tsx'), 'dates().monthDay', 'you leave'],
+    [path.join('src', 'features', 'groups', 'closing.ts'), 'dates().monthDay', 'closeDayLabel'],
+    [
+      path.join('src', 'features', 'trips', 'trip-calendar.tsx'),
+      'dates().monthYear',
+      'monthsToRender',
+    ],
+    [
+      path.join('src', 'features', 'trips', 'trip-calendar.tsx'),
+      'dates().spokenDate',
+      'accessibilityLabel',
+    ],
+  ])('and by %s, one of the four the device used to answer for', (rel, shape, site) => {
+    // The four sites that drew a Portuguese day beside English rows. Each is
+    // named by the shape it now takes from lib/locale AND by the line it
+    // prints on, so reverting one of them to the device fails here by file
+    // name rather than only in the scan above (which would catch it too, but
+    // says "a file under src/" rather than "the room header").
+    const code = fs.readFileSync(path.join(REPO, rel), 'utf8');
+    expect(code).toContain("from '@/lib/locale'");
+    expect(code).toContain(site);
+    expect(code).toContain(shape);
+    expect(code).not.toContain('toLocaleDateString(undefined');
+    expect(code).not.toContain('Intl.DateTimeFormat(undefined');
   });
 
   it('names its locale once, and it is not the device', () => {

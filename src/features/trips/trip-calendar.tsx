@@ -6,6 +6,7 @@ import { Radius, Space, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
 import { haptics } from '@/lib/haptics';
+import { dates } from '@/lib/locale';
 import { PressableScale } from '@/components/ui/pressable-scale';
 
 /**
@@ -84,7 +85,10 @@ export function TripCalendar({
       const cursor = new Date(from.getFullYear(), from.getMonth() + index, 1);
       return {
         key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
-        label: cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+        // lib/locale's month, not the device's. This header was the loudest of
+        // the four device-locale sites: "agosto 2026" over a summary reading
+        // "Aug 30 to Sep 2", on the one screen a trip is picked on.
+        label: dates().monthYear.format(cursor),
         cells: monthGrid(cursor.getFullYear(), cursor.getMonth()),
       };
     });
@@ -135,11 +139,10 @@ export function TripCalendar({
                 <PressableScale
                   key={day}
                   accessibilityRole="button"
-                  accessibilityLabel={parseISODate(day).toLocaleDateString(undefined, {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'long',
-                  })}
+                  // Spoken, so the month is a word and not an abbreviation
+                  // VoiceOver reads as one. lib/locale's shape exists for
+                  // exactly this cell.
+                  accessibilityLabel={dates().spokenDate.format(parseISODate(day))}
                   accessibilityState={{ selected: capped || inRange, disabled }}
                   disabled={disabled}
                   scaleTo={0.9}

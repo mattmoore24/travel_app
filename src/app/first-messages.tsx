@@ -39,7 +39,10 @@ export default function FirstMessagesScreen() {
   return (
     <ThemedView style={styles.root}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
-        <ThemedText type="title">Waiting on you</ThemedText>
+        {/* The title is on the route (_layout: "Waiting on you"), in the
+            header row the back chevron already had. The page used to write
+            it again underneath, which put a whole row of chrome between the
+            chevron and the first card. */}
         <ThemedText type="footnote" themeColor="textSecondary">
           Answer one and the chat opens. Decline and they are never told.
         </ThemedText>

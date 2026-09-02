@@ -3,6 +3,118 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **Three closures, so the build is the last thing that lands** (2026-09-02)
+
+The founder asked for the one EAS build the native changes are waiting on, and for any
+remaining work to finish first. Three things were open, and all three are Supabase deploys;
+the second also carries an over-the-air client half. None of the three is native. What IS
+native, and what the build is for, is the rest of this tree: `expo-store-review` and the
+`version` bump to 0.2.0 that goes with it, plus the notification config that has been
+waiting since 2026-09-01 (below, "The 0.2.0 build"). Details, entry points and the
+enumeration tables for the three closures are in
+[`ARCHITECTURE.md`](ARCHITECTURE.md) under "Three closures before the build".
+
+1. **The selfie verdict's English has a reader.** `admin_verification_queue` and
+   `admin_business_verification_queue` (20260903040000) are two service-role views for the
+   SQL editor, `reason` beside `reason_en`, revoked from anon and authenticated on the line
+   after each `create`. `66_a_verdict_the_founder_can_read` is written as the attack, and
+   every one of its refusals was shown to fail with the revoke deleted. Package
+   `hi-a-verdict-the-founder-can-read` in UX_PACKAGES.md is done; no RPC, no client.
+
+2. **A group's own photo is checked.** The gap `src/features/groups/api.ts` recorded on
+   2026-09-01 is closed (20260903050000): `groups.photo_status`, a trigger scoped to
+   `photo_path` that does nothing persistent unless the path moved, a worker queue with its
+   own slice of the tick, `apply_group_photo_verdict` and `note_group_photo_attempt`, the
+   storage policy tightened to approved-only, and `my_chats` and `group_invite_preview`
+   masking the path from everyone but its uploader until it clears. On the phone: the group
+   page shows the admin their picture behind a spinner with "Checking this photo. Only you can
+   see it until it clears.", other members see the glyph and "A new group photo is being
+   checked.", and a refused photo is removed with "That photo was not approved and has been
+   removed. Pick another." The room header says "Checking your group photo" to the uploader
+   for the few seconds it takes. Not a strike. A phone still on the previous bundle draws the
+   group glyph for an unapproved photo, because the bucket refuses to sign it.
+
+   Two things this did not do, on purpose. The chat list row shows the uploader their own
+   pending photo without a "checking" label: saying it there needs a `photo_state` column
+   on `my_chats` and a reader in `chat-row.tsx`, and a column with no reader is the pattern
+   this project keeps paying for. The invite screen was another agent's file this round and
+   needs nothing: its RPC masks server-side and the frame already falls back to its glyph.
+
+3. **A verdict on a business no longer re-reads its words.** `businesses_screen` ran the
+   blocklist and stamped `updated_at` on every write to the row (20260903060000 fixes it).
+   Established rather than assumed, every non-text write is enumerated in ARCHITECTURE.md;
+   the one that mattered is `apply_business_scan_verdict`, whose `state = 'flagged'` is the
+   write that takes a plausible impersonator off the map and would have failed on the
+   impersonator's own old description once the blocklist grew past it. `updated_at` on
+   businesses is not client-readable, so unlike profiles this was not a leak.
+
+**Seen in passing, for the founder.** `apply_business_photo_verdict` and
+`apply_business_post_photo_verdict` file a refusal as `photo_rejected` against the owner,
+and `is_strike_action('photo_rejected')` is true, so a business owner's rejected photos DO
+count toward the ledger that suspends accounts, while the comments beside those functions
+say "explicitly NOT a strike". The group-photo door uses `group_photo_rejected` for exactly
+this reason. Not touched this round (outside its files); one migration renaming the two
+actions would close it.
+
+**Fixed, and the diagnosis above it was wrong twice.** `56_a_pin_carries_an_hour` was
+recorded here as failing "between 00:00 and 03:00 UTC" on a plan "at 19:00". Both numbers
+were wrong. The plan is at **21:30** and the pin expired at `now() + 40 hours`, so the
+expiry is later than the plan only when the suite runs after **05:30 UTC**: at 04:07 UTC
+`now() + 40h` is tomorrow 20:07 and the plan is tomorrow 21:30, and `validate_pin` correctly
+refuses a plan that outlives its own pin. So it failed on rather more than a fifth of all
+runs, not in a three-hour window, and it was the test that was wrong rather than the schema.
+
+The expiry is now anchored to the plan — `(current_date + 1)::timestamptz + interval '23
+hours'` — which is after 21:30 by construction and at most ~47 hours out, inside rule 3's 72. The rule-3 refusal it exists to guard is still held by the `throws_ok` immediately
+below it. 73 files, 1648 assertions, green at 04:10 UTC.
+
+The general lesson is the one this round kept meeting: a test that is red on the hour of the
+day teaches people to read red as weather, and the note explaining the window is what lets it
+live. Two other clock-dependent assertions were found and fixed the same way this round.
+
+### The 0.2.0 build: what it carries, what it orphans, and the order it goes in
+
+**The build record, read back from EAS on 2026-09-02 rather than remembered.** Build 15
+(`a2616922`, commit `7005e31`, 2026-08-30 18:23 UTC) finished and was submitted, and Apple
+refused it at delivery with ITMS-90683: the binary references the motion APIs (expo-location,
+used only for geocoding, and reanimated's sensor support) and carried no
+`NSMotionUsageDescription`. Build 16 (`c9128c55`, commit `1cbe144`, 2026-08-30 19:05 UTC)
+carries the string through the expo-location plugin option, was accepted, and is what the
+phone has. Build 14 (`ab6c4e8d`) errored at signing and burned its number. The e2e channel's
+binary is simulator build 13 (`6a6824e4`, 2026-08-22). Every one of them is runtime 0.1.0.
+
+**What the 0.2.0 build carries** that no build before it does: `expo-store-review` and the
+review ask (`docs/APP_STORE.md`, "Shipped in 0.2.0: the App Store review prompt"; package
+`tq-store-review` is done, not deferred), and the whole `expo-notifications` plugin block
+including `aps-environment: production` ("Shipped in 0.2.0: the notification config"). The
+workflow's "Prove the binary carries what it should" step now checks `StoreReviewModule` and
+the PostHog key as well as `LocalSearchModule`, the Supabase host and the entitlement, because
+on TestFlight the review module's `isAvailableAsync` answers false by Apple's design and a
+phone cannot tell a linked module from an absent one; the native strings fallback excludes
+the JS bundle, which names both modules whether or not either linked.
+
+**What the bump orphans.** `runtimeVersion` follows `version`, so from the moment 0.2.0 is
+on the branch every update publishes against runtime 0.2.0: build 16 on the phone stops
+receiving them, silently, and simulator build 13 stops taking the e2e channel's updates the
+same way (the fetch gate fails rather than screenshotting old JavaScript). The order of
+operations, and it is an order: (1) run the build with the bump in it, `build-then-submit`,
+as the LAST thing in the batch; (2) confirm it installs from TestFlight and opens; (3) only
+then publish updates. An update published between the bump and the install reaches nobody
+and no run goes red to say so. The first E2E run after the bump needs `build: true` once;
+after that `false` is right again. The review ask itself is safe on build 16 in the meantime:
+the module is required late, inside a catch, so a phone whose JavaScript moved ahead of its
+binary never asks and never crashes.
+
+**To fill in when the build has run** (the hand-runs are in APP_STORE.md):
+
+| Fact                                                                                      | Answer                             |
+| ----------------------------------------------------------------------------------------- | ---------------------------------- |
+| 0.2.0 build number and EAS build id                                                       | _pending_                          |
+| `aps-environment` per the step summary                                                    | _pending_ (must read `production`) |
+| `StoreReviewModule` linked and PostHog key baked in, per the step summary                 | _pending_                          |
+| Push hand-run: the notification landed on the lock screen with the icon and tint          | _pending_                          |
+| Review-ask hand-run: `review_prompt_requested { available: false }` in PostHog, timestamp | _pending_                          |
+
 ## **Four things this pass owes the next one** (2026-09-01)
 
 A review round closed four design-system findings (the gate inside the place
@@ -51,18 +163,21 @@ rediscovered.
    whole `expo-notifications` plugin block is new, and `plugins` is prebuild
    input: the icon, the tint colour, the Android channel id and `mode` are
    read when the native projects are generated, so no installed build has seen
-   any of it. The trap is that shipping it over the air looks like it worked —
-   `runtimeVersion` is `{ policy: 'appVersion' }` and `version` is still
-   `0.1.0`, so an `update` carrying this app.json IS accepted by the
-   TestFlight build already on the phone. It gets the JavaScript and none of
-   the native config. **A green update run is evidence about JavaScript and
-   nothing else; it says nothing about whether a push will arrive.** Batch the
-   build with the App Store review prompt, which is also waiting on one — the
-   table is under "Queued for the next build: the whole notification config"
-   in [`APP_STORE.md`](APP_STORE.md), with the one-line `codesign` check to
-   run afterwards. The JavaScript half (registration, the foreground handler,
-   the Android channel `push.ts` now creates, the primer, the routing) does
-   ship over the air and is worth publishing on its own.
+   any of it. The trap, while `version` was still `0.1.0`, was that shipping
+   it over the air looked like it worked — `runtimeVersion` is
+   `{ policy: 'appVersion' }`, so an `update` carrying this app.json WAS
+   accepted by the TestFlight build already on the phone. It got the
+   JavaScript and none of the native config. **A green update run is evidence
+   about JavaScript and nothing else; it says nothing about whether a push
+   will arrive.** _Superseded 2026-09-02:_ the build is batched with the App
+   Store review prompt and `version` is 0.2.0 in the tree, which closes that
+   window and opens the orphaning one (the entry at the top of this file,
+   "The 0.2.0 build"). The table is under "Shipped in 0.2.0: the notification
+   config" in [`APP_STORE.md`](APP_STORE.md), and the workflow reads the
+   entitlement off every build, so the `codesign` check is no longer a hand
+   step. The JavaScript half (registration, the foreground handler, the
+   Android channel `push.ts` now creates, the primer, the routing) does ship
+   over the air — after the 0.2.0 build installs, not before.
 
 4. **The APNs entitlement is set, and not yet proven.** `app.json` now passes
    `"mode": "production"` to the expo-notifications plugin, which is what
@@ -249,7 +364,11 @@ Store Connect; the store URL 404s until release, which is expected).
 
 ### Waiting on the founder
 
-1. **Test build 15 on the phone.** The EAS build shipped (run #58, commit
+1. **Test build 15 on the phone.** _Superseded the same day, recorded
+   2026-09-02:_ Apple refused build 15 at delivery (ITMS-90683, no
+   `NSMotionUsageDescription`); build 16 (`c9128c55`, commit `1cbe144`)
+   carries the string and is the one on the phone, so the checks below apply
+   to build 16. The EAS build shipped (run #58, commit
    7005e31): Apple's CDN was already serving the trimmed association file, the
    App ID gained the Associated Domains capability (the first attempt failed
    at signing without it and burned buildNumber 14), and build 15 was
@@ -2724,17 +2843,28 @@ changes.
 
 ## What Wave 2 did NOT build: the App Store review prompt
 
-`tq-store-review` is **deferred, not done**, written down here so the package
-list and the tree agree. Nothing shipped: `expo-store-review` is not a
-dependency, `useAcceptedCelebration` calls nothing new, and there is no test
-for a prompt that does not exist.
+_Superseded 2026-09-02._ The deferral below lasted a day: `tq-store-review`
+was un-deferred and batched with the notification config into the 0.2.0
+build, exactly as the last line here said to. `expo-store-review ~57.0.2` is
+a dependency, `version` is 0.2.0, `useAcceptedCelebration` asks after the
+notice's X, and `use-accepted-celebration.test.tsx` covers every gate. The
+write-up moved to "Shipped in 0.2.0: the App Store review prompt" in
+`docs/APP_STORE.md`; the record of the build itself is at the top of this
+file under "The 0.2.0 build". What follows is the deferral as it was written
+on 2026-09-01.
+
+`tq-store-review` was **deferred, not done**, written down here so the package
+list and the tree agreed. Nothing had shipped: `expo-store-review` was not a
+dependency, `useAcceptedCelebration` called nothing new, and there was no test
+for a prompt that did not exist.
 
 The reason is the package's own "Waits on" question, answered rather than
 dodged. It is a native module, so it cannot go over the air; an EAS build
 draws down real credit; and on a pre-launch app with no users the prompt has
-nothing to convert yet. What DID get produced is the runbook —
-`docs/APP_STORE.md` now carries "Queued for the next build: the App Store
-review prompt", listing the four things that must land in one change (the
+nothing to convert yet. What DID get produced was the runbook —
+`docs/APP_STORE.md` carried "Queued for the next build: the App Store
+review prompt" (since renamed "Shipped in 0.2.0: the App Store review
+prompt"), listing the four things that must land in one change (the
 dependency, the `version` bump so `runtimeVersion` moves with it, the
 `requestReview()` call after the notice is dismissed, and a hand-run on
 TestFlight because Apple owns the dialog and no screenshot can prove it) and

@@ -37,11 +37,12 @@ type AuthState = {
   /** True once the initial getSession() has resolved (gate rendering on it). */
   initialized: boolean;
   /**
-   * Somebody arrived through a password-recovery link and has not set a new
+   * Somebody arrived through a password-recovery link, or typed the six
+   * digits from the recovery mail into /reset-code, and has not set a new
    * password yet.
    *
    * It is a top-level piece of state rather than a route because the session
-   * that link establishes IS a sign-in: without this the route guards would
+   * either path establishes IS a sign-in: without this the route guards would
    * see a signed-in user and swap straight into the app, dropping the person
    * into the tabs with the old password still on the account. While it is
    * non-null the root renders one screen and nothing else.

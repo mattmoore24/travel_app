@@ -12,6 +12,7 @@ import { rowTimestamp, unreadLabel } from '@/features/chat/separators';
 import { finiteDate } from '@/features/groups/closing';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
+import { dates } from '@/lib/locale';
 import { countOf } from '@/lib/plural';
 import type { ChatListRow } from '@/lib/database.types';
 
@@ -198,12 +199,10 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
         (chat.member_count > 0
           ? `${countOf(chat.member_count, 'person', 'people')} in this chat`
           : 'Nobody in yet') +
-        (leaveOn
-          ? ` · you leave ${leaveOn.toLocaleDateString(undefined, {
-              day: 'numeric',
-              month: 'short',
-            })}`
-          : '')
+        // The same engine as the timestamp on the right of the row. This line
+        // followed the device while rowTimestamp said 'en', which is how a
+        // Portuguese phone drew two languages on one row.
+        (leaveOn ? ` · you leave ${dates().monthDay.format(leaveOn)}` : '')
       : null);
   // Who else can open this. Three rows with three privacy models used to look
   // identical, and the one that matters is the plan: post_joinable_pin opens

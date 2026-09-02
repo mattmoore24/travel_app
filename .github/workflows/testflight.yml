@@ -259,16 +259,36 @@ jobs:
 
       - name: Build on EAS
         if: ${{ inputs.action == 'build' || inputs.action == 'build-then-submit' }}
+        id: eas-build
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_NO_TELEMETRY: '1'
         run: |
           set -o pipefail
+          # eas-cli floats on @latest on purpose (a pin rots in the other
+          # direction), so the version that ran is written down where the run
+          # can be read, and every field this job depends on is asserted
+          # below rather than assumed. The flags here were checked against
+          # eas-cli 23.2.0 on 2026-09-01: build --platform --profile
+          # --non-interactive --wait --json; submit --platform --profile
+          # --id --latest --path --non-interactive.
+          echo "eas-cli $(npx --yes eas-cli@latest --version 2>/dev/null | tail -1)"
+          # --json puts the finished build's own record on stdout and every
+          # human line on stderr, which is kept in build.log for the quota
+          # message below. The record is the only honest source for the build
+          # number: the remote counter increments when a build is REQUESTED,
+          # including for attempts that are then refused, so a number is
+          # never promised before a build starts and always read back from
+          # the one that finished.
+          status=0
           npx --yes eas-cli@latest build \
             --platform ios \
             --profile production \
             --non-interactive \
-            --wait 2>&1 | tee build.log || {
+            --wait --json > build.json 2> >(tee build.log >&2) || status=$?
+          # Let the tee behind the process substitution finish writing.
+          sleep 2
+          if [ "$status" -ne 0 ]; then
             # EAS refuses the job at queue time once the month's iOS builds
             # are spent and reports it as a generic "build command failed",
             # which reads like a compile error. Name it instead, so nobody
@@ -278,12 +298,42 @@ jobs:
               RESET=$(grep -oE 'will reset in [^.]*' build.log | head -1)
               echo "::error::EAS iOS build quota is spent for this month ($RESET). No builder ran, so this attempt consumed nothing. Ship JavaScript with action=update meanwhile, or upgrade the plan at https://expo.dev/accounts/mattmoore24s-team/settings/billing"
             fi
-            exit 1
+            exit "$status"
+          fi
+          node - <<'EOF'
+          const fs = require('fs');
+          const raw = fs.readFileSync('build.json', 'utf8');
+          const parsed = JSON.parse(raw.slice(raw.search(/[\[{]/)));
+          const build = Array.isArray(parsed) ? parsed[0] : parsed;
+          const missing = [];
+          if (!build?.id) missing.push('id');
+          if (build?.status !== 'FINISHED') missing.push(`status FINISHED (got ${build?.status})`);
+          if (!build?.appBuildVersion) missing.push('appBuildVersion');
+          const ipa = build?.artifacts?.applicationArchiveUrl || build?.artifacts?.buildUrl;
+          if (!ipa) missing.push('artifacts.applicationArchiveUrl');
+          if (missing.length) {
+            console.error(`::error::eas build --json did not answer with ${missing.join(', ')}. The build may have finished; nothing below can read it back, so this run stops here rather than submitting or verifying a guess. First 600 chars of build.json: ${raw.slice(0, 600)}`);
+            process.exit(1);
           }
-          {
-            echo "## iOS build finished"
-            grep -oE 'https://expo\.dev/[^ ]*builds/[^ ]+' build.log | head -1 || true
-          } >> "$GITHUB_STEP_SUMMARY"
+          const app = JSON.parse(fs.readFileSync('app.json', 'utf8')).expo;
+          const page = `https://expo.dev/accounts/${app.owner}/projects/${app.slug}/builds/${build.id}`;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, [
+            `build-id=${build.id}`,
+            `build-number=${build.appBuildVersion}`,
+            `ipa-url=${ipa}`,
+            '',
+          ].join('\n'));
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            '## iOS build finished',
+            '',
+            `- EAS build id: \`${build.id}\``,
+            `- Build number (CFBundleVersion), read back from the finished build: **${build.appBuildVersion}**`,
+            `- Version ${build.appVersion} (runtime version ${build.runtime?.version ?? 'unknown'})`,
+            `- ${page}`,
+            '',
+          ].join('\n'));
+          console.log(`Build ${build.id} finished as build number ${build.appBuildVersion} (${build.appVersion}).`);
+          EOF
 
       # The free path. `eas build --local` runs the identical build process on
       # THIS runner instead of EAS's builders, so it draws on no monthly build
@@ -355,10 +405,8 @@ jobs:
 
       # A build that succeeds and ships nothing new is the expensive failure
       # here: it looks identical to a good one until somebody taps the feature
-      # on a real phone. Prove the two things that could silently be missing.
-      # A build that succeeds and ships nothing new is the expensive failure
-      # here: it looks identical to a good one until somebody taps the feature
-      # on a real phone. Prove the two things that could silently be missing.
+      # on a real phone. Prove the four things that could silently be missing:
+      # the two native modules, the Supabase host, the PostHog key.
       - name: Prove the binary carries what it should
         if: ${{ contains(inputs.action, 'build') }}
         run: |
@@ -372,9 +420,14 @@ jobs:
           # that actually shipped was the one nobody verified.
           IPA="$RUNNER_TEMP/samewhere.ipa"
           if [ ! -f "$IPA" ]; then
-            URL=$(grep -oE 'https://expo\.dev/artifacts/eas/[^ ]+\.ipa' build.log | head -1)
+            # The finished build's own record names the artifact; the log
+            # grep is the fallback for a run whose JSON could not be read.
+            URL="${{ steps.eas-build.outputs.ipa-url }}"
             if [ -z "$URL" ]; then
-              echo "::error::No local .ipa and no artifact URL in build.log; nothing to verify."
+              URL=$(grep -oE 'https://expo\.dev/artifacts/eas/[^ ]+\.ipa' build.log 2>/dev/null | head -1 || true)
+            fi
+            if [ -z "$URL" ]; then
+              echo "::error::No local .ipa and no artifact URL from the build; nothing to verify."
               exit 1
             fi
             echo "Downloading the hosted artifact to verify it."
@@ -394,21 +447,51 @@ jobs:
           # Only the local path keeps a working directory, so a hosted build
           # falls through to the compiled-strings check below. That is the
           # weaker of the two, but it reads the binary that actually ships.
+          #    The strings fallback reads the NATIVE files only. The JS bundle
+          #    in the .app carries `requireNativeModule('ExpoStoreReview')` and
+          #    `requireOptionalNativeModule('LocalSearch')` whether or not the
+          #    pod linked, so a grep over the whole .app would answer yes for
+          #    a binary with neither module in it. What the native side keeps
+          #    is the Swift type name (`StoreReviewModule`, `LocalSearchModule`)
+          #    in its type descriptors, which stripping does not remove.
           PROVIDER=$(find "$RUNNER_TEMP/eas-local" -name 'ExpoModulesProvider.swift' 2>/dev/null | head -1)
+          native_strings() {
+            grep -rlE --exclude='*.jsbundle' --exclude='*.js' --exclude='*.map' --exclude='*.json' \
+              "$1" "$APP" 2>/dev/null | wc -l | tr -d ' '
+          }
           if [ -n "$PROVIDER" ]; then
             echo "Modules registered by $PROVIDER:"
             grep -oE '[A-Za-z0-9_]+Module\.self' "$PROVIDER" | sort -u
             LINKED=$(grep -c 'LocalSearchModule' "$PROVIDER" || true)
             HOW="the generated ExpoModulesProvider"
           else
-            LINKED=$(grep -rl 'LocalSearch' "$APP" 2>/dev/null | wc -l | tr -d ' ')
-            HOW="strings in the compiled app"
+            LINKED=$(native_strings 'LocalSearchModule')
+            HOW="strings in the compiled app, JS bundle excluded"
           fi
           if [ "$LINKED" = "0" ]; then
             echo "::error::LocalSearchModule is absent according to $HOW. The pod did not link and venue search would ship dead. Run 'npx expo-modules-autolinking resolve -p apple --json' and check modules[].packageName."
             exit 1
           fi
           echo "LocalSearchModule linked, per $HOW."
+
+          # 1b. expo-store-review, the module the 0.2.0 build is spent on. It
+          #     is the one check here a phone cannot make: on TestFlight
+          #     isAvailableAsync answers false BY DESIGN
+          #     (StoreReviewModule.swift, !isRunningFromTestFlight), so the
+          #     hand-run's `review_prompt_requested { available: false }` is
+          #     byte-identical for a linked module and an absent one. This is
+          #     the only place the difference is visible before the App Store
+          #     build. The Swift class is StoreReviewModule (Name("ExpoStoreReview")).
+          if [ -n "$PROVIDER" ]; then
+            REVIEW=$(grep -c 'StoreReviewModule' "$PROVIDER" || true)
+          else
+            REVIEW=$(native_strings 'StoreReviewModule')
+          fi
+          if [ "$REVIEW" = "0" ]; then
+            echo "::error::StoreReviewModule is absent according to $HOW. expo-store-review did not link, and the review ask would ship as a module that throws on require (the hook contains it, so nothing crashes and nothing ever asks). Check that expo-store-review is in package.json dependencies and that 'npx expo-modules-autolinking resolve -p apple --json' lists it."
+            exit 1
+          fi
+          echo "StoreReviewModule linked, per $HOW."
 
           # 2. A real Supabase URL is baked in. The client falls back to
           #    'placeholder.supabase.co' when the variable is empty, so a
@@ -421,12 +504,82 @@ jobs:
           fi
           echo "Real Supabase host baked in ($REAL distinct)."
 
-          {
-            echo "## Binary verified"
-            echo ""
-            echo "- LocalSearchModule linked: yes (per $HOW)"
-            echo "- Real Supabase host in the bundle: yes"
-          } >> "$GITHUB_STEP_SUMMARY"
+          # 2b. The PostHog project key is baked in. src/lib/analytics.ts is
+          #     `const client = apiKey ? new PostHog(...) : null`, so a bundle
+          #     built from an EAS environment without EXPO_PUBLIC_POSTHOG_API_KEY
+          #     ships every capture() as a silent no-op: the app runs, nothing
+          #     is red, and the launch window cannot be measured afterwards.
+          #     The preflight above checks the REPOSITORY secret, which only an
+          #     update bundles from; a build bundles from the EAS environment,
+          #     and this is the only check that reads what the build got. A
+          #     project key is `phc_` and 40-odd base62 characters; the
+          #     library's own code contains no `phc_` string, so a match this
+          #     long can only be a key.
+          PH_KEYS=$(grep -rhoaE 'phc_[A-Za-z0-9]{20,}' "$APP" 2>/dev/null | sort -u | wc -l | tr -d ' ')
+          if [ "$PH_KEYS" = "0" ]; then
+            echo "::error::No PostHog project key in the bundle: this build would ship analytics dead. Add EXPO_PUBLIC_POSTHOG_API_KEY (and EXPO_PUBLIC_POSTHOG_HOST) to the EAS environment eas.json names, then rebuild."
+            exit 1
+          fi
+          echo "PostHog project key baked in ($PH_KEYS distinct)."
+
+          # 3. The APNs entitlement is `production`. This is the check
+          #    docs/APP_STORE.md ("The APNs entitlement") says closes the
+          #    notification config out, and the one whose wrong value is
+          #    silent: a binary carrying `aps-environment: development`
+          #    registers against the APNs sandbox, gets a token that looks
+          #    fine, and never receives a push. There is no codesign on this
+          #    runner, so it is read from the two places the value lives in
+          #    the .ipa itself: the provisioning profile (a CMS envelope
+          #    around an XML plist; openssl opens it, plistlib reads it) and
+          #    the executable's own code signature, where codesign embeds
+          #    the signed entitlements plist verbatim. Both must agree on
+          #    `production`; a run with neither readable fails rather than
+          #    guessing. CFBundleVersion is read off the same Info.plist, so
+          #    the build number in the summary is the artifact's own.
+          python3 - "$APP" <<'EOF'
+          import os, plistlib, re, subprocess, sys
+
+          app = sys.argv[1]
+          want = 'production'
+          answers = {}
+
+          profile = os.path.join(app, 'embedded.mobileprovision')
+          if os.path.exists(profile):
+              plist = subprocess.run(
+                  ['openssl', 'smime', '-verify', '-noverify', '-inform', 'der', '-in', profile],
+                  capture_output=True, check=True,
+              ).stdout
+              answers['profile'] = plistlib.loads(plist).get('Entitlements', {}).get('aps-environment')
+          else:
+              answers['profile'] = None
+
+          info = plistlib.load(open(os.path.join(app, 'Info.plist'), 'rb'))
+          exe = open(os.path.join(app, info['CFBundleExecutable']), 'rb').read()
+          found = re.search(rb'<key>aps-environment</key>\s*<string>([^<]*)</string>', exe)
+          answers['binary'] = found.group(1).decode() if found else None
+
+          for key, value in answers.items():
+              print(f"aps-environment per {key}: {value if value is not None else '(not found)'}")
+          print(f"CFBundleShortVersionString {info.get('CFBundleShortVersionString')}, CFBundleVersion {info.get('CFBundleVersion')}")
+
+          readable = {k: v for k, v in answers.items() if v is not None}
+          if not readable:
+              print('::error::aps-environment could not be read from the profile or the binary. Nothing here says which APNs this build registers against; run codesign -d --entitlements :- on the .ipa by hand before trusting push.')
+              sys.exit(1)
+          wrong = {k: v for k, v in readable.items() if v != want}
+          if wrong:
+              print(f"::error::aps-environment is not {want}: {wrong}. This build would register against the APNs sandbox and never receive a push. app.json passes mode: production to expo-notifications; find what overrode it before spending another build.")
+              sys.exit(1)
+
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('## Binary verified\n\n')
+              summary.write('- LocalSearchModule linked: yes\n')
+              summary.write('- StoreReviewModule (expo-store-review) linked: yes\n')
+              summary.write('- Real Supabase host in the bundle: yes\n')
+              summary.write('- PostHog project key in the bundle: yes\n')
+              summary.write(f"- aps-environment: **{want}** (profile: {answers['profile'] or 'not present'}, binary: {answers['binary'] or 'not found'})\n")
+              summary.write(f"- The artifact's own Info.plist: version {info.get('CFBundleShortVersionString')}, build number {info.get('CFBundleVersion')}\n")
+          EOF
 
       - name: Submit to TestFlight
         if: ${{ inputs.action == 'submit' || endsWith(inputs.action, 'then-submit') }}
@@ -484,13 +637,18 @@ jobs:
           # A local build is never registered on EAS's servers, so --latest
           # would happily upload the last CLOUD build instead — an older
           # binary, submitted silently and looking like a success. Point
-          # submit at the file when there is one.
+          # submit at the file when there is one, at the build THIS RUN made
+          # when it was hosted (by id, read back from the finished build), and
+          # only at --latest for a bare `submit` with no build of its own.
           if [ -f "$RUNNER_TEMP/samewhere.ipa" ]; then
             SOURCE=(--path "$RUNNER_TEMP/samewhere.ipa")
             echo "Submitting the binary built on this runner."
+          elif [ -n "${{ steps.eas-build.outputs.build-id }}" ]; then
+            SOURCE=(--id "${{ steps.eas-build.outputs.build-id }}")
+            echo "Submitting build ${{ steps.eas-build.outputs.build-id }} (build number ${{ steps.eas-build.outputs.build-number }})."
           else
             SOURCE=(--latest)
-            echo "Submitting the latest build from EAS."
+            echo "Submitting the latest store build from EAS."
           fi
           npx --yes eas-cli@latest submit \
             --platform ios \
@@ -499,6 +657,9 @@ jobs:
             --non-interactive 2>&1 | tee submit.log
           {
             echo "## Submitted to TestFlight"
+            if [ -n "${{ steps.eas-build.outputs.build-number }}" ]; then
+              echo "Build number ${{ steps.eas-build.outputs.build-number }} (EAS build ${{ steps.eas-build.outputs.build-id }})."
+            fi
             echo "Apple processes the build for ~5-15 minutes, then it appears"
             echo "in the TestFlight tab of App Store Connect."
           } >> "$GITHUB_STEP_SUMMARY"

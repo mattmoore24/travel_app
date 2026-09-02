@@ -37,7 +37,6 @@ export default function SignInScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
   const [resetting, setResetting] = useState(false);
   // Return moves you along. Tapping the next field while the keyboard is up
   // does not reliably move focus on iOS — that is how a sign-in attempt came
@@ -96,43 +95,34 @@ export default function SignInScreen() {
       return;
     }
     setResetting(true);
+    setError(null);
+    const address = email.trim();
     try {
-      await requestPasswordReset(email.trim());
-    } catch {
-      // Deliberately silent, and deliberately optimistic below. Telling
-      // somebody "no account with that address" is an account-existence
-      // oracle: anybody could type addresses in and learn who is on here.
-    } finally {
-      setResetting(false);
-      haptics.success();
-      setResetSent(true);
+      await requestPasswordReset(address);
+    } catch (e) {
+      // Deliberately silent, and deliberately optimistic below, for every
+      // refusal but one. Telling somebody "no account with that address" is
+      // an account-existence oracle: anybody could type addresses in and
+      // learn who is on here. No connection is the exception, because it
+      // leaks nothing and a code screen for a mail that never left the phone
+      // is a dead end with a countdown on it.
+      if (isOffline(e)) {
+        setResetting(false);
+        setError('No connection. Sending a code needs the internet.');
+        return;
+      }
     }
+    setResetting(false);
+    haptics.success();
+    // Its own screen rather than a state of this one, because a person now
+    // has to leave the app, find a mail client and come back with six digits
+    // - and it is pushed, not replaced, so the chevron returns to the address
+    // they typed. `sentAt` is the honest clock behind "good for an hour".
+    router.push({
+      pathname: '/reset-code',
+      params: { email: address, sentAt: String(Date.now()) },
+    });
   };
-
-  // The confirmation is its own screen state rather than an alert, because a
-  // person now has to leave the app, find a mail client and come back — and
-  // an alert they dismissed on the way out tells them nothing when they do.
-  if (resetSent) {
-    return (
-      <StepScreen
-        title="Check your email"
-        subtitle={`If ${email.trim()} has an account, a reset link is on its way. It expires in an hour.`}
-        continueLabel="Back to sign in"
-        onContinue={() => setResetSent(false)}
-        footer={
-          <PrimaryButton
-            variant="ghost"
-            label="Send it again"
-            loading={resetting}
-            onPress={sendReset}
-          />
-        }>
-        <ThemedText type="footnote" themeColor="textSecondary">
-          Nothing yet? Check your spam, and check the address above.
-        </ThemedText>
-      </StepScreen>
-    );
-  }
 
   return (
     <StepScreen

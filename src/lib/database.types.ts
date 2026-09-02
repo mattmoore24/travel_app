@@ -747,7 +747,24 @@ export type GroupRow = {
   chat_id: string;
   created_by: string | null;
   name: string;
+  /**
+   * The group's own picture. Read it through features/groups/photo.ts, never
+   * directly: an approved photo is everybody's, a pending one is its
+   * uploader's alone, and a refused one has already been removed server-side
+   * (20260903050000). The bucket enforces the same rule on the signed URL,
+   * so a screen that ignored `photo_status` would draw a broken frame rather
+   * than an unchecked picture, but it should not get that far.
+   */
   photo_path: string | null;
+  /**
+   * NULL when there is no photo. Server-owned: the trigger sets it whenever
+   * photo_path changes, the worker moves it, and the table has no client
+   * write grant at all. 'rejected' survives the path's removal so the group
+   * page can tell the admin to pick another.
+   */
+  photo_status: ModerationStatus | null;
+  /** The worker's failed-attempt count for the current photo. Not for screens. */
+  moderation_attempts: number;
   speaking: GroupSpeaking;
   /**
    * Who may mint the invite link. Turning a live link off stays the admin's,
@@ -1505,6 +1522,8 @@ export type Database = {
           lng: number;
           intent_date: string;
           expires_at: string;
+          /** Granted per column since 20260902190000; null lets validate_pin infer one. */
+          business_id?: string | null;
         };
         Update: never;
         Relationships: [];
@@ -1867,8 +1886,17 @@ export type Database = {
           p_intent_date: string;
           p_expires_at: string;
           p_plan?: string | null;
+          p_intent_time?: string | null;
+          p_joinable?: boolean;
+          /**
+           * The listed business the plan names, when the form was opened from
+           * that business's page (20260903110000). Sent only when it has a
+           * value, so an ordinary pin keeps posting against a server that
+           * predates the parameter.
+           */
+          p_business_id?: string | null;
         };
-        Returns: { pin_id: string; chat_id: string };
+        Returns: { pin_id: string; chat_id: string | null };
       };
       join_pin_chat: {
         Args: { p_pin_id: string };
@@ -1938,6 +1966,20 @@ export type Database = {
       set_visibility: {
         Args: { p_audience: ProfileAudience };
         Returns: ProfileAudience;
+      };
+      /**
+       * Whether the signed-out preview may include the caller (D22,
+       * 20260903080000). `profiles.shown_to_guests` carries no client grant
+       * in either direction; these two are the whole surface. Null on the
+       * row reads back as true.
+       */
+      my_shown_to_guests: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      set_shown_to_guests: {
+        Args: { p_shown: boolean };
+        Returns: boolean;
       };
       /**
        * The listing-intent pair. `profiles.wants_business` carries no column

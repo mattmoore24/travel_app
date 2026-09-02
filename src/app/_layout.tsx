@@ -410,6 +410,11 @@ function RootNavigator() {
           on it still asks for an account at the moment it is taken. */}
       <Stack.Screen
         name="place/[id]"
+        // `headerTitle: ''` is the pre-resolve placeholder, not a bare row by
+        // design: the business name only exists once the detail query lands,
+        // so the screen sets it from inside its loaded branch, the way
+        // profile/[userId] does. Until then the row carries the chevron over
+        // the skeleton, which is the one state where there is no name to say.
         options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
       />
       {/* Business rooms are readable signed-out (the public preview), so this
@@ -469,10 +474,12 @@ function RootNavigator() {
             them to keep in the inbox. signedIn, not signedIn && onboarded:
             the same guard the rest of the chat surfaces sit behind, so a
             route the Chat tab can offer is always a route the navigator
-            has. */}
+            has. Titled here like archived-chats: the inbox section this
+            opens from is "Waiting on you" ((tabs)/chat.tsx), and the screen
+            no longer writes it a second time under the chevron. */}
         <Stack.Screen
           name="first-messages"
-          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+          options={{ headerShown: true, headerTitle: 'Waiting on you', headerShadowVisible: false }}
         />
         {/* signedIn, deliberately NOT `signedIn && onboarded`. A business
             account never satisfies `onboarded` by design (routing.ts), and
@@ -616,10 +623,15 @@ function RootNavigator() {
       <Stack.Screen name="guest-name" options={{ presentation: 'modal' }} />
       {/* An invite link can arrive before a person has an account. The screen
           shows what the group is and offers to make one, rather than bouncing
-          them to a welcome page that says nothing about why they tapped. */}
+          them to a welcome page that says nothing about why they tapped.
+          One title over all of the screen's branches (the invite is open,
+          not open, ended, already joined, or not for a business): the header
+          says what the screen IS, and each branch's headline says what
+          happened. The same string sits on i/[token] below, and
+          __tests__/stack-header.test.ts keeps the two from drifting. */}
       <Stack.Screen
         name="join-group/[token]"
-        options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        options={{ headerShown: true, headerTitle: 'Group invite', headerShadowVisible: false }}
       />
       {/* The https spelling of the same invite, the one iOS hands over for
           link.samewhere.io/i/<token>. Same screen, same options: the root
@@ -627,7 +639,7 @@ function RootNavigator() {
           where the back chevron lives. */}
       <Stack.Screen
         name="i/[token]"
-        options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        options={{ headerShown: true, headerTitle: 'Group invite', headerShadowVisible: false }}
       />
     </Stack>
   );

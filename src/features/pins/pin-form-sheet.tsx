@@ -33,8 +33,43 @@ import { openInMaps } from '@/features/pins/open-in-maps';
 import { toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
+import type { BusinessCategory, PinCategory } from '@/lib/database.types';
 import { haptics } from '@/lib/haptics';
 import type { LocalSearchResult } from '@/modules/local-search';
+
+/**
+ * The listed business a plan is for, when the form was opened from that
+ * business's page (src/app/place/[id].tsx, 'Plan to go'). Everything the
+ * form pre-fills and the one thing it sends that a search result cannot:
+ * the id, which rides the insert as business_id so the pin links back to
+ * the page without validate_pin having to guess by name and sixty metres.
+ */
+export type PlanBusiness = {
+  id: string;
+  name: string;
+  category: BusinessCategory;
+  address: string | null;
+};
+
+/**
+ * The marker a business's own category draws. Same spirit as categoryForPoi
+ * for a MapKit category: a bar is a bar and a cafe is where you eat, and the
+ * kinds a pin has no glyph for (a hostel, a tour, a coworking space) fall to
+ * 'other' and let the plan's own words decide (categoryForPlan).
+ */
+export function pinCategoryForBusiness(category: BusinessCategory): PinCategory {
+  switch (category) {
+    case 'bar':
+      return 'bar';
+    case 'restaurant':
+    case 'cafe':
+      return 'restaurant';
+    case 'club':
+      return 'club';
+    default:
+      return 'other';
+  }
+}
 
 /**
  * The composer's funnel, three steps wide and no wider.
@@ -74,6 +109,12 @@ type PinFormSheetProps = {
   initialPlace?: LocalSearchResult | null;
   /** The name the map's pill already resolved, so it is not fetched twice. */
   initialLabel?: string | null;
+  /**
+   * The business this plan is at, when the form was opened from its page.
+   * Pre-fills the name, the address line and the marker's kind, and travels
+   * with the insert as business_id. Null for every pin dropped on the map.
+   */
+  business?: PlanBusiness | null;
   onClose: () => void;
   onPosted: (pinId: string) => void;
 };
@@ -96,22 +137,26 @@ export function PinFormSheet({
   coords,
   initialPlace = null,
   initialLabel = null,
+  business = null,
   onClose,
   onPosted,
 }: PinFormSheetProps) {
   const theme = useTheme();
   const createPin = useCreatePin();
-  // The SPOT's name - from search, or the map pill's reverse geocode - and
-  // editable, because "Somdet Phra Pokklao Bridge" is where you are, not
-  // necessarily what you would call it. The plan lives in its own field now:
-  // one column was being asked to be two things, and three strings broke
-  // downstream (the compose draft, clusterTitle, the marker's spoken label).
-  const [venue, setVenue] = useState(initialPlace?.name ?? initialLabel ?? '');
+  // The SPOT's name - from search, the business page, or the map pill's
+  // reverse geocode - and editable, because "Somdet Phra Pokklao Bridge" is
+  // where you are, not necessarily what you would call it. The plan lives in
+  // its own field now: one column was being asked to be two things, and
+  // three strings broke downstream (the compose draft, clusterTitle, the
+  // marker's spoken label). Renaming the spot does NOT drop the business:
+  // somebody who came from a bar's page and calls it "the rooftop" is still
+  // planning to go to that bar.
+  const [venue, setVenue] = useState(initialPlace?.name ?? business?.name ?? initialLabel ?? '');
   const venueTouched = useRef(false);
   const [plan, setPlan] = useState('');
   const [note, setNote] = useState('');
   const [placeLabel, setPlaceLabel] = useState<string | null>(
-    initialPlace ? placeLabelFor(initialPlace) : initialLabel
+    initialPlace ? placeLabelFor(initialPlace) : (business?.address ?? initialLabel)
   );
   const [intentDate, setIntentDate] = useState(() =>
     toISODate(cityClockNow(cityTimezone, coords.lng))
@@ -196,16 +241,18 @@ export function PinFormSheet({
   // inference). Recomputed per keystroke on purpose — the place card's
   // glyph below previews the pin being dropped, so the guess is visible
   // before it is committed, which is what makes guessing defensible.
-  const poiCategory = categoryForPoi(initialPlace?.category);
+  const poiCategory = business
+    ? pinCategoryForBusiness(business.category)
+    : categoryForPoi(initialPlace?.category);
   const category = poiCategory !== 'other' ? poiCategory : (categoryForPlan(plan) ?? 'other');
 
   // Where the map says this spot is, so the card can show a street instead
-  // of a dot. Only when the place did not come from search, which already
-  // carries an exact address, and only when the map's own pill never
-  // resolved a name — this is the fallback, not the fast path any more.
-  // Reverse-geocoding a chosen coordinate reads nobody's position.
+  // of a dot. Only when the place did not come from search or a business
+  // page, both of which already carry an address, and only when the map's
+  // own pill never resolved a name — this is the fallback, not the fast path
+  // any more. Reverse-geocoding a chosen coordinate reads nobody's position.
   useEffect(() => {
-    if (initialPlace || initialLabel) {
+    if (initialPlace || initialLabel || business) {
       return;
     }
     let active = true;
@@ -231,7 +278,7 @@ export function PinFormSheet({
     return () => {
       active = false;
     };
-  }, [coords.lat, coords.lng, initialLabel, initialPlace]);
+  }, [business, coords.lat, coords.lng, initialLabel, initialPlace]);
 
   // Recomputed per render: the sheet can sit open across midnight, and a
   // stale "today" would post an already-expired pin. The CITY's midnight -
@@ -319,6 +366,10 @@ export function PinFormSheet({
         intentTime: effectiveTime || null,
         expiresAt: expiresAt.toISOString(),
         joinable,
+        // Explicit, never inferred here: a pin dropped on the map sends
+        // null and lets validate_pin match by name and distance; a pin from
+        // a business page names the business whatever the spot is called.
+        businessId: business?.id ?? null,
       });
       haptics.success();
       // Set before the parent is told, because being told is what unmounts
@@ -385,7 +436,7 @@ export function PinFormSheet({
                 returnKeyType="done"
               />
               <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
-                {[initialPlace?.address, initialPlace?.locality ?? cityName]
+                {[initialPlace?.address ?? business?.address, initialPlace?.locality ?? cityName]
                   .filter(Boolean)
                   .join(', ')}
               </ThemedText>
@@ -398,7 +449,7 @@ export function PinFormSheet({
                 openInMaps({
                   lat: coords.lat,
                   lng: coords.lng,
-                  label: initialPlace?.name ?? (venue.trim() || cityName),
+                  label: initialPlace?.name ?? business?.name ?? (venue.trim() || cityName),
                 })
               }
               style={styles.mapsLink}>

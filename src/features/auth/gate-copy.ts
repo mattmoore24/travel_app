@@ -1,5 +1,20 @@
+import { dates } from '@/lib/locale';
+
 /** What the account gate is showing. Not routes: there is no router there. */
 export type GateView = 'gate' | 'rules' | 'appeal';
+
+/**
+ * "Sep 8", or "Jan 3, 2027" once the pause runs past the year. Through
+ * lib/locale, because this used to be a bare `toLocaleDateString()`: the
+ * device's language AND the numeric shape lib/locale deliberately does not
+ * offer, so an American read "9/8/2026" and everybody else read 8 September
+ * as a date in the ninth month of the eighth year.
+ */
+function pausedUntil(until: Date): string {
+  return until.getFullYear() === new Date().getFullYear()
+    ? dates().monthDay.format(until)
+    : dates().monthDayYear.format(until);
+}
 
 /**
  * The headline, the sentence under it, and the first line of an appeal, for
@@ -26,7 +41,7 @@ export function gateCopy(
     return {
       title: 'Account paused',
       body:
-        `Your account is paused${until ? ` until ${until.toLocaleDateString()}` : ''} for ` +
+        `Your account is paused${until ? ` until ${pausedUntil(until)}` : ''} for ` +
         'breaking our house rules. If you think that is wrong, tap Appeal this. ' +
         'A person reads it, not a log, and we answer within 30 days.',
       appeal: 'Appeal: account paused',

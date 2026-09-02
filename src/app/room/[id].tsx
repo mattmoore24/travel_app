@@ -24,6 +24,7 @@ import {
 import { useIsGuest, useIsGuestAccount, useIsSignedOut } from '@/features/guest/hooks';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { useGroup } from '@/features/groups/hooks';
+import { NO_GROUP_PHOTO } from '@/features/groups/photo';
 import { useAddedNoteSeen } from '@/features/groups/added-note';
 import { useWhoAddedMe } from '@/features/groups/adds';
 import { useMyChats } from '@/features/matching/hooks';
@@ -61,6 +62,7 @@ import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { Composer } from '@/features/chat/composer';
 import { closeDayLabel, finiteDate, useHasGroupClosed } from '@/features/groups/closing';
 import { useTheme } from '@/hooks/use-theme';
+import { dates } from '@/lib/locale';
 import { countOf } from '@/lib/plural';
 
 export default function RoomScreen() {
@@ -170,7 +172,14 @@ export default function RoomScreen() {
   // it; chat_photos_select_group already lets any member read it, which is
   // why the group page can draw it too. The business cover comes from the
   // same detail query the place page runs, so it is usually already cached.
-  const { data: groupPhotoUrl } = useChatPhotoUrl(group?.photo_path ?? null);
+  //
+  // As useGroup hands it out, through the one client rule for who may see a
+  // group's photo (features/groups/photo.ts): approved for everybody, pending
+  // for the person who uploaded it alone (to everybody else there is no
+  // photo yet), refused for nobody. The raw column is not on the row this
+  // screen holds; the bucket enforces the same rule on the URL anyway.
+  const groupPhoto = group?.photo ?? NO_GROUP_PHOTO;
+  const { data: groupPhotoUrl } = useChatPhotoUrl(groupPhoto.path);
   // Who put you in here, for the line above the composer. Asked only for a
   // group you are actually in: a venue room is joined, never handed out.
   const { data: addedBy } = useWhoAddedMe(isGroup && isMember ? (id ?? null) : null);
@@ -279,11 +288,10 @@ export default function RoomScreen() {
       {/* `expires_at` is NOT NULL, so the admin of a chat with no end date
           holds an infinite seat, and PostgREST sends that as the string
           "infinity" — truthy, and `new Date` of it is Invalid Date. */}
+      {/* lib/locale's date, not the device's: this line sat under an English
+          header and read "you leave 12 set." on a Portuguese phone. */}
       {finiteDate(membership.expires_at)
-        ? ` · you leave ${finiteDate(membership.expires_at)!.toLocaleDateString(undefined, {
-            day: 'numeric',
-            month: 'short',
-          })}`
+        ? ` · you leave ${dates().monthDay.format(finiteDate(membership.expires_at)!)}`
         : ''}
     </ThemedText>
   ) : (
@@ -319,7 +327,12 @@ export default function RoomScreen() {
             // room" on the screen whose whole job is to make the place feel
             // like somewhere you might walk into.
             title={membership?.title ?? info?.name ?? 'Guest room'}
-            subtitle={headerLine}
+            // The person who just chose the picture is told it is being
+            // checked, here as well as on the group page, rather than shown
+            // it with nothing said. 'checking' is only ever the uploader's
+            // own state; everybody else keeps the member line, because to
+            // them there is no photo yet.
+            subtitle={groupPhoto.state === 'checking' ? 'Checking your group photo' : headerLine}
             trailing={
               /* Leaving lives up here, not under the composer — a destructive
                  action one thumb-width from Send is an accident waiting. */

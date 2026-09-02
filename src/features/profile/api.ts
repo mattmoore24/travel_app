@@ -326,6 +326,33 @@ export async function setOwnVisibility(audience: ProfileAudience) {
 }
 
 /**
+ * Whether the signed-out preview may include you (D22).
+ *
+ * A device with no account is shown up to three travelers for a city: face,
+ * name, age and dates (featured_traveler, 20260902260000). This is the one
+ * way to say no to that without narrowing the audience or deleting the trip.
+ * Same shape as visibility: the column has no client grant in either
+ * direction, so both halves are definer RPCs bound to auth.uid()
+ * (20260903080000). A missing answer reads as shown, because shown is the
+ * default the server keeps for anybody who has not touched the row.
+ */
+export async function fetchOwnGuestPreview(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('my_shown_to_guests');
+  if (error) {
+    throw error;
+  }
+  return (data as boolean | null) ?? true;
+}
+
+export async function setOwnGuestPreview(shown: boolean): Promise<boolean> {
+  const { data, error } = await supabase.rpc('set_shown_to_guests', { p_shown: shown });
+  if (error) {
+    throw error;
+  }
+  return (data as boolean | null) ?? shown;
+}
+
+/**
  * Permanently delete the signed-in account (App Review 5.1.1(v)). The Edge
  * Function removes storage objects, hard-deletes the user's chats for both
  * members, then deletes the auth user — cascading the whole profile.

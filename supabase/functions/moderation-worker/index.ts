@@ -1,9 +1,10 @@
-// Claude moderation worker. Drains seven server-side queues:
+// Claude moderation worker. Drains nine server-side queues:
 //
 //   1. message_requests in 'pending_moderation'  -> apply_message_verdict
 //   2. profile_photos   in 'pending'             -> apply_photo_verdict
 //   2b. business_photos in 'pending'             -> apply_business_photo_verdict
 //   2c. business_posts with a pending photo      -> apply_business_post_photo_verdict
+//   2d. groups with a pending photo              -> apply_group_photo_verdict
 //   3. verification_requests in 'pending'        -> apply_verification_verdict
 //   4. messages with a pending photo             -> apply_chat_photo_verdict
 //   5. business_verifications in 'pending'       -> apply_business_verification_verdict
@@ -57,9 +58,9 @@ const SIGNED_URL_TTL_SECONDS = 600;
 // THE TICK HAS A CLOCK, because before it had one a slow queue could starve
 // every queue behind it for ever.
 //
-// Eight queues run in sequence and each item is a model call. Nothing bounded
+// Nine queues run in sequence and each item is a model call. Nothing bounded
 // how long that took, so the arithmetic was: 8 chat photos + 10 held messages
-// + 15 photos + 3 selfies + 3 storefronts + 3 scans, several of them at
+// + 20 photos + 3 selfies + 3 storefronts + 3 scans, several of them at
 // CAREFUL effort over an image. Past the platform's wall clock the isolate is
 // killed mid-item, and killed is worse than failed: the `note_*_attempt` call
 // that records the try never runs, so `moderation_attempts` does not move and
@@ -78,14 +79,15 @@ const SIGNED_URL_TTL_SECONDS = 600;
 // would have the next one re-select the same rows and classify them twice.
 const TICK_BUDGET_MS = 50_000;
 const QUEUE_BUDGET_MS = {
-  chatPhotos: 9_000,
-  messages: 11_000,
+  chatPhotos: 8_000,
+  messages: 10_000,
   photos: 6_000,
   businessPhotos: 5_000,
-  postPhotos: 5_000,
+  postPhotos: 4_000,
+  groupPhotos: 4_000,
   verifications: 5_000,
   storefronts: 5_000,
-  scans: 4_000,
+  scans: 3_000,
 } as const;
 
 // The slices add up to the budget rather than overrunning it, and that is the
@@ -93,6 +95,14 @@ const QUEUE_BUDGET_MS = {
 // spend its own slice, so every queue is reached on every tick and starts at
 // least one item. Slices that summed to more than the budget would put the
 // starvation back, just further down the list. A test holds the sum.
+//
+// The group-photo slice (20260903050000) was paid for by trimming four
+// others rather than by raising the tick: the tick is 50s against a cron that
+// fires every minute, and a tick that overran the minute would have the next
+// one re-select the same rows and classify them twice. A slice is a FLOOR,
+// not a ceiling - the check runs before each item, so every queue still
+// starts at least one item, and time a fast queue leaves is inherited by the
+// ones behind it.
 
 // One hung request must not be able to take the tick with it. The SDK's own
 // default is a TEN MINUTE timeout with two automatic retries — thirty minutes
@@ -271,6 +281,7 @@ type WorkerReport = {
   photos: { approved: number; rejected: number; failed: number };
   businessPhotos: { approved: number; rejected: number; failed: number };
   postPhotos: { approved: number; rejected: number; failed: number };
+  groupPhotos: { approved: number; rejected: number; failed: number };
   chatPhotos: { approved: number; rejected: number; failed: number };
   verifications: { approved: number; rejected: number; failed: number };
   storefronts: { approved: number; rejected: number; uncertain: number; failed: number };
@@ -408,6 +419,7 @@ Deno.serve(async (req) => {
     photos: { approved: 0, rejected: 0, failed: 0 },
     businessPhotos: { approved: 0, rejected: 0, failed: 0 },
     postPhotos: { approved: 0, rejected: 0, failed: 0 },
+    groupPhotos: { approved: 0, rejected: 0, failed: 0 },
     chatPhotos: { approved: 0, rejected: 0, failed: 0 },
     verifications: { approved: 0, rejected: 0, failed: 0 },
     storefronts: { approved: 0, rejected: 0, uncertain: 0, failed: 0 },
@@ -896,6 +908,130 @@ Deno.serve(async (req) => {
         });
         report.notes.push(
           `post photo ${post.id}: ${(error as Error).message}` +
+            (bumpError ? ` (attempts update failed: ${bumpError.message})` : '')
+        );
+      }
+    }
+  }
+
+  // -- 3d. Pending GROUP photos -------------------------------------------------
+  //
+  // The gap src/features/groups/api.ts recorded: a photo posted INTO a chat
+  // is moderated through the messages row it creates, but a group's OWN
+  // picture is a column on `groups`, and until 20260903050000 nothing read it
+  // before every member did. That migration opened the door below and the
+  // counter beside it; this is the worker walking through it. Without this
+  // branch, production (flag on) would hold every group photo at 'pending'
+  // for ever: my_chats and group_invite_preview mask the path until approved,
+  // the bucket refuses to sign it, and the admin watches "Checking this
+  // photo" until they give up - and moderation_attempts would never move, so
+  // it would not even fail closed.
+  //
+  // Same classifier and effort as a chat photo: a person is watching a tile
+  // on the group page, and the question is the same one. The verdict door
+  // takes the group's chat_id AND the path this tick classified: a group is
+  // one row, so if the admin replaces the picture while the model is looking
+  // at the previous one, the row is pending again for a photo nobody has
+  // seen, and a verdict keyed on the chat alone would approve it. The door
+  // matches the path and answers false, writing nothing, when the group no
+  // longer wears the photo the verdict is about. Every other photo queue is
+  // a row per photo and has no such race.
+  const { data: groupPhotos } = await supabase
+    .from('groups')
+    .select('chat_id, photo_path, moderation_attempts')
+    .eq('photo_status', 'pending')
+    .not('photo_path', 'is', null)
+    .lt('moderation_attempts', MAX_ATTEMPTS)
+    .order('created_at')
+    .limit(PHOTOS_PER_TICK);
+
+  const hasTimeGroupPhotos = budgetFor('groupPhotos');
+  for (const group of groupPhotos ?? []) {
+    if (!hasTimeGroupPhotos()) {
+      break;
+    }
+    try {
+      const url = await signedUrl('chat-photos', group.photo_path as string);
+      const verdict = await classify(
+        anthropic,
+        PROMPTS.photo,
+        [
+          { type: 'image', source: { type: 'url', url } },
+          {
+            type: 'text',
+            text:
+              'Moderate this photo chosen as the picture for a travel group chat. ' +
+              'Every member of the group will see it beside the group name.',
+          },
+        ],
+        PhotoVerdict,
+        FAST
+      );
+      const payload = verdict
+        ? { ...verdict, engine: 'claude-moderator', model: MODEL }
+        : {
+            action: 'block',
+            category: 'refusal',
+            reason: 'the model refused to process this content',
+            engine: 'claude-moderator',
+            model: MODEL,
+          };
+      const { data: applied, error } = await supabase.rpc('apply_group_photo_verdict', {
+        p_chat_id: group.chat_id,
+        p_photo_path: group.photo_path,
+        p_verdict: payload,
+      });
+      if (error) {
+        throw new Error(`apply_group_photo_verdict: ${error.message}`);
+      }
+      if (applied === false) {
+        // Replaced or removed while the model looked at it. Not a failure
+        // and not an attempt: the photo now on the row is the next tick's.
+        report.notes.push(
+          `group photo ${group.chat_id}: the group no longer wears the photo this verdict ` +
+            'is about; nothing written'
+        );
+      } else if (payload.action === 'allow') {
+        report.groupPhotos.approved += 1;
+      } else {
+        report.groupPhotos.rejected += 1;
+      }
+    } catch (error) {
+      if (isAuthError(error)) {
+        return Response.json(
+          { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
+          { status: 503 }
+        );
+      }
+      report.groupPhotos.failed += 1;
+      const attempts = (group.moderation_attempts ?? 0) + 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        // Fail closed: the photo is removed (not a strike) and the group page
+        // tells the admin to pick another, rather than a tile that says
+        // "checking" for good.
+        // Through the same door with the same path, so a failsafe about the
+        // photo that kept failing cannot remove the one that replaced it.
+        const { error: rpcError } = await supabase.rpc('apply_group_photo_verdict', {
+          p_chat_id: group.chat_id,
+          p_photo_path: group.photo_path,
+          p_verdict: {
+            action: 'block',
+            category: 'moderation_unavailable',
+            reason: `classification failed ${attempts} times`,
+            engine: 'failsafe',
+          },
+        });
+        report.notes.push(
+          rpcError
+            ? `group photo ${group.chat_id}: failsafe reject failed: ${rpcError.message}`
+            : `group photo ${group.chat_id}: failsafe reject after ${attempts} attempts`
+        );
+      } else {
+        const { error: bumpError } = await supabase.rpc('note_group_photo_attempt', {
+          p_chat_id: group.chat_id,
+        });
+        report.notes.push(
+          `group photo ${group.chat_id}: ${(error as Error).message}` +
             (bumpError ? ` (attempts update failed: ${bumpError.message})` : '')
         );
       }
