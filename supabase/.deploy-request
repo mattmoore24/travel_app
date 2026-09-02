@@ -313,3 +313,29 @@
              verdict schemas now require reason_en and the prompts carry the
              subject's locale. `db push` then `functions deploy` are one job,
              so they land together.
+
+2026-09-02 — deploy BEFORE the 0.2.0 EAS build. Nine migrations:
+             20260903040000 two service-role views so a selfie or storefront
+             refusal written in Thai has an English copy the founder can
+             adjudicate (reason beside reason_en);
+             20260903050000 a group's own photo is checked before anyone but
+             its setter can see it — status, trigger, verdict door, worker
+             queue, and the client half;
+             20260903060000 screen_business_text stops screening and stamping
+             on writes that changed no text (the profiles fix, applied to the
+             one trigger with the same shape);
+             20260903070000 admin_ops_health counts every moderation queue,
+             not two of eight, so a stuck backlog is visible to the smoke test;
+             20260903080000 a traveler can keep their face out of the
+             signed-out preview (D22), enforced in featured_traveler;
+             20260903090000 validate_business_link refuses shortener hosts and
+             IP literals on every kind of link, not one branch of two;
+             20260903100000 the fifth moderation push carries the DSA Art.
+             17(3)(c) automation disclosure;
+             20260903110000 a pin can name the business it is for, with the
+             traveler entry point that was missing;
+             20260903120000 push-worker records a ticket error that is not
+             DeviceNotRegistered, so an APNs credential wall is visible
+             instead of being stamped as sent.
+             The moderation-worker function is redeployed with them (ninth
+             queue). db push then functions deploy are one job.
