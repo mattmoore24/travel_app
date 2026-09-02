@@ -275,7 +275,9 @@ jobs:
           EXPO_NO_TELEMETRY: '1'
         run: |
           set -o pipefail
-          npx --yes eas-cli@latest env:list --environment production --non-interactive \
+          # No --non-interactive here: env:list does not take it (run 63 died
+          # on "Nonexistent flag"), and it needs none — it reads and prints.
+          npx --yes eas-cli@latest env:list --environment production \
             > eas-env.txt 2>&1 || {
               echo "::error::Could not read the EAS production environment. Without it this"
               echo "::error::run would spend a build and only then discover what is missing."
