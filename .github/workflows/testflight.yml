@@ -257,6 +257,47 @@ jobs:
             }, null, 2));
           "
 
+      # BEFORE the builder runs, because after it the credit is gone.
+      #
+      # A hosted build reads EXPO_PUBLIC_* from the EAS `production`
+      # environment (eas.json), NOT from the GitHub secrets the preflight
+      # checks - those reach the over-the-air path only. So the .ipa's
+      # analytics key and Supabase host are decided by state that lives on
+      # Expo's servers and in no file here, and the checks that prove them
+      # sit after the build. A missing variable would mean: builder runs,
+      # credit spent, verification fails, nothing submitted.
+      #
+      # This asks the same question first, for the price of an API call.
+      - name: The EAS environment has what the binary needs
+        if: ${{ inputs.action == 'build' || inputs.action == 'build-then-submit' }}
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_NO_TELEMETRY: '1'
+        run: |
+          set -o pipefail
+          npx --yes eas-cli@latest env:list --environment production --non-interactive \
+            > eas-env.txt 2>&1 || {
+              echo "::error::Could not read the EAS production environment. Without it this"
+              echo "::error::run would spend a build and only then discover what is missing."
+              cat eas-env.txt
+              exit 1
+            }
+          missing=()
+          for key in EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY \
+                     EXPO_PUBLIC_POSTHOG_API_KEY EXPO_PUBLIC_POSTHOG_HOST; do
+            grep -q "$key" eas-env.txt || missing+=("$key")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::The EAS production environment is missing: ${missing[*]}"
+            echo "::error::A hosted build inlines these at bundle time, so the binary would"
+            echo "::error::ship pointed at nothing (Supabase) or silently discarding every"
+            echo "::error::analytics call (PostHog). Add them with:"
+            echo "::error::  eas env:create --environment production --name <KEY> --value <value>"
+            echo "::error::No builder has run, so this attempt consumed nothing."
+            exit 1
+          fi
+          echo "The EAS production environment carries all four EXPO_PUBLIC_ values."
+
       - name: Build on EAS
         if: ${{ inputs.action == 'build' || inputs.action == 'build-then-submit' }}
         id: eas-build
@@ -328,7 +369,7 @@ jobs:
             '',
             `- EAS build id: \`${build.id}\``,
             `- Build number (CFBundleVersion), read back from the finished build: **${build.appBuildVersion}**`,
-            `- Version ${build.appVersion} (runtime version ${build.runtime?.version ?? 'unknown'})`,
+            `- Version ${build.appVersion} (runtime version ${build.runtimeVersion ?? build.runtime?.version ?? 'unknown'})`,
             `- ${page}`,
             '',
           ].join('\n'));
@@ -455,6 +496,12 @@ jobs:
           #    is the Swift type name (`StoreReviewModule`, `LocalSearchModule`)
           #    in its type descriptors, which stripping does not remove.
           PROVIDER=$(find "$RUNNER_TEMP/eas-local" -name 'ExpoModulesProvider.swift' 2>/dev/null | head -1)
+          # Two spellings, either of which proves the pod linked. The Swift
+          # TYPE name rides in the nominal type descriptors; the Name() string
+          # literal rides in __TEXT,__cstring. The type name is the stronger
+          # signal and the literal is the one that cannot be stripped, and
+          # this has never run against a hosted .ipa, so it accepts both
+          # rather than failing a good build on an assumption about metadata.
           native_strings() {
             grep -rlE --exclude='*.jsbundle' --exclude='*.js' --exclude='*.map' --exclude='*.json' \
               "$1" "$APP" 2>/dev/null | wc -l | tr -d ' '
@@ -465,7 +512,7 @@ jobs:
             LINKED=$(grep -c 'LocalSearchModule' "$PROVIDER" || true)
             HOW="the generated ExpoModulesProvider"
           else
-            LINKED=$(native_strings 'LocalSearchModule')
+            LINKED=$(native_strings 'LocalSearchModule|Name\("LocalSearch"\)')
             HOW="strings in the compiled app, JS bundle excluded"
           fi
           if [ "$LINKED" = "0" ]; then
@@ -485,7 +532,7 @@ jobs:
           if [ -n "$PROVIDER" ]; then
             REVIEW=$(grep -c 'StoreReviewModule' "$PROVIDER" || true)
           else
-            REVIEW=$(native_strings 'StoreReviewModule')
+            REVIEW=$(native_strings 'StoreReviewModule|Name\("ExpoStoreReview"\)')
           fi
           if [ "$REVIEW" = "0" ]; then
             echo "::error::StoreReviewModule is absent according to $HOW. expo-store-review did not link, and the review ask would ship as a module that throws on require (the hook contains it, so nothing crashes and nothing ever asks). Check that expo-store-review is in package.json dependencies and that 'npx expo-modules-autolinking resolve -p apple --json' lists it."
@@ -543,15 +590,23 @@ jobs:
           want = 'production'
           answers = {}
 
+          # Two independent sources, and the whole point is that either one
+          # can answer. So this must NOT raise: check=True on the openssl call
+          # (or a CMS shape plistlib will not parse) would kill the step
+          # before the code signature - the fallback that exists for exactly
+          # this - had been read. A run with NEITHER readable still fails
+          # below; a run where openssl hiccups falls through to the binary.
+          answers['profile'] = None
           profile = os.path.join(app, 'embedded.mobileprovision')
           if os.path.exists(profile):
-              plist = subprocess.run(
-                  ['openssl', 'smime', '-verify', '-noverify', '-inform', 'der', '-in', profile],
-                  capture_output=True, check=True,
-              ).stdout
-              answers['profile'] = plistlib.loads(plist).get('Entitlements', {}).get('aps-environment')
-          else:
-              answers['profile'] = None
+              try:
+                  plist = subprocess.run(
+                      ['openssl', 'smime', '-verify', '-noverify', '-inform', 'der', '-in', profile],
+                      capture_output=True, check=False,
+                  ).stdout
+                  answers['profile'] = plistlib.loads(plist).get('Entitlements', {}).get('aps-environment')
+              except Exception as err:  # noqa: BLE001 - any failure is "unreadable"
+                  print(f"could not read the provisioning profile ({err}); falling back to the binary")
 
           info = plistlib.load(open(os.path.join(app, 'Info.plist'), 'rb'))
           exe = open(os.path.join(app, info['CFBundleExecutable']), 'rb').read()

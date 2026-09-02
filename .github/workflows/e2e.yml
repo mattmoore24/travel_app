@@ -12,6 +12,12 @@ on:
     inputs:
       build:
         description: >-
+          ONE-TIME, 2026-09-02: app.json moved to 0.2.0 and runtimeVersion
+          follows appVersion, so the reused simulator binary (build 13, runtime
+          0.1.0) can no longer accept an update from this branch. The first run
+          after the bump MUST be build=true; after a 0.2.0 simulator build
+          exists, false is right again and this note comes out.
+
           Build a fresh simulator app, so the binary EMBEDS the code under
           test. Leave this OFF for a JavaScript-only change. This used to say
           the over-the-air path did not work here, on the evidence of a step
