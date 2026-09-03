@@ -652,7 +652,7 @@ The brief calls the anonymized heatmap the differentiator and the marketing hook
 
 - src/features/pins/map-screen.tsx:703 — read `isError` and `isPending` off the heat query, not just `data`. On error, extend the existing glass banner at :1281 with one footnote line and a Try again, reusing the LoadError compact form rather than adding a fourth element to that strip.
 
-- src/features/pins/map-screen.tsx — an honest third state on the legend: when the query has SETTLED and `heatCells.length === 0`, say so. Read the number from `activeCity.heat_k` (already selected by api.ts:21) or write the sentence with no number in it: 'Not busy enough to show yet. A few people have to be planning the same area.' Gate on a settled query, not the initial state, or the message flashes on every city switch.
+- ~~src/features/pins/map-screen.tsx — an honest third state on the legend: when the query has SETTLED and `heatCells.length === 0`, say so, with no number in it: 'Not busy enough to show yet. A few people have to be planning the same area.'~~ **Superseded 2026-09-03: shipped, then removed at the founder's word. A quiet map says nothing in that strip now unless another occupant claims it.**
 
 - src/features/pins/map-screen.tsx:703 — call useMapHeat twice, once with `filterISO` and once with null. When the day-filtered result is empty and the unfiltered one is not, draw the all-days layer and render the footnote 'Busy areas shown across the next three days' in the same branch. The fallback may never appear unlabelled, and never through the one-shot dismissible legend, which is dismissed forever after one read.
 

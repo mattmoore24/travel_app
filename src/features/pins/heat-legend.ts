@@ -10,7 +10,6 @@ import { useAuthStore } from '@/features/auth/store';
 // each legend once more, which is the cheaper wrong.
 const KEY = 'samewhere.heat.legend.v2';
 const PLACES_KEY = 'samewhere.places.legend.v2';
-const EMPTY_KEY = 'samewhere.heat.empty.v2';
 
 /** A dismissal older than this has been forgotten anyway; say it again. */
 export const LEGEND_REARM_MS = 60 * 24 * 3_600_000;
@@ -58,16 +57,6 @@ export function useHeatLegend(hasHeat: boolean) {
  */
 export function usePlacesLegend(hasPlaces: boolean) {
   return useOneShotLegend(PLACES_KEY, hasPlaces);
-}
-
-/**
- * The honest third state: the heat query SETTLED and came back empty. Its
- * own key, separate from the glow explanation — somebody who dismisses "not
- * busy enough yet" on a quiet Tuesday has not read the sentence that
- * explains an actual glow, and must still get that one when it first shows.
- */
-export function useHeatEmptyLegend(active: boolean) {
-  return useOneShotLegend(EMPTY_KEY, active);
 }
 
 function useOneShotLegend(storageKey: string, active: boolean) {
