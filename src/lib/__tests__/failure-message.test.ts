@@ -98,6 +98,17 @@ describe('the D3 rule: the database may not write user-facing copy', () => {
     expect(byHint).toBe(byFragment);
   });
 
+  it('says why a one to one cannot open, instead of the generic', () => {
+    // open_direct_chat raises this for a blocked pair, a business and a guest
+    // recipient alike, with no hint and no terminator, so it fell straight
+    // through to "Something went wrong. Try that again." on the founder's
+    // phone when he messaged somebody in his own group.
+    const said = saveFailureMessage({ message: 'that traveler is unavailable', code: '42501' });
+    expect(said).toBe('You cannot message this traveler one to one right now.');
+    // Not the say-hi sentence: there is no say-hi on this path.
+    expect(said).not.toContain('say hi');
+  });
+
   it('passes a real written sentence through unchanged', () => {
     expect(saveFailureMessage({ message: 'This chat has ended.' })).toBe('This chat has ended.');
     expect(saveFailureMessage({ message: 'That date has already passed.' })).toBe(

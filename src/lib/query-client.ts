@@ -15,6 +15,14 @@ declare module '@tanstack/react-query' {
        * the act that failed instead of the generic "Could not save".
        */
       failureTitle?: string;
+      /**
+       * The screen already renders this failure under the control that
+       * caused it, so the cache must not alert as well. The founder got one
+       * refusal twice over: an inline line under the field AND a popup
+       * saying the same sentence. Only set it where a catch or an onError
+       * ALWAYS writes the message somewhere the person is already looking.
+       */
+      inlineFailure?: boolean;
     };
   }
 }
@@ -166,7 +174,13 @@ export const queryClient = new QueryClient({
     // told the phone is the problem rather than what they typed.
     onSuccess: () => noteRequestOutcome(null),
     onError: (error, _variables, _context, mutation) => {
+      // Before the opt-out, never after: the connection banner reads every
+      // outcome, and a screen that prints its own failure still proves the
+      // phone is online.
       noteRequestOutcome(error);
+      if (mutation.meta?.inlineFailure) {
+        return;
+      }
       // Duck-typed, not instanceof: PostgREST hands back a plain object, so
       // an instanceof check discarded every message the database sent and
       // showed "Something went wrong." for all of them. Real Error

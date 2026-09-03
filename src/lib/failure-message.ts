@@ -65,6 +65,14 @@ export const GENERIC_SAVE_FAILURE = 'Something went wrong. Try that again.';
 // be.
 const CHAT_OVER = 'This chat has already ended.';
 const RECIPIENT_UNAVAILABLE = 'You cannot say hi to this traveler right now.';
+// open_direct_chat folds a blocked pair, a business and a guest recipient
+// into ONE raise, on the same oracle-proofing grounds as the say-hi family
+// above, so this is one sentence true of all three. NOT the say-hi one: there
+// is no say-hi on this path, which is the whole point of the message screen.
+// It reached the founder as the bare "Something went wrong. Try that again."
+// because the raise carries no hint and its lowercase message is not a
+// written sentence.
+const DIRECT_CHAT_UNAVAILABLE = 'You cannot message this traveler one to one right now.';
 const POST_DAILY_CAP = 'That is as much as you can post today. More tomorrow.';
 const ACCOUNT_CLOSED =
   'Your account is closed. Write to us from House rules and help if you think that is wrong.';
@@ -126,6 +134,7 @@ const DB_COPY: Record<string, string> = {
   'request already sent to this traveler': HINT_COPY.hello_already_sent,
   'already connected with this traveler': HINT_COPY.already_connected,
   'recipient unavailable': RECIPIENT_UNAVAILABLE,
+  'that traveler is unavailable': DIRECT_CHAT_UNAVAILABLE,
   'daily request limit reached': HINT_COPY.hello_daily_cap,
   'daily block limit reached': HINT_COPY.block_daily_cap,
   'daily report limit reached': HINT_COPY.report_daily_cap,

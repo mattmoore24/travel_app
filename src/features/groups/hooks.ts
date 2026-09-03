@@ -217,6 +217,9 @@ export function useOpenDirectChat() {
   return useMutation({
     mutationFn: ({ userId, firstMessage }: { userId: string; firstMessage: string }) =>
       openDirectChat(userId, firstMessage),
+    // message/[userId].tsx catches every rejection and prints it under the
+    // field, so the cache's alert on top of it was the same sentence twice.
+    meta: { inlineFailure: true },
     onSuccess: (result) => {
       if (result.blocked) {
         return;
