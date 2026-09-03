@@ -1,5 +1,5 @@
 import { SymbolView } from 'expo-symbols';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -22,6 +22,7 @@ import {
 } from '@/features/pins/cluster';
 import type { PinCluster } from '@/features/pins/cluster';
 import { daysFor } from '@/features/pins/filters';
+import { planListHeights } from '@/features/pins/bottom-stack';
 import { burnOutLabel, intentLabel, pinSubtitle, pinTitle } from '@/features/pins/pin-helpers';
 import { toISODate } from '@/features/trips/dates';
 import { PinGlyph } from '@/features/pins/pin-marker';
@@ -38,17 +39,34 @@ import type { CityBusinessRow, CityPinRow } from '@/lib/database.types';
  *
  * Three detents. The peek is a grab handle and one line — the only place the
  * city's plan count is ever stated — and it ships visible by default, because
- * a peek that has to be discovered is a list nobody finds. It anchors ABOVE
- * the Drop-a-pin dock and expands upward from there, so no detent ever covers
- * the screen's primary action.
+ * a peek that has to be discovered is a list nobody finds.
+ *
+ * The sheet's surface runs to the SCREEN BOTTOM, and the map's dock stands on
+ * an opaque plate cut from the same surface (the map screen's `dockFooting`),
+ * so the strip, the button and the tab-bar clearance read as one card. It
+ * used to stop short of the dock, which left its lower edge as a hard cut
+ * across the map with the button floating in the gap below it — three
+ * stacked slabs where there is one thing. `footing` is how much of the card
+ * that plate covers. Every detent is measured from the screen bottom and
+ * every top edge lands exactly where it did when the sheet stopped short (see
+ * features/pins/bottom-stack). No detent covers the primary action, because
+ * the dock is painted OVER the sheet rather than left underneath it.
  *
  * The entrance and every detent change ride a translateY transform in
  * useAnimatedStyle, never a Slide preset: the Slide family animates the
  * view's real layout and freezes the frame it snapshotted (see traps).
  */
 
-/** The visible height of the collapsed strip. */
-export const PLAN_LIST_PEEK = 76;
+/**
+ * The visible height of the collapsed strip, and `styles.header`'s minHeight.
+ *
+ * 56, not 76: the strip is the top of the map's bottom card, and its content
+ * measures 8 + grabber 4 + gap 8 + one callout line 20 + 8 = 48, so the old
+ * value carried 28pt of empty surface under one line of text. That is a good
+ * part of why a single sentence read as a slab. Still well clear of
+ * HitTarget, and the measured height below grows it with Dynamic Type.
+ */
+export const PLAN_LIST_PEEK = 56;
 
 /** What the collapsed strip says. The count MUST be the filtered pin count. */
 export function planListSummary(cityName: string, pinCount: number, todayCount: number): string {
@@ -167,7 +185,9 @@ export function PlanList({
   collapsed,
   detent,
   onDetentChange,
-  bottom,
+  footing,
+  peekHeight,
+  onPeekHeight,
   onSelectPin,
   onSelectVenue,
   onSelectBusiness,
@@ -194,8 +214,23 @@ export function PlanList({
    */
   detent: PlanListDetent;
   onDetentChange: (next: PlanListDetent) => void;
-  /** Where the peek anchors — above the dock, which it never covers. */
-  bottom: number;
+  /**
+   * The opaque base the map's dock stands on, measured from the SCREEN
+   * bottom: the tab-bar clearance, the dock's measured height and the step
+   * between them, or the bare clearance for an owner with no dock. The
+   * sheet runs under it.
+   */
+  footing: number;
+  /**
+   * The peek strip's height, OWNED BY THE MAP SCREEN. Held there rather than
+   * here for two reasons: the message strip anchors on the card's real top
+   * edge, and this component remounts on every `mode` change, so local state
+   * would re-seed to the constant and spring the card's top edge back into
+   * place on every return from place mode at the accessibility sizes.
+   */
+  peekHeight: number;
+  /** The header's measured height, back up to the owner of `peekHeight`. */
+  onPeekHeight: (height: number) => void;
   onSelectPin: (pin: CityPinRow) => void;
   onSelectVenue: (clusterKey: string) => void;
   onSelectBusiness: (businessId: string) => void;
@@ -208,18 +243,13 @@ export function PlanList({
 }) {
   const theme = useTheme();
   const { height: windowHeight } = useWindowDimensions();
-  // The constant is the seed; the header's own measured height wins once it
-  // lands, because the summary line scales with Dynamic Type and a frozen
-  // 76pt strip clipped it at the accessibility sizes.
-  const [peekHeight, setPeekHeight] = useState(PLAN_LIST_PEEK);
-  // How far the sheet can rise: never into the city rail. The rail sits in
-  // the top ~130pt plus the notch; leave it all clear at the full detent.
-  const usable = Math.max(peekHeight, windowHeight - bottom - 180);
-  const heights: Record<Detent, number> = {
-    peek: peekHeight,
-    half: Math.max(peekHeight, Math.round(usable * 0.55)),
-    full: usable,
-  };
+  // Measured from the screen bottom, never into the city rail, and landing
+  // every top edge where the old split layout put it. See bottom-stack.
+  const heights: Record<Detent, number> = planListHeights({
+    footing,
+    peekHeight,
+    windowHeight,
+  });
 
   // The detent is React state on the MAP SCREEN, not a shared value here: the
   // rows render into the accessibility tree only while the list is open, so a
@@ -299,7 +329,7 @@ export function PlanList({
   );
 
   return (
-    <View style={[styles.host, { bottom }]} pointerEvents="box-none">
+    <View style={styles.host} pointerEvents="box-none">
       <Animated.View
         style={[
           styles.sheet,
@@ -318,7 +348,7 @@ export function PlanList({
             disabled={collapsed}
             onPress={() => snapTo(expanded ? 'peek' : 'half')}
             onLayout={(event) =>
-              setPeekHeight(Math.max(PLAN_LIST_PEEK, Math.round(event.nativeEvent.layout.height)))
+              onPeekHeight(Math.max(PLAN_LIST_PEEK, Math.round(event.nativeEvent.layout.height)))
             }
             style={styles.header}>
             <View style={[styles.grabber, { backgroundColor: theme.hairline }]} />
@@ -336,8 +366,18 @@ export function PlanList({
         </GestureDetector>
 
         <ScrollView
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
+          // The frame is clipped to the SCREEN BOTTOM rather than left
+          // hanging below it. The sheet is a fixed heights.full box that
+          // slides, so at any detent under full its lower (full - target)
+          // points are off screen, and anything the content puts down there
+          // cannot be scrolled into view at all — 234pt of it at the half
+          // detent, before this. Plain layout, changed in the same commit as
+          // the detent: never hand it to an entering or a layout preset,
+          // which is what would freeze the frame (see traps).
+          style={[styles.list, { marginBottom: heights.full - target }]}
+          // ...and the last row clears the dock's plate, which is opaque and
+          // painted over the bottom `footing` points of this frame.
+          contentContainerStyle={[styles.listContent, { paddingBottom: footing + Space.lg }]}
           // At the peek the rows are clipped off screen; take them out of the
           // accessibility tree and the touch path too, or VoiceOver and any
           // test driver would be offered targets nobody can see.
@@ -484,6 +524,11 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
+    // To the screen bottom. The sheet's own lower edge stops being a visible
+    // edge, which is the strip of bare map this change exists to remove.
+    // `overflow` is load-bearing: the sheet is a full-height box that lives
+    // below this frame and slides up into it.
+    bottom: 0,
     overflow: 'hidden',
   },
   sheet: {
@@ -523,7 +568,8 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: Space.lg,
-    paddingBottom: Space.lg,
+    // paddingBottom is injected: it has to clear the dock's plate, whose
+    // height is measured.
     gap: Space.lg,
   },
   section: {

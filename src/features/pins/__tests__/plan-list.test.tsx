@@ -3,6 +3,7 @@ import { useState } from 'react';
 
 import { clusterPins } from '@/features/pins/cluster';
 import {
+  PLAN_LIST_PEEK,
   PlanList,
   listableBusinesses,
   planListSummary,
@@ -82,10 +83,12 @@ function business(over: Partial<CityBusinessRow> = {}): CityBusinessRow {
 }
 
 // The detent is controlled by the map screen now (it needs to know when the
-// expanded list covers the map), so the test hosts the same state the map
-// screen holds.
+// expanded list covers the map), and so is the peek strip's measured height
+// (the message slot anchors on it, and the list remounts on every mode
+// change). The test hosts the same two pieces of state the map screen holds.
 function Host(props: Partial<Parameters<typeof PlanList>[0]> & { pins: CityPinRow[] }) {
   const [detent, setDetent] = useState<PlanListDetent>('peek');
+  const [peekHeight, setPeekHeight] = useState(PLAN_LIST_PEEK);
   return (
     <PlanList
       cityName="Bangkok"
@@ -97,7 +100,9 @@ function Host(props: Partial<Parameters<typeof PlanList>[0]> & { pins: CityPinRo
       collapsed={false}
       detent={detent}
       onDetentChange={setDetent}
-      bottom={120}
+      footing={92}
+      peekHeight={peekHeight}
+      onPeekHeight={setPeekHeight}
       onSelectPin={jest.fn()}
       onSelectVenue={jest.fn()}
       onSelectBusiness={jest.fn()}
