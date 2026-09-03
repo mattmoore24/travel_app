@@ -3,6 +3,66 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **The dock stood 50pt too high on every tab** (2026-09-03)
+
+The founder, on the card that shipped an hour earlier: _"can you move everything
+down a bit so that the 'drop a pin' button and part where it shows plans in your city
+aren't taking up so much room on the bottom? It looks like there is empty space below
+the button."_ There was, and it was a bug on every tab, not a taste question.
+
+**What was wrong.** `useTabDockBottom` was `tabBarInset + insets.bottom + Space.sm`,
+and on iOS the tab bar is ALREADY INSIDE `insets.bottom`: expo-router wraps every
+native tab screen's content in a `SafeAreaProvider` of its own, and a provider
+publishes its own view's insets, which UIKit has already grown by the bar. So the
+constant was being added to a measurement that already contained it. The hook's doc
+comment asserted the opposite in as many words ("NativeTabs publishes no height to
+JS, so the inset is DERIVED from fontScale"); that sentence was false and is deleted.
+
+**Measured, not guessed**, off the founder's screenshot at 3x (iPhone 15/16 Pro):
+the tab capsule's top edge is at 83.3pt and the Drop-a-pin button's bottom edge at
+141.3, and `141.3 - BottomTabInset(50) - Space.sm(8) = 83.3` exactly. Second,
+independent check: the plan card's top edge measured 257, and
+`141.3 + 52 + 8 + PLAN_LIST_PEEK(56) = 257.3`. The "it is really a high fontScale"
+alternative is refuted by the same picture, because at ~2x the button could not
+measure 51.7pt against a `DOCK_MIN_HEIGHT` of 52.
+
+**The fix keeps one formula and one hook.** `tabDockBottomOf` trusts the inset when
+it exceeds the window's own bottom inset, and otherwise falls back to exactly
+today's sum. The fallback is load-bearing twice: `ConnectedNotice` is mounted as a
+sibling of the tabs, so its inset is the home indicator alone and it must not move;
+and a tab provider seeds from its parent until its native view lays out, so the
+first frame reports the window's inset. That frame is why this is not a bare
+`insets.bottom` - the old bug slid "Drop a pin" and "Say hi" under the bar, and no
+frame may do that again. A wrong read on a device we cannot see therefore degrades
+to today's behaviour, never to a buried button.
+
+On the founder's phone: the dock rises 141.3 -> 91.3, the plan card's top edge drops
+257 -> 207, and the map gains 50pt. Travelers, my-business and the placeholder
+screens gain the same 50 (the placeholder was adding the constant on top of a
+`SafeAreaView` whose edges are all additive).
+
+**The message that failed.** He also messaged somebody in his own group and got
+"Something went wrong. Try that again." twice over, inline and as an alert.
+`open_direct_chat` refuses a guest RECIPIENT, which Kate is, and the raise carries
+no hint and no terminator, so `saveFailureMessage` fell through to the generic
+sentence; the alert was the global mutation cache firing on top of the screen's own
+catch. Both fixed on the client: the raise maps to "You cannot message this traveler
+one to one right now.", and `meta: { inlineFailure: true }` stops the cache alerting
+for a mutation whose screen always prints its own failure.
+
+**Founder question, and it is a product decision, not a bug.** The guest rule is
+deliberate and written down twice - ARCHITECTURE.md ("Guests are neither end of it
+... cannot ... open or receive a one-to-one chat") and the `add_people_without_a_link`
+migration's own header - on the grounds that an unaccountable identity is not put in
+front of somebody one to one, and that the janitor deletes a guest when its last
+membership goes. It is NOT a §7 hard rule; it is not mentioned in PRODUCT_BRIEF.md at
+all. So it can change on the founder's word. If it does, it is a Supabase deploy and
+it is not a one-line predicate removal: `stale_guest_ids` keys guest liveness on
+group membership and recent messages and never looks at `chat_participants`, so a
+guest who leaves the group and goes quiet for 30 days would be deleted and
+`messages.sender_id ... on delete cascade` would take her half of the thread with
+her. That clause has to move in the same deploy.
+
 ## **The bottom of the map is one card** (2026-09-03)
 
 The founder sent a screenshot of the Map tab: _"it looks bad with the pop up menu being

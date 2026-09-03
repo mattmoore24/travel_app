@@ -50,10 +50,17 @@ describe('the action bar and its ground share one formula', () => {
     }
   });
 
-  it('the dock offset takes the whole inset, floored at the constant', () => {
-    // dockBottom = tabBarInset + insets.bottom + Space.sm, where tabBarInset
-    // never drops below BottomTabInset and scales with fontScale (clamped).
-    expect(hook).toContain('return tabBarInset + insets.bottom + Space.sm;');
+  it('takes the bar from the inset that already holds it, and floors on the constant', () => {
+    // On iOS the tab child's OWN safe-area inset already contains the tab bar
+    // (expo-router wraps every native tab screen in a SafeAreaProvider of its
+    // own), so the constant is the FALLBACK, never an addend: adding it was
+    // 50pt of dead map under every dock on the founder's phone. The sum
+    // survives for the tree outside the tab host and for the frame before a
+    // tab provider has laid out, which is where the fontScale estimate still
+    // keeps the dock off the bar.
+    expect(hook).toContain('measured ? insetBottom : tabBarInset + insetBottom');
+    expect(hook).toContain('initialWindowMetrics');
+    expect(hook).toContain("barInInset: Platform.OS === 'ios'");
     expect(hook).toContain('Math.min(Math.max(fontScale, 1), MAX_TAB_BAR_SCALE)');
     expect(hook).toContain('Math.round(BottomTabInset * scale)');
   });

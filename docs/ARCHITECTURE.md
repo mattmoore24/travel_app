@@ -188,6 +188,13 @@ created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited p
   (`heatmap_viewed` replaced `heatmap_rendered` 2026-08-31: a view now requires
   drawn pixels on an uncovered map rather than heat data arriving, so the
   series legitimately drops at the rename.)
+- **The tab bar is inside the safe-area inset on iOS** (2026-09-03): expo-router
+  wraps each native tab screen's content in its own `SafeAreaProvider`, which
+  publishes that view's insets after UIKit has grown them by the bar. So
+  `useTabDockBottom` (`src/hooks/use-tab-bar-inset.ts`) treats `BottomTabInset` as a
+  FALLBACK for the tree outside the tab host and for the pre-layout frame, never as
+  an addend on the measurement. Adding it was 50pt of dead space under every docked
+  bar in the app. `tabDockBottomOf` is the pure half, unit-tested by execution.
 - **The map's bottom card** (2026-09-03): the plan list's sheet runs to the SCREEN bottom
   and the Drop-a-pin dock is painted over it on a plate cut from the same `theme.surface`,
   so the peek strip, the button and the tab-bar clearance are one card rather than three
