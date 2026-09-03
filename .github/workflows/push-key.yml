@@ -66,10 +66,17 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -o pipefail
-          for name in EXPO_TOKEN APPLE_PUSH_KEY_P8; do
-            if [ -z "${!name}" ]; then
-              echo "::error::$name is not set. Add it under Settings -> Secrets and variables -> Actions."
-              exit 1
-            fi
-          done
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::EXPO_TOKEN is not set."
+            exit 1
+          fi
+          # The .p8 is only needed for a real run. A dry run reports what is on
+          # the account and writes nothing, so it can be used to test the
+          # plumbing BEFORE a private key is pasted into a secret.
+          if [ "$DRY_RUN" != "true" ] && [ -z "$APPLE_PUSH_KEY_P8" ]; then
+            echo "::error::APPLE_PUSH_KEY_P8 is not set. Add it under Settings ->"
+            echo "::error::Secrets and variables -> Actions, holding the FULL text of"
+            echo "::error::the AuthKey_XXXXXXXXXX.p8 file. Or run with dry_run to look first."
+            exit 1
+          fi
           node .github/scripts/attach-push-key.mjs

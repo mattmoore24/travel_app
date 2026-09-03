@@ -36,7 +36,7 @@ if (!/^[A-Z0-9]{10}$/.test(TEAM_ID)) {
 // The .p8 is a private key. It is passed to Expo and never printed: no echo,
 // no error message that quotes it, no summary line.
 const P8 = process.env.APPLE_PUSH_KEY_P8 ?? '';
-if (!P8.includes('BEGIN PRIVATE KEY')) {
+if (!DRY_RUN && !P8.includes('BEGIN PRIVATE KEY')) {
   fail(
     'APPLE_PUSH_KEY_P8 does not look like a .p8 file. It must hold the FULL text of ' +
       'AuthKey_XXXXXXXXXX.p8, including the BEGIN and END lines.'
