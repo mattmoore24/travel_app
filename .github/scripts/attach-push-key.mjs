@@ -232,6 +232,47 @@ if (!teamThere || !keyThere) {
   );
 }
 
+// AND THAT IT IS ATTACHED TO THE APP, which is a different question and the
+// one that decides whether a push is delivered. The first version of this
+// script checked only the two above and reported "team and key are both
+// present", which was true and not enough: a key can sit on the account while
+// the app's credentials have none, and Expo then answers a send with "you
+// need to upload push notification credentials". Ask the app.
+const appCredentials = (
+  await gql(
+    `query AppPushKey($projectFullName: String!, $appleAppIdentifierId: String!) {
+       app {
+         byFullName(fullName: $projectFullName) {
+           id
+           iosAppCredentials(filter: { appleAppIdentifierId: $appleAppIdentifierId }) {
+             id
+             pushKey { id keyIdentifier }
+             appleTeam { appleTeamIdentifier }
+           }
+         }
+       }
+     }`,
+    {
+      projectFullName: `@${ACCOUNT_NAME}/samewhere`,
+      appleAppIdentifierId: appleAppIdentifier.id,
+    }
+  )
+).app.byFullName.iosAppCredentials;
+
+const attached = appCredentials.find((c) => c.pushKey?.keyIdentifier === KEY_ID);
+console.log(
+  `App credentials rows: ${appCredentials.length}; push keys on them: ${
+    appCredentials.map((c) => c.pushKey?.keyIdentifier ?? '(none)').join(', ') || '(no rows)'
+  }`
+);
+if (!attached) {
+  fail(
+    `Push key ${KEY_ID} is on the account but NOT attached to the app's iOS credentials. ` +
+      'Expo will refuse to send. This is the state that produces "you need to upload push ' +
+      'notification credentials" on expo.dev/notifications.'
+  );
+}
+
 const summary = [
   '## APNs push key attached',
   '',
