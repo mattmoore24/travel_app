@@ -32,15 +32,34 @@
 # already configured for the build workflow and is reused.
 name: Attach the APNs push key
 
+# TWO WAYS TO RUN IT, and the first exists because of a GitHub rule this
+# repo has already worked around once: `workflow_dispatch` workflows are only
+# listed (and only dispatchable through the API) when the file is on the
+# DEFAULT branch. This one is not, so it also triggers on a push to its own
+# request file — the same device supabase-deploy.yml uses, and for the same
+# reason.
+#
+#   * Commit any change to .github/push-key-request (works from any branch).
+#   * Actions -> Attach the APNs push key -> Run workflow (only once this file
+#     reaches the default branch).
+#
+# Whether it WRITES is decided by the secret, not by a flag: with no
+# APPLE_PUSH_KEY_P8 it reports what is on the account and changes nothing, so
+# the plumbing can be proved before a private key is handed over. Add the
+# secret and touch the file again to attach for real.
 on:
+  push:
+    paths:
+      - '.github/push-key-request'
   workflow_dispatch:
     inputs:
       key_id:
         description: The 10-character Key ID of the APNs key (Apple Developer -> Keys)
-        required: true
+        required: false
+        default: 'JK5M6367VN'
       team_id:
         description: Apple Team ID
-        required: true
+        required: false
         default: '9GSR77B4U5'
       dry_run:
         description: Only report what exists today, change nothing
@@ -61,8 +80,10 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           APPLE_PUSH_KEY_P8: ${{ secrets.APPLE_PUSH_KEY_P8 }}
-          KEY_ID: ${{ inputs.key_id }}
-          TEAM_ID: ${{ inputs.team_id }}
+          # A push carries no inputs, so the defaults are the facts about this
+          # project's key. A dispatch may override them.
+          KEY_ID: ${{ inputs.key_id || 'JK5M6367VN' }}
+          TEAM_ID: ${{ inputs.team_id || '9GSR77B4U5' }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -o pipefail
@@ -70,13 +91,14 @@ jobs:
             echo "::error::EXPO_TOKEN is not set."
             exit 1
           fi
-          # The .p8 is only needed for a real run. A dry run reports what is on
-          # the account and writes nothing, so it can be used to test the
-          # plumbing BEFORE a private key is pasted into a secret.
-          if [ "$DRY_RUN" != "true" ] && [ -z "$APPLE_PUSH_KEY_P8" ]; then
-            echo "::error::APPLE_PUSH_KEY_P8 is not set. Add it under Settings ->"
-            echo "::error::Secrets and variables -> Actions, holding the FULL text of"
-            echo "::error::the AuthKey_XXXXXXXXXX.p8 file. Or run with dry_run to look first."
-            exit 1
+          # No key means look, do not touch. That is not a failure: it is how
+          # the plumbing gets proved before a private key is pasted into a
+          # repository secret.
+          if [ -z "$APPLE_PUSH_KEY_P8" ]; then
+            echo "::warning::APPLE_PUSH_KEY_P8 is not set, so this run only REPORTS."
+            echo "::warning::Add it under Settings -> Secrets and variables -> Actions,"
+            echo "::warning::holding the FULL text of AuthKey_XXXXXXXXXX.p8, then commit"
+            echo "::warning::any change to .github/push-key-request to attach it."
+            export DRY_RUN=true
           fi
-          node .github/scripts/attach-push-key.mjs
+          DRY_RUN="$DRY_RUN" node .github/scripts/attach-push-key.mjs

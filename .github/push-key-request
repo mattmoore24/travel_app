@@ -1,0 +1,11 @@
+# Touch this file (any change) to run .github/workflows/push-key.yml on the
+# current branch, which is the only way to run it until that workflow reaches
+# the default branch — GitHub lists workflow_dispatch workflows from there
+# alone. The same device supabase/.deploy-request uses.
+#
+# With no APPLE_PUSH_KEY_P8 secret the run REPORTS and changes nothing. With
+# it, the run attaches the key. The line below is just a log.
+
+2026-09-02 — look only: no APPLE_PUSH_KEY_P8 secret yet. Expect the run to
+             report the account's Apple teams (expected: none, which is the
+             blockage) and its push keys, then stop without writing.
