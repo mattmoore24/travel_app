@@ -1,0 +1,75 @@
+# Attaches an APNs auth key to this project's EAS credentials, from a phone.
+#
+# WHY THIS EXISTS. `eas credentials` is the documented way to do this and it
+# cannot be used here: it is interactive-only (its sole flag is --platform;
+# there is no --profile and SetUpPushKey throws in --non-interactive), and this
+# project has no interactive machine — the same reason scripts/asc-provision.mjs
+# exists. The Expo website cannot do it either: its upload dialog reports
+# "There are no Apple Developer teams associated with this account" and the
+# submit button is inert, because the account has no Apple Team record and
+# nothing in the web UI creates one.
+#
+# So this calls the same GraphQL API eas-cli calls, in the same order, with the
+# same inputs — read out of eas-cli's own compiled source rather than guessed:
+#   AccountQuery.getByNameAsync                     -> account id
+#   AppleTeamMutation.createAppleTeamAsync          -> THE MISSING RECORD
+#   AppleAppIdentifierMutation.createAppleAppId...  -> the bundle id
+#   ApplePushKeyMutation.createApplePushKeyAsync    -> stores the .p8
+#   IosAppCredentialsMutation.setPushKeyAsync       -> attaches it to the app
+#
+# SAFE BY CONSTRUCTION: every operation below is a create, a read, or a set.
+# There is no delete or revoke mutation anywhere in this file, so it cannot
+# take away a key, a certificate or a profile — which is the one thing the
+# interactive flow can do by accident, since its "generate a new key?" prompt
+# defaults to Yes and, at Apple's two-key cap, offers to revoke one.
+#
+# It also never touches distribution certificates or provisioning profiles.
+# scripts/asc-provision.mjs mints those per build and revokes what it finds;
+# anything created here by hand would be trampled later with no explanation.
+#
+# Needs one new repository secret, APPLE_PUSH_KEY_P8, holding the FULL text of
+# the AuthKey_XXXXXXXXXX.p8 file (BEGIN/END lines included). EXPO_TOKEN is
+# already configured for the build workflow and is reused.
+name: Attach the APNs push key
+
+on:
+  workflow_dispatch:
+    inputs:
+      key_id:
+        description: The 10-character Key ID of the APNs key (Apple Developer -> Keys)
+        required: true
+      team_id:
+        description: Apple Team ID
+        required: true
+        default: '9GSR77B4U5'
+      dry_run:
+        description: Only report what exists today, change nothing
+        type: boolean
+        default: false
+
+jobs:
+  attach:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Attach the push key
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          APPLE_PUSH_KEY_P8: ${{ secrets.APPLE_PUSH_KEY_P8 }}
+          KEY_ID: ${{ inputs.key_id }}
+          TEAM_ID: ${{ inputs.team_id }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -o pipefail
+          for name in EXPO_TOKEN APPLE_PUSH_KEY_P8; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not set. Add it under Settings -> Secrets and variables -> Actions."
+              exit 1
+            fi
+          done
+          node .github/scripts/attach-push-key.mjs
