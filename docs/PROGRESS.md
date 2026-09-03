@@ -3,6 +3,59 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **The bottom of the map is one card** (2026-09-03)
+
+The founder sent a screenshot of the Map tab: _"it looks bad with the pop up menu being
+above the drop a pin button like that, and also the not busy enough to show yet pop up can
+be removed."_ Both halves are done.
+
+**The pop-up over the button.** The plan list's sheet stopped 152pt short of the screen, so
+its lower edge was a hard cut across the map with the Drop-a-pin pill floating in the strip
+of bare map below it, and the tab bar floating below that: three slabs where there is one
+thing. The sheet now runs to the screen's bottom edge and the dock stands on an opaque plate
+cut from the same `theme.surface`, so the peek strip, the button and the tab-bar clearance
+read as one card. The two browse docks moved AFTER `<PlanList>` in the JSX, so the button is
+painted over the sheet at every detent instead of being buried by it — which also means the
+primary action is now on screen with the list open, where before an expanded list covered
+it.
+
+**Nothing moved that a person had learned the position of.** The arithmetic came out of the
+screen into `src/features/pins/bottom-stack.ts` and is unit-tested by execution against the
+old expressions as its oracle: every detent's top edge and every `messageSlot` value lands
+where the split layout put it, on four device heights × four footings × four peek heights.
+The one deliberate move is the peek strip, `PLAN_LIST_PEEK` 76 → 56: its content measures
+48pt, so the old value carried 28pt of empty surface under one line of text, which is a good
+part of why one sentence read as a slab. The map gains those 20pt back.
+
+**Two bugs fixed on the way.**
+
+1. The plan list's `ScrollView` had no bottom clip, so at any detent under full its frame
+   hung below the screen and the content down there could not be scrolled into view at all —
+   234pt of it at the half detent. `marginBottom: heights.full - target`.
+2. `messageSlot` composed the `PLAN_LIST_PEEK` CONSTANT while the strip rendered at its
+   Dynamic Type height, so at the accessibility sizes every banner and chip sat behind the
+   card's own top edge. Both heights it composes are measured now, and the peek measurement
+   is held on the map screen rather than inside the list, which remounts on every mode
+   change.
+
+**"Not busy enough to show yet."** Gone entirely: `useHeatEmptyLegend`, its storage key, its
+`SLOT_ORDER` entry, its gate on the places legend, and its JSX. The strip stays empty on a
+quiet map unless another occupant claims it.
+
+**Founder question.** With `heat-empty` gone, `places-legend` ("Tap a business to see what's
+on") is next in `SLOT_ORDER` and now inherits that strip on a quiet, business-filtered map.
+You asked for one fewer floating layer and by default you get a different chip in the same
+place. Should the teaching chips leave that strip as a class, or keep their one read each?
+
+**Known and accepted.** Collapsing from the half detent shrinks the list frame in one commit
+while the sheet springs for 350ms, so rows blank to bare surface for that beat before the
+sheet slides down over them — transient only, and no map shows through. VoiceOver's swipe
+order is now dock-then-list where the eye reads list-then-dock; both fixes cost more than
+they buy. `connected-notice` floats at `dockBottom`, which now lands it on the card rather
+than on map; it is an overlay and the card is a legitimate ground, but it is unphotographed.
+
+Not yet seen on a device or in the simulator gallery — the screens run is the next step.
+
 ## **Three closures, so the build is the last thing that lands** (2026-09-02)
 
 The founder asked for the one EAS build the native changes are waiting on, and for any

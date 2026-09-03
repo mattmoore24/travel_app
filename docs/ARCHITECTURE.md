@@ -188,6 +188,14 @@ created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited p
   (`heatmap_viewed` replaced `heatmap_rendered` 2026-08-31: a view now requires
   drawn pixels on an uncovered map rather than heat data arriving, so the
   series legitimately drops at the rename.)
+- **The map's bottom card** (2026-09-03): the plan list's sheet runs to the SCREEN bottom
+  and the Drop-a-pin dock is painted over it on a plate cut from the same `theme.surface`,
+  so the peek strip, the button and the tab-bar clearance are one card rather than three
+  floating slabs. The arithmetic is `src/features/pins/bottom-stack.ts` — `dockFootingOf`
+  (the plate), `messageSlotOf` (the one message strip) and `planListHeights` (the three
+  detents), all composed from MEASURED heights, never the constants, because both the button
+  and the peek grow with Dynamic Type. `useTabDockBottom()` is still the app's only
+  tab-bar clearance formula; nothing here adds a second one.
 - **Venue search**: free-text venue name + manual map placement for v1 — same zero-key
   posture as the cities decision; a places API or curated venue seeds can layer in later
   without schema changes (flagged to founder).
