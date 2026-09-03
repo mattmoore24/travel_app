@@ -371,7 +371,15 @@ entitlement; only a phone proves delivery.
    whichever account last registered on that phone).
 3. Send yourself one notification from the Expo push tool at
    <https://expo.dev/notifications> against that token, with the app in the
-   background. Watch it land on the lock screen with the app's icon and tint.
+   background. Watch it land on the lock screen.
+
+   It carries the APP icon, not the plugin's. `icon` and `color` in the
+   expo-notifications block are ANDROID-ONLY — they are what stops an
+   undeclared icon rendering as a grey square there — so an iOS notification
+   says nothing about whether either is right. Those two stay unproven until
+   there is an Android build; the only iOS-relevant option in that block is
+   `mode`, and the build reads it off the signature.
+
 4. Record the build id and both answers in `docs/PROGRESS.md`.
 
 A push that never arrives on a build whose summary says `production` is a
