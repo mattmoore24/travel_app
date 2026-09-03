@@ -9,3 +9,8 @@
 2026-09-02 — look only: no APPLE_PUSH_KEY_P8 secret yet. Expect the run to
              report the account's Apple teams (expected: none, which is the
              blockage) and its push keys, then stop without writing.
+
+2026-09-04 — attach for real. APPLE_PUSH_KEY_P8 is set, so this run should
+             create the Apple team 9GSR77B4U5 (the record whose absence made
+             the website's upload button inert), store push key JK5M6367VN,
+             and attach it to com.mattmoore.samewhere.
