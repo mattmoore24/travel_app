@@ -174,11 +174,43 @@ if (already) {
 }
 
 // --- 6. Attach it to the app ------------------------------------------------
-// createIosAppCredentials is create-or-return: eas-cli calls it the same way
-// and the server answers with the existing row when there is one.
-const credentials = (
-  await gql(
-    `mutation CreateIosAppCredentials(
+// Query BEFORE creating. createIosAppCredentials is NOT create-or-return - an
+// earlier version of this file assumed it was, and the second run died on
+// "Credential for Apple application identifier already exists for this app".
+// Which was useful: a mutation that throws on the happy path of a re-run makes
+// the script single-use, and a credentials script you can only run once is one
+// you cannot use to check anything.
+const APP_CREDENTIALS_QUERY = `
+  query AppPushKey($projectFullName: String!, $appleAppIdentifierId: String!) {
+    app {
+      byFullName(fullName: $projectFullName) {
+        id
+        iosAppCredentials(filter: { appleAppIdentifierId: $appleAppIdentifierId }) {
+          id
+          pushKey { id keyIdentifier }
+          appleTeam { appleTeamIdentifier }
+        }
+      }
+    }
+  }`;
+const APP_VARS = {
+  projectFullName: `@${ACCOUNT_NAME}/samewhere`,
+  appleAppIdentifierId: appleAppIdentifier.id,
+};
+
+const existingCredentials = (await gql(APP_CREDENTIALS_QUERY, APP_VARS)).app.byFullName
+  .iosAppCredentials;
+
+let credentials = existingCredentials[0];
+if (credentials) {
+  console.log(
+    `App credentials row already exists (${credentials.id}), push key on it: ` +
+      `${credentials.pushKey?.keyIdentifier ?? '(none)'}`
+  );
+} else {
+  credentials = (
+    await gql(
+      `mutation CreateIosAppCredentials(
        $iosAppCredentialsInput: IosAppCredentialsInput!
        $appId: ID!
        $appleAppIdentifierId: ID!
@@ -191,13 +223,15 @@ const credentials = (
          ) { id }
        }
      }`,
-    {
-      iosAppCredentialsInput: { appleTeamId: team.id },
-      appId: PROJECT_ID,
-      appleAppIdentifierId: appleAppIdentifier.id,
-    }
-  )
-).iosAppCredentials.createIosAppCredentials;
+      {
+        iosAppCredentialsInput: { appleTeamId: team.id },
+        appId: PROJECT_ID,
+        appleAppIdentifierId: appleAppIdentifier.id,
+      }
+    )
+  ).iosAppCredentials.createIosAppCredentials;
+  console.log(`Created the app credentials row (${credentials.id}).`);
+}
 
 await gql(
   `mutation SetPushKey($iosAppCredentialsId: ID!, $pushKeyId: ID!) {
@@ -238,26 +272,8 @@ if (!teamThere || !keyThere) {
 // present", which was true and not enough: a key can sit on the account while
 // the app's credentials have none, and Expo then answers a send with "you
 // need to upload push notification credentials". Ask the app.
-const appCredentials = (
-  await gql(
-    `query AppPushKey($projectFullName: String!, $appleAppIdentifierId: String!) {
-       app {
-         byFullName(fullName: $projectFullName) {
-           id
-           iosAppCredentials(filter: { appleAppIdentifierId: $appleAppIdentifierId }) {
-             id
-             pushKey { id keyIdentifier }
-             appleTeam { appleTeamIdentifier }
-           }
-         }
-       }
-     }`,
-    {
-      projectFullName: `@${ACCOUNT_NAME}/samewhere`,
-      appleAppIdentifierId: appleAppIdentifier.id,
-    }
-  )
-).app.byFullName.iosAppCredentials;
+const appCredentials = (await gql(APP_CREDENTIALS_QUERY, APP_VARS)).app.byFullName
+  .iosAppCredentials;
 
 const attached = appCredentials.find((c) => c.pushKey?.keyIdentifier === KEY_ID);
 console.log(

@@ -21,3 +21,10 @@
              credentials carry none, and Expo then refuses the send with "you
              need to upload push notification credentials" - which is what
              happened. This run also asks the APP.
+
+2026-09-04 — re-run, now that the attach step queries before it creates. The
+             previous run proved something by dying: createIosAppCredentials
+             answered "Credential for Apple application identifier already
+             exists for this app", which means the run before it DID create the
+             row and set the key. This run should say so out loud rather than
+             leaving it to be inferred from an error.
