@@ -59,7 +59,7 @@ import { AudienceChip } from '@/features/pins/audience-chip';
 import { audienceInSentence } from '@/features/profile/audience';
 import { deviceTimezone, pickBrowsingCity } from '@/features/pins/browsing-city';
 import { useCityChoice } from '@/features/pins/city-store';
-import { FAR_FROM_CITY_M, anyInRegion, fitRegion } from '@/features/pins/camera';
+import { FAR_FROM_CITY_M, anyInRegion, fitRegion, homeRegion } from '@/features/pins/camera';
 import {
   CITY_ZOOM_DELTA,
   clusterByScreen,
@@ -1662,6 +1662,21 @@ export default function MapScreen() {
     ],
     [pins, places, filters, cityScale]
   );
+  // WHERE HOME IS: the frame the fit below lands on once this city's rows
+  // are in, the city's own box until then (and while the query is still
+  // showing the last city's rows, which would otherwise be framed as this
+  // one's home for a beat and summon the pill mid-flight). The pill measures
+  // from here and lands here; see homeRegion for why not the centroid.
+  const home = useMemo(
+    () =>
+      activeCity == null
+        ? null
+        : homeRegion(pinsLoaded && !pinsQuery.isPlaceholderData ? markerPoints : [], {
+            lat: activeCity.cities.lat,
+            lng: activeCity.cities.lng,
+          }),
+    [activeCity, pinsLoaded, pinsQuery.isPlaceholderData, markerPoints]
+  );
   // Fit the camera to its own data: on first arrival, on a city switch once
   // the new city's rows land, and on every filter change — a narrowed map
   // must re-frame what survived or it reads as an emptied city. Never while
@@ -1831,11 +1846,12 @@ export default function MapScreen() {
     pinsLoaded &&
     markerPoints.length > 0 &&
     !anyInRegion(markerPoints, settledRegion);
+  // From home, not from the city's centroid: the app's own framing of a
+  // spread-out city used to count as having drifted (homeRegion).
   const farFromCity =
-    activeCity != null &&
+    home != null &&
     mapCentre != null &&
-    metersBetween(mapCentre.lat, mapCentre.lng, activeCity.cities.lat, activeCity.cities.lng) >
-      FAR_FROM_CITY_M;
+    metersBetween(mapCentre.lat, mapCentre.lng, home.latitude, home.longitude) > FAR_FROM_CITY_M;
   const emptyCity =
     pinsLoaded &&
     pins.length === 0 &&
@@ -1931,8 +1947,29 @@ export default function MapScreen() {
     return <PlaceholderScreen configError icon={{ ios: 'map.fill', android: 'map', web: 'map' }} />;
   }
 
+  /**
+   * Back to where the app framed this city's plans. The way-home pill and a
+   * tap on the chip that is already lit both land here, and here is what
+   * the pill measures from, so neither can land somewhere that summons the
+   * pill again (the city's centroid did, for Denpasar).
+   */
+  const goHome = () => {
+    if (home == null) {
+      return;
+    }
+    setSelectedPinId(null);
+    setVenueKey(null);
+    setSelectedPlaceId(null);
+    mapRef.current?.animateToRegion(home, reduceMotion ? 0 : 350);
+  };
+
   /** The chip-tap path: the same move as applyCity, chosen by a person. */
   const selectCity = (city: BrowseCity) => {
+    // The lit chip again is a recentre, not a switch: home, and no event.
+    if (city.city_id === activeCityId) {
+      goHome();
+      return;
+    }
     applyCity(city);
     // The other half of the attribution fix: a switch is an event of its
     // own, so the funnel can tell "chose Lisbon" from "defaulted there".
@@ -2746,7 +2783,8 @@ export default function MapScreen() {
 
       {/* Panned properly away: a discoverable way home. Tapping the selected
           city chip also recentres, but nobody guesses a selected chip is a
-          button. Lands on the same 0.09 box the chip lands on. */}
+          button. Lands where the app framed the city's plans, which is
+          where the lit chip's tap lands and where "away" is measured from. */}
       {slot === 'way-home' && activeCity ? (
         <Animated.View
           entering={FadeInUp.duration(Motion.standard)}
@@ -2758,17 +2796,7 @@ export default function MapScreen() {
             accessibilityLabel={`Back to ${activeCity.cities.name}`}
             haptic="light"
             scaleTo={0.94}
-            onPress={() =>
-              mapRef.current?.animateToRegion(
-                {
-                  latitude: activeCity.cities.lat,
-                  longitude: activeCity.cities.lng,
-                  latitudeDelta: 0.09,
-                  longitudeDelta: 0.09,
-                },
-                reduceMotion ? 0 : 350
-              )
-            }>
+            onPress={goHome}>
             <View
               style={[
                 styles.legendChip,

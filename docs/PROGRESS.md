@@ -91,6 +91,18 @@ and no matching horizon. `expire_message_requests` keeps its 180-day term: its
 own 30-day cap makes the term unable to change a result, and the migration
 header says so.
 
+### The map's way home is where the app framed the city
+
+Frame 09 of run 115 photographed Denpasar right after a relaunch with "Back
+to Denpasar" over it. The map frames every plan a city has, and Denpasar's run
+from Ubud to Uluwatu, so the fit itself sits 6 km from the city's centroid;
+the pill measured from the centroid with a 4 km threshold, so the app's own
+framing counted as having drifted, on every cold start and chip tap. Home is
+now `homeRegion`: the fit once the plans are in, the city's box until then.
+The pill measures from it and lands on it, and a tap on the chip that is
+already lit lands there too instead of on the centroid (which for Denpasar
+summoned the pill again). camera.test.ts holds the Denpasar case.
+
 ### A design panel first
 
 Three independent designs (least UI, trips as the hero, the words first), two

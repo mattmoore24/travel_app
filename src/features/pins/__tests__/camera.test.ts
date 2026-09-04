@@ -1,4 +1,13 @@
-import { MAX_FIT_SPAN, MIN_FIT_SPAN, anyInRegion, fitRegion } from '@/features/pins/camera';
+import {
+  FAR_FROM_CITY_M,
+  MAX_FIT_SPAN,
+  MIN_FIT_SPAN,
+  anyInRegion,
+  fitRegion,
+  homeRegion,
+} from '@/features/pins/camera';
+import { metersBetween } from '@/features/pins/cluster';
+import { between, source } from '@/lib/__tests__/source';
 
 // The camera frames its own data now, instead of opening every city on the
 // same hardcoded 0.09-degree box. The clamps are the contract: never tighter
@@ -32,6 +41,56 @@ describe('fitRegion', () => {
     ])!;
     expect(region.latitudeDelta).toBeGreaterThan(0.03);
     expect(region.latitudeDelta).toBeLessThanOrEqual(MAX_FIT_SPAN);
+  });
+});
+
+describe('homeRegion', () => {
+  // Denpasar's launch pins and the city row's own coordinate, from the seed
+  // (20260818010000 and 20260816200100): Canggu to Uluwatu to Ubud.
+  const denpasar = { lat: -8.65, lng: 115.21667 };
+  const plans = [
+    { lat: -8.6478, lng: 115.1385 },
+    { lat: -8.6931, lng: 115.262 },
+    { lat: -8.5194, lng: 115.2606 },
+    { lat: -8.8291, lng: 115.0849 },
+    { lat: -8.66, lng: 115.13 },
+  ];
+
+  it('is the fit over the plans once there are any', () => {
+    expect(homeRegion(plans, denpasar)).toEqual(fitRegion(plans));
+  });
+
+  it("is the city's own box until then", () => {
+    expect(homeRegion([], denpasar)).toEqual({
+      latitude: denpasar.lat,
+      longitude: denpasar.lng,
+      latitudeDelta: MAX_FIT_SPAN,
+      longitudeDelta: MAX_FIT_SPAN,
+    });
+  });
+
+  it('is not the centroid: a spread-out city frames itself past the drift threshold', () => {
+    // The E2E run 115 frame: the app framed Denpasar's plans and then said
+    // "Back to Denpasar" about its own frame. Home is the reference now, so
+    // the map is at home by construction the moment the fit lands.
+    const home = homeRegion(plans, denpasar);
+    expect(
+      metersBetween(home.latitude, home.longitude, denpasar.lat, denpasar.lng)
+    ).toBeGreaterThan(FAR_FROM_CITY_M);
+  });
+
+  it('is what the map measures from and lands on', () => {
+    const screen = source('src/features/pins/map-screen.tsx');
+    expect(screen).toContain(
+      'metersBetween(mapCentre.lat, mapCentre.lng, home.latitude, home.longitude) > FAR_FROM_CITY_M'
+    );
+    // The pill and the lit chip's tap both go home, never to the centroid's
+    // 0.09 box, which for Denpasar is a place that summons the pill again.
+    const pill = between(screen, "{slot === 'way-home' && activeCity ? (", '</Animated.View>');
+    expect(pill).toContain('onPress={goHome}');
+    expect(pill).not.toContain('activeCity.cities.lat');
+    const chip = between(screen, 'const selectCity = (city: BrowseCity) => {', 'applyCity(city);');
+    expect(chip).toContain('goHome();');
   });
 });
 

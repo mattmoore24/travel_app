@@ -71,6 +71,33 @@ export function fitRegion(points: { lat: number; lng: number }[]): Region | null
 }
 
 /**
+ * Where home is, for the way-home pill and the lit chip's recentre: the
+ * frame the app itself put the camera on. The fit over the city's plans
+ * once there are any, else the city's own 0.09 box.
+ *
+ * Measured from here, not from the city's centroid, because the two are not
+ * the same place: fitRegion frames EVERY plan a city has, and Denpasar's run
+ * from Ubud to Uluwatu, so its fit sits 6 km from the centroid. With the
+ * centroid as the reference, "Back to Denpasar" showed over a map the app
+ * had just framed, on every cold start and every chip tap (E2E run 115,
+ * frame 09). And the pill has to land where it measures from, or one tap on
+ * it summons it again.
+ */
+export function homeRegion(
+  points: { lat: number; lng: number }[],
+  city: { lat: number; lng: number }
+): Region {
+  return (
+    fitRegion(points) ?? {
+      latitude: city.lat,
+      longitude: city.lng,
+      latitudeDelta: MAX_FIT_SPAN,
+      longitudeDelta: MAX_FIT_SPAN,
+    }
+  );
+}
+
+/**
  * Whether any of the given points is inside the region's box. The empty
  * banner uses this to tell "this city is quiet" from "you panned away from
  * where the plans are" — two states that used to render identically.
