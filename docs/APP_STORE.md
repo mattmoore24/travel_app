@@ -9,27 +9,28 @@ Developer Program membership** ($99/yr, founder ask in PROGRESS.md) and the
 founder review of `docs/legal/`. The rest is done, or is listed here as
 blocking so nothing discovers it on submission day.
 
-| Item                                                   | Status                                                                                       |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| Bundle id `com.mattmoore.samewhere`                    | done, in app.json (locked before first submission)                                           |
-| In-app account deletion (5.1.1(v))                     | done, Profile then Delete account (Edge Function)                                            |
-| **Sign in with Apple token revocation (5.1.1(v))**     | **BLOCKING** - code shipped, needs the .p8 key below; a logged no-op until then              |
-| UGC safety set (1.2): report/block/moderate            | done, phases 4 to 5, DB-enforced                                                             |
-| UGC terms agreement + in-app house rules (1.2)         | done, welcome screen consent + `/guidelines` and `/privacy` screens                          |
-| Published developer contact (1.2)                      | done, <https://link.samewhere.io/support> plus the in-app Contact us form                    |
-| Privacy policy URL (5.1.1(i))                          | done, <https://link.samewhere.io/privacy>, and the same summary ships inside the app         |
-| Permission purpose strings                             | done, photos + camera; microphone suppressed                                                 |
-| Encryption declaration (ITSAppUsesNonExemptEncryption) | done in app.json, no "missing compliance" stall; the reasoning is under Export compliance    |
-| EAS build profiles                                     | done, eas.json (development/preview/production)                                              |
-| **Moderation pipeline actually ON**                    | **BLOCKING** - ships dark by default, [runbook step 1](LAUNCH_RUNBOOK.md) before review      |
-| **EAS environment variables**                          | **BLOCKING** - cloud builds do not read local `.env`; set them (below) or the app is keyless |
-| **Legal text signed off**                              | **BLOCKING** - `docs/legal/` are drafts with bracketed founder and lawyer items left in      |
-| **Age-rating questionnaire answered**                  | **BLOCKING** - see Age rating below; the tiers changed and must be read off the form         |
-| **Listing copy entered**                               | drafted below; needs pasting into App Store Connect per territory                            |
-| **Name and trademark checks**                          | **BLOCKING** - docs/NAMING.md, never run; the bundle id is unchangeable after submission     |
-| iPad, Mac and Vision Pro distribution                  | decided: iPhone only for v1, opt out in App Store Connect (see below)                        |
-| Apple Developer Program                                | founder                                                                                      |
-| App icon final pass, screenshots                       | icon: brief and measurements under Assets, artwork still needed; screenshots need a build    |
+| Item                                                   | Status                                                                                                                                                                                            |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bundle id `com.mattmoore.samewhere`                    | done, in app.json (locked before first submission)                                                                                                                                                |
+| In-app account deletion (5.1.1(v))                     | done, Profile then Delete account (Edge Function)                                                                                                                                                 |
+| Sign in with Apple provider enabled                    | the deploy does it and reads it back — NOT YET SEEN TO RUN against the live project; confirm the first green deploy prints "Verified against a fresh GET", then say so here. Needs no key (below) |
+| **Sign in with Apple token revocation (5.1.1(v))**     | **BLOCKING** - code shipped; add the two `APPLE_SIGNIN_*` repo secrets below, then deploy                                                                                                         |
+| UGC safety set (1.2): report/block/moderate            | done, phases 4 to 5, DB-enforced                                                                                                                                                                  |
+| UGC terms agreement + in-app house rules (1.2)         | done, welcome screen consent + `/guidelines` and `/privacy` screens                                                                                                                               |
+| Published developer contact (1.2)                      | done, <https://link.samewhere.io/support> plus the in-app Contact us form                                                                                                                         |
+| Privacy policy URL (5.1.1(i))                          | done, <https://link.samewhere.io/privacy>, and the same summary ships inside the app                                                                                                              |
+| Permission purpose strings                             | done, photos + camera; microphone suppressed                                                                                                                                                      |
+| Encryption declaration (ITSAppUsesNonExemptEncryption) | done in app.json, no "missing compliance" stall; the reasoning is under Export compliance                                                                                                         |
+| EAS build profiles                                     | done, eas.json (development/preview/production)                                                                                                                                                   |
+| **Moderation pipeline actually ON**                    | **BLOCKING** - ships dark by default, [runbook step 1](LAUNCH_RUNBOOK.md) before review                                                                                                           |
+| **EAS environment variables**                          | **BLOCKING** - cloud builds do not read local `.env`; set them (below) or the app is keyless                                                                                                      |
+| **Legal text signed off**                              | **BLOCKING** - `docs/legal/` are drafts with bracketed founder and lawyer items left in                                                                                                           |
+| **Age-rating questionnaire answered**                  | **BLOCKING** - see Age rating below; the tiers changed and must be read off the form                                                                                                              |
+| **Listing copy entered**                               | drafted below; needs pasting into App Store Connect per territory                                                                                                                                 |
+| **Name and trademark checks**                          | **BLOCKING** - docs/NAMING.md, never run; the bundle id is unchangeable after submission                                                                                                          |
+| iPad, Mac and Vision Pro distribution                  | decided: iPhone only for v1, opt out in App Store Connect (see below)                                                                                                                             |
+| Apple Developer Program                                | founder                                                                                                                                                                                           |
+| App icon final pass, screenshots                       | icon: brief and measurements under Assets, artwork still needed; screenshots need a build                                                                                                         |
 
 ## EAS environment variables (do this before the first build)
 
@@ -54,23 +55,101 @@ secret for the same reason. Create the PostHog project in the **EU region**
 (`https://eu.i.posthog.com`) — the privacy policy promises EU data residency,
 and a US-cloud key does not answer on the EU host.
 
-## Sign in with Apple: the revocation key (5.1.1(v))
+## Sign in with Apple: the provider and the revoke key (5.1.1(v))
 
-An app that offers **both** Sign in with Apple and in-app account deletion
-must call Apple's revoke endpoint when the account goes. Apple has rejected
-apps for exactly this since 2022, and this app ships both halves
-(`usesAppleSignIn` in app.json, the button on the join and email screens).
+**Two independent halves, and they are constantly conflated.**
 
-The code is written and deployed: `store-apple-token` captures the
-authorization code at sign-in and exchanges it for a refresh token into
+|                   | (a) the sign-in working                                                                                 | (b) the revoke on deletion                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| What it is        | the Supabase Auth provider on, with the bundle id as an acceptable token audience                       | `delete-account` calling `https://appleid.apple.com/auth/revoke` before it deletes    |
+| Needs a key?      | **No.** No `.p8`, no Services ID, no client secret.                                                     | Yes — a Sign in with Apple `.p8` from Apple's portal.                                 |
+| Who does it       | `supabase-deploy.yml` → "Enable the Apple auth provider", on every deploy                               | `supabase-deploy.yml` → "Sync Sign in with Apple secrets", once the two secrets exist |
+| Broken looks like | the Apple button signs nobody in: "Provider ... is not enabled", or "Unacceptable audience in id_token" | nothing at all, until App Review rejects the app                                      |
+
+(a) without (b) is an app that signs people in and is rejected under 5.1.1(v).
+(b) without (a) is a revoke path nobody can reach. Both are required, and
+neither one being done says anything about the other.
+
+### (a) The provider — automatic, no key
+
+`.github/scripts/enable-apple-provider.mjs` PATCHes the project's auth config
+through the Supabase Management API (`external_apple_enabled`,
+`external_apple_client_id`), then **re-reads it with a fresh GET** and fails if
+the provider is not on or the bundle id is not in its client IDs. It is
+idempotent — it appends the bundle id only when it is missing, does nothing at
+all when the state is already right, and never reorders an existing entry,
+because the FIRST client ID is the one a web `signInWithOAuth` flow would use.
+It also fingerprints every non-Apple key in the auth config before and after and
+fails if any of them moved, which is what proves the PATCH is partial rather
+than a whole-document replace. Nothing from that config is ever printed: the
+same response carries the Twilio token and the captcha secret.
+
+`external_apple_client_id` is the **bundle id**. The app signs in with
+`supabase.auth.signInWithIdToken({ provider: 'apple' })`, the native path;
+Supabase Auth checks the `aud` of Apple's identity token against the client IDs,
+and a device's identity token is audienced to the app's bundle id. A Services ID
+is the audience of the **web** redirect flow, which this app does not have.
+`external_apple_secret` is that same web flow's client secret and is deliberately
+never sent — Supabase's own guide: "If you're building a native app only, you do
+not need to configure the OAuth settings."
+
+### (b) The revoke — needs the key, and stays a no-op without it
+
+An app that offers **both** Sign in with Apple and in-app account deletion must
+call Apple's revoke endpoint when the account goes. Apple has rejected apps for
+exactly this since 2022, and this app ships both halves (`usesAppleSignIn` in
+app.json, the button on the join and email screens).
+
+The code is written and deployed: `store-apple-token` captures the authorization
+code at sign-in and exchanges it for a refresh token into
 `public.apple_refresh_tokens` (service role only), and `delete-account` spends
-that token on `https://appleid.apple.com/auth/revoke` before it removes the
-auth row. Until the key below exists, both degrade to a **logged no-op** —
-grep the function logs for `apple revoke:` to see which branch was taken.
+that token on `https://appleid.apple.com/auth/revoke` before it removes the auth
+row. Until the key exists, both degrade to a **logged no-op** — grep the function
+logs for `apple revoke:` to see which branch was taken.
 
-Create the key once the membership exists: Certificates, Identifiers &
-Profiles → Keys → **+**, enable **Sign in with Apple**, download the `.p8`
-(Apple lets you download it exactly once), and note the Key ID and Team ID.
+**What the founder does, in a browser, once:**
+
+1. Apple Developer → Certificates, Identifiers & Profiles → **Keys** → **+**,
+   enable **Sign in with Apple**, download the `.p8` (Apple lets you download it
+   exactly once), note the 10-character Key ID.
+2. GitHub → Settings → Secrets and variables → Actions → **New repository
+   secret**, twice:
+   - `APPLE_SIGNIN_KEY_ID` — the Key ID from step 1.
+   - `APPLE_SIGNIN_KEY_P8` — the FULL text of `AuthKey_XXXXXXXXXX.p8`, BEGIN and
+     END lines included.
+3. Run the deploy: commit any change to `supabase/.deploy-request` (works from
+   any branch), or Actions → **Supabase deploy** → Run workflow, which GitHub
+   only lists once that workflow file is on the default branch.
+
+**The `APPLE_SIGNIN_` prefix is deliberate.** `ASC_KEY_ID` is already a
+repository secret and it is the **App Store Connect API key** — a different key,
+from a different section of Apple's portal, used by `scripts/asc-provision.mjs`
+to mint signing certificates. Naming this one `APPLE_KEY_ID` would have put it
+one dropdown away, and swapping them fails silently: the revoke would sign its
+JWT with the wrong key and Apple would answer 400 at deletion time, to nobody.
+
+The deploy maps the two new secrets onto the four names
+`supabase/functions/_shared/apple.ts` reads, and takes the other two from what
+the repo already has:
+
+| Edge Function secret | comes from                                            |
+| -------------------- | ----------------------------------------------------- |
+| `APPLE_KEY_ID`       | `APPLE_SIGNIN_KEY_ID` (new)                           |
+| `APPLE_PRIVATE_KEY`  | `APPLE_SIGNIN_KEY_P8` (new)                           |
+| `APPLE_TEAM_ID`      | the `APPLE_TEAM_ID` repo secret `testflight.yml` uses |
+| `APPLE_CLIENT_ID`    | a literal in the workflow, `com.mattmoore.samewhere`  |
+
+With the two secrets absent the step **warns and carries on**, naming what stays
+a no-op: a deploy must not go red for a founder errand that has not happened yet.
+With a value present but malformed — a Key ID that is not ten uppercase
+alphanumerics, a `.p8` pasted without its BEGIN line — it **fails loudly**, after
+the migrations and the functions have already deployed. That asymmetry is the
+point: both callers wrap the Apple work in `try`/`catch`, so a key that looks set
+and cannot be parsed produces `apple revoke: threw:` in a log nobody reads and an
+account deletion that leaves the app listed under Settings. The `.p8` never
+enters the repo, the app bundle, or a workflow log.
+
+Doing it by hand instead, from a machine with the Supabase CLI:
 
 ```bash
 supabase secrets set APPLE_TEAM_ID=ABCDE12345
@@ -79,13 +158,19 @@ supabase secrets set APPLE_CLIENT_ID=com.mattmoore.samewhere
 supabase secrets set APPLE_PRIVATE_KEY="$(cat AuthKey_FGHIJ67890.p8)"
 ```
 
-`APPLE_CLIENT_ID` is the **bundle id**, not a Services ID: the Services ID is
-for a web sign-in flow this app does not have. The `.p8` never enters the repo
-or the app bundle; it lives only in function secrets.
+### The one hand-run nothing can automate
+
+SIGN OUT AND SIGN IN AGAIN FIRST, and this is not a formality. The refresh
+token that gets revoked is captured by `store-apple-token` AT SIGN-IN, and with
+no key it returns early without storing anything. So an Apple session that
+predates the key has no token to spend, and the hand-run on it produces
+`apple revoke: no token for this account` — which reads like a pass and proves
+nothing. Only a sign-in AFTER the secrets are synced exercises the path.
 
 Then verify once, by hand, against a real TestFlight account: sign in with
-Apple, delete the account from Profile, and confirm the function log says
-`apple revoke: ok (200)` and that the app is gone from **Settings → your name
+Apple (freshly, per above), delete the account from Profile, and confirm the
+function log says `apple revoke: ok (200)` and that the app is gone from
+**Settings → your name
 → Sign in with Apple**. Record the run in `docs/PROGRESS.md`.
 
 ## TestFlight via EAS (once the Apple membership exists)

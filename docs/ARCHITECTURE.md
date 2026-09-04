@@ -665,6 +665,15 @@ delete-account`, and the step ORDER is load-bearing: verify the caller's JWT,
   - The user-visible half: Apple returns a name and an email only on the
     FIRST authorization, so an account deleted without a revoke comes back on
     the next sign-up with neither, and no address to recover with.
+  - **This is not the same thing as the sign-in working**, and the two get
+    conflated constantly. The revoke needs a `.p8`; the Supabase Auth provider
+    being ON with the bundle id in `external_apple_client_id` needs no key at
+    all, and is what decides whether anybody can sign in with Apple in the
+    first place. `supabase-deploy.yml` does both, from separate steps, and
+    `.github/scripts/enable-apple-provider.mjs` carries the reasoning for why
+    the client id is the bundle id (the app uses `signInWithIdToken`, and
+    GoTrue matches the identity token's `aud` against that list) and why
+    `external_apple_secret` is never sent.
 - **In-app policy surface** (App Review 1.2): bundled community guidelines at
   `/guidelines` (readable before sign-up), a consent line on the welcome
   screen, and a support contact. Text lives in `src/constants/policies.ts`;
@@ -968,13 +977,19 @@ everybody else the same way whatever the truth is — the rule
   belong there. **RLS is the security boundary, not key secrecy.**
 - Server secrets (ANTHROPIC_API_KEY, service role) exist only as Supabase Edge Function
   secrets; they never appear in this repo or the app bundle.
-- **Sign in with Apple adds four**, same rule and the same place (set them with
-  `supabase secrets set`, recipe in docs/APP_STORE.md): `APPLE_TEAM_ID`,
+- **Sign in with Apple adds four**, same rule and the same place: `APPLE_TEAM_ID`,
   `APPLE_KEY_ID`, `APPLE_CLIENT_ID` (the **bundle id** — the Services ID is
   for the web) and `APPLE_PRIVATE_KEY` (the .p8 contents). Read by
   `supabase/functions/_shared/apple.ts` and by nothing else; `appleConfig()`
   returns null when any is missing, which is what makes both Apple functions
-  degrade instead of throwing.
+  degrade instead of throwing. **They are synced by the deploy, not by hand**
+  (2026-09-03): `supabase-deploy.yml`'s "Sync Sign in with Apple secrets" step
+  maps `APPLE_SIGNIN_KEY_ID` → `APPLE_KEY_ID` and `APPLE_SIGNIN_KEY_P8` →
+  `APPLE_PRIVATE_KEY` from repository secrets, takes `APPLE_TEAM_ID` from the
+  one `testflight.yml` already uses, and carries `APPLE_CLIENT_ID` as a literal.
+  The `APPLE_SIGNIN_` prefix keeps it away from `ASC_KEY_ID`, which is the App
+  Store Connect API key and a different key entirely. Recipe, and the hand
+  equivalent, in docs/APP_STORE.md.
 - `.env` is gitignored; `.env.example` is the committed template.
 
 ## The app's public-facing surface

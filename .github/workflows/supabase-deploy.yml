@@ -14,6 +14,11 @@
 #                           the two business prompts, as their own secret so the
 #                           three live ones never have to be retyped (a GitHub
 #                           secret is write-only, so it cannot be appended to)
+#   APPLE_SIGNIN_KEY_ID     the 10-character Key ID of the Sign in with Apple .p8
+#   APPLE_SIGNIN_KEY_P8     the FULL text of that AuthKey_XXXXXXXXXX.p8
+#                           (BEGIN/END lines included). Together these two turn
+#                           the App Review 5.1.1(v) revoke on from a logged
+#                           no-op; without them the deploy warns and carries on.
 #
 # Two ways to run it:
 #   * Commit any change to supabase/.deploy-request (works from any branch).
@@ -59,6 +64,26 @@ jobs:
       SUPPORT_FROM: ${{ secrets.SUPPORT_FROM }}
       ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
       PROJECT_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+      # Sign in with Apple. APPLE_SIGNIN_*, and the prefix is not decoration:
+      # ASC_KEY_ID is already a repository secret and it is the App Store
+      # Connect API key — a DIFFERENT key, in a different section of Apple's
+      # portal, used by scripts/asc-provision.mjs to mint signing certificates.
+      # Naming this one APPLE_KEY_ID would have sat one dropdown away from it
+      # in the GitHub UI, and the failure from swapping them is silent: the
+      # revoke would sign a JWT with the wrong key and Apple would answer 400
+      # at deletion time, months later, to nobody watching.
+      APPLE_SIGNIN_KEY_ID: ${{ secrets.APPLE_SIGNIN_KEY_ID }}
+      APPLE_SIGNIN_KEY_P8: ${{ secrets.APPLE_SIGNIN_KEY_P8 }}
+      # Already a repository secret — testflight.yml reads the same one.
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      # A literal, for the reason SUPPORT_INBOX above is one: the bundle id is
+      # public (it is in app.json, and in every TestFlight listing), it is
+      # unchangeable after the first submission, and a secret holding it would
+      # be one more thing that can be silently wrong. It is the BUNDLE id and
+      # never a Services ID — a Services ID belongs to the web sign-in flow
+      # this app does not have, and getting it wrong fails at revocation time
+      # rather than at setup time.
+      APPLE_CLIENT_ID: com.mattmoore.samewhere
     steps:
       - uses: actions/checkout@v4
 
@@ -170,6 +195,124 @@ jobs:
             npx --yes "$SUPABASE_CLI" secrets set \
               SUPPORT_FROM="$SUPPORT_FROM" --project-ref "$PROJECT_REF"
           fi
+
+      # The REVOCATION half of Sign in with Apple (App Review 5.1.1(v)): an app
+      # offering both Sign in with Apple and in-app deletion must call
+      # https://appleid.apple.com/auth/revoke, and Apple has rejected apps for
+      # not doing it since 2022. supabase/functions/_shared/apple.ts wants four
+      # env names, and `appleConfig()` returns null unless all four are there —
+      # ONE OF TWO HALVES, and this is the one that needs no key at all: the
+      # Auth provider being ON with the bundle id as an acceptable audience is
+      # what makes the sign-in button work. The revocation key below is the
+      # other. They are independent in both directions — the provider off with
+      # the key present is a revoke path nobody reaches; the provider on with
+      # no key is an app App Review rejects — and this step goes FIRST so that
+      # stays true when something goes wrong. Behind the secrets sync, a
+      # malformed .p8 would abort the job here and take the sign-in itself down
+      # over a revocation problem.
+      #
+      # Idempotent by construction: it reads the config first, appends the
+      # bundle id only if it is missing, and does nothing at all when the
+      # desired state already holds. Safe on every deploy, which is why it has
+      # no flag of its own. Skipped in dry_run, like every other writing step.
+      - name: Enable the Apple auth provider
+        if: ${{ inputs.dry_run != true }}
+        run: node .github/scripts/enable-apple-provider.mjs
+
+      # which is what makes store-apple-token and delete-account degrade to a
+      # LOGGED NO-OP rather than a failure. Two of the four come from new
+      # repository secrets, one from the secret testflight.yml already uses,
+      # and one is the literal above:
+      #   APPLE_SIGNIN_KEY_ID -> APPLE_KEY_ID
+      #   APPLE_SIGNIN_KEY_P8 -> APPLE_PRIVATE_KEY
+      #   APPLE_TEAM_ID       -> APPLE_TEAM_ID
+      #   (literal)           -> APPLE_CLIENT_ID
+      #
+      # The step runs on every deploy and WARNS rather than failing when the
+      # key is not there yet, the way the MODERATION_PROMPTS branch does. The
+      # founder cannot create the key until the Apple Developer membership
+      # exists, and a deploy that goes red for an outstanding founder errand
+      # teaches people to read red as weather.
+      #
+      # It DOES fail on a malformed value, and that is the one loud case. Both
+      # callers wrap the Apple work in try/catch, so a key that "looks set" and
+      # cannot be parsed produces `apple revoke: threw:` in a log nobody reads
+      # and an account deletion that leaves the app listed under Settings →
+      # your name → Sign in with Apple. apple.ts says it in its own comments: a
+      # key that looks set and cannot be parsed is the worst version of this.
+      # It runs AFTER the provider step, and that order is the whole point of
+      # the word "independent" below. This step can fail (a malformed paste);
+      # the provider step must not be behind it, or a bad .p8 would take the
+      # SIGN-IN down as collateral for a revocation problem - half (b) killing
+      # half (a), which is the opposite of independent. Everything else that
+      # matters has already been applied by here too, so a failure names a bad
+      # paste without blocking the deploy.
+      - name: Sync Sign in with Apple secrets
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          if [ -z "$APPLE_SIGNIN_KEY_ID" ] && [ -z "$APPLE_SIGNIN_KEY_P8" ]; then
+            echo "::warning::APPLE_SIGNIN_KEY_ID and APPLE_SIGNIN_KEY_P8 are not set, so"\
+              "Apple token revocation on account deletion stays a LOGGED NO-OP."\
+              "With no key, store-apple-token never stores a token in the first"\
+              "place, so delete-account takes its 'nothing to revoke' branch rather"\
+              "than a failure branch. App Review 5.1.1(v) is not met."\
+              "Signing in is unaffected. See docs/APP_STORE.md, 'Sign in with Apple'."
+            exit 0
+          fi
+          if [ -z "$APPLE_SIGNIN_KEY_ID" ] || [ -z "$APPLE_SIGNIN_KEY_P8" ]; then
+            echo "::warning::Only one of APPLE_SIGNIN_KEY_ID / APPLE_SIGNIN_KEY_P8 is set."\
+              "appleConfig() needs all four values, so revocation stays a no-op until"\
+              "both exist. Nothing was written."
+            exit 0
+          fi
+          if [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::warning::APPLE_TEAM_ID is not set, so the other three would be written"\
+              "into a configuration appleConfig() still rejects. Nothing was written."
+            exit 0
+          fi
+          # Shape checks, never echoing the value. The Key ID is 10 uppercase
+          # alphanumerics (Apple's format for both key kinds); the .p8 must be
+          # the whole file, because pkcs8Bytes() strips the PEM armour and a
+          # fragment pasted without it decodes to nothing.
+          # `[[ =~ ]]`, not grep: grep anchors per LINE, so a value with a
+          # trailing newline or a second line passes a ^...$ pattern - which is
+          # exactly the stray-whitespace paste these checks exist to catch. The
+          # value then reaches the JWT header verbatim (apple.ts puts keyId
+          # straight into `kid`) and Apple answers 400 at deletion time, in a
+          # try/catch, months later, to nobody.
+          if ! [[ "$APPLE_SIGNIN_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "::error::APPLE_SIGNIN_KEY_ID is not 10 uppercase alphanumerics. Copy it"
+            echo "::error::from Apple Developer → Certificates, Identifiers & Profiles →"
+            echo "::error::Keys, from the key that has Sign in with Apple enabled — NOT"
+            echo "::error::the App Store Connect API key in ASC_KEY_ID."
+            exit 1
+          fi
+          if ! [[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "::error::APPLE_TEAM_ID is not 10 uppercase alphanumerics. It goes into"
+            echo "::error::the JWT's iss claim, so a stray newline there fails the revoke"
+            echo "::error::the same silent way a bad key id does."
+            exit 1
+          fi
+          # Both armour lines, because the message says both and pkcs8Bytes()
+          # strips them: a fragment with only BEGIN decodes to nothing.
+          if ! printf '%s' "$APPLE_SIGNIN_KEY_P8" | grep -q 'BEGIN PRIVATE KEY' ||
+             ! printf '%s' "$APPLE_SIGNIN_KEY_P8" | grep -q 'END PRIVATE KEY'; then
+            echo "::error::APPLE_SIGNIN_KEY_P8 does not look like a .p8 file. It must hold"
+            echo "::error::the FULL text of AuthKey_XXXXXXXXXX.p8, BEGIN and END lines"
+            echo "::error::included."
+            exit 1
+          fi
+          npx --yes "$SUPABASE_CLI" secrets set \
+            APPLE_TEAM_ID="$APPLE_TEAM_ID" \
+            APPLE_KEY_ID="$APPLE_SIGNIN_KEY_ID" \
+            APPLE_CLIENT_ID="$APPLE_CLIENT_ID" \
+            APPLE_PRIVATE_KEY="$APPLE_SIGNIN_KEY_P8" --project-ref "$PROJECT_REF"
+          # The key id and team id are repository secrets, so Actions masks
+          # them and printing them yields "***" - a confirmation line that
+          # confirms nothing. Say what was written instead of echoing values.
+          echo "Apple revocation secrets synced: APPLE_TEAM_ID, APPLE_KEY_ID,"\
+            "APPLE_CLIENT_ID ($APPLE_CLIENT_ID, a literal, so it is readable) and"\
+            "APPLE_PRIVATE_KEY. Neither the key id nor the .p8 is printed."
 
       - name: Migrations — after
         if: ${{ inputs.dry_run != true }}

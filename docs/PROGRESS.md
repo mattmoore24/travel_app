@@ -3,6 +3,98 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **Sign in with Apple, as far as a browser can take it** (2026-09-03)
+
+The founder has no local machine, so everything Apple-side runs through GitHub
+Actions — the same fact `scripts/asc-provision.mjs` and the APNs push key exist
+for. Sign in with Apple was the last Apple thing still written as a `supabase
+secrets set` recipe for a laptop nobody has. It is now two steps in
+`.github/workflows/supabase-deploy.yml`, and the founder's remaining work is a
+browser and two pastes.
+
+**The two halves are independent, and this doc had been running them together.**
+
+1. **The sign-in working at all (a)** needs the Supabase Auth provider enabled
+   with the bundle id as an acceptable token audience. **No key of any kind.**
+   New step "Enable the Apple auth provider" →
+   `.github/scripts/enable-apple-provider.mjs`, on every non-dry-run deploy.
+2. **The revoke on account deletion (b)**, App Review 5.1.1(v), needs a Sign in
+   with Apple `.p8`. New step "Sync Sign in with Apple secrets" maps two new
+   repository secrets onto the four env names
+   `supabase/functions/_shared/apple.ts` reads.
+
+(a) without (b) is an app that signs people in and is rejected. (b) without (a)
+is a revoke path nobody reaches.
+
+### Now automatic
+
+- **The provider.** PATCH `/v1/projects/{ref}/config/auth` with
+  `external_apple_enabled` and `external_apple_client_id`, then a **fresh GET**
+  that fails the run if the provider is not on or the bundle id is not in its
+  client IDs. That read-back is the push-key script's lesson applied before it
+  could be paid for a second time: its first version reported a success that was
+  true of the account and not of the app. Idempotent (appends the bundle id only
+  when missing, does nothing when the state already holds, never reorders an
+  existing entry), and skipped in `dry_run`.
+- **The four function secrets**, from `APPLE_SIGNIN_KEY_ID` →`APPLE_KEY_ID`,
+  `APPLE_SIGNIN_KEY_P8` → `APPLE_PRIVATE_KEY`, the existing `APPLE_TEAM_ID` repo
+  secret, and `APPLE_CLIENT_ID` as a literal (`com.mattmoore.samewhere`) the way
+  `SUPPORT_INBOX` is one. Absent, the step **warns and the deploy stays green** —
+  a deploy must not go red for a founder errand that has not happened yet.
+  Malformed, it **fails loudly**, because both callers swallow their exceptions
+  and a key that looks set and cannot be parsed is the worse failure.
+
+### Established this pass, not assumed
+
+- **`external_apple_client_id` is the BUNDLE ID, not a Services ID.** The app
+  calls `supabase.auth.signInWithIdToken({ provider: 'apple' })`
+  (`src/features/auth/api.ts:564`). GoTrue's handler for that grant
+  (supabase/auth `internal/api/token_oidc.go`) builds `acceptableClientIDs` from
+  `config.External.Apple.ClientID` plus `IosBundleId` and requires the token's
+  `aud` to contain one of them; a device's identity token is audienced to the
+  bundle id. A Services ID there refuses every sign-in with "Unacceptable
+  audience in id_token".
+- **`external_apple_secret` is not needed and is never sent.** It is the web
+  redirect flow's client secret: GoTrue reads it only in `NewAppleProvider`,
+  whose `ValidateOAuth()` also demands a redirect URI, and the id_token path
+  never touches it. Supabase's own guide: "If you're building a native app only,
+  you do not need to configure the OAuth settings." Sending `""` would also wipe
+  a secret somebody had set on purpose.
+- **The five Apple field names** were checked against
+  `apps/docs/spec/transforms/api_v1_openapi_deparsed.json` in supabase/supabase
+  rather than recalled; all five exist on `UpdateAuthConfigBody` and on
+  `AuthConfigResponse`, all nullable, none required.
+- **PATCH is partial**, on the evidence of the schema (no required fields),
+  Supabase's own docs (their example patches three of 234 properties), and HTTP.
+  That is good evidence and not proof, so the script **fingerprints every
+  non-Apple key before and after and fails if any moved** — naming keys, never
+  values, because the same response carries the Twilio token and the captcha
+  secret. If it ever fires, PATCH is not what everyone thinks it is.
+
+### Still owed
+
+- **The founder's two browser steps** (`docs/APP_STORE.md`, "Sign in with
+  Apple"): create the key in Apple Developer → Keys with Sign in with Apple
+  enabled, then add `APPLE_SIGNIN_KEY_ID` and `APPLE_SIGNIN_KEY_P8` as
+  repository secrets and run Supabase deploy. Both gated behind the Apple
+  Developer membership, which is still the founder ask below.
+- **The hand-run nothing can automate:** sign in with Apple on TestFlight,
+  delete the account from Profile, confirm the function log says
+  `apple revoke: ok (200)` and that the app is gone from Settings → your name →
+  Sign in with Apple. Record it here.
+- **Neither new step has run yet.** An earlier draft of this line claimed the
+  provider step was "tested against a local stand-in for the Management API —
+  five scenarios". That evidence is not in the tree and cannot be: the script
+  hardcodes `https://api.supabase.com` with no env override and runs on import,
+  so there is no seam a stand-in could use. What was actually done is a reading
+  of the published OpenAPI spec for the field names, and reasoning about the
+  branches. The first real deploy is the first execution, and it is where a
+  token scope or a rate limit would show up.
+- Also unverified: that `supabase secrets set` accepts a multi-line PEM as an
+  argument value. `apple.ts` accepts both real newlines and literal `\n`, so a
+  shell that mangles them is survivable, but the first sync is the thing that
+  proves it.
+
 ## **Three closures, so the build is the last thing that lands** (2026-09-02)
 
 The founder asked for the one EAS build the native changes are waiting on, and for any
@@ -459,7 +551,10 @@ waves. [`UX_PACKAGES.md`](UX_PACKAGES.md) carries every package in full.
 5. **Device locale for dates, or English everywhere?** Two date engines currently
    disagree on one screen.
 6. **Provision the Apple Developer membership and a Sign in with Apple key**, so
-   token revocation on account deletion can be finished.
+   token revocation on account deletion can be finished. _Updated 2026-09-03:_
+   everything after the key is automated now — create it in the browser, paste it
+   into `APPLE_SIGNIN_KEY_ID` and `APPLE_SIGNIN_KEY_P8`, run Supabase deploy. The
+   provider half needs no key at all and the deploy already does it.
 
 Thirty-four further decisions are tiered in the plan with a recommendation each,
 and fifteen more have a stated default that proceeds unless overruled.
