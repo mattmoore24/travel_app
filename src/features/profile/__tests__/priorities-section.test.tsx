@@ -25,6 +25,7 @@ const profile: ProfileRow = {
   occupation: null,
   gender: 'unspecified',
   verified: false,
+  travelers_radius_km: 32,
   onboarding_completed_at: null,
   created_at: '',
   updated_at: '',

@@ -102,6 +102,21 @@ export const FIRST_WEEKDAY: number = calendar.firstWeekday ?? 1;
 export const DEVICE_TIME_ZONE: string = calendar.timeZone || 'UTC';
 
 /**
+ * The phone's region, 'US' or 'PT', or null when it reported none. A
+ * SETTING somebody chose, like the zone above - never a position (§7 rule
+ * 2). Read for one thing: whether a distance is said in miles or kilometres.
+ */
+export const DEVICE_REGION: string | null = locale.regionCode ?? null;
+
+/**
+ * Where a distance is a number of miles. The four countries that still
+ * measure a road that way; everywhere else, and a phone that will not say,
+ * gets kilometres. A convention without words, like the 24-hour clock, so
+ * it follows the phone even though the app's language does not (D5).
+ */
+export const USES_MILES: boolean = ['US', 'GB', 'LR', 'MM'].includes(DEVICE_REGION ?? '');
+
+/**
  * THE locale every formatter in the app is built with, and there is exactly
  * one of it.
  *

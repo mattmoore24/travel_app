@@ -36,7 +36,7 @@ import {
   useIsGuest,
   useMapPins,
 } from '@/features/guest/hooks';
-import { useLaunchCities } from '@/features/pins/hooks';
+import { useFeaturedCities } from '@/features/pins/hooks';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -59,6 +59,7 @@ import {
   useMatches,
   useMyChats,
   useSentRequests,
+  useSetTravelersRadius,
 } from '@/features/matching/hooks';
 import { useSaidHi } from '@/features/matching/said-hi';
 import { SentRequestCard } from '@/features/matching/sent-request-card';
@@ -79,6 +80,8 @@ import {
   usePublicPhotos,
   usePublicProfile,
 } from '@/features/profile/hooks';
+import { DEFAULT_RADIUS_KM, RADIUS_OPTIONS_KM, radiusChipLabel } from '@/features/matching/radius';
+import { RadiusSheet } from '@/features/matching/radius-sheet';
 import { useAnnounce } from '@/features/chat/use-announce';
 import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
@@ -125,18 +128,20 @@ function GuestTravelers() {
   const intentRemembered = useAuthStore((s) => s.intentRemembered);
   // Dynamic Type grows the native tab bar; the constant it replaces did not.
   const tabBarInset = useTabBarInset();
-  const launchCitiesQuery = useLaunchCities();
-  const launchCities = launchCitiesQuery.data ?? [];
-  const cityId = launchCities[0]?.city_id ?? null;
-  const cityName = launchCities[0]?.cities?.name ?? null;
-  const featuredQuery = useFeaturedTraveler(cityId);
-  const { isPending } = featuredQuery;
+  // The first city on the rail: the busiest, or the first launch city on
+  // a quiet day. A guest has typed nothing, so the rail decides.
+  const featuredQuery = useFeaturedCities();
+  const featured = featuredQuery.data ?? [];
+  const cityId = featured[0]?.city_id ?? null;
+  const cityName = featured[0]?.cities?.name ?? null;
+  const featuredTravelerQuery = useFeaturedTraveler(cityId);
+  const { isPending } = featuredTravelerQuery;
   // `?? []` and not a default in the destructure: the query answers null while
   // it is disabled, and every branch below counts this list.
-  const featured = featuredQuery.data ?? [];
+  const faces = featuredTravelerQuery.data ?? [];
   // The one who gets the whole card, and the ones who get a row.
-  const lead = featured[0] ?? null;
-  const alsoHere = featured.slice(1);
+  const lead = faces[0] ?? null;
+  const alsoHere = faces.slice(1);
   // Evidence for the empty branch: the same faceless rows the guest map
   // already serves, counted. Never individual pins — a real traveler's venue
   // plus date is not guest content.
@@ -149,7 +154,7 @@ function GuestTravelers() {
   // audience or reached the end of their trip in between. Indexed, that draws
   // a real traveler's face under another real traveler's name on a signed-out
   // device; keyed, it draws a monogram.
-  const photos = useFeaturedPhoto(cityId, featured).data;
+  const photos = useFeaturedPhoto(cityId, faces).data;
   const photoUrl = lead ? featuredPhotoFor(photos, lead.user_id, 0) : null;
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
@@ -165,23 +170,23 @@ function GuestTravelers() {
   // stayed null, so the featured query never enabled, so isPending never
   // cleared. The one screen a first-time visitor is most likely to open, and
   // it had nothing on it and nothing to say.
-  if (launchCitiesQuery.isError || featuredQuery.isError) {
+  if (featuredQuery.isError || featuredTravelerQuery.isError) {
     return (
       <ThemedView style={styles.root}>
         <ProfileCorner />
         <LoadError
           what="travelers"
-          error={launchCitiesQuery.error ?? featuredQuery.error}
+          error={featuredQuery.error ?? featuredTravelerQuery.error}
           onRetry={() => {
-            launchCitiesQuery.refetch();
             featuredQuery.refetch();
+            featuredTravelerQuery.refetch();
           }}
         />
       </ThemedView>
     );
   }
 
-  if (isPending || launchCitiesQuery.isPending) {
+  if (isPending || featuredQuery.isPending) {
     return <ThemedView style={styles.root} />;
   }
 
@@ -469,6 +474,8 @@ function TravelerPage({
   width,
   barHeight,
   onBarHeight,
+  radiusKm,
+  onOpenRadius,
   onSayHi,
   onNext,
   onMore,
@@ -504,6 +511,9 @@ function TravelerPage({
   onMore: () => void;
   /** No hellos left today — the Say hi button says so instead of opening. */
   helloCapped: boolean;
+  /** How far from each trip city the queue reaches, so the header can say so. */
+  radiusKm: number;
+  onOpenRadius: () => void;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -536,6 +546,9 @@ function TravelerPage({
     occupation: candidate.match.occupation,
     gender: candidate.match.gender,
     verified: candidate.match.verified,
+    // Somebody else's dial is not this page's business; the type wants a
+    // number and the default is the honest placeholder.
+    travelers_radius_km: DEFAULT_RADIUS_KM,
     onboarding_completed_at: null,
     created_at: '',
     updated_at: '',
@@ -611,8 +624,35 @@ function TravelerPage({
             filtered by passes, chats, hellos sent and the viewer's own
             audience setting, and the words are careful to claim no more. */}
         <ThemedText type="footnote" themeColor="textSecondary" style={styles.sharedTodayNote}>
-          {remainingLine(remaining, candidate.match.city_name)}
+          {remainingLine(remaining, candidate.match.my_city_name)}
         </ThemedText>
+        {/* THE DIAL, where the scope is read. The queue reaches this far
+            from each of the reader's own trip cities; a person in Nice
+            deciding whether Cannes counts decides it here, on the screen
+            that shows them the answer, not in a settings page. */}
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`${radiusChipLabel(radiusKm)}. Changes how far Travelers looks.`}
+          testID="travelers-radius"
+          hitSlop={4}
+          haptic="selection"
+          scaleTo={0.94}
+          onPress={onOpenRadius}>
+          <View
+            style={[
+              styles.radiusChip,
+              { backgroundColor: theme.surface, borderColor: theme.border },
+            ]}>
+            <SymbolView
+              name={{ ios: 'slider.horizontal.3', android: 'tune', web: 'tune' }}
+              size={12}
+              tintColor={theme.textSecondary}
+            />
+            <ThemedText type="caption" themeColor="textSecondary">
+              {radiusChipLabel(radiusKm)}
+            </ThemedText>
+          </View>
+        </PressableScale>
       </View>
       <ScrollView
         refreshControl={
@@ -959,6 +999,22 @@ export default function TravelersScreen() {
   // Blocking from the card. Declared with the other hooks, above every early
   // return, so hook order stays stable.
   const block = useBlockUser();
+  // How far the queue reaches from each of my trip cities: read off the
+  // profile, changed through useSetTravelersRadius (features/matching/hooks),
+  // which also refetches the queue and the inbox chips.
+  const { data: ownProfile } = useOwnProfile();
+  const radiusKm = ownProfile?.travelers_radius_km ?? DEFAULT_RADIUS_KM;
+  const [radiusOpen, setRadiusOpen] = useState(false);
+  const radius = useSetTravelersRadius();
+  const radiusSheet = radiusOpen ? (
+    <RadiusSheet
+      value={radiusKm}
+      saving={radius.isPending}
+      onChange={radius.set}
+      onClose={() => setRadiusOpen(false)}
+    />
+  ) : null;
+  const canLookFurther = radiusKm < RADIUS_OPTIONS_KM[RADIUS_OPTIONS_KM.length - 1];
 
   // Destructured because a query RESULT is a new object every render while
   // its refetch is stable — same pattern as chat.tsx, for the same reason.
@@ -1208,6 +1264,16 @@ export default function TravelersScreen() {
                 onPress={() => router.navigate('/(tabs)')}
               />
             ) : null}
+            {/* The supply action that costs nothing: the same trip, a wider
+                circle. Cannes is 26 km from Nice, and "that's everyone in
+                Nice" is a sentence about the dial as much as about Nice. */}
+            {!filtered && canLookFurther ? (
+              <PrimaryButton
+                variant="ghost"
+                label={`Look further than ${radiusChipLabel(radiusKm).toLowerCase()}`}
+                onPress={() => setRadiusOpen(true)}
+              />
+            ) : null}
             <PrimaryButton
               variant="ghost"
               label="Add another trip"
@@ -1245,6 +1311,7 @@ export default function TravelersScreen() {
         {showSaidHi && saidHiTo ? (
           <SaidHiStrip name={saidHiTo.name} bottom={dockedActionBarHeight(dockBottom)} />
         ) : null}
+        {radiusSheet}
       </ThemedView>
     );
   }
@@ -1282,6 +1349,8 @@ export default function TravelersScreen() {
           refreshing={matchesQuery.isFetching}
           onRefresh={refresh}
           helloCapped={helloCapped}
+          radiusKm={radiusKm}
+          onOpenRadius={() => setRadiusOpen(true)}
           // The same three items the chat header and a stranger's profile
           // raise. The block confirmation is this screen's own, because what
           // it promises here is what a traveler is promised everywhere: gone
@@ -1330,7 +1399,12 @@ export default function TravelersScreen() {
             const overlap = [...current.overlaps.values()][0];
             // The one builder, shared with the pill on this very card and
             // with the chip on the card the recipient answers it from.
-            const quote = overlapSentence(current.match.city_name, overlap?.start, overlap?.end);
+            const quote = overlapSentence(
+              current.match.city_name,
+              overlap?.start,
+              overlap?.end,
+              current.match.my_city_name
+            );
             openReply({
               userId: current.userId,
               name: current.match.display_name ?? 'Traveler',
@@ -1349,6 +1423,7 @@ export default function TravelersScreen() {
         />
       </Animated.View>
       {showSaidHi && saidHiTo ? <SaidHiStrip name={saidHiTo.name} bottom={barHeight} /> : null}
+      {radiusSheet}
       {undo && !showSaidHi ? (
         // A sibling of the deck, not a child of TravelerPage, so it survives
         // the key={current.userId} remount when the next face slides in. It
@@ -1435,6 +1510,17 @@ const styles = StyleSheet.create({
   },
   sharedTodayNote: {
     textAlign: 'center',
+  },
+  radiusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+    paddingHorizontal: Space.md,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+    // A visible border, like the Next pill's: a hairline on this ground is
+    // a word floating in the page (travelers-action-bar.test.ts).
+    borderWidth: 1,
   },
   loading: {
     flex: 1,

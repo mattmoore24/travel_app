@@ -35,6 +35,7 @@ const city = (over: Partial<CityRow> = {}): CityRow => ({
   lat: 48.14,
   lng: 11.58,
   population: 1_500_000,
+  timezone: 'Europe/Berlin',
   ...over,
 });
 

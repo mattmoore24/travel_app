@@ -1,27 +1,34 @@
-import type { LaunchCityWithCity } from '@/features/pins/api';
+import type { BrowseCity } from '@/features/pins/api';
+import { browseCityFromCityRow } from '@/features/pins/api';
 import { useCityChoice } from '@/features/pins/city-store';
-import { useLaunchCities } from '@/features/pins/hooks';
+import { useFeaturedCities } from '@/features/pins/hooks';
 import type { TripWithCity } from '@/features/trips/api';
 import { useMyTrips } from '@/features/trips/hooks';
 import { toISODate } from '@/features/trips/dates';
 
 /**
- * Which launch city this traveler is browsing, and what it is called.
+ * Which city this traveler is browsing, and what it is called.
  *
  * Chosen, never assumed — src/app/business-signup.tsx:150 states the same
  * rule for the other side of the marketplace: "This used to fall back to
  * `launchCities[0]`". The Chat tab's room list did exactly that, so a
  * traveler in Bangkok read that Lisbon hostels were "near you".
  *
- * The inputs are a tap the traveler made (the persisted chip choice), a date
+ * The inputs are a tap the traveler made (the persisted choice), a date
  * range they TYPED (their trips), and the device's own clock setting — never
  * device location. That is what keeps §7 rule 2 intact: the app never
  * collects or displays where anybody is. Anybody "improving" this later will
  * reach for expo-location; do not.
+ *
+ * ANY CITY, since 2026-09-04. A trip to Porto used to be ignored here because
+ * Porto was not one of the four; now a trip's city is a city the map can
+ * browse, and so is anything chosen from search.
  */
 export type BrowsingCity = {
   cityId: number | null;
   cityName: string | null;
+  /** The whole city, for callers that need its coordinate or its clock. */
+  city: BrowseCity | null;
 };
 
 /**
@@ -38,69 +45,64 @@ export function deviceTimezone(): string | null {
   }
 }
 
+const NOWHERE: BrowsingCity = { cityId: null, cityName: null, city: null };
+
+function named(city: BrowseCity): BrowsingCity {
+  return { cityId: city.city_id, cityName: city.cities.name, city };
+}
+
 /**
  * Resolution order, most explicit first:
  *
- *   1. the persisted choice, while that city is still an active launch city
- *      (a deactivated one falls through rather than rendering an empty map);
- *   2. the launch city of the trip containing `today`, else the earliest
- *      upcoming trip whose city is a launch city;
- *   3. the launch city whose `timezone` matches the device's clock zone;
- *   4. the first launch city (deterministic — fetchLaunchCities orders by
- *      city_id — and all a guest with no trips in Berlin can get).
+ *   1. the persisted choice (any city; the rail's own row for it when it is
+ *      on the rail, so the count comes along);
+ *   2. the city of the trip containing `today`, else the earliest upcoming
+ *      trip's city;
+ *   3. the featured city whose `timezone` matches the device's clock zone;
+ *   4. the first featured city (deterministic — the rail orders by plans,
+ *      then launch cities, then size — and all a guest with no trips gets).
  */
 export function pickBrowsingCity(
-  launchCities: LaunchCityWithCity[],
+  featured: BrowseCity[],
   trips: TripWithCity[],
   today: string,
-  chosenCityId: number | null = null,
+  chosen: BrowseCity | null = null,
   deviceTz: string | null = null
 ): BrowsingCity {
-  const launchById = new Map(launchCities.map((city) => [city.city_id, city]));
-  const named = (cityId: number): BrowsingCity => ({
-    cityId,
-    cityName: launchById.get(cityId)?.cities.name ?? null,
-  });
+  const onRail = new Map(featured.map((city) => [city.city_id, city]));
 
-  if (chosenCityId != null && launchById.has(chosenCityId)) {
-    return named(chosenCityId);
+  if (chosen != null) {
+    return named(onRail.get(chosen.city_id) ?? chosen);
   }
 
-  const inLaunchCity = trips.filter((trip) => launchById.has(trip.city_id));
-  const current = inLaunchCity.find((trip) => trip.start_date <= today && today <= trip.end_date);
-  const upcoming = inLaunchCity
+  const current = trips.find((trip) => trip.start_date <= today && today <= trip.end_date);
+  const upcoming = trips
     .filter((trip) => trip.start_date > today)
     .sort((a, b) => a.start_date.localeCompare(b.start_date))[0];
   const trip = current ?? upcoming;
   if (trip) {
-    return named(trip.city_id);
+    return named(onRail.get(trip.city_id) ?? browseCityFromCityRow(trip.cities));
   }
 
-  const zoned = deviceTz != null ? launchCities.find((city) => city.timezone === deviceTz) : null;
+  const zoned = deviceTz != null ? featured.find((city) => city.timezone === deviceTz) : null;
   if (zoned) {
-    return named(zoned.city_id);
+    return named(zoned);
   }
 
-  const first = launchCities[0];
-  return { cityId: first?.city_id ?? null, cityName: first?.cities.name ?? null };
+  const first = featured[0];
+  return first ? named(first) : NOWHERE;
 }
 
 /**
  * The hook the screens use. useMyTrips is already cached from the profile
  * tab and disabled without a user id, so a guest costs nothing extra and
- * falls through to the timezone match, then the first launch city. Reads the
- * same persisted choice the map's chips write, so every tab browses ONE
+ * falls through to the timezone match, then the first featured city. Reads
+ * the same persisted choice the map's chips write, so every tab browses ONE
  * city.
  */
 export function useBrowsingCity(): BrowsingCity {
-  const { data: launchCities = [] } = useLaunchCities();
+  const { data: featured = [] } = useFeaturedCities();
   const { data: trips = [] } = useMyTrips();
-  const chosenCityId = useCityChoice((s) => s.cityId);
-  return pickBrowsingCity(
-    launchCities,
-    trips,
-    toISODate(new Date()),
-    chosenCityId,
-    deviceTimezone()
-  );
+  const chosen = useCityChoice((s) => s.city);
+  return pickBrowsingCity(featured, trips, toISODate(new Date()), chosen, deviceTimezone());
 }

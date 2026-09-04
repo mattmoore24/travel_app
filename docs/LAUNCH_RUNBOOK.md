@@ -136,7 +136,9 @@ the extension exists).
 ## 4. Open the city and seed it
 
 ```sql
--- Only Lisbon at first: launch dense, not wide (brief §2.6).
+-- Which cities the rail always shows (brief §2.6 as a marketing plan, not a
+-- fence: since 2026-09-04 a traveler can pin or plan a trip anywhere, and a
+-- city with enough plans joins the rail on its own).
 update launch_cities set active = false;
 update launch_cities set active = true
   where city_id = (select id from cities where name = 'Lisbon' and country_code = 'PT');
@@ -203,10 +205,10 @@ or pin** in city #1.
 
 | Situation                           | Lever                                                                                                                                                        |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Abuse spike in a city               | `update launch_cities set active = false where city_id = ...;` — hides its pins, blocks new ones                                                             |
+| Abuse spike in a city               | Ban or shadowban the accounts (`admin_resolve_report`); since 2026-09-04 no switch hides a city's pins or blocks new ones                                    |
 | Moderation API outage               | Messages hold automatically (fail-closed). To keep delivering with regex only: `update app_config set value = 'false' where key = 'require_llm_moderation';` |
 | Bad actor                           | `select admin_resolve_report(<id>, 'ban');` or `'shadowban'`                                                                                                 |
-| Heat too revealing in a sparse city | `update launch_cities set heat_k = 5 where city_id = ...;`                                                                                                   |
+| Heat too revealing in a sparse city | `update launch_cities set heat_k = 5 where city_id = ...;` (insert a row with `timezone` first for a city not yet in the table; the default k is 3)          |
 | Bad migration                       | Fix forward: new migration + trigger a deploy (never edit an applied one)                                                                                    |
 
 ## 2b. The domain, and everything behind it

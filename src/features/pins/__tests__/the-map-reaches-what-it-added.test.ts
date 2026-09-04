@@ -1,8 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { between } from '@/lib/__tests__/source';
-
 /**
  * EVERY CAPABILITY IN THIS BATCH HAS A CALL SITE, and this is a source scan
  * because that is the only way to see the defect.
@@ -34,11 +32,13 @@ function read(file: string): string {
 describe('the city rail', () => {
   const map = read('map-screen.tsx');
 
-  it('asks for the counts and prints one inside each chip', () => {
-    expect(map).toContain('useCityPinCounts()');
-    // Found by city, not by index: the rail and the counts are two queries
-    // and nothing guarantees they arrive in the same order.
-    expect(map).toContain('cityCounts.find((row) => row.city_id === city.city_id)?.pin_count');
+  it('draws the rail the server ranks, and prints each count inside its chip', () => {
+    // featured_cities(): the launch cities plus any city whose visible plans
+    // clear its k, most plans first, each row carrying its own count - one
+    // query, so the chip and its number cannot arrive in different orders.
+    expect(map).toContain('useFeaturedCities()');
+    expect(map).toContain('{railCities.map((city) => {');
+    expect(map).toContain('const count = city.pin_count;');
     expect(map).toMatch(/type="caption"[\s\S]{0,160}\{count\}/);
   });
 
@@ -48,24 +48,36 @@ describe('the city rail', () => {
     expect(map).toContain('{count != null ? (');
   });
 
-  it('carries a fifth chip for the cities nobody has opened', () => {
-    expect(map).toContain('Somewhere else?');
-    expect(map).toContain('setCityRequestOpen(true)');
+  it('puts the browsed city on the rail when it is not one of the featured', () => {
+    // A city reached by search, or by a pin that landed a continent away,
+    // still needs a lit chip.
+    expect(map).toContain('[activeCity, ...featured]');
   });
 
-  it('and that chip opens something that actually records the city', () => {
-    expect(map).toContain('useRequestCity()');
-    expect(map).toContain('requestCity.mutateAsync(name)');
-    // The demand map is the point; a sheet that only says "not yet" is the
-    // thing this package exists to replace.
-    expect(map).toContain('city-request-input');
+  it('carries a search chip, and nobody has to ask for a city', () => {
+    expect(map).toContain('accessibilityLabel="Search for a city"');
+    expect(map).toContain('setCitySearchOpen(true)');
+    expect(map).toContain('city-search-input');
+    expect(map).toContain("useCitySearch(citySearchOpen ? cityQuery : '')");
+    // The request-a-city flow is gone with its function (20260904120000).
+    expect(map).not.toContain('Somewhere else?');
+    expect(map).not.toContain('useRequestCity');
+    expect(read('hooks.ts')).not.toContain('request_city');
   });
 
-  it('promises only what the app can do', () => {
-    // No notify-me worker exists, so the sheet must not say it will tell
-    // anybody anything.
-    const sheet = between(map, 'We open cities where', 'Ask for it');
-    expect(sheet).not.toMatch(/we will (tell|let you know|email)/i);
+  it('a search pick browses that city through the same door a chip does', () => {
+    // selectCity, so the switch is counted and persisted exactly like a tap
+    // on a chip: a city found by search is a choice the person made.
+    expect(map).toContain('selectCity(browseCityFromCityRow(row));');
+  });
+
+  it('follows a pin to the city it resolved to', () => {
+    // Dropped in Manhattan while the Bangkok chip was lit, the pin belongs
+    // to New York; the map goes where the pin went rather than showing a
+    // confirmation card for a plan it is not drawing.
+    expect(map).toContain('onPosted={(pinId, city) => {');
+    expect(map).toContain('applyCity(browseCityFromCityRow(city));');
+    expect(read('hooks.ts')).toContain('city_id: city?.id ?? input.cityId,');
   });
 });
 

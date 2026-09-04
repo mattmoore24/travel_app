@@ -40,6 +40,25 @@ describe('the overlap sentence', () => {
     expect(overlapSentence('  ', '2026-09-03', '2026-09-08')).toBeNull();
   });
 
+  it('names both cities when the queue reached past one, and neither city twice', () => {
+    // Under a radius (profiles.travelers_radius_km) the sender's trip is in
+    // Cannes and the reader's in Nice; "Both in Cannes" would be a lie about
+    // the reader. The same city on both sides is the old sentence, and no
+    // second city at all (a caller that predates the column) is too.
+    expect(overlapSentence('Cannes', '2026-09-03', '2026-09-08', 'Nice')).toBe(
+      "In Cannes while you're in Nice, Sep 3 – 8"
+    );
+    expect(overlapSentence('Nice', '2026-09-03', '2026-09-08', 'Nice')).toBe(
+      'Both in Nice Sep 3 – 8'
+    );
+    expect(overlapSentence('Nice, France', '2026-09-03', '2026-09-08', 'Nice')).toBe(
+      'Both in Nice Sep 3 – 8'
+    );
+    expect(overlapSentence('Nice', '2026-09-03', '2026-09-08', null)).toBe(
+      'Both in Nice Sep 3 – 8'
+    );
+  });
+
   it('carries no em dash and none of the banned vocabulary', () => {
     const line = overlapSentence('Lisbon', '2026-09-03', '2026-09-08') ?? '';
     expect(line).not.toContain('—');

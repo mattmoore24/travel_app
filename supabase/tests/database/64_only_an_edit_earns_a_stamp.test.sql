@@ -197,8 +197,8 @@ select is(
 
 select is(
   pg_temp.named_in_trigger(false),
-  array['created_at', 'last_seen_on', 'locale', 'updated_at', 'user_id',
-        'wants_business']::text[],
+  array['created_at', 'last_seen_on', 'locale', 'travelers_radius_km',
+        'updated_at', 'user_id', 'wants_business']::text[],
   'and these are bookkeeping or immutable, so writing one publishes nothing'
 );
 

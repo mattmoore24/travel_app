@@ -113,7 +113,8 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('@/features/pins/hooks', () => ({
-  useLaunchCities: () => ({
+  // The rail, which is what a guest's Travelers tab reads its city off.
+  useFeaturedCities: () => ({
     data: [{ city_id: 1, cities: { name: 'Lisbon' } }],
     isError: false,
     isPending: false,
@@ -122,6 +123,7 @@ jest.mock('@/features/pins/hooks', () => ({
 
 jest.mock('@/features/matching/hooks', () => ({
   useMatches: () => ({ data: [], isError: false, refetch: jest.fn() }),
+  useSetTravelersRadius: () => ({ set: jest.fn(), isPending: false }),
   useMyChats: () => ({ data: [] }),
   useSentRequests: () => ({ data: [] }),
   useJustSentHello: Object.assign(() => null, { getState: () => ({ clear: jest.fn() }) }),

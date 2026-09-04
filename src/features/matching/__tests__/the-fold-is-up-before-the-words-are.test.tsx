@@ -57,6 +57,7 @@ const request = {
   overlap_city: null,
   overlap_start: null,
   overlap_end: null,
+  overlap_my_city: null,
   created_at: new Date().toISOString(),
 } as unknown as IncomingRequestRow;
 

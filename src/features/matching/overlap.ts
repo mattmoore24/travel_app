@@ -49,7 +49,14 @@ import { formatDateRange } from '@/features/trips/dates';
 export function overlapSentence(
   city: string | null | undefined,
   start: string | null | undefined,
-  end: string | null | undefined
+  end: string | null | undefined,
+  /**
+   * The reader's own city for the window, when the queue reaches past one
+   * city (profiles.travelers_radius_km). Under a radius "Both in Cannes" is
+   * a lie about somebody in Nice, so the sentence names both; the same city
+   * twice, or no second city at all, is the old sentence.
+   */
+  myCity: string | null | undefined = null
 ): string | null {
   if (!city || !start || !end) {
     return null;
@@ -57,6 +64,10 @@ export function overlapSentence(
   const place = city.split(',')[0].trim();
   if (!place) {
     return null;
+  }
+  const mine = myCity?.split(',')[0].trim();
+  if (mine && mine !== place) {
+    return `In ${place} while you're in ${mine}, ${formatDateRange(start, end)}`;
   }
   return `Both in ${place} ${formatDateRange(start, end)}`;
 }

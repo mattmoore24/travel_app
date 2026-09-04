@@ -179,7 +179,12 @@ export function IncomingRequestCard({ request }: { request: IncomingRequestRow }
   );
 
   const name = request.display_name ?? 'Traveler';
-  const overlap = overlapSentence(request.overlap_city, request.overlap_start, request.overlap_end);
+  const overlap = overlapSentence(
+    request.overlap_city,
+    request.overlap_start,
+    request.overlap_end,
+    request.overlap_my_city
+  );
   const arrived = rowTimestamp(request.created_at);
 
   const accept = async () => {

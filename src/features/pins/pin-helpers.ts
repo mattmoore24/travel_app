@@ -15,6 +15,10 @@ import { dates } from '@/lib/locale';
 export type PinExtras = {
   /** Postgres `time` as 'HH:MM:SS'. Null means "sometime that day". */
   intent_time?: string | null;
+  /** The end of the window; at or before the start means past midnight. */
+  intent_time_end?: string | null;
+  /** The author said the time is to be decided: an answer, not silence. */
+  time_tbd?: boolean;
   /** The listed business this plan is at, when the two are the same place. */
   business_id?: string | null;
 };
@@ -311,15 +315,43 @@ export function intentTimeLabel(time: string | null | undefined): string | null 
 }
 
 /**
- * When a plan is, in one line: 'Today', or 'Today at 19:00'.
+ * The time part of a plan, or null for one that never named an hour:
+ * '19:00', '19:00 to 22:00', or 'time TBD'.
+ *
+ * Four honest shapes and no fifth. Silence (no hour) prints nothing, because
+ * "sometime that day" is what the day already says; TBD prints, because the
+ * author is telling the reader to ask rather than to assume.
+ */
+export function timeWindowLabel(pin: PinExtras): string | null {
+  if (pin.time_tbd) {
+    return 'time TBD';
+  }
+  const start = intentTimeLabel(pin.intent_time);
+  if (!start) {
+    return null;
+  }
+  const end = intentTimeLabel(pin.intent_time_end);
+  return end ? `${start} to ${end}` : start;
+}
+
+/**
+ * When a plan is, in one line: 'Today', 'Today at 19:00', 'Today, 19:00 to
+ * 22:00', or 'Today, time TBD'.
  *
  * "at" and never "here": an hour on a pin is future intent exactly like the
  * date beside it, and the app does not make presence claims (§7 rule 2).
  */
 export function whenLabel(pin: { intent_date: string } & PinExtras, now = new Date()): string {
   const day = intentLabel(pin.intent_date, now);
-  const at = intentTimeLabel(pin.intent_time);
-  return at ? `${day} at ${at}` : day;
+  if (pin.time_tbd) {
+    return `${day}, time TBD`;
+  }
+  const start = intentTimeLabel(pin.intent_time);
+  if (!start) {
+    return day;
+  }
+  const end = intentTimeLabel(pin.intent_time_end);
+  return end ? `${day}, ${start} to ${end}` : `${day} at ${start}`;
 }
 
 /**
@@ -349,8 +381,17 @@ export function byIntentMoment(
   return left < right ? -1 : 1;
 }
 
-/** The chip that means "I have not said". Empty, so it is falsy on submit. */
+/** The form's "I have not said". Empty, so it is falsy on submit. */
 export const NO_INTENT_TIME = '';
+
+/**
+ * The form's "to be decided" chip. A word rather than an hour, so the rail
+ * can hold it beside the hours; the write path turns it into `time_tbd`.
+ */
+export const TIME_TBD = 'tbd';
+
+/** The longest window the form offers, in hours. Longer than this is a day. */
+export const MAX_WINDOW_HOURS = 8;
 
 /**
  * The hours a pin may actually name, and no others.
@@ -367,6 +408,11 @@ export const NO_INTENT_TIME = '';
  * The offset between the two clocks is the difference between the city's
  * wall time and this device's: cityClockNow hands back a Date whose LOCAL
  * getters read the city's hour, so subtracting is exactly that gap.
+ *
+ * HOURS ONLY, nothing that means "unset". The form starts with nothing
+ * chosen (the founder: "not a preselected bubble"), and TBD is the form's
+ * own chip beside these, so an empty answer here is a rail with no hour in
+ * it rather than a rail with one chip.
  */
 export function intentTimeOptions(
   intentISO: string,
@@ -376,7 +422,7 @@ export function intentTimeOptions(
 ): { value: string; label: string }[] {
   const offsetMs = cityClock.getTime() - now.getTime();
   const day = parseISODate(intentISO);
-  const options = [{ value: NO_INTENT_TIME, label: 'Any time' }];
+  const options: { value: string; label: string }[] = [];
   for (let hour = 0; hour < 24; hour += 1) {
     // Built from the calendar parts rather than by adding milliseconds, so a
     // clock change inside the day cannot slide every chip by an hour.
@@ -388,6 +434,40 @@ export function intentTimeOptions(
       break;
     }
     const value = `${String(hour).padStart(2, '0')}:00`;
+    options.push({ value, label: intentTimeLabel(value) ?? value });
+  }
+  return options;
+}
+
+/**
+ * The hours a plan that starts at `startHHMM` may end at: the next
+ * MAX_WINDOW_HOURS whole hours, past midnight included ("10 PM to 2 AM" is a
+ * night out, and the server reads an end at or before the start as
+ * tomorrow), and never past the moment the pin disappears - the same rule 3
+ * edge intentTimeOptions stops at, for the same reason.
+ */
+export function intentEndOptions(
+  intentISO: string,
+  startHHMM: string,
+  expiresAt: Date,
+  cityClock: Date,
+  now = new Date()
+): { value: string; label: string }[] {
+  const startHour = Number(startHHMM.slice(0, 2));
+  if (!Number.isFinite(startHour)) {
+    return [];
+  }
+  const offsetMs = cityClock.getTime() - now.getTime();
+  const day = parseISODate(intentISO);
+  const options: { value: string; label: string }[] = [];
+  for (let step = 1; step <= MAX_WINDOW_HOURS; step += 1) {
+    // Built from the calendar parts, like the start: a clock change inside
+    // the night cannot slide the window by an hour.
+    const wall = new Date(day.getFullYear(), day.getMonth(), day.getDate(), startHour + step);
+    if (wall.getTime() - offsetMs > expiresAt.getTime()) {
+      break;
+    }
+    const value = `${String((startHour + step) % 24).padStart(2, '0')}:00`;
     options.push({ value, label: intentTimeLabel(value) ?? value });
   }
   return options;

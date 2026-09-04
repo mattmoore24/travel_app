@@ -3,6 +3,120 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **A pin goes where the traveler goes** (2026-09-04)
+
+The founder tried to drop a pin in Manhattan and got "Could not save". The
+map had let them pan there, the geocoder had named the corner, and then
+`validate_pin` measured the spot against the centre of the city whose chip
+was lit - Bangkok, 13,924 km away - and refused it. The rule was the brief's
+"launch dense, not wide" (§2.6), doing its job. The founder's decision retires
+it: _"There is no reason to ever block someone from putting down a pin ...
+never limit travelers on where they can put their trips or pins."_ And with
+it: the rail becomes featured cities, nobody asks for a city to be opened,
+the time on a pin is optional and can be a window or TBD, the Details box is
+not cut off, and Travelers reaches a radius the person sets.
+
+### What changed, and where the fence went
+
+- **Every city knows its clock.** `cities.timezone` (20260904110000), seeded
+  for all 49,025 cities down to a population of 5,000 by `geo-tz` against
+  each coordinate (20260904110100; `scripts/generate-cities-seed.mjs` takes
+  `--min` and `--out`, and a rerun into a NEW file refreshes clocks without
+  rewriting a name a trip already points at). The threshold came down from
+  50,000 because the founder's own example - Nice, Cannes, Antibes, Monaco -
+  had Monaco missing, and the towns backpackers actually go to (Tulum, El
+  Nido, Byron Bay, Ericeira) are small. `city_clock_zone()` is the one
+  reader: a launch city's hand-set zone first, the seeded one otherwise.
+- **The pin's city is resolved, not trusted** (20260904120000). `pins.city_id`
+  points at `cities` now, and `validate_pin` keeps the browsed city when the
+  spot is within 20 km of it and otherwise asks `nearest_city()`: distance
+  over the fourth root of population, which is the smallest weighting that
+  says New York for Midtown (nearest by distance alone is Hoboken), Monaco
+  for Monaco and Jersey City for Jersey City. Nothing near anything (the
+  Atlantic) keeps the browsed city. Never a refusal.
+- **The map is a circle.** `city_pins`, `public_city_pins`, `heat_cells` and
+  `public_heat_cells` read every live pin within `map_radius_km()` (50) of
+  the browsed city's coordinate. A plan on the Croisette is on the Nice map
+  and the Cannes map both; `city_id` is a label for the funnel and the rail.
+  The two-door pattern (INVOKER for members, DEFINER with restated
+  visibility for guests) is unchanged, and k is `coalesce(launch_cities.heat_k, 3)`
+  everywhere - the founder can still raise a city's floor, nothing can lower
+  it. `heat_history` follows `cities` too, so the sweep remembers a city
+  nobody opened.
+- **Featured, not open.** `featured_cities()` and its guest twin replace the
+  `city_pin_counts` pair: every active launch city plus any city whose
+  visible plans clear its k, most plans first, eight at most. A city below
+  its k is not named - a chip reading "Podunk" with no number would still
+  say somebody has a plan in Podunk, which is the enumeration the floor
+  refuses. `request_city()` is dropped; `city_requests` stays as the record.
+- **A time is optional, a window, or TBD.** `intent_time_end` and `time_tbd`
+  on `pins`, through both feeds and `post_joinable_pin` (two defaulted
+  parameters, so the old signature is dropped and regranted). A window may
+  cross midnight ("10 PM to 2 AM"; an end at or before the start reads as
+  tomorrow) and its end is checked against the expiry exactly like the
+  single hour was (rule 3). The write path now answers with the CITY the pin
+  resolved to, so the map can follow it there.
+- **Travelers within a radius.** `profiles.travelers_radius_km` (default 32,
+  about twenty miles; 0 is this city only; CHECK 0..500) and
+  `cities_within_km()`, a plain SQL function the planner inlines, with a
+  latitude-band prefilter on the new `cities_lat_lng_idx`. The VIEWER's
+  radius from the VIEWER's trip city, read by every surface that has to
+  agree: `overlaps_own_trip` (the `trips_select_overlap` policy - a radius on
+  `get_matches` alone returned nothing new, because RLS hid the rows first),
+  `get_matches` (dropped and recreated with `distance_km`, `my_city_id`,
+  `my_city_name`), `send_message_request`'s trip branch, `incoming_requests`
+  (dropped and recreated with `overlap_my_city`) and `meet_prompt_due`. A
+  hello to somebody the queue just showed is never "recipient unavailable".
+- **The three clocks read every city's zone.** `push_trip_starts_tomorrow`,
+  `push_plan_is_soon` and `push_last_call` inner-joined `launch_cities`, so
+  a trip to Porto got no push at all. Left joins and `city_clock_zone()`;
+  the trip clock's rough-window exclusions are kept verbatim.
+
+### The client
+
+- The rail draws `useFeaturedCities()` with the browsed city in front when
+  it is not featured; the fifth chip is **Anywhere**, a search over
+  `search_cities` that browses any pick through the same `selectCity` door a
+  chip tap uses. The city store (`samewhere.map.city.v2`) keeps the whole
+  city - name, coordinate, clock - so a cold start can fly to a city the
+  rail has never listed; the live count is not persisted. `pickBrowsingCity`
+  resolves to any trip's city, built from the trip's own row.
+- The pin form's Time rail starts dark, leads with TBD, and grows an "Until"
+  rail under a chosen hour (`intentEndOptions`: eight hours, past midnight
+  included, never past the expiry). Tapping the lit chip puts it out. The
+  scroller carries bottom padding so Details clears the fade. `whenLabel`
+  says "Today, 19:00 to 22:00" and "Today, time TBD"; a pin with no hour
+  says the day alone, as before.
+- Travelers: a dial chip in the queue header ("Within 20 mi" / "Within 32
+  km", by the phone's region - `USES_MILES` in `lib/locale`), a five-row
+  sheet saved on the tap, "Look further than within 20 mi" on the empty
+  wall, and the shared-dates sentence names both cities when they differ:
+  "In Cannes while you're in Nice, Sep 3 – 8". The scope line counts the
+  reader's own city.
+
+### What did not move
+
+§7 rule 2: every radius is measured from a city a person CHOSE; `get_matches`
+takes no argument and the pgTAP asserts its `pronargs` is 0. Rule 3 and rule
+6 as above. Rule 8: businesses still register in a launch city, which is the
+business side's decision and not this one's. `launch_cities` narrows to what
+it always half was: where a business can list, the seed of the rail, and a
+per-city override for k and the clock.
+
+### Proof
+
+`76_a_pin_goes_where_the_traveler_goes.test.sql` (56 assertions): the
+Manhattan pin, its resolution, the Monaco/Cannes/Atlantic cases, the circle
+from New York and Hoboken and not Bangkok, both doors, the clock and its
+CHECK, a window past midnight, TBD, the rule 3 edge for a window at every
+hour of the day, the rail's ranking and its k, heat and the sweep for a city
+nobody opened, the retired functions, and Nice/Cannes/Antibes/Lisbon through
+`get_matches`, the policy, the hello and the inbox chip at 0, 20 and 32 km.
+Five existing files changed with the decision (06, 26, 56, 64, 72) and the
+rest of the suite passed unchanged. Client: browsing-city, city-store, the
+rail scan, pin-form-hour (window, TBD, put-out), the hour helpers, the radius
+words, and the two-city overlap sentence.
+
 ## **The keyboard bar was built three times and bound once** (2026-09-04)
 
 The founder sent two screenshots and six comments. The one that mattered most

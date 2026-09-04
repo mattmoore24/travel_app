@@ -140,11 +140,14 @@ Planned next (from brief §4), unchanged:
   status incl. blocked_by_moderation — hard rule 5)
 - `chats` / `messages` (created only on accept; Realtime)
 - `reports`, `blocks`, `moderation_events` (full audit trail)
-- `seeded_pins` (admin-curated, no user attached), `launch_cities` (geofence/feature flags)
+- `seeded_pins` (admin-curated, no user attached), `launch_cities` (where a business can
+  list, the seed of the map's rail, and a per-city override for `heat_k` and the clock; **not
+  a fence** since 2026-09-04 - a pin or a trip can be in any of the ~49,000 `cities`)
 
 **RLS invariants to be enforced in Postgres with tests** (brief §4): social-handle gating;
-no pin reads outside launch cities; expired pins unreadable by everyone; pending/declined
-requests reveal nothing to the sender.
+pins readable only within the map's circle around a city the reader CHOSE, never a device
+position; expired pins unreadable by everyone; pending/declined requests reveal nothing to
+the sender.
 
 Edge Functions planned: first-message moderation (regex pre-filter → Claude classification →
 verdict log), pin expiry sweep, heatmap aggregation (PostGIS → H3 cells). Scheduled jobs via
@@ -162,15 +165,21 @@ loads/month, needs token + config plugin + dev build).
 
 ### The map (Phase 3 implementation)
 
-- **`launch_cities`** — geofence/feature-flag table seeded with the brief's candidate hubs
-  (Lisbon, Mexico City, Bangkok, Denpasar), per-city `radius_km` (default 40) and `heat_k`
-  (default 3). Founder toggles `active`; nothing is hardcoded global (brief §2.6).
+- **`launch_cities`** — seeded with the brief's candidate hubs (Lisbon, Mexico City,
+  Bangkok, Denpasar), per-city `heat_k` (default 3) and a hand-set `timezone`. Since
+  2026-09-04 it is the seed of the rail and the business side's list, not a geofence:
+  `radius_km` is unused by pins, and `active = false` takes a city off the rail's guaranteed
+  slot without hiding a single pin. `cities` carries every city down to 5,000 people with
+  its own `timezone` (`city_clock_zone()` reads the launch override first).
 - **`pins`** — venue-level future intent. Hard rule 3 is structural: `expires_at <=
 created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited past its
   cap), RLS that hides expired pins from _everyone including the owner_, and an
   `expire_pins()` hard-delete sweep (pg_cron every 15min on hosted; guarded no-op locally).
-  A validation trigger enforces the city geofence (haversine — no PostGIS dependency yet),
-  active-city status, sane intent dates, and a 10-active-pin cap.
+  A validation trigger RESOLVES the pin's city (the browsed one within 20 km, else
+  `nearest_city()`, distance over the fourth root of population - haversine, no PostGIS),
+  checks sane intent dates and an optional hour or window against the expiry in the city's
+  zone, and a 10-active-pin cap. The map feeds read by distance from the browsed city
+  (`map_radius_km()`, 50 km), so the city label is for the funnel and the rail.
 - **Rule 2 posture**: nothing in the schema or client ever touches device location —
   `showsUserLocation={false}`, no location permission in app.json, pin placement is manual
   (tap/drag on the map).
@@ -1842,6 +1851,24 @@ halves.
   Masking alone is not enough: the client cannot draw a review state it cannot see, and the
   result was an empty bubble for the whole wait. The path stays masked for everyone but the
   sender, who could already read their own upload through `chat_photos_select_own`.
+- **2026-09-04** — **A pin or a trip can be in any city.** The founder retired "launch
+  dense, not wide" as a fence after being refused a pin in Manhattan: `pins.city_id` and
+  `heat_history.city_id` point at `cities`, `validate_pin` resolves the city instead of
+  gating on it, the map feeds and heat read a 50 km circle around the browsed city, and
+  the rail is `featured_cities()` (launch cities plus any city whose visible plans clear
+  its k). Rule 6's k is `coalesce(launch_cities.heat_k, 3)` in one place per function;
+  a city is never named on the rail below its k. `request_city()` is gone.
+- **2026-09-04** — **Travelers reaches a radius the viewer sets** (`profiles.travelers_radius_km`,
+  default 32 km). The radius lives in the `trips_select_overlap` policy's predicate
+  (`overlaps_own_trip`) and not only in `get_matches`, because a SECURITY INVOKER queue
+  cannot widen past what RLS lets it read; the hello, the inbox chip and the meet
+  question read the same number so no surface disagrees. Measured city centre to city
+  centre from a trip the person typed, never from a device (rule 2); `get_matches` takes
+  no argument and pgTAP asserts it.
+- **2026-09-04** — **Every city has a clock.** `cities.timezone` from `geo-tz` at seed
+  time (49,025 rows, threshold 5,000), read through `city_clock_zone()`; the three push
+  clocks and the pin's hour check no longer inner-join `launch_cities`, so a trip to Porto
+  gets its "tomorrow" push and a plan in Manhattan its last call.
 - **2026-08-28** — Read receipts (Delivered / Read) are **not** built, and this is a product
   decision rather than a backlog item: there is no recipient-scoped column to hang them on,
   and they create response pressure that works against the safety posture. "Sending" and

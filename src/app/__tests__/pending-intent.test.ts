@@ -65,7 +65,9 @@ describe('every origin writes, every replay clears first', () => {
     const map = src('src/features/pins/map-screen.tsx');
     const handled = map.indexOf('intentHandled();');
     expect(handled).toBeGreaterThan(-1);
-    const applied = map.indexOf('applyCity(intent.cityId);');
+    // The replay resolves the intent's city to a rail row (or the stored
+    // choice) and applies THAT; the clear still comes first.
+    const applied = map.indexOf('applyCity(target);');
     expect(applied).toBeGreaterThan(handled);
   });
 

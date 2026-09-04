@@ -115,7 +115,9 @@ Couchsurfing, Snap Map, and Zenly. Key conclusions:
    pre-seeded map pins (curated real events/spots) so the map is never empty on day one. Build
    support for: city-level feature flags/geofencing, an admin tool for seeding curated pins,
    and a liquidity dashboard (active users with overlapping trips per city). Don't hardcode a
-   global launch.
+   global launch. _Founder decision 2026-09-04: the dense launch is a marketing plan, not a
+   fence. A traveler can put a trip or a pin in any city; the seeded hubs are the rail's
+   featured cities and where businesses can list._
 7. **Retention between trips is a known later problem** (travelers delete apps between trips).
    Do NOT build a home-city mode in v1 — but don't architect anything that would preclude it.
 
@@ -169,13 +171,15 @@ dependency), solo-founder maintainability, fast iteration, and real-time feature
 - `reports`, `blocks`, `moderation_events` — full audit trail
 - `seeded_pins` — admin-curated pins (hostel events, walking tours) flagged as curated, no
   user attached
-- `launch_cities` — geofence/feature-flag table
+- `launch_cities` — the seeded hubs: featured on the rail, where businesses list, per-city
+  k and clock overrides (a fence until 2026-09-04; not one since)
 
 ### RLS invariants to enforce in Postgres (write tests for these)
 
 1. No user can read another user's `social_handles` without an accepted chat.
-2. No user can read raw pins outside launch cities or query pins in a way that returns another
-   user's precise history.
+2. No user can read raw pins outside the map's circle around a city they CHOSE (never a device
+   position), or query pins in a way that returns another user's precise history. _(Until
+   2026-09-04 this read "outside launch cities"; the founder opened every city.)_
 3. Expired pins are unreadable by everyone.
 4. Declined/pending message requests never reveal read status or decline to the sender.
 
@@ -195,7 +199,7 @@ dependency), solo-founder maintainability, fast iteration, and real-time feature
   incoming requests with accept/decline. _Deliverable: two test accounts with overlapping
   trips can request → accept → land in a chat shell._
 - **Phase 3 — The Map (hero feature — invest the most polish here)**: Pin creation flow (venue
-  search, category, intent date, expiry ≤72h), map browse of active pins in launch cities,
+  search, category, intent date, expiry ≤72h), map browse of active pins around any city,
   pin → profile → message request flow, server-side heatmap aggregation + client heat layer
   with the k-threshold, pin auto-expiry job, admin seeded-pins path. _Deliverable: the map is
   compelling with 15 pins on it._

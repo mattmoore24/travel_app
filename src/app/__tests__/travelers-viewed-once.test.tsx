@@ -38,11 +38,12 @@ jest.mock('expo-router', () => ({
 }));
 
 jest.mock('@/features/pins/hooks', () => ({
-  useLaunchCities: () => ({ data: [], isError: false }),
+  useFeaturedCities: () => ({ data: [], isError: false }),
 }));
 
 jest.mock('@/features/matching/hooks', () => ({
   useMatches: () => ({ data: [], isError: false, refetch: jest.fn() }),
+  useSetTravelersRadius: () => ({ set: jest.fn(), isPending: false }),
   useMyChats: () => ({ data: [] }),
   useSentRequests: () => ({ data: [] }),
   useDailySpotlight: () => ({ data: null }),
@@ -55,6 +56,7 @@ jest.mock('@/features/trips/hooks', () => ({
 }));
 
 jest.mock('@/features/profile/hooks', () => ({
+  useOwnProfile: () => ({ data: null }),
   useOwnVisibility: () => ({ data: 'everyone' }),
   usePublicProfile: () => ({ data: null }),
   usePublicPhotos: () => ({ data: [] }),

@@ -6,6 +6,7 @@ import { useRefetchOnRefocus } from '@/hooks/use-refetch-on-refocus';
 import {
   deletePin,
   fetchCityPins,
+  fetchFeaturedCities,
   fetchHeatCells,
   fetchLaunchCities,
   fetchPinCrew,
@@ -15,9 +16,14 @@ import { useIsBusiness } from '@/features/business/hooks';
 import { useIsGuest, useWantsBusiness } from '@/features/guest/hooks';
 import { usePushPrimer } from '@/features/notifications/primer-store';
 import { analytics } from '@/lib/analytics';
-import type { HeatCellRow, PinCategory } from '@/lib/database.types';
+import type { CityRow, HeatCellRow, PinCategory } from '@/lib/database.types';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
+/**
+ * The founder's launch cities: where a BUSINESS can list, and the seed of the
+ * map's rail. Not where a traveler can go - that is any city, and the map
+ * reads useFeaturedCities instead.
+ */
 export function useLaunchCities() {
   return useQuery({
     queryKey: ['launch-cities'],
@@ -25,6 +31,34 @@ export function useLaunchCities() {
     enabled: isSupabaseConfigured,
     staleTime: 60 * 60 * 1000, // launch cities change on founder action, not per-session
   });
+}
+
+/**
+ * The map's rail: the launch cities plus any city whose visible plans clear
+ * its k, most plans first, each carrying its count. The SAME door useMapPins
+ * picks, and for the same reason: a rail computed under different visibility
+ * rules would name a city whose plans the map behind it does not draw. A
+ * business and a signed-out visitor both read the identity-free side; a
+ * member reads the one RLS answers.
+ */
+export function useFeaturedCities() {
+  const isGuest = useIsGuest();
+  const isBusiness = useIsBusiness();
+  const wantsBusiness = useWantsBusiness();
+  const anonymous = isGuest || isBusiness || wantsBusiness;
+  const focused = useIsFocused();
+  const query = useQuery({
+    queryKey: ['featured-cities', anonymous ? 'anonymous' : 'identified'],
+    queryFn: () => fetchFeaturedCities(anonymous),
+    enabled: isSupabaseConfigured,
+    // Slower than the pins themselves: a chip that is one plan out of date
+    // for a minute is telling the truth about a minute ago, and the rail is
+    // read at a glance rather than counted.
+    staleTime: 60_000,
+    refetchInterval: focused ? 120_000 : false,
+  });
+  useRefetchOnRefocus(focused, query);
+  return query;
 }
 
 export function useCityPins(cityId: number | null) {
@@ -62,23 +96,20 @@ export function useHeatCells(cityId: number | null, date: string | null) {
 }
 
 /**
- * THE CALLS 20260902190000 ADDED, AND THE ONE IT WIDENED.
+ * THE CALLS 20260902190000 ADDED.
  *
  * `supabase.rpc` is typed from src/lib/database.types.ts, which enumerates
  * every function by name and by argument, and that file is not this
- * package's to edit — so the typed client refuses these four calls outright
- * even though the functions exist and are granted. This is the narrowest
- * hole that lets them through: one indirection, in one file, named so nobody
+ * package's to edit — so the typed client refuses these calls outright even
+ * though the functions exist and are granted. This is the narrowest hole
+ * that lets them through: one indirection, in one file, named so nobody
  * mistakes it for a convenience. Delete it and send the calls back through
  * `supabase.rpc` the moment database.types.ts carries
  *
- *   city_pin_counts        Args: {}                  Returns: CityPinCountRow[]
- *   public_city_pin_counts Args: {}                  Returns: CityPinCountRow[]
  *   heat_history_cells     Args: { p_city_id }       Returns: HeatCellRow[]
- *   request_city           Args: { p_name }          Returns: void
  *
- * and post_joinable_pin's Args grow `p_intent_time?: string | null` and
- * `p_joinable?: boolean`.
+ * (The rail's two counting functions and the ask-for-a-city RPC went with
+ * 20260904120000; featured_cities is typed and goes through supabase.rpc.)
  */
 function callRpc(fn: string, args: Record<string, unknown> = {}) {
   // Through the client rather than a detached method, so `this` survives.
@@ -108,6 +139,17 @@ export type NewPin = {
    * and a pin without one is a first-class pin.
    */
   intentTime?: string | null;
+  /**
+   * The end of the window, 'HH:MM', when the plan is "from 7 to 10" rather
+   * than "at 7". An end at or before the start means past midnight. Sent only
+   * with a start; the column refuses it alone.
+   */
+  intentTimeEnd?: string | null;
+  /**
+   * The author said the time is to be decided. An answer the card prints
+   * ("Time TBD"), unlike no hour at all, which prints nothing.
+   */
+  timeTbd?: boolean;
   expiresAt: string;
   /**
    * Ticked "anyone can join": the pin arrives carrying a group chat and one
@@ -124,9 +166,12 @@ export type NewPin = {
   businessId?: string | null;
 };
 
-type PostedPin = {
+export type PostedPin = {
   id: string;
+  /** The city the pin RESOLVED to, which is the browsed city unless the spot was far from it. */
   city_id: number;
+  /** That city as a row, so the map can follow the pin there. */
+  city: CityRow | null;
   category: PinCategory;
   intent_date: string;
   /** The group it opened with, when it was posted open to join. */
@@ -165,19 +210,28 @@ export function useCreatePin() {
         p_expires_at: input.expiresAt,
         p_joinable: joinable === true,
         // Sent ONLY when it has a value. PostgREST resolves an RPC by the
-        // argument names it is given, so naming p_business_id against a
-        // server that predates 20260903110000 would fail EVERY pin post for
-        // as long as the bundle led the deploy. Left out, an ordinary pin
-        // keeps working in either order; only 'Plan to go' waits on it.
+        // argument names it is given, so naming an argument against a
+        // server that predates it would fail EVERY pin post for as long as
+        // the bundle led the deploy. Left out, an ordinary pin keeps working
+        // in either order; only the feature that needs the argument waits.
         ...(input.businessId ? { p_business_id: input.businessId } : {}),
+        ...(input.intentTimeEnd ? { p_intent_time_end: input.intentTimeEnd } : {}),
+        ...(input.timeTbd ? { p_time_tbd: true } : {}),
       });
       if (error) {
         throw error;
       }
-      const { pin_id, chat_id } = data as { pin_id: string; chat_id: string | null };
+      const { pin_id, chat_id, city } = data as {
+        pin_id: string;
+        chat_id: string | null;
+        city?: CityRow | null;
+      };
       return {
         id: pin_id,
-        city_id: input.cityId,
+        // The server's answer, not the form's: a pin dropped in Manhattan
+        // while the Bangkok chip was lit belongs to New York.
+        city_id: city?.id ?? input.cityId,
+        city: city ?? null,
         category: input.category,
         intent_date: input.intentDate,
         chat_id,
@@ -198,8 +252,9 @@ export function useCreatePin() {
       queryClient.invalidateQueries({ queryKey: ['map-pins', pin.city_id] });
       queryClient.invalidateQueries({ queryKey: ['map-heat', pin.city_id] });
       // The rail prints the same number the map draws, so it goes stale on
-      // exactly the same event.
-      queryClient.invalidateQueries({ queryKey: ['city-pin-counts'] });
+      // exactly the same event - and a first pin in a new city can put that
+      // city on the rail.
+      queryClient.invalidateQueries({ queryKey: ['featured-cities'] });
       // A pin is an invitation, so this is the other moment where being told
       // somebody answered is obviously worth something.
       usePushPrimer.getState().ask('pin-posted');
@@ -300,51 +355,6 @@ export function useDeletePin(cityId: number | null) {
   });
 }
 
-/** One city chip's number: null below that city's own k, never a 1 or a 2. */
-export type CityPinCountRow = {
-  city_id: number;
-  /** Plans this caller can see in that city, or null when there are too few. */
-  pin_count: number | null;
-};
-
-/**
- * How busy each launch city is, for the rail.
- *
- * The SAME door useMapPins picks, and for the same reason: two feeds computed
- * under different visibility rules would put a number on a chip that the map
- * behind it does not draw. A business and a signed-out visitor both read the
- * identity-free side; a member reads the one RLS answers.
- *
- * No city id in the key. It is one row per city in one round trip, which is
- * what makes it a rail rather than four requests.
- */
-export function useCityPinCounts() {
-  const isGuest = useIsGuest();
-  const isBusiness = useIsBusiness();
-  const wantsBusiness = useWantsBusiness();
-  const anonymous = isGuest || isBusiness || wantsBusiness;
-  const focused = useIsFocused();
-  const query = useQuery({
-    queryKey: ['city-pin-counts', anonymous ? 'anonymous' : 'identified'],
-    queryFn: async () => {
-      const rpc = anonymous ? 'public_city_pin_counts' : 'city_pin_counts';
-      const { data, error } = await callRpc(rpc);
-      if (error) {
-        throw error;
-      }
-      return (data ?? []) as CityPinCountRow[];
-    },
-    enabled: isSupabaseConfigured,
-    // Slower than the pins themselves: a chip that is one plan out of date
-    // for a minute is telling the truth about a minute ago, and the rail is
-    // read at a glance rather than counted.
-    staleTime: 60_000,
-    refetchInterval: focused ? 120_000 : false,
-  });
-  useRefetchOnRefocus(focused, query);
-  return query;
-}
-
 /**
  * Where a city has usually been busy at this hour on this weekday, drawn
  * under the live layer so a quiet Tuesday still says something.
@@ -375,25 +385,4 @@ export function useHeatHistory(cityId: number | null) {
   });
   useRefetchOnRefocus(focused, query);
   return query;
-}
-
-/**
- * "My city is not on here." Recorded, never answered.
- *
- * The name goes to the database and nowhere else — no analytics property, on
- * purpose: it is free text a person typed, and this repo already has an
- * incident about user text reaching analytics by accident.
- */
-export function useRequestCity() {
-  return useMutation({
-    mutationFn: async (name: string) => {
-      const { error } = await callRpc('request_city', { p_name: name.trim() });
-      if (error) {
-        throw error;
-      }
-    },
-    onSuccess: () => {
-      analytics.capture('city_requested');
-    },
-  });
 }

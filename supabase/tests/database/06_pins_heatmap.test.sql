@@ -1,7 +1,7 @@
--- Pins: 72h hard expiry (rule 3), geofenced launch cities, immutability,
+-- Pins: 72h hard expiry (rule 3), a pin in any city (20260904120000), immutability,
 -- k-anonymous heatmap (rule 6), seeded pins, pin-source requests.
 begin;
-select plan(33);
+select plan(34);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -46,17 +46,26 @@ select lives_ok(
   'pin creation works inside the geofence'
 );
 
--- Geofence: Porto is ~270km from Lisbon.
-select throws_ok(
+-- No geofence any more (20260904120000): Porto is ~270km from Lisbon, and a
+-- pin dropped there while browsing Lisbon is saved and becomes Porto's.
+select lives_ok(
   $$ insert into public.pins
        (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
      values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(),
              'Somewhere in Porto', 'bar', 41.1496, -8.6109, current_date,
              now() + interval '24 hours') $$,
-  '23514',
-  null,
-  'pins outside the city radius are rejected'
+  'a pin far outside the browsed city is saved'
 );
+select is(
+  (select c.name from public.pins p join public.cities c on c.id = p.city_id
+    where p.venue_name = 'Somewhere in Porto'),
+  'Porto',
+  'and resolves to the city it is actually in'
+);
+-- Taken back out as postgres so the counts below stay about the one pin.
+reset role;
+delete from public.pins where venue_name = 'Somewhere in Porto';
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 
 -- HARD RULE 3: the 72h ceiling is a CHECK, not a convention.
 select throws_ok(
@@ -336,8 +345,9 @@ select throws_ok(
   'pin-source request requires a live pin'
 );
 
--- A pin in a DEACTIVATED city must not satisfy the check — otherwise the
--- error difference becomes an oracle for pin existence off the visible map.
+-- A pin in a city the founder switched off (or never opened) is still a
+-- person with a plan: the launch list is a rail, not a fence
+-- (20260904120000).
 reset role;
 create function pg_temp.bangkok() returns int language sql as
   $$ select city_id from public.launch_cities lc
@@ -350,11 +360,10 @@ from public.cities c where c.id = pg_temp.bangkok();
 update public.launch_cities set active = false where city_id = pg_temp.bangkok();
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000b');
-select throws_ok(
+select lives_ok(
   $$ select public.send_message_request(
        '00000000-0000-0000-0000-00000000000c', 'pin', 'hi there', 'pin') $$,
-  'recipient unavailable',
-  'pins in deactivated cities are not an existence oracle'
+  'a pin in a city off the rail is still somebody you can say hi to'
 );
 
 -- Anon gets nothing.

@@ -4,7 +4,8 @@
 --     on the last valid day, which the date-only check could not see;
 --   * a pin naming a business, including the one that was deleted and the one
 --     in the wrong city;
---   * the city rail's counts, written as the enumeration attack: a narrowed
+--   * the city rail's counts (featured_cities() since 20260904120000), written
+--     as the enumeration attack: a narrowed
 --     viewer's chip must agree with that viewer's own map, exactly;
 --   * the de-identified "usually busy" layer, where the whole test is rule 6.
 --     A bucket that never cleared k live is never stored, a cell that was
@@ -12,7 +13,7 @@
 --     asserted column by column so a later migration adding a user reference
 --     fails here rather than in production.
 begin;
-select plan(45);
+select plan(39);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -261,7 +262,7 @@ values
    'Street food', 'restaurant', 13.7398, 100.5091, current_date, now() + interval '20 hours');
 
 select is(
-  (select pin_count from public.city_pin_counts() where city_id = pg_temp.lisbon()),
+  (select pin_count from public.featured_cities() where city_id = pg_temp.lisbon()),
   (select count(*)::int from public.city_pins(pg_temp.lisbon())),
   'the chip count is exactly what the map shows this caller'
 );
@@ -273,7 +274,7 @@ select is(
 );
 
 select is(
-  (select pin_count from public.city_pin_counts() where city_id = pg_temp.bangkok()),
+  (select pin_count from public.featured_cities() where city_id = pg_temp.bangkok()),
   null,
   'and its chip says nothing rather than a 1: below k there is no number'
 );
@@ -288,13 +289,13 @@ update public.profiles set visible_to = 'verified'
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 
 select is(
-  (select pin_count from public.city_pin_counts() where city_id = pg_temp.lisbon()),
+  (select pin_count from public.featured_cities() where city_id = pg_temp.lisbon()),
   (select count(*)::int from public.city_pins(pg_temp.lisbon())),
   'a narrowed viewer''s chip still agrees with a narrowed viewer''s map'
 );
 
 select is(
-  (select pin_count from public.city_pin_counts() where city_id = pg_temp.lisbon()),
+  (select pin_count from public.featured_cities() where city_id = pg_temp.lisbon()),
   3,
   'and that is her own three plans: the other two dropped off the chip with the map'
 );
@@ -303,51 +304,9 @@ select pg_temp.admin();
 update public.profiles set visible_to = 'everyone'
   where user_id = '00000000-0000-0000-0000-00000000000a';
 
--- The cities nobody has opened yet ------------------------------------------
-
-select pg_temp.login('00000000-0000-0000-0000-00000000000a');
-
-select lives_ok(
-  $$ select public.request_city('Chiang Mai') $$,
-  'a traveler can ask for a city that is not open'
-);
-
-select throws_ok(
-  $$ select public.request_city('X') $$,
-  '23514',
-  null,
-  'and a name that is not a name is refused'
-);
-
-select throws_ok(
-  $$ select city_name from public.city_requests $$,
-  '42501',
-  null,
-  'nobody can read the requests back: this is a tally, not a list of who is going where'
-);
-
-select throws_ok(
-  format($$
-    insert into public.city_requests (user_id, city_name)
-    values ('00000000-0000-0000-0000-00000000000b', 'Porto')
-  $$),
-  '42501',
-  null,
-  'and nobody can file one in somebody else''s name'
-);
-
-select pg_temp.guest();
-select lives_ok(
-  $$ select public.request_city('Porto') $$,
-  'a signed-out visitor can ask too, which is the one most likely to leave'
-);
-
-select pg_temp.admin();
-select is(
-  (select user_id from public.city_requests where city_name = 'Porto'),
-  null,
-  'and is recorded as a city name and a timestamp, with no account attached'
-);
+-- request_city() and the fifth chip are gone (20260904120000): a city opens
+-- itself the moment somebody puts a plan in it. 76_a_pin_goes_where_the_traveler_goes
+-- asserts the function no longer exists.
 
 -- =============================================================================
 -- USUALLY BUSY

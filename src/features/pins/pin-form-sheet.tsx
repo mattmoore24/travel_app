@@ -18,6 +18,7 @@ import { useCreatePin } from '@/features/pins/hooks';
 import {
   MAX_PIN_HOURS,
   NO_INTENT_TIME,
+  TIME_TBD,
   categoryForPlan,
   categoryForPoi,
   cityClockNow,
@@ -25,6 +26,7 @@ import {
   expiryForHours,
   hoursLabel,
   intentDateOptions,
+  intentEndOptions,
   intentTimeOptions,
   minHoursForIntent,
   whenLabel,
@@ -33,7 +35,7 @@ import { openInMaps } from '@/features/pins/open-in-maps';
 import { toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
-import type { BusinessCategory, PinCategory } from '@/lib/database.types';
+import type { BusinessCategory, CityRow, PinCategory } from '@/lib/database.types';
 import { haptics } from '@/lib/haptics';
 import type { LocalSearchResult } from '@/modules/local-search';
 
@@ -116,7 +118,12 @@ type PinFormSheetProps = {
    */
   business?: PlanBusiness | null;
   onClose: () => void;
-  onPosted: (pinId: string) => void;
+  /**
+   * The pin landed. `city` is the city the SERVER put it in, which is the
+   * browsed city unless the spot was a continent away from it - the map
+   * follows the pin there.
+   */
+  onPosted: (pinId: string, city: CityRow | null) => void;
 };
 
 /**
@@ -167,8 +174,12 @@ export function PinFormSheet({
   const [hoursTouched, setHoursTouched] = useState(false);
   // NO DEFAULT, and that is the whole design of this field. Most plans are
   // "sometime that evening" and a pre-filled hour would turn every one of
-  // them into a small lie the poster has to notice and undo.
+  // them into a small lie the poster has to notice and undo. The founder
+  // asked for it in so many words: "an optional field the user can fill
+  // out, not a preselected bubble". A start hour, or TIME_TBD, or nothing;
+  // an end only ever beside a start.
   const [intentTime, setIntentTime] = useState<string>(NO_INTENT_TIME);
+  const [intentTimeEnd, setIntentTimeEnd] = useState<string>(NO_INTENT_TIME);
   // Founder: some people want an open plan and some want to be asked first,
   // and neither is the odd one out. Open is the default because it is the
   // thing the app could not do before, and because a plan nobody has to
@@ -301,11 +312,27 @@ export function PinFormSheet({
   // Dragging the lifetime down can take the chosen hour out of range, and
   // when it does the pin quietly goes back to having no hour rather than
   // keeping one the server will refuse. The readout line below says so.
-  const effectiveTime = timeOptions.some((option) => option.value === intentTime)
-    ? intentTime
+  const timeTbd = intentTime === TIME_TBD;
+  const effectiveTime =
+    !timeTbd && timeOptions.some((option) => option.value === intentTime)
+      ? intentTime
+      : NO_INTENT_TIME;
+  // The end rides the start: no start, no window; a start that fell out of
+  // range takes its end with it. Hours after the start, past midnight
+  // included, up to the pin's own expiry.
+  const endOptions = effectiveTime
+    ? intentEndOptions(effectiveIntent, effectiveTime, expiresAt, cityClock)
+    : [];
+  const effectiveEnd = endOptions.some((option) => option.value === intentTimeEnd)
+    ? intentTimeEnd
     : NO_INTENT_TIME;
   const when = whenLabel(
-    { intent_date: effectiveIntent, intent_time: effectiveTime || null },
+    {
+      intent_date: effectiveIntent,
+      intent_time: effectiveTime || null,
+      intent_time_end: effectiveEnd || null,
+      time_tbd: timeTbd,
+    },
     cityClock
   );
 
@@ -364,6 +391,8 @@ export function PinFormSheet({
         lng: coords.lng,
         intentDate: effectiveIntent,
         intentTime: effectiveTime || null,
+        intentTimeEnd: effectiveEnd || null,
+        timeTbd,
         expiresAt: expiresAt.toISOString(),
         joinable,
         // Explicit, never inferred here: a pin dropped on the map sends
@@ -376,7 +405,7 @@ export function PinFormSheet({
       // this sheet: pin_created and pin_compose_abandoned must never both
       // describe the same composer.
       posted.current = true;
-      onPosted(pin.id);
+      onPosted(pin.id, pin.city);
     } catch {
       // Surfaced by the global mutation error alert (e.g. outside geofence).
     }
@@ -535,17 +564,39 @@ export function PinFormSheet({
             selected={effectiveIntent}
             onSelect={setIntentDate}
           />
-          {/* OPTIONAL, and it leads with saying so: 'Any time' is the first
-              chip and the one that is selected until somebody chooses
-              otherwise. The rail is absent entirely when no hour would fit
-              inside this pin's lifetime, because a rail holding one chip is
-              a control that cannot be used. */}
-          {timeOptions.length > 1 ? (
+          {/* OPTIONAL, and nothing is lit until somebody lights it. TBD is
+              the first chip because it is the one answer that is not an
+              hour; tapping the lit chip again puts it out. A second rail
+              opens under a chosen hour for the end of the window, and it
+              too starts dark. The rails are absent entirely when no hour
+              would fit inside this pin's lifetime, because a rail holding
+              one chip is a control that cannot be used. */}
+          {timeOptions.length > 0 ? (
             <ChipRail
-              label="Time"
-              options={timeOptions}
-              selected={effectiveTime}
-              onSelect={setIntentTime}
+              label="Time (optional)"
+              options={[
+                { value: TIME_TBD, label: 'TBD', testID: 'time-tbd' },
+                ...timeOptions.map((option) => ({ ...option, testID: `time-${option.value}` })),
+              ]}
+              selected={timeTbd ? TIME_TBD : effectiveTime || null}
+              onSelect={(value) => {
+                const next = value === intentTime ? NO_INTENT_TIME : value;
+                setIntentTime(next);
+                setIntentTimeEnd(NO_INTENT_TIME);
+              }}
+            />
+          ) : null}
+          {effectiveTime && endOptions.length > 0 ? (
+            <ChipRail
+              label="Until (optional)"
+              options={endOptions.map((option) => ({
+                ...option,
+                testID: `until-${option.value}`,
+              }))}
+              selected={effectiveEnd || null}
+              onSelect={(value) =>
+                setIntentTimeEnd(value === intentTimeEnd ? NO_INTENT_TIME : value)
+              }
             />
           ) : null}
           <View
@@ -730,6 +781,10 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: Space.md,
+    // Clear of the bottom fade and the pinned readout under it: the Details
+    // box is the last thing in the scroller, and without this its lower
+    // edge sat under the fade, cut off - the founder's screenshot.
+    paddingBottom: Space.xl,
   },
   sectionLabel: {
     letterSpacing: 0.2,

@@ -419,14 +419,17 @@ written". Neither name may return: the vocabulary they came from is banned.
 
 ## Launch-city operations
 
-Open/close a city (SQL editor — takes effect immediately, no app release):
+Since 2026-09-04 a pin or a trip can be in ANY city, so `launch_cities` no longer opens or
+closes anything. What a row still does: keeps the city on the map's rail whatever its plan
+count (`featured = true`), lets a business list there, and overrides the city's k and clock.
 
 ```sql
-update launch_cities set active = true  where city_id = (select id from cities where name = 'Lisbon' and country_code = 'PT');
-update launch_cities set active = false where city_id = ...;  -- closing hides its pins and blocks new ones
+-- Feature a city on the rail regardless of its count / raise its k:
+insert into launch_cities (city_id, heat_k, timezone)
+values ((select id from cities where name = '...' and country_code = '..'), 3, 'Europe/...');
+-- Take it off the guaranteed slot (its pins stay; it comes back on its own once it clears k):
+update launch_cities set active = false where city_id = ...;
 ```
-
-Add a new launch city: `insert into launch_cities (city_id, radius_km, heat_k) values ((select id from cities where name = '...' and country_code = '..'), 40, 3);`
 
 Seed curated pins so no city launches empty: run
 [`supabase/seed/launch_pins.sql`](../supabase/seed/launch_pins.sql) in the SQL

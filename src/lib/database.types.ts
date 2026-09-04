@@ -28,13 +28,18 @@ export type ProfileRow = {
   occupation: string | null;
   gender: Gender;
   verified: boolean;
+  /**
+   * How far from each trip city the Travelers tab reaches, in km; 0 is that
+   * city only. Measured from cities.lat/lng, never from a device (§7 rule 2).
+   */
+  travelers_radius_km: number;
   onboarding_completed_at: string | null;
   created_at: string;
   updated_at: string;
 };
 
 export const PROFILE_COLUMNS =
-  'user_id, display_name, age, home_city, home_country, languages, bio, occupation, gender, verified, onboarding_completed_at, created_at, updated_at';
+  'user_id, display_name, age, home_city, home_country, languages, bio, occupation, gender, verified, travelers_radius_km, onboarding_completed_at, created_at, updated_at';
 
 // Columns the client is actually allowed to update (see the column-level
 // GRANT in the core migration) — verified/verification are server-owned.
@@ -47,6 +52,7 @@ export type ProfileUpdate = Partial<
     | 'home_country'
     | 'languages'
     | 'bio'
+    | 'travelers_radius_km'
     | 'occupation'
     | 'gender'
     | 'onboarding_completed_at'
@@ -105,6 +111,12 @@ export type CityRow = {
   lat: number;
   lng: number;
   population: number;
+  /**
+   * IANA zone for the city's own clock (20260904110000). Seeded for every
+   * city; null only for a row that predates the column and was never
+   * refreshed, which the server reads as UTC.
+   */
+  timezone: string | null;
 };
 
 export type TripRow = {
@@ -179,6 +191,11 @@ export type MatchRow = {
   their_start: string;
   their_end: string;
   photo_path: string | null;
+  /** Their city's centre to mine, in whole km. 0 when it is the same city. */
+  distance_km: number;
+  /** Which of MY trip cities this overlap is measured from. */
+  my_city_id: number;
+  my_city_name: string;
 };
 
 /** traveler_trips() — every upcoming trip on someone's profile. */
@@ -255,6 +272,14 @@ export type PublicPinRow = {
   lat: number;
   lng: number;
   intent_date: string;
+  /** Postgres `time` as 'HH:MM:SS'. Null means "sometime that day". */
+  intent_time: string | null;
+  /** The end of the plan's window; at or before the start means past midnight. */
+  intent_time_end: string | null;
+  /** The author said the time is to be decided: an answer, not silence. */
+  time_tbd: boolean;
+  /** The listed business this plan is at; null for a business viewer. */
+  business_id: string | null;
   seeded: boolean;
   seed_note: string | null;
   expires_at: string;
@@ -598,6 +623,8 @@ export type IncomingRequestRow = {
   overlap_city: string | null;
   overlap_start: string | null;
   overlap_end: string | null;
+  /** The reader's own city for that window; differs from overlap_city under a radius. */
+  overlap_my_city: string | null;
 };
 
 /**
@@ -994,6 +1021,26 @@ export type LaunchCityRow = {
   created_at: string;
 };
 
+/**
+ * One row of the map's rail (featured_cities / public_featured_cities): the
+ * founder's launch cities plus any city whose visible plans clear its k.
+ */
+export type FeaturedCityRow = {
+  city_id: number;
+  name: string;
+  country_code: string;
+  country_name: string;
+  admin: string | null;
+  lat: number;
+  lng: number;
+  population: number;
+  timezone: string | null;
+  /** Plans this caller can see there, or null below the city's k. */
+  pin_count: number | null;
+  /** A launch city: on the rail whatever its count. */
+  featured: boolean;
+};
+
 /** Row shape returned by city_pins(). Seeded pins have user_id = null. */
 export type CityPinRow = {
   id: string;
@@ -1013,6 +1060,14 @@ export type CityPinRow = {
   lat: number;
   lng: number;
   intent_date: string;
+  /** Postgres `time` as 'HH:MM:SS'. Null means "sometime that day". */
+  intent_time: string | null;
+  /** The end of the plan's window; at or before the start means past midnight. */
+  intent_time_end: string | null;
+  /** The author said the time is to be decided: an answer, not silence. */
+  time_tbd: boolean;
+  /** The listed business this plan is at, when the two are the same place. */
+  business_id: string | null;
   seeded: boolean;
   seed_note: string | null;
   expires_at: string;
@@ -1909,8 +1964,24 @@ export type Database = {
            * predates the parameter.
            */
           p_business_id?: string | null;
+          /** The end of the window, 'HH:MM'; sent only with a start. */
+          p_intent_time_end?: string | null;
+          /** The author says the time is to be decided. */
+          p_time_tbd?: boolean;
         };
-        Returns: { pin_id: string; chat_id: string | null };
+        /**
+         * `city` is the city the pin RESOLVED to (validate_pin), which is
+         * the browsed city unless the spot was a continent away from it.
+         */
+        Returns: { pin_id: string; chat_id: string | null; city: CityRow | null };
+      };
+      featured_cities: {
+        Args: Record<string, never>;
+        Returns: FeaturedCityRow[];
+      };
+      public_featured_cities: {
+        Args: Record<string, never>;
+        Returns: FeaturedCityRow[];
       };
       join_pin_chat: {
         Args: { p_pin_id: string };

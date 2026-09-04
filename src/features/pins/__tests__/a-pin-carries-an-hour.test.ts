@@ -2,6 +2,7 @@ import {
   NO_INTENT_TIME,
   byIntentMoment,
   intentTimeLabel,
+  intentEndOptions,
   intentTimeOptions,
   whenLabel,
 } from '@/features/pins/pin-helpers';
@@ -112,19 +113,88 @@ describe('sorting a stack of plans', () => {
   });
 });
 
+describe('a window and a TBD', () => {
+  const clock = new Date(2026, 8, 1, 10, 0);
+
+  it('says a window as "from, to", after the day', () => {
+    expect(
+      helpersOn(true).whenLabel(
+        { intent_date: '2026-09-01', intent_time: '19:00:00', intent_time_end: '22:00:00' },
+        clock
+      )
+    ).toBe('Today, 19:00 to 22:00');
+  });
+
+  it('says TBD as an answer, not as silence', () => {
+    expect(whenLabel({ intent_date: '2026-09-01', intent_time: null, time_tbd: true }, clock)).toBe(
+      'Today, time TBD'
+    );
+    expect(whenLabel({ intent_date: '2026-09-01', intent_time: null }, clock)).toBe('Today');
+  });
+
+  it('the time part alone, for surfaces that print the day elsewhere', () => {
+    const h = helpersOn(true);
+    expect(h.timeWindowLabel({ intent_time: null })).toBeNull();
+    expect(h.timeWindowLabel({ intent_time: '19:00:00' })).toBe('19:00');
+    expect(h.timeWindowLabel({ intent_time: '22:00:00', intent_time_end: '02:00:00' })).toBe(
+      '22:00 to 02:00'
+    );
+    expect(h.timeWindowLabel({ time_tbd: true })).toBe('time TBD');
+  });
+});
+
+describe('which hours a window may end at', () => {
+  const now = new Date(2026, 8, 1, 10, 0);
+
+  it('the hours after the start, past midnight included, eight at most', () => {
+    const options = intentEndOptions('2026-09-01', '22:00', new Date(2026, 8, 3, 10, 0), now, now);
+    expect(options.map((option) => option.value)).toEqual([
+      '23:00',
+      '00:00',
+      '01:00',
+      '02:00',
+      '03:00',
+      '04:00',
+      '05:00',
+      '06:00',
+    ]);
+  });
+
+  // THE RULE 3 EDGE, for the end of a window: an end after the pin's own
+  // expiry is a chip that posts an error, so it is not offered.
+  it('stops at the moment the pin itself disappears', () => {
+    const options = intentEndOptions('2026-09-01', '19:00', new Date(2026, 8, 1, 21, 0), now, now);
+    expect(options.map((option) => option.value)).toEqual(['20:00', '21:00']);
+  });
+
+  it('measures that ceiling on the city clock, not the device one', () => {
+    const cityClock = new Date(2026, 8, 1, 13, 0); // three hours ahead
+    const expiresAt = new Date(2026, 8, 1, 14, 0); // device time
+    // 14:00 device = 17:00 city; a 15:00 start may end at 16:00 or 17:00.
+    const options = intentEndOptions('2026-09-01', '15:00', expiresAt, cityClock, now);
+    expect(options.map((option) => option.value)).toEqual(['16:00', '17:00']);
+  });
+
+  it('answers nothing for a start it cannot read', () => {
+    expect(intentEndOptions('2026-09-01', 'tbd', new Date(2026, 8, 3), now, now)).toEqual([]);
+  });
+});
+
 describe('which hours the form may offer', () => {
   // Ten in the morning, on a device whose clock is the browsed city's.
   const now = new Date(2026, 8, 1, 10, 0);
 
-  it('leads with "Any time", and that is what is selected until somebody picks', () => {
+  it('offers hours and nothing that means "unset": the form starts dark', () => {
+    // The founder: "an optional field, not a preselected bubble". TBD is
+    // the form's own chip beside these, not an option this helper invents.
     const options = intentTimeOptions('2026-09-01', new Date(2026, 8, 1, 16, 0), now, now);
-    expect(options[0]).toEqual({ value: NO_INTENT_TIME, label: 'Any time' });
+    expect(options.map((option) => option.value)).not.toContain(NO_INTENT_TIME);
+    expect(options.map((option) => option.label)).not.toContain('Any time');
   });
 
   it('never offers an hour that has already gone on the city clock', () => {
     const options = intentTimeOptions('2026-09-01', new Date(2026, 8, 1, 16, 0), now, now);
     expect(options.map((option) => option.value)).toEqual([
-      NO_INTENT_TIME,
       '11:00',
       '12:00',
       '13:00',
@@ -145,11 +215,11 @@ describe('which hours the form may offer', () => {
 
   it('offers the whole of a later day, up to that same ceiling', () => {
     const options = intentTimeOptions('2026-09-02', new Date(2026, 8, 2, 16, 0), now, now);
-    expect(options[1]).toEqual(expect.objectContaining({ value: '00:00' }));
+    expect(options[0]).toEqual(expect.objectContaining({ value: '00:00' }));
     expect(options[options.length - 1]).toEqual(expect.objectContaining({ value: '16:00' }));
   });
 
-  it('collapses to "Any time" alone when no hour is left in the day', () => {
+  it('offers nothing when no hour is left in the day, so the rail stays down', () => {
     const lateNight = new Date(2026, 8, 1, 23, 30);
     const options = intentTimeOptions(
       '2026-09-01',
@@ -157,7 +227,7 @@ describe('which hours the form may offer', () => {
       lateNight,
       lateNight
     );
-    expect(options).toEqual([{ value: NO_INTENT_TIME, label: 'Any time' }]);
+    expect(options).toEqual([]);
   });
 
   // The map is city-scoped and its whole use case is a city you have not
@@ -167,12 +237,6 @@ describe('which hours the form may offer', () => {
     const cityClock = new Date(2026, 8, 1, 13, 0); // three hours ahead
     const expiresAt = new Date(2026, 8, 1, 14, 0); // four device-hours away
     const options = intentTimeOptions('2026-09-01', expiresAt, cityClock, now);
-    expect(options.map((option) => option.value)).toEqual([
-      NO_INTENT_TIME,
-      '14:00',
-      '15:00',
-      '16:00',
-      '17:00',
-    ]);
+    expect(options.map((option) => option.value)).toEqual(['14:00', '15:00', '16:00', '17:00']);
   });
 });

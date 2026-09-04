@@ -77,6 +77,7 @@ const profile: ProfileRow = {
   occupation: 'Sound engineer',
   gender: 'unspecified',
   verified: false,
+  travelers_radius_km: 32,
   onboarding_completed_at: null,
   created_at: '',
   updated_at: '',
@@ -417,6 +418,7 @@ describe('a trip that is roughly when', () => {
       lat: 13.75,
       lng: 100.5,
       population: 10_000_000,
+      timezone: 'Asia/Bangkok',
     };
 
     const ownTrip: TripWithCity = {

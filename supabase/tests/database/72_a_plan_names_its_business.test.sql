@@ -138,13 +138,13 @@ select is(
 -- THE GRANTS SURVIVED THE DROP ------------------------------------------------
 select ok(
   has_function_privilege('authenticated',
-    'public.post_joinable_pin(int, text, text, text, public.pin_category, double precision, double precision, date, timestamptz, text, time, boolean, uuid)',
+    'public.post_joinable_pin(int, text, text, text, public.pin_category, double precision, double precision, date, timestamptz, text, time, boolean, uuid, time, boolean)',
     'execute'),
   'a traveler can call the new signature'
 );
 select ok(
   not has_function_privilege('anon',
-    'public.post_joinable_pin(int, text, text, text, public.pin_category, double precision, double precision, date, timestamptz, text, time, boolean, uuid)',
+    'public.post_joinable_pin(int, text, text, text, public.pin_category, double precision, double precision, date, timestamptz, text, time, boolean, uuid, time, boolean)',
     'execute'),
   'and a signed-out device cannot'
 );

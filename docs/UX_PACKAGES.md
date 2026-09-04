@@ -1044,6 +1044,7 @@ The rail is the app's entire geography and it explains nothing. It does not say 
 
 - supabase/migrations/<new>\_a_city_says_how_busy_it_is.sql — a `city_pin_counts()` security-definer function returning (city_id, pin_count) for active launch cities. It must compute the count under the SAME visibility rules the map applies, or a chip advertises pins a narrowed-audience viewer cannot see. Apply each city's own heat_k as a floor and return null rather than a 1 or a 2, matching heat_cells.
 
+- _Retired 2026-09-04: the founder opened every city, so `request_city()` was dropped and the fifth chip became a city search. The table stays as the record._
 - Same migration — a `city_requests (user_id, city_name, created_at)` table with RLS (insert own, select none), and a `request_city(p_name text)` RPC. This is the demand map §2.6 asks for, at essentially no cost.
 
 - src/features/pins/api.ts and hooks.ts — fetch and cache the counts alongside useLaunchCities.

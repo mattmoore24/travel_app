@@ -24,10 +24,37 @@ import { useIsBusiness } from '@/features/business/hooks';
 import { waitingTotal } from '@/features/chat/unread';
 import { useSaidHi, type SaidHiOrigin } from '@/features/matching/said-hi';
 import { usePushPrimer } from '@/features/notifications/primer-store';
-import { useOwnUserId } from '@/features/profile/hooks';
+import { useOwnUserId, useUpdateOwnProfile } from '@/features/profile/hooks';
+import type { RadiusKm } from '@/features/matching/radius';
 import { analytics } from '@/lib/analytics';
 import type { RequestSource } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
+
+/**
+ * The Travelers dial. The number lives on the profile
+ * (profiles.travelers_radius_km) because the server applies it inside the
+ * policy that decides which trips are readable at all; the client only ever
+ * asks for it to change. Saved on the tap, and the queue and the inbox chips
+ * are refetched because both are computed from it.
+ */
+export function useSetTravelersRadius() {
+  const queryClient = useQueryClient();
+  const update = useUpdateOwnProfile();
+  return {
+    isPending: update.isPending,
+    set: (km: RadiusKm) =>
+      update.mutate(
+        { travelers_radius_km: km },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['matches'] });
+            queryClient.invalidateQueries({ queryKey: ['incoming-requests'] });
+            analytics.capture('travelers_radius_set', { km });
+          },
+        }
+      ),
+  };
+}
 
 export function useMatches() {
   const userId = useOwnUserId();

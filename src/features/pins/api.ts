@@ -1,6 +1,7 @@
 import type {
   CityPinRow,
   CityRow,
+  FeaturedCityRow,
   HeatCellRow,
   PinCategory,
   PinCrewRow,
@@ -16,6 +17,79 @@ export type LaunchCityWithCity = {
   timezone: string;
   cities: CityRow;
 };
+
+/**
+ * A city the map can browse: any of the ~49,000 in the reference table,
+ * with its clock, and - when it came off the rail - how many plans it is
+ * showing this viewer. The shape keeps LaunchCityWithCity's `cities` nesting
+ * on purpose, so every `activeCity.cities.lat` on the map still reads.
+ */
+export type BrowseCity = {
+  city_id: number;
+  /** The city's own clock (city_clock_zone). Null only for an unrefreshed row. */
+  timezone: string | null;
+  cities: CityRow;
+  /** Plans this viewer can see there, or null below the city's k, or null when unknown. */
+  pin_count: number | null;
+  /** A launch city: on the rail whatever its count. */
+  featured: boolean;
+};
+
+export function browseCityFromRow(row: FeaturedCityRow): BrowseCity {
+  return {
+    city_id: row.city_id,
+    timezone: row.timezone,
+    cities: {
+      id: row.city_id,
+      name: row.name,
+      country_code: row.country_code,
+      country_name: row.country_name,
+      admin: row.admin,
+      lat: row.lat,
+      lng: row.lng,
+      population: row.population,
+      timezone: row.timezone,
+    },
+    pin_count: row.pin_count,
+    featured: row.featured,
+  };
+}
+
+/** A city chosen from search or carried by a trip: no count, not featured. */
+export function browseCityFromCityRow(city: CityRow): BrowseCity {
+  return {
+    city_id: city.id,
+    timezone: city.timezone ?? null,
+    cities: city,
+    pin_count: null,
+    featured: false,
+  };
+}
+
+/** A business's own launch city, as the map browses it. */
+export function browseCityFromLaunch(city: LaunchCityWithCity): BrowseCity {
+  return {
+    city_id: city.city_id,
+    timezone: city.timezone,
+    cities: city.cities,
+    pin_count: null,
+    featured: true,
+  };
+}
+
+/**
+ * The rail. Two doors, the split useMapPins makes: a member reads the count
+ * RLS lets them see, a guest or a business reads the identity-free feed's.
+ */
+export async function fetchFeaturedCities(anonymous: boolean): Promise<BrowseCity[]> {
+  const { data, error } = await supabase.rpc(
+    anonymous ? 'public_featured_cities' : 'featured_cities'
+  );
+  if (error) {
+    throw error;
+  }
+  return ((data ?? []) as FeaturedCityRow[]).map(browseCityFromRow);
+}
 
 export async function fetchLaunchCities() {
   const { data, error } = await supabase

@@ -163,7 +163,12 @@ describe('the map is tailored to a business rather than trimmed', () => {
     // the wrong city with no way out.
     expect(code).toContain('const businessCityId =');
     expect(code).toContain('launchCities.some((c) => c.city_id === ownBusiness.city_id)');
-    guards(code, 'businessCityId ??', 'pickBrowsingCity(', 200);
+    // The listing's city is tried first; the resolution's answer is what it
+    // falls through to.
+    expect(code).toContain(
+      'pickBrowsingCity(featured, myTrips, today, chosenCity, deviceTimezone())'
+    );
+    guards(code, 'businessBrowseCity ??', 'browsing.city', 100);
     // What is left for the effect is the CAMERA only (activeCityId flips
     // after the MapView mounted on initialRegion): one shot, and never a
     // write into the shared store.
@@ -191,7 +196,7 @@ describe('the map is tailored to a business rather than trimmed', () => {
     expect(code).toContain('explicit: businessCityId == null && chosenCityId != null,');
     // The traveler chip path is untouched: a tap still persists the choice
     // that makes explicit true.
-    guards(code, 'const applyCity = (id: number) => {', 'chooseCity(id);', 300);
+    guards(code, 'const applyCity = (city: BrowseCity) => {', 'chooseCity(city);', 300);
   });
 
   it('the city rail is not drawn for a business', () => {

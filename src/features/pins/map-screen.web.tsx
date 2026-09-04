@@ -5,7 +5,7 @@ import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useCityPins, useLaunchCities } from '@/features/pins/hooks';
+import { useCityPins, useFeaturedCities } from '@/features/pins/hooks';
 import { intentLabel } from '@/features/pins/pin-helpers';
 import { PinGlyph } from '@/features/pins/pin-marker';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -14,9 +14,9 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 // the map degrades to a per-city pin list there. iOS is the product.
 export default function MapScreenWeb() {
   const insets = useSafeAreaInsets();
-  const { data: launchCities = [] } = useLaunchCities();
-  const cityId = launchCities[0]?.city_id ?? null;
-  const city = launchCities.find((c) => c.city_id === cityId);
+  const { data: featured = [] } = useFeaturedCities();
+  const cityId = featured[0]?.city_id ?? null;
+  const city = featured.find((c) => c.city_id === cityId);
   const { data: pins = [] } = useCityPins(cityId);
 
   if (!isSupabaseConfigured || !city) {

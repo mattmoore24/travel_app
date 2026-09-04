@@ -36,14 +36,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Type, Elevation, HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
 import {
-  useCityPinCounts,
   useDeletePin,
+  useFeaturedCities,
   useHeatHistory,
   useJoinPinChat,
   useLaunchCities,
   usePinCrew,
-  useRequestCity,
 } from '@/features/pins/hooks';
+import { browseCityFromCityRow, browseCityFromLaunch, type BrowseCity } from '@/features/pins/api';
 import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker';
 import { useCityBusinesses, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
 import { listingNotice } from '@/features/business/listing-notice';
@@ -122,7 +122,7 @@ import {
   type MapFilters,
 } from '@/features/pins/filters';
 import { crewLabel } from '@/features/pins/crew';
-import { useMyTrips } from '@/features/trips/hooks';
+import { useCitySearch, useMyTrips } from '@/features/trips/hooks';
 import { toISODate } from '@/features/trips/dates';
 import { FilterButton, MapFilterSheet } from '@/features/pins/map-filter-sheet';
 import { helloExpired, helloWithdrawn, saidHiAlready } from '@/features/matching/already-sent';
@@ -975,14 +975,24 @@ export default function MapScreen() {
   const { reduceMotion } = useAccessibilitySettings();
   // Only so the points of interest can be turned off in a later commit than
   // the map type. See features/pins/basemap.
+  // The founder's launch cities, for the one thing they still decide on this
+  // screen: which city a BUSINESS's map opens on. Travelers browse the rail.
   const launchCitiesQuery = useLaunchCities();
   const launchCities = launchCitiesQuery.data ?? [];
+  // The rail: the launch cities plus any city whose visible plans clear its
+  // k, most plans first, each carrying its count.
+  const featuredQuery = useFeaturedCities();
+  // Memoised, because the resolution below keys on it and `?? []` would be
+  // a fresh array on every render until the query answers.
+  const featured = useMemo(() => featuredQuery.data ?? [], [featuredQuery.data]);
   // Which city, in order of how explicitly it was asked for: the persisted
-  // chip choice, then the soonest trip, then the launch city on the device's
-  // own clock zone (Intl only — NEVER a location read, §7 rule 2), then
-  // launchCities[0]. Held back until the stored choice has been read, or the
-  // map would mount on the fallback and flip cities a frame later.
-  const chosenCityId = useCityChoice((s) => s.cityId);
+  // choice (any city: a chip, a search, a pin that landed elsewhere), then
+  // the soonest trip's city, then the featured city on the device's own
+  // clock zone (Intl only — NEVER a location read, §7 rule 2), then the
+  // first on the rail. Held back until the stored choice has been read, or
+  // the map would mount on the fallback and flip cities a frame later.
+  const chosenCity = useCityChoice((s) => s.city);
+  const chosenCityId = chosenCity?.city_id ?? null;
   const cityHydrated = useCityChoice((s) => s.hydrated);
   const chooseCity = useCityChoice((s) => s.chooseCity);
   const { data: myTrips = [] } = useMyTrips();
@@ -1006,12 +1016,34 @@ export default function MapScreen() {
     ownBusiness?.city_id != null && launchCities.some((c) => c.city_id === ownBusiness.city_id)
       ? ownBusiness.city_id
       : null;
-  const activeCityId = cityHydrated
-    ? (businessCityId ??
-      pickBrowsingCity(launchCities, myTrips, toISODate(new Date()), chosenCityId, deviceTimezone())
-        .cityId)
-    : null;
-  const activeCity = launchCities.find((c) => c.city_id === activeCityId);
+  const today = toISODate(new Date());
+  // Memoised on its inputs, because a city resolved from a trip is built
+  // from the trip's row and the object has to hold still between renders.
+  const browsing = useMemo(
+    () => pickBrowsingCity(featured, myTrips, today, chosenCity, deviceTimezone()),
+    [featured, myTrips, today, chosenCity]
+  );
+  const businessLaunchCity =
+    businessCityId != null ? launchCities.find((c) => c.city_id === businessCityId) : undefined;
+  const businessBrowseCity = useMemo(
+    () => (businessLaunchCity ? browseCityFromLaunch(businessLaunchCity) : undefined),
+    [businessLaunchCity]
+  );
+  const activeCity: BrowseCity | undefined = cityHydrated
+    ? (businessBrowseCity ?? browsing.city ?? undefined)
+    : undefined;
+  const activeCityId = activeCity?.city_id ?? null;
+  // What the rail draws: the featured cities, with the browsed city in front
+  // of them when it is not one of them. A city reached by search, or by a
+  // pin that landed a continent away, still needs a lit chip - a rail with
+  // nothing selected reads as a map with no city.
+  const railCities = useMemo(
+    () =>
+      activeCity && !featured.some((c) => c.city_id === activeCity.city_id)
+        ? [activeCity, ...featured]
+        : featured,
+    [featured, activeCity]
+  );
   // Everything the map is narrowed by, behind one control. It used to be
   // three date chips and nothing else, which filtered the dimension people
   // asked about least and offered no way to ask about who is on the map at
@@ -1038,11 +1070,6 @@ export default function MapScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [filters.day, cityDayISO, deviceDayISO]
   );
-  // What each chip in the rail is worth saying. One round trip for every
-  // city, counted under the same visibility rules the map applies and
-  // floored at each city's own k, so a chip can never advertise a plan the
-  // map behind it will not draw.
-  const { data: cityCounts = [] } = useCityPinCounts();
   const pinsQuery = useMapPins(activeCityId);
   const { data: allPinRows = [], isSuccess: pinsLoaded } = pinsQuery;
   // Both map feeds return intent_time and business_id since 20260902190000.
@@ -1131,14 +1158,12 @@ export default function MapScreen() {
   // somebody else's plan. One piece of state rather than two booleans,
   // because only one sheet may ever be up.
   const [gate, setGate] = useState<'drop' | 'join' | null>(null);
-  // The rail's fifth chip, and what somebody typed into it. `requestedCity`
-  // is the sheet's second face: it holds the name that was just sent, so the
-  // confirmation can say it back rather than being a toast over a form still
-  // holding the same words.
-  const [cityRequestOpen, setCityRequestOpen] = useState(false);
-  const [cityWanted, setCityWanted] = useState('');
-  const [requestedCity, setRequestedCity] = useState<string | null>(null);
-  const requestCity = useRequestCity();
+  // The rail's search chip, and what somebody typed into it. Any of the
+  // ~49,000 cities in the reference table can be browsed: the rail is where
+  // the plans are, not the list of places a person is allowed to go.
+  const [citySearchOpen, setCitySearchOpen] = useState(false);
+  const [cityQuery, setCityQuery] = useState('');
+  const citySearch = useCitySearch(citySearchOpen ? cityQuery : '');
   // Which stack of plans is open, if any. Separate from selectedPinId: a
   // stack is a list of plans, and picking one out of it opens the pin card.
   const [venueKey, setVenueKey] = useState<string | null>(null);
@@ -1187,8 +1212,8 @@ export default function MapScreen() {
   // Make a city current: state, cleared selections, and the camera, in one
   // move. Hoisted above the config early-return because the pending-intent
   // replay effect below has to close over it from the hooks section.
-  const applyCity = (id: number) => {
-    chooseCity(id);
+  const applyCity = (city: BrowseCity) => {
+    chooseCity(city);
     setSelectedPinId(null);
     // The venue stack's SHEET heals itself — openVenue resolves to null the
     // moment the city's list reloads — but the raw key would linger, and the
@@ -1200,21 +1225,18 @@ export default function MapScreen() {
     // card for a bar in Bangkok stays parked at the bottom of the Lisbon map,
     // with Join the chat and Message still wired to it.
     setSelectedPlaceId(null);
-    const city = launchCities.find((c) => c.city_id === id);
-    if (city) {
-      // A city switch is the longest flight the camera makes, and Reanimated
-      // never sees it - so Reduce Motion is honoured here by hand: the same
-      // region, arrived at instantly.
-      mapRef.current?.animateToRegion(
-        {
-          latitude: city.cities.lat,
-          longitude: city.cities.lng,
-          latitudeDelta: 0.09,
-          longitudeDelta: 0.09,
-        },
-        reduceMotion ? 0 : 350
-      );
-    }
+    // A city switch is the longest flight the camera makes, and Reanimated
+    // never sees it - so Reduce Motion is honoured here by hand: the same
+    // region, arrived at instantly.
+    mapRef.current?.animateToRegion(
+      {
+        latitude: city.cities.lat,
+        longitude: city.cities.lng,
+        latitudeDelta: 0.09,
+        longitudeDelta: 0.09,
+      },
+      reduceMotion ? 0 : 350
+    );
   };
 
   // A business account's map opens on its own city — RESOLVED, not seeded:
@@ -1496,19 +1518,24 @@ export default function MapScreen() {
       isBusiness ||
       listingIntent ||
       !cityHydrated ||
-      launchCities.length === 0
+      featured.length === 0
     ) {
       return;
     }
     intentHandled();
     const intent = pendingIntent;
-    if (!launchCities.some((c) => c.city_id === intent.cityId)) {
-      // The city left the programme while they signed up. Nothing honest to
+    // The city they were looking at: on the rail, or the one they had
+    // chosen. A guest can only have been browsing one of those two.
+    const target =
+      featured.find((c) => c.city_id === intent.cityId) ??
+      (chosenCity?.city_id === intent.cityId ? chosenCity : null);
+    if (target == null) {
+      // The city left the rail while they signed up. Nothing honest to
       // replay; the resolved default stands.
       return;
     }
     const timer = setTimeout(() => {
-      applyCity(intent.cityId);
+      applyCity(target);
       if (intent.kind === 'pin' && intent.pinId != null) {
         replayPin.current = { cityId: intent.cityId, pinId: intent.pinId };
       } else if (intent.kind === 'drop-pin') {
@@ -1521,7 +1548,7 @@ export default function MapScreen() {
     // applyCity/enterPlaceMode are stable per render; the guards above make
     // this one-shot, so the exhaustive list would only widen it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingIntent, isGuest, isBusiness, listingIntent, cityHydrated, launchCities]);
+  }, [pendingIntent, isGuest, isBusiness, listingIntent, cityHydrated, featured]);
 
   // The data-dependent half: the card can only open once the city's pins are
   // back, and the pin may have burned out while signup happened. Degrades
@@ -1659,7 +1686,7 @@ export default function MapScreen() {
   // launch cities is the growth signal; a metric that is zero by
   // construction is worse than none.
   const viewedCities = useRef<Set<number>>(new Set());
-  const citiesSettled = launchCitiesQuery.isSuccess || launchCitiesQuery.isError;
+  const citiesSettled = featuredQuery.isSuccess || featuredQuery.isError;
   useEffect(() => {
     if (!cityHydrated || !citiesSettled) {
       return;
@@ -1868,11 +1895,11 @@ export default function MapScreen() {
   }
 
   /** The chip-tap path: the same move as applyCity, chosen by a person. */
-  const selectCity = (id: number) => {
-    applyCity(id);
+  const selectCity = (city: BrowseCity) => {
+    applyCity(city);
     // The other half of the attribution fix: a switch is an event of its
     // own, so the funnel can tell "chose Lisbon" from "defaulted there".
-    analytics.capture('city_switched', { city_id: id });
+    analytics.capture('city_switched', { city_id: city.city_id });
   };
 
   const exitPlaceMode = () => {
@@ -2276,16 +2303,16 @@ export default function MapScreen() {
         </MapView>
       ) : (
         <ThemedView style={StyleSheet.absoluteFill}>
-          {launchCitiesQuery.isError ? (
+          {featuredQuery.isError ? (
             // The hero screen used to answer a FAILED query with a dev phase
             // badge reading "no launch cities yet" — an internal note shown
             // to somebody in an airport with bad wifi.
             <LoadError
               what="the map"
-              error={launchCitiesQuery.error}
-              onRetry={() => launchCitiesQuery.refetch()}
+              error={featuredQuery.error}
+              onRetry={() => featuredQuery.refetch()}
             />
-          ) : launchCitiesQuery.isSuccess ? (
+          ) : featuredQuery.isSuccess ? (
             <PlaceholderScreen
               icon={{ ios: 'map.fill', android: 'map', web: 'map' }}
               title="No cities yet"
@@ -2338,14 +2365,13 @@ export default function MapScreen() {
                 keyboardShouldPersistTaps="handled"
                 contentContainerStyle={styles.cityChips}
                 style={styles.cityScroll}>
-                {launchCities.map((city) => {
+                {railCities.map((city) => {
                   const selected = city.city_id === activeCityId;
                   // Null below that city's own k, and null is a real answer:
                   // the chip says nothing rather than "1". Never a badge —
                   // a badge turns the chip into a card and the rail into two
                   // rows on a 375pt screen.
-                  const count =
-                    cityCounts.find((row) => row.city_id === city.city_id)?.pin_count ?? null;
+                  const count = city.pin_count;
                   return (
                     <PressableScale
                       key={city.city_id}
@@ -2359,7 +2385,7 @@ export default function MapScreen() {
                       hitSlop={4}
                       haptic="selection"
                       scaleTo={0.94}
-                      onPress={() => selectCity(city.city_id)}>
+                      onPress={() => selectCity(city)}>
                       <View
                         style={[
                           styles.cityChip,
@@ -2396,14 +2422,15 @@ export default function MapScreen() {
                     </PressableScale>
                   );
                 })}
-                {/* THE FIFTH CHIP, and the first answer this app has ever had
-                    for a traveler in Chiang Mai or Porto. Outlined rather
-                    than filled so it reads as a different kind of thing from
-                    the four cities, and last so it never sits between two of
-                    them. */}
+                {/* THE SEARCH CHIP. The rail is where the plans are, not the
+                    only places a person may go: any city in the reference
+                    table can be browsed, and the one they pick joins the
+                    rail in front. Outlined rather than filled so it reads as
+                    a different kind of thing from the cities, and last so it
+                    never sits between two of them. */}
                 <PressableScale
                   accessibilityRole="button"
-                  accessibilityLabel="Somewhere else? Ask for a city we have not opened"
+                  accessibilityLabel="Search for a city"
                   hitSlop={4}
                   haptic="selection"
                   scaleTo={0.94}
@@ -2413,16 +2440,21 @@ export default function MapScreen() {
                     setSelectedPinId(null);
                     setSelectedPlaceId(null);
                     setVenueKey(null);
-                    setRequestedCity(null);
-                    setCityRequestOpen(true);
+                    setCityQuery('');
+                    setCitySearchOpen(true);
                   }}>
                   <View
                     style={[
                       styles.cityChip,
                       { backgroundColor: theme.surface, borderColor: theme.border },
                     ]}>
+                    <SymbolView
+                      name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
+                      size={13}
+                      tintColor={theme.textSecondary}
+                    />
                     <ThemedText type="small" themeColor="textSecondary">
-                      Somewhere else?
+                      Anywhere
                     </ThemedText>
                   </View>
                 </PressableScale>
@@ -3015,11 +3047,18 @@ export default function MapScreen() {
           initialPlace={searchedPlace}
           initialLabel={placeLabel}
           onClose={() => setMode('place')}
-          onPosted={(pinId) => {
+          onPosted={(pinId, city) => {
             setMode('browse');
             setLifted(false);
             setPlaceLabel(null);
             stopNamingPlaceCentre();
+            // The pin may have landed in another city: dropped in Manhattan
+            // while the Bangkok chip was lit, it belongs to New York, and
+            // the map goes where the pin went rather than showing a
+            // confirmation card for a plan it is not drawing.
+            if (city && city.id !== activeCity.city_id) {
+              applyCity(browseCityFromCityRow(city));
+            }
             // The form lets you pin for tomorrow — at a beach, unverified —
             // while the map is filtered to today's bars, and both the markers
             // and the confirmation card read from the FILTERED list, so the
@@ -3425,73 +3464,69 @@ export default function MapScreen() {
         <PlaceSheet businessId={selectedPlaceId} onClose={() => setSelectedPlaceId(null)} />
       ) : null}
 
-      {/* SOMEWHERE ELSE. The demand map §2.6 asks for, and the first thing
-          this app has ever offered a traveler whose city is not one of the
-          four: a name, recorded, and no promise it cannot keep.
+      {/* ANYWHERE. Any of the ~49,000 cities in the reference table; the
+          plans and travelers in it are drawn the moment somebody adds one,
+          and nobody has to ask for a city to be opened.
 
           A real Sheet rather than an inline one, because this is a form and
           it wants the keyboard handling: `avoidKeyboard` grows the floor
-          instead of lifting the sheet, and the button lives outside any
-          scroller. Opened only from a tap, never from a data event, so it is
-          not the presentation iOS drops (see the traps skill). */}
-      {mode === 'browse' && cityRequestOpen ? (
+          instead of lifting the sheet. Opened only from a tap, never from a
+          data event, so it is not the presentation iOS drops (see the traps
+          skill). */}
+      {mode === 'browse' && citySearchOpen ? (
         <Sheet
           onClose={() => {
-            setCityRequestOpen(false);
-            setCityWanted('');
+            setCitySearchOpen(false);
+            setCityQuery('');
           }}
           avoidKeyboard>
-          {requestedCity == null ? (
-            <>
-              <ThemedText type="headline">Somewhere else?</ThemedText>
-              <ThemedText type="body" themeColor="textSecondary">
-                We open cities where there are enough travelers. Tell us yours and it counts toward
-                the next one.
-              </ThemedText>
-              <FormTextField
-                label="City"
-                testID="city-request-input"
-                placeholder="Chiang Mai"
-                value={cityWanted}
-                onChangeText={setCityWanted}
-                maxLength={80}
-                autoCapitalize="words"
-                returnKeyType="done"
-              />
-              <PrimaryButton
-                label="Ask for it"
-                loading={requestCity.isPending}
-                disabled={cityWanted.trim().length < 2}
-                accessibilityHint="Records the city. Nothing is shared with anybody."
-                onPress={async () => {
-                  const name = cityWanted.trim();
-                  try {
-                    await requestCity.mutateAsync(name);
-                    haptics.success();
-                    setRequestedCity(name);
-                    setCityWanted('');
-                  } catch {
-                    // Surfaced by the global mutation error alert, the same
-                    // way a failed pin post is.
-                  }
-                }}
-              />
-            </>
-          ) : (
-            <>
-              <ThemedText type="headline">{`Thanks. ${requestedCity} is on the list.`}</ThemedText>
-              <ThemedText type="body" themeColor="textSecondary">
-                The more people who ask for a city, the sooner it opens.
-              </ThemedText>
-              <PrimaryButton
-                label="Done"
+          <ThemedText type="headline">Anywhere</ThemedText>
+          <ThemedText type="body" themeColor="textSecondary">
+            Any city. Plans and travelers there show up the moment somebody adds one.
+          </ThemedText>
+          <FormTextField
+            label="City"
+            testID="city-search-input"
+            placeholder="Start typing: Nice, Manhattan, Chiang Mai"
+            value={cityQuery}
+            onChangeText={setCityQuery}
+            autoFocus
+            autoCorrect={false}
+            autoComplete="off"
+            returnKeyType="search"
+          />
+          {(citySearch.data ?? []).map((row) => {
+            // Five US Springfields exist: show the admin region when a name
+            // repeats within the result set. The same rule add-trip uses.
+            const duplicated =
+              (citySearch.data ?? []).filter(
+                (other) => other.name === row.name && other.country_code === row.country_code
+              ).length > 1;
+            return (
+              <Pressable
+                key={row.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${row.name}, ${row.country_name}`}
+                style={[styles.citySuggestion, { backgroundColor: theme.backgroundElement }]}
                 onPress={() => {
-                  setRequestedCity(null);
-                  setCityRequestOpen(false);
-                }}
-              />
-            </>
-          )}
+                  setCitySearchOpen(false);
+                  setCityQuery('');
+                  selectCity(browseCityFromCityRow(row));
+                }}>
+                <ThemedText>
+                  {row.name}
+                  <ThemedText themeColor="textSecondary">
+                    {duplicated && row.admin ? `, ${row.admin}` : ''}, {row.country_name}
+                  </ThemedText>
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+          {cityQuery.trim().length >= 2 && citySearch.isSuccess && citySearch.data.length === 0 ? (
+            <ThemedText type="footnote" themeColor="textSecondary">
+              Nothing called that. Try the nearest town of any size.
+            </ThemedText>
+          ) : null}
         </Sheet>
       ) : null}
     </View>
@@ -3553,6 +3588,16 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
+  },
+  /* One city from search_cities. The fill is the field's own, by token name
+     and not by luck, so the list reads as part of the box above it. */
+  citySuggestion: {
+    minHeight: HitTarget,
+    justifyContent: 'center',
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.sm,
+    borderRadius: Radius.sm,
+    borderCurve: 'continuous',
   },
   cityChip: {
     // A row now that a count rides beside the name. Centre-aligned rather

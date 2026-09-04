@@ -180,8 +180,9 @@ never filled during signup.
 The rebuilt step:
 
 - **City chips**, unchanged in shape. But the server has to start meaning it:
-  **there is no geofence on a business at all today.** `validate_pin` is the
-  only caller of `haversine_km` in the whole schema, `register_business`
+  **there is no geofence on a business at all today.** `validate_pin` was the
+  only caller of `haversine_km` in the whole schema (and since 2026-09-04 it
+  resolves a pin's city rather than fencing it), `register_business`
   validates the caller and nothing about geography, and
   `businesses.city_id` references `cities` rather than `launch_cities` — so a
   marker can sit anywhere on earth inside the plain -90..90 / -180..180
