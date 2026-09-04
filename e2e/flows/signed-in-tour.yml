@@ -116,18 +116,19 @@ appId: com.mattmoore.samewhere
       visible:
         id: 'nearby-venue-0'
     commands:
-      - copyTextFrom:
-          id: 'nearby-venue-0'
       - tapOn:
           id: 'nearby-venue-0'
       - waitForAnimationToEnd:
           timeout: 3000
       - takeScreenshot: 13b-nearby-venue-picked
       - tapOn: 'Pin here'
-      # Escaped: assertVisible is a regex and venue names carry brackets and
-      # plus signs ('Big C (Ratchadamri)') that would otherwise never match.
-      - evalScript: ${output.venuePattern = maestro.copiedText.replace(/[.*+?^$}{)(|\[\]\\]/g, '\\$&')}
-      - assertVisible: ${output.venuePattern}
+      # The venue reached the form: the Where card's maps link exists only
+      # for a spot with a name and a coordinate, which is what a chip carries
+      # in and a bare pan does not. Not the venue's name: copyTextFrom on the
+      # chip left maestro.copiedText undefined (run 115, "undefined" is
+      # visible), the same plumbing this flow already gave up on for the
+      # passed-traveler bar. The screenshot carries the name.
+      - assertVisible: 'View in Maps'
       - takeScreenshot: 13c-nearby-venue-in-form
       # Back out to place mode so the main flow's own 'Pin here' below still
       # lands there. A pull on the grabber, because the scrim's full-screen
