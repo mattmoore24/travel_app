@@ -94,6 +94,20 @@ not cut off, and Travelers reaches a radius the person sets.
   "In Cannes while you're in Nice, Sep 3 – 8". The scope line counts the
   reader's own city.
 
+### The replay that ran in the dark
+
+Runs 109 and 110 both failed the onboarding tour's last assertion: after
+finish-profile the map should have come back in place mode (the drop-pin
+door had been taken) and came back in browse mode instead, welcome notice
+and all. The intent had been recorded and consumed; nothing was on screen
+to show for it. The replay effect was keyed on `isGuest`, and a guest's
+session is upgraded at signup's FIRST step (`updateUser` on the anonymous
+session), so the map - still mounted under the signup route - replayed the
+intent into a screen nobody could see, entered place mode in the dark, and
+had lost it by the time the tabs came back. The effect now also waits for
+`useIsFocused()`: the intent is consumed only once a person can see the
+result. Run 111 is the proof either way.
+
 ### What did not move
 
 §7 rule 2: every radius is measured from a city a person CHOSE; `get_matches`

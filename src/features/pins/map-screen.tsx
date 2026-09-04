@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 // Only ever geocoding: typed text to coordinates and back. Nothing here may
 // read the device's position.
 import * as Location from 'expo-location';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -1285,6 +1285,13 @@ export default function MapScreen() {
   // rule - so backing out of the replayed screen cannot push it back on.
   const pendingIntent = useAuthStore((s) => s.pendingIntent);
   const intentHandled = useAuthStore((s) => s.intentHandled);
+  // Whether the map is the screen on stage. The replay below waits for it:
+  // a guest's session is upgraded at signup's FIRST step (updateUser on the
+  // anonymous session), so an effect keyed on isGuest alone replayed the
+  // intent into a map that was still covered by thirteen more signup
+  // screens - place mode entered in the dark, and gone by the time the tabs
+  // came back. The intent is consumed only once a person can see the result.
+  const focused = useIsFocused();
   const listingIntent = useAuthStore((s) => s.listingIntent);
   const intentRemembered = useAuthStore((s) => s.intentRemembered);
   // Which plan somebody signed-out tried to JOIN, so the join gate can
@@ -1517,6 +1524,7 @@ export default function MapScreen() {
       isGuest ||
       isBusiness ||
       listingIntent ||
+      !focused ||
       !cityHydrated ||
       featured.length === 0
     ) {
@@ -1548,7 +1556,7 @@ export default function MapScreen() {
     // applyCity/enterPlaceMode are stable per render; the guards above make
     // this one-shot, so the exhaustive list would only widen it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingIntent, isGuest, isBusiness, listingIntent, cityHydrated, featured]);
+  }, [pendingIntent, isGuest, isBusiness, listingIntent, focused, cityHydrated, featured]);
 
   // The data-dependent half: the card can only open once the city's pins are
   // back, and the pin may have burned out while signup happened. Degrades
