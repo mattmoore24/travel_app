@@ -1294,6 +1294,23 @@ export default function MapScreen() {
   const focused = useIsFocused();
   const listingIntent = useAuthStore((s) => s.listingIntent);
   const intentRemembered = useAuthStore((s) => s.intentRemembered);
+  // The tick that carries the replay across its own clear. Held in a ref and
+  // cancelled ONLY on unmount, never by the replay effect's cleanup: that
+  // effect consumes the intent first, and a store write inside a passive
+  // effect re-renders this screen before React returns to the event loop -
+  // so a cleanup keyed on the intent ran, and cleared the 0ms timer, before
+  // the timer could fire. Every replay was cancelled by the act of recording
+  // that it had happened (runs 109-112, the onboarding tour's guarded tail;
+  // replay-outlives-its-clear.test.tsx pins the mechanism).
+  const replayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (replayTimer.current != null) {
+        clearTimeout(replayTimer.current);
+      }
+    },
+    []
+  );
   // Which plan somebody signed-out tried to JOIN, so the join gate can
   // record it: by the time that gate's navigate runs, the card is closed and
   // selectedPin is gone.
@@ -1542,7 +1559,8 @@ export default function MapScreen() {
       // replay; the resolved default stands.
       return;
     }
-    const timer = setTimeout(() => {
+    replayTimer.current = setTimeout(() => {
+      replayTimer.current = null;
       applyCity(target);
       if (intent.kind === 'pin' && intent.pinId != null) {
         replayPin.current = { cityId: intent.cityId, pinId: intent.pinId };
@@ -1552,7 +1570,9 @@ export default function MapScreen() {
         enterPlaceMode(intent.region);
       }
     }, 0);
-    return () => clearTimeout(timer);
+    // NO CLEANUP HERE. intentHandled() above re-runs this effect before the
+    // timer fires, and a cleanup that cleared the timer cancelled the replay
+    // every time (see replayTimer, which is cleared on unmount only).
     // applyCity/enterPlaceMode are stable per render; the guards above make
     // this one-shot, so the exhaustive list would only widen it.
     // eslint-disable-next-line react-hooks/exhaustive-deps

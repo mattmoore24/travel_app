@@ -112,7 +112,7 @@ appId: com.mattmoore.samewhere
 # line asserted here is the one that stops the OTHER segment reading as inert
 # too: city_rooms is granted to anon, so Groups genuinely has rooms on it.
 - assertVisible: 'No chats yet'
-- assertVisible: 'Open chats at hostels and bars are under Groups.'
+- assertVisible: 'Chats at hostels and bars are under Groups.'
 - takeScreenshot: 04-chat-guest
 - tapOn: 'Map'
 - takeScreenshot: 05-back-to-map

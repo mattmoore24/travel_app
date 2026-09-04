@@ -106,20 +106,50 @@ session), so the map - still mounted under the signup route - replayed the
 intent into a screen nobody could see, entered place mode in the dark, and
 had lost it by the time the tabs came back. The effect now also waits for
 `useIsFocused()`: the intent is consumed only once a person can see the
-result. Run 111 proved it: the onboarding tour passed end to end, place
-mode and all. The same run then failed four other flows, and every one of
-them was the suite, not the app: the sign-in form remembers the last
-address that signed up on the device (lib/last-email) and the tour typed
-the E2E address onto the end of the throwaway's, so the large-text tour
-after it ran signed out and met the gate instead of place mode; the
-business description step autofocuses and "Skip for now" sits under the
-keyboard it raises; and the filter sheet's category chip sat under the Done
-band, which the fade and the padding above now clear. The flows erase the
-field and hide the keyboard first. One thing in the app did come out of it:
-Reanimated's keyboard height leaves out the input accessory view, so every
+result. That guard was right and it was not enough: run 112 failed the
+same tail with the guard in place, and the log for run 111's onboarding
+tour turns out to be cut off before its tail, so the "passed end to end"
+this entry used to claim rests on nothing that can be re-read (the results
+branch is force-pushed each run). Run 111's four other failures were the
+suite, not the app: the sign-in form remembers the last address that
+signed up on the device (lib/last-email) and the tour typed the E2E address
+onto the end of the throwaway's, so the large-text tour after it ran signed
+out and met the gate instead of place mode; the business description step
+autofocuses and "Skip for now" sits under the keyboard it raises; and the
+filter sheet's category chip sat under the Done band, which the fade and
+the padding above now clear. The flows erase the field and hide the
+keyboard first. One thing in the app did come out of it: Reanimated's
+keyboard height leaves out the input accessory view, so every
 `KeyboardFloor` that lifted a footer above the keyboard lifted it 36pt
 short and the Hide keyboard bar lay across the bottom of Continue (screen
 60). The floor adds the bar's height while the keyboard is up.
+
+### The replay that cancelled itself
+
+The mechanism, found by putting the effect's shape on the real React in a
+test rather than by reading it again. The replay effect consumes the intent
+first (`intentHandled()`, a store write), then schedules `applyCity` and
+`enterPlaceMode` on a 0ms timer, and returned a cleanup that cleared that
+timer. A store write inside a passive effect is flushed synchronously,
+before React returns to the event loop, so the intent going null re-ran the
+effect, and its cleanup cleared the timer before the timer could fire. Every
+replay was cancelled by the act of recording that it had happened; the
+focus guard, the hydration guard and the rail guard all read correctly
+around a tick that never came. `features/pins/__tests__/replay-outlives-
+its-clear.test.tsx` shows both shapes: the cleanup-owned timer never fires,
+a ref-held timer cleared on unmount only fires exactly once. The map has
+the second shape now, `pending-intent.test.ts` refuses the first, and the
+traps skill carries the rule (an effect that consumes its trigger and
+defers its action must not own the deferral through its own cleanup).
+
+The sign-in half of run 112 is unexplained and worked around. The tour
+typed the address correctly, pressed Return, typed the password, and
+photographed an EMPTY password box under "do not match" - a submit that
+the form's own gate should not have allowed with nothing in that field.
+The flow now fills the sign-in form the way business-tour fills the join
+form and passes: tap the field, type, Hide keyboard, tap the next field,
+and it photographs each field after typing so the next run says where the
+password went if it goes anywhere again.
 
 ### Seven seams the pictures showed
 

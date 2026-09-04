@@ -37,23 +37,27 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'email-input'
 # The field is PREFILLED with the last address that signed in or up on this
-# device (lib/last-email), and on a full run that is the onboarding tour's
-# throwaway. Typing appended to it, and run 111 photographed "maestro-new-
-# ...Mattmoorefb2..." with "do not match" under it. Erase first.
+# device (lib/last-email, and the keychain outlives the workflow's state
+# reset), and on a full run that is the onboarding tour's throwaway. Typing
+# appended to it, and run 111 photographed "maestro-new-...Mattmoorefb2..."
+# with "do not match" under it. Erase first.
 - eraseText: 120
 - inputText: ${E2E_EMAIL}
-# Return, not a tap on the next field. Tapping a second field while the
-# keyboard is up does not reliably move focus under XCUITest, and run 23
-# proved it does not on a device either: the password box came back empty.
-# The form now wires Return to move along, so this is the human path too.
-- pressKey: Enter
-- inputText: ${E2E_PASSWORD}
-# Return on the password field submits. hideKeyboard has no reliable dismiss
-# path here, which is where the same run actually died.
-- pressKey: Enter
+- takeScreenshot: 10b-sign-in-email-typed
+# Field by field, keyboard down between them, the way business-tour fills
+# the join form and passes. Run 112 typed the address correctly, pressed
+# Return, typed the password, and photographed an EMPTY password box under
+# "do not match": whatever Return did with focus that time, the password
+# went somewhere that was not the password field. Every field carries a
+# Hide keyboard bar now, so the next tap lands on a screen with no keyboard
+# over it, which is the one case XCUITest focuses reliably.
+- tapOn: 'Hide keyboard'
 - tapOn:
-    text: 'Sign in'
-    optional: true
+    id: 'password-input'
+- inputText: ${E2E_PASSWORD}
+- takeScreenshot: 10c-sign-in-password-typed
+- tapOn: 'Hide keyboard'
+- tapOn: 'Sign in'
 # iOS offers to save the password after a successful sign-in; the system
 # dialog owns the a11y tree and eats taps until dismissed. It can arrive
 # seconds late, so wait for it, dismiss it, and guard once more below.

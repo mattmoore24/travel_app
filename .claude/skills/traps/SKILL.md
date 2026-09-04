@@ -222,6 +222,23 @@ device does something else.
   reaction menu from ever opening, through two wrong fixes, because component
   tests call the handler directly and never enter the responder system.
 
+## Effects that consume what they act on
+
+- **A store write inside an effect re-renders the component BEFORE the event
+  loop turns, so a cleanup keyed on the written value runs before any 0ms
+  timer the same effect scheduled.** The map's intent replay consumed the
+  intent (`intentHandled()`, a Zustand write), scheduled `applyCity` and
+  `enterPlaceMode` on a `setTimeout(..., 0)`, and returned
+  `() => clearTimeout(timer)`. React flushes a sync-lane update scheduled
+  during passive effects synchronously, so the intent going null re-ran the
+  effect, its cleanup cleared the timer, and the replay never fired - every
+  guard around it read correctly and the onboarding tour's tail was red for
+  four runs. Hold the timer in a ref and clear it on unmount only
+  (`features/pins/__tests__/replay-outlives-its-clear.test.tsx` shows both
+  shapes on the real React). The general rule: an effect that both consumes
+  its trigger and defers its action must not own the deferral through its
+  own cleanup.
+
 ## Lists
 
 - **An inverted `FlatList` flips the order of a cell's children.** A day

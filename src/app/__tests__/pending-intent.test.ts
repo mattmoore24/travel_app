@@ -71,6 +71,25 @@ describe('every origin writes, every replay clears first', () => {
     expect(applied).toBeGreaterThan(handled);
   });
 
+  it('the replay tick is not owned by the effect that consumes the intent', () => {
+    // Consuming the intent re-renders the map before the tick fires, so a
+    // cleanup on the replay effect cancelled every replay it scheduled (the
+    // mechanism is pinned in features/pins/__tests__/replay-outlives-its-
+    // clear.test.tsx). The timer lives in a ref and is cleared on unmount
+    // only.
+    const map = src('src/features/pins/map-screen.tsx');
+    const start = map.indexOf('// THE REPLAY ITSELF');
+    const end = map.indexOf('// The data-dependent half', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const effect = map.slice(start, end);
+    expect(effect).toContain('replayTimer.current = setTimeout(');
+    expect(effect).not.toContain('return () => clearTimeout(');
+    expect(map).toContain(
+      'const replayTimer = useRef<ReturnType<typeof setTimeout> | null>(null);'
+    );
+  });
+
   it('the tabs handoff waits for a REAL sign-in: an anonymous session is not one', () => {
     // The blocker this pins: a guest ACCOUNT is an anonymous Supabase
     // session, so `session != null` was true for the very person who just
