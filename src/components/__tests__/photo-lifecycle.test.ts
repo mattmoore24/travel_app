@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { after, between } from '@/lib/__tests__/source';
+
 /**
  * The photo somebody just picked is on screen, and it survives a bad wifi.
  *
@@ -95,5 +97,68 @@ describe('the owner is not asked for a photo they just added', () => {
 
   it('still counts a held photo as held, so the notice stays', () => {
     expect(profileMe).toContain('const heldBack = photos.length - approvedPhotos.length;');
+  });
+});
+
+/**
+ * The badge follows the face (20260904100000): a delete or a reorder can
+ * take profiles.verified off server-side, in the same statement, with the
+ * approved verification turned into a rejected one that carries a reason.
+ * Neither of those lives under the photos key, so a hook that refetched only
+ * the photos left the profile screen holding a seal the database had
+ * withdrawn until something else happened to refetch it.
+ *
+ * Source assertions again, for the same reason as above: what is pinned is
+ * which keys a mutation invalidates, and a render cannot see a key.
+ */
+describe('the badge can come off with a photo', () => {
+  const deleteHook = between(
+    hooks,
+    'export function useDeletePhoto',
+    'export function useReorderPhotos'
+  );
+  const reorderHook = between(
+    hooks,
+    'export function useReorderPhotos',
+    'export function usePhotoUrl'
+  );
+  const uploadHook = between(
+    hooks,
+    'export function useUploadPhoto',
+    'export function useDeletePhoto'
+  );
+
+  it('refetches the profile and the verification after a delete', () => {
+    expect(deleteHook).toContain(
+      "queryClient.invalidateQueries({ queryKey: ['profile', userId] })"
+    );
+    expect(deleteHook).toContain(
+      "queryClient.invalidateQueries({ queryKey: ['verification', userId] })"
+    );
+  });
+
+  it('and after a reorder, whatever the outcome', () => {
+    // onSettled, not onSuccess: the revoke happens inside the same statement
+    // as the position write, so it is there whether or not a later write of
+    // the same plan failed. onSettled is the last handler of that mutation,
+    // so everything after the anchor is its body.
+    const settled = after(reorderHook, 'onSettled');
+    expect(settled).toContain("queryClient.invalidateQueries({ queryKey: ['profile', userId] })");
+    expect(settled).toContain(
+      "queryClient.invalidateQueries({ queryKey: ['verification', userId] })"
+    );
+  });
+
+  it('but not after an upload, which lands pending and cannot move a badge', () => {
+    expect(uploadHook).not.toContain("['profile', userId]");
+    expect(uploadHook).not.toContain("['verification', userId]");
+  });
+
+  it('says so on the main tile before the tap, only while there is a badge to lose', () => {
+    expect(grid).toContain('useOwnProfile');
+    expect(grid).toContain(
+      "'Your badge may come off, since it was checked against this photo. A new selfie brings it back.'"
+    );
+    expect(grid).toMatch(/main && profile\?\.verified\s*\?/);
   });
 });

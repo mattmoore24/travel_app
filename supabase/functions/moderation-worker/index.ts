@@ -283,7 +283,7 @@ type WorkerReport = {
   postPhotos: { approved: number; rejected: number; failed: number };
   groupPhotos: { approved: number; rejected: number; failed: number };
   chatPhotos: { approved: number; rejected: number; failed: number };
-  verifications: { approved: number; rejected: number; failed: number };
+  verifications: { approved: number; rejected: number; failed: number; waiting: number };
   storefronts: { approved: number; rejected: number; uncertain: number; failed: number };
   scans: { cleared: number; flagged: number; failed: number };
   notes: string[];
@@ -421,7 +421,7 @@ Deno.serve(async (req) => {
     postPhotos: { approved: 0, rejected: 0, failed: 0 },
     groupPhotos: { approved: 0, rejected: 0, failed: 0 },
     chatPhotos: { approved: 0, rejected: 0, failed: 0 },
-    verifications: { approved: 0, rejected: 0, failed: 0 },
+    verifications: { approved: 0, rejected: 0, failed: 0, waiting: 0 },
     storefronts: { approved: 0, rejected: 0, uncertain: 0, failed: 0 },
     scans: { cleared: 0, flagged: 0, failed: 0 },
     notes: [],
@@ -1114,13 +1114,30 @@ Deno.serve(async (req) => {
       }
       const { data: profilePhotos } = await supabase
         .from('profile_photos')
-        .select('storage_path')
+        .select('id, storage_path')
         .eq('user_id', verification.user_id)
         .eq('moderation_status', 'approved')
         .order('position')
         .limit(2);
       if (!profilePhotos || profilePhotos.length === 0) {
-        // Race guard only — submit_verification requires an approved photo.
+        // No longer a race guard: submit_verification admits a PENDING photo
+        // (20260904100000), so this is the ordinary state of a selfie taken
+        // seconds after the photo went up, which is what signup does. Photos
+        // are drained earlier in this same tick (QUEUE_BUDGET_MS order), so
+        // by the next one the photo has usually cleared. Leave the request
+        // exactly as it is - not rejected, no attempt spent - and say so in
+        // the report. Only a request with no approved AND no pending photo
+        // can never be judged, and that one is rejected as before.
+        const { data: pendingPhotos } = await supabase
+          .from('profile_photos')
+          .select('id')
+          .eq('user_id', verification.user_id)
+          .eq('moderation_status', 'pending')
+          .limit(1);
+        if (pendingPhotos && pendingPhotos.length > 0) {
+          report.verifications.waiting += 1;
+          continue;
+        }
         await applyVerificationVerdict(verification.id, {
           action: 'reject',
           reason: 'Add at least one profile photo before verifying.',
@@ -1131,6 +1148,13 @@ Deno.serve(async (req) => {
         report.verifications.rejected += 1;
         continue;
       }
+      // Which photos were in the prompt, recorded on the verdict so the badge
+      // remembers the face it was issued for. What was actually SENT, rather
+      // than what the database would re-derive at verdict time: the two can
+      // differ by the length of a model call. apply_verification_verdict
+      // falls back to its own derivation for a verdict from an older worker
+      // that sends none.
+      const photoIds = profilePhotos.map((p: any) => p.id as string);
 
       const selfieUrl = await signedUrl('verification-selfies', verification.storage_path);
       const photoUrls = await Promise.all(
@@ -1149,13 +1173,14 @@ Deno.serve(async (req) => {
       ];
       const verdict = await classify(anthropic, PROMPTS.verification, content, VerificationVerdict);
       const payload = verdict
-        ? { ...verdict, engine: 'claude-verifier', model: MODEL }
+        ? { ...verdict, engine: 'claude-verifier', model: MODEL, photo_ids: photoIds }
         : {
             action: 'reject',
             reason: 'We could not review this selfie. Please try a different photo.',
             reason_en: 'We could not review this selfie. Please try a different photo.',
             engine: 'claude-verifier',
             model: MODEL,
+            photo_ids: photoIds,
           };
       await applyVerificationVerdict(verification.id, payload);
       await deleteSelfie(verification.storage_path);

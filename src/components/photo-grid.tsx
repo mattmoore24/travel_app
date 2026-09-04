@@ -16,6 +16,7 @@ import { Radius, Space } from '@/constants/theme';
 import {
   useDeletePhoto,
   useOwnPhotos,
+  useOwnProfile,
   usePhotoUrl,
   useReorderPhotos,
   useUploadPhoto,
@@ -216,14 +217,27 @@ function FilledPhoto({
 }) {
   const theme = useTheme();
   const { data: url } = usePhotoUrl(photo.storage_path);
+  const { data: profile } = useOwnProfile();
   const deletePhoto = useDeletePhoto();
   const checking = photo.moderation_status !== 'approved' && photo.moderation_status !== 'rejected';
 
   const confirmDelete = () => {
-    Alert.alert(main ? 'Remove your profile photo?' : 'Remove this photo?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => deletePhoto.mutate(photo) },
-    ]);
+    // The seal was issued against the photos that led at the time
+    // (20260904100000), and removing the main one can take it off if the
+    // next photo was never checked. Said before the tap, on the one tile
+    // where it can happen, and not on the arrange sheet: a reorder that
+    // costs the badge is the person choosing a new face, and that sheet is
+    // not the place to argue with them.
+    Alert.alert(
+      main ? 'Remove your profile photo?' : 'Remove this photo?',
+      main && profile?.verified
+        ? 'Your badge may come off, since it was checked against this photo. A new selfie brings it back.'
+        : undefined,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => deletePhoto.mutate(photo) },
+      ]
+    );
   };
 
   return (

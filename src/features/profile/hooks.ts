@@ -206,6 +206,11 @@ export function useUploadPhoto() {
       // any earlier flashes the empty dashed box, and keeping it any longer
       // means keeping a dead entry that reappears the next time that slot is
       // freed.
+      //
+      // Not the profile or the verification, unlike the delete and the
+      // reorder below: an upload lands pending, and the badge can only come
+      // off when the worker APPROVES it into the lead slot, minutes later
+      // and in no transaction of ours.
       return queryClient.invalidateQueries({ queryKey: ['photos', userId] });
     },
   });
@@ -218,6 +223,15 @@ export function useDeletePhoto() {
     mutationFn: (photo: ProfilePhotoRow) => deletePhoto(photo.id, photo.storage_path),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['photos', userId] });
+      // The badge can come off server-side on a delete
+      // (profile_photos_badge_follows_the_face, 20260904100000): removing
+      // the photo the selfie was compared against, with an unchecked one
+      // behind it, sets verified false and turns the approved verification
+      // into a rejected one with a reason. Each lives under its own key, and
+      // a profile screen still showing a seal the database has withdrawn is
+      // the wrong screen to be looking at.
+      queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+      queryClient.invalidateQueries({ queryKey: ['verification', userId] });
     },
   });
 }
@@ -262,6 +276,11 @@ export function useReorderPhotos() {
       // The public copy is a different key, and the hero it feeds is the
       // whole point of the reorder.
       queryClient.invalidateQueries({ queryKey: ['public-photos', userId] });
+      // And the badge can come off server-side on a reorder too: an
+      // unchecked photo arriving at the lead slot is the exact write
+      // profile_photos_badge_follows_the_face (20260904100000) watches for.
+      queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+      queryClient.invalidateQueries({ queryKey: ['verification', userId] });
     },
   });
 }

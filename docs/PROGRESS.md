@@ -3,6 +3,146 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **The keyboard bar was built three times and bound once** (2026-09-04)
+
+The founder sent two screenshots and six comments. The one that mattered most
+was the one they had made before: "I've said it many times but it still isn't
+there. EVERY KEYBOARD MUST HAVE THE DISMISS KEYBOARD BUTTON." The bio step,
+keyboard up, no bar, and the footer riding on top of the keyboard.
+
+Every piece of that bar was in the tree. `StepShell` mounted it, `FormTextField`
+pointed at it by id, a source scan asserted both halves, and it had been
+written on 2026-08-24, widened on 08-28 and lifted into the shell on 08-30. It
+was on the phone for exactly one field per screen, and the reason is in React
+Native's own source rather than in any of the three attempts.
+
+### The cause
+
+Under Fabric, `RCTInputAccessoryComponentView.didMoveToWindow` is guarded by
+`if (self.window && !_textInput)`: it walks the window ONCE, when the BAR enters
+it, takes the first field whose `inputAccessoryViewID` matches, caches it, and
+never looks again. The field side never looks at all —
+`RCTTextInputComponentView.setDefaultInputAccessoryView` returns early the
+moment an id is set, so a field that missed the one-shot bind gets nothing, not
+even iOS's default toolbar. The documented shape (one bar per screen, one
+shared id, every field pointing at it) was right under Paper, where the FIELD
+looked the bar up on its own mount, and is quietly wrong under Fabric: the bar
+bound to whichever field existed when the shell first mounted, and every field
+mounted later — the next signup step, a search box revealed by a tap — had
+none. That is the screenshot: step 7, reached from step 6.
+
+So it is one bar per field now, mounted with it, rendered BEFORE it.
+`KeyboardDone` (`components/form/keyboard-done-bar.tsx`) is a render prop that
+draws the bar and hands the field a `useId`, so neither half can be forgotten
+or reordered; `FormTextField` uses it and the seven raw `TextInput`s wrap
+themselves in it. Before, not after, read out of `Differentiator.cpp`: a new
+subtree is assembled bottom-up and attached whole, so `didMoveToWindow`
+cascades parent-first over a subtree that is already complete, and an
+earlier-sibling bar binds before the field's own `didMoveToWindow` fires
+`autoFocus`. The eight shell mounts and the shared id are gone.
+
+**The old scan let two fields through with no bar at all.** `language-field`
+spread the props onto a `SymbolView` icon; `pin-form-sheet`'s venue input had
+none, because a `FormTextField` elsewhere in the same file carried them. A file
+that mentions a prop is not an element that has it. The new test walks the
+rendered tree for the pair (bar first, ids equal, ids unique) and the scan
+requires every `<TextInput` to sit between a `<KeyboardDone>` and its close.
+Mutation-checked three ways, each breaking a named assertion. Recorded in the
+`traps` skill, under Keyboard, with the file paths.
+
+### The rest of the list
+
+- **The footer goes under the keyboard.** "Just keep these options at the
+  bottom but have the keyboard go over them when the user is typing."
+  `KeyboardFloor` takes an `allowance` (the measured footer height) and
+  `StepShell` puts the floor under the scroller only, so the field's last line
+  meets the keyboard's top edge and Continue, the skip and Sign out are
+  covered until the bar is used. **Sign out is a footnote-sized line** under
+  the skip rather than a ghost button: "not really a need for the sign out
+  prompt to be so prominent". Still 44pt, still on every step, for the
+  hostel-wifi reason it exists.
+- **"Rather not say" is gone from both gender pickers.** "It goes against our
+  filters", and it did exactly: `audience_admits` puts an unspecified profile
+  in none of the three gendered audiences while `set_visibility` let it choose
+  one, so somebody could narrow to verified women without being filterable as
+  anything. `basicsProblem` refuses the value now rather than honouring a tap;
+  the `genderTouched` flag goes with the option it existed to tell apart;
+  edit-profile cannot save without one; `resumeStep` lands a legacy opt-out
+  back on step 3. No migration: `'unspecified'` is the column default every
+  row is born with and the guest trigger compares against it, so the enum
+  value stays and only the offer goes.
+- **Copy.** The photo tile says "Make sure your face is clearly visible in
+  your profile photo." Step 9 is titled "Add your top priorities for your
+  trip". The badge subtitle ends "so you can choose verified travelers only
+  and filter by gender".
+- **The badge is a step.** It was a door on the audience step, opened only by
+  tapping a locked row, and the founder walked the whole sequence without
+  meeting it: "There should be an option to verify your profile during
+  onboarding." Step 12 is Get your badge, skippable, with the cost of skipping
+  said under the skip (the verified-only rows on the next screen stay locked);
+  audience is 13, the review 14, the door on 13 stays for whoever skipped.
+  `SIGNUP_TOTAL_STEPS` is 14 and the slug `badge` is inserted rather than any
+  renamed, since the slugs are the funnel's event schema.
+
+### Verification: the two questions, and the hole the second one found
+
+**"Will the verification fail if their profile photo includes multiple
+people?"** The code cannot say. The worker sends the selfie, the first two
+APPROVED profile photos by position, and the one question "Is this selfie
+plausibly the same person as the profile photos?"; the verdict schema is
+`approve | reject` with a reason, nothing counts faces, and the decision lives
+in the classifier prompt, which is a secret by design. What the code does with
+each answer is fixed: approve stamps the badge, reject shows the reason and
+allows a retry (three a day), a refusal or an unparseable answer retries up to
+ten times and then rejects. Two adjacent facts: a group shot can BE the
+approved position-0 photo (photo moderation has no "one person" category), and
+only the first two approved photos are ever compared.
+
+**"If they change their profile photo, will the account need to be
+re-verified?"** It did not, and that was a hole. The only write of
+`profiles.verified = true` in the schema was the approve branch; every trigger
+on `profile_photos` was INSERT-only; the verdict recorded nothing about which
+photos it compared. So a verified traveler could delete the lead, upload a
+different face, move an unchecked gallery photo into the lead, and keep the
+badge and the narrowed audience it had earned — while `submit_verification`
+refused to let even an honest person re-verify ("already verified"). The
+badge's own explanation to strangers, "we compared it against their profile
+photos", was false after the first swap.
+
+Now the badge follows the face (`20260904100000_a_badge_follows_the_face`):
+the verdict records the photo ids it compared; an AFTER trigger on
+`profile_photos` revokes the badge when a photo that was not compared becomes
+the lead (arrives at position 0, is approved into the lead, or inherits the
+lead because a compared one was deleted or un-approved); revoking flips
+`verified` so `profiles_reset_visibility` drops the audience to everyone, marks
+the approved request rejected with a reason the app already renders, writes a
+`verification_revoked` event that is not a strike, and queues a push. The rule
+is keyed on the ROW that changes, never on "the lead is not compared" derived
+after each write, because `photoWritePlan` on a full gallery vacates slot 0 for
+one round trip. `submit_verification` accepts a pending photo and the worker
+waits for it rather than rejecting (counted as `waiting` in its report),
+which is what lets the badge step sit seven screens after the photo step. The
+verdict and the trigger take the per-user advisory lock `submit_verification`
+already took, so a verdict and a photo write in the same instant cannot leave
+a badge judged against a snapshot. pgTAP `75_a_badge_follows_the_face`: 53
+assertions, every guard broken in turn and the first failing assertion
+recorded in the file's header; one guard (`old.moderation_status <>
+'approved'` on the approval rule) is unreachable by any state and is kept as
+change-detection, said so in the header rather than left to look tested.
+
+### Evidence
+
+E2E run #109, `build: true` — the one-time 0.2.0 simulator build the
+workflow's own note has been asking for since the version bump. The flow now
+taps `Hide keyboard` by its label wherever a button sits under a keyboard
+(password, age, bio; business password and phone), so a bar that is not on
+that field fails the run rather than a screenshot. `57-signup-bio` is taken
+with the keyboard up; `57b` after the bar is tapped; `71b` is the badge step.
+
+Deploy order: the migration first (it only widens `submit_verification` and
+adds a trigger, and an OTA bundle is never applied on the launch that
+downloads it), then the production update.
+
 ## **Sign in with Apple, as far as a browser can take it** (2026-09-03)
 
 The founder has no local machine, so everything Apple-side runs through GitHub

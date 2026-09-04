@@ -71,8 +71,10 @@ Key mechanics:
   who-is-chatting-with-whom graph (caught by the Phase 1 adversarial review; regression-tested,
   including that the old two-arg signature no longer exists and anon cannot execute helpers).
 - **`verification` evidence is unreadable by clients**: column-level SELECT grants expose only
-  the boolean `verified` badge; the Phase 5 evidence jsonb (document/liveness metadata) has no
-  client grant at all, so clients always select explicit columns (`PROFILE_COLUMNS`).
+  the boolean `verified` badge; the evidence jsonb (`{method, request_id, verdict, at,
+photo_ids}` — the model's verdict and, since 20260904100000, which photos the selfie was
+  compared against) has no client grant at all, so clients always select explicit columns
+  (`PROFILE_COLUMNS`).
 - **Server-owned columns**: `profiles.verified`/`verification`, `profile_photos.moderation_status`,
   and all of `users` are stripped from client column grants — a client literally cannot
   self-verify or approve photos, regardless of RLS.
@@ -269,11 +271,13 @@ moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structure
   auto-approve stub.
 - **Selfie verification**: selfie goes to a **write-only** private bucket
   (`verification-selfies` — clients have no SELECT policy at all); `submit_verification`
-  (caller-scoped RPC: own-folder path check, object-exists check, requires an approved
-  profile photo to compare against, one pending at a time, 3/day cap) opens a request; the
-  worker compares selfie vs up to two approved profile photos with Claude vision and
+  (caller-scoped RPC: own-folder path check, object-exists check, requires a profile photo
+  to compare against — approved or still pending, since 20260904100000 — one pending at a
+  time, 3/day cap) opens a request; the worker compares selfie vs up to two approved profile
+  photos with Claude vision (waiting a tick while the only photo is still pending) and
   applies `apply_verification_verdict` — approve sets `profiles.verified` + evidence into
-  the server-only `verification` jsonb; reject carries a user-facing reason. The selfie
+  the server-only `verification` jsonb, including `photo_ids`, the photos that were in the
+  prompt; reject carries a user-facing reason. The selfie
   object is **deleted from storage as soon as a verdict lands** (data minimization — the
   audit trail is the verdict, not the image). **Honesty note (also in the UI): this is a
   likeness plausibility check, not certified liveness/identity verification** — the vendor
@@ -284,6 +288,57 @@ moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structure
   or a future dashboard). `strike` feeds the ladder; direct suspend/ban bypass it. An
   action that can't apply to the account's current status (e.g. suspending a banned user)
   raises instead of resolving the report and logging a phantom audit event.
+
+### A badge follows the face (20260904100000)
+
+Until this migration a verified traveler could swap in a different person's photo and keep
+the badge: nothing ever set `profiles.verified` back to false, no trigger on `profile_photos`
+watched an UPDATE or a DELETE, and the verdict recorded nothing about which photos it had
+compared. Three things close that.
+
+- **The evidence names the photos.** `apply_verification_verdict` writes `photo_ids` into
+  the `verification` jsonb: the array the worker says it sent (what was actually in the
+  prompt, not what the database would re-derive a model call later), falling back to
+  `compared_photo_ids()` — the worker's own first-two-approved-by-position query — for a
+  verdict from an older worker. Everybody verified earlier is backfilled with the derivation
+  as of the migration, stamped `photo_ids_backfilled_at`: the best approximation available,
+  and better than exempting pre-migration badges forever, which would be the defect with a
+  date on it.
+- **`profile_photos_badge_follows_the_face`** (AFTER DELETE OR UPDATE OF `position`,
+  `moderation_status`) takes the badge away when the face it was issued for stops leading
+  the profile. A photo is _compared_ when its id is in `photo_ids`; the _lead_ is the
+  approved photo with the lowest position. Revoke when an uncompared approved photo arrives
+  at slot 0; when an uncompared photo becomes approved with nothing approved below it (the
+  delete-the-lead-then-upload path, which fires on the approval, not the upload); when a
+  compared photo stops being approved or is deleted and the lead after that is nobody or
+  somebody uncompared. **Never because a compared photo leaves slot 0.** The rule is about
+  what _this row_ did, not about the derived state, because a reorder is several PostgREST
+  round trips and on a full gallery `photoWritePlan` (`src/features/profile/photo-order.ts`)
+  has no free slot to step into, so it moves the photo in the lowest occupied slot first:
+  swapping compared A@0 with compared C@2 past an uncompared B@1 writes `A→2` (slot 0 empty,
+  B leads) and then `C→0`. A "is the lead compared?" check after the first write would take
+  the badge off somebody moving between two checked faces; the row rule sees only C arrive.
+  `75_a_badge_follows_the_face` replays both plans write for write and records, per guard,
+  which assertion fails when it is removed.
+- **A revoke is** `verified = false` with `revoked_at`/`revoked_by`/`revoked_photo_id`
+  appended to the evidence (never replaced), the approved `verification_requests` row turned
+  `rejected` with a reason the capture screen already renders as a card (no fourth enum
+  value: it behaves exactly like a rejection and a new value would have been a client change
+  on every installed build), one `verification_revoked` event with source `system` — not on
+  `is_strike_action`'s list, changing your own photo is not misconduct — and one push. Naming
+  `verified` is what fires `profiles_reset_visibility`, so the narrowed audience falls with
+  the badge. The same per-user advisory lock `submit_verification` takes is taken by the
+  verdict and, before its read, by the trigger, so a verdict and a photo write in the same
+  instant cannot leave a badge judged against a snapshot; a double revoke is prevented without
+  it by the profile row lock and the re-checked `and verified`.
+- **Verifying during signup works.** `submit_verification` accepts a pending photo, and the
+  worker leaves such a request untouched (no reject, no attempt spent, counted as `waiting`)
+  until the photo clears, which is usually the next tick since photos drain earlier in the
+  same one. Only a request with no photo at all is still refused up front.
+- **Client:** `useDeletePhoto` and `useReorderPhotos` also invalidate `['profile']` and
+  `['verification']`, since either write can take the badge off server-side; the main tile's
+  delete confirm says so while there is a badge to lose. The arrange sheet does not: a reorder
+  that costs the badge is the person choosing a new face.
 
 ## Guests can chat (Phase 12)
 
@@ -377,11 +432,15 @@ Three deliberate boundaries, all proved in `17_profile_visibility.test.sql`:
   cell and still never appears as a pin.
 
 `profiles_reset_visibility` drops the setting back to `everyone` if the badge is ever
-taken away, so the rule is not enforced only at write time.
+taken away, so the rule is not enforced only at write time — and since 20260904100000 it
+is, by `profile_photos_badge_follows_the_face`, when the face the badge was issued for
+stops leading the profile.
 
 Honest consequence, stated in the picker as well as here: the three gendered options
-match `profiles.gender`, so a traveler who has not set a gender ("Rather not say") is in
-none of them. `verified_nonbinary` was added a revision after the rest (founder,
+match `profiles.gender`, so a profile still at the column default is in none of them.
+Since 2026-09-04 that is only a guest or an account that never finished signing up:
+"Rather not say" was removed from both pickers because it let a traveler use the gendered
+filters without being subject to them, and step 3 and edit-profile now refuse the default. `verified_nonbinary` was added a revision after the rest (founder,
 2026-08-23) because without it nonbinary travelers were the only group that could be
 asked for and never ask. The three are siblings, not a hierarchy: asking for one gendered
 audience does not put you in another.
@@ -1335,7 +1394,9 @@ of `64_only_an_edit_earns_a_stamp` do for a new column.
 - **`profiles_reset_visibility`** (BEFORE UPDATE **OF** `verified`) — nothing, twice over.
   `update of` fires only for a statement that names that column, and `verified` is not in the
   client update grant, so no client statement can name it. The body then no-ops unless the
-  badge actually went away, and its only effect is on the row's own `visible_to`.
+  badge actually went away, and its only effect is on the row's own `visible_to`. It does
+  fire now — from `profile_photos_badge_follows_the_face` (20260904100000), the one writer
+  of `verified = false` — and that is a real consequence of losing a badge, not bookkeeping.
 - **`profiles_guest_minimal`** (BEFORE UPDATE, no WHEN) — nothing, but for a weaker reason
   worth knowing. It does run in full on every update, and it is harmless only because it is a
   pure assertion: no row, no stamp, no counter, and it reads only NEW, which for a
