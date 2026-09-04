@@ -1664,7 +1664,9 @@ const styles = StyleSheet.create({
   wallBand: {
     alignSelf: 'stretch',
     paddingHorizontal: Space.lg,
-    paddingRight: HitTarget + Space.lg,
+    // The logical side (logical-directional-styles.test.ts): the avatar is
+    // at the end of the row, and so is this clearance in either direction.
+    paddingEnd: HitTarget + Space.lg,
   },
   sharedTodayNote: {
     textAlign: 'center',
