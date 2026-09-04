@@ -253,6 +253,34 @@ appId: com.mattmoore.samewhere
     timeout: 30000
 - tapOn: 'Travelers'
 - takeScreenshot: 17-travelers-signed-in
+# WHICH TRIPS THE QUEUE IS FOR. The account has two trips (Bangkok this
+# week, Lisbon more than a year out), so the rail above the hero is on: All
+# trips, Bangkok, Lisbon. A chip carries its spoken label ("Lisbon, Oct 10 –
+# 15"), which is what Maestro sees instead of the printed city (traps), and
+# nothing else on this screen starts with a city and a comma.
+- assertVisible:
+    id: 'trip-chip-all'
+# Just Lisbon. Nobody in the seed has a trip there a year from now, so this
+# is the wall a choice produces: the rail still on it, the choice named, and
+# the way back underneath.
+- tapOn: 'Lisbon, .*'
+- extendedWaitUntil:
+    visible: "That's everyone on your dates in Lisbon"
+    timeout: 15000
+- assertVisible: "You're only looking at Lisbon, .*"
+- takeScreenshot: 17i-travelers-just-lisbon
+- tapOn: 'Show all trips'
+- extendedWaitUntil:
+    visible: 'Say hi'
+    timeout: 15000
+# Just Bangkok for the rest of the tour. The anchor step below scrolls to a
+# Bangkok trip card, and with Lisbon in view too whoever is first in the
+# queue is not promised to have one.
+- tapOn: 'Bangkok, .*'
+- extendedWaitUntil:
+    visible: '(Last one for now|One more on your dates in Bangkok|[0-9]+ more on your dates in Bangkok)'
+    timeout: 15000
+- takeScreenshot: 17j-travelers-just-bangkok
 # THE COMPOSER, PHOTOGRAPHED. The say-hi composer is this product's
 # chokepoint and not one of the tour's PNGs had ever shown it: no field, no
 # anchor card, no counter, no warning. Reading the source and imagining the

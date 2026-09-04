@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { between } from '@/lib/__tests__/source';
+
 /**
  * The Travelers tab's trip picker (2026-09-05): which of the reader's own
  * trips the queue is built from. Founder: "select one, multiple, or all of
@@ -62,9 +64,26 @@ describe('the Travelers tab picks its trips', () => {
     expect(screen).toContain('matchesQuery.isFetching && matchesQuery.isPlaceholderData');
   });
 
-  it('an empty wall the selection emptied offers the way back', () => {
+  it('an empty wall the selection emptied offers the way back, rail and all', () => {
     expect(screen).toContain("label: 'Show all trips', onPress: tripSelection.selectAll");
     expect(screen).toContain("You're only looking at ${");
+    // The rail is on the wall as well as over the queue: the wall's branch
+    // (from its guard to the queue's own header) renders it in a band of
+    // its own. A chip tap that empties the queue must not take the chips
+    // with it.
+    const wall = between(screen, 'if (queue.length === 0 || !current) {', '<QueueHeader');
+    expect(wall).toContain('{tripPicker}');
+    expect(wall).toContain('styles.wallBand');
+    // And the audience wall, whose primary is the setting, still offers the
+    // trips: narrowed plus "verified only" was a dead end with no button
+    // about trips on it.
+    expect(screen).toContain('{filtered && narrowed ? (');
+    expect(screen.split('label="Show all trips"').length - 1).toBe(1);
+  });
+
+  it('the wall says it is checking rather than claiming "everyone" over a queue not yet fetched', () => {
+    expect(screen).toContain('const wallTitle = checking ? `Checking ${scope.noun}…` : headline;');
+    expect(screen).toContain('title={wallTitle}');
   });
 
   it('keeps the last queue on screen while the next one loads', () => {

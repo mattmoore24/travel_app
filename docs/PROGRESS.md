@@ -69,7 +69,12 @@ city centre (rule 2).
 Four reviewers over the diff before the push. The empty wall now carries the
 rail too, with "Show all trips" whether or not the audience setting is what
 emptied it (a person narrowed to a trip nobody overlaps who had also set
-"verified only" had no way back). The header is rendered once above the page
+"verified only" had no way back), and while a chip tap's queue loads its title
+says "Checking Lisbon…" rather than "That's everyone" about a queue not yet
+fetched. The E2E account has a second trip now, Lisbon 400 days out, so the
+signed-in tour photographs the rail, the wall it produces (17i), the way back,
+and the queue narrowed to Bangkok (17j) for the rest of the tour. The header
+is rendered once above the page
 keyed on the person, so a Next no longer tears the rail down and resets its
 scroll. The first fetch waits for the trips as well as the stored choice, and
 the focus refetch waits on the same flag, because `refetch()` ignores

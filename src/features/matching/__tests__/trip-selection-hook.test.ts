@@ -23,8 +23,13 @@ describe('the stored choice, per account', () => {
 
   it("never returns one account's choice to another", async () => {
     await AsyncStorage.setItem(`${KEY}:alice`, JSON.stringify(['b']));
-    const { result, rerender } = renderHook(({ userId }) => useTripSelection(userId), {
-      initialProps: { userId: 'alice' as string | null },
+    // The generics spelled out: with initialProps, tsc inferred the hook's
+    // result as unknown after the rerender and jest never noticed.
+    const { result, rerender } = renderHook<
+      ReturnType<typeof useTripSelection>,
+      { userId: string | null }
+    >(({ userId }) => useTripSelection(userId), {
+      initialProps: { userId: 'alice' },
     });
     await waitFor(() => expect(result.current.selected).toEqual(['b']));
     rerender({ userId: 'bob' });

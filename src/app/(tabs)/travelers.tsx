@@ -1337,75 +1337,106 @@ export default function TravelersScreen() {
     const body = filtered
       ? `You are set to ${audienceInSentence(audience)}. It works both ways, so this hides you from everyone else too.`
       : (narrowedNote ?? 'More show up every day.');
+    // A chip tap from this wall fetches a new queue, and until it lands the
+    // wall is the old one: "That's everyone in Lisbon" over a Lisbon queue
+    // that has not been asked for yet is the one claim this screen must
+    // never make. The header line says "Checking" for the same beat.
+    const wallTitle = checking ? `Checking ${scope.noun}…` : headline;
     return (
       <ThemedView style={styles.root}>
         <ProfileCorner />
-        {/* Clear of the avatar, not level with it. ProfileCorner sits at
-            insets.top + Space.sm and is a 44pt button, so Space.xxl put the
-            headline's first line straight through its lower half. */}
-        <View style={[styles.empty, { paddingTop: insets.top + Space.sm + HitTarget + Space.lg }]}>
-          {/* navigate, not push: pushing '/(tabs)' from inside the tabs
+        <View style={styles.deck}>
+          {/* The same band the queue's header stands in, rail and all, so
+              the chip tap that empties the queue does not take the rail
+              away with it: a person narrowed to a trip nobody overlaps used
+              to land on a wall with no way back but a setting. Its minHeight
+              is the avatar's row, so with one trip (no rail) the headline
+              still clears the 44pt ProfileCorner exactly as the no-trips
+              wall does; Space.xxl used to put its first line straight
+              through the avatar's lower half. */}
+          <View
+            style={[
+              styles.wallBand,
+              { paddingTop: insets.top + Space.sm, minHeight: insets.top + Space.sm + HitTarget },
+            ]}>
+            {tripPicker}
+          </View>
+          <View style={styles.empty}>
+            {/* navigate, not push: pushing '/(tabs)' from inside the tabs
               stacks a SECOND copy of the whole tab navigator on the root
               stack rather than switching to Map, so the way back was a
               gesture nobody would guess at. */}
-          <EmptyState
-            title={headline}
-            body={body}
-            action={
-              filtered
-                ? {
-                    label: `Change who you see (${AUDIENCE_LABEL[audience]})`,
-                    onPress: () => router.push('/visibility'),
-                  }
-                : narrowed
-                  ? { label: 'Show all trips', onPress: tripSelection.selectAll }
-                  : { label: 'Drop a pin', onPress: () => router.navigate('/(tabs)') }
-            }>
-            {filtered ? (
-              <PrimaryButton
-                variant="ghost"
-                label="Drop a pin"
-                onPress={() => router.navigate('/(tabs)')}
-              />
-            ) : null}
-            {/* The supply action that costs nothing: the same trip, a wider
+            <EmptyState
+              title={wallTitle}
+              body={body}
+              action={
+                filtered
+                  ? {
+                      label: `Change who you see (${AUDIENCE_LABEL[audience]})`,
+                      onPress: () => router.push('/visibility'),
+                    }
+                  : narrowed
+                    ? { label: 'Show all trips', onPress: tripSelection.selectAll }
+                    : { label: 'Drop a pin', onPress: () => router.navigate('/(tabs)') }
+              }>
+              {filtered ? (
+                <PrimaryButton
+                  variant="ghost"
+                  label="Drop a pin"
+                  onPress={() => router.navigate('/(tabs)')}
+                />
+              ) : null}
+              {/* The way back from the trip choice on the audience wall too.
+                Above, the primary is the setting, because that is what
+                emptied the queue; but a person narrowed to one trip who had
+                also chosen "verified only" was offered nothing about the
+                trips, and the rail alone should not have to carry it. */}
+              {filtered && narrowed ? (
+                <PrimaryButton
+                  variant="ghost"
+                  label="Show all trips"
+                  onPress={tripSelection.selectAll}
+                />
+              ) : null}
+              {/* The supply action that costs nothing: the same trip, a wider
                 circle. Cannes is 26 km from Nice, and "that's everyone in
                 Nice" is a sentence about the dial as much as about Nice. */}
-            {!filtered && canLookFurther ? (
+              {!filtered && canLookFurther ? (
+                <PrimaryButton
+                  variant="ghost"
+                  label={`Look further than ${radiusChipLabel(radiusKm).toLowerCase()}`}
+                  onPress={() => setRadiusOpen(true)}
+                />
+              ) : null}
               <PrimaryButton
                 variant="ghost"
-                label={`Look further than ${radiusChipLabel(radiusKm).toLowerCase()}`}
-                onPress={() => setRadiusOpen(true)}
+                label="Add another trip"
+                onPress={() => router.push('/add-trip')}
               />
-            ) : null}
-            <PrimaryButton
-              variant="ghost"
-              label="Add another trip"
-              onPress={() => router.push('/add-trip')}
-            />
-            {passed.count > 0 ? (
-              // All-or-nothing is right when the queue is already empty, but
-              // the count belongs in the sentence: an unnumbered "them" made
-              // this read like a rewind of everything rather than the small,
-              // specific act it is.
-              <PrimaryButton
-                variant="ghost"
-                label={`Show the ${countOf(passed.count, 'person', 'people')} you skipped`}
-                onPress={() => {
-                  // The undo bar outlives the queue: passing the LAST person
-                  // empties the deck-free list while the 5s window still
-                  // runs, and reset() would re-render the main return with a
-                  // bar for a pass this very tap already restored.
-                  if (undoTimer.current) {
-                    clearTimeout(undoTimer.current);
-                    undoTimer.current = null;
-                  }
-                  setUndo(null);
-                  passed.reset();
-                }}
-              />
-            ) : null}
-          </EmptyState>
+              {passed.count > 0 ? (
+                // All-or-nothing is right when the queue is already empty, but
+                // the count belongs in the sentence: an unnumbered "them" made
+                // this read like a rewind of everything rather than the small,
+                // specific act it is.
+                <PrimaryButton
+                  variant="ghost"
+                  label={`Show the ${countOf(passed.count, 'person', 'people')} you skipped`}
+                  onPress={() => {
+                    // The undo bar outlives the queue: passing the LAST person
+                    // empties the deck-free list while the 5s window still
+                    // runs, and reset() would re-render the main return with a
+                    // bar for a pass this very tap already restored.
+                    if (undoTimer.current) {
+                      clearTimeout(undoTimer.current);
+                      undoTimer.current = null;
+                    }
+                    setUndo(null);
+                    passed.reset();
+                  }}
+                />
+              ) : null}
+            </EmptyState>
+          </View>
         </View>
         {/* And the confirmation lands HERE too. Saying hi to the last
             candidate is what empties the queue, so this branch is the one
@@ -1626,6 +1657,14 @@ const styles = StyleSheet.create({
     minHeight: HitTarget,
     justifyContent: 'center',
     paddingBottom: Space.xs,
+  },
+  // The wall's copy of the header band: the rail's edges match the queue's
+  // (queueHeader's padding), so the chips do not shift when the queue
+  // empties under a tap.
+  wallBand: {
+    alignSelf: 'stretch',
+    paddingHorizontal: Space.lg,
+    paddingRight: HitTarget + Space.lg,
   },
   sharedTodayNote: {
     textAlign: 'center',

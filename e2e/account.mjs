@@ -30,6 +30,12 @@ if (!URL_ || !KEY) {
 }
 
 const CITY = 'Bangkok';
+// A second trip, more than a year out, in a city no demo traveler is in
+// then: two trips turn the Travelers rail on, and this one is the wall the
+// tour photographs ("That's everyone on your dates in Lisbon"). Well under
+// the 730-day cap on a start date.
+const FAR_CITY = 'Lisbon';
+const FAR_DAYS = 400;
 
 /**
  * Required for SETUP only, and checked there rather than at module level.
@@ -106,26 +112,33 @@ async function setup() {
     }),
   });
 
-  const cities = await api('/rest/v1/rpc/search_cities', {
-    method: 'POST',
-    token,
-    body: JSON.stringify({ p_query: CITY }),
-  });
-  const city = (cities ?? []).find((c) => c.name === CITY);
-  if (!city) throw new Error(`city ${CITY} not found`);
-
+  const findCity = async (name) => {
+    const cities = await api('/rest/v1/rpc/search_cities', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ p_query: name }),
+    });
+    const city = (cities ?? []).find((c) => c.name === name);
+    if (!city) throw new Error(`city ${name} not found`);
+    return city;
+  };
   const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
-  await api('/rest/v1/trips', {
-    method: 'POST',
-    token,
-    headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify({
-      user_id: userId,
-      city_id: city.id,
-      start_date: day(1),
-      end_date: day(6),
-    }),
-  });
+  const addTrip = async (name, from, to) => {
+    const city = await findCity(name);
+    await api('/rest/v1/trips', {
+      method: 'POST',
+      token,
+      headers: { Prefer: 'return=minimal' },
+      body: JSON.stringify({
+        user_id: userId,
+        city_id: city.id,
+        start_date: day(from),
+        end_date: day(to),
+      }),
+    });
+  };
+  await addTrip(CITY, 1, 6);
+  await addTrip(FAR_CITY, FAR_DAYS, FAR_DAYS + 5);
 
   // Mask the secret in job logs before it lands anywhere.
   console.log(`::add-mask::${password}`);
@@ -136,7 +149,9 @@ async function setup() {
   } else {
     process.stdout.write(lines);
   }
-  console.log(`setup ok: ${email} onboarded with a ${CITY} trip`);
+  console.log(
+    `setup ok: ${email} onboarded with a ${CITY} trip and a ${FAR_CITY} one ${FAR_DAYS} days out`
+  );
 }
 
 /**
