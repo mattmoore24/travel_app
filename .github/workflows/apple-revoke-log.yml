@@ -1,0 +1,74 @@
+# Answers one question from a phone: did Sign in with Apple's token revocation
+# actually run?
+#
+# WHY THIS EXISTS. `delete-account` returns the same `{ deleted: true }` down
+# every branch of its revoke block, so the app looks identical whether Apple
+# was told to forget the account or the step was skipped entirely. The only
+# artifact that separates them is a console line inside the function, and the
+# founder has no machine to read it from. The Supabase CLI cannot help either:
+# there is no `functions logs` subcommand in any 2.x version, so this calls the
+# Management API directly.
+#
+# READ-ONLY BY CONSTRUCTION: the script it runs makes two GETs and contains no
+# POST, PATCH, PUT or DELETE, so it cannot change the project.
+#
+# THIS REPOSITORY IS PUBLIC, so everything printed here is world-readable
+# forever. The script therefore fetches only lines beginning `apple revoke:` or
+# `store-apple-token:`, classifies them against the exact strings those two
+# functions can emit, and prints the classification rather than the line. Its
+# header carries the full contract.
+#
+# Secrets, both already set for supabase-deploy.yml:
+#   SUPABASE_ACCESS_TOKEN   personal access token
+#   SUPABASE_PROJECT_REF    the ref in https://<ref>.supabase.co
+#
+# Two ways to run it:
+#   * Commit any change to .github/apple-revoke-request (works from any
+#     branch, and is the only way until this file reaches the default branch).
+#   * Actions -> Apple revoke log -> Run workflow.
+name: Apple revoke log
+
+on:
+  push:
+    paths:
+      - '.github/apple-revoke-request'
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: How far back to look, in minutes (max 1439, just under the API's 24h cap)
+        required: false
+        default: '1439'
+
+concurrency:
+  group: apple-revoke-log
+  cancel-in-progress: true
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      # A push carries no inputs, so the default is re-stated here.
+      LOOKBACK_MINUTES: ${{ inputs.minutes || '1439' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check required secrets
+        run: |
+          missing=()
+          [ -n "$SUPABASE_ACCESS_TOKEN" ] || missing+=(SUPABASE_ACCESS_TOKEN)
+          [ -n "$PROJECT_REF" ] || missing+=(SUPABASE_PROJECT_REF)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing repository secrets: ${missing[*]}"
+            echo "Add them under Settings then Secrets and variables then Actions."
+            exit 1
+          fi
+
+      - name: Read the Apple lines
+        run: node .github/scripts/read-apple-revoke-log.mjs
