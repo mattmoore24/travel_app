@@ -426,3 +426,16 @@
              migration in "Migrations — after" and the worker in the deploy
              list; the first tick after should report verifications.waiting
              as a number rather than undefined.
+
+2026-09-04 — three migrations: 20260904110000_every_city_knows_its_clock
+             (cities.timezone), 20260904110100_seed_cities_with_clocks (49,025
+             rows, 4 MB, every city down to 5,000 people with its zone) and
+             20260904120000_a_pin_goes_where_the_traveler_goes (the pin fence
+             comes out, the map reads a circle, featured_cities() replaces the
+             chip counts, a time can be a window or TBD, get_matches reaches a
+             radius). Database FIRST, then the production update: build 17's
+             bundle keeps working on the new schema except for the rail (it
+             reads city_pin_counts, which is dropped; the rail draws without
+             counts until the update lands, and everything else keeps working
+             because post_joinable_pin's new parameters default). Watch for
+             all three in "Migrations — after"; the seed is the slow one.
