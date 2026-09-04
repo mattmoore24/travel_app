@@ -145,6 +145,19 @@ appId: com.mattmoore.samewhere
 # The button is grey here and the footnote says why. Asserted before typing,
 # so the disabled reason is proved rather than only photographed.
 - assertVisible: 'Say what the plan is first.'
+# SCROLL TO IT FIRST. The two text fields sit under the join choice, the day,
+# the time and the expiry, so with a venue on the Where card (the chip tap
+# above leaves it there) the plan field is fully below the scroller's fold.
+# Maestro still finds the id and taps its coordinates, which land on the
+# fade under the fold and focus nothing; run 116 typed both sentences into
+# the void and failed on the details assertion three steps later with a
+# frame identical to 14-pin-form. The details field already scrolls; this
+# one has to as well.
+- scrollUntilVisible:
+    element:
+      id: 'plan-input'
+    direction: DOWN
+    timeout: 8000
 - tapOn:
     id: 'plan-input'
 - inputText: 'Rooftop hello from Maestro'
