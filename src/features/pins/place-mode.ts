@@ -46,3 +46,24 @@ export function createDropGate(impact: () => void = () => haptics.medium()) {
 export function shouldDismissOnPan(alreadyLifted: boolean): boolean {
   return !alreadyLifted;
 }
+
+/**
+ * The two lines the spot card draws for a reverse-geocoded label.
+ *
+ * map-screen builds the label as `[name ?? street, district ?? city]` joined
+ * by ", ", one string, because that is what the pin form's own name field
+ * wants. Drawn as one line in a pill it truncated in the middle of the
+ * district ("Bangkok Metropolitan Administration, Sao Ching...") and looked
+ * like a fourth venue chip. The card wants the place on its own line and the
+ * area under it, so this splits at the first ", " and no further: a name
+ * that itself carries a comma keeps it on the first line rather than being
+ * cut where the geocoder never cut it.
+ */
+export function splitSpotLabel(label: string): { primary: string; secondary: string | null } {
+  const at = label.indexOf(', ');
+  if (at < 0) {
+    return { primary: label, secondary: null };
+  }
+  const secondary = label.slice(at + 2).trim();
+  return { primary: label.slice(0, at), secondary: secondary.length > 0 ? secondary : null };
+}

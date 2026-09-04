@@ -86,7 +86,7 @@ import {
   useMarkerTracking,
 } from '@/features/pins/pin-marker';
 import { openInMaps } from '@/features/pins/open-in-maps';
-import { createDropGate, shouldDismissOnPan } from '@/features/pins/place-mode';
+import { createDropGate, shouldDismissOnPan, splitSpotLabel } from '@/features/pins/place-mode';
 import {
   PLAN_LIST_PEEK,
   PlanList,
@@ -2855,7 +2855,21 @@ export default function MapScreen() {
               regions, a binary without nearbyAsync) — the name pill below
               remains the fallback. */}
           {nearbyVenues.length > 0 ? (
-            <View style={styles.nearbyRow}>
+            // A scroller, not a row. Three venue names in a centred flex row
+            // overflowed the dock and were clipped at BOTH screen edges -
+            // "astry Central World" on the left, "Dum Han" on the right, in
+            // the founder's 2026-09-04 screenshot - because a chip could
+            // shrink but the text inside it could not. Horizontal scrolling
+            // is what Apple Maps does with its own chip row; the content
+            // centres itself while it fits and starts at the gutter once it
+            // does not, so nothing is ever cut off and nothing looks
+            // clipped when it is not.
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="always"
+              style={styles.nearbyScroller}
+              contentContainerStyle={styles.nearbyRow}>
               {nearbyVenues.map((venue, index) => {
                 const active = searchedPlace === venue;
                 return (
@@ -2911,26 +2925,69 @@ export default function MapScreen() {
                   </PressableScale>
                 );
               })}
-            </View>
+            </ScrollView>
           ) : null}
           {/* The spot's name, BEFORE the commitment: the reverse geocode the
-              form used to run one screen too late now feeds this pill. A
-              surface and a shadow, matching the search field above — not
-              glass, which is a finish and never the thing carrying contrast.
-              Kept mounted at one height and only dimmed while the map is
-              moving: a pill that appears and vanishes on every drag is worse
-              motion than a pill that goes quiet. */}
-          <View
-            style={[styles.placeNamePill, Elevation.floating, { backgroundColor: theme.surface }]}>
-            <ThemedText
-              type="footnote"
-              numberOfLines={1}
-              themeColor={lifted ? 'textSecondary' : undefined}>
-              {nothingHere && !searchedPlace
-                ? 'Nothing here. Drag to a street or a venue.'
-                : (searchedPlace?.name ?? placeLabel ?? 'Drop it here')}
-            </ThemedText>
-          </View>
+              form used to run one screen too late now feeds this card. Kept
+              mounted and only dimmed while the map is moving: a card that
+              appears and vanishes on every drag is worse motion than one
+              that goes quiet.
+
+              A CARD, NOT A FOURTH CHIP. It was a pill in the same surface,
+              the same footnote and the same shadow as the venue chips above
+              it, one line, ellipsised in the middle of the district - and
+              the founder read it as one more option rather than the answer.
+              The chips are choices; this is where the pin is. So it carries
+              the pin's own glyph in the pin's own colour, the place on a
+              line of its own with room for two, the district or street under
+              it in the secondary voice, the sunken surface with a hairline
+              instead of the chips' raised surface, and a card's corner
+              rather than a pill's. Not glass, which is a finish and never
+              the thing carrying contrast. */}
+          {(() => {
+            const spot =
+              nothingHere && !searchedPlace
+                ? { primary: 'Nothing here. Drag to a street or a venue.', secondary: null }
+                : searchedPlace
+                  ? {
+                      primary: searchedPlace.name,
+                      secondary: searchedPlace.address ?? searchedPlace.locality,
+                    }
+                  : placeLabel
+                    ? splitSpotLabel(placeLabel)
+                    : { primary: 'Drop it here', secondary: null };
+            return (
+              <View
+                accessible
+                accessibilityLabel={
+                  spot.secondary ? `${spot.primary}, ${spot.secondary}` : spot.primary
+                }
+                style={[
+                  styles.spotCard,
+                  Elevation.floating,
+                  { backgroundColor: theme.surfaceSunken, borderColor: theme.hairline },
+                ]}>
+                <SymbolView
+                  name={{ ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' }}
+                  size={18}
+                  tintColor={lifted ? theme.textSecondary : theme.highlight}
+                />
+                <View style={styles.spotText}>
+                  <ThemedText
+                    type="smallBold"
+                    numberOfLines={2}
+                    themeColor={lifted ? 'textSecondary' : undefined}>
+                    {spot.primary}
+                  </ThemedText>
+                  {spot.secondary ? (
+                    <ThemedText type="caption" numberOfLines={1} themeColor="textSecondary">
+                      {spot.secondary}
+                    </ThemedText>
+                  ) : null}
+                </View>
+              </View>
+            );
+          })()}
           <View style={styles.confirmBar}>
             <PrimaryButton
               label="Pin here"
@@ -3688,15 +3745,28 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     paddingHorizontal: Spacing.four,
   },
+  // The scroller spans the dock; its content centres while it fits
+  // (flexGrow on a horizontal scroller's content is what makes
+  // justifyContent mean anything) and starts at the gutter once it does not.
+  nearbyScroller: {
+    alignSelf: 'stretch',
+    flexGrow: 0,
+    marginBottom: Space.sm,
+  },
   nearbyRow: {
+    flexGrow: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     gap: Space.xs,
-    maxWidth: '94%',
-    marginBottom: Space.sm,
+    paddingHorizontal: Space.lg,
+    // Room for the chips' shadow, which a scroller would otherwise clip.
+    paddingVertical: Space.xs,
   },
   nearbyChip: {
-    flexShrink: 1,
+    // A cap rather than a shrink: inside a scroller a chip takes its own
+    // width, so one very long venue name gets an ellipsis at 240pt instead
+    // of pushing the row a screen wide.
+    maxWidth: 240,
     minHeight: 34,
     justifyContent: 'center',
     paddingVertical: 6,
@@ -3704,16 +3774,21 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     borderCurve: 'continuous',
   },
-  placeNamePill: {
-    minHeight: 34,
-    maxWidth: '84%',
+  spotCard: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
+    gap: Space.sm,
+    maxWidth: '92%',
+    paddingVertical: Space.sm,
     paddingHorizontal: Space.md,
-    borderRadius: Radius.pill,
+    borderRadius: Radius.lg,
     borderCurve: 'continuous',
+    borderWidth: StyleSheet.hairlineWidth,
     marginBottom: Space.sm,
+  },
+  spotText: {
+    flexShrink: 1,
+    gap: 1,
   },
   pinCard: {
     gap: Space.md,

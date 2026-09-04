@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { createDropGate, shouldDismissOnPan } from '@/features/pins/place-mode';
+import { createDropGate, shouldDismissOnPan, splitSpotLabel } from '@/features/pins/place-mode';
+import { between } from '@/lib/__tests__/source';
 
 const MAP = fs.readFileSync(path.join(__dirname, '..', 'map-screen.tsx'), 'utf8');
 
@@ -78,5 +79,73 @@ describe('the pill answers before the commit', () => {
 
   it('the resolved label reaches the form so nothing geocodes twice', () => {
     expect(MAP).toContain('initialLabel={placeLabel}');
+  });
+});
+
+describe('the spot card is the answer, and the chips are the choices', () => {
+  // Founder, 2026-09-04, with a screenshot of Bangkok: the venue names were
+  // cut off at both screen edges, and "the actual location bubble is no
+  // different than the three that are above it".
+
+  it('splits a geocoded label at the first comma only', () => {
+    expect(splitSpotLabel('Sao Chingcha Road, Phra Nakhon')).toEqual({
+      primary: 'Sao Chingcha Road',
+      secondary: 'Phra Nakhon',
+    });
+    // A name with its own comma keeps it; the geocoder joined name and
+    // district with ", " once, and that is the only cut this makes.
+    expect(splitSpotLabel('Bangkok Metropolitan Administration, Sao Chingcha Road')).toEqual({
+      primary: 'Bangkok Metropolitan Administration',
+      secondary: 'Sao Chingcha Road',
+    });
+    expect(splitSpotLabel('Wang Lang Market')).toEqual({
+      primary: 'Wang Lang Market',
+      secondary: null,
+    });
+    expect(splitSpotLabel('Somewhere, ')).toEqual({ primary: 'Somewhere', secondary: null });
+  });
+
+  it('the venue chips scroll rather than clip', () => {
+    // A centred flex row of three long names overflowed the dock and was
+    // clipped at both edges: a chip could shrink, the text in it could not.
+    // `between`, never slice(indexOf): the map has other scrollers, and a
+    // slice cut by a drifted anchor is '' and passes (source-anchors.test).
+    const row = between(MAP, '{nearbyVenues.length > 0 ? (', '</ScrollView>');
+    expect(row).toContain('<ScrollView');
+    expect(row).toContain('horizontal');
+    expect(row).toContain('showsHorizontalScrollIndicator={false}');
+    expect(row).not.toContain('<View style={styles.nearbyRow}>');
+    // Content centres while it fits: flexGrow on the content container.
+    const styles = between(MAP, 'nearbyRow: {', 'nearbyChip: {');
+    expect(styles).toContain('flexGrow: 1');
+    expect(styles).toContain("justifyContent: 'center'");
+    // And a chip is capped, not shrunk: inside a scroller shrink means nothing.
+    const chip = between(MAP, 'nearbyChip: {', 'spotCard: {');
+    expect(chip).toContain('maxWidth: 240');
+    expect(chip).not.toContain('flexShrink');
+  });
+
+  it('the spot card does not dress like a chip', () => {
+    const card = between(MAP, 'const spot =', '<View style={styles.confirmBar}>');
+    // The pin's glyph in the pin's colour, the place over its area.
+    expect(card).toContain("ios: 'mappin.and.ellipse'");
+    expect(card).toContain('theme.highlight');
+    expect(card).toContain('splitSpotLabel(placeLabel)');
+    expect(card).toContain('{spot.primary}');
+    expect(card).toContain('{spot.secondary}');
+    // Sunken with a hairline, a card's corner: the chips are raised
+    // surface pills. Same token family, three differences a glance can see.
+    expect(card).toContain('backgroundColor: theme.surfaceSunken');
+    const cardStyle = between(MAP, 'spotCard: {', 'spotText: {');
+    expect(cardStyle).toContain('borderRadius: Radius.lg');
+    expect(cardStyle).toContain('borderWidth: StyleSheet.hairlineWidth');
+    expect(MAP).not.toContain('placeNamePill');
+  });
+
+  it('a searched venue gives the card its street or its area, and the states keep their words', () => {
+    const card = between(MAP, 'const spot =', '<View style={styles.confirmBar}>');
+    expect(card).toContain('searchedPlace.address ?? searchedPlace.locality');
+    expect(card).toContain("'Nothing here. Drag to a street or a venue.'");
+    expect(card).toContain("'Drop it here'");
   });
 });
