@@ -407,3 +407,12 @@
              Also here: 20260903140000, admin_ops_health counts the two queues
              that can pause (storefront photos and impersonation scans), which
              20260903070000 left out while its title claimed every queue.
+
+2026-09-04 — no migrations; this one is for the two new Apple steps. The
+             provider step enables Sign in with Apple with the bundle id as an
+             acceptable audience (half (a), needs no key) and reads it back;
+             the secrets step syncs the four APPLE_* function secrets from the
+             new APPLE_SIGNIN_* repository secrets, which turns account-deletion
+             revocation from a logged no-op into the real call App Review
+             5.1.1(v) asks for (half (b)). Watch for "Verified against a fresh
+             GET" and "Apple revocation secrets synced" in the log.
