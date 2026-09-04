@@ -103,6 +103,27 @@ The pill measures from it and lands on it, and a tap on the chip that is
 already lit lands there too instead of on the centroid (which for Denpasar
 summoned the pill again). camera.test.ts holds the Denpasar case.
 
+### Run 116: the rail reached the pin form, and stopped there
+
+The first run on the update (0b913ae). Onboarding, business, invite and the
+large-text tour green; the guest tour red on the "something on tonight" row,
+as expected until the seed step lands; the signed-in tour red three steps
+after 14-pin-form, with a failure frame identical to it. The pin form's two
+text fields sit under the join choice, the day, the time and the expiry, and
+with a venue on the Where card (the chip tap earlier in the tour leaves it
+there) "What's the plan?" is fully below the scroller's fold. Maestro found
+the id anyway, tapped its coordinates, focused nothing, and typed two
+sentences into the void. The tour scrolls to the field first now, as it
+already did for Details.
+
+**Founder question.** The same fold is there for a person: the form opens on
+Where, the join choice, When and Time, and the button underneath says "Say
+what the plan is first." about a field they cannot see until they scroll. The
+join choice was put above the fields on purpose (run 76: with a keyboard up
+the scroller is two rows tall and the choice was clipped in half), but the
+day, the time and the expiry could sit below the two fields instead of above
+them. Not changed here; it is the founder's form.
+
 ### A design panel first
 
 Three independent designs (least UI, trips as the hero, the words first), two
