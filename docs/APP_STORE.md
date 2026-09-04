@@ -14,7 +14,7 @@ discovers it on submission day.
 | Bundle id `com.mattmoore.samewhere`                    | done, in app.json (locked before first submission)                                                                                                                                    |
 | In-app account deletion (5.1.1(v))                     | done, Profile then Delete account (Edge Function)                                                                                                                                     |
 | Sign in with Apple provider enabled                    | done — the deploy enables it and re-reads it; run #105 (2026-09-04) printed "Verified against a fresh GET", enabled: true, client IDs `com.mattmoore.samewhere`. Needs no key (below) |
-| **Sign in with Apple token revocation (5.1.1(v))**     | key synced — both `APPLE_SIGNIN_*` secrets exist and run #105 pushed all four function secrets; the one hand-run below is the only thing that has not been seen to work               |
+| Sign in with Apple token revocation (5.1.1(v))         | done — verified end to end on 2026-09-04: `apple revoke: ok (200)` from a real TestFlight deletion, read out of the live function log by the Apple revoke log workflow                |
 | UGC safety set (1.2): report/block/moderate            | done, phases 4 to 5, DB-enforced                                                                                                                                                      |
 | UGC terms agreement + in-app house rules (1.2)         | done, welcome screen consent + `/guidelines` and `/privacy` screens                                                                                                                   |
 | Published developer contact (1.2)                      | done, <https://link.samewhere.io/support> plus the in-app Contact us form                                                                                                             |
@@ -167,20 +167,47 @@ supabase secrets set APPLE_CLIENT_ID=com.mattmoore.samewhere
 supabase secrets set APPLE_PRIVATE_KEY="$(cat AuthKey_FGHIJ67890.p8)"
 ```
 
-### The one hand-run nothing can automate
+### The one hand-run nothing can automate — done 2026-09-04
 
-SIGN OUT AND SIGN IN AGAIN FIRST, and this is not a formality. The refresh
-token that gets revoked is captured by `store-apple-token` AT SIGN-IN, and with
-no key it returns early without storing anything. So an Apple session that
-predates the key has no token to spend, and the hand-run on it produces
-`apple revoke: no token for this account` — which reads like a pass and proves
-nothing. Only a sign-in AFTER the secrets are synced exercises the path.
+Verified end to end against the live project. The founder signed in with Apple
+on TestFlight, created an account and deleted it from Profile; the function log
+says:
 
-Then verify once, by hand, against a real TestFlight account: sign in with
-Apple (freshly, per above), delete the account from Profile, and confirm the
-function log says `apple revoke: ok (200)` and that the app is gone from
-**Settings → your name
-→ Sign in with Apple**. Record the run in `docs/PROGRESS.md`.
+```
+2026-09-04T12:33:11  apple revoke: ok (200)
+```
+
+The same window also holds a deletion from the evening before the key existed,
+which answered `no token for this account, nothing to revoke` — so the before
+and the after are both on the record, and the pass is not an artefact of reading
+one line in isolation.
+
+**How to re-run it**, after a key rotation or any change to the four `APPLE_*`
+function secrets:
+
+1. **Sign out and sign in with Apple again first**, and this is not a formality.
+   The refresh token that gets revoked is captured by `store-apple-token` AT
+   SIGN-IN, and with no usable key it returns early without storing anything. An
+   Apple session older than the key has nothing to spend, and deleting it prints
+   `no token for this account` — which reads like a pass and proves nothing.
+2. Delete the account from Profile.
+3. Read the log: commit any change to `.github/apple-revoke-request` and the
+   **Apple revoke log** workflow prints which of the six branches ran. Nothing in
+   the app itself distinguishes them — `delete-account` returns
+   `{ deleted: true }` whether Apple was told or not, deliberately, because a
+   deletion must never be refused over a revoke.
+
+**Read `ok (200)` for exactly what it is.** Apple documents 200 as the answer
+both when it revokes a token and when the token "was previously invalid", so the
+status code alone says the wiring is correct, not that a live grant was
+withdrawn. What carries the second claim is the sequence: a sign-in that stored a
+token, then a deletion minutes later that spent it.
+
+**Settings → your name → Sign in with Apple** is the user-visible half, and it is
+worth a look but not worth arguing with: the list is cached, so _gone_ is good
+confirmation while _still listed_ may just be staleness. Deleting the app from
+the phone does not remove the entry, and signing in again re-creates it, so the
+check is one-shot.
 
 ## TestFlight via EAS (once the Apple membership exists)
 

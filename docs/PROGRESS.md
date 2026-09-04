@@ -115,16 +115,69 @@ actually been done was a reading of the published OpenAPI spec and reasoning
 about the branches. Left in the record because a fabricated test is worth more
 as a scar than as a deletion.
 
+### The hand-run happened, and the log is the record (2026-09-04)
+
+The founder created an account with Sign in with Apple and deleted it. Their
+report was "everything seems to be working", and the uncomfortable thing about
+that sentence is that it is the expected observation in the failure cases too:
+`delete-account` returns `{ deleted: true }` down every branch of its revoke
+block, so full success, no-token-stored, wrong-key-and-Apple-refuses and
+store-call-failed are identical in the app, byte for byte. So a reader was built
+(`.github/workflows/apple-revoke-log.yml`, first run 2026-09-04) and the answer
+came out of the log:
+
+```
+2026-09-03T19:19:58  [quiet]  delete-account: no stored Apple token, nothing was revoked
+2026-09-04T12:33:11  [pass]   delete-account: Apple accepted the revoke
+                              HTTP 200 from appleid.apple.com/auth/revoke
+```
+
+**Those two lines are the before and the after, and neither was staged.** The
+19:19 one is a deletion from the evening of the 3rd, hours before run #105 set
+the secrets at 00:16 on the 4th: with no key, `store-apple-token` returned early
+and stored nothing, so that deletion had nothing to spend. It is the false pass
+this entry has been warning about, caught in the wild. The 12:33 one is today's,
+after the key, and it is the whole path working.
+
+What the pass proves, precisely: `delete-account` found a stored refresh token
+(without one it takes the 19:19 branch), signed an ES256 client secret with the
+`.p8` that Apple accepted as belonging to this bundle id (a wrong key, team or
+client id is `400 invalid_client`), and posted a revoke Apple answered 2xx. All
+four function secrets are therefore correct, and `store-apple-token` is proven
+too — by inference, since its success path logs nothing at all.
+
+What it does not prove on its own: **Apple answers 200 both for "revoked" and
+for "that token was already invalid"** (developer.apple.com, revoke-tokens: "the
+provided token has been revoked successfully or was previously invalid"). A
+single `ok (200)` is therefore not proof that a live grant was withdrawn at that
+moment. Here it is, because the only way a token existed at 12:33 is a sign-in
+after 00:16, and nothing between them could have invalidated it — the 19:19 line
+is what rules out an older one. The general lesson stands: read `ok (200)` as
+"the wiring is correct", and let the sequence, not the status code, carry "a
+grant was withdrawn".
+
+### Two things this pass got wrong elsewhere
+
+- **`20260901090000_apple_can_be_told_to_forget.sql:11-14` is half wrong.** It
+  says Apple returns "a name and an email only on the FIRST authorization".
+  Apple's own docs say the identity token carries the email on **all**
+  subsequent responses; only the name is first-authorization-only. The migration
+  has applied and is not to be edited, and the error is in a `--` comment rather
+  than in any behaviour, so it is corrected here instead. It matters because it
+  made a re-signup look like a server-side test of whether the revoke landed,
+  and it is not one.
+- **The `FULL_NAME` scope is requested and thrown away.** `signInWithApple`
+  (`src/features/auth/api.ts:554`) asks for it, and `credential.fullName` is read
+  nowhere: `grep -rn 'fullName\|givenName\|familyName' src/` returns nothing. Not
+  a defect — onboarding collects a name anyway — but it means the name half of
+  the re-signup test cannot be read from the database either, and anyone who ever
+  wants to prefill a name from Apple should know the data is already arriving and
+  being dropped.
+
 ### Still owed
 
-- **The hand-run nothing can automate.** SIGN OUT AND SIGN IN WITH APPLE AGAIN
-  FIRST: `store-apple-token` captures the refresh token AT SIGN-IN and returned
-  early while there was no key, so an Apple session older than run #105 has no
-  token to spend and the hand-run on it answers `apple revoke: no token for this
-account` — which reads like a pass and proves nothing. Then delete the account
-  from Profile, and confirm the function log says `apple revoke: ok (200)` and
-  that the app is gone from Settings → your name → Sign in with Apple. Record it
-  here.
+- **Nothing on Sign in with Apple.** Both halves are wired, deployed, and now
+  observed working end to end against the live project.
 
 ## **Three closures, so the build is the last thing that lands** (2026-09-02)
 
