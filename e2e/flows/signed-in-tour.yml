@@ -78,7 +78,20 @@ appId: com.mattmoore.samewhere
 - tapOn:
     text: 'Not Now'
     optional: true
-- tapOn: 'Drop a pin'
+# THE INTENT CARRIED ACROSS THE WALL, for a returning user too: the guest
+# tapped Drop a pin, took the gate's "I already have an account", and the
+# map replays that intent the moment they are signed in - so this arrives
+# IN PLACE MODE already (run 114, screen 11), and tapping Drop a pin on a
+# screen that has Pin here instead was the failure. Enter place mode only
+# when the replay did not (a pin card open, or a slow rail).
+- runFlow:
+    when:
+      notVisible: 'Pin here'
+    commands:
+      - tapOn: 'Drop a pin'
+- extendedWaitUntil:
+    visible: 'Pin here'
+    timeout: 10000
 - takeScreenshot: 12-place-mode
 - swipe:
     start: 50%, 62%

@@ -190,6 +190,29 @@ traveler", "daily limit for saying hi reached" and "unknown source for saying
 hi", with the hints unchanged. Production raises the 2026-09-02 wording until
 that deploys; the client maps both.
 
+### Run 114: three of four green, and two flows behind the app
+
+With the timer held in a ref, the keychain reset per flow and the owner-to-be
+guard, run 114 photographed what runs 109 to 113 could not: the signup replay
+tail end to end (75-signup-done, then the ordinary map), a sign-in that lands
+on the map (11-signed-in-map), "Finish this later" landing an owner-to-be on
+the browse map with its dock (40a), and the large-text tour signed in through
+place mode, Travelers, Chat and a Say hi (zz-ax5-01 to 05). The guest tour
+cleared the filter chip it had failed on since run 111.
+
+What was still red was the suite trailing the app. The guest tour tapped
+'Denpasar' and the chip says "Denpasar 10" now (Maestro matches the whole
+string); it taps 'Denpasar.*'. The signed-in tour tapped Drop a pin on a map
+that was already in place mode, because the replay carries a guest's drop-pin
+intent across a sign-in as well as a signup - which is the feature - so the
+flow enters place mode only when the replay did not. The business tour reached
+the photo step for the first time in days and lost the cover to "stuck while
+preparing it" at 90 seconds, on a run that took fifteen minutes longer than
+the one before it; no crash report was written, the same pipeline uploaded the
+profile photo minutes earlier, and its retry sat on the splash. Slow hardware
+rather than the app, and left alone: the bound exists to end hangs, and the
+budget was raised twice already for exactly this.
+
 ### The replay that cancelled itself
 
 The mechanism, found by putting the effect's shape on the real React in a

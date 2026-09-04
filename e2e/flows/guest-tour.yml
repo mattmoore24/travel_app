@@ -331,7 +331,10 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
-- tapOn: 'Denpasar'
+# 'Denpasar.*', not 'Denpasar': since 2026-09-04 the chip is the featured
+# rail's row and carries its plan count ("Denpasar 10"), and Maestro's text
+# match is the whole string. Run 114 failed here on the bare name.
+- tapOn: 'Denpasar.*'
 - waitForAnimationToEnd:
     timeout: 2500
 - launchApp
@@ -339,10 +342,10 @@ appId: com.mattmoore.samewhere
     visible: 'Travelers'
     timeout: 30000
 - extendedWaitUntil:
-    visible: 'Denpasar'
+    visible: 'Denpasar.*'
     timeout: 15000
 - assertVisible:
-    text: 'Denpasar'
+    text: 'Denpasar.*'
     selected: true
 - takeScreenshot: 09-city-remembered
 
