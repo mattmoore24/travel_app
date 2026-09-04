@@ -71,6 +71,22 @@ describe('every origin writes, every replay clears first', () => {
     expect(applied).toBeGreaterThan(handled);
   });
 
+  it('an account listing a business cannot spend a pin intent, in either guard', () => {
+    // Run 113: the guest tapped Drop a pin, took the business door, finished
+    // the listing later, and the map replayed the drop-pin intent for an
+    // owner-to-be. The store flag alone is not enough (business-signup
+    // clears it on mount); both guards read useWantsBusiness, which also
+    // reads the column.
+    const map = src('src/features/pins/map-screen.tsx');
+    const start = map.indexOf('// THE REPLAY ITSELF');
+    const end = map.indexOf('// The data-dependent half', start);
+    expect(map.slice(start, end)).toContain('wantsBusiness ||');
+    expect(map).toContain('const wantsBusiness = useWantsBusiness();');
+    const handoff = src('src/app/(tabs)/_layout.tsx');
+    expect(handoff).toContain('if (viewerIsBusiness || wantsBusiness) {');
+    expect(handoff).toContain('const wantsBusiness = useWantsBusiness();');
+  });
+
   it('the replay tick is not owned by the effect that consumes the intent', () => {
     // Consuming the intent re-renders the map before the tick fires, so a
     // cleanup on the replay effect cancelled every replay it scheduled (the

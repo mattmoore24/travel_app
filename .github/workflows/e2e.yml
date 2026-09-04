@@ -281,6 +281,12 @@ jobs:
           # signs the account out even though the keychain half survives.
           reset_state() {
             xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+            # The keychain too. SecureStore (the last signed-in address,
+            # lib/last-email) lives there, not in the data container, so the
+            # onboarding tour's throwaway address was prefilled into the
+            # signed-in tour's form and the typed address landed in the
+            # middle of it (runs 111-113). A first-run app has none of it.
+            xcrun simctl keychain "$UDID" reset >/dev/null 2>&1 || true
             local data
             data=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)
             rm -rf "$data/Library/Application Support/$BUNDLE_ID" \

@@ -147,11 +147,16 @@ appId: com.mattmoore.samewhere
 # reports COMPLETED and lands on the footer instead, and the flow then fails
 # four steps later on a count that was never turned on. scrollUntilVisible
 # taps what a person would tap after the same scroll.
+# centerElement, because Maestro's visibility check reads the element's
+# frame and not what is drawn over it: at 100% "visible" the chip's lower
+# half was still under the footer (run 113, 05b), and the tap on its centre
+# landed on the footer. Scrolled to the middle of the screen it is clear.
 - scrollUntilVisible:
     element:
       id: 'filter-category-bar'
     direction: DOWN
     timeout: 8000
+    centerElement: true
 - tapOn:
     id: 'filter-category-bar'
 - waitForAnimationToEnd:

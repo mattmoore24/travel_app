@@ -48,7 +48,13 @@ import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker'
 import { useCityBusinesses, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
 import { listingNotice } from '@/features/business/listing-notice';
 import { PlaceSheet } from '@/features/business/place-sheet';
-import { useIsGuest, useIsSignedOut, useMapHeat, useMapPins } from '@/features/guest/hooks';
+import {
+  useIsGuest,
+  useIsSignedOut,
+  useMapHeat,
+  useMapPins,
+  useWantsBusiness,
+} from '@/features/guest/hooks';
 import { AudienceChip } from '@/features/pins/audience-chip';
 import { audienceInSentence } from '@/features/profile/audience';
 import { deviceTimezone, pickBrowsingCity } from '@/features/pins/browsing-city';
@@ -1274,6 +1280,13 @@ export default function MapScreen() {
   // came back. The intent is consumed only once a person can see the result.
   const focused = useIsFocused();
   const listingIntent = useAuthStore((s) => s.listingIntent);
+  // Part way through listing a business, from the column as well as the
+  // store flag: business-signup clears the flag on mount, so by the time
+  // "Finish this later" lands an owner-to-be on this map only the column
+  // still says so. Run 113 replayed a guest's drop-pin intent for exactly
+  // that account and left it in place mode, on a map whose dock it may not
+  // use. The tabs handoff lets the intent go for them (app/(tabs)/_layout).
+  const wantsBusiness = useWantsBusiness();
   const intentRemembered = useAuthStore((s) => s.intentRemembered);
   // The tick that carries the replay across its own clear. Held in a ref and
   // cancelled ONLY on unmount, never by the replay effect's cleanup: that
@@ -1527,6 +1540,7 @@ export default function MapScreen() {
       pendingIntent.kind === 'traveler' ||
       isGuest ||
       isBusiness ||
+      wantsBusiness ||
       listingIntent ||
       !focused ||
       !cityHydrated ||
@@ -1563,7 +1577,16 @@ export default function MapScreen() {
     // applyCity/enterPlaceMode are stable per render; the guards above make
     // this one-shot, so the exhaustive list would only widen it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingIntent, isGuest, isBusiness, listingIntent, focused, cityHydrated, featured]);
+  }, [
+    pendingIntent,
+    isGuest,
+    isBusiness,
+    wantsBusiness,
+    listingIntent,
+    focused,
+    cityHydrated,
+    featured,
+  ]);
 
   // The data-dependent half: the card can only open once the city's pins are
   // back, and the pin may have burned out while signup happened. Degrades

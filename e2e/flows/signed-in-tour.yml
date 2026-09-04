@@ -37,10 +37,13 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'email-input'
 # The field is PREFILLED with the last address that signed in or up on this
-# device (lib/last-email, and the keychain outlives the workflow's state
-# reset), and on a full run that is the onboarding tour's throwaway. Typing
-# appended to it, and run 111 photographed "maestro-new-...Mattmoorefb2..."
-# with "do not match" under it. Erase first.
+# device (lib/last-email, SecureStore), which on a full run used to be the
+# onboarding tour's throwaway: the workflow's state reset left the keychain
+# alone. Run 111 typed onto the end of it; runs 112 and 113 erased first and
+# still typed into the MIDDLE of it, because iOS lands the caret at the tap
+# and eraseText only deletes backwards. The workflow resets the keychain
+# before every flow now, so the field is empty here; the erase stays as a
+# no-op guard.
 - eraseText: 120
 - inputText: ${E2E_EMAIL}
 - takeScreenshot: 10b-sign-in-email-typed

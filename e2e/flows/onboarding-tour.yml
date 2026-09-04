@@ -494,12 +494,11 @@ appId: com.mattmoore.samewhere
           commands:
             # THE DROP-PIN VARIANT, proven: the map came back IN PLACE MODE
             # at the spot the guest had. 75-signup-done photographs it.
+            # NOTHING ELSE HERE: run 113 tapped Cancel in this block, which
+            # made the next block's notVisible true and ran the pin variant
+            # against a map with no card. Place mode is left below, after
+            # both checks.
             - takeScreenshot: 75-signup-done
-            # Leave place mode so the flow ends on the ordinary map, the
-            # state the screenshot used to show.
-            - tapOn: 'Cancel'
-            - waitForAnimationToEnd:
-                timeout: 2000
       - runFlow:
           when:
             notVisible: 'Pin here'
@@ -518,3 +517,10 @@ appId: com.mattmoore.samewhere
             - tapOn: 'Close'
             - waitForAnimationToEnd:
                 timeout: 2000
+      # Leave place mode (the drop-pin variant) so the flow ends on the
+      # ordinary map. Optional: after the pin variant there is no Cancel.
+      - tapOn:
+          text: 'Cancel'
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000

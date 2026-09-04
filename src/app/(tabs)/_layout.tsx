@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import AppTabs from '@/components/app-tabs';
 import { useAuthStore } from '@/features/auth/store';
 import { useIsBusiness } from '@/features/business/hooks';
-import { useIsGuest } from '@/features/guest/hooks';
+import { useIsGuest, useWantsBusiness } from '@/features/guest/hooks';
 import { ConnectedNotice } from '@/features/matching/connected-notice';
 import { useAcceptedCelebration } from '@/features/matching/use-accepted-celebration';
 import { PushPrimer } from '@/features/notifications/push-primer';
@@ -141,15 +141,22 @@ function PendingIntentHandoff() {
   const intentHandled = useAuthStore((s) => s.intentHandled);
   const listingIntent = useAuthStore((s) => s.listingIntent);
   const viewerIsBusiness = useIsBusiness();
+  // The column as well as the store flag (features/guest/hooks): the flag
+  // is cleared by business-signup's own mount effect, so an owner-to-be who
+  // takes "Finish this later" reaches these tabs with only the column
+  // saying what they are. Run 113 replayed a guest's drop-pin intent for
+  // that account and left the map in place mode.
+  const wantsBusiness = useWantsBusiness();
   const onScreen = useTabsAreOnScreen();
 
   useEffect(() => {
     if (!onScreen || isGuest || intent == null || listingIntent) {
       return;
     }
-    if (viewerIsBusiness) {
-      // A business cannot open a pin card, drop a pin, or read Travelers:
-      // nothing here is spendable, so it is let go rather than replayed.
+    if (viewerIsBusiness || wantsBusiness) {
+      // A business cannot open a pin card, drop a pin, or read Travelers,
+      // and neither can an account on its way to becoming one: nothing here
+      // is spendable, so it is let go rather than replayed.
       intentHandled();
       return;
     }
@@ -168,7 +175,7 @@ function PendingIntentHandoff() {
     if (userId != null) {
       router.push(`/profile/${userId}`);
     }
-  }, [onScreen, isGuest, intent, listingIntent, viewerIsBusiness, intentHandled]);
+  }, [onScreen, isGuest, intent, listingIntent, viewerIsBusiness, wantsBusiness, intentHandled]);
 
   return null;
 }

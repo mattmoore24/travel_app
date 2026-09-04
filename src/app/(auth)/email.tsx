@@ -164,6 +164,11 @@ export default function SignInScreen() {
         autoComplete="email"
         keyboardType="email-address"
         textContentType="emailAddress"
+        // The field is prefilled with the last address that signed in on
+        // this device, and iOS lands the caret wherever the tap was, so
+        // somebody with a second address was editing the middle of the
+        // first. One tap clears it (iOS only; Android draws nothing).
+        clearButtonMode="while-editing"
         returnKeyType="next"
         submitBehavior="submit"
         onSubmitEditing={() => passwordField.current?.focus()}

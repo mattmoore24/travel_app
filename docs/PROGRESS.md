@@ -124,6 +124,47 @@ keyboard height leaves out the input accessory view, so every
 short and the Hide keyboard bar lay across the bottom of Continue (screen
 60). The floor adds the bar's height while the keyboard is up.
 
+### Run 113: the replay works, and what it exposed
+
+The first run on the merged tree, with the timer held in a ref. The
+onboarding tour's guarded tail passed for the first time on record:
+`75-signup-done` shows the map back in place mode after finish-profile, spot
+card and venue chips and all. Three reds around it, each read from its
+picture rather than its assertion:
+
+- **The business tour landed in place mode too.** A guest who taps Drop a
+  pin, takes the business door, and finishes the listing later reaches the
+  tabs with the drop-pin intent still in the store, and now that the replay
+  actually fires it fired for them. The store's listing flag is cleared by
+  business-signup's own mount effect, so both guards (the map's replay and
+  the tabs handoff) now read `useWantsBusiness`, which also reads the column,
+  and the handoff lets the intent go for an owner-to-be the way it does for a
+  business. `pending-intent.test.ts` pins both.
+- **The sign-in tour's address had a tail.** `10b` photographs the typed
+  address followed by the end of the prefilled one: SecureStore lives in the
+  keychain, the workflow's state reset never touched it, so the onboarding
+  tour's throwaway was prefilled, iOS landed the caret where the tap was,
+  and `eraseText` only deletes backwards. Runs 111 to 113 all failed here,
+  each a different symptom of the same thing. The workflow resets the
+  simulator keychain before every flow now (a first-run app has an empty
+  one), and the field gets iOS's clear button while editing, because a
+  person with a second address had the same problem without a keychain
+  reset to save them.
+- **The guest tour's category chip was still under the footer.** Maestro
+  reports an element 100% visible from its frame, not from what is drawn
+  over it, so `scrollUntilVisible` was satisfied with the chip's lower half
+  behind the Done band and the tap on its centre landed on the band. The
+  step centres the element now.
+- And the tail itself tapped Cancel inside the drop-pin block, which made
+  the pin-variant block's `notVisible: 'Pin here'` true and ran it against a
+  map with no card. Place mode is left after both checks.
+
+The gallery is republished from run 113 (56 of 69 shots). The production
+update went out before this run finished (TestFlight run 85, iOS update
+01a06de1-2bb9-70cf-82ff-eb9ac40f35f8, commit cdeb3b6): the founder asked
+whether he could test, the gate was green, and the run's findings are all
+either the suite or the one rare path above, which ships next.
+
 ### The bottom card came across, and a word came out of the database
 
 The founder compared the gallery's bottom strip with his phone and asked whether
