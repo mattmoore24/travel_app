@@ -73,7 +73,10 @@ emptied it (a person narrowed to a trip nobody overlaps who had also set
 says "Checking Lisbon…" rather than "That's everyone" about a queue not yet
 fetched. The E2E account has a second trip now, Lisbon 400 days out, so the
 signed-in tour photographs the rail, the wall it produces (17i), the way back,
-and the queue narrowed to Bangkok (17j) for the rest of the tour. The header
+and the queue narrowed to Bangkok (17j) for the rest of the tour. The workflow
+also seeds the launch venues' posts back before every run, through the
+Management API, because the guest tour's "something on tonight" row is a
+72-hour pin and went red in runs 110 to 115 while the app was fine. The header
 is rendered once above the page
 keyed on the person, so a Next no longer tears the rail down and resets its
 scroll. The first fetch waits for the trips as well as the stored choice, and

@@ -132,6 +132,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The demo venue's post, back before anybody looks for it. The guest
+      # tour taps "<venue>, something on tonight" in the plan list, and that
+      # row is a pin with a 72-hour life: seeded once at launch, it is gone
+      # within three days of any run, and runs 110 to 115 went red on it
+      # while the app was fine. seed_launch_business_content() is written to
+      # be re-run (it touches only the unowned launch venues, and only where
+      # the app's own has_live_post would say nothing is on), and it is
+      # revoked from every client role, so this goes through the Management
+      # API as the deploy's migrations do. Its one output is a count.
+      - name: Seed the demo venues' posts back
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          npx --yes supabase@2.114.0 db query --project-ref "$PROJECT_REF" \
+            "select public.seed_launch_business_content() as posts_seeded"
+
       # A real signed-in session for the signed-in flow: created fresh and
       # onboarded against the live backend, destroyed in the last step.
       - name: Create a throwaway signed-in account

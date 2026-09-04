@@ -423,8 +423,10 @@ appId: com.mattmoore.samewhere
 # misdirection cost hours once already, and sent a wrong diagnosis to the
 # founder with it. Now the scroll above does the reaching and this says
 # whether the row is really there: if it fails, the venue genuinely has no
-# live post, and the answer is to seed it back
-# (select seed_launch_business_content();) rather than to loosen this.
+# live post. The workflow seeds the launch venues' posts back before every
+# run (select seed_launch_business_content(); the row is a 72-hour pin and
+# was gone within days of every hand seeding), so a red here now means the
+# seeder found nothing to do or the row moved, never that nobody ran it.
 - tapOn:
     text: '.*, something on tonight'
 # A photograph OF THE TAP, before anything is asserted about it. Run 105
