@@ -66,6 +66,7 @@ import {
   type PinCluster,
   type ScreenCluster,
 } from '@/features/pins/cluster';
+import { dockFootingOf, messageSlotOf } from '@/features/pins/bottom-stack';
 import {
   HEAT_CELL_RADIUS_M,
   heatFill,
@@ -74,7 +75,7 @@ import {
   heatWithFallback,
   mergeHeatCells,
 } from '@/features/pins/heat';
-import { useHeatEmptyLegend, useHeatLegend, usePlacesLegend } from '@/features/pins/heat-legend';
+import { useHeatLegend, usePlacesLegend } from '@/features/pins/heat-legend';
 import {
   CityCountView,
   MARKER_ANCHOR,
@@ -1102,28 +1103,12 @@ export default function MapScreen() {
   // for it to pass. It is not day-filtered: "usually" is a habit, not a date.
   const historyQuery = useHeatHistory(activeCityId);
   const historyCells = useMemo(() => mergeHeatCells(historyQuery.data ?? []), [historyQuery.data]);
-  const historySettled = historyQuery.isSuccess || historyQuery.isError;
-  // Settled means THIS city's ask settled: on a city switch the new key
-  // starts pending and the empty-state chip must not flash while it does.
-  const heatSettled = heatQuery.isSuccess && (filterISO == null || allDaysHeatQuery.isSuccess);
   // The glow explanation, only when a glow is actually drawn and drawn
   // unlabelled — the fallback branch carries its own footnote. The
   // remembered layer counts as a glow: it is dimmer, but it is exactly as
   // unlabelled, and its sentence is a different one (below).
   const legend = useHeatLegend(
     heatShown && (heatCells.length > 0 || historyCells.length > 0) && !heatFallback
-  );
-  // And the honest third state: the ask settled and there is nothing to
-  // draw. Its own one-shot key (see heat-legend). "Nothing here" must not be
-  // said over a remembered glow, which is why the history ask has to have
-  // settled too.
-  const heatEmptyLegend = useHeatEmptyLegend(
-    heatShown &&
-      heatSettled &&
-      historySettled &&
-      !heatQuery.isError &&
-      heatCells.length === 0 &&
-      historyCells.length === 0
   );
   const isGuest = useIsGuest();
   // A guest has no setting of their own, and the hook is disabled without a
@@ -1181,11 +1166,7 @@ export default function MapScreen() {
   // checkbox, and unticking it empties the map of chips while this legend went
   // on pointing at them.
   const placesLegend = usePlacesLegend(
-    !cityScale &&
-      showsBusinesses(filters) &&
-      places.length > 0 &&
-      !legend.visible &&
-      !heatEmptyLegend.visible
+    !cityScale && showsBusinesses(filters) && places.length > 0 && !legend.visible
   );
   // Whether the owner's own chip is actually drawn, which is not the same as
   // being a business: a listing waiting on its email code is not in
@@ -1327,6 +1308,12 @@ export default function MapScreen() {
   // it grows with Dynamic Type, and the plan list's peek used to anchor on
   // the constant and cover the dock's top edge at the accessibility sizes.
   const [dockHeight, setDockHeight] = useState(DOCK_MIN_HEIGHT);
+  // The plan list's peek strip, measured by the list and held HERE for the
+  // same reason the detent is: the message strip anchors on the card's real
+  // top edge, and PlanList remounts on every mode change, so a measurement
+  // kept inside it would re-seed to the constant on every return from
+  // placing a pin.
+  const [planPeekHeight, setPlanPeekHeight] = useState(PLAN_LIST_PEEK);
   // The drop-a-pin flow lives on this map, not a separate screen: browse →
   // place (map pans under a fixed pin) → detail (form sheet over the map).
   const [mode, setMode] = useState<MapMode>('browse');
@@ -1844,7 +1831,6 @@ export default function MapScreen() {
           'first-pin': ownPinIsOnlyPin,
           'heat-fallback': heatShown && heatFallback && heatCells.length > 0,
           'heat-legend': legend.visible,
-          'heat-empty': heatEmptyLegend.visible,
           'places-legend': placesLegend.visible,
         })
       : null;
@@ -2058,21 +2044,28 @@ export default function MapScreen() {
     });
   };
 
-  // The peek anchors above the dock, which it never covers — on the dock's
-  // MEASURED height, because the button grows with Dynamic Type and the
-  // constant left the peek over its top edge at the AX sizes. A traveler
-  // always has the Drop-a-pin dock; a business has one only once its listing
-  // is live ("Post what's on"), and until then its list sits on the tab bar
-  // clearance itself. (planListShown / planListCollapsed live up beside
-  // mapCovered now: the slot and the heatmap-view gate read the expanded
-  // list as cover.)
-  const planListBottom =
-    !isBusiness || businessDockShown ? dockBottom + dockHeight + Space.sm : dockBottom;
-  // The one strip of map that carries a message, directly above the plan
-  // list's peek (or the dock, when there is no list). ONE derivation: the
-  // two hand-tuned offsets it replaces overlapped by about a chip's lower
-  // edge — and it composes with the same measured dock height as the peek.
-  const messageSlot = planListShown ? planListBottom + PLAN_LIST_PEEK + Space.sm : planListBottom;
+  // The bottom of this screen is ONE card, not three floating slabs. The plan
+  // list's sheet runs to the screen's bottom edge and the dock stands on a
+  // plate cut from the same surface; this is that plate's height — the tab
+  // bar clearance, the dock's MEASURED height (it grows with Dynamic Type,
+  // and the constant left the card over the button's top edge at the AX
+  // sizes) and the step that used to be a strip of bare map between the
+  // button and the slab above it. A traveler always has the Drop-a-pin dock;
+  // a business has one only once its listing is live ("Post what's on"), and
+  // until then the card stands on the tab bar clearance itself.
+  // (planListShown / planListCollapsed live up beside mapCovered: the slot
+  // and the heatmap-view gate read the expanded list as cover.)
+  const dockShown = !isBusiness || businessDockShown;
+  const dockFooting = dockFootingOf({ dockBottom, dockHeight, dockShown, gap: Space.sm });
+  // The one strip of map that carries a message, one gap above the card's
+  // real top edge. TWO measured heights and no constant: either one composed
+  // from its constant puts the chip behind the card at the AX sizes.
+  const messageSlot = messageSlotOf({
+    footing: dockFooting,
+    peekHeight: planPeekHeight,
+    planListShown,
+    gap: Space.sm,
+  });
 
   return (
     <View style={styles.root}>
@@ -2831,77 +2824,6 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      {activeCity && mode === 'browse' && !isBusiness && !selectedPin ? (
-        <Animated.View
-          entering={FadeInUp.duration(Motion.standard)}
-          exiting={FadeOut.duration(Motion.quick)}
-          style={[styles.dock, { bottom: dockBottom }]}
-          pointerEvents="box-none">
-          {/* Blue, not amber. Amber now belongs to the pins themselves, and
-              two warm things on one screen means neither reads as the
-              signal. Controls are the brand blue; the map's content is warm. */}
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel="Drop a pin"
-            scaleTo={0.95}
-            haptic="light"
-            onPress={() => enterPlaceMode()}
-            // The measured height feeds planListBottom: the button's
-            // minHeight grows with Dynamic Type, and the plan list's peek
-            // used to anchor on the constant and cover the dock's top edge.
-            onLayout={(event) =>
-              setDockHeight(Math.max(DOCK_MIN_HEIGHT, Math.round(event.nativeEvent.layout.height)))
-            }
-            style={[styles.dockButton, { backgroundColor: theme.accent }]}>
-            <SymbolView
-              name={{ ios: 'mappin.and.ellipse', android: 'add_location', web: 'add_location' }}
-              size={19}
-              tintColor={theme.onAccent}
-            />
-            <ThemedText type="callout" style={[styles.dockLabel, { color: theme.onAccent }]}>
-              Drop a pin
-            </ThemedText>
-          </PressableScale>
-        </Animated.View>
-      ) : null}
-
-      {/* The business dock: the one action a listed owner has on this map.
-          Says what is on tonight, or updates it — NEVER 'Drop a pin', and
-          never through enterPlaceMode, which returns early for a business
-          (the founder's rule at features/business/hooks and the
-          assert_not_business trigger both forbid a business pin). Gated on
-          'listed': posting into a listing nobody can see helps nobody, so
-          until then the own-listing card carries the strip instead. */}
-      {activeCity && mode === 'browse' && businessDockShown && !selectedPin ? (
-        <Animated.View
-          entering={FadeInUp.duration(Motion.standard)}
-          exiting={FadeOut.duration(Motion.quick)}
-          style={[styles.dock, { bottom: dockBottom }]}
-          pointerEvents="box-none">
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel={ownPlace?.has_live_post ? 'Update tonight' : "Post what's on"}
-            scaleTo={0.95}
-            haptic="light"
-            onPress={() => router.push('/business-post')}
-            // The same measurement the traveler dock feeds planListBottom:
-            // the button grows with Dynamic Type.
-            onLayout={(event) =>
-              setDockHeight(Math.max(DOCK_MIN_HEIGHT, Math.round(event.nativeEvent.layout.height)))
-            }
-            style={[styles.dockButton, { backgroundColor: theme.accent }]}>
-            <SymbolView
-              name={{ ios: 'storefront', android: 'storefront', web: 'storefront' }}
-              size={19}
-              tintColor={theme.onAccent}
-            />
-            <ThemedText type="callout" style={[styles.dockLabel, { color: theme.onAccent }]}>
-              {ownPlace?.has_live_post ? 'Update tonight' : "Post what's on"}
-            </ThemedText>
-          </PressableScale>
-        </Animated.View>
-      ) : null}
-
       {mode === 'place' ? (
         <Animated.View
           entering={FadeInUp.duration(Motion.standard)}
@@ -3126,7 +3048,9 @@ export default function MapScreen() {
           collapsed={planListCollapsed}
           detent={planDetent}
           onDetentChange={setPlanDetent}
-          bottom={planListBottom}
+          footing={dockFooting}
+          peekHeight={planPeekHeight}
+          onPeekHeight={setPlanPeekHeight}
           onSelectPin={(pin) => selectPin(pin, 'list')}
           onSelectVenue={(key) => {
             haptics.light();
@@ -3150,6 +3074,99 @@ export default function MapScreen() {
         />
       ) : null}
 
+      {/* The card's base, and the only reason it exists: at the half and full
+          detents the list's frame reaches the screen edge, so its rows scroll
+          through the bottom `dockFooting` points. This is the opaque ground
+          between them and the button. At the peek it is invisible — the
+          sheet's own surface already covers this band — and that is the
+          point: one colour token, no seam. Gated on the LIST, not on a dock
+          existing: an owner whose listing is not live yet has no button and
+          still has a list, and without the plate its first rows would render
+          sliced by the floating tab bar, which is the defect this whole
+          change is about. Inert to touch, like the docked action bar's plate:
+          the sheet under it already absorbs the tap, and the buttons below
+          are later siblings, so they still hit-test first. No entrance (the
+          browse chrome has none) and no shadow (the sheet above carries the
+          card's only lift). */}
+      {planListShown ? (
+        <View
+          pointerEvents="none"
+          style={[styles.dockPlate, { height: dockFooting, backgroundColor: theme.surface }]}
+        />
+      ) : null}
+
+      {activeCity && mode === 'browse' && !isBusiness && !selectedPin ? (
+        <Animated.View
+          entering={FadeInUp.duration(Motion.standard)}
+          exiting={FadeOut.duration(Motion.quick)}
+          style={[styles.dock, { bottom: dockBottom }]}
+          pointerEvents="box-none">
+          {/* Blue, not amber. Amber now belongs to the pins themselves, and
+              two warm things on one screen means neither reads as the
+              signal. Controls are the brand blue; the map's content is warm. */}
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Drop a pin"
+            scaleTo={0.95}
+            haptic="light"
+            onPress={() => enterPlaceMode()}
+            // The measured height feeds `dockFooting` — the plate this
+            // button stands on, and the base of the card above it. The
+            // minHeight grows with Dynamic Type, and a plate built on the
+            // constant is one the button's top edge hangs over.
+            onLayout={(event) =>
+              setDockHeight(Math.max(DOCK_MIN_HEIGHT, Math.round(event.nativeEvent.layout.height)))
+            }
+            style={[styles.dockButton, { backgroundColor: theme.accent }]}>
+            <SymbolView
+              name={{ ios: 'mappin.and.ellipse', android: 'add_location', web: 'add_location' }}
+              size={19}
+              tintColor={theme.onAccent}
+            />
+            <ThemedText type="callout" style={[styles.dockLabel, { color: theme.onAccent }]}>
+              Drop a pin
+            </ThemedText>
+          </PressableScale>
+        </Animated.View>
+      ) : null}
+
+      {/* The business dock: the one action a listed owner has on this map.
+          Says what is on tonight, or updates it — NEVER 'Drop a pin', and
+          never through enterPlaceMode, which returns early for a business
+          (the founder's rule at features/business/hooks and the
+          assert_not_business trigger both forbid a business pin). Gated on
+          'listed': posting into a listing nobody can see helps nobody, so
+          until then the own-listing card carries the strip instead. */}
+      {activeCity && mode === 'browse' && businessDockShown && !selectedPin ? (
+        <Animated.View
+          entering={FadeInUp.duration(Motion.standard)}
+          exiting={FadeOut.duration(Motion.quick)}
+          style={[styles.dock, { bottom: dockBottom }]}
+          pointerEvents="box-none">
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={ownPlace?.has_live_post ? 'Update tonight' : "Post what's on"}
+            scaleTo={0.95}
+            haptic="light"
+            onPress={() => router.push('/business-post')}
+            // The same measurement the traveler dock feeds `dockFooting`:
+            // the button grows with Dynamic Type.
+            onLayout={(event) =>
+              setDockHeight(Math.max(DOCK_MIN_HEIGHT, Math.round(event.nativeEvent.layout.height)))
+            }
+            style={[styles.dockButton, { backgroundColor: theme.accent }]}>
+            <SymbolView
+              name={{ ios: 'storefront', android: 'storefront', web: 'storefront' }}
+              size={19}
+              tintColor={theme.onAccent}
+            />
+            <ThemedText type="callout" style={[styles.dockLabel, { color: theme.onAccent }]}>
+              {ownPlace?.has_live_post ? 'Update tonight' : "Post what's on"}
+            </ThemedText>
+          </PressableScale>
+        </Animated.View>
+      ) : null}
+
       {/* The day filter emptied the heat and the all-days layer is standing
           in. NEVER unlabelled, and never through the one-shot dismissible
           legend (dismissed forever after one read): this footnote is up for
@@ -3171,43 +3188,6 @@ export default function MapScreen() {
         </Animated.View>
       ) : null}
 
-      {/* The honest empty state: the ask settled and nothing cleared the
-          threshold. Without it, the one sentence explaining the app's
-          differentiator was gated on the differentiator already being
-          visible. No number on purpose — the k value is the server's. */}
-      {slot === 'heat-empty' ? (
-        <Animated.View
-          entering={FadeInUp.duration(Motion.standard)}
-          exiting={FadeOut.duration(Motion.quick)}
-          style={[styles.legend, { bottom: messageSlot }]}
-          pointerEvents="box-none">
-          <PressableScale
-            accessibilityRole="button"
-            accessibilityLabel="Not busy enough to show yet. A few people have to be planning the same area."
-            accessibilityHint="Dismisses this"
-            scaleTo={0.96}
-            haptic="light"
-            style={styles.legendPress}
-            onPress={heatEmptyLegend.dismiss}>
-            <View
-              style={[
-                styles.legendChip,
-                { backgroundColor: theme.surface, borderColor: theme.hairline },
-              ]}>
-              <View style={[styles.legendDot, { backgroundColor: 'rgba(255, 154, 90, 0.85)' }]} />
-              <ThemedText type="footnote" style={styles.legendText}>
-                Not busy enough to show yet. A few people have to be planning the same area.
-              </ThemedText>
-              <SymbolView
-                name={{ ios: 'xmark', android: 'close', web: 'close' }}
-                size={11}
-                tintColor={theme.textSecondary}
-              />
-            </View>
-          </PressableScale>
-        </Animated.View>
-      ) : null}
-
       {/* The heat layer is the only thing on this map with no label, no
           marker and nothing to tap, so the first time somebody sees it they
           have to guess. One sentence, once. */}
@@ -3222,6 +3202,7 @@ export default function MapScreen() {
             // Never "nearby": the map is scoped to a city chip that may be a
             // continent away, and the app never knows where anybody is.
             accessibilityLabel={heatLegendLine}
+            containerStyle={styles.legendPress}
             accessibilityHint="Dismisses this"
             scaleTo={0.96}
             haptic="light"
@@ -3253,6 +3234,7 @@ export default function MapScreen() {
           pointerEvents="box-none">
           <PressableScale
             accessibilityRole="button"
+            containerStyle={styles.legendPress}
             // An owner already knows what the chips are; what they cannot see
             // is which one is theirs, so the one sentence they get teaches the
             // ring instead.
@@ -3589,6 +3571,9 @@ const styles = StyleSheet.create({
     // below, so the text wraps instead.
     paddingHorizontal: Space.lg,
   },
+  // On the OUTER Pressable (containerStyle): the strip's padded box is the
+  // definite width a percentage resolves against, and the inner chip only
+  // wraps once the press it sits in is bounded.
   legendPress: {
     maxWidth: '100%',
   },
@@ -3805,13 +3790,25 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
+  // The ground the dock stands on while the plan list is up: the same
+  // theme.surface as the list's sheet, running to the screen bottom, so the
+  // two are one card rather than two slabs with a strip of map between them.
+  // The height is `dockFooting`, injected inline because it composes a
+  // measured height. Symmetric left/right, so the RTL ratchet in
+  // scripts/__tests__/logical-directional-styles.test.ts stays where it is.
+  dockPlate: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   dockButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.sm,
     // min, not fixed: the label scales with Dynamic Type, and a frozen box
     // around scaling text is the clipping bug the audit named. The grown
-    // height is measured by onLayout and feeds planListBottom.
+    // height is measured by onLayout and feeds `dockFooting`.
     minHeight: DOCK_MIN_HEIGHT,
     paddingVertical: Space.sm,
     paddingHorizontal: Space.xl,

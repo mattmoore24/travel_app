@@ -36,7 +36,6 @@ export const SLOT_ORDER = [
   // Teaching chips last — a dismissible hint must not be the last thing
   // between a person and the primary action.
   'heat-legend',
-  'heat-empty',
   'places-legend',
 ] as const;
 

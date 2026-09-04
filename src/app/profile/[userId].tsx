@@ -278,12 +278,21 @@ export default function PublicProfileScreen() {
                 />
               ) : null}
               {/* The recipient's side of a fact the SENDER is already told
-                  (src/app/message/[userId].tsx). open_direct_chat checks
-                  standing, guest/business, the blocked pair and shared group
-                  membership, and nothing else - so being in a group together
-                  is what removes the accept step, and the person about to be
+                  (src/app/message/[userId].tsx): being in a group together is
+                  what removes the accept step, and the person about to be
                   written to should learn that where it happens rather than
-                  when a stranger's message arrives. */}
+                  when a stranger's message arrives.
+
+                  open_direct_chat ALSO refuses a guest, a business and a
+                  blocked pair, and this button cannot know which: is_guest_account
+                  is granted to nobody, group membership carries no flag, and
+                  shares_group_with is the one predicate in that family with no
+                  guest filter, so it answers true for a guest while
+                  people_you_know filters guests out. So the offer stands and
+                  the refusal is answered by the sentence in lib/failure-message
+                  ('that traveler is unavailable'). Do not build a proxy gate
+                  out of onboarding_completed_at: it is an inference over three
+                  invariants and it inverts if the guest rule ever changes. */}
               {known && !connected ? (
                 <ThemedText type="footnote" themeColor="textSecondary">
                   You are both in a group, so this goes straight through.

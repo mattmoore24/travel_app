@@ -6,7 +6,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Radius, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTabBarInset } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 
 type PlaceholderScreenProps = {
@@ -45,8 +44,6 @@ type PlaceholderScreenProps = {
  */
 export function PlaceholderScreen(props: PlaceholderScreenProps) {
   const theme = useTheme();
-  // Room for the tab bar, which grows with Dynamic Type on native.
-  const tabBarInset = useTabBarInset();
   const title = props.configError ? "Can't reach Samewhere" : props.title;
   const description = props.configError
     ? 'Something is wrong on our end. Try again in a few minutes.'
@@ -55,7 +52,11 @@ export function PlaceholderScreen(props: PlaceholderScreenProps) {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={[styles.safeArea, { paddingBottom: tabBarInset + Spacing.three }]}>
+      {/* SafeAreaView's edges all default to 'additive', so it ALREADY adds
+          the bottom inset — and on a tab screen that inset contains the tab
+          bar (see hooks/use-tab-bar-inset). Adding the constant on top was
+          the same 50pt of dead space the docks carried. */}
+      <SafeAreaView style={styles.safeArea}>
         <SymbolView name={props.icon} size={56} tintColor={theme.textSecondary} />
         <ThemedText type="title" style={styles.centerText}>
           {title}
@@ -88,6 +89,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Spacing.three,
     paddingHorizontal: Spacing.four,
+    // The bar's own clearance comes from SafeAreaView's additive edges; this
+    // is only the breathing room under the centred content.
+    paddingBottom: Spacing.three,
     maxWidth: MaxContentWidth,
   },
   centerText: {

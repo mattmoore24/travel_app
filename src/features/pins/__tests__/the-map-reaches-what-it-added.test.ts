@@ -104,10 +104,10 @@ describe('the remembered heat layer', () => {
 
   it('never says "the plans are" over a layer that is a memory', () => {
     expect(map).toContain('Dimmer spots are where this city is usually busy');
-    // And the empty chip must not say "nothing here" over a glow.
-    expect(map).toMatch(
-      /heatEmptyLegend = useHeatEmptyLegend\([\s\S]{0,400}historyCells\.length === 0/
-    );
+    // The "not busy enough to show yet" chip that used to carry the second
+    // half of this rule is gone (founder, 2026-09-03): a quiet city says so
+    // through the empty-city card, and the map no longer narrates an absence.
+    expect(map).not.toContain('Not busy enough to show yet');
   });
 
   it('asks the server for nothing it could get wrong', () => {

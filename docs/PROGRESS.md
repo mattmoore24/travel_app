@@ -524,6 +524,119 @@ grant was withdrawn".
 - **Nothing on Sign in with Apple.** Both halves are wired, deployed, and now
   observed working end to end against the live project.
 
+## **The dock stood 50pt too high on every tab** (2026-09-03)
+
+The founder, on the card that shipped an hour earlier: _"can you move everything
+down a bit so that the 'drop a pin' button and part where it shows plans in your city
+aren't taking up so much room on the bottom? It looks like there is empty space below
+the button."_ There was, and it was a bug on every tab, not a taste question.
+
+**What was wrong.** `useTabDockBottom` was `tabBarInset + insets.bottom + Space.sm`,
+and on iOS the tab bar is ALREADY INSIDE `insets.bottom`: expo-router wraps every
+native tab screen's content in a `SafeAreaProvider` of its own, and a provider
+publishes its own view's insets, which UIKit has already grown by the bar. So the
+constant was being added to a measurement that already contained it. The hook's doc
+comment asserted the opposite in as many words ("NativeTabs publishes no height to
+JS, so the inset is DERIVED from fontScale"); that sentence was false and is deleted.
+
+**Measured, not guessed**, off the founder's screenshot at 3x (iPhone 15/16 Pro):
+the tab capsule's top edge is at 83.3pt and the Drop-a-pin button's bottom edge at
+141.3, and `141.3 - BottomTabInset(50) - Space.sm(8) = 83.3` exactly. Second,
+independent check: the plan card's top edge measured 257, and
+`141.3 + 52 + 8 + PLAN_LIST_PEEK(56) = 257.3`. The "it is really a high fontScale"
+alternative is refuted by the same picture, because at ~2x the button could not
+measure 51.7pt against a `DOCK_MIN_HEIGHT` of 52.
+
+**The fix keeps one formula and one hook.** `tabDockBottomOf` trusts the inset when
+it exceeds the window's own bottom inset, and otherwise falls back to exactly
+today's sum. The fallback is load-bearing twice: `ConnectedNotice` is mounted as a
+sibling of the tabs, so its inset is the home indicator alone and it must not move;
+and a tab provider seeds from its parent until its native view lays out, so the
+first frame reports the window's inset. That frame is why this is not a bare
+`insets.bottom` - the old bug slid "Drop a pin" and "Say hi" under the bar, and no
+frame may do that again. A wrong read on a device we cannot see therefore degrades
+to today's behaviour, never to a buried button.
+
+On the founder's phone: the dock rises 141.3 -> 91.3, the plan card's top edge drops
+257 -> 207, and the map gains 50pt. Travelers, my-business and the placeholder
+screens gain the same 50 (the placeholder was adding the constant on top of a
+`SafeAreaView` whose edges are all additive).
+
+**The message that failed.** He also messaged somebody in his own group and got
+"Something went wrong. Try that again." twice over, inline and as an alert.
+`open_direct_chat` refuses a guest RECIPIENT, which Kate is, and the raise carries
+no hint and no terminator, so `saveFailureMessage` fell through to the generic
+sentence; the alert was the global mutation cache firing on top of the screen's own
+catch. Both fixed on the client: the raise maps to "You cannot message this traveler
+one to one right now.", and `meta: { inlineFailure: true }` stops the cache alerting
+for a mutation whose screen always prints its own failure.
+
+**Founder question, and it is a product decision, not a bug.** The guest rule is
+deliberate and written down twice - ARCHITECTURE.md ("Guests are neither end of it
+... cannot ... open or receive a one-to-one chat") and the `add_people_without_a_link`
+migration's own header - on the grounds that an unaccountable identity is not put in
+front of somebody one to one, and that the janitor deletes a guest when its last
+membership goes. It is NOT a §7 hard rule; it is not mentioned in PRODUCT_BRIEF.md at
+all. So it can change on the founder's word. If it does, it is a Supabase deploy and
+it is not a one-line predicate removal: `stale_guest_ids` keys guest liveness on
+group membership and recent messages and never looks at `chat_participants`, so a
+guest who leaves the group and goes quiet for 30 days would be deleted and
+`messages.sender_id ... on delete cascade` would take her half of the thread with
+her. That clause has to move in the same deploy.
+
+## **The bottom of the map is one card** (2026-09-03)
+
+The founder sent a screenshot of the Map tab: _"it looks bad with the pop up menu being
+above the drop a pin button like that, and also the not busy enough to show yet pop up can
+be removed."_ Both halves are done.
+
+**The pop-up over the button.** The plan list's sheet stopped 152pt short of the screen, so
+its lower edge was a hard cut across the map with the Drop-a-pin pill floating in the strip
+of bare map below it, and the tab bar floating below that: three slabs where there is one
+thing. The sheet now runs to the screen's bottom edge and the dock stands on an opaque plate
+cut from the same `theme.surface`, so the peek strip, the button and the tab-bar clearance
+read as one card. The two browse docks moved AFTER `<PlanList>` in the JSX, so the button is
+painted over the sheet at every detent instead of being buried by it — which also means the
+primary action is now on screen with the list open, where before an expanded list covered
+it.
+
+**Nothing moved that a person had learned the position of.** The arithmetic came out of the
+screen into `src/features/pins/bottom-stack.ts` and is unit-tested by execution against the
+old expressions as its oracle: every detent's top edge and every `messageSlot` value lands
+where the split layout put it, on four device heights × four footings × four peek heights.
+The one deliberate move is the peek strip, `PLAN_LIST_PEEK` 76 → 56: its content measures
+48pt, so the old value carried 28pt of empty surface under one line of text, which is a good
+part of why one sentence read as a slab. The map gains those 20pt back.
+
+**Two bugs fixed on the way.**
+
+1. The plan list's `ScrollView` had no bottom clip, so at any detent under full its frame
+   hung below the screen and the content down there could not be scrolled into view at all —
+   234pt of it at the half detent. `marginBottom: heights.full - target`.
+2. `messageSlot` composed the `PLAN_LIST_PEEK` CONSTANT while the strip rendered at its
+   Dynamic Type height, so at the accessibility sizes every banner and chip sat behind the
+   card's own top edge. Both heights it composes are measured now, and the peek measurement
+   is held on the map screen rather than inside the list, which remounts on every mode
+   change.
+
+**"Not busy enough to show yet."** Gone entirely: `useHeatEmptyLegend`, its storage key, its
+`SLOT_ORDER` entry, its gate on the places legend, and its JSX. The strip stays empty on a
+quiet map unless another occupant claims it.
+
+**Founder question.** With `heat-empty` gone, `places-legend` ("Tap a business to see what's
+on") is next in `SLOT_ORDER` and now inherits that strip on a quiet, business-filtered map.
+You asked for one fewer floating layer and by default you get a different chip in the same
+place. Should the teaching chips leave that strip as a class, or keep their one read each?
+
+**Known and accepted.** Collapsing from the half detent shrinks the list frame in one commit
+while the sheet springs for 350ms, so rows blank to bare surface for that beat before the
+sheet slides down over them — transient only, and no map shows through. VoiceOver's swipe
+order is now dock-then-list where the eye reads list-then-dock; both fixes cost more than
+they buy. `connected-notice` floats at `dockBottom`, which now lands it on the card rather
+than on map; it is an overlay and the card is a legitimate ground, but it is unphotographed.
+
+Not yet seen on a device or in the simulator gallery — the screens run is the next step.
+
 ## **Three closures, so the build is the last thing that lands** (2026-09-02)
 
 The founder asked for the one EAS build the native changes are waiting on, and for any

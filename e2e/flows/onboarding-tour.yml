@@ -89,8 +89,10 @@ appId: com.mattmoore.samewhere
           visible: 'What are you signing up as?'
           timeout: 10000
 # Otherwise row 0 was a curated pick (no gate) or there was no list: close
-# whatever opened, fold the list back off the dock, and take the drop-pin
-# door. The fold matters — an expanded list physically covers 'Drop a pin'.
+# whatever opened, toggle the list, and take the drop-pin door. The toggle is
+# belt-and-braces now, not a requirement: the dock is painted OVER the plan
+# list's sheet at every detent, so 'Drop a pin' is on screen whether this tap
+# folds the list or opens it.
 - runFlow:
     when:
       notVisible: 'What are you signing up as?'
