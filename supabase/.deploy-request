@@ -439,3 +439,10 @@
              counts until the update lands, and everything else keeps working
              because post_joinable_pin's new parameters default). Watch for
              all three in "Migrations — after"; the seed is the slow one.
+
+2026-09-04 — 20260904120000 again, edited before anyone posted through it:
+             the four raise literals in send_message_request that said
+             "request" say "hello". The migration is already recorded as
+             applied, so this deploy will NOT re-run it; the function body is
+             re-applied by the next migration that restates it, or by hand
+             from the SQL editor. Recorded here so the drift is on paper.
