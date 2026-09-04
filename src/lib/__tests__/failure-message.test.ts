@@ -130,7 +130,7 @@ describe('the D3 rule: the database may not write user-facing copy', () => {
     );
     // The same raise, reworded on 2026-09-04 so the restated function body
     // carries no banned word; both spellings map while a deploy is in flight.
-    expect(saveFailureMessage({ message: 'hello already sent to this traveler' })).toBe(
+    expect(saveFailureMessage({ message: 'already said hi to this traveler' })).toBe(
       'You already said hi. It will be in Chat if they answer.'
     );
     expect(saveFailureMessage({ message: 'already connected with this traveler' })).toBe(

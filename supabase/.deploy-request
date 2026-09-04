@@ -446,3 +446,13 @@
              applied, so this deploy will NOT re-run it; the function body is
              re-applied by the next migration that restates it, or by hand
              from the SQL editor. Recorded here so the drift is on paper.
+
+2026-09-04 — 20260904200000_say_hi_in_the_databases_words: the fix-forward
+             the entry above asked for. send_message_request is restated with
+             its final wording ("already said hi to this traveler", "daily
+             limit for saying hi reached", "unknown source for saying hi"):
+             not "request" (banned from copy) and not "hello" (the client's
+             one-name rule, and the client matches these strings). Hints
+             unchanged. Database first; the update that reads the new
+             strings follows, and build 17's bundle keys on the hints, so it
+             keeps working either way.

@@ -99,7 +99,7 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 select throws_ok(
   $$ select public.send_message_request(
        '00000000-0000-0000-0000-00000000000a', 'trip_match', 'hello again', 'bio') $$,
-  'daily hello limit reached',
+  'daily limit for saying hi reached',
   'request attempts are capped per rolling day'
 );
 

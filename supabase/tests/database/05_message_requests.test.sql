@@ -48,7 +48,7 @@ select is(
 select throws_ok(
   $$ select public.send_message_request(
        '00000000-0000-0000-0000-00000000000a', 'trip_match', 'hi again', 'bio') $$,
-  'hello already sent to this traveler',
+  'already said hi to this traveler',
   'one delivered request per pair, ever'
 );
 
@@ -178,7 +178,7 @@ select is(
 select throws_ok(
   $$ select public.send_message_request(
        '00000000-0000-0000-0000-00000000000a', 'trip_match', 'following up!', 'bio') $$,
-  'hello already sent to this traveler',
+  'already said hi to this traveler',
   're-sending after (invisible) decline is refused identically'
 );
 

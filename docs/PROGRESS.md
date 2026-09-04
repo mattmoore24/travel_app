@@ -124,6 +124,31 @@ keyboard height leaves out the input accessory view, so every
 short and the Hide keyboard bar lay across the bottom of Continue (screen
 60). The floor adds the bar's height while the keyboard is up.
 
+### The bottom card came across, and a word came out of the database
+
+The founder compared the gallery's bottom strip with his phone and asked whether
+the update would put the old one back. It would have. The card on his phone
+(TestFlight run 84, cb1979d) came from `claude/popup-menu-layout-nrqpsc`, which
+forked from the same base as this branch and carried five commits this branch
+did not: the bottom of the map as one card (the plan list's sheet runs to the
+screen edge, the dock stands on a plate cut from the same surface,
+`features/pins/bottom-stack.ts`), the dock on the tab bar's real inset, the "not
+busy enough" chip removed, and the one-to-one refusal that says why once. That
+branch is merged here now, verbatim on the bottom stack; the one conflict was
+the removed chip, which had just been given a width ceiling, and the ceiling
+moved to the two chips that remain in the strip. Three independent reviewers
+then read the merge against both parents before it was pushed.
+
+The full jest run before that push found one more thing: the four raise
+literals reworded away from "request" said "hello", and the client's one-name
+rule keeps "hello" out of anything a person reads, which includes the strings
+the client matches those raises by. The reworded file had already applied, so
+the wording is restated in a fix-forward migration
+(`20260904200000_say_hi_in_the_databases_words`) as "already said hi to this
+traveler", "daily limit for saying hi reached" and "unknown source for saying
+hi", with the hints unchanged. Production raises the 2026-09-02 wording until
+that deploys; the client maps both.
+
 ### The replay that cancelled itself
 
 The mechanism, found by putting the effect's shape on the real React in a
