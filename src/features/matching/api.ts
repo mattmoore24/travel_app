@@ -10,8 +10,18 @@ import type {
 } from '@/lib/database.types';
 import { supabase } from '@/lib/supabase';
 
-export async function fetchMatches() {
-  const { data, error } = await supabase.rpc('get_matches');
+/**
+ * The Travelers queue, computed from the caller's own trips. `tripIds`
+ * narrows it to some of them (the picker on the tab); null is every trip.
+ * The ids are the ONLY argument the function takes, and they are the
+ * caller's: the server joins them to `trips where user_id = auth.uid()`, so
+ * somebody else's id filters to nothing. Never a coordinate (§7 rule 2).
+ */
+export async function fetchMatches(tripIds: string[] | null = null) {
+  const { data, error } = await supabase.rpc(
+    'get_matches',
+    tripIds == null ? {} : { p_trip_ids: tripIds }
+  );
   if (error) {
     throw error;
   }

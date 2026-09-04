@@ -56,21 +56,18 @@ export function radiusLabel(km: RadiusKm, usesMiles = USES_MILES): string {
   return `Within ${km} km`;
 }
 
-/** The row's second line: the same distance in the other unit, and an example. */
-export function radiusDetail(km: RadiusKm, usesMiles = USES_MILES): string {
-  const other = usesMiles ? `${km} km` : `${Math.round(km / KM_PER_MILE)} miles`;
-  switch (km) {
-    case 0:
-      return 'Only travelers with a trip to the same city.';
-    case 16:
-      return `${other}. The next town over.`;
-    case 32:
-      return `${other}. Nice reaches Monaco, Antibes and Cannes.`;
-    case 80:
-      return `${other}. A day trip away.`;
-    default:
-      return `${other}. The whole coast.`;
+/**
+ * The row's second line: the same distance in the other unit, and nothing
+ * else. The examples that used to follow it ("The next town over", "Nice
+ * reaches Monaco, Antibes and Cannes") came out on the founder's word: "the
+ * km conversion is enough". 'This city only' has no other unit, so it has
+ * no second line.
+ */
+export function radiusDetail(km: RadiusKm, usesMiles = USES_MILES): string | null {
+  if (km === 0) {
+    return null;
   }
+  return usesMiles ? `${km} km` : `${Math.round(km / KM_PER_MILE)} miles`;
 }
 
 /** The chip on the Travelers tab: 'Within 20 mi', 'This city only'. */

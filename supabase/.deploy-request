@@ -456,3 +456,14 @@
              unchanged. Database first; the update that reads the new
              strings follows, and build 17's bundle keys on the hints, so it
              keeps working either way.
+
+2026-09-05 — 20260905090000_a_trip_can_be_as_far_ahead_as_you_plan: the
+             180-day horizon comes out of overlaps_own_trip, get_matches and
+             send_message_request (a trip can be as far ahead as somebody
+             plans), and get_matches takes the caller's own trip ids
+             (p_trip_ids uuid[] default null) so the Travelers tab can look at
+             one trip at a time. The zero-argument function is dropped and
+             recreated with a default, so daily_spotlight's call is unchanged
+             and build 17's bundle, which passes no argument, keeps working.
+             Database first, then the update that carries the picker.
+

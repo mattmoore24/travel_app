@@ -56,12 +56,22 @@ export function useSetTravelersRadius() {
   };
 }
 
-export function useMatches() {
+/**
+ * The queue for the trips the person chose to look at (features/matching/
+ * trip-selection); null is every trip. Keyed on the selection, so switching
+ * trips is a cache hit on the way back and a fetch on the way there.
+ */
+export function useMatches(tripIds: string[] | null = null, ready = true) {
   const userId = useOwnUserId();
+  const key = tripIds == null ? 'all' : [...tripIds].sort().join(',');
   return useQuery({
-    queryKey: ['matches', userId],
-    queryFn: fetchMatches,
-    enabled: isSupabaseConfigured && userId != null,
+    queryKey: ['matches', userId, key],
+    queryFn: () => fetchMatches(tripIds),
+    enabled: isSupabaseConfigured && userId != null && ready,
+    // A chip tap changes the key. Without this the query goes pending, the
+    // screen falls into its skeleton and the rail vanishes under the
+    // finger; with it the face stays until the new queue lands.
+    placeholderData: (previous) => previous,
   });
 }
 

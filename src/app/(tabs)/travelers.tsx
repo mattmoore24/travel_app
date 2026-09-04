@@ -74,6 +74,7 @@ import { languageLabel } from '@/constants/languages';
 import { AUDIENCE_LABEL, audienceInSentence } from '@/features/profile/audience';
 import {
   useOwnProfile,
+  useOwnUserId,
   useOwnVisibility,
   useProfilePriorities,
   useProfilePrompts,
@@ -86,6 +87,9 @@ import { useAnnounce } from '@/features/chat/use-announce';
 import { openReply } from '@/features/matching/respond';
 import { ProfileView, type ProfileTrip } from '@/features/profile/profile-view';
 import { formatDate, formatTripDates, roughWhen, toISODate } from '@/features/trips/dates';
+import { queueScope } from '@/features/matching/queue-scope';
+import { TripPicker } from '@/features/matching/trip-picker';
+import { effectiveSelection, useTripSelection } from '@/features/matching/trip-selection';
 import { useMyTrips, useTravelerTrips } from '@/features/trips/hooks';
 import {
   profileTripFromMatchRow,
@@ -464,6 +468,112 @@ function GuestTravelers() {
 }
 
 /**
+ * The fixed band above the page: the trip rail, the spotlight note, the
+ * scope line and the radius dial. Its own component, rendered ONCE above the
+ * keyed page rather than inside it: the page remounts on every Next (its
+ * key is the person), and a header inside it tore down the rail's scroll
+ * position and faded in again on every pass. A person scrolled to a
+ * November chip in a year of trips stays there while they read.
+ */
+function QueueHeader({
+  tripPicker,
+  isSpotlight,
+  spotlightName,
+  countLine,
+  radiusKm,
+  onOpenRadius,
+}: {
+  /** The trip chips, built by the screen: which of the reader's trips the queue is for. */
+  tripPicker: React.ReactNode;
+  /**
+   * True when the person on screen is today's mutual spotlight. The note is
+   * built here rather than passed in, because it names the traveler and a
+   * prepared string let the old ceremony line ("You're top of their list
+   * too.") sit where nothing about it looked like copy.
+   */
+  isSpotlight: boolean;
+  spotlightName: string | null;
+  /** The scope line under the picker: how many more, and for which trips. */
+  countLine: string;
+  /** How far from each trip city the queue reaches, so the header can say so. */
+  radiusKm: number;
+  onOpenRadius: () => void;
+}) {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  return (
+    <>
+      {/* A fixed header, outside the scroller, so the scope of the queue is
+          readable on every traveler and does not scroll away with the page.
+          Headroom for the notch: this screen has no navigation header, so
+          without the inset the first line starts at y=0 under the status
+          bar. */}
+      <View style={[styles.queueHeader, { paddingTop: insets.top + Space.sm }]}>
+        {tripPicker}
+        {isSpotlight ? (
+          // States the mechanism, not a ranking. daily_spotlights is a
+          // canonically ordered pair with one row per person per day, so
+          // "shown to you and them" is exactly what the table guarantees.
+          // The line it replaced ("You're top of their list too.") claimed
+          // a named stranger had ranked the reader, which is the
+          // reciprocal-interest reveal the product exists to avoid. The
+          // "Today in <city>" chip that used to sit above it is gone (the
+          // founder put the trip picker where it was); its sparkles stay
+          // beside the sentence so the spotlight still reads as the one
+          // different person on the page.
+          <View style={styles.spotlightRow}>
+            <SymbolView
+              name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
+              size={13}
+              tintColor={theme.accent}
+              accessibilityElementsHidden
+            />
+            <ThemedText type="footnote" themeColor="textSecondary" style={styles.sharedTodayNote}>
+              {sharedTodayNote(spotlightName)}
+            </ThemedText>
+          </View>
+        ) : null}
+        {/* The scope of the queue, not of the city: this count is already
+            filtered by passes, chats, hellos sent and the viewer's own
+            audience setting, and the words are careful to claim no more.
+            The city is named only when the queue is for one city: with
+            several trips in view it used to borrow whoever was on screen. */}
+        <ThemedText type="footnote" themeColor="textSecondary" style={styles.sharedTodayNote}>
+          {countLine}
+        </ThemedText>
+        {/* THE DIAL, where the scope is read. The queue reaches this far
+            from each of the reader's own trip cities; a person in Nice
+            deciding whether Cannes counts decides it here, on the screen
+            that shows them the answer, not in a settings page. */}
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`${radiusChipLabel(radiusKm)}. Changes how far Travelers looks.`}
+          testID="travelers-radius"
+          hitSlop={4}
+          haptic="selection"
+          scaleTo={0.94}
+          onPress={onOpenRadius}>
+          <View
+            style={[
+              styles.radiusChip,
+              { backgroundColor: theme.surface, borderColor: theme.border },
+            ]}>
+            <SymbolView
+              name={{ ios: 'slider.horizontal.3', android: 'tune', web: 'tune' }}
+              size={12}
+              tintColor={theme.textSecondary}
+            />
+            <ThemedText type="caption" themeColor="textSecondary">
+              {radiusChipLabel(radiusKm)}
+            </ThemedText>
+          </View>
+        </PressableScale>
+      </View>
+    </>
+  );
+}
+
+/**
  * One traveler, full page, with the dates you share called out on their
  * trips. Reading one person at a time is the point: a list of everybody
  * turns into a grid nobody reads, and a profile you actually look at is what
@@ -474,14 +584,10 @@ function TravelerPage({
   width,
   barHeight,
   onBarHeight,
-  radiusKm,
-  onOpenRadius,
   onSayHi,
   onNext,
   onMore,
-  isSpotlight,
   helloCapped,
-  remaining,
   refreshing,
   onRefresh,
 }: {
@@ -494,15 +600,6 @@ function TravelerPage({
    */
   barHeight: number;
   onBarHeight: (height: number) => void;
-  /**
-   * True when this is today's mutual spotlight. The ribbon copy is built HERE
-   * rather than passed in, because the note names the traveler and a prepared
-   * string let the old ceremony line ("You're top of their list too.") sit in
-   * the parent where nothing about it looked like copy.
-   */
-  isSpotlight?: boolean;
-  /** How many people are behind this one in the queue. */
-  remaining: number;
   refreshing: boolean;
   onRefresh: () => void;
   onSayHi: () => void;
@@ -511,12 +608,8 @@ function TravelerPage({
   onMore: () => void;
   /** No hellos left today — the Say hi button says so instead of opening. */
   helloCapped: boolean;
-  /** How far from each trip city the queue reaches, so the header can say so. */
-  radiusKm: number;
-  onOpenRadius: () => void;
 }) {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
   // The dock clearance tracks Dynamic Type with the tab bar it stands on.
   const dockBottom = useTabDockBottom();
   const { data: profile } = usePublicProfile(candidate.userId);
@@ -591,69 +684,6 @@ function TravelerPage({
 
   return (
     <View style={[styles.page, { width }]}>
-      {/* A fixed header, outside the scroller, so the scope of the queue is
-          readable on every traveler and does not scroll away with the page.
-          Headroom for the notch: this screen has no navigation header, so
-          without the inset the first line starts at y=0 under the status
-          bar. */}
-      <View style={[styles.queueHeader, { paddingTop: insets.top + Space.sm }]}>
-        {isSpotlight ? (
-          <>
-            <View style={[styles.spotlightChip, { backgroundColor: theme.accentSoft }]}>
-              <SymbolView
-                name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
-                size={13}
-                tintColor={theme.accent}
-              />
-              <ThemedText type="caption" themeColor="accent">
-                {`Today in ${candidate.match.city_name}`}
-              </ThemedText>
-            </View>
-            {/* States the mechanism, not a ranking. daily_spotlights is a
-                canonically ordered pair with one row per person per day, so
-                "shown to you and them" is exactly what the table guarantees.
-                The line it replaced ("You're top of their list too.") claimed
-                a named stranger had ranked the reader, which is the
-                reciprocal-interest reveal the product exists to avoid. */}
-            <ThemedText type="footnote" themeColor="textSecondary" style={styles.sharedTodayNote}>
-              {sharedTodayNote(shown.display_name)}
-            </ThemedText>
-          </>
-        ) : null}
-        {/* The scope of the queue, not of the city: this count is already
-            filtered by passes, chats, hellos sent and the viewer's own
-            audience setting, and the words are careful to claim no more. */}
-        <ThemedText type="footnote" themeColor="textSecondary" style={styles.sharedTodayNote}>
-          {remainingLine(remaining, candidate.match.my_city_name)}
-        </ThemedText>
-        {/* THE DIAL, where the scope is read. The queue reaches this far
-            from each of the reader's own trip cities; a person in Nice
-            deciding whether Cannes counts decides it here, on the screen
-            that shows them the answer, not in a settings page. */}
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel={`${radiusChipLabel(radiusKm)}. Changes how far Travelers looks.`}
-          testID="travelers-radius"
-          hitSlop={4}
-          haptic="selection"
-          scaleTo={0.94}
-          onPress={onOpenRadius}>
-          <View
-            style={[
-              styles.radiusChip,
-              { backgroundColor: theme.surface, borderColor: theme.border },
-            ]}>
-            <SymbolView
-              name={{ ios: 'slider.horizontal.3', android: 'tune', web: 'tune' }}
-              size={12}
-              tintColor={theme.textSecondary}
-            />
-            <ThemedText type="caption" themeColor="textSecondary">
-              {radiusChipLabel(radiusKm)}
-            </ThemedText>
-          </View>
-        </PressableScale>
-      </View>
       <ScrollView
         refreshControl={
           // The one gesture people reflexively make at the top of a feed,
@@ -905,9 +935,38 @@ export default function TravelersScreen() {
   const { width } = useWindowDimensions();
   const isGuest = useIsGuest();
   const tripsQuery = useMyTrips();
-  const matchesQuery = useMatches();
   const trips = tripsQuery.data ?? [];
+  // WHICH TRIPS THE QUEUE IS FOR. A person with several trips planned picks
+  // the ones they are looking at (features/matching/trip-selection); the
+  // server narrows the queue to those, so somebody who overlaps them in
+  // Lisbon is not lost to a queue attributed to Nice. A view preference
+  // only: it changes nothing about who can see them. `effectiveSelection`
+  // drops ids of trips that ended or were deleted and reads a full set as
+  // every trip, so the query key and the chips agree about what "all" is.
+  const ownUserId = useOwnUserId();
+  const tripSelection = useTripSelection(ownUserId);
+  const tripIds = trips.map((trip) => trip.id);
+  const selectedTrips = effectiveSelection(tripSelection.selected, tripIds);
+  // Not until the stored choice AND the trips are read: with either
+  // missing the selection resolves to every trip, and fetching that first
+  // and the chosen trips a beat later would flash the wrong queue on every
+  // open. The focus refetch below waits on the same flag.
+  const queueReady = tripSelection.hydrated && tripsQuery.data != null;
+  const matchesQuery = useMatches(selectedTrips, queueReady);
   const matches = matchesQuery.data ?? [];
+  // The trips the queue is for, and the one city to name when there is
+  // exactly one: several trips in view have no honest city to put in a
+  // sentence, and the line used to borrow whoever was on screen.
+  const tripsInView =
+    selectedTrips == null ? trips : trips.filter((trip) => selectedTrips.includes(trip.id));
+  const citiesInView = Array.from(new Set(tripsInView.map((trip) => trip.cities.name)));
+  const narrowed = selectedTrips != null;
+  // One phrase for what the queue is for, shared by the count line, the
+  // wall's title and the settle VoiceOver hears, so they cannot disagree.
+  const scope = queueScope(citiesInView, tripsInView.length, narrowed);
+  // A chip tap keeps the old queue on screen while the new one loads; the
+  // count line says so rather than counting the wrong trips for a beat.
+  const checking = matchesQuery.isFetching && matchesQuery.isPlaceholderData;
   const { data: sentRequests = [] } = useSentRequests();
   const { data: chats = [] } = useMyChats();
   const passed = usePassedTravelers();
@@ -1022,8 +1081,12 @@ export default function TravelersScreen() {
   const { refetch: refetchMatches } = matchesQuery;
   const refresh = useCallback(() => {
     refetchTrips();
-    refetchMatches();
-  }, [refetchTrips, refetchMatches]);
+    // refetch() ignores `enabled`, so before the selection is read this
+    // would fire the every-trip query the flag above exists to hold back.
+    if (queueReady) {
+      refetchMatches();
+    }
+  }, [refetchTrips, refetchMatches, queueReady]);
   // The queue changes while this tab is off-stage: trips get added, people
   // arrive, hellos get answered. Without this a queue that emptied stayed
   // empty until a force-quit, on the one screen with no other way back in.
@@ -1116,7 +1179,13 @@ export default function TravelersScreen() {
   // computed before the early returns exactly so this hook can sit with the
   // other hooks; failures are announced by LoadError itself.
   useAnnounce(
-    !isGuest && tripsQuery.isSuccess && matchesQuery.isSuccess
+    !isGuest &&
+      tripsQuery.isSuccess &&
+      matchesQuery.isSuccess &&
+      // A chip tap keeps the old queue on screen as placeholder data while
+      // the new one loads; saying nothing until it lands is what makes the
+      // settle audible again after every tap.
+      !(matchesQuery.isFetching && matchesQuery.isPlaceholderData)
       ? trips.length === 0
         ? 'Travelers opens once you add a trip'
         : queue.length === 0
@@ -1126,10 +1195,33 @@ export default function TravelersScreen() {
             // broken filter. Say what the wall says.
             audience !== 'everyone'
             ? 'Nobody fits who you asked to see. It works both ways.'
-            : 'Nobody new on your dates right now'
-          : countOf(queue.length, 'traveler')
+            : `Nobody new on your dates ${scope.where} right now`
+          : `${countOf(queue.length, 'traveler')} ${scope.where}`
       : null
   );
+
+  // THE TRIP PICKER, shown with two or more trips: with one there is nothing
+  // to choose. A tap keeps whoever is on screen at the front of the new
+  // queue when they are still in it (the same hoist Undo uses), so
+  // narrowing to the city of the person you are reading does not turn the
+  // card.
+  const tripPicker =
+    trips.length > 1 ? (
+      <View style={styles.tripRail}>
+        <TripPicker
+          trips={trips}
+          selected={selectedTrips}
+          onToggle={(tripId) => {
+            setRestoredId(queue[0]?.userId ?? null);
+            tripSelection.toggle(tripId, tripIds);
+          }}
+          onAll={() => {
+            setRestoredId(queue[0]?.userId ?? null);
+            tripSelection.selectAll();
+          }}
+        />
+      </View>
+    ) : null;
 
   if (!isSupabaseConfigured) {
     return (
@@ -1217,7 +1309,9 @@ export default function TravelersScreen() {
     // stopping. Naming the city and the window also makes the emptiness
     // legible: "nobody, ever" and "nobody whose Bangkok dates cross mine
     // this week" are very different messages, and only one of them is true.
-    const cityNames = Array.from(new Set(trips.map((trip) => trip.cities.name)));
+    // The cities in view, not every trip's: a wall for "just Lisbon" that
+    // named Bangkok too would be describing a queue nobody asked for.
+    const cityNames = citiesInView;
     // The third reason a queue can be empty, and the one this screen used to
     // state the opposite of. "That's everyone" is a claim about supply; when
     // the viewer's own audience is what removed people, it is simply false,
@@ -1229,12 +1323,20 @@ export default function TravelersScreen() {
       ? cityNames.length === 1
         ? `Nobody in ${cityNames[0]} fits who you asked to see`
         : 'Nobody on your dates fits who you asked to see'
-      : cityNames.length === 1
-        ? `That's everyone in ${cityNames[0]} with travel plans matching yours`
-        : "That's everyone with travel plans matching yours";
+      : `That's everyone on your dates ${scope.where}`;
+    // Narrowed to some trips: say the scope plainly and offer the way back,
+    // because the person chose this and the wall is the choice's result.
+    const oneInView = tripsInView.length === 1 ? tripsInView[0] : null;
+    const narrowedNote = !narrowed
+      ? null
+      : oneInView
+        ? oneInView.approximate
+          ? `You're only looking at ${oneInView.cities.name}, sometime ${roughWhen(oneInView.start_date, oneInView.end_date)}.`
+          : `You're only looking at ${oneInView.cities.name}, ${formatTripDates(oneInView.start_date, oneInView.end_date)}.`
+        : `You're only looking at ${tripsInView.length} of your ${trips.length} trips.`;
     const body = filtered
       ? `You are set to ${audienceInSentence(audience)}. It works both ways, so this hides you from everyone else too.`
-      : 'More show up every day.';
+      : (narrowedNote ?? 'More show up every day.');
     return (
       <ThemedView style={styles.root}>
         <ProfileCorner />
@@ -1255,7 +1357,9 @@ export default function TravelersScreen() {
                     label: `Change who you see (${AUDIENCE_LABEL[audience]})`,
                     onPress: () => router.push('/visibility'),
                   }
-                : { label: 'Drop a pin', onPress: () => router.navigate('/(tabs)') }
+                : narrowed
+                  ? { label: 'Show all trips', onPress: tripSelection.selectAll }
+                  : { label: 'Drop a pin', onPress: () => router.navigate('/(tabs)') }
             }>
             {filtered ? (
               <PrimaryButton
@@ -1338,90 +1442,100 @@ export default function TravelersScreen() {
   return (
     <ThemedView style={styles.root}>
       <ProfileCorner />
-      <Animated.View entering={FadeIn.duration(200)} style={styles.deck} key={current.userId}>
-        <TravelerPage
+      <View style={styles.deck}>
+        <QueueHeader
+          tripPicker={tripPicker}
           isSpotlight={current.userId === spotlightId}
-          candidate={current}
-          barHeight={barHeight}
-          onBarHeight={setBarHeight}
-          width={Math.min(width, MaxContentWidth)}
-          remaining={queue.length - 1}
-          refreshing={matchesQuery.isFetching}
-          onRefresh={refresh}
-          helloCapped={helloCapped}
+          spotlightName={current.match.display_name}
+          countLine={
+            checking ? `Checking ${scope.noun}…` : remainingLine(queue.length - 1, scope.where)
+          }
           radiusKm={radiusKm}
           onOpenRadius={() => setRadiusOpen(true)}
-          // The same three items the chat header and a stranger's profile
-          // raise. The block confirmation is this screen's own, because what
-          // it promises here is what a traveler is promised everywhere: gone
-          // from the map and Travelers, no message, not told.
-          onMore={() =>
-            openTravelerMenu({
-              userId: current.userId,
-              context: 'travelers',
-              onBlock: () =>
-                Alert.alert(
-                  `Block ${current.match.display_name ?? 'this traveler'}?`,
-                  "They're gone from the map and Travelers, and can't message you. They're not told.",
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Block',
-                      style: 'destructive',
-                      onPress: () => block.mutate(current.userId),
-                    },
-                  ]
-                ),
-            })
-          }
-          onNext={() => {
-            haptics.selection();
-            // Name first: after passed.add the candidate leaves the queue,
-            // and the bar has to say who it was about.
-            const name = current.match.display_name ?? 'them';
-            // The two bars share one slot, so the newer act owns it.
-            useSaidHi.getState().clear();
-            passed.add(current.userId);
-            setRestoredId(null);
-            if (undoTimer.current) {
-              clearTimeout(undoTimer.current);
-            }
-            setUndo({ id: current.userId, name, at: Date.now() });
-            undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS);
-          }}
-          onSayHi={() => {
-            // Anchored even on the lazy path. Every hello now opens pointed
-            // at something specific, and when nothing on the profile has been
-            // tapped the something is the fact that put these two people in
-            // front of each other: the dates they share. A first message
-            // with an anchor is easier to write, easier for the recipient to
-            // answer, and easier for moderation to read in context.
-            const overlap = [...current.overlaps.values()][0];
-            // The one builder, shared with the pill on this very card and
-            // with the chip on the card the recipient answers it from.
-            const quote = overlapSentence(
-              current.match.city_name,
-              overlap?.start,
-              overlap?.end,
-              current.match.my_city_name
-            );
-            openReply({
-              userId: current.userId,
-              name: current.match.display_name ?? 'Traveler',
-              photoPath: current.match.photo_path ?? null,
-              source: 'trip_match',
-              origin: 'travelers',
-              target: quote
-                ? { key: 'trip', label: 'your dates together', quote }
-                : // Still the trip, not the bio: both people are there by
-                  // definition of the match even when there is no computed
-                  // overlap to quote — and a bio anchor claimed a hello came
-                  // from a field that may be empty.
-                  { key: 'trip', label: 'your dates together' },
-            });
-          }}
         />
-      </Animated.View>
+        {/* Keyed on the person, so a new face fades in; the header above is
+            not, so it stays put. */}
+        <Animated.View entering={FadeIn.duration(200)} style={styles.page} key={current.userId}>
+          <TravelerPage
+            candidate={current}
+            barHeight={barHeight}
+            onBarHeight={setBarHeight}
+            width={Math.min(width, MaxContentWidth)}
+            refreshing={matchesQuery.isFetching}
+            onRefresh={refresh}
+            helloCapped={helloCapped}
+            // The same three items the chat header and a stranger's profile
+            // raise. The block confirmation is this screen's own, because what
+            // it promises here is what a traveler is promised everywhere: gone
+            // from the map and Travelers, no message, not told.
+            onMore={() =>
+              openTravelerMenu({
+                userId: current.userId,
+                context: 'travelers',
+                onBlock: () =>
+                  Alert.alert(
+                    `Block ${current.match.display_name ?? 'this traveler'}?`,
+                    "They're gone from the map and Travelers, and can't message you. They're not told.",
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Block',
+                        style: 'destructive',
+                        onPress: () => block.mutate(current.userId),
+                      },
+                    ]
+                  ),
+              })
+            }
+            onNext={() => {
+              haptics.selection();
+              // Name first: after passed.add the candidate leaves the queue,
+              // and the bar has to say who it was about.
+              const name = current.match.display_name ?? 'them';
+              // The two bars share one slot, so the newer act owns it.
+              useSaidHi.getState().clear();
+              passed.add(current.userId);
+              setRestoredId(null);
+              if (undoTimer.current) {
+                clearTimeout(undoTimer.current);
+              }
+              setUndo({ id: current.userId, name, at: Date.now() });
+              undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS);
+            }}
+            onSayHi={() => {
+              // Anchored even on the lazy path. Every hello now opens pointed
+              // at something specific, and when nothing on the profile has been
+              // tapped the something is the fact that put these two people in
+              // front of each other: the dates they share. A first message
+              // with an anchor is easier to write, easier for the recipient to
+              // answer, and easier for moderation to read in context.
+              const overlap = [...current.overlaps.values()][0];
+              // The one builder, shared with the pill on this very card and
+              // with the chip on the card the recipient answers it from.
+              const quote = overlapSentence(
+                current.match.city_name,
+                overlap?.start,
+                overlap?.end,
+                current.match.my_city_name
+              );
+              openReply({
+                userId: current.userId,
+                name: current.match.display_name ?? 'Traveler',
+                photoPath: current.match.photo_path ?? null,
+                source: 'trip_match',
+                origin: 'travelers',
+                target: quote
+                  ? { key: 'trip', label: 'your dates together', quote }
+                  : // Still the trip, not the bio: both people are there by
+                    // definition of the match even when there is no computed
+                    // overlap to quote — and a bio anchor claimed a hello came
+                    // from a field that may be empty.
+                    { key: 'trip', label: 'your dates together' },
+              });
+            }}
+          />
+        </Animated.View>
+      </View>
       {showSaidHi && saidHiTo ? <SaidHiStrip name={saidHiTo.name} bottom={barHeight} /> : null}
       {radiusSheet}
       {undo && !showSaidHi ? (
@@ -1500,13 +1614,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.lg,
     paddingRight: HitTarget + Space.lg,
   },
-  spotlightChip: {
+  spotlightRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.xs,
-    paddingHorizontal: Space.md,
-    paddingVertical: 6,
-    borderRadius: Radius.pill,
+  },
+  // The rail shares the top band with the 44pt avatar: a minHeight (never a
+  // height, which clips at the accessibility sizes) centres the chips on it.
+  tripRail: {
+    alignSelf: 'stretch',
+    minHeight: HitTarget,
+    justifyContent: 'center',
+    paddingBottom: Space.xs,
   },
   sharedTodayNote: {
     textAlign: 'center',

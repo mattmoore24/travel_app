@@ -3,6 +3,95 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **Which trips the queue is for, and no limit on how far ahead** (2026-09-05)
+
+The founder, on the Travelers tab: "remove the descriptions around each distance,
+the km conversion is enough", and "you should be able to select at the top near
+where it says 'today in Mexico City' ... which of your trips you want to show in
+the travelers section ... one, multiple, or all ... people could even put trips on
+their profile for the full year at the beginning of the year ... there'd be no
+limit."
+
+### What the code did before
+
+The queue already spanned every active trip: `get_matches` joined all of them,
+kept one row per other traveler and attributed it to whichever trip reached them
+soonest. Nothing let a person narrow it, the "8 more on your dates in Mexico
+City" line borrowed the city of whoever was on screen, and an overlap starting
+more than 180 days out was invisible in three places at once: the trips policy's
+predicate (`overlaps_own_trip`), `get_matches` and the hello.
+
+### What shipped
+
+- **The horizon is gone** (20260905090000). All three functions are restated
+  without `current_date + 180`; a trip added a year ahead is matched from the day
+  it is added. pgTAP 10's "not shown yet" became "shown: there is no horizon any
+  more", and the hello to somebody 200 days out goes through inside a savepoint.
+- **`get_matches(p_trip_ids uuid[] default null)`.** The only argument the queue
+  takes, and it is the caller's own trip ids: joined to `trips where user_id =
+auth.uid()`, so a foreign id names nothing (pgTAP 76 asserts the argument list
+  and all four shapes). Null is every trip, so `daily_spotlight`'s zero-argument
+  call and build 17's bundle are unchanged.
+- **The trip rail** at the top of Travelers, where "Today in <city>" was: the
+  app's own `ChipRail` in multi mode, "All trips" first, then one chip per
+  upcoming trip in date order, city names only (the month when a city repeats,
+  the day when the month does too), dates spoken to VoiceOver. "All trips" is a
+  zero state: one tap on a city narrows to that trip; untapping the last lit chip
+  is every trip again. Shown only with two or more trips. Kept per account on the
+  device (`features/matching/trip-selection`), read before the first fetch so the
+  tab never flashes the wrong queue, and read as every trip when it names a trip
+  that ended. `useMatches` keeps the last queue on screen while the next loads,
+  so a tap never drops the screen into its skeleton.
+- **The sentences follow, from one phrase.** `queueScope` says what the queue
+  is for ("in Lisbon", "in Lisbon and Porto", "across these 3 trips", "across all
+  your trips") and the count line, the empty wall's title and the VoiceOver
+  settle all read it, so they cannot disagree; the wall's title lost "with
+  travel plans matching yours" on the way, the one banned root on the screen.
+  While a tap's new queue loads the count line says "Checking Lisbon…" over the
+  face that stays. An empty wall the selection emptied says "You're only looking
+  at Lisbon, Mar 4 – 9." (or "sometime in September" for rough dates, or "2 of
+  your 7 trips") with "Show all trips" as the way back. The spotlight's sparkles
+  stay beside "Shown to you and Freja today."; its chip is gone.
+- **The radius rows** carry the conversion and nothing else ("32 km"); "This
+  city only" has no second line.
+
+### What did not move
+
+Who can see whom. The selection changes only what the person's own queue is
+built from: their profile is shown to everyone the audience setting allows, on
+every trip. The audience wall outranks the trip wall, because the audience hides
+people on every trip and its sentence stays true. No device location anywhere:
+the ids are the person's own trips, and every distance is still city centre to
+city centre (rule 2).
+
+### The review's grafts
+
+Four reviewers over the diff before the push. The empty wall now carries the
+rail too, with "Show all trips" whether or not the audience setting is what
+emptied it (a person narrowed to a trip nobody overlaps who had also set
+"verified only" had no way back). The header is rendered once above the page
+keyed on the person, so a Next no longer tears the rail down and resets its
+scroll. The first fetch waits for the trips as well as the stored choice, and
+the focus refetch waits on the same flag, because `refetch()` ignores
+`enabled`. A tap toggles from the selection the chips show, not the raw stored
+one, so a stored set that covers every remaining trip narrows on a tap rather
+than dropping a chip. The chip hints say what the tap does in its state
+("Looks at just this trip." from All trips). pgTAP 76 first proves the foreign
+id is real before proving it names nothing. The brief says the rule that
+holds: a start date up to two years ahead (a typo guard, not a plan limit),
+and no matching horizon. `expire_message_requests` keeps its 180-day term: its
+own 30-day cap makes the term unable to change a result, and the migration
+header says so.
+
+### A design panel first
+
+Three independent designs (least UI, trips as the hero, the words first), two
+judges, one synthesis, before a line of UI. The rail above is the synthesis;
+what it deliberately left out is recorded in the component: no sheet, no "All"
+that lights with every chip, no dates on the visible chips, no counts on chips,
+no "now" or "here" mark on a trip in progress, no automatic widening when a new
+trip is added while narrowed.
+
 ## **A pin goes where the traveler goes** (2026-09-04)
 
 The founder tried to drop a pin in Manhattan and got "Could not save". The

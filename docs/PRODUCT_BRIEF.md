@@ -56,8 +56,15 @@ stated in marketing.
 
 ### Surface B — Traveler Matching
 
-- Users post trips: "I'll be in [city/area] from [date] to [date]."
+- Users post trips: "I'll be in [city/area] from [date] to [date]." A trip can start up to
+  two years ahead, and there is no matching horizon (founder, 2026-09-04: a year of trips
+  added in January is fine, "there'd be no limit"; the two-year bound on a start date is a
+  typo guard, not a plan limit, and can go on the founder's word).
 - The app surfaces other travelers with overlapping city + dates in a browsable card stack.
+- The Travelers tab lets a person choose which of their own trips the stack is built from:
+  one, several, or all (founder, 2026-09-04). That choice is a view preference and nothing
+  more. It never changes who can see them: their profile is shown, on every trip, to
+  everyone their audience setting allows.
 - **Hinge-style mechanics, not Tinder**: a user sends an initial message attached to a specific
   part of the recipient's profile; the recipient sees the message and the sender's profile and
   chooses to accept (opens chat) or decline (sender is not notified beyond no-response).

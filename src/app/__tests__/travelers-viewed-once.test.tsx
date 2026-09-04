@@ -57,6 +57,8 @@ jest.mock('@/features/trips/hooks', () => ({
 
 jest.mock('@/features/profile/hooks', () => ({
   useOwnProfile: () => ({ data: null }),
+  // The trip picker's store is keyed on the account.
+  useOwnUserId: () => null,
   useOwnVisibility: () => ({ data: 'everyone' }),
   usePublicProfile: () => ({ data: null }),
   usePublicPhotos: () => ({ data: [] }),

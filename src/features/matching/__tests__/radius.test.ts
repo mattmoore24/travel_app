@@ -38,10 +38,15 @@ describe('the travelers radius', () => {
     expect(radiusChipLabel(0, false)).toBe('This city only');
   });
 
-  it('gives each row the other unit and an example a traveler recognises', () => {
-    expect(radiusDetail(32, true)).toBe('32 km. Nice reaches Monaco, Antibes and Cannes.');
-    expect(radiusDetail(32, false)).toBe('20 miles. Nice reaches Monaco, Antibes and Cannes.');
-    expect(radiusDetail(0, true)).toBe('Only travelers with a trip to the same city.');
+  it('gives each row the other unit and nothing else', () => {
+    // The conversion and nothing after it (founder, 2026-09-04: "the km
+    // conversion is enough"); the city-only row has no other unit to give.
+    expect(radiusDetail(32, true)).toBe('32 km');
+    expect(radiusDetail(32, false)).toBe('20 miles');
+    expect(radiusDetail(16, true)).toBe('16 km');
+    expect(radiusDetail(160, false)).toBe('99 miles');
+    expect(radiusDetail(0, true)).toBeNull();
+    expect(radiusDetail(0, false)).toBeNull();
   });
 
   it('lights the nearest row for a number the picker never offered', () => {
@@ -53,7 +58,11 @@ describe('the travelers radius', () => {
 
   it('never says where anybody is', () => {
     for (const option of RADIUS_OPTIONS_KM) {
-      for (const text of [radiusLabel(option), radiusDetail(option), radiusChipLabel(option)]) {
+      for (const text of [
+        radiusLabel(option),
+        radiusDetail(option) ?? '',
+        radiusChipLabel(option),
+      ]) {
         expect(text).not.toMatch(/near you|nearby|here now|around you/i);
       }
     }

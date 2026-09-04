@@ -8,12 +8,13 @@
  * audience setting — never of everyone in the city, which is why the words
  * say "on your dates" rather than claiming the city's population.
  */
-export function remainingLine(n: number, city: string): string {
+export function remainingLine(n: number, where: string | null): string {
   if (n <= 0) {
     return 'Last one for now';
   }
+  const scope = where ? ` ${where}` : '';
   if (n === 1) {
-    return `One more on your dates in ${city}`;
+    return `One more on your dates${scope}`;
   }
-  return `${n} more on your dates in ${city}`;
+  return `${n} more on your dates${scope}`;
 }

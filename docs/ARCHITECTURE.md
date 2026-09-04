@@ -1879,7 +1879,17 @@ halves.
   cannot widen past what RLS lets it read; the hello, the inbox chip and the meet
   question read the same number so no surface disagrees. Measured city centre to city
   centre from a trip the person typed, never from a device (rule 2); `get_matches` takes
-  no argument and pgTAP asserts it.
+  nothing but the caller's own trip ids (below) and pgTAP asserts the argument list.
+- **2026-09-05** — **A trip can be as far ahead as somebody plans, and the queue can be
+  one trip at a time.** The 180-day horizon is out of `overlaps_own_trip`, `get_matches`
+  and `send_message_request` (20260905090000): a year of trips added in January is
+  matched from the day each is added. `get_matches(p_trip_ids uuid[] default null)`
+  narrows the queue to some of the caller's trips; the ids are joined to
+  `trips where user_id = auth.uid()`, so a foreign id names nothing, and null is every
+  trip (daily_spotlight's zero-argument call is unchanged). The choice is a view
+  preference kept on the device per account (`features/matching/trip-selection`): it
+  changes nothing about who can see the person, whose profile is shown to everyone the
+  audience setting allows on every trip. The picker is the top of the Travelers tab.
 - **2026-09-04** — **Every city has a clock.** `cities.timezone` from `geo-tz` at seed
   time (49,025 rows, threshold 5,000), read through `city_clock_zone()`; the three push
   clocks and the pin's hour check no longer inner-join `launch_cities`, so a trip to Porto

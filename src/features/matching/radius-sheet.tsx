@@ -52,7 +52,9 @@ export function RadiusSheet({
               key={option}
               accessibilityRole="radio"
               accessibilityState={{ selected: lit, disabled: saving }}
-              accessibilityLabel={`${radiusLabel(option)}. ${radiusDetail(option)}`}
+              accessibilityLabel={[radiusLabel(option), radiusDetail(option)]
+                .filter(Boolean)
+                .join('. ')}
               testID={`radius-${option}`}
               scaleTo={0.985}
               disabled={saving}
@@ -72,9 +74,11 @@ export function RadiusSheet({
               ]}>
               <View style={styles.rowText}>
                 <ThemedText type="smallBold">{radiusLabel(option)}</ThemedText>
-                <ThemedText type="footnote" themeColor="textSecondary">
-                  {radiusDetail(option)}
-                </ThemedText>
+                {radiusDetail(option) ? (
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    {radiusDetail(option)}
+                  </ThemedText>
+                ) : null}
               </View>
             </PressableScale>
           );

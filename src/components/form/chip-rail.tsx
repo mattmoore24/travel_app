@@ -22,6 +22,9 @@ export type ChipOption<T extends string> = {
    * this id.
    */
   testID?: string;
+  /** Spoken in place of the label: a trip chip shows "Lisbon" and says its dates. */
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 };
 
 type ChipRailCommon<T extends string> = {
@@ -98,7 +101,8 @@ export function ChipRail<T extends string>(props: ChipRailProps<T>) {
         accessibilityRole="button"
         // The words on the chip, said plainly. A chip that carries a glyph
         // would otherwise be spoken as its artwork plus its label.
-        accessibilityLabel={option.label}
+        accessibilityLabel={option.accessibilityLabel ?? option.label}
+        accessibilityHint={option.accessibilityHint}
         accessibilityState={{ selected: active }}
         // The haptic is PressableScale's, on the way in. Calling haptics
         // again from onPress fired it twice on every chip in the app.

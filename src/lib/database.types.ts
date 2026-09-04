@@ -1642,7 +1642,8 @@ export type Database = {
         Returns: CityRow[];
       };
       get_matches: {
-        Args: Record<string, never>;
+        /** The caller's own trip ids to narrow the queue to; omitted is every trip. */
+        Args: { p_trip_ids?: string[] };
         Returns: MatchRow[];
       };
       traveler_trips: {

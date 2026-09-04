@@ -38,11 +38,13 @@ $$;
 create function pg_temp.lisbon() returns int language sql as
   $$ select id from public.cities where name = 'Lisbon' and country_code = 'PT' $$;
 
--- THE MATCHING HORIZON ---------------------------------------------------------
--- Alice and Bob overlap next week; Cara overlaps with Alice, but past the
--- horizon. That window is a season now (180 days, set in
--- 20260819210000_profile_first) rather than a fortnight, so Cara moves out
--- with it — the point of the fixture is the boundary, not the number.
+-- NO MATCHING HORIZON ----------------------------------------------------------
+-- Alice and Bob overlap next week; Cara overlaps with Alice 200 days out.
+-- There used to be a boundary here (a fortnight, then a season of 180 days,
+-- set in 20260819210000_profile_first) and Cara sat past it. Since
+-- 20260905090000 there is none: a trip can be as far ahead as somebody
+-- plans, and the founder's year-of-trips person sees who overlaps each of
+-- them from the day they are added.
 insert into public.trips (user_id, city_id, start_date, end_date) values
   ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), current_date + 2, current_date + 300),
   ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), current_date + 3, current_date + 9),
@@ -58,8 +60,8 @@ select is(
 select is(
   (select count(*)::int from public.get_matches()
     where user_id = '00000000-0000-0000-0000-00000000000c'),
-  0,
-  'an overlap beyond the matching horizon is not shown yet'
+  1,
+  'an overlap 200 days out is shown: there is no horizon any more'
 );
 select is(
   (select their_end from public.get_matches()
@@ -67,12 +69,15 @@ select is(
   current_date + 9,
   'matches carry the full stay so the card can show its length'
 );
-select throws_ok(
+-- The hello reaches as far as the queue does, and the queue has no horizon.
+-- Inside a savepoint, so the row it writes does not shift the counts below.
+savepoint hello_far_ahead;
+select lives_ok(
   $$ select public.send_message_request(
        '00000000-0000-0000-0000-00000000000c', 'trip_match', 'hi!', 'bio') $$,
-  'recipient unavailable',
-  'requests obey the same window as browsing'
+  'a hello to somebody 200 days out goes through: the same window as browsing'
 );
+rollback to savepoint hello_far_ahead;
 
 -- GUEST MODE: THE MAP ------------------------------------------------------------
 select pg_temp.admin();

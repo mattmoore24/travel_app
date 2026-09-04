@@ -11,7 +11,7 @@
 -- Rule 2 is asserted directly: get_matches() takes no argument at all, so no
 -- device coordinate can ever reach it.
 begin;
-select plan(56);
+select plan(64);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -394,10 +394,11 @@ select hasnt_function('public', 'request_city', array['text'],
 select hasnt_function('public', 'city_pin_counts', array[]::text[],
   'the launch-only chip count is gone');
 select is(
-  (select pronargs::int from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  (select pg_get_function_identity_arguments(p.oid)
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = 'get_matches'),
-  0,
-  'get_matches takes no argument: no coordinate can reach it (rule 2)'
+  'p_trip_ids uuid[]',
+  'get_matches takes only the caller''s own trip ids: no coordinate can reach it (rule 2)'
 );
 
 -- =============================================================================
@@ -518,6 +519,82 @@ select is(
     where user_id = '00000000-0000-0000-0000-00000000000a'),
   32,
   'Bob turning Alice''s dial changes nothing'
+);
+
+-- =============================================================================
+-- THE PICKER: SOME OF MY TRIPS, OR ALL OF THEM
+-- =============================================================================
+--
+-- Alice adds a second trip, to Lisbon on the same dates, so her queue spans
+-- two cities. The tab lets her look at one trip at a time; the server does
+-- the narrowing, so a person who overlaps her in Lisbon is not lost to a
+-- queue attributed to Nice.
+
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+update public.profiles set travelers_radius_km = 32 where user_id = auth.uid();
+insert into public.trips (user_id, city_id, start_date, end_date)
+  values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), current_date + 3, current_date + 13);
+select bag_eq(
+  $$ select user_id from public.get_matches() $$,
+  $$ values ('00000000-0000-0000-0000-00000000000b'::uuid),
+            ('00000000-0000-0000-0000-00000000000c'::uuid),
+            ('00000000-0000-0000-0000-00000000000d'::uuid) $$,
+  'every trip: Cannes and Antibes from Nice, Dave from Lisbon'
+);
+select bag_eq(
+  $$ select user_id from public.get_matches(array[
+       (select id from public.trips where user_id = auth.uid() and city_id = pg_temp.nice())]) $$,
+  $$ values ('00000000-0000-0000-0000-00000000000b'::uuid),
+            ('00000000-0000-0000-0000-00000000000c'::uuid) $$,
+  'the Nice trip alone: Cannes and Antibes'
+);
+select bag_eq(
+  $$ select user_id from public.get_matches(array[
+       (select id from public.trips where user_id = auth.uid() and city_id = pg_temp.lisbon())]) $$,
+  $$ values ('00000000-0000-0000-0000-00000000000d'::uuid) $$,
+  'the Lisbon trip alone: Dave'
+);
+-- Bob's trip is readable to Alice here (his Cannes trip overlaps her Nice
+-- one inside her reach, proven above), so the id below is a real one and
+-- the zero is the join refusing it, not a null array refusing everything.
+select isnt(
+  (select id from public.trips where user_id = '00000000-0000-0000-0000-00000000000b'),
+  null,
+  'the attack carries a real trip id'
+);
+select is(
+  (select count(*)::int from public.get_matches(array[
+     (select id from public.trips where user_id = '00000000-0000-0000-0000-00000000000b')])),
+  0,
+  'somebody else''s trip id names nothing: the ids are joined to the caller''s own trips'
+);
+select is(
+  (select count(*)::int from public.get_matches(null)),
+  3,
+  'and null is every trip, which is what daily_spotlight''s zero-argument call gets'
+);
+
+-- THE WINDOW WITHOUT ITS HORIZON is still a window: dates have to cross.
+-- Dave adds a Lisbon trip more than a year out; Alice's Lisbon dates do not
+-- reach it, so she can neither read it nor be shown it, however far ahead
+-- the policy now looks.
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+insert into public.trips (user_id, city_id, start_date, end_date)
+  values ('00000000-0000-0000-0000-00000000000d', pg_temp.lisbon(), current_date + 400, current_date + 410);
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  (select count(*)::int from public.trips
+    where user_id = '00000000-0000-0000-0000-00000000000d'
+      and start_date = current_date + 400),
+  0,
+  'a trip whose dates never cross the reader''s stays unreadable, however far ahead'
+);
+select is(
+  (select count(*)::int from public.get_matches()
+    where user_id = '00000000-0000-0000-0000-00000000000d'
+      and their_start = current_date + 400),
+  0,
+  'and the queue does not show it either'
 );
 
 select * from finish();
