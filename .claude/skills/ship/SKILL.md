@@ -75,12 +75,10 @@ to the working branch, then:
 changed or `version` moved — a false run reuses the last binary and pushes
 current JS to it over the `e2e` channel, which costs nothing.
 
-**One-time exception after the 0.2.0 bump (2026-09-02).** The e2e channel's
-binary is simulator build 13 (2026-08-22), runtime 0.1.0, and `version` is
-now 0.2.0, so a false run publishes a runtime-0.2.0 update that binary cannot
-take; the fetch gate fails rather than screenshotting old JavaScript. The
-first E2E run after the bump needs `build: true` once, and then `false` is
-right again.
+**After any `version` bump, one E2E run needs `build: true`**: a false run
+publishes an update for the new runtime that the reused binary cannot take,
+and the fetch gate fails rather than screenshotting old JavaScript. The 0.2.0
+one was run 109 (2026-09-04); `false` is right again since.
 
 The workflow's own input description used to contradict this, claiming the
 simulator could not reach `u.expo.dev`. It was wrong, and the evidence for it

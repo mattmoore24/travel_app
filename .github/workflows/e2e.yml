@@ -12,12 +12,6 @@ on:
     inputs:
       build:
         description: >-
-          ONE-TIME, 2026-09-02: app.json moved to 0.2.0 and runtimeVersion
-          follows appVersion, so the reused simulator binary (build 13, runtime
-          0.1.0) can no longer accept an update from this branch. The first run
-          after the bump MUST be build=true; after a 0.2.0 simulator build
-          exists, false is right again and this note comes out.
-
           Build a fresh simulator app, so the binary EMBEDS the code under
           test. Leave this OFF for a JavaScript-only change. This used to say
           the over-the-air path did not work here, on the evidence of a step
@@ -26,7 +20,10 @@ on:
           pipefail takes the whole step down the first time the file is
           missing, which is the case the loop exists to wait out. With that
           fixed, run 43 fetched the update and drove the flows against it. A
-          build costs real EAS credit; only native changes need one.
+          build costs real EAS credit; only native changes need one - and one
+          run after any `version` bump, because runtimeVersion follows
+          appVersion and the reused binary cannot take an update from the new
+          version (run 109, 2026-09-04, was the 0.2.0 one).
         type: boolean
         default: false
 
