@@ -416,3 +416,13 @@
              revocation from a logged no-op into the real call App Review
              5.1.1(v) asks for (half (b)). Watch for "Verified against a fresh
              GET" and "Apple revocation secrets synced" in the log.
+
+2026-09-04 — one migration, 20260904100000_a_badge_follows_the_face, plus the
+             moderation worker. Order matters and this is the safe way round:
+             the migration only WIDENS submit_verification (a pending photo is
+             accepted) and ADDS a trigger, so build 17's bundle keeps working
+             on it, while the production update that follows exposes a badge
+             step during signup that needs the wider guard. Watch for the
+             migration in "Migrations — after" and the worker in the deploy
+             list; the first tick after should report verifications.waiting
+             as a number rather than undefined.
