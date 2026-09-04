@@ -36,6 +36,11 @@ appId: com.mattmoore.samewhere
     timeout: 10000
 - tapOn:
     id: 'email-input'
+# The field is PREFILLED with the last address that signed in or up on this
+# device (lib/last-email), and on a full run that is the onboarding tour's
+# throwaway. Typing appended to it, and run 111 photographed "maestro-new-
+# ...Mattmoorefb2..." with "do not match" under it. Erase first.
+- eraseText: 120
 - inputText: ${E2E_EMAIL}
 # Return, not a tap on the next field. Tapping a second field while the
 # keyboard is up does not reliably move focus under XCUITest, and run 23

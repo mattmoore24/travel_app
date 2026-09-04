@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import Animated, {
   type SharedValue,
   useAnimatedKeyboard,
@@ -45,12 +45,32 @@ export function KeyboardFloor({
 }) {
   const keyboard = useAnimatedKeyboard();
   const insets = useSafeAreaInsets();
-  const floor = useAnimatedStyle(() => ({
-    paddingBottom: Math.max(keyboard.height.value - insets.bottom - (allowance?.value ?? 0), 0),
-  }));
+  const floor = useAnimatedStyle(() => {
+    // THE BAR IS NOT IN THE NUMBER. Reanimated reports the keyboard's own
+    // frame, and on iOS the input accessory view rides above it outside that
+    // frame - so a floor sized to the keyboard alone left the Hide keyboard
+    // bar lying across the bottom third of the Continue pill (run 109,
+    // screen 60). Every field carries that bar now (KeyboardDone), so while
+    // the keyboard is up the floor is taller by exactly its height.
+    const bar = Platform.OS === 'ios' && keyboard.height.value > 0 ? KEYBOARD_BAR_HEIGHT : 0;
+    return {
+      paddingBottom: Math.max(
+        keyboard.height.value + bar - insets.bottom - (allowance?.value ?? 0),
+        0
+      ),
+    };
+  });
 
   return <Animated.View style={[styles.flex, floor]}>{children}</Animated.View>;
 }
+
+/**
+ * The Hide keyboard bar's height: a footnote line plus Space.sm above and
+ * below it (keyboard-done-bar.tsx). Stated here rather than measured because
+ * the bar lives inside the keyboard's window, where nothing of ours can lay
+ * it out and read it back.
+ */
+export const KEYBOARD_BAR_HEIGHT = 36;
 
 const styles = StyleSheet.create({
   flex: {

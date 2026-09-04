@@ -188,6 +188,16 @@ device does something else.
   a `FormTextField` elsewhere in the file carried them. The replacement walks
   the rendered tree for the pair and, for the scan, requires each `<TextInput`
   to sit between a `<KeyboardDone>` and its `</KeyboardDone>`.
+- **Reanimated's `useAnimatedKeyboard().height` is the keyboard's frame and
+  NOT the input accessory view above it.** With a Hide keyboard bar on every
+  field, a floor sized to that height lifts a footer 36pt short and the bar
+  lies across the bottom third of the Continue pill (run 109, screen 60;
+  the tap still lands, the picture is wrong). `components/ui/keyboard-floor`
+  adds `KEYBOARD_BAR_HEIGHT` while the keyboard is up; a floor of its own
+  anywhere else has to do the same. And a control the floor puts UNDER the
+  keyboard on purpose (step-shell's footer) is still in the hierarchy, so a
+  Maestro `tapOn` finds it, reports COMPLETED, and taps the keys: hide the
+  keyboard first in the flow.
 - Lifting a bottom-anchored sheet by `translateY` works for short sheets and
   fails for tall ones: either the top runs off screen, or (once clamped) it
   cannot move at all and its own submit button stays buried. **Grow

@@ -106,7 +106,20 @@ session), so the map - still mounted under the signup route - replayed the
 intent into a screen nobody could see, entered place mode in the dark, and
 had lost it by the time the tabs came back. The effect now also waits for
 `useIsFocused()`: the intent is consumed only once a person can see the
-result. Run 111 is the proof either way.
+result. Run 111 proved it: the onboarding tour passed end to end, place
+mode and all. The same run then failed four other flows, and every one of
+them was the suite, not the app: the sign-in form remembers the last
+address that signed up on the device (lib/last-email) and the tour typed
+the E2E address onto the end of the throwaway's, so the large-text tour
+after it ran signed out and met the gate instead of place mode; the
+business description step autofocuses and "Skip for now" sits under the
+keyboard it raises; and the filter sheet's category chip sat under the Done
+band, which the fade and the padding above now clear. The flows erase the
+field and hide the keyboard first. One thing in the app did come out of it:
+Reanimated's keyboard height leaves out the input accessory view, so every
+`KeyboardFloor` that lifted a footer above the keyboard lifted it 36pt
+short and the Hide keyboard bar lay across the bottom of Continue (screen
+60). The floor adds the bar's height while the keyboard is up.
 
 ### Seven seams the pictures showed
 

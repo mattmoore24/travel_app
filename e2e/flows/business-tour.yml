@@ -330,12 +330,22 @@ appId: com.mattmoore.samewhere
 # What matters here is that a skippable step SAYS it is skippable, in
 # the founder's words, and that skipping works.
 - takeScreenshot: 60-business-description
+# The description field autofocuses and "Skip for now" is the last thing in
+# the footer, under the keyboard: run 111 tapped its coordinates through the
+# keys and stayed on the step. Put the keyboard away first; optional, so a
+# step that raised no keyboard is not a failure.
+- tapOn:
+    text: 'Hide keyboard'
+    optional: true
 - tapOn:
     text: 'Skip for now'
 - extendedWaitUntil:
     visible: 'When are you open?'
     timeout: 15000
 - takeScreenshot: 61-business-hours
+- tapOn:
+    text: 'Hide keyboard'
+    optional: true
 - tapOn:
     text: 'Skip for now'
 - extendedWaitUntil:
