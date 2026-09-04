@@ -53,21 +53,27 @@ describe('profile validation (client mirror of DB CHECK constraints)', () => {
   });
 });
 
-describe('step 3 cannot be passed without the gender question being answered', () => {
-  const answered = { name: 'Alice', age: '28', genderTouched: true };
+describe('step 3 cannot be passed without a gender', () => {
+  const answered = { name: 'Alice', age: '28', gender: 'woman' as const };
 
   it('lets a fully answered step through', () => {
     expect(basicsProblem(answered)).toBeNull();
   });
 
-  // The case that made this a finding: name and age valid, gender never
-  // touched, and the old expression let Continue through — so the women-only
-  // audience filter filled with the column default 'unspecified' from people
-  // who were never shown the question.
-  it('refuses valid name and age while gender was never touched', () => {
-    const problem = basicsProblem({ ...answered, genderTouched: false });
+  // The case that made this a finding: name and age valid, gender still at
+  // the column default, and the old expression let Continue through — so the
+  // women-only audience filter filled with 'unspecified' from people who were
+  // never shown the question.
+  it('refuses valid name and age while gender is still the column default', () => {
+    const problem = basicsProblem({ ...answered, gender: 'unspecified' });
     expect(problem).not.toBeNull();
     expect(problem).toContain('gender');
+    // The signup e2e taps Continue unanswered and asserts this prefix.
+    expect(problem).toMatch(/^Pick a gender\./);
+  });
+
+  it.each(['woman', 'man', 'nonbinary'] as const)('accepts %s', (gender) => {
+    expect(basicsProblem({ ...answered, gender })).toBeNull();
   });
 
   it('names the name and age problems in their own words first', () => {
@@ -75,11 +81,12 @@ describe('step 3 cannot be passed without the gender question being answered', (
     expect(basicsProblem({ ...answered, age: '17' })).toBe(validateAge('17'));
   });
 
-  it('accepts a deliberate "Rather not say" the same as any answer', () => {
-    // genderTouched is about the TAP, not the value: a deliberate opt-out
-    // writes the same 'unspecified' the default writes, and that is fine —
-    // what the check buys is that nobody reaches the filter unasked.
-    expect(basicsProblem({ name: 'Alice', age: '28', genderTouched: true })).toBeNull();
+  // "Rather not say" was an option and a deliberate tap on it passed. Founder,
+  // 2026-09-04: it "goes against our filters" — an unspecified profile sits in
+  // none of the gendered audiences while being free to choose one. There is
+  // no tap to honour any more; only the value counts.
+  it('no longer accepts an opt-out, deliberate or not', () => {
+    expect(basicsProblem({ name: 'Alice', age: '28', gender: 'unspecified' })).not.toBeNull();
   });
 });
 

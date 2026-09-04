@@ -3,7 +3,6 @@ import { Alert } from 'react-native';
 
 import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { useIsBusiness } from '@/features/business/hooks';
@@ -167,7 +166,6 @@ export function ContactForm({
         maxLength={MAX_BODY}
         style={{ minHeight: 140, textAlignVertical: 'top' }}
         testID="contact-message"
-        {...keyboardDoneProps}
       />
       {showReportHint ? (
         <ThemedText type="footnote" themeColor="textSecondary">

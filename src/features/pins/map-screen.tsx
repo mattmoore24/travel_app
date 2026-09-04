@@ -49,7 +49,6 @@ import { useCityBusinesses, useIsBusiness, useOwnBusiness } from '@/features/bus
 import { listingNotice } from '@/features/business/listing-notice';
 import { PlaceSheet } from '@/features/business/place-sheet';
 import { useIsGuest, useIsSignedOut, useMapHeat, useMapPins } from '@/features/guest/hooks';
-import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { AudienceChip } from '@/features/pins/audience-chip';
 import { audienceInSentence } from '@/features/profile/audience';
 import { deviceTimezone, pickBrowsingCity } from '@/features/pins/browsing-city';
@@ -3438,11 +3437,6 @@ export default function MapScreen() {
           )}
         </Sheet>
       ) : null}
-
-      {/* The map is not a StepScreen, so it mounts its own. The pin search
-          field is the one place on this screen somebody types, and "Pin
-          here" sits under the keyboard while they do. */}
-      <KeyboardDoneBar />
     </View>
   );
 }

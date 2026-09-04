@@ -6,7 +6,6 @@ import { StyleSheet, View } from 'react-native';
 
 import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -704,7 +703,6 @@ export default function BusinessSignupScreen() {
           value={name}
           onChangeText={setName}
           error={touched ? nameProblem(name) : null}
-          {...keyboardDoneProps}
         />
         <View style={styles.block}>
           <ThemedText type="callout">What kind of business?</ThemedText>
@@ -953,7 +951,6 @@ export default function BusinessSignupScreen() {
                 ? 'That address looks off. Check it over.'
                 : null
           }
-          {...keyboardDoneProps}
         />
         {/* Its own line rather than the field's hint, which an error replaces:
             this is the reason the address is being asked for at all, and it
@@ -990,7 +987,6 @@ export default function BusinessSignupScreen() {
             value={phone}
             onChangeText={setPhone}
             error={refused.includes('phone') ? 'That number did not take.' : null}
-            {...keyboardDoneProps}
           />
           <FormTextField
             label="WhatsApp"
@@ -1003,7 +999,6 @@ export default function BusinessSignupScreen() {
             value={whatsapp}
             onChangeText={setWhatsapp}
             error={refused.includes('whatsapp') ? 'That number did not take.' : null}
-            {...keyboardDoneProps}
           />
         </View>
       </StepShell>
@@ -1105,7 +1100,6 @@ export default function BusinessSignupScreen() {
               ? `${DESCRIPTION_MAX - descriptionText.length} characters left`
               : undefined
           }
-          {...keyboardDoneProps}
         />
       </StepShell>
     );
@@ -1368,7 +1362,6 @@ function ConfirmEmailFooter({
         value={code}
         // Paste from a mail app arrives with whatever was around it.
         onChangeText={(next) => setCode(next.replace(/\D/g, '').slice(0, CODE_LENGTH))}
-        {...keyboardDoneProps}
       />
       <PrimaryButton
         variant="ghost"

@@ -4,7 +4,6 @@ import { Alert, StyleSheet } from 'react-native';
 
 import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { useBlockUser, useReportUser } from '@/features/chat/hooks';
@@ -149,7 +148,6 @@ export default function ReportScreen() {
         value={details}
         onChangeText={setDetails}
         hint={`${details.length}/${DETAILS_MAX}`}
-        {...keyboardDoneProps}
       />
     </StepScreen>
   );

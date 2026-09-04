@@ -3,7 +3,6 @@ import { useRef, useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -99,7 +98,6 @@ export default function MessagePlaceScreen() {
         placeholder="Ask them anything. Beds, tables, what's on tonight."
         value={message}
         onChangeText={setMessage}
-        {...keyboardDoneProps}
       />
       <ThemedText type="small" themeColor="textSecondary">
         {message.length}/{MESSAGE_MAX}

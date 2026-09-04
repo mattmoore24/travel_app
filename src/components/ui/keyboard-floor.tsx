@@ -1,6 +1,10 @@
 import type { ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
-import Animated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import Animated, {
+  type SharedValue,
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
@@ -20,11 +24,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
  * home indicator, and the SafeAreaView around this still pays for it when the
  * keyboard is down.
  */
-export function KeyboardFloor({ children }: { children: ReactNode }) {
+export function KeyboardFloor({
+  children,
+  allowance,
+}: {
+  children: ReactNode;
+  /**
+   * The height of whatever sits BELOW this floor that the keyboard is allowed
+   * to cover, measured by the caller. The signup shell keeps its Continue,
+   * skip and sign-out under the keyboard rather than lifting them (founder:
+   * "have the keyboard go over them when the user is typing"), so its floor
+   * only needs to grow by the part of the keyboard that reaches past that
+   * footer. Without the allowance the content would shrink by the footer's
+   * height twice: once for the footer that is still laid out beneath, and
+   * again for the keyboard covering it. A shared value, because the footer's
+   * own height moves (a note appears, Dynamic Type) and the style runs on the
+   * UI thread.
+   */
+  allowance?: SharedValue<number>;
+}) {
   const keyboard = useAnimatedKeyboard();
   const insets = useSafeAreaInsets();
   const floor = useAnimatedStyle(() => ({
-    paddingBottom: Math.max(keyboard.height.value - insets.bottom, 0),
+    paddingBottom: Math.max(keyboard.height.value - insets.bottom - (allowance?.value ?? 0), 0),
   }));
 
   return <Animated.View style={[styles.flex, floor]}>{children}</Animated.View>;

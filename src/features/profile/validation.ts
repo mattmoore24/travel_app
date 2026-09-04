@@ -1,4 +1,4 @@
-import type { ProfileRow } from '@/lib/database.types';
+import type { Gender, ProfileRow } from '@/lib/database.types';
 
 // Client-side mirrors of the DB CHECK constraints (the DB is authoritative;
 // these exist for instant form feedback).
@@ -54,7 +54,7 @@ export function validateAge(value: string): string | null {
 
 /**
  * Whether step 3 of signup may continue, and if not, why — in the words the
- * step's note shows.
+ * step's note shows. Edit profile asks the same question of the same value.
  *
  * A pure function rather than an expression inside the component because of
  * the bug that made it one: `basicsOk` checked name and age only, gender sat
@@ -63,18 +63,24 @@ export function validateAge(value: string): string | null {
  * filled with the column default 'unspecified' from people who were never
  * shown the question.
  *
- * `genderTouched` rather than the value, because 'unspecified' ("Rather not
- * say") is both the honest opt-out and the silent default: requiring a
- * deliberate tap is what separates "chose not to say" from "never asked".
+ * The VALUE decides now, and 'unspecified' is refused. It used to be offered
+ * as "Rather not say" and accepted on the strength of a deliberate tap, which
+ * needed a `genderTouched` flag to tell the opt-out from the column default.
+ * Founder, 2026-09-04: "'rather not say' should not be an option for gender
+ * since it goes against our filters" — and it did, exactly: audience_admits
+ * puts an unspecified profile in none of the three gendered audiences while
+ * set_visibility let it choose one, so somebody could filter to verified
+ * women without being filterable as anything. With the option gone the value
+ * alone says whether the question was answered, and the flag goes with it.
  */
 export function basicsProblem({
   name,
   age,
-  genderTouched,
+  gender,
 }: {
   name: string;
   age: string;
-  genderTouched: boolean;
+  gender: Gender;
 }): string | null {
   const nameProblem = validateDisplayName(name);
   if (nameProblem != null) {
@@ -84,8 +90,9 @@ export function basicsProblem({
   if (ageProblem != null) {
     return ageProblem;
   }
-  if (!genderTouched) {
-    return 'Pick a gender. "Rather not say" is an answer too.';
+  if (gender === 'unspecified') {
+    // Begins "Pick a gender": the signup e2e asserts that prefix.
+    return 'Pick a gender. The filters for who sees you go by it.';
   }
   return null;
 }

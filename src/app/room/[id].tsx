@@ -5,7 +5,6 @@ import { useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -880,9 +879,6 @@ export default function RoomScreen() {
             </View>
           )}
         </KeyboardFloor>
-        {/* Outside the scroller: iOS hosts it in the keyboard's own window,
-            so where it sits only decides which fields can reach it. */}
-        <KeyboardDoneBar />
         {/* The account gate for a signed-out visitor who tried to report.
             /report is behind the signed-in guard, so the alternative was a
             tap allowed to do nothing on the one control that must never be

@@ -138,6 +138,14 @@ appId: com.mattmoore.samewhere
 # may expose the sentence as one element or as link fragments.
 - assertVisible: '.*house rules.*'
 - assertVisible: '.*privacy policy.*'
+# The footer no longer rides up with the keyboard (founder, 2026-09-04: "have
+# the keyboard go over them when the user is typing"), so the button is under
+# the keyboard until it is put away, and the way to put it away is the bar
+# every field now carries. Tapping the bar by its label is the assertion that
+# it exists for THIS field: under Fabric an InputAccessoryView binds to one
+# field, once, and the old one-bar-per-screen shape left every later field
+# with none. If this tap cannot land, that is the finding, not a flake.
+- tapOn: 'Hide keyboard'
 - tapOn:
     id: 'create-account'
 - tapOn:
@@ -159,6 +167,9 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'age-input'
 - inputText: '29'
+# A number pad draws no Return key at all, so the bar is this field's only
+# exit, and Continue sits under the pad until it is used.
+- tapOn: 'Hide keyboard'
 # Continue with the gender question unanswered is refused, and the shell's
 # note says which answer is outstanding. This is the finding that made the
 # change: name and age valid used to be enough, and the women-only filter's
@@ -189,12 +200,12 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'country-input'
 - inputText: 'Portugal'
-# Return, not the accessory bar's Done: iOS blurs a single-line field on
-# submit, and taps on the Done bar do not reliably land because iOS hosts it
-# in the keyboard's own window. Run 80 died on the next command for exactly
-# that reason — the keyboard was still up, so Maestro's scroll swipe landed
-# on the docked footer instead of the scroller, and Languages never came into
-# view.
+# Return, which blurs a single-line field. Run 80 died here with the keyboard
+# still up and the note at the time blamed "taps on the Done bar do not
+# reliably land"; read against keyboard-done-bar.tsx that was almost certainly
+# a bar that was not there at all - the one shared bar had bound to the first
+# field on the screen and this was the second. Return is still the cheaper
+# exit for a single-line field, so it stays.
 - pressKey: Enter
 - takeScreenshot: 52-signup-home
 
@@ -336,7 +347,13 @@ appId: com.mattmoore.samewhere
       - tapOn:
           id: 'bio-input'
       - inputText: 'Street food missions and long walks. Terrible at surfing, still going.'
+      # Keyboard up, bar above it, footer under it: this is the founder's
+      # 2026-09-04 screenshot with the two things they asked for, and the
+      # picture is the evidence that the bar is on a multiline field reached
+      # from another step, which is exactly the field the old shape lost.
       - takeScreenshot: 57-signup-bio
+      - tapOn: 'Hide keyboard'
+      - takeScreenshot: 57b-signup-bio-keyboard-away
       - tapOn: 'Continue'
       # STEPS 8, 9, 10 — prompts, priorities and trips. Each hands over to
       # the editor that owns it, which has its own pictures, so the flow
@@ -350,7 +367,7 @@ appId: com.mattmoore.samewhere
       - takeScreenshot: 58-signup-prompts
       - tapOn: 'Skip the prompts for now'
       - extendedWaitUntil:
-          visible: 'What are you after?'
+          visible: 'Add your top priorities for your trip'
           timeout: 15000
       - takeScreenshot: 59-signup-priorities
       - tapOn: 'Skip this for now'
@@ -371,7 +388,20 @@ appId: com.mattmoore.samewhere
       - assertVisible: 'Nobody sees these until you are both in a chat.*'
       - takeScreenshot: 71-signup-socials
       - tapOn: 'Skip your socials for now'
-      # STEP 12 — audience. No skip, because it has a default rather than
+      # STEP 12 — the badge, as a step of its own. It used to be reachable
+      # only as a door on the audience step (below, still there), and the
+      # founder walked the whole sequence without meeting it. The flow does
+      # not take the selfie: the simulator has no camera, and the point being
+      # proved is that the offer is made, with its cost under the skip.
+      - extendedWaitUntil:
+          visible: 'Get your badge'
+          timeout: 15000
+      - assertVisible: 'Take a selfie'
+      - assertVisible: 'Skip the badge for now'
+      - assertVisible: 'The verified-only options on the next screen stay locked until you do.'
+      - takeScreenshot: 71b-signup-badge
+      - tapOn: 'Skip the badge for now'
+      # STEP 13 — audience. No skip, because it has a default rather than
       # because it is compulsory, and the narrowed rows are inert until a
       # badge exists. That is the server's rule, and the step exists so
       # nobody finishes without learning the setting is there. For this
@@ -395,14 +425,15 @@ appId: com.mattmoore.samewhere
           timeout: 15000
       - assertVisible: 'Take a selfie'
       - takeScreenshot: 72b-signup-badge-door
-      # Back closes the door rather than leaving step 12, because the capture
-      # is this step with the door open and not a step of its own.
+      # Back closes the door rather than leaving step 13: from here the
+      # capture is this step with the door open. (Step 12 is where it is a
+      # step of its own, and this account skipped it.)
       - tapOn: 'Back'
       - extendedWaitUntil:
           visible: 'Who can see you'
           timeout: 15000
       - tapOn: 'Got it'
-      # STEP 13 — THE PROFILE ITSELF, which is the founder's "final look of
+      # STEP 14 — THE PROFILE ITSELF, which is the founder's "final look of
       # how your profile appears to other users", rendered by the component a
       # stranger gets. Never once photographed before this run.
       - extendedWaitUntil:

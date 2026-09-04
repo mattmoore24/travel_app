@@ -4,7 +4,6 @@ import { Alert, StyleSheet, View } from 'react-native';
 
 import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
@@ -141,7 +140,6 @@ export default function EditPromptScreen() {
           value={answer}
           onChangeText={setAnswer}
           hint={`${answer.length}/${PROMPT_ANSWER_MAX}`}
-          {...keyboardDoneProps}
         />
       </View>
     </StepScreen>

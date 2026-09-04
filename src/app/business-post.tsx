@@ -10,7 +10,6 @@ import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -557,7 +556,6 @@ export default function BusinessPostScreen() {
         hint={
           body.length > BODY_MAX - 100 ? `${BODY_MAX - body.length} characters left` : 'Optional.'
         }
-        {...keyboardDoneProps}
       />
 
       <PostPhotoField

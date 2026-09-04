@@ -64,9 +64,9 @@ time. That is the confusion the founder hit.
    `.claude/skills/design-review` still win: no swipe, no deck, no match, no
    hearts, no em dashes.
 
-## 3. A person: thirteen steps
+## 3. A person: fourteen steps
 
-Two live in the auth stack and eleven in onboarding, continuous on one progress
+Two live in the auth stack and twelve in onboarding, continuous on one progress
 bar, exactly as the two stacks already share `SIGNUP_TOTAL_STEPS`.
 
 | #   | Screen               | Asks                           | Skippable          | Why it exists, in the subtitle                                                                            |
@@ -82,8 +82,9 @@ bar, exactly as the two stacks already share `SIGNUP_TOTAL_STEPS`.
 | 9   | What you are after   | top priorities                 | yes                | "What you are hoping to do, so the right people say hi."                                                  |
 | 10  | Your trips           | one trip                       | yes                | "Dates in a city. This is the whole matching engine, so one trip is worth more than everything above it." |
 | 11  | Socials              | handles                        | yes                | "Nobody sees these until you are both in a chat."                                                         |
-| 12  | Who sees you         | audience                       | no (has a default) | the existing `AUDIENCE_BOTH_WAYS` copy                                                                    |
-| 13  | Here is your profile | review                         | —                  | "Your profile. Tap any part of it to change it."                                                          |
+| 12  | Get your badge       | one live selfie                | yes, cost stated   | `VERIFICATION_SUBTITLE`: proves your photos are you, unlocks who can see you                              |
+| 13  | Who sees you         | audience                       | no (has a default) | the existing `AUDIENCE_BOTH_WAYS` copy                                                                    |
+| 14  | Here is your profile | review                         | —                  | "Your profile. Tap any part of it to change it."                                                          |
 
 Step 10 is the one that earns the extra length: the app's core loop cannot run
 for a profile with no trip, and today nothing asks.
@@ -92,7 +93,15 @@ Step 5 moves photos from last to fifth, which is Hinge's order and the right
 one: a face makes the rest of the questions feel worth answering, and a person
 who quits after step 5 still has a profile somebody could act on.
 
-Step 13 renders `ProfileView` in owner mode with every section's edit
+Step 12 is the badge (added 2026-09-04). It was a door on the audience step,
+opened only by tapping a locked row, and the founder walked the sequence
+without meeting it. As a step it is offered to everyone, skippable, and its
+skip says what it costs: the verified-only rows on the next screen stay
+locked. The door on step 13 stays for whoever skipped. A selfie can be sent
+while the step-5 photo is still being checked; the worker waits for the photo
+rather than rejecting.
+
+Step 14 renders `ProfileView` in owner mode with every section's edit
 affordance wired to jump back to the step that owns it, then `Looks right,
 finish`. That is the only place `onboarding_completed_at` is stamped.
 
@@ -329,5 +338,5 @@ steps with no skip, so an account that reached the app has them.
 - The audience step's constraint: `set_visibility` refuses a narrowed audience
   without a verified badge, so the four narrowed rows stay inert during signup
   with the reason said out loud.
-- `StepShell` as the shared chrome. Thirteen steps is a lot of screens and
+- `StepShell` as the shared chrome. Fourteen steps is a lot of screens and
   exactly zero new layout components.

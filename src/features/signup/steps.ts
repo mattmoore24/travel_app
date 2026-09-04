@@ -1,5 +1,5 @@
 /**
- * Signup is thirteen screens spanning two navigation stacks (the account is
+ * Signup is fourteen screens spanning two navigation stacks (the account is
  * created between step 2 and step 3, which is what moves the app from the
  * auth stack to onboarding). The count lives here so the progress bar stays
  * continuous across that handover.
@@ -13,15 +13,21 @@
  * app exists for.
  *
  * So every part of a profile is asked for once, on its own screen, with a
- * line saying what it is for and where it shows up. Thirteen screens is more
- * screens and less work, because each one asks a single question and the
- * optional ones say so and can be passed in one tap. That is Hinge's shape
- * and the founder asked for it in as many words.
+ * line saying what it is for and where it shows up. More screens and less
+ * work, because each one asks a single question and the optional ones say so
+ * and can be passed in one tap. That is Hinge's shape and the founder asked
+ * for it in as many words.
+ *
+ * The fourteenth is the badge (2026-09-04). The selfie check used to be a
+ * door on the audience step, opened only by tapping a locked row, and the
+ * founder walked the whole sequence without meeting it: "There should be an
+ * option to verify your profile during onboarding." So it is a step of its
+ * own, skippable, right before the step it unlocks.
  *
  * See docs/ONBOARDING.md for the whole sequence and why each step sits where
  * it does.
  */
-export const SIGNUP_TOTAL_STEPS = 13;
+export const SIGNUP_TOTAL_STEPS = 14;
 
 /** The last one, which is the profile itself. Named so nothing hardcodes 13. */
 export const SIGNUP_REVIEW_STEP = SIGNUP_TOTAL_STEPS;
@@ -39,9 +45,9 @@ export const SIGNUP_REVIEW_STEP = SIGNUP_TOTAL_STEPS;
  * in the flow's own words is what turns the lights on — drawn with no bar at
  * all.
  *
- * It happens to equal SIGNUP_TOTAL_STEPS today. /join still branches on the
- * account kind rather than collapsing to one constant, which costs nothing and
- * stays honest the next time the two sequences diverge.
+ * It equalled SIGNUP_TOTAL_STEPS until the badge step made a person's signup
+ * fourteen. /join branches on the account kind, which is what let the two
+ * diverge without either bar lying.
  */
 export const BUSINESS_TOTAL_STEPS = 13;
 
@@ -65,6 +71,7 @@ const SIGNUP_STEP_NAMES = [
   'priorities',
   'trip',
   'socials',
+  'badge',
   'audience',
   'review',
 ] as const;

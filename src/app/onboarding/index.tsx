@@ -5,12 +5,12 @@ import { StyleSheet, View } from 'react-native';
 import { LanguageField } from '@/components/form/language-field';
 import { CityField } from '@/components/form/city-field';
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { SelectField } from '@/components/form/select-field';
 import { PhotoGrid } from '@/components/photo-grid';
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Space } from '@/constants/theme';
+import { PressableScale } from '@/components/ui/pressable-scale';
+import { HitTarget, Radius, Space } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
 import { useAuthStore } from '@/features/auth/store';
 import {
@@ -73,12 +73,26 @@ const CHANGE_LATER = 'You can change this any time, from your profile.';
 
 /** The last step: the profile itself, and where an edit jump comes back to. */
 const REVIEW_STEP = SIGNUP_TOTAL_STEPS;
+/** The two before it, named because the badge step hands over to the audience step. */
+const AUDIENCE_STEP = SIGNUP_TOTAL_STEPS - 1;
+const BADGE_STEP = SIGNUP_TOTAL_STEPS - 2;
 
+/**
+ * The badge's own version of CHANGE_LATER. A badge is not "changed" from the
+ * profile; it is taken there, once, whenever somebody gets round to it.
+ */
+const DO_LATER = 'You can do this any time, from your profile.';
+
+// No "Rather not say". Founder, 2026-09-04: it "goes against our filters", and
+// it did: the gendered audiences go by this value, so an unspecified profile
+// could narrow itself to verified women while sitting in no gendered audience
+// at all. 'unspecified' is still the column default every account is born
+// with (and what a guest stays), which is why the type keeps it and step 3
+// refuses it.
 const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: 'woman', label: 'Woman' },
   { value: 'man', label: 'Man' },
   { value: 'nonbinary', label: 'Non-binary' },
-  { value: 'unspecified', label: 'Rather not say' },
 ];
 
 export default function OnboardingScreen() {
@@ -163,32 +177,22 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   );
   // Set while somebody is off fixing one section from the review step.
   const [returnTo, setReturnTo] = useState<number | null>(null);
-  // Step 12's door. A brand-new account can never be verified, so every row
-  // but Everyone is locked - and the step used to name the badge, say it
-  // lives somewhere else, and hand you no way to get one. `wantedAudience` is
-  // the row that was reached for, kept so it can be applied the moment the
-  // badge clears rather than asking again.
+  // The audience step's door. A brand-new account can never be verified, so
+  // every row but Everyone is locked - and the step used to name the badge,
+  // say it lives somewhere else, and hand you no way to get one. The badge has
+  // a step of its own before this one now; the door stays for whoever skipped
+  // it. `wantedAudience` is the row that was reached for, kept so it can be
+  // applied the moment the badge clears rather than asking again.
   const [capturingBadge, setCapturingBadge] = useState(false);
   const [wantedAudience, setWantedAudience] = useState<ProfileAudience | null>(null);
   const appliedWanted = useRef(false);
   const [name, setName] = useState(profile.display_name ?? '');
   const [age, setAge] = useState(profile.age != null ? String(profile.age) : '');
+  // 'unspecified' here means the column default, never an answer: the
+  // opt-out is gone (see GENDER_OPTIONS), so the value alone says whether the
+  // question was answered and the `genderTouched` flag that used to tell a
+  // deliberate "Rather not say" from never-asked has nothing left to tell.
   const [gender, setGender] = useState<Gender>(profile.gender);
-  // Whether the gender question has ever been ANSWERED, as opposed to left
-  // at its column default. 'unspecified' is both the honest opt-out ("Rather
-  // not say") and the silent default, so the value alone cannot tell "chose
-  // not to say" from "never saw the question" — and the women-only audience
-  // filter was filling with defaults from people who never saw it. A saved
-  // non-default value counts as answered, so backing up to this step never
-  // asks twice.
-  const [genderTouched, setGenderTouched] = useState(
-    // A saved non-default gender proves the question was answered. So do
-    // saved basics: name and age are only ever written by step 3's Continue,
-    // which this very gate refuses until gender is touched — so a person who
-    // picked "Rather not say" (stored as the column default, which the DB
-    // cannot tell from never-asked) is not asked twice after a relaunch.
-    profile.gender !== 'unspecified' || (profile.display_name != null && profile.age != null)
-  );
   const [city, setCity] = useState(profile.home_city ?? '');
   const [country, setCountry] = useState(profile.home_country ?? '');
   const [languages, setLanguages] = useState<string[]>(profile.languages);
@@ -213,7 +217,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   const nameError = touched ? validateDisplayName(name) : null;
   const ageError = touched ? validateAge(age) : null;
   const bioError = validateBio(bio);
-  const basicsOk = basicsProblem({ name, age, genderTouched }) == null;
+  const basicsOk = basicsProblem({ name, age, gender }) == null;
   const homeOk = (city.trim().length > 0 || country.trim().length > 0) && languages.length > 0;
 
   // The one door every step leaves through, so the funnel event lives here
@@ -248,9 +252,14 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   };
 
   // The capture, mounted for the whole of ProfileSteps rather than only while
-  // step 12 shows it: the hook holds the selfie somebody just took, and a
+  // a step shows it: the hook holds the selfie somebody just took, and a
   // component that unmounts between the shot and the submit throws it away.
-  const badge = useVerificationCapture({ onDone: () => setCapturingBadge(false) });
+  // Two steps draw it. On the badge step, done means the next screen; on the
+  // audience step, where it is a door opened from a locked row, done means
+  // the door closes. The hook runs every render, so this closure is current.
+  const badge = useVerificationCapture({
+    onDone: () => (step === BADGE_STEP ? go(AUDIENCE_STEP) : setCapturingBadge(false)),
+  });
 
   // The row that was reached for, applied the moment the badge is real. A
   // ref rather than clearing state, because a setState inside an effect is a
@@ -291,14 +300,28 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   // hostel wifi that drops gets "Could not save" on step 3 and, before this,
   // had no back, no sign out and no way to reach the app: an account that
   // cannot finish was worse off than no account at all.
+  //
+  // Quiet, though. It was a full-width ghost button under every step, the
+  // same weight as the skip and nearly the weight of Continue, on screens
+  // where the person has not yet reached the app they would be signing out
+  // of. Founder, 2026-09-04: "not really a need for the sign out prompt to be
+  // so prominent during onboarding as you are still just creating your
+  // account". A footnote-sized line, the same voice as the skip, still 44pt
+  // tall so it can be hit, and still on every step for the reason above.
   const signOutFooter = (
-    <PrimaryButton
-      variant="ghost"
-      label="Sign out"
+    <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel="Sign out"
+      haptic="light"
+      scaleTo={0.98}
       onPress={() => {
         signOut().catch(() => {});
       }}
-    />
+      style={styles.quietAction}>
+      <ThemedText type="footnote" themeColor="textSecondary">
+        Sign out
+      </ThemedText>
+    </PressableScale>
   );
 
   // The fork, and it can only live here.
@@ -343,7 +366,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         // already uses for its own missing answers.
         note={
           touched && nameError == null && ageError == null
-            ? basicsProblem({ name, age, genderTouched })
+            ? basicsProblem({ name, age, gender })
             : null
         }
         footer={businessFooter}
@@ -375,11 +398,12 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
           label="Gender"
           testID="gender-select"
           options={GENDER_OPTIONS}
-          value={gender}
-          onChange={(next) => {
-            setGender(next);
-            setGenderTouched(true);
-          }}
+          // null, not the column default: the picker would find no option for
+          // 'unspecified' and show its placeholder anyway, but a value the
+          // list does not carry should be said out loud rather than fallen
+          // through to.
+          value={gender === 'unspecified' ? null : gender}
+          onChange={setGender}
         />
         {/* A number pad draws no return key at all, so before the Done
             bar the only way out of this field was Continue, which commits
@@ -391,7 +415,6 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
           value={age}
           onChangeText={setAge}
           error={ageError}
-          {...keyboardDoneProps}
         />
       </StepShell>
     );
@@ -473,8 +496,10 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         onBack={() => go(4)}
         onContinue={() => go(6)}>
         {/* The footer note above already states the requirement, so the tile
-            caption carries the reason instead of saying it twice. */}
-        <PhotoGrid missingNote="People decide whether to say hi from this." />
+            caption carries the one instruction that decides whether the photo
+            works: founder, 2026-09-04, replacing "People decide whether to say
+            hi from this", which said why it mattered and not what to do. */}
+        <PhotoGrid missingNote="Make sure your face is clearly visible in your profile photo." />
       </StepShell>
     );
   }
@@ -530,7 +555,6 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
           onChangeText={setBio}
           error={bioError}
           hint={`${bio.length}/${BIO_MAX}`}
-          {...keyboardDoneProps}
         />
       </StepShell>
     );
@@ -587,7 +611,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
       <StepShell
         step={9}
         total={SIGNUP_TOTAL_STEPS}
-        title="What are you after?"
+        title="Add your top priorities for your trip"
         subtitle="Places, food, a night out, the one thing you would hate to miss. So the right people say hi."
         continueLabel={priorities.length > 0 ? 'Continue' : 'Add one'}
         note={CHANGE_LATER}
@@ -703,6 +727,51 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   }
 
   if (step === 12) {
+    // THE BADGE, AS A STEP. It was only a door on the audience step, opened
+    // by tapping a locked row, and the founder walked the sequence without
+    // finding it: "There should be an option to verify your profile during
+    // onboarding." Skippable, because the audience has a default and
+    // set_visibility works without a badge; what the skip costs is said under
+    // it, and the audience step keeps its door for anyone who skipped.
+    //
+    // Presented in place for the same reason the door is: `/verification`
+    // sits inside `Stack.Protected guard={signedIn && onboarded}` and an
+    // onboarding account satisfies neither half, so a push from here is a
+    // tap that silently does nothing.
+    //
+    // A selfie can be sent while the profile photo from step 5 is still being
+    // checked: submit_verification accepts a pending photo and the worker
+    // waits for it to clear rather than rejecting (20260904100000). Before
+    // that, taking the selfie seven screens after the photo was the commonest
+    // way to be told "add a profile photo before verifying".
+    const badgeSettled = badge.verified || badge.pending;
+    return (
+      <StepShell
+        step={12}
+        total={SIGNUP_TOTAL_STEPS}
+        title={VERIFICATION_TITLE}
+        subtitle={VERIFICATION_SUBTITLE}
+        // The hook's own labels once a selfie is in hand ("Take a selfie",
+        // "Submit selfie"); a plain Continue once there is nothing left to do
+        // here, because "Done" and "Close" are route words for a screen that
+        // is left, and this one is walked through.
+        continueLabel={badgeSettled ? 'Continue' : badge.continueLabel}
+        continueLoading={badge.submitting}
+        note={DO_LATER}
+        footer={signOutFooter}
+        onBack={() => go(11)}
+        onSkip={badgeSettled ? undefined : () => go(13, { skipped: true })}
+        skipLabel="Skip the badge for now"
+        // The cost, where the choice is made: the next screen's verified-only
+        // rows are inert without it, and that is the server's rule.
+        skipNote="The verified-only options on the next screen stay locked until you do."
+        onContinue={badgeSettled ? () => go(13) : badge.onContinue}>
+        <VerificationCaptureBody capture={badge} />
+      </StepShell>
+    );
+  }
+
+  if (step === 13) {
     // THE DOOR. Presented in place, not pushed: `/verification` sits inside
     // `Stack.Protected guard={signedIn && onboarded}` and an onboarding
     // account satisfies neither half, so a push from here is a tap that
@@ -711,12 +780,13 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
     // for the whole app (traps).
     return (
       <StepShell
-        step={12}
+        step={13}
         total={SIGNUP_TOTAL_STEPS}
-        // One shell, two faces. The capture is not a step of its own: it is
-        // this step with the door open, so the chrome, the progress bar and
-        // the sign-out footer stay exactly where they were and nothing
-        // remounts under the person's finger.
+        // One shell, two faces. The capture has a step of its own now (12),
+        // and this is still the door for whoever skipped it: the same hook,
+        // opened in place, so the chrome, the progress bar and the sign-out
+        // footer stay exactly where they were and nothing remounts under the
+        // person's finger.
         //
         // A statement for a brand-new account, because the step is a reading
         // screen for them: set_visibility refuses a narrowed audience without
@@ -747,8 +817,8 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
             : null
         }
         footer={signOutFooter}
-        onBack={capturingBadge ? () => setCapturingBadge(false) : () => go(11)}
-        onContinue={capturingBadge ? badge.onContinue : () => go(13)}>
+        onBack={capturingBadge ? () => setCapturingBadge(false) : () => go(12)}
+        onContinue={capturingBadge ? badge.onContinue : () => go(14)}>
         {capturingBadge ? <VerificationCaptureBody capture={badge} /> : null}
         {/* Everything but Everyone is inert here, and that is the server's
             rule rather than this screen's: set_visibility refuses a narrowed
@@ -814,7 +884,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
   // promises; the shell's Back still walks one step at a time.
   return (
     <StepShell
-      step={13}
+      step={14}
       total={SIGNUP_TOTAL_STEPS}
       title="Here you are"
       subtitle="Your profile. Tap any part of it to change it."
@@ -823,7 +893,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
       continueLoading={updateProfile.isPending}
       note="Every part of this is editable from your profile afterwards."
       footer={signOutFooter}
-      onBack={() => go(12)}
+      onBack={() => go(13)}
       onContinue={async () => {
         try {
           await updateProfile.mutateAsync({ onboarding_completed_at: new Date().toISOString() });
@@ -884,6 +954,13 @@ const styles = StyleSheet.create({
     // The profile draws its own full-bleed hero, so it cancels the shell's
     // gutter rather than sitting inside it as a card.
     marginHorizontal: -Space.lg,
+  },
+  // The skip's own geometry (step-shell.tsx `skip`), so Sign out sits under
+  // it as a second quiet line rather than a second button.
+  quietAction: {
+    minHeight: HitTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   bioInput: {
     minHeight: 120,

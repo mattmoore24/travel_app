@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { FlatList, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { KeyboardDoneBar, keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -64,21 +64,25 @@ export default function AddPeopleScreen() {
             size={16}
             tintColor={theme.textSecondary}
           />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search by name"
-            placeholderTextColor={theme.textSecondary}
-            autoCorrect={false}
-            autoCapitalize="words"
-            clearButtonMode="while-editing"
-            accessibilityLabel="Search people you know"
-            testID="add-people-search"
-            style={[styles.searchInput, { color: theme.text, fontFamily: Fonts?.sans }]}
-            // A search field with no Return that dismisses is how a list ends
-            // up hidden behind a keyboard with no way back.
-            {...keyboardDoneProps}
-          />
+          <KeyboardDone>
+            {(done) => (
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search by name"
+                placeholderTextColor={theme.textSecondary}
+                autoCorrect={false}
+                autoCapitalize="words"
+                clearButtonMode="while-editing"
+                accessibilityLabel="Search people you know"
+                testID="add-people-search"
+                style={[styles.searchInput, { color: theme.text, fontFamily: Fonts?.sans }]}
+                // A search field with no Return that dismisses is how a list ends
+                // up hidden behind a keyboard with no way back.
+                {...done}
+              />
+            )}
+          </KeyboardDone>
         </View>
 
         {error ? (
@@ -139,7 +143,6 @@ export default function AddPeopleScreen() {
           </ThemedText>
         </PressableScale>
       </SafeAreaView>
-      <KeyboardDoneBar />
     </ThemedView>
   );
 }

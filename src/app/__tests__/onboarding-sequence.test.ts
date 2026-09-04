@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { VERIFICATION_TITLE } from '@/features/profile/verification-capture';
 import { after } from '@/lib/__tests__/source';
 
 /**
@@ -25,6 +26,9 @@ const stripped = (...parts: string[]): string =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 
+/** Titles a step shares with a route, passed by name rather than retyped. */
+const SHARED_TITLES = { VERIFICATION_TITLE };
+
 describe('every part of a profile is asked for', () => {
   const code = stripped('onboarding', 'index.tsx');
 
@@ -33,24 +37,36 @@ describe('every part of a profile is asked for', () => {
     ['What do you do?', 6],
     ['A bit about you', 7],
     ['Answer a prompt', 8],
-    ['What are you after?', 9],
+    ['Add your top priorities for your trip', 9],
     ['Where are you going?', 10],
     ['Your socials', 11],
+    // The badge, as a step. It was a door on the audience step and the founder
+    // walked past it: "There should be an option to verify your profile
+    // during onboarding."
+    ['Get your badge', 12],
     // The statement, not the question: a brand-new account cannot change the
     // audience (set_visibility refuses without the badge), so the step reads
     // rather than asks. The question form is the verified branch.
-    ['Who can see you', 12],
-    ['Here you are', 13],
+    ['Who can see you', 13],
+    ['Here you are', 14],
   ])('asks "%s" at step %i', (title, step) => {
     const at = code.indexOf(`step={${step}}`);
     expect(at).toBeGreaterThan(-1);
-    // The title belongs to that step's shell, so it sits close after it.
-    expect(code.slice(at, at + 400)).toContain(title);
+    // The title belongs to that step's shell, so it sits close after it. A
+    // title shared with another screen is passed as its constant rather than
+    // retyped (the badge's is also /verification's and the audience door's),
+    // so the slice may carry the constant's name; the value is checked here
+    // against the same import the screen uses.
+    const shell = code.slice(at, at + 400);
+    const asConstant = Object.entries(SHARED_TITLES).some(
+      ([name, value]) => value === title && shell.includes(`title={${name}}`)
+    );
+    expect(shell.includes(title) || asConstant).toBe(true);
   });
 
-  it('counts thirteen steps in one place', () => {
+  it('counts fourteen steps in one place', () => {
     const steps = source('..', 'features', 'signup', 'steps.ts');
-    expect(steps).toContain('SIGNUP_TOTAL_STEPS = 13');
+    expect(steps).toContain('SIGNUP_TOTAL_STEPS = 14');
     // Every shell reads the constant for `total`, so the bar stays honest.
     expect(code).not.toMatch(/total=\{1[0-9]\}/);
   });
@@ -65,20 +81,33 @@ describe('skip is only on the steps that may be skipped', () => {
     return code.slice(at, next > at ? next : at + 2600);
   };
 
-  it.each([3, 4, 5, 12, 13])('step %i cannot be skipped', (step) => {
+  it.each([3, 4, 5, 13, 14])('step %i cannot be skipped', (step) => {
     expect(shellAt(step)).not.toContain('onSkip');
   });
 
-  it.each([6, 7, 11])('step %i can be', (step) => {
+  it.each([6, 7, 11, 12])('step %i can be', (step) => {
     expect(shellAt(step)).toContain('onSkip');
   });
 
-  it('step 12 answers with copy, not a skip', () => {
+  it('the badge step says what its skip costs, and stops offering it once a selfie is in', () => {
+    // A skip with a consequence on the very next screen carries that
+    // consequence, the way the trip step does; and once the selfie has been
+    // sent (or the badge is already there) the skip is meaningless and goes.
+    const shell = shellAt(12);
+    expect(shell).toContain('skipLabel="Skip the badge for now"');
+    expect(shell).toContain(
+      'skipNote="The verified-only options on the next screen stay locked until you do."'
+    );
+    expect(shell).toContain('onSkip={badgeSettled ? undefined');
+    expect(shell).toContain('<VerificationCaptureBody');
+  });
+
+  it('step 13 answers with copy, not a skip', () => {
     // The audience step has a default rather than an answer, so the cheap
     // fix — onSkip={() => go(13)} — would hide the setting from exactly the
     // person the founder added the step for. The statement title and "Got
     // it" are the fix instead.
-    const shell = shellAt(12);
+    const shell = shellAt(13);
     expect(shell).not.toContain('onSkip');
     expect(shell).toContain('Who can see you');
     expect(shell).toContain('Got it');
@@ -88,7 +117,7 @@ describe('skip is only on the steps that may be skipped', () => {
     // "Skip for now" told nobody what they were giving up at the moment they
     // gave it up. Each onSkip travels with its own skipLabel; the shell's
     // generic default is only a fallback, never what ships here.
-    for (const step of [6, 7, 8, 9, 10, 11]) {
+    for (const step of [6, 7, 8, 9, 10, 11, 12]) {
       expect(shellAt(step)).toContain('skipLabel=');
     }
   });
@@ -151,7 +180,7 @@ describe('the last step is the profile, not a summary of it', () => {
   it('is the only place the stamp is written', () => {
     const stamps = code.match(/onboarding_completed_at/g) ?? [];
     expect(stamps).toHaveLength(1);
-    expect(code.indexOf('onboarding_completed_at')).toBeGreaterThan(code.indexOf('step={13}'));
+    expect(code.indexOf('onboarding_completed_at')).toBeGreaterThan(code.indexOf('step={14}'));
   });
 
   it('says the same thing about changing your mind everywhere', () => {

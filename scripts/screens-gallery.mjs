@@ -129,11 +129,22 @@ const CAPTIONS = {
   '54-signup-photo-gate': ['Add a photo', 'The one mandatory thing on every profile.'],
   '55-signup-photo-added': ['A face', 'Which is what makes the rest worth answering.'],
   '56-signup-occupation': ['What do you do?', 'The first step that may be skipped.'],
-  '57-signup-bio': ['A bit about you', 'What somebody should message you about.'],
+  '57-signup-bio': [
+    'A bit about you',
+    'Keyboard up: the Hide keyboard bar above it, and Continue under it rather than on top of it.',
+  ],
+  '57b-signup-bio-keyboard-away': [
+    'A bit about you, keyboard away',
+    'The bar was tapped, so the footer is back and Continue is reachable.',
+  ],
   '58-signup-prompts': ['Answer a prompt', 'The bit people actually read.'],
   '59-signup-priorities': ['What are you after?', 'So the right people say hi.'],
   '70-signup-trips': ['Where are you going?', 'The one step the whole matching engine runs on.'],
   '71-signup-socials': ['Your socials', 'Nobody sees these until you are both in a chat.'],
+  '71b-signup-badge': [
+    'Get your badge',
+    'The selfie check as a step of its own, skippable, with the cost of skipping under it.',
+  ],
   '72-signup-audience': ['Who sees you', 'A default rather than a decision you must make now.'],
   '73-signup-review': ['Here you are', 'Exactly what a stranger sees.'],
   '74-signup-review-scrolled': ['The rest of it', 'Same page, further down.'],

@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { Composer } from '@/features/chat/composer';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -608,9 +607,6 @@ export default function ChatScreen() {
             />
           )}
         </KeyboardFloor>
-        {/* Outside the scroller: iOS hosts it in the keyboard's own window,
-            so where it sits only decides which fields can reach it. */}
-        <KeyboardDoneBar />
       </SafeAreaView>
     </ThemedView>
   );

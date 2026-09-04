@@ -13,6 +13,7 @@ import { RESUME_FIRST_STEP, RESUME_LAST_STEP, resumeStep, type ResumeProfile } f
 const blank: ResumeProfile = {
   display_name: null,
   age: null,
+  gender: 'unspecified',
   home_city: null,
   home_country: null,
   languages: [],
@@ -20,7 +21,7 @@ const blank: ResumeProfile = {
   bio: null,
 };
 
-const basics = { ...blank, display_name: 'Ana', age: 29 };
+const basics = { ...blank, display_name: 'Ana', age: 29, gender: 'woman' as const };
 const home = { ...basics, home_city: 'Lisbon', home_country: 'Portugal', languages: ['en'] };
 
 const step = (

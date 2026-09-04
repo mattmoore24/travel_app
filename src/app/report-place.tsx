@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -132,7 +131,6 @@ export default function ReportPlaceScreen() {
         value={note}
         onChangeText={setNote}
         hint={`${note.length}/${NOTE_MAX}`}
-        {...keyboardDoneProps}
       />
     </StepScreen>
   );

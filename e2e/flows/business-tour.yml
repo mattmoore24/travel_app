@@ -55,6 +55,9 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'password-input'
 - inputText: ${E2E_THROWAWAY_PASSWORD}
+# The footer sits under the keyboard now (step-shell.tsx), and every field
+# carries a Hide keyboard bar, so the button is reached by using it.
+- tapOn: 'Hide keyboard'
 - tapOn:
     id: 'create-account'
 - tapOn:
@@ -219,6 +222,8 @@ appId: com.mattmoore.samewhere
 - assertVisible:
     id: 'business-whatsapp-input'
 - takeScreenshot: 47-business-contact
+# A phone pad has no Return to leave with, and the button is under it.
+- tapOn: 'Hide keyboard'
 - tapOn:
     id: 'business-contact-continue'
 

@@ -1,3 +1,5 @@
+import type { Gender } from '@/lib/database.types';
+
 /**
  * Where onboarding should open for somebody who has been here before.
  *
@@ -16,20 +18,23 @@
  * so a person who passed the bio but added a trip comes back to socials
  * rather than being walked through four screens they chose to pass.
  *
- * Steps 11 (socials) and 12 (audience) are not detectable from here: handles
- * are their own query and the audience has a default that cannot be told from
- * an answer. So 11 is the highest this can return, and 12 only by the clamp.
+ * Steps 11 (socials), 12 (badge) and 13 (audience) are not detectable from
+ * here: handles are their own query, the badge is a check that takes minutes
+ * and is asked for again from the profile anyway, and the audience has a
+ * default that cannot be told from an answer. So 11 is the highest this can
+ * return, and the clamp stops at the audience step, never at the review.
  * That is the right way round: resuming one step early costs a tap, resuming
  * one step late skips a question.
  */
 
 export const RESUME_FIRST_STEP = 3;
-export const RESUME_LAST_STEP = 12;
+export const RESUME_LAST_STEP = 13;
 
 /** The columns of the profile row this decision reads, and nothing else. */
 export type ResumeProfile = {
   display_name: string | null;
   age: number | null;
+  gender: Gender;
   home_city: string | null;
   home_country: string | null;
   languages: string[];
@@ -45,9 +50,16 @@ type ResumeInput = {
   trips: unknown[];
 };
 
-/** Step 3: the name and the age. Gender rides along with them (see index.tsx). */
+/**
+ * Step 3: the name, the age, and a gender that is not the column default.
+ * Gender used to ride along on the strength of name and age being saved,
+ * because "Rather not say" wrote the same 'unspecified' the default does. That
+ * option is gone, so an account still at the default is one that has not
+ * answered — including one that picked the opt-out before it went — and it
+ * resumes on step 3 rather than past it.
+ */
 function basicsAnswered(profile: ResumeProfile): boolean {
-  return profile.display_name != null && profile.age != null;
+  return profile.display_name != null && profile.age != null && profile.gender !== 'unspecified';
 }
 
 /** Step 4: somewhere to call home, and at least one language. */

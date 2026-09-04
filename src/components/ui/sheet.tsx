@@ -13,7 +13,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { Elevation, MaxContentWidth, Motion, Radius, Space, Springs } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -438,10 +437,6 @@ export function Sheet({
           )}
         </Animated.View>
       </GestureDetector>
-      {/* A sheet presented through a Modal is hosted in its OWN window, so
-          the bar the screen underneath mounted cannot be reached from a field
-          in here. Every sheet with a field needs one of its own. */}
-      <KeyboardDoneBar />
     </View>
   );
 

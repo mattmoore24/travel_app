@@ -7,7 +7,6 @@ import { SymbolView } from 'expo-symbols';
 import { CityField } from '@/components/form/city-field';
 import { LanguageField } from '@/components/form/language-field';
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { SelectField } from '@/components/form/select-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { PhotoGrid } from '@/components/photo-grid';
@@ -31,11 +30,14 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 import type { Gender, ProfileRow } from '@/lib/database.types';
 
+// Same three as signup, and no "Rather not say": the gendered audience
+// filters go by this value, so an opt-out was a way to use them without being
+// subject to them (founder, 2026-09-04). An account that picked it before the
+// option went sees the placeholder here and cannot save until it chooses.
 const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: 'woman', label: 'Woman' },
   { value: 'man', label: 'Man' },
   { value: 'nonbinary', label: 'Non-binary' },
-  { value: 'unspecified', label: 'Rather not say' },
 ];
 
 // Only reachable once onboarded, so the profile row always exists; the inner
@@ -121,7 +123,13 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
   const nameError = validateDisplayName(name);
   const ageError = validateAge(age);
   const bioError = validateBio(bio);
-  const valid = nameError == null && ageError == null && bioError == null && languages.length > 0;
+  const genderMissing = gender === 'unspecified';
+  const valid =
+    nameError == null &&
+    ageError == null &&
+    bioError == null &&
+    languages.length > 0 &&
+    !genderMissing;
 
   const save = async () => {
     try {
@@ -150,9 +158,13 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
       // working: name, age and bio all showed no error, so the one thing
       // blocking it was the one thing not saying so.
       note={
-        languages.length === 0 && nameError == null && ageError == null && bioError == null
-          ? 'Pick at least one language you can chat in.'
-          : null
+        nameError != null || ageError != null || bioError != null
+          ? null
+          : genderMissing
+            ? 'Pick a gender. The filters for who sees you go by it.'
+            : languages.length === 0
+              ? 'Pick at least one language you can chat in.'
+              : null
       }
       continueLoading={updateProfile.isPending}
       onContinue={save}
@@ -166,10 +178,14 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
         value={age}
         onChangeText={setAge}
         error={ageError}
-        {...keyboardDoneProps}
       />
       <View onLayout={measure('details')} />
-      <SelectField label="Gender" options={GENDER_OPTIONS} value={gender} onChange={setGender} />
+      <SelectField
+        label="Gender"
+        options={GENDER_OPTIONS}
+        value={gender === 'unspecified' ? null : gender}
+        onChange={setGender}
+      />
       <FormTextField
         label="What you do"
         placeholder="Nurse, studying architecture, between jobs"
@@ -206,7 +222,6 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
         value={bio}
         onChangeText={setBio}
         error={bioError}
-        {...keyboardDoneProps}
       />
       {/* Priorities are rows in another table with their own saves, so they
           get their own screen rather than joining this form's single

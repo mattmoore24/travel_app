@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { Type } from '@/constants/theme';
@@ -332,7 +331,6 @@ export default function BusinessEmailScreen() {
         // Paste from a mail app arrives with whatever was around it.
         onChangeText={(next) => setCode(next.replace(/\D/g, '').slice(0, CODE_LENGTH))}
         style={styles.code}
-        {...keyboardDoneProps}
       />
     </StepShell>
   );

@@ -36,7 +36,7 @@ import { captureLivePhoto } from '@/lib/live-camera';
 export const VERIFICATION_TITLE = 'Get your badge';
 
 export const VERIFICATION_SUBTITLE =
-  'One selfie, taken right now. It proves your photos are you. Nobody sees it, and we delete it after the check. No ID needed. It also unlocks who can see you, so you can choose verified travelers only, or verified women only.';
+  'One selfie, taken right now. It proves your photos are you. Nobody sees it, and we delete it after the check. No ID needed. It also unlocks who can see you, so you can choose verified travelers only and filter by gender.';
 
 export type VerificationCapture = {
   verified: boolean;

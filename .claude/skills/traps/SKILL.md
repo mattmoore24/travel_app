@@ -153,6 +153,41 @@ device does something else.
 
 ## Keyboard
 
+- **Under Fabric, an `InputAccessoryView` binds to ONE field, ONCE, when the
+  BAR enters the window — and the field never looks for it.** This is why the
+  "Hide keyboard" bar was built three times (2026-08-24, 08-28, 08-30) and was
+  never on the founder's phone. Read the native file, not the docs:
+  `RCTInputAccessoryComponentView.mm`'s `didMoveToWindow` is guarded by
+  `if (self.window && !_textInput)`; it runs `RCTFindTextInputWithNativeId`
+  over the whole window, takes the FIRST field whose `inputAccessoryViewID`
+  matches, caches it, and never looks again. On the field side,
+  `RCTTextInputComponentView.setDefaultInputAccessoryView` returns early the
+  moment an `inputAccessoryViewID` is set — so a field that missed the
+  one-shot bind gets nothing, not even iOS's default toolbar. The documented
+  pattern (one bar per screen, one shared id, every field pointing at it) was
+  right under Paper, where the FIELD looked the bar up on its own mount, and
+  is quietly wrong under Fabric: the bar binds to whichever field exists when
+  the shell first mounts and every field mounted later (the next signup step,
+  a search box revealed by a tap) has none. Symptom: the bar works on the
+  first screen you try and on no other, and the shared-id source scan is
+  green throughout. The shape that works is one bar per field, mounted with
+  it, rendered BEFORE it in sibling order — `components/form/keyboard-done-bar`'s
+  `KeyboardDone` render prop, which `FormTextField` uses and every raw
+  `TextInput` wraps itself in. Before, not after, because Fabric assembles a
+  new subtree bottom-up (`Differentiator.cpp`: `createMutations`, then the
+  children's `downwardMutations`, then this level's `insertMutations`) and
+  attaches it whole, so `didMoveToWindow` cascades parent-first over a subtree
+  that is already complete: an earlier-sibling bar finds its field and binds
+  before the field's own `didMoveToWindow` fires `autoFocus`; a later-sibling
+  bar binds to a keyboard already showing, and nothing calls
+  `reloadInputViews`.
+- **A source scan that checks a FILE contains a prop is not a check that the
+  prop is on the element.** The old bar test passed a `language-field.tsx`
+  whose `{...keyboardDoneProps}` sat on a `SymbolView` icon, and a
+  `pin-form-sheet.tsx` whose one raw `TextInput` had no props at all because
+  a `FormTextField` elsewhere in the file carried them. The replacement walks
+  the rendered tree for the pair and, for the scan, requires each `<TextInput`
+  to sit between a `<KeyboardDone>` and its `</KeyboardDone>`.
 - Lifting a bottom-anchored sheet by `translateY` works for short sheets and
   fails for tall ones: either the top runs off screen, or (once clamped) it
   cannot move at all and its own submit button stays buried. **Grow

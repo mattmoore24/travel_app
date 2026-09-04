@@ -7,7 +7,6 @@ import { ActivityIndicator, Alert, Platform, StyleSheet, View } from 'react-nati
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { LoadError } from '@/components/ui/load-error';
 import { SelectField } from '@/components/form/select-field';
@@ -608,7 +607,6 @@ function BusinessLinks({
                       ? 'email-address'
                       : 'url'
                 }
-                {...keyboardDoneProps}
                 maxLength={300}
               />
               <PrimaryButton
@@ -957,7 +955,6 @@ function BusinessEditForm({
                 ? `${DESCRIPTION_MAX - description.length} characters left`
                 : undefined
             }
-            {...keyboardDoneProps}
           />
           {/* Moved up out of the middle of the location block, where it sat
               between 'Finding the door' and the hours note for no reason but

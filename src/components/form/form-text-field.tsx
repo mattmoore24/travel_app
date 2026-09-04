@@ -2,7 +2,7 @@ import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { Type, Radius, Fonts, HitTarget, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -48,44 +48,43 @@ export function FormTextField({
     <View style={styles.container}>
       {label ? <ThemedText type="smallBold">{label}</ThemedText> : null}
       <View>
-        <TextInput
-          ref={inputRef}
-          placeholderTextColor={theme.textSecondary}
-          style={[
-            styles.input,
-            {
-              color: theme.text,
-              backgroundColor: theme.backgroundElement,
-              fontFamily: Fonts?.sans,
-              // A visible edge, from the token that exists for exactly this:
-              // theme.ts calls `border` "input outlines and anything whose
-              // edge a user must see — 3.4:1". The field's fill measures
-              // 1.24:1 against the page, so without a stroke the boundary of
-              // every text box in the app was below the 3:1 floor for a
-              // control edge and simply not visible in bright light.
-              borderWidth: 1,
-              borderColor: theme.border,
-            },
-            // Room for the eye, so a long password does not run underneath it.
-            showToggle && styles.inputWithToggle,
-            error != null && { borderColor: theme.danger },
-            style,
-          ]}
-          // Every field reaches the Done bar unless it is told not to.
-          //
-          // Founder, twice now: "every keypad in the app should be able to be
-          // closed without pressing enter". The first pass made that a
-          // judgement per field — a return key that ends typing was deemed
-          // exit enough — and the judgement was wrong. Pressing Return is not
-          // the same as putting the keyboard away: it submits, or it moves to
-          // the next field, and neither is what somebody who has finished
-          // typing wants. So this is the default now, and a caller that
-          // genuinely has its own accessory view overrides it by passing its
-          // own id through `rest`.
-          {...keyboardDoneProps}
-          {...rest}
-          secureTextEntry={rest.secureTextEntry === true && !revealed}
-        />
+        {/* Every field gets its own Hide keyboard bar, rendered ahead of it.
+            Founder, three times over: "every keypad in the app should be able
+            to be closed without pressing enter". The bar used to be one per
+            screen with one id for the whole app, and under Fabric that binds
+            to a single field once and never again, which is why it was never
+            on the phone; keyboard-done-bar.tsx has the whole story. */}
+        <KeyboardDone>
+          {(done) => (
+            <TextInput
+              ref={inputRef}
+              placeholderTextColor={theme.textSecondary}
+              style={[
+                styles.input,
+                {
+                  color: theme.text,
+                  backgroundColor: theme.backgroundElement,
+                  fontFamily: Fonts?.sans,
+                  // A visible edge, from the token that exists for exactly this:
+                  // theme.ts calls `border` "input outlines and anything whose
+                  // edge a user must see — 3.4:1". The field's fill measures
+                  // 1.24:1 against the page, so without a stroke the boundary of
+                  // every text box in the app was below the 3:1 floor for a
+                  // control edge and simply not visible in bright light.
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                },
+                // Room for the eye, so a long password does not run underneath it.
+                showToggle && styles.inputWithToggle,
+                error != null && { borderColor: theme.danger },
+                style,
+              ]}
+              {...done}
+              {...rest}
+              secureTextEntry={rest.secureTextEntry === true && !revealed}
+            />
+          )}
+        </KeyboardDone>
         {showToggle ? (
           <Pressable
             accessibilityRole="button"

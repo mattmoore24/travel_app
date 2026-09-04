@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View, type TextInput } from 'react-native';
 
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { StepScreen } from '@/components/form/step-screen';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { ThemedText } from '@/components/themed-text';
@@ -205,7 +204,6 @@ export default function EditPrioritiesScreen() {
                 maxLength={PRIORITY_MAX}
                 returnKeyType="done"
                 autoCapitalize="none"
-                {...keyboardDoneProps}
               />
             </View>
             <PressableScale
@@ -259,7 +257,6 @@ export default function EditPrioritiesScreen() {
                 returnKeyType="next"
                 autoCapitalize="none"
                 testID="new-priority"
-                {...keyboardDoneProps}
               />
             </View>
             {/* The remove button's width, so the empty field lines up with

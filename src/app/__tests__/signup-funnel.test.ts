@@ -170,7 +170,7 @@ describe('one schema across every call site', () => {
   });
 });
 
-describe('the thirteen steps have thirteen stable names', () => {
+describe('the fourteen steps have fourteen stable names', () => {
   it('names every step, in order', () => {
     const names = Array.from({ length: SIGNUP_TOTAL_STEPS }, (_, i) => signupStepName(i + 1));
     expect(names).toEqual([
@@ -185,6 +185,7 @@ describe('the thirteen steps have thirteen stable names', () => {
       'priorities',
       'trip',
       'socials',
+      'badge',
       'audience',
       'review',
     ]);

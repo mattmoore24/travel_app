@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Elevation, Fonts, HitTarget, Radius, Space, Type } from '@/constants/theme';
@@ -96,23 +96,27 @@ export function BusinessAddressField({
           size={17}
           tintColor={message ? theme.danger : theme.textSecondary}
         />
-        <TextInput
-          ref={inputRef}
-          value={value}
-          onChangeText={change}
-          placeholder={`Street and number in ${cityName}`}
-          placeholderTextColor={theme.textSecondary}
-          returnKeyType="search"
-          onFocus={() => onFocusChange?.(true)}
-          onBlur={() => onFocusChange?.(false)}
-          autoCorrect={false}
-          autoCapitalize="words"
-          clearButtonMode="never"
-          {...keyboardDoneProps}
-          accessibilityLabel="Your address"
-          testID="business-address-input"
-          style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
-        />
+        <KeyboardDone>
+          {(done) => (
+            <TextInput
+              ref={inputRef}
+              value={value}
+              onChangeText={change}
+              placeholder={`Street and number in ${cityName}`}
+              placeholderTextColor={theme.textSecondary}
+              returnKeyType="search"
+              onFocus={() => onFocusChange?.(true)}
+              onBlur={() => onFocusChange?.(false)}
+              autoCorrect={false}
+              autoCapitalize="words"
+              clearButtonMode="never"
+              {...done}
+              accessibilityLabel="Your address"
+              testID="business-address-input"
+              style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
+            />
+          )}
+        </KeyboardDone>
         {searching ? <ActivityIndicator size="small" color={theme.textSecondary} /> : null}
         {value.length > 0 && !searching ? (
           <Pressable

@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
@@ -871,9 +870,6 @@ export default function GroupScreen() {
             </ThemedText>
           </View>
         </ScrollView>
-        {/* Outside the scroller: iOS hosts it in the keyboard's own window,
-            so where it sits only decides which fields can reach it. */}
-        <KeyboardDoneBar />
       </SafeAreaView>
     </ThemedView>
   );

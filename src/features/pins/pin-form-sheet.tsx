@@ -4,7 +4,7 @@ import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
 import { HoursSlider } from '@/components/form/hours-slider';
@@ -421,20 +421,25 @@ export function PinFormSheet({
                 is not always what anybody calls the spot. A plain opaque
                 input, never inside glass (a TextInput under a
                 UIVisualEffectView never receives its tap - see traps). */}
-              <TextInput
-                testID="venue-name-input"
-                accessibilityLabel="Name of the spot"
-                value={venue}
-                onChangeText={(text) => {
-                  venueTouched.current = true;
-                  setVenue(text);
-                }}
-                placeholder={`Where you dropped it in ${cityName}`}
-                placeholderTextColor={theme.textTertiary}
-                maxLength={80}
-                style={[styles.venueInput, { color: theme.text }]}
-                returnKeyType="done"
-              />
+              <KeyboardDone>
+                {(done) => (
+                  <TextInput
+                    testID="venue-name-input"
+                    {...done}
+                    accessibilityLabel="Name of the spot"
+                    value={venue}
+                    onChangeText={(text) => {
+                      venueTouched.current = true;
+                      setVenue(text);
+                    }}
+                    placeholder={`Where you dropped it in ${cityName}`}
+                    placeholderTextColor={theme.textTertiary}
+                    maxLength={80}
+                    style={[styles.venueInput, { color: theme.text }]}
+                    returnKeyType="done"
+                  />
+                )}
+              </KeyboardDone>
               <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
                 {[initialPlace?.address ?? business?.address, initialPlace?.locality ?? cityName]
                   .filter(Boolean)
@@ -612,7 +617,6 @@ export function PinFormSheet({
                   animated: true,
                 });
               }}
-              {...keyboardDoneProps}
             />
           </View>
         </ScrollView>

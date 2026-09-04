@@ -12,7 +12,6 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useEffect } from 'react';
 
-import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { ThemedText } from '@/components/themed-text';
@@ -55,7 +54,7 @@ type StepShellProps = {
 
 /**
  * One step of the signup sequence. Every step shares this chrome so the
- * thirteen screens read as one moving thing rather than thirteen forms: the
+ * fourteen screens read as one moving thing rather than fourteen forms: the
  * progress bar springs forward, the content slides in from the right as the
  * previous step leaves to the left, and the button never moves.
  */
@@ -80,6 +79,7 @@ export function StepShell({
   const theme = useTheme();
   const { height } = useWindowDimensions();
   const progress = useSharedValue(step / total);
+  const footerHeight = useSharedValue(0);
 
   useEffect(() => {
     progress.value = withSpring(step / total, Springs.gentle);
@@ -161,8 +161,20 @@ export function StepShell({
             modal when that presentation crashed the app on the confirmation
             code — but the floor measures against the window either way, so
             this stays right whichever way a step is presented. Same swap
-            step-screen.tsx already made, for the same reason. */}
-        <KeyboardFloor>
+            step-screen.tsx already made, for the same reason.
+
+            THE FLOOR IS UNDER THE SCROLLER ONLY. The footer used to ride up
+            with the keyboard, so Continue, the skip and Sign out sat on top
+            of it and, on a small phone, took most of what was left of the
+            screen: founder, 2026-09-04, "this is unnecessary and blocks most
+            of the screen. Just keep these options at the bottom but have the
+            keyboard go over them when the user is typing." So the footer
+            stays where it is and the keyboard covers it; the floor grows by
+            only the part of the keyboard that reaches past the footer, which
+            is what keeps the last line of the field above the keyboard's top
+            edge. Every field carries a Hide keyboard bar, so the way back to
+            the button is always on screen. */}
+        <KeyboardFloor allowance={footerHeight}>
           <ScrollView
             style={styles.flex}
             contentContainerStyle={styles.content}
@@ -179,8 +191,9 @@ export function StepShell({
               <View style={styles.fields}>{children}</View>
             </Animated.View>
           </ScrollView>
+        </KeyboardFloor>
 
-          {/* Capped at just under half the window, because the footer had no
+        {/* Capped at just under half the window, because the footer had no
               cap while the scroller above had no floor: step 3's three-control
               footer grew until the Age field it belonged to was sliced in
               half, and at AX5 a long note plus a skip plus a footer slot can
@@ -189,63 +202,63 @@ export function StepShell({
               the PrimaryButton itself stays outside every scroll area, which
               is the rule in traps — a primary action reachable only by
               scrolling is buried. */}
-          <ThemedView style={[styles.footer, { maxHeight: height * 0.45 }]}>
-            {note ? (
-              <Animated.View entering={FadeIn.duration(160)} style={styles.footerShrink}>
-                <ScrollView keyboardShouldPersistTaps="always">
-                  <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
-                    {note}
-                  </ThemedText>
-                </ScrollView>
-              </Animated.View>
-            ) : null}
-            <PrimaryButton
-              testID={continueTestID}
-              label={continueLabel}
-              disabled={continueDisabled}
-              loading={continueLoading}
-              onPress={onContinue}
-            />
-            {onSkip || footer ? (
-              <ScrollView
-                style={styles.footerShrink}
-                keyboardShouldPersistTaps="always"
-                contentContainerStyle={styles.footerScrollContent}>
-                {/* Small, quiet, and only where it belongs. A step with no
+        <ThemedView
+          style={[styles.footer, { maxHeight: height * 0.45 }]}
+          onLayout={(event) => {
+            // eslint-disable-next-line react-hooks/immutability -- Reanimated shared values are mutable by contract
+            footerHeight.value = event.nativeEvent.layout.height;
+          }}>
+          {note ? (
+            <Animated.View entering={FadeIn.duration(160)} style={styles.footerShrink}>
+              <ScrollView keyboardShouldPersistTaps="always">
+                <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
+                  {note}
+                </ThemedText>
+              </ScrollView>
+            </Animated.View>
+          ) : null}
+          <PrimaryButton
+            testID={continueTestID}
+            label={continueLabel}
+            disabled={continueDisabled}
+            loading={continueLoading}
+            onPress={onContinue}
+          />
+          {onSkip || footer ? (
+            <ScrollView
+              style={styles.footerShrink}
+              keyboardShouldPersistTaps="always"
+              contentContainerStyle={styles.footerScrollContent}>
+              {/* Small, quiet, and only where it belongs. A step with no
                     skip has no skip button, which is how somebody can tell at
                     a glance which questions the app actually needs answered. */}
-                {onSkip ? (
-                  <>
-                    <PressableScale
-                      accessibilityRole="button"
-                      accessibilityLabel={skipLabel}
-                      haptic="light"
-                      scaleTo={0.98}
-                      onPress={onSkip}
-                      style={styles.skip}>
-                      <ThemedText type="footnote" themeColor="textSecondary">
-                        {skipLabel}
-                      </ThemedText>
-                    </PressableScale>
-                    {/* The cost of the skip, where the choice is being made. A
+              {onSkip ? (
+                <>
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel={skipLabel}
+                    haptic="light"
+                    scaleTo={0.98}
+                    onPress={onSkip}
+                    style={styles.skip}>
+                    <ThemedText type="footnote" themeColor="textSecondary">
+                      {skipLabel}
+                    </ThemedText>
+                  </PressableScale>
+                  {/* The cost of the skip, where the choice is being made. A
                         wall that arrives later on another screen reads as a
                         surprise; the same fact here reads as a choice. */}
-                    {skipNote ? (
-                      <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
-                        {skipNote}
-                      </ThemedText>
-                    ) : null}
-                  </>
-                ) : null}
-                {footer}
-              </ScrollView>
-            ) : null}
-          </ThemedView>
-        </KeyboardFloor>
-        {/* Outside the scroller and outside the avoider: iOS hosts this in
-            the keyboard's own window, so where it sits in the tree only
-            decides which fields can reach it by id. */}
-        <KeyboardDoneBar />
+                  {skipNote ? (
+                    <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
+                      {skipNote}
+                    </ThemedText>
+                  ) : null}
+                </>
+              ) : null}
+              {footer}
+            </ScrollView>
+          ) : null}
+        </ThemedView>
       </SafeAreaView>
     </ThemedView>
   );

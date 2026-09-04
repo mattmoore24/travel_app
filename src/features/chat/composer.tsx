@@ -10,7 +10,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoButton } from '@/components/ui/photo-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -204,28 +204,32 @@ export function Composer({
         {allowPhotos ? (
           <PhotoButton busy={photoBusy} disabled={attachment != null} onPick={setAttachment} />
         ) : null}
-        <TextInput
-          testID={inputTestID}
-          style={[
-            styles.input,
-            {
-              color: theme.text,
-              backgroundColor: theme.surfaceSunken,
-              fontFamily: Fonts?.sans,
-              maxHeight: inputMaxHeight,
-            },
-          ]}
-          placeholder={attachment ? 'Add a message…' : placeholder}
-          placeholderTextColor={theme.textSecondary}
-          value={draft}
-          onChangeText={setDraft}
-          multiline
-          maxLength={BODY_MAX}
-          // Multiline: Return inserts a newline, so the keyboard has no exit
-          // of its own and dragging the thread was the only one, which
-          // nothing on screen says.
-          {...keyboardDoneProps}
-        />
+        <KeyboardDone>
+          {(done) => (
+            <TextInput
+              testID={inputTestID}
+              style={[
+                styles.input,
+                {
+                  color: theme.text,
+                  backgroundColor: theme.surfaceSunken,
+                  fontFamily: Fonts?.sans,
+                  maxHeight: inputMaxHeight,
+                },
+              ]}
+              placeholder={attachment ? 'Add a message…' : placeholder}
+              placeholderTextColor={theme.textSecondary}
+              value={draft}
+              onChangeText={setDraft}
+              multiline
+              maxLength={BODY_MAX}
+              // Multiline: Return inserts a newline, so the keyboard has no exit
+              // of its own and dragging the thread was the only one, which
+              // nothing on screen says.
+              {...done}
+            />
+          )}
+        </KeyboardDone>
         {/* Disabled is expressed by COLOUR, never by opacity. `opacity: 0.4`
             dims the label and the ground together and lands at 2.35:1 on this
             canvas, under the 3:1 floor for a control, while still looking
