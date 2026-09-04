@@ -83,6 +83,17 @@ Mutation-checked three ways, each breaking a named assertion. Recorded in the
   audience is 13, the review 14, the door on 13 stays for whoever skipped.
   `SIGNUP_TOTAL_STEPS` is 14 and the slug `badge` is inserted rather than any
   renamed, since the slugs are the funnel's event schema.
+- **Place mode: the venue chips scroll, and the spot's name is not a fourth
+  chip.** The second screenshot, Bangkok: three venue names clipped at both
+  screen edges, and "the actual location bubble is no different than the
+  three that are above it". The chips sat in a centred flex row where a chip
+  could shrink and its text could not; they are a horizontal scroller now,
+  centred while they fit, capped at 240pt with an ellipsis. The spot's name
+  was a pill in the chips' own surface, footnote and shadow; it is a card:
+  the pin's glyph in the pin's colour, the place over its district or street
+  (`splitSpotLabel`, at the first ", " the map itself joined them with), the
+  sunken surface with a hairline and a card's corner. Photographed by the
+  signed-in tour's `12-place-mode` / `13-place-after-pan` on the next run.
 
 ### Verification: the two questions, and the hole the second one found
 
