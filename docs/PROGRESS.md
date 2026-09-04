@@ -108,6 +108,29 @@ had lost it by the time the tabs came back. The effect now also waits for
 `useIsFocused()`: the intent is consumed only once a person can see the
 result. Run 111 is the proof either way.
 
+### Seven seams the pictures showed
+
+Eight reviewers read run 109's ninety screenshots as pictures and fifteen
+verifiers tried to refute them; the confirmed list is long and most of it is
+design work for a later sitting. Seven were cheap and plainly wrong, and
+they are fixed: the onboarding scroller and the map's filter sheet fade at
+their bottom edge instead of slicing the last row of tiles, options or
+chips through the letters (54, 55, 72, 73, 05a); the profile-photo caption
+keeps the founder's sentence after a photo lands rather than swapping back
+to the old line (55); "Something else" gets its second line instead of
+clipping to "Somethi..." (71); the "Not busy enough" notice wraps inside
+the screen rather than losing its dot off one edge and its close off the
+other, and stops being a lozenge at five lines (40a, zz-ax5); the Filters
+chip grows with Dynamic Type instead of chopping the word (zz-ax3); and the
+signed-out Chat tab says "Chats at hostels and bars are under Groups"
+rather than calling one thing a chat, a room and a group in two sentences
+(04). Still open from that review, for the record: the business flow's
+Continue pill under the keyboard bar (60), the "1 of 14" on the role step
+before a business has said it is one (40), the empty-state steps that draw
+the same control twice with a void between (58, 59, 70), the business
+offer card with no photo (40c), and the address step with no keyboard bar
+(43), which needs a picture from run 111 before it is believed.
+
 ### What did not move
 
 §7 rule 2: every radius is measured from a city a person CHOSE; `get_matches`

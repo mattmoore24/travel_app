@@ -3167,6 +3167,7 @@ export default function MapScreen() {
             accessibilityHint="Dismisses this"
             scaleTo={0.96}
             haptic="light"
+            style={styles.legendPress}
             onPress={heatEmptyLegend.dismiss}>
             <View
               style={[
@@ -3562,6 +3563,14 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+    // The chip measures to its sentence, and the sentence is longer than a
+    // phone is wide: run 109 photographed its dot sliced by the left edge
+    // and its close by the right. Insets here and a ceiling on the press
+    // below, so the text wraps instead.
+    paddingHorizontal: Space.lg,
+  },
+  legendPress: {
+    maxWidth: '100%',
   },
   legendChip: {
     flexDirection: 'row',
@@ -3569,7 +3578,10 @@ const styles = StyleSheet.create({
     gap: Space.sm,
     paddingHorizontal: Space.md,
     paddingVertical: Space.sm,
-    borderRadius: Radius.pill,
+    // A large radius rather than a pill: at the accessibility sizes the
+    // sentence is five lines tall and a pill's corners swallow the first
+    // and last of them.
+    borderRadius: Radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
     shadowOpacity: 0.2,

@@ -1,3 +1,4 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
 import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
@@ -175,6 +176,16 @@ export function StepShell({
             edge. Every field carries a Hide keyboard bar, so the way back to
             the button is always on screen. */}
         <KeyboardFloor allowance={footerHeight}>
+          {/* The fade says "there is more" where the scroll edge used to slice
+              a row of photo tiles, or the last audience option, clean through
+              its letters with no warning at all (run 109, screens 54, 55, 72
+              and 73). Same device as the pin form's; the ground is the
+              screen's, not a sheet's. */}
+          <LinearGradient
+            pointerEvents="none"
+            colors={[`${theme.background}00`, theme.background]}
+            style={styles.fadeBottom}
+          />
           <ScrollView
             style={styles.flex}
             contentContainerStyle={styles.content}
@@ -314,6 +325,14 @@ const styles = StyleSheet.create({
   fill: {
     height: '100%',
     borderRadius: Radius.pill,
+  },
+  fadeBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 28,
+    zIndex: 1,
   },
   content: {
     padding: Space.lg,

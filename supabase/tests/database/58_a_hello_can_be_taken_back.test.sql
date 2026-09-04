@@ -125,7 +125,7 @@ select throws_ok(
   $$ select public.send_message_request(
        '00000000-0000-0000-0000-0000000000d2', 'trip_match',
        'Second go at the same person', 'bio') $$,
-  'request already sent to this traveler',
+  'hello already sent to this traveler',
   'one shot per direction survives a withdrawal'
 );
 

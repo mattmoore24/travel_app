@@ -250,7 +250,14 @@ export function SocialHandlesEditor({ onFocusScroll }: SocialHandlesEditorProps 
             }}
             style={styles.pickerItem}>
             <SocialLogo platform={platform.value} size={44} />
-            <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1}>
+            {/* Two lines, centred: 'Something else' is the one label in the
+                grid that does not fit sixty points, and clipped to
+                'Somethi...' it was the one option nobody could read. */}
+            <ThemedText
+              type="caption"
+              themeColor="textSecondary"
+              numberOfLines={2}
+              style={styles.pickerLabel}>
               {platform.label}
             </ThemedText>
           </PressableScale>
@@ -333,5 +340,8 @@ const styles = StyleSheet.create({
     width: 60,
     alignItems: 'center',
     gap: Space.xs,
+  },
+  pickerLabel: {
+    textAlign: 'center',
   },
 });

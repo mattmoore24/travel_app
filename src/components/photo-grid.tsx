@@ -617,7 +617,12 @@ export function PhotoGrid({
             <View style={[styles.mainCaption, stackCaption && styles.mainCaptionStacked]}>
               <ThemedText type="callout">Profile photo</ThemedText>
               <ThemedText type="footnote" themeColor="textSecondary">
-                {main ? 'This is the one people see first.' : missingNote}
+                {/* The same sentence before and after a photo lands: the
+                    founder's "make sure your face is clearly visible" is a
+                    standing instruction, not a nudge that ends when a tile
+                    fills. The older line stands in only where nobody wrote
+                    one. */}
+                {missingNote ?? 'This is the one people see first.'}
               </ThemedText>
             </View>
           </View>

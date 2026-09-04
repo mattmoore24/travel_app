@@ -1126,8 +1126,11 @@ comment on function public.get_matches() is
   'city centre to city centre.';
 
 -- The hello. The trip branch reaches as far as the queue does; the pin
--- branch no longer asks whether the pin''s city is open. Body otherwise
--- verbatim from 20260902150000.
+-- branch no longer asks whether the pin's city is open. Body otherwise
+-- verbatim from 20260902150000, except that the four raise literals that
+-- said "request" now say "hello" - the client reads the HINT on every one
+-- of them, the word is banned from copy, and the restated body would have
+-- put the old sentences past the copy lint's historical allowlist.
 create or replace function public.send_message_request(
   p_recipient uuid,
   p_source public.request_source,
@@ -1186,11 +1189,11 @@ begin
       where subject_user_id = v_sender
         and entity_type = 'message_request'
         and created_at > now() - interval '24 hours') >= 30 then
-    raise exception 'daily request limit reached'
+    raise exception 'daily hello limit reached'
       using errcode = 'check_violation', hint = 'hello_daily_cap';
   end if;
   if p_recipient = v_sender then
-    raise exception 'cannot send a request to yourself';
+    raise exception 'cannot say hi to yourself';
   end if;
   -- ORACLE-PROOF ERRORS: every relationship failure raises the SAME message
   -- and the SAME hint.
@@ -1240,7 +1243,7 @@ begin
       raise exception 'recipient unavailable' using hint = 'recipient_unavailable';
     end if;
   else
-    raise exception 'unknown request source';
+    raise exception 'unknown hello source';
   end if;
 
   v_verdict := public.screen_first_message(p_first_message);
@@ -1270,7 +1273,7 @@ begin
        v_verdict, v_status, v_city)
     returning id into v_id;
   exception when unique_violation then
-    raise exception 'request already sent to this traveler'
+    raise exception 'hello already sent to this traveler'
       using hint = 'hello_already_sent';
   end;
 

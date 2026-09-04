@@ -217,7 +217,7 @@ describe('the chat list is a list, not a stack of cards', () => {
     // footnote with no heading and no mark: one of three tabs reading as a
     // screen that failed to load, on the tab a curious visitor opens third.
     expect(code).toContain("ios: 'bubble.left.and.bubble.right.fill'");
-    expect(code).toContain('Open chats at hostels and bars are under Groups.');
+    expect(code).toContain('Chats at hostels and bars are under Groups.');
     // And the Groups segment keeps its own way in, which is the half of the
     // audit finding that was wrong: city_rooms is granted to anon.
     expect(code).toContain(

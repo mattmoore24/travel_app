@@ -918,7 +918,7 @@ export default function ChatScreen() {
                     a shortcut: a Pressable with its own accessibilityLabel
                     hides the words inside it, and these words are the point. */}
                 <ThemedText type="footnote" themeColor="textSecondary" style={styles.pointer}>
-                  Open chats at hostels and bars are under Groups.
+                  Chats at hostels and bars are under Groups.
                 </ThemedText>
                 <SignUpGate reason="Say hi to other travelers" where="chat-tab" />
               </EmptyState>

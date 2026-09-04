@@ -7,6 +7,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet } from '@/components/ui/sheet';
+import { LinearGradient } from 'expo-linear-gradient';
+
 import { Radius, Space } from '@/constants/theme';
 import { PlaceGlyph } from '@/features/business/business-marker';
 import { useIsBusiness } from '@/features/business/hooks';
@@ -117,6 +119,7 @@ export function MapFilterSheet({
   // purpose". What is left is the one question an owner does have: what is
   // drawn on my map.
   const viewerIsBusiness = useIsBusiness();
+  const theme = useTheme();
   // The third day has no name of its own — "later" is vague and the date is
   // noise — so it says which weekday it is, the way the pin form already
   // does. Derived from the city clock: the chip filters the city's days.
@@ -172,51 +175,52 @@ export function MapFilterSheet({
         )}
       </View>
 
-      <ScrollView
-        style={[styles.scroll, { maxHeight: height * 0.6 }]}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}>
-        {/* No note. Four chips ending on a weekday two days out say the
+      <View style={styles.scrollFrame}>
+        <ScrollView
+          style={[styles.scroll, { maxHeight: height * 0.6 }]}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}>
+          {/* No note. Four chips ending on a weekday two days out say the
             three-day horizon better than a sentence about it does, and the
             four groups only fit on a small phone without one. */}
-        {viewerIsBusiness ? null : (
-          <Group title="When">
-            {/* No `label` on the rail: Group already draws the heading, and
+          {viewerIsBusiness ? null : (
+            <Group title="When">
+              {/* No `label` on the rail: Group already draws the heading, and
                 two of them would be the same word twice. */}
-            <ChipRail
-              wrap
-              options={dayOptions}
-              selected={filters.day}
-              onSelect={(day) => onChange({ ...filters, day })}
-            />
-          </Group>
-        )}
+              <ChipRail
+                wrap
+                options={dayOptions}
+                selected={filters.day}
+                onSelect={(day) => onChange({ ...filters, day })}
+              />
+            </Group>
+          )}
 
-        {/* The one-stays rule is enforced rather than explained: unticking
+          {/* The one-stays rule is enforced rather than explained: unticking
             the last box simply does not take, which is how every filter list
             people already use behaves. */}
-        <Group title="What to show">
-          {(viewerIsBusiness ? BUSINESS_KINDS : TRAVELER_KINDS).map(([value, title, detail]) => (
-            <CheckRow
-              key={value}
-              title={title}
-              detail={detail}
-              leading={<KindArt kind={value} />}
-              checked={filters.kinds.includes(value)}
-              onPress={() => onChange({ ...filters, kinds: toggle(filters.kinds, value, true) })}
-            />
-          ))}
-        </Group>
+          <Group title="What to show">
+            {(viewerIsBusiness ? BUSINESS_KINDS : TRAVELER_KINDS).map(([value, title, detail]) => (
+              <CheckRow
+                key={value}
+                title={title}
+                detail={detail}
+                leading={<KindArt kind={value} />}
+                checked={filters.kinds.includes(value)}
+                onPress={() => onChange({ ...filters, kinds: toggle(filters.kinds, value, true) })}
+              />
+            ))}
+          </Group>
 
-        {viewerIsBusiness ? null : (
-          <Group
-            title="Kind of plan"
-            note={
-              filters.categories.length === 0
-                ? 'Nothing ticked means everything.'
-                : "Only travelers' plans. Businesses are filtered above."
-            }>
-            {/* The marker's own disc and glyph, so the picker and the thing
+          {viewerIsBusiness ? null : (
+            <Group
+              title="Kind of plan"
+              note={
+                filters.categories.length === 0
+                  ? 'Nothing ticked means everything.'
+                  : "Only travelers' plans. Businesses are filtered above."
+              }>
+              {/* The marker's own disc and glyph, so the picker and the thing
                 it picks share a vocabulary. Emoji here contradicted the map
                 twice (Museum, Sights) and put a red pushpin on screen.
 
@@ -224,23 +228,32 @@ export function MapFilterSheet({
                 category chip's label used to lead with an emoji, so Maestro's
                 full-string match on "Bar" could never hit it — run 72 failed
                 on exactly that, and guest-tour.yml still selects by this id. */}
-            <ChipRail
-              wrap
-              multi
-              options={PIN_CATEGORIES.map((category) => ({
-                value: category.value,
-                label: category.label,
-                leading: <PinGlyph category={category.value} size={18} />,
-                testID: `filter-category-${category.value}`,
-              }))}
-              selected={filters.categories}
-              onToggle={(value) =>
-                onChange({ ...filters, categories: toggle(filters.categories, value) })
-              }
-            />
-          </Group>
-        )}
-      </ScrollView>
+              <ChipRail
+                wrap
+                multi
+                options={PIN_CATEGORIES.map((category) => ({
+                  value: category.value,
+                  label: category.label,
+                  leading: <PinGlyph category={category.value} size={18} />,
+                  testID: `filter-category-${category.value}`,
+                }))}
+                selected={filters.categories}
+                onToggle={(value) =>
+                  onChange({ ...filters, categories: toggle(filters.categories, value) })
+                }
+              />
+            </Group>
+          )}
+        </ScrollView>
+        {/* The chips used to be sliced through their text by the pinned
+            'N plans on the map' band with no warning (run 109, screen 05a).
+            The fade says the list goes on under it. */}
+        <LinearGradient
+          pointerEvents="none"
+          colors={[`${theme.surface}00`, theme.surface]}
+          style={styles.fadeBottom}
+        />
+      </View>
 
       {/* What survived, said in words right above the exit — the map has
           already applied everything, and an over-filtered map must never be
@@ -454,13 +467,24 @@ const styles = StyleSheet.create({
   /* Grows to its content and SHRINKS when there is not room. Without the
      shrink, four groups on a small phone push Done off the bottom of a sheet
      that is already at its maximum height. */
+  scrollFrame: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
   scroll: {
     flexGrow: 0,
     flexShrink: 1,
   },
+  fadeBottom: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 24,
+  },
   content: {
     gap: Space.lg,
-    paddingBottom: Space.sm,
+    paddingBottom: Space.xl,
   },
   group: {
     gap: Space.sm,
@@ -491,7 +515,11 @@ const styles = StyleSheet.create({
     borderRadius: 7,
   },
   filterButton: {
-    height: 30,
+    // A floor, not a height: at the accessibility text sizes the word grows
+    // and a fixed 30pt box sliced the bottom half off every letter and
+    // spilled the trailing s onto the map (run 109, zz-ax3).
+    minHeight: 30,
+    paddingVertical: 4,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.xs,
