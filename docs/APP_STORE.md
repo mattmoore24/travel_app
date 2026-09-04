@@ -4,33 +4,33 @@ Everything needed for TestFlight and App Review, in order.
 
 ## Readiness checklist
 
-Two things block a submission that money cannot both fix: the **Apple
-Developer Program membership** ($99/yr, founder ask in PROGRESS.md) and the
-founder review of `docs/legal/`. The rest is done, or is listed here as
-blocking so nothing discovers it on submission day.
+The **Apple Developer Program membership** is live (build 17 reached
+TestFlight on it), so the one thing money cannot fix is the founder review of
+`docs/legal/`. The rest is done, or is listed here as blocking so nothing
+discovers it on submission day.
 
-| Item                                                   | Status                                                                                                                                                                                            |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Bundle id `com.mattmoore.samewhere`                    | done, in app.json (locked before first submission)                                                                                                                                                |
-| In-app account deletion (5.1.1(v))                     | done, Profile then Delete account (Edge Function)                                                                                                                                                 |
-| Sign in with Apple provider enabled                    | the deploy does it and reads it back — NOT YET SEEN TO RUN against the live project; confirm the first green deploy prints "Verified against a fresh GET", then say so here. Needs no key (below) |
-| **Sign in with Apple token revocation (5.1.1(v))**     | **BLOCKING** - code shipped; add the two `APPLE_SIGNIN_*` repo secrets below, then deploy                                                                                                         |
-| UGC safety set (1.2): report/block/moderate            | done, phases 4 to 5, DB-enforced                                                                                                                                                                  |
-| UGC terms agreement + in-app house rules (1.2)         | done, welcome screen consent + `/guidelines` and `/privacy` screens                                                                                                                               |
-| Published developer contact (1.2)                      | done, <https://link.samewhere.io/support> plus the in-app Contact us form                                                                                                                         |
-| Privacy policy URL (5.1.1(i))                          | done, <https://link.samewhere.io/privacy>, and the same summary ships inside the app                                                                                                              |
-| Permission purpose strings                             | done, photos + camera; microphone suppressed                                                                                                                                                      |
-| Encryption declaration (ITSAppUsesNonExemptEncryption) | done in app.json, no "missing compliance" stall; the reasoning is under Export compliance                                                                                                         |
-| EAS build profiles                                     | done, eas.json (development/preview/production)                                                                                                                                                   |
-| **Moderation pipeline actually ON**                    | **BLOCKING** - ships dark by default, [runbook step 1](LAUNCH_RUNBOOK.md) before review                                                                                                           |
-| **EAS environment variables**                          | **BLOCKING** - cloud builds do not read local `.env`; set them (below) or the app is keyless                                                                                                      |
-| **Legal text signed off**                              | **BLOCKING** - `docs/legal/` are drafts with bracketed founder and lawyer items left in                                                                                                           |
-| **Age-rating questionnaire answered**                  | **BLOCKING** - see Age rating below; the tiers changed and must be read off the form                                                                                                              |
-| **Listing copy entered**                               | drafted below; needs pasting into App Store Connect per territory                                                                                                                                 |
-| **Name and trademark checks**                          | **BLOCKING** - docs/NAMING.md, never run; the bundle id is unchangeable after submission                                                                                                          |
-| iPad, Mac and Vision Pro distribution                  | decided: iPhone only for v1, opt out in App Store Connect (see below)                                                                                                                             |
-| Apple Developer Program                                | founder                                                                                                                                                                                           |
-| App icon final pass, screenshots                       | icon: brief and measurements under Assets, artwork still needed; screenshots need a build                                                                                                         |
+| Item                                                   | Status                                                                                                                                                                                |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Bundle id `com.mattmoore.samewhere`                    | done, in app.json (locked before first submission)                                                                                                                                    |
+| In-app account deletion (5.1.1(v))                     | done, Profile then Delete account (Edge Function)                                                                                                                                     |
+| Sign in with Apple provider enabled                    | done — the deploy enables it and re-reads it; run #105 (2026-09-04) printed "Verified against a fresh GET", enabled: true, client IDs `com.mattmoore.samewhere`. Needs no key (below) |
+| **Sign in with Apple token revocation (5.1.1(v))**     | key synced — both `APPLE_SIGNIN_*` secrets exist and run #105 pushed all four function secrets; the one hand-run below is the only thing that has not been seen to work               |
+| UGC safety set (1.2): report/block/moderate            | done, phases 4 to 5, DB-enforced                                                                                                                                                      |
+| UGC terms agreement + in-app house rules (1.2)         | done, welcome screen consent + `/guidelines` and `/privacy` screens                                                                                                                   |
+| Published developer contact (1.2)                      | done, <https://link.samewhere.io/support> plus the in-app Contact us form                                                                                                             |
+| Privacy policy URL (5.1.1(i))                          | done, <https://link.samewhere.io/privacy>, and the same summary ships inside the app                                                                                                  |
+| Permission purpose strings                             | done, photos + camera; microphone suppressed                                                                                                                                          |
+| Encryption declaration (ITSAppUsesNonExemptEncryption) | done in app.json, no "missing compliance" stall; the reasoning is under Export compliance                                                                                             |
+| EAS build profiles                                     | done, eas.json (development/preview/production)                                                                                                                                       |
+| **Moderation pipeline actually ON**                    | **BLOCKING** - ships dark by default, [runbook step 1](LAUNCH_RUNBOOK.md) before review                                                                                               |
+| **EAS environment variables**                          | **BLOCKING** - cloud builds do not read local `.env`; set them (below) or the app is keyless                                                                                          |
+| **Legal text signed off**                              | **BLOCKING** - `docs/legal/` are drafts with bracketed founder and lawyer items left in                                                                                               |
+| **Age-rating questionnaire answered**                  | **BLOCKING** - see Age rating below; the tiers changed and must be read off the form                                                                                                  |
+| **Listing copy entered**                               | drafted below; needs pasting into App Store Connect per territory                                                                                                                     |
+| **Name and trademark checks**                          | **BLOCKING** - docs/NAMING.md, never run; the bundle id is unchangeable after submission                                                                                              |
+| iPad, Mac and Vision Pro distribution                  | decided: iPhone only for v1, opt out in App Store Connect (see below)                                                                                                                 |
+| Apple Developer Program                                | done, membership active; builds 15 to 17 were signed and delivered on it                                                                                                              |
+| App icon final pass, screenshots                       | icon: brief and measurements under Assets, artwork still needed; screenshots need a build                                                                                             |
 
 ## EAS environment variables (do this before the first build)
 
@@ -93,6 +93,13 @@ is the audience of the **web** redirect flow, which this app does not have.
 never sent — Supabase's own guide: "If you're building a native app only, you do
 not need to configure the OAuth settings."
 
+**It has run.** Supabase deploy run #105 (2026-09-04, commit `0cefdbd`) printed
+`Read back — enabled: true`, `Read back — client IDs: com.mattmoore.samewhere`,
+and the same 238-key / `575d25567319e7dc` fingerprint before and after, so the
+PATCH is partial in fact and not only on the schema's word. The provider was
+already on when the step first ran, which is the idempotent branch ("Nothing to
+change") doing its job rather than the step being skipped.
+
 ### (b) The revoke — needs the key, and stays a no-op without it
 
 An app that offers **both** Sign in with Apple and in-app account deletion must
@@ -107,7 +114,9 @@ that token on `https://appleid.apple.com/auth/revoke` before it removes the auth
 row. Until the key exists, both degrade to a **logged no-op** — grep the function
 logs for `apple revoke:` to see which branch was taken.
 
-**What the founder does, in a browser, once:**
+**What the founder does, in a browser, once — DONE 2026-09-04.** The key was
+created, both secrets were added, and Supabase deploy run #105 synced all four
+function secrets. Kept here because it is the recipe for a rotated key:
 
 1. Apple Developer → Certificates, Identifiers & Profiles → **Keys** → **+**,
    enable **Sign in with Apple**, download the `.p8` (Apple lets you download it

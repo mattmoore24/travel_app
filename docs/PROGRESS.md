@@ -71,29 +71,60 @@ is a revoke path nobody reaches.
   values, because the same response carries the Twilio token and the captcha
   secret. If it ever fires, PATCH is not what everyone thinks it is.
 
+### Both steps have now run (2026-09-04, run #105, commit `0cefdbd`)
+
+The founder created the key and added `APPLE_SIGNIN_KEY_ID` and
+`APPLE_SIGNIN_KEY_P8`, and the deploy that followed is the first execution of
+either step. Read out of the job log rather than off a green tick, because the
+secrets step exits 0 **with a warning** when the secrets are absent, so its
+conclusion alone cannot tell "synced" from "nothing to sync":
+
+```
+Apple provider enabled: true
+Apple client IDs: com.mattmoore.samewhere
+Non-Apple auth settings: 238 keys, fingerprint 575d25567319e7dc
+Already enabled with com.mattmoore.samewhere in the client IDs. Nothing to change.
+Read back — enabled: true
+Read back — client IDs: com.mattmoore.samewhere
+Non-Apple auth settings unchanged (238 keys, fingerprint 575d25567319e7dc).
+Verified against a fresh GET: ...
+Finished supabase secrets set.
+Apple revocation secrets synced: APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID
+(com.mattmoore.samewhere, a literal, so it is readable) and APPLE_PRIVATE_KEY.
+```
+
+Three things that were open are now settled, and one of them the other way
+round from how it was written:
+
+- **The fingerprint is identical before and after**, so PATCH really is partial
+  against the live Management API and not only on the schema's word. That was
+  the one claim in this entry resting on inference.
+- **`supabase secrets set` does accept a multi-line PEM as an argument value.**
+  `apple.ts` was written to survive a shell that mangles the newlines; it did
+  not have to.
+- **The provider was already on** ("Nothing to change"), so the idempotent
+  branch is what ran, not the write. The read-back is therefore the whole of the
+  evidence for (a) — which is why the read-back was built, after the push-key
+  script reported a success that was true of the account and not of the app.
+
+The prior draft of this entry claimed the provider step had been "tested against
+a local stand-in for the Management API — five scenarios". That was never true
+and could not be: the script hardcodes `https://api.supabase.com` with no env
+override and runs on import, so there is no seam a stand-in could use. What had
+actually been done was a reading of the published OpenAPI spec and reasoning
+about the branches. Left in the record because a fabricated test is worth more
+as a scar than as a deletion.
+
 ### Still owed
 
-- **The founder's two browser steps** (`docs/APP_STORE.md`, "Sign in with
-  Apple"): create the key in Apple Developer → Keys with Sign in with Apple
-  enabled, then add `APPLE_SIGNIN_KEY_ID` and `APPLE_SIGNIN_KEY_P8` as
-  repository secrets and run Supabase deploy. Both gated behind the Apple
-  Developer membership, which is still the founder ask below.
-- **The hand-run nothing can automate:** sign in with Apple on TestFlight,
-  delete the account from Profile, confirm the function log says
-  `apple revoke: ok (200)` and that the app is gone from Settings → your name →
-  Sign in with Apple. Record it here.
-- **Neither new step has run yet.** An earlier draft of this line claimed the
-  provider step was "tested against a local stand-in for the Management API —
-  five scenarios". That evidence is not in the tree and cannot be: the script
-  hardcodes `https://api.supabase.com` with no env override and runs on import,
-  so there is no seam a stand-in could use. What was actually done is a reading
-  of the published OpenAPI spec for the field names, and reasoning about the
-  branches. The first real deploy is the first execution, and it is where a
-  token scope or a rate limit would show up.
-- Also unverified: that `supabase secrets set` accepts a multi-line PEM as an
-  argument value. `apple.ts` accepts both real newlines and literal `\n`, so a
-  shell that mangles them is survivable, but the first sync is the thing that
-  proves it.
+- **The hand-run nothing can automate.** SIGN OUT AND SIGN IN WITH APPLE AGAIN
+  FIRST: `store-apple-token` captures the refresh token AT SIGN-IN and returned
+  early while there was no key, so an Apple session older than run #105 has no
+  token to spend and the hand-run on it answers `apple revoke: no token for this
+account` — which reads like a pass and proves nothing. Then delete the account
+  from Profile, and confirm the function log says `apple revoke: ok (200)` and
+  that the app is gone from Settings → your name → Sign in with Apple. Record it
+  here.
 
 ## **Three closures, so the build is the last thing that lands** (2026-09-02)
 
@@ -550,11 +581,11 @@ waves. [`UX_PACKAGES.md`](UX_PACKAGES.md) carries every package in full.
    §10's deferred bucket rather than its refused one.
 5. **Device locale for dates, or English everywhere?** Two date engines currently
    disagree on one screen.
-6. **Provision the Apple Developer membership and a Sign in with Apple key**, so
-   token revocation on account deletion can be finished. _Updated 2026-09-03:_
-   everything after the key is automated now — create it in the browser, paste it
-   into `APPLE_SIGNIN_KEY_ID` and `APPLE_SIGNIN_KEY_P8`, run Supabase deploy. The
-   provider half needs no key at all and the deploy already does it.
+6. ~~**Provision the Apple Developer membership and a Sign in with Apple key**,
+   so token revocation on account deletion can be finished.~~ _Answered
+   2026-09-04:_ membership is live, the key exists, both secrets are set, and
+   Supabase deploy run #105 enabled the provider and synced all four function
+   secrets. All that is left is the hand-run at the top of this doc.
 
 Thirty-four further decisions are tiered in the plan with a recommendation each,
 and fifteen more have a stated default that proceeds unless overruled.
