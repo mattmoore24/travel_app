@@ -120,7 +120,7 @@ before the write and `my_business` after it.
 
 ### Proof
 
-`77_a_business_goes_where_its_door_is.test.sql` (`plan(30)`), written as
+`77_a_business_goes_where_its_door_is.test.sql` (`plan(33)`), written as
 attacks: Midtown with no hint files under New York City and not Hoboken;
 Monaco under a Nice hint stands at 13 km; the Croisette under the same hint
 re-files to Cannes; a marker in the mid-Atlantic lands on the nearest city by
@@ -143,10 +143,22 @@ landing) and `address-field.test.tsx` (the placeholder, no search until focus,
 the small line and what pressing it does); business-edges, business-map and
 business-exits rewritten for the new step 5, the by-id map and the shared
 footer; browsing-city gains `cityInZone`; failure-message asserts
-`MARKER_OUTSIDE` is gone. The E2E run number and the screenshots (42, 42b for
-the by-hand map, 43, 44, 45, 46 and 71) are filled in by the implementer.
+`MARKER_OUTSIDE` is gone.
 
-_E2E: run and frames to be filled in._
+### Shipped
+
+Migration 20260905130000 went through `supabase-deploy.yml` on 2026-09-05,
+before any bundle sent `p_city_id: null`. The trip picker, the horizon and the
+way-home fix went over the air first (TestFlight run 87, iOS update
+01a06eb2-9ce9-72f4-908f-04a66bfbd1c0, commit 0b913ae); the business change,
+the rough-tap rule, the map framing and the wall fix followed (TestFlight run
+88, iOS update 01a071e4-f40e-7f7a-a4d2-9e7d055ea125, update group
+a1285906-aff4-4928-9536-9c2406944c3f, commit aac7b6b), runtime 0.2.0 on build
+17. E2E run 121 photographed the flow on the simulator: 42 (the empty address
+box), 42b (the by-hand map at world scale under "Zoom in, then tap your
+door."), 43 (the suggestions under typed text), 44 (a picked address and its
+marker), 45 ("That lists you under Lisbon, Portugal." with Continue lit), 46
+(the confirm card naming the city) and 71 (the owner's map on the listing).
 
 ## **Which trips the queue is for, and no limit on how far ahead** (2026-09-05)
 
