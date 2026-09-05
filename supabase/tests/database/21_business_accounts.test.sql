@@ -7,7 +7,7 @@
 -- somebody can replace. So every assertion below acts AS the business and
 -- expects to be refused.
 begin;
-select plan(45);
+select plan(47);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a1', 'traveler@example.com'),
@@ -348,6 +348,19 @@ select is(
   (select name from public.my_business()),
   'Home Lisbon Hostel',
   'my_business finds the caller their own listing'
+);
+-- The address it typed or picked, which the owner's page prints and the
+-- editor prefills. my_business() went without it from 2026-08-29 to
+-- 2026-09-05: "No address yet" under a row that had been filled in, and an
+-- editor box that opened empty and wrote the address away on save.
+select lives_ok(
+  $$ select public.update_business_location(38.7108, -9.1400, null, 'Rua de São Paulo 7') $$,
+  'the owner puts a street address on the listing'
+);
+select is(
+  (select address from public.my_business()),
+  'Rua de São Paulo 7',
+  'and my_business hands it back, so the page and the editor can print it'
 );
 select is(
   (select state::text from public.my_business()),

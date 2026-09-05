@@ -3,6 +3,36 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **The owner never saw their own address** (2026-09-05)
+
+Run 124's My business frame said "No address yet" under "Where you are" on a
+listing the tour had just registered with a street address. `businesses.address`
+arrived on 2026-08-29; the owner's page prints it, the editor prefills its box
+from it, and the client's row type has carried it since that day. `my_business()`
+never did: its OUT list was written two days earlier and nothing extended it.
+Not cosmetic. The editor opened on an empty box, and saving the location
+screen with the box left as it came sent '' for `p_address`, which
+`update_business_location` takes as "typed nothing" and stores as null: the
+address written at signup was gone the first time the owner nudged the
+marker. Travelers were never affected: the place page's own reader selected
+the column from the day it existed.
+
+20260905170000 drops and recreates `my_business()` with `address` at the end
+of its OUT list (RETURNS TABLE grew a column, so drop first; grants restated),
+deployed through `supabase-deploy.yml`. pgTAP 21 goes to `plan(47)`: an
+address put on the listing through the location door is read back through
+`my_business()`. No client change: the page and the editor were already
+reading the column, so the phone shows the address on its next fetch. Every
+earlier run's frame 70 said "No address yet" and nobody read it as the bug it
+was; the business tour cannot assert the row's value (its Pressable carries a
+label that hides the words inside it), so the frame stays the evidence.
+
+Run 124 also caught the signed-in tour at the composer's confirmation beat:
+the "Sent to" mark holds 1.1 s, Maestro's settle after the Send tap can
+outlast it, and the wait pinned to it then burned the 4 s strip underneath
+too (run 123 had caught both). The tour waits for whichever beat is on
+screen, then the strip on its own.
+
 ## **A business goes where its door is** (2026-09-05)
 
 The founder, the day after the pin fence went: _"businesses shouldn't be

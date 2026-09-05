@@ -477,8 +477,13 @@ appId: com.mattmoore.samewhere
     id: 'first-message-input'
 - inputText: 'Both in town the same week. Any market worth the walk?'
 - tapOn: 'Send'
+# EITHER beat. The composer's confirmation holds 1.1 s (CONFIRM_MS) and the
+# strip under it 4 s; Maestro's settle after a tap can outlast the first, and
+# a wait pinned to it then burned the second too (run 124: 25 s on 'Sent to'
+# while the strip came and went underneath; run 123 had caught it). One wait
+# for whichever is on screen, then the strip on its own.
 - extendedWaitUntil:
-    visible: 'Sent to .*'
+    visible: '(Sent to .*|Said hi to .*)'
     timeout: 25000
 # The composer pops itself after its confirmation; the strip is underneath,
 # floating over whoever the queue handed up next.
