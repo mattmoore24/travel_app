@@ -702,11 +702,14 @@ appId: com.mattmoore.samewhere
 # that never receives a single piece of mail revealing the mistake, and
 # nothing in the app used to show it back. The run's account is
 # `<base>+sw-e2e-<run>@<domain>`, so '+sw-e2e-' is the part that is ours
-# whatever inbox the runner is configured with. Asserted as the row's SPOKEN
-# label: a Pressable with its own accessibilityLabel hides the words inside
-# it from Maestro (traps).
-- assertVisible: 'Email and password, .*\+sw-e2e-.*'
-- tapOn: 'Email and password.*'
+# whatever inbox the runner is configured with. The row's spoken label is
+# its printed name and nothing else since Wave 2 (a Pressable's label
+# replaces its children, and the address rides the row's accessibility
+# VALUE, which Maestro's text match does not read); run 123 went red on the
+# old joined form. So the row by its name here, and the address two screens
+# down, where "You sign in with <address> today." prints it as plain text.
+- assertVisible: 'Email and password'
+- tapOn: 'Email and password'
 - extendedWaitUntil:
     visible: 'Current password'
     timeout: 15000
@@ -715,6 +718,7 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'New email'
     timeout: 15000
+- assertVisible: 'You sign in with .*\+sw-e2e-.* today.*'
 - takeScreenshot: 19e-change-your-email
 - tapOn: 'Close'
 
