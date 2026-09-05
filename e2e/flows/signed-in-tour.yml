@@ -209,6 +209,19 @@ appId: com.mattmoore.samewhere
 - assertVisible: 'Discard this plan?'
 - tapOn: 'Keep writing'
 - assertVisible: 'Rooftop hello from Maestro'
+# The keyboard goes away before the form is judged: Details is multiline, so
+# nothing above dismissed it, and with a venue on the Where card the scroller
+# under a keyboard is two rows tall. Run 121 asserted the expiry slider into
+# that window and failed with "Disappears after" showing and the slider
+# itself below the fold. Conditional, because the bar exists only while a
+# field has focus.
+- runFlow:
+    when:
+      visible: 'Hide keyboard'
+    commands:
+      - tapOn: 'Hide keyboard'
+      - waitForAnimationToEnd:
+          timeout: 2000
 - assertVisible: 'Meeting by the door around 7.*'
 # HOW PEOPLE COME ALONG. The choice that turns a pin into a plan somebody can
 # join in one tap, versus the hello-and-wait the app had only ever offered.

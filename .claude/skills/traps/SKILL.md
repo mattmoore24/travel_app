@@ -456,6 +456,20 @@ becomes `authenticated`, and every insert afterwards goes to a null chat and
 is refused by RLS with an error that says nothing about the real cause. Read
 `groups.chat_id`.
 
+## Maestro taps a translateY sheet where it was laid out, not where it is drawn
+
+The plan list (`plan-list.tsx`) slides between its detents on a Reanimated
+`translateY`. On iOS, Maestro's tap coordinates for the rows inside it come
+from their untransformed frames, so at the half detent every row is
+"visible" and tappable some 440pt below where it is drawn: on the tab bar.
+Runs 106, 120 and 121 all photographed the Travelers tab after "tapping" a
+What's on row, by label and by id alike. A person's finger hits the drawn
+row; a synthetic tap does not. Reach what a sheet row opens through
+something with a true frame instead (the venue's map chip is a native
+annotation), or assert the row and stop there. `scrollUntilVisible` inside
+the sheet is judged on the same wrong frames, so it can report a row visible
+that is under the tab bar.
+
 ## Apple Maps props: two that silently do nothing, and one ordering hazard
 
 `showsPointsOfInterests` is the plural. The singular spelling is not a prop in
