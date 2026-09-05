@@ -145,8 +145,12 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        # --linked with the ref on the command line: db query refuses a bare
+        # --project-ref ("only applies when targeting the linked project",
+        # run 118), and with --linked it runs through the Management API on
+        # the access token alone, no database password.
         run: |
-          npx --yes supabase@2.114.0 db query --project-ref "$PROJECT_REF" \
+          npx --yes supabase@2.114.0 db query --linked --project-ref "$PROJECT_REF" \
             "select public.seed_launch_business_content() as posts_seeded"
 
       # A real signed-in session for the signed-in flow: created fresh and
