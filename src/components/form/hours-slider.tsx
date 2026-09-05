@@ -90,6 +90,11 @@ export function HoursSlider({
 
   return (
     <View
+      // One element, or none: a View is not an accessibility element on iOS
+      // unless it says so. Without this the label, the value and the two
+      // actions below were set on nothing; VoiceOver landed on the readout's
+      // text with no control to adjust, and E2E run 122 found no slider.
+      accessible
       accessibilityRole="adjustable"
       accessibilityLabel={accessibilityLabel}
       accessibilityValue={{ min, max, now: value, text: formatValue(value) }}

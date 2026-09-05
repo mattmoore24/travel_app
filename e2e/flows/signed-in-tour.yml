@@ -238,7 +238,9 @@ appId: com.mattmoore.samewhere
 - assertVisible: 'When'
 - assertVisible: 'Disappears after.*'
 # The slider itself, by its spoken label (an adjustable carries its own
-# accessibilityLabel, and that is what Maestro sees). The 72h cap is a §7
+# accessibilityLabel, and that is what Maestro sees, once the View says
+# `accessible`: run 122 found nothing here with the keyboard down, because
+# until then it did not). The 72h cap is a §7
 # hard rule, and a user who cannot reach this control cannot set it — the
 # slider was once clipped off the bottom of the scroll viewport while the
 # form's tests stayed green, so a future regression fails the run here

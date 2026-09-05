@@ -396,26 +396,50 @@ appId: com.mattmoore.samewhere
 # Run 106 is why that matters. 09-city-remembered photographed the map in
 # Denpasar; the screenshot taken immediately after the venue tap below
 # photographed the TRAVELERS TAB showing Bangkok, and runs 120 and 121 did
-# it again with the row addressed by its label and then by its id. The
-# cause: the plan list rides a translateY spring (plan-list.tsx), and the
-# frames Maestro taps are the rows' untransformed ones, some 440pt lower
-# than where they are drawn at the half detent, which is the tab bar. A
-# person's finger is fine; a synthetic tap is not (traps: "Maestro taps a
-# translateY sheet where it was laid out"). So the venue is reached through
-# its MAP CHIP, a native annotation with a true frame, in Lisbon, whose
-# seeded venue sits among its plans and inside the map's fit. 'Drop a pin'
-# first: it is on the map and nowhere else, so a run that started on the
-# wrong tab fails here and not three steps later with a message about a
-# link.
+# it again with the row addressed by its label and then by its id. Not a
+# transform: plan-list-row-0 is tapped by id at the half detent every run
+# (05f). A What's on row is the list's LAST section, and scrollUntilVisible
+# judged it visible the moment its frame entered the list's, which is under
+# the dock's opaque plate, so the tap landed on the tab bar. Run 122 tried
+# the venue's map annotation by its label and Maestro found nothing, as the
+# traps skill already said it would. So: the list to its full detent (a
+# drag on the strip; its tap only toggles peek and half), the list to its
+# END (the last row's padding clears the dock), then the row by id. Lisbon,
+# whose seeded venue sits among its plans. 'Drop a pin' first: it is on the
+# map and nowhere else, so a run that started on the wrong tab fails here
+# and not three steps later with a message about a link.
 - assertVisible: 'Drop a pin'
 - tapOn: 'Lisbon.*'
 - waitForAnimationToEnd:
     timeout: 3000
-# The chip's spoken label is "<name>, <category>, something on" (the
-# workflow seeds the launch venues' posts back before every run, so the
-# last clause is there). The comma form matches the chip alone: the sheet's
-# row for the same venue says "<name>. <post title>".
-- tapOn: 'Home Lisbon Hostel, Hostel.*'
+- tapOn:
+    id: 'plan-list-peek'
+- waitForAnimationToEnd:
+    timeout: 2000
+# The strip sits at about 51% of the screen at the half detent (05e); a drag
+# from it past the midpoint of the half-to-full distance snaps to full.
+- swipe:
+    start: 50%, 51%
+    end: 50%, 12%
+- waitForAnimationToEnd:
+    timeout: 2000
+# Three swipes inside the list reach its end whatever the city's row count;
+# a list that already fits just bounces.
+- swipe:
+    start: 50%, 75%
+    end: 50%, 25%
+- swipe:
+    start: 50%, 75%
+    end: 50%, 25%
+- swipe:
+    start: 50%, 75%
+    end: 50%, 25%
+- waitForAnimationToEnd:
+    timeout: 2000
+- assertVisible:
+    id: 'whats-on-row-0'
+- tapOn:
+    id: 'whats-on-row-0'
 - takeScreenshot: 09a-what-the-business-row-did
 # HARD, for the same reason the tap above is, and this is the step run 97
 # proved was still optional one too long. The row was tapped and COMPLETED,

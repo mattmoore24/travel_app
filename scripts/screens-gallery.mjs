@@ -57,6 +57,22 @@ const CAPTIONS = {
     'Travelers',
     'One person at a time, and the days you overlap said beside the name.',
   ],
+  '09a-what-the-business-row-did': [
+    'A venue, from the list',
+    "The What's on row opens the venue's sheet: what is on, and the way to its whole page.",
+  ],
+  '10-business-page-links': [
+    'The business page',
+    'Hours, links and posts; Website opens over the app, not in Safari.',
+  ],
+  '17i-travelers-just-lisbon': [
+    'Just Lisbon',
+    'The wall a choice produces keeps the rail, names the choice, and offers the way back.',
+  ],
+  '17j-travelers-just-bangkok': [
+    'Just Bangkok',
+    'The queue narrowed to one trip; the lit chip says which.',
+  ],
   '18-profile-me': ['Your profile', 'Exactly the page a stranger sees, plus edit.'],
   '19-house-rules': ['House rules', 'What is not allowed, and what is never collected.'],
   '19a-contact-form': ['Contact us', 'A form, rather than an address anyone can harvest.'],
