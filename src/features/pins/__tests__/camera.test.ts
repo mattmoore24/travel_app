@@ -34,6 +34,33 @@ describe('fitRegion', () => {
     expect(region.longitudeDelta).toBe(MAX_FIT_SPAN);
   });
 
+  it('frames the most of its data when the spread is wider than the widest frame', () => {
+    // Run 119's relaunch frame: nine plans around Seminyak and Canggu, one
+    // business chip in Ubud, and a box centred between them that held
+    // nothing. The frame goes where the plans are; Ubud is a scroll away.
+    const seminyak = Array.from({ length: 9 }, (_, i) => ({
+      lat: -8.69 + i * 0.004,
+      lng: 115.15 + i * 0.003,
+    }));
+    const ubud = { lat: -8.506, lng: 115.262 };
+    const region = fitRegion([...seminyak, ubud])!;
+    expect(region.latitudeDelta).toBe(MAX_FIT_SPAN);
+    expect(region.longitudeDelta).toBe(MAX_FIT_SPAN);
+    expect(anyInRegion(seminyak, region)).toBe(true);
+    for (const point of seminyak) {
+      expect(anyInRegion([point], region)).toBe(true);
+    }
+    expect(anyInRegion([ubud], region)).toBe(false);
+  });
+
+  it('keeps the middle of a spread that fits, so nothing moves that did not have to', () => {
+    const region = fitRegion([
+      { lat: 13.75, lng: 100.5 },
+      { lat: 13.76, lng: 100.52 },
+    ])!;
+    expect(region.longitude).toBeCloseTo(100.51, 6);
+  });
+
   it('pads the raw bounds so the outermost pins clear the screen edges', () => {
     const region = fitRegion([
       { lat: 13.75, lng: 100.5 },

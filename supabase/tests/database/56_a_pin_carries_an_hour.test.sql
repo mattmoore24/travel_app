@@ -438,11 +438,16 @@ select lives_ok(
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 
+-- 48 hours, not 40: tomorrow at 19:00 in Lisbon is at most 19:00 UTC
+-- tomorrow, and a 40-hour expiry falls before it whenever the suite runs
+-- between about 00:00 and 02:00 UTC, which is when validate_pin correctly
+-- refused this very fixture (2026-09-05). Two days out clears tomorrow's
+-- evening from any clock, and is still inside the 72-hour rule.
 select lives_ok(
   format($$
     select public.post_joinable_pin(
       %s, 'Park rooftop bar', null, null, 'bar',
-      38.7112, -9.1442, current_date + 1, now() + interval '40 hours',
+      38.7112, -9.1442, current_date + 1, now() + interval '48 hours',
       'Sunset drinks', time '19:00', true)
   $$, pg_temp.lisbon()),
   'an open plan can be posted with an hour on it'

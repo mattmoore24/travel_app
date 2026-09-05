@@ -285,6 +285,14 @@ appId: com.mattmoore.samewhere
     commands:
       - assertVisible: 'Your profile photo, uploading'
       - takeScreenshot: 54b-photo-uploading
+      # And WAIT IT OUT here, where the upload is known to be in flight. Run
+      # 119 judged the two "gate line not visible" blocks below ten seconds
+      # after the pick, while the upload was still working: both skipped,
+      # the flow ended green, and steps 6 to 14 were never photographed. The
+      # pipeline's own budget (image-upload.ts) is the ceiling.
+      - extendedWaitUntil:
+          notVisible: 'Your profile photo, uploading'
+          timeout: 150000
 - waitForAnimationToEnd:
     timeout: 4000
 # The pipeline's bounded stages (image-upload.ts) promise that within 150s a

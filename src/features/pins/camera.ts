@@ -62,11 +62,52 @@ export function fitRegion(points: { lat: number; lng: number }[]): Region | null
   }
   const clamp = (span: number) => Math.min(MAX_FIT_SPAN, Math.max(MIN_FIT_SPAN, span * PAD_FACTOR));
   const latitudeDelta = clamp(maxLat - minLat);
+  const longitudeDelta = clamp(maxLng - minLng);
+  let centreLat = (minLat + maxLat) / 2;
+  let centreLng = (minLng + maxLng) / 2;
+  // THE CLAMP BIT: the spread is wider than the widest frame, so a frame
+  // on the middle of it can hold nothing. E2E run 119 photographed exactly
+  // that on Denpasar: nine pins in Seminyak, one business chip in Ubud, and
+  // a box centred on the rice fields between them saying "No plans over
+  // here". So the frame goes where the most of the data is: each point in
+  // turn anchors a window of the clamped size, the fullest window wins, and
+  // a tie goes to the one nearest the middle of the spread.
+  if (
+    (maxLat - minLat) * PAD_FACTOR > MAX_FIT_SPAN ||
+    (maxLng - minLng) * PAD_FACTOR > MAX_FIT_SPAN
+  ) {
+    let best: { count: number; lat: number; lng: number; away: number } | null = null;
+    for (const anchor of points) {
+      const inside = points.filter(
+        (p) =>
+          Math.abs(p.lat - anchor.lat) <= latitudeDelta / 2 &&
+          Math.abs(p.lng - anchor.lng) <= longitudeDelta / 2
+      );
+      // Everything inside lies within half a window of the anchor, so its
+      // own middle keeps all of it in frame and wastes no edge on the anchor.
+      const lat =
+        (Math.min(...inside.map((p) => p.lat)) + Math.max(...inside.map((p) => p.lat))) / 2;
+      const lng =
+        (Math.min(...inside.map((p) => p.lng)) + Math.max(...inside.map((p) => p.lng))) / 2;
+      const away = Math.hypot(lat - centreLat, lng - centreLng);
+      if (
+        best == null ||
+        inside.length > best.count ||
+        (inside.length === best.count && away < best.away)
+      ) {
+        best = { count: inside.length, lat, lng, away };
+      }
+    }
+    if (best) {
+      centreLat = best.lat;
+      centreLng = best.lng;
+    }
+  }
   return {
-    latitude: (minLat + maxLat) / 2 - latitudeDelta * CHROME_BIAS,
-    longitude: (minLng + maxLng) / 2,
+    latitude: centreLat - latitudeDelta * CHROME_BIAS,
+    longitude: centreLng,
     latitudeDelta,
-    longitudeDelta: clamp(maxLng - minLng),
+    longitudeDelta,
   };
 }
 
