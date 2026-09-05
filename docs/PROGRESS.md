@@ -33,6 +33,14 @@ outlast it, and the wait pinned to it then burned the 4 s strip underneath
 too (run 123 had caught both). The tour waits for whichever beat is on
 screen, then the strip on its own.
 
+Run 125 (6360dc4) is the record: the My business frame reads "Rua da Rosa 12"
+under "Where you are", and the signed-in tour went green end to end for the
+first time since the trip rail landed, 10 through 35, both composer beats and
+the settings tail included. Its one red was the onboarding tour's profile
+photo, which sat at "Not sent": no upload reached storage in that window
+(the edge logs hold only the seed photos' signed reads), so the request died
+on the simulator's side; runs 122 to 124 passed the same step. Not changed.
+
 ## **A business goes where its door is** (2026-09-05)
 
 The founder, the day after the pin fence went: _"businesses shouldn't be
