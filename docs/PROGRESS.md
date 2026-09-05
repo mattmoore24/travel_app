@@ -153,12 +153,13 @@ way-home fix went over the air first (TestFlight run 87, iOS update
 01a06eb2-9ce9-72f4-908f-04a66bfbd1c0, commit 0b913ae); the business change,
 the rough-tap rule, the map framing and the wall fix followed (TestFlight run
 88, iOS update 01a071e4-f40e-7f7a-a4d2-9e7d055ea125, update group
-a1285906-aff4-4928-9536-9c2406944c3f, commit aac7b6b), runtime 0.2.0 on build
-17. E2E run 121 photographed the flow on the simulator: 42 (the empty address
-box), 42b (the by-hand map at world scale under "Zoom in, then tap your
-door."), 43 (the suggestions under typed text), 44 (a picked address and its
-marker), 45 ("That lists you under Lisbon, Portugal." with Continue lit), 46
-(the confirm card naming the city) and 71 (the owner's map on the listing).
+a1285906-aff4-4928-9536-9c2406944c3f, commit aac7b6b), both on build 17's
+runtime 0.2.0. E2E run 121 photographed the flow on the simulator: 42 (the
+empty address box), 42b (the by-hand map at world scale under "Zoom in, then
+tap your door."), 43 (the suggestions under typed text), 44 (a picked address
+and its marker), 45 ("That lists you under Lisbon, Portugal." with Continue
+lit), 46 (the confirm card naming the city) and 71 (the owner's map on the
+listing).
 
 ## **Which trips the queue is for, and no limit on how far ahead** (2026-09-05)
 
