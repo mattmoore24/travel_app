@@ -153,11 +153,15 @@ appId: com.mattmoore.samewhere
 # the void and failed on the details assertion three steps later with a
 # frame identical to 14-pin-form. The details field already scrolls; this
 # one has to as well.
+# centerElement, because Maestro's visibility test ignores the scroller's
+# own clip (traps): the field's frame was already "visible" under the fold,
+# so run 119's scroll did nothing and the tap landed on the fade again.
 - scrollUntilVisible:
     element:
       id: 'plan-input'
     direction: DOWN
     timeout: 8000
+    centerElement: true
 - tapOn:
     id: 'plan-input'
 - inputText: 'Rooftop hello from Maestro'
@@ -171,6 +175,7 @@ appId: com.mattmoore.samewhere
       id: 'note-input'
     direction: DOWN
     timeout: 8000
+    centerElement: true
 - tapOn:
     id: 'note-input'
 - inputText: 'Meeting by the door around 7'

@@ -413,7 +413,7 @@ appId: com.mattmoore.samewhere
 # reports "no venue" when the truth is "not scrolled".
 - scrollUntilVisible:
     element:
-      text: '.*, something on tonight'
+      text: 'Puri Garden Ubud\..*'
     direction: DOWN
     timeout: 10000
 # ─────────────────────────────────────────────────────────────────────────
@@ -427,8 +427,15 @@ appId: com.mattmoore.samewhere
 # run (select seed_launch_business_content(); the row is a 72-hour pin and
 # was gone within days of every hand seeding), so a red here now means the
 # seeder found nothing to do or the row moved, never that nobody ran it.
+# The row is matched by the venue's name: its spoken label is
+# "<name>. <what's on line>", and the line is the post's own title for a
+# standing post, which is what the seeder writes (run 119 photographed
+# "Puri Garden Ubud. Come and say hello" and a regex still waiting for
+# ", something on tonight", the line a venue with NO live post gets).
+# Denpasar, because the relaunch above proved that city remembered, and
+# Puri Garden Ubud is its seeded venue.
 - tapOn:
-    text: '.*, something on tonight'
+    text: 'Puri Garden Ubud\..*'
 # A photograph OF THE TAP, before anything is asserted about it. Run 105
 # failed the next step twice and its failure screenshot showed the app on a
 # different tab with the default city - taken thirty seconds later, so it
