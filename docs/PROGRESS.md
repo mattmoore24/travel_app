@@ -91,7 +91,8 @@ files a listing under the city its marker is in.
   first cut flying to street scale around wherever the finger landed).
 - **"Marker", never "pin", in business copy.** The founder's words said
   "pin"; on screen it is "Place the marker yourself", because a pin is the
-  traveler's 72-hour object (`vocabulary.ts`). The line is in the accent
+  traveler's 72-hour object (`vocabulary.ts`); the founder read the wording
+  and kept it (2026-09-05). The line is in the accent
   colour: in the same grey as the search's message it read as a second hint.
   "That lists you under Lisbon, Portugal." rather than "puts you in", because
   the city is the label the listing is filed under, and a door outside every
@@ -271,13 +272,13 @@ the id anyway, tapped its coordinates, focused nothing, and typed two
 sentences into the void. The tour scrolls to the field first now, as it
 already did for Details.
 
-**Founder question.** The same fold is there for a person: the form opens on
-Where, the join choice, When and Time, and the button underneath says "Say
-what the plan is first." about a field they cannot see until they scroll. The
-join choice was put above the fields on purpose (run 76: with a keyboard up
-the scroller is two rows tall and the choice was clipped in half), but the
-day, the time and the expiry could sit below the two fields instead of above
-them. Not changed here; it is the founder's form.
+**Founder question, answered.** The same fold is there for a person: the form
+opens on Where, the join choice, When and Time, and the button underneath says
+"Say what the plan is first." about a field they cannot see until they scroll.
+The join choice was put above the fields on purpose (run 76: with a keyboard
+up the scroller is two rows tall and the choice was clipped in half), and the
+day, the time and the expiry could have moved below the two fields. Founder,
+2026-09-05: leave it as it is. Not changed.
 
 ### A design panel first
 
