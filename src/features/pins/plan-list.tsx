@@ -414,11 +414,16 @@ export function PlanList({
               <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionTitle}>
                 WHAT&apos;S ON
               </ThemedText>
-              {businesses.map((place) => (
+              {businesses.map((place, index) => (
                 <Pressable
                   key={place.id}
                   accessibilityRole="button"
                   accessibilityLabel={`${place.name}. ${whatsOnLine(place, clock ?? new Date())}`}
+                  // By index: the venue's map chip carries the same name in
+                  // its own label, and a suite driving this row by its words
+                  // tapped the chip's coordinates instead, which sit under
+                  // the tab bar (runs 106 and 120 both landed on Travelers).
+                  testID={`whats-on-row-${index}`}
                   onPress={() => onSelectBusiness(place.id)}
                   style={({ pressed }) => [
                     styles.row,

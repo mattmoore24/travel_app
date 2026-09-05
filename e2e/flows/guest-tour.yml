@@ -413,7 +413,7 @@ appId: com.mattmoore.samewhere
 # reports "no venue" when the truth is "not scrolled".
 - scrollUntilVisible:
     element:
-      text: 'Puri Garden Ubud\..*'
+      id: 'whats-on-row-0'
     direction: DOWN
     timeout: 10000
 # ─────────────────────────────────────────────────────────────────────────
@@ -434,8 +434,19 @@ appId: com.mattmoore.samewhere
 # ", something on tonight", the line a venue with NO live post gets).
 # Denpasar, because the relaunch above proved that city remembered, and
 # Puri Garden Ubud is its seeded venue.
+# By id, not by the venue's name: the venue's MAP CHIP carries the same name
+# in its own label, and a tap driven by the words went to the chip's
+# coordinates, under the tab bar, which is how runs 106 and 120 both
+# photographed the Travelers tab here. The name is asserted, then the row is
+# tapped where it is.
+- assertVisible: 'Puri Garden Ubud\..*'
+# And settled first: the sheet rides a translateY spring, and the scroll
+# above can nudge its detent, so a tap fired mid-spring uses a stale frame
+# (another way the row's tap could land on the tab bar).
+- waitForAnimationToEnd:
+    timeout: 3000
 - tapOn:
-    text: 'Puri Garden Ubud\..*'
+    id: 'whats-on-row-0'
 # A photograph OF THE TAP, before anything is asserted about it. Run 105
 # failed the next step twice and its failure screenshot showed the app on a
 # different tab with the default city - taken thirty seconds later, so it

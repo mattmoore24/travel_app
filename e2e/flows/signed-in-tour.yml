@@ -170,12 +170,15 @@ appId: com.mattmoore.samewhere
 # keyboard still up is what silently appended the details onto the name in
 # three earlier runs.
 - pressKey: Enter
+# NOT centred: Details is the last thing in the scroller, so once the plan
+# field above has been centred the scroller is at its end and a centring
+# scroll can only time out (run 120). Plain visibility is enough here; the
+# plan field's centring is what brought this one onto the screen.
 - scrollUntilVisible:
     element:
       id: 'note-input'
     direction: DOWN
     timeout: 8000
-    centerElement: true
 - tapOn:
     id: 'note-input'
 - inputText: 'Meeting by the door around 7'
