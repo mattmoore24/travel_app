@@ -161,6 +161,21 @@ and its marker), 45 ("That lists you under Lisbon, Portugal." with Continue
 lit), 46 (the confirm card naming the city) and 71 (the owner's map on the
 listing).
 
+Run 122 (f754b92) left two flows red for reasons of their own: the guest
+tour's venue row, and the pin form's hour slider, whose View had never said
+`accessible`, so iOS had no element to find and VoiceOver no control to
+adjust. Both are fixed in 7af7721: one prop and a test that fails without it;
+the plan list taken to its full detent and its end before the row; and the
+traps entry that had blamed a transform corrected. Run 123 photographed the
+guest reaching the venue's sheet, page and in-app browser (09a, 10, 10a) and
+the signed-in tour through the pin form, the posted pin, the Travelers rail
+(17, 17i, 17j) and the composer to the settings screens, stopping at an
+assertion written for the account row's old joined label (bc43b00 moves it
+to the screen that prints the address; run 124 is the re-run). The slider
+fix went over the air as TestFlight run 89 (iOS update
+01a07263-9e16-7f61-b981-c72de1e5e4cd, update group
+17ceafb7-1e22-4403-87f6-700d7f3c8cac, commit bc43b00).
+
 ## **Which trips the queue is for, and no limit on how far ahead** (2026-09-05)
 
 The founder, on the Travelers tab: "remove the descriptions around each distance,
