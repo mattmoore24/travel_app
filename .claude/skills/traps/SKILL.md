@@ -263,6 +263,12 @@ device does something else.
   earlier statements in the migration have already applied. Always
   `drop function if exists` first — and re-state the `grant`s, which the
   drop removes.
+- **A change of RETURN TYPE needs the same drop-first** (say `uuid` to
+  `jsonb`): Postgres refuses that through `create or replace` too, and the
+  failure lands after the earlier statements have applied. 20260905130000
+  avoided one on purpose: `register_business` keeps its `uuid`, and the client
+  reads the resolved city through `city_for_spot` before the write and
+  `my_business` after it.
 - `distinct on (...)` requires those same expressions to lead the
   `ORDER BY`. Deduplicating in a subquery and ordering in the outer query is
   the way to keep both.

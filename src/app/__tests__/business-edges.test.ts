@@ -25,6 +25,15 @@ const INVITE = 'src/app/join-group/[token].tsx';
 const POST = 'src/app/business-post.tsx';
 const SIGNUP = 'src/app/business-signup.tsx';
 const EDIT = 'src/app/business-edit.tsx';
+const ADDRESS_FIELD = 'src/features/business/address-field.tsx';
+
+/**
+ * A block with its comments taken out, for the negative assertions: a step
+ * that has just retired a control is allowed to say so in a comment, and
+ * the comment naming the retired control must not read as the control.
+ */
+const withoutComments = (code: string): string =>
+  code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 describe('a business opening an invite link', () => {
   it('is turned round before the join flow renders', () => {
@@ -243,19 +252,43 @@ describe('the listing steps read as a business', () => {
     const code = src(SIGNUP);
     // A full-brightness Continue that silently swallows the tap is the one
     // pattern every other step avoids. The grey button carries "not yet";
-    // the note is free to talk about the street and the marker.
-    expect(code).toContain('continueDisabled={city == null || coords == null}');
+    // the note is free to talk about the street and the marker. Only the
+    // marker now: there is no city to wait on since 2026-09-05, because the
+    // server names one from the marker.
+    expect(code).toContain('continueDisabled={coords == null}');
     expect(code).not.toContain('Pick your city first.');
   });
 
-  it('says the launch state instead of leaving four bare chips', () => {
+  it('asks for an address anywhere, with a way to set the pin by hand', () => {
     const code = src(SIGNUP);
-    // Derived from the list, not hardcoded "four", so city five keeps it true.
-    expect(code).toContain('so far. Pick yours above and the map shows up.');
-    // And the door for city five, so a hostel in Porto becomes a signal
-    // instead of a silent quit.
-    expect(code).toContain('Somewhere else? Tell us where.');
-    expect(code).toContain("onPress={() => router.push('/contact')}");
+    // The launch-city fence is gone for businesses (20260905130000): no
+    // "Which city?" chips, no list of four to be outside of, no contact
+    // form for city five. One box, and a small line under it for an address
+    // that is not coming up. Comments stripped: the step says in its own
+    // comment which controls it retired.
+    const step5 = withoutComments(between(code, 'if (step === 5) {', 'if (step === 6) {'));
+    expect(step5).toContain('onSetPin=');
+    expect(step5).toContain('placed={coords != null}');
+    expect(step5).not.toContain('Which city?');
+    expect(step5).not.toContain('ChipRail');
+    expect(step5).not.toContain("router.push('/contact')");
+    expect(step5).not.toContain('launchCities');
+    expect(code).not.toContain('so far. Pick yours above and the map shows up.');
+    expect(code).not.toContain('Somewhere else? Tell us where.');
+    // The city is the server's answer, printed under the map once there is
+    // a marker, and a marker alone is enough to go on.
+    expect(code).toContain('That puts you in ${spotCity.name}, ${spotCity.country_name}.');
+    expect(code).toContain('Just the marker is fine. You can add the street later.');
+    expect(code).toContain('city_id: spotCity?.id ?? null');
+    // The by-hand map opens on the clock zone's city or the world, never a
+    // device fix (section 7 rule 2).
+    expect(code).not.toContain('expo-location');
+    // And the field itself: the small line, and a search that runs only
+    // while the box has focus, so walking back to a settled address never
+    // pops a list under it.
+    const field = src(ADDRESS_FIELD);
+    expect(field).toContain('Not coming up? Set the pin yourself.');
+    expect(field).toContain('enabled: !picked && focused');
   });
 });
 
@@ -325,7 +358,6 @@ describe('a named section gets that section, not the whole settings form', () =>
       "useState(business.hours_note ?? '')",
       "useState(business.website_url ?? '')",
       'useState({ lat: business.lat, lng: business.lng })',
-      'useState(business.city_id)',
     ]) {
       expect(code).toContain(seed);
     }
@@ -384,12 +416,26 @@ describe('the editor has one save model, or says it has two', () => {
       'const nameResets = normalizedName(name) !== normalizedName(business.name);'
     );
     expect(code).toContain(
-      'const markerMovedFar = cityChanged || movedFar({ lat: business.lat, lng: business.lng }, coords);'
+      'const markerMovedFar = movedFar({ lat: business.lat, lng: business.lng }, coords);'
     );
     expect(code).toContain('if (!nameResets && !markerMovedFar) {');
     // But any move at all is still saved: update_business_location owns the
     // columns and an owner who nudges the marker means it.
     expect(code).toContain('if (markerMoved) {');
+  });
+
+  it('has no City select: the server files the listing under the marker', () => {
+    const code = src(EDIT);
+    // 20260905130000: update_business_location resolves the city from the
+    // marker, so the editor sends the marker and nothing else, and the
+    // launch list has no say in where a business can be.
+    expect(code).toContain('moveBusiness.mutateAsync({ lat: coords.lat, lng: coords.lng })');
+    expect(code).not.toContain('useLaunchCities');
+    const location = between(code, "{shows('location') ? (", "{shows('hours') ? (");
+    expect(location).not.toContain('label="City"');
+    // The search field always, never a plain text fallback for a city the
+    // launch list did not know.
+    expect(location).toContain('<BusinessAddressField');
   });
 });
 

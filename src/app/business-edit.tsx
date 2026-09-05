@@ -24,7 +24,6 @@ import {
   useUpdateOwnBusiness,
 } from '@/features/business/hooks';
 import { LINK_LABEL, shortTime, weekdayLabel } from '@/features/business/vocabulary';
-import { useLaunchCities } from '@/features/pins/hooks';
 import { LocationPicker } from '@/features/pins/location-picker';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
@@ -717,13 +716,10 @@ function BusinessEditForm({
   // to say so in a comment and leave the owner no way to do it at all, so a
   // business that moved premises had a listing on the wrong door forever.
   const [coords, setCoords] = useState({ lat: business.lat, lng: business.lng });
-  const [cityId, setCityId] = useState(business.city_id);
   // Same reason as signup: with the keyboard up there is one field's worth of
   // room left, and the suggestion list was landing in it.
   const [addressFocused, setAddressFocused] = useState(false);
   const moveBusiness = useUpdateBusinessLocation();
-  const { data: launchCities = [] } = useLaunchCities();
-  const city = launchCities.find((row) => row.city_id === cityId) ?? null;
 
   // A place with no hours yet still gets a line to fill in, so the block is
   // never an empty heading. No days picked means nothing is written.
@@ -747,12 +743,12 @@ function BusinessEditForm({
   const nameChanged = name.trim() !== business.name;
   // Any move at all is still a save — update_business_location owns lat, lng
   // and city_id, and an owner who nudges the marker onto their real door
-  // means it. What changed is what a move COSTS: only a city change or a jump
-  // over seventy-five metres resets the check now, so those two are what the
-  // warnings are allowed to talk about.
-  const cityChanged = cityId !== business.city_id;
-  const markerMoved = coords.lat !== business.lat || coords.lng !== business.lng || cityChanged;
-  const markerMovedFar = cityChanged || movedFar({ lat: business.lat, lng: business.lng }, coords);
+  // means it. What changed is what a move COSTS: only a jump over
+  // seventy-five metres resets the check now, so that is what the warning is
+  // allowed to talk about. The city is the server's answer from the marker
+  // (20260905130000); a change of city is always a jump past that line.
+  const markerMoved = coords.lat !== business.lat || coords.lng !== business.lng;
+  const markerMovedFar = movedFar({ lat: business.lat, lng: business.lng }, coords);
   // The literal name change is what gets written; the normalised one is what
   // the trigger reacts to. "Cafe Janis" becoming "Café Janis" saves and costs
   // nothing, and this screen has to be able to say both halves of that.
@@ -872,11 +868,12 @@ function BusinessEditForm({
         await saveHours.mutateAsync();
       }
       // Last, and on its own: the address above is an ordinary column and
-      // this is a geofenced function. Passing the address here as well would
+      // this is the function that resolves the city from the marker (the
+      // stored city is its hint). Passing the address here as well would
       // write it twice, and the marker is deliberately allowed to disagree
       // with the words.
       if (markerMoved) {
-        await moveBusiness.mutateAsync({ lat: coords.lat, lng: coords.lng, cityId });
+        await moveBusiness.mutateAsync({ lat: coords.lat, lng: coords.lng });
       }
       haptics.success();
       router.back();
@@ -978,58 +975,22 @@ function BusinessEditForm({
           the others alone. */}
       {shows('location') ? (
         <>
-          {city ? (
-            <BusinessAddressField
-              value={address}
-              cityName={city.cities.name}
-              cityLat={city.cities.lat}
-              cityLng={city.cities.lng}
-              onFocusChange={setAddressFocused}
-              onChangeText={(next) => setAddress(next.slice(0, ADDRESS_MAX))}
-              // Picking a result moves both, because somebody who searched for
-              // their own address meant the door and not the words.
-              onPick={(place) => {
-                setAddress(addressFrom(place));
-                setCoords({ lat: place.latitude, lng: place.longitude });
-              }}
-            />
-          ) : (
-            <FormTextField
-              label="Address"
-              placeholder="Rua da Rosa 12"
-              value={address}
-              onChangeText={setAddress}
-              maxLength={ADDRESS_MAX}
-              hint="What a traveler pastes into a taxi app."
-            />
-          )}
-          {city && !addressFocused ? (
+          <BusinessAddressField
+            value={address}
+            near={coords}
+            onFocusChange={setAddressFocused}
+            onChangeText={(next) => setAddress(next.slice(0, ADDRESS_MAX))}
+            // Picking a result moves both, because somebody who searched for
+            // their own address meant the door and not the words.
+            onPick={(place) => {
+              setAddress(addressFrom(place));
+              setCoords({ lat: place.latitude, lng: place.longitude });
+            }}
+          />
+          {!addressFocused ? (
             <>
-              {launchCities.length > 1 ? (
-                <SelectField
-                  label="City"
-                  options={launchCities.map((row) => ({
-                    value: String(row.city_id),
-                    label: row.cities.name,
-                  }))}
-                  value={String(cityId)}
-                  onChange={(next) => {
-                    const picked = launchCities.find((row) => String(row.city_id) === next);
-                    if (!picked) {
-                      return;
-                    }
-                    setCityId(picked.city_id);
-                    // The old marker is in the old city, and the geofence would
-                    // refuse it. Start at the new centre and let them place it.
-                    setCoords({ lat: picked.cities.lat, lng: picked.cities.lng });
-                  }}
-                  hint="Where you are, not where you deliver."
-                />
-              ) : null}
               <LocationPicker
-                // Remounted per city for the same reason signup does it: the
-                // picker reads its centre once, through initialRegion.
-                key={`edit-${cityId}`}
+                key="edit"
                 centerLat={coords.lat}
                 centerLng={coords.lng}
                 lat={coords.lat}
@@ -1044,11 +1005,13 @@ function BusinessEditForm({
               />
               {/* A ten-metre nudge onto the real door produces no warning at
               all now, which is the whole point: the corrections that make the
-              map better used to be the ones that cost the most. */}
+              map better used to be the ones that cost the most. No City
+              select any more either: since 2026-09-05 the server files the
+              listing under the city the marker is in. */}
               <ThemedText type="footnote" themeColor={markerMovedFar ? 'warning' : 'textSecondary'}>
                 {markerMovedFar
                   ? 'You moved the marker a long way. Saving takes your business off the map until you confirm your email again, and the check goes with it.'
-                  : 'Tap the map to put the marker on your door. Nudging it is free. Moving it to another street takes you off the map until you confirm your email again.'}
+                  : 'Search your address or tap the map to put the marker on your door. Nudging it is free. Moving it to another street takes you off the map until you confirm your email again.'}
               </ThemedText>
             </>
           ) : null}

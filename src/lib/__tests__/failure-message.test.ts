@@ -195,6 +195,24 @@ describe('the D3 rule: the database may not write user-facing copy', () => {
     }
   });
 
+  it('no longer knows the marker-outside-the-city refusal, because nothing raises it', () => {
+    // 20260905130000: a business is filed under the city its marker is in,
+    // any city, never refused on geography. The old sentence and the prefix
+    // that reached it are gone, so a raise that somehow still carried the
+    // old text falls to the generic rather than to a retired instruction.
+    expect(FAILURE_COPY_VALUES).not.toContain(
+      'Drag the marker onto your door, or pick the right city.'
+    );
+    expect(
+      saveFailureMessage({
+        message: 'that marker is not in Lisbon. Drag it onto your door, or pick the right city.',
+      })
+    ).toBe(GENERIC_SAVE_FAILURE);
+    for (const sentence of FAILURE_COPY_VALUES) {
+      expect(sentence).not.toMatch(/pick the right city/i);
+    }
+  });
+
   it('ships no banned vocabulary and no em dash in any sentence of its own', () => {
     // The same words src/app/__tests__/copy-lint.test.ts bans in migration
     // literals, applied to every sentence this module can say.

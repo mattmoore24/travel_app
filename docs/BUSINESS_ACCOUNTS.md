@@ -140,11 +140,13 @@ enum would leak the moderation queue.
 RLS: select where `active and state = 'listed'`; owner selects own row always.
 Client UPDATE column-granted to (name, description, hours_note, place_label,
 public_preview) behind a screening + velocity trigger; lat/lng, city_id,
-active, state, verified_at, owner_user_id are server-owned. Name, city or
-location changes go through `update_business_location(...)`, which drops the
-row back to `unconfirmed` **and clears `verified_at`** — that closes
+active, state, verified_at, owner_user_id are server-owned. Name or location
+changes go through `update_business_location(...)`, which drops the row back
+to `unconfirmed` **and clears `verified_at`** — that closes
 verify-a-surf-shack, rename-to-Marriott, and it is the same edit set Google
-re-triggers on.
+re-triggers on. The city is resolved from the marker and only a move past
+20 km of the stored city changes it, which is already over 75 m and costs the
+check as before.
 
 ### 3.3 Content tables
 
@@ -349,10 +351,12 @@ a flow that has already been broken once by an auth toggle.
   It's the address travelers will reach you at, and it's what puts you on the
   map."_ Nothing refuses a Gmail address; most small businesses on earth are on
   one, and refusing them is refusing the market.
-- **Changing the email re-confirms.** Changing the name, city or location drops
-  the row back to `unconfirmed` **and clears the verification**, which is what
+- **Changing the email re-confirms.** Changing the name or location drops the
+  row back to `unconfirmed` **and clears the verification**, which is what
   closes list-a-surf-shack, rename-to-Marriott. Google re-triggers on exactly
-  the same edits.
+  the same edits. The city is resolved from the marker and only a move past
+  20 km of the stored city changes it, which is already over 75 m and costs
+  the check as before.
 
 #### Step 2 — the storefront photo, and how it must be taken
 
@@ -676,12 +680,12 @@ the map."** **[founder]**, and onboarding step 3 carries a "Setting this up for
 a business?" footnote. Either arms the business flag before the first business
 step, so a killed app resumes correctly.
 
-Steps: name and category · city and the drop-pin picker ("Drop the pin right on
-your door.") · **business email** (with the plain reason: _"Use your business
-email. It's the address travelers will reach you at, and it's what puts you on
-the map."_) and an optional website · links · hours (skippable) · photos
-("Photos of the business, not of a person. The first one is your cover."). Finish
-lands on:
+Steps: name and category · the address search (any city), a set-the-pin-yourself
+line, and the draggable marker · **business email** (with the plain reason:
+_"Use your business email. It's the address travelers will reach you at, and
+it's what puts you on the map."_) and an optional website · links · hours
+(skippable) · photos ("Photos of the business, not of a person. The first one
+is your cover."). Finish lands on:
 
 > **"Almost there. Tap the link in the email we just sent and you're on the
 > map."**

@@ -6,6 +6,7 @@ import {
   type BusinessReportReason,
   type BusinessVerificationRow,
   type CityBusinessRow,
+  type CityRow,
   type CityWhatsOnRow,
   type ModerationStatus,
   type MyBusinessRow,
@@ -68,10 +69,15 @@ export async function setListingIntent(wants: boolean) {
   return data === true;
 }
 
+/**
+ * Create the caller's one business. No city goes with it: the server files
+ * the listing under the city its marker is in (resolve_business_city,
+ * 20260905130000), any of the seeded cities, and null is the honest hint
+ * from a screen on which nobody chose one.
+ */
 export async function registerBusiness(input: {
   name: string;
   category: BusinessCategory;
-  cityId: number;
   lat: number;
   lng: number;
   /** As typed or picked. Never derived from the marker; see the migration. */
@@ -80,7 +86,7 @@ export async function registerBusiness(input: {
   const { data, error } = await supabase.rpc('register_business', {
     p_name: input.name,
     p_category: input.category,
-    p_city_id: input.cityId,
+    p_city_id: null,
     p_lat: input.lat,
     p_lng: input.lng,
     p_address: input.address ?? null,
@@ -97,7 +103,10 @@ export async function registerBusiness(input: {
  * `lat`, `lng` and `city_id` are deliberately withheld from the client's
  * UPDATE grant — a business that could move its own marker could verify a
  * surf shack and then become the Marriott — so this SECURITY DEFINER function
- * is the only door, and it re-runs the city radius check on the way through.
+ * is the only door. It resolves the city from the marker on the way through:
+ * the stored city is the hint and stands while the marker stays within 20 km
+ * of it, otherwise the listing is re-filed under the city the marker is in.
+ * `cityId` is kept for the old bundle's sake and no screen passes it now.
  *
  * `clearAddress` exists because null means two different things through an
  * optional parameter: "leave the address alone" and "the owner deleted it".
@@ -119,6 +128,28 @@ export async function updateBusinessLocation(input: {
   if (error) {
     throw error;
   }
+}
+
+/**
+ * Which city a marker will be filed under, before anything is written: the
+ * same resolver register_business and update_business_location run, with the
+ * same hint, so "That puts you in Lisbon, Portugal." on the screen, the
+ * confirm card and the stored row cannot disagree.
+ */
+export async function fetchCityForSpot(
+  lat: number,
+  lng: number,
+  hint: number | null
+): Promise<CityRow | null> {
+  const { data, error } = await supabase.rpc('city_for_spot', {
+    p_lat: lat,
+    p_lng: lng,
+    p_hint: hint,
+  });
+  if (error) {
+    throw error;
+  }
+  return (data ?? null) as CityRow | null;
 }
 
 /**

@@ -4,7 +4,6 @@ import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
@@ -19,6 +18,7 @@ import {
   useBusinessCodeStatus,
   useBusinessDetail,
   useCityBusinesses,
+  useCityForSpot,
   useConfirmBusinessEmail,
   useOwnBusiness,
   useRecordListingIntent,
@@ -37,7 +37,8 @@ import {
   weekdayLabel,
 } from '@/features/business/vocabulary';
 import { countOf } from '@/lib/plural';
-import { useLaunchCities } from '@/features/pins/hooks';
+import { cityInZone, deviceTimezone } from '@/features/pins/browsing-city';
+import { useCity, useFeaturedCities, useLaunchCities } from '@/features/pins/hooks';
 import { LocationPicker } from '@/features/pins/location-picker';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { BUSINESS_TOTAL_STEPS } from '@/features/signup/steps';
@@ -63,14 +64,11 @@ import { haptics } from '@/lib/haptics';
  */
 
 /**
- * "four cities", spelled out the way a sentence says it. Digits past nine,
- * by which point the sentence will have been rewritten anyway.
+ * Where the set-the-pin map opens when nothing better is known: the whole
+ * world, for somebody to pinch into. Reached only when the search had no
+ * near miss to offer and no featured city shares the phone's clock zone.
  */
-function cityCountWord(count: number): string {
-  const words = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
-  const word = words[count] ?? String(count);
-  return count === 1 ? `${word} city` : `${word} cities`;
-}
+const WORLD_START = { lat: 20, lng: 0, delta: 120 };
 
 /**
  * A stable slug per 1-based step, for `business_step_completed` — the same
@@ -198,8 +196,10 @@ export default function BusinessSignupScreen() {
   }, [listingDone, recordListingIntent]);
 
   const userId = useOwnUserId();
-  const launchCitiesQuery = useLaunchCities();
-  const launchCities = launchCitiesQuery.data ?? [];
+  // The launch list decides one thing on this form now: which city's real
+  // listing the offer step shows as its example. Where a business may BE is
+  // any city, since 2026-09-05, and the server names it from the marker.
+  const launchCities = useLaunchCities().data ?? [];
   const registerBusiness = useRegisterBusiness();
   const moveBusiness = useUpdateBusinessLocation();
   const requestCode = useRequestBusinessEmailCode();
@@ -217,8 +217,15 @@ export default function BusinessSignupScreen() {
   const [step, setStep] = useState(3);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<BusinessCategory | null>(null);
-  const [cityId, setCityId] = useState<number | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  // The by-hand path on "Where is it?": the small line was tapped, so the
+  // map is shown with no marker, waiting for one, starting where the search
+  // almost found the address, else the featured city on this phone's clock
+  // zone, else the world. Screen-level, so walking back keeps it.
+  const [pinYourself, setPinYourself] = useState(false);
+  const [mapStart, setMapStart] = useState<{ lat: number; lng: number; delta: number } | null>(
+    null
+  );
   // Two pieces of state on purpose, and this is the founder's rule in code:
   // "keep their address the same as whatever they entered while adjusting the
   // pin location if needed". Picking a suggestion writes both; typing writes
@@ -265,11 +272,17 @@ export default function BusinessSignupScreen() {
   const [descriptionProblem, setDescriptionProblem] = useState<string | null>(null);
   const updateBusiness = useUpdateOwnBusiness(business?.id ?? null);
 
-  // Chosen, never assumed. This used to fall back to `launchCities[0]`, so
-  // somebody who never touched the chips registered in whatever city the query
-  // happened to return first — and until 20260829160000 the server did not
-  // check either, so a marker in Bangkok could be filed under Lisbon.
-  const city = cityId != null ? (launchCities.find((c) => c.city_id === cityId) ?? null) : null;
+  // The city is the SERVER'S answer, never a choice made here: the same
+  // resolver register_business runs, asked ahead of the write so the screen
+  // can say "That puts you in Lisbon, Portugal." and the confirm card can
+  // name it. The stored city is the hint on a re-entry; null the first time.
+  const { data: spotCity = null } = useCityForSpot(coords, business?.city_id ?? null);
+  // The row behind it, for a re-entry that has no marker in state yet.
+  const { data: businessCityRow = null } = useCity(business?.city_id ?? null);
+  // Where the by-hand map opens with nothing better to go on: Intl only,
+  // never a location read (section 7 rule 2).
+  const { data: featured = [] } = useFeaturedCities();
+  const zoneCity = cityInZone(featured, deviceTimezone());
   const emailOk = EMAIL_PATTERN.test(email.trim());
   const listed = business?.state === 'listed';
 
@@ -277,10 +290,10 @@ export default function BusinessSignupScreen() {
   //
   // A real listing rather than a mock of one: what a traveler actually gets is
   // the whole argument, and the seeded launch venues already are that. The
-  // city is whichever one has been picked, or the first we are open in,
-  // because at step 3 nobody has picked one yet. Only asked for on the step
-  // that draws it, so the other eleven pay nothing for it.
-  const exampleCityId = cityId ?? launchCities[0]?.city_id ?? null;
+  // first city we are open in, because nothing on this form picks one any
+  // more. Only asked for on the step that draws it, so the other eleven pay
+  // nothing for it.
+  const exampleCityId = launchCities[0]?.city_id ?? null;
   const exampleCity = launchCities.find((c) => c.city_id === exampleCityId) ?? null;
   const { data: exampleList } = useCityBusinesses(step === 3 ? exampleCityId : null);
   const example = exampleList?.find((row) => row.cover_path != null) ?? exampleList?.[0] ?? null;
@@ -367,25 +380,24 @@ export default function BusinessSignupScreen() {
    * would be refused by the database rather than retried.
    */
   const register = async () => {
-    if (category == null || city == null || coords == null) {
+    if (category == null || coords == null) {
       return;
     }
     // Already registered, so this is a correction rather than a creation:
     // somebody walked back to "Where is it?" from a later step. lat, lng and
     // city_id have no client UPDATE grant, so the move goes through the
-    // SECURITY DEFINER door, which re-runs the same city radius check.
+    // SECURITY DEFINER door, which files the listing under the city the
+    // marker is in (the stored city is its hint).
     if (registered || business != null) {
       try {
         await moveBusiness.mutateAsync({
           lat: coords.lat,
           lng: coords.lng,
-          cityId: city.city_id,
           address: address.trim() || null,
           clearAddress: address.trim().length === 0,
         });
       } catch {
-        // Surfaced by the global mutation error alert; stay on the step so
-        // the marker can be dragged back inside the city.
+        // Surfaced by the global mutation error alert; stay on the step.
         return;
       }
       go(7);
@@ -395,20 +407,21 @@ export default function BusinessSignupScreen() {
       await registerBusiness.mutateAsync({
         name: name.trim(),
         category,
-        cityId: city.city_id,
         lat: coords.lat,
         lng: coords.lng,
         address: address.trim() || null,
       });
       setRegistered(true);
-      analytics.capture('business_registered', { category, city_id: city.city_id });
+      // The city the preview resolved, when it has answered: the server's
+      // own answer is the same function with the same hint. Null on a slow
+      // network is the honest value, and nothing awaited on it before.
+      analytics.capture('business_registered', { category, city_id: spotCity?.id ?? null });
       go(7);
     } catch {
-      // Surfaced by the global mutation error alert (lib/query-client). Three
+      // Surfaced by the global mutation error alert (lib/query-client). Two
       // refusals arrive this way: an account that has already finished a
-      // traveler profile, a city we have not launched in, and — new since
-      // 20260829160000, and previously claimed here but never true — a marker
-      // outside the city's radius.
+      // traveler profile, and a second business on one account. Geography
+      // is not one of them any more (20260905130000).
     }
   };
 
@@ -717,147 +730,105 @@ export default function BusinessSignupScreen() {
       <StepShell
         step={5}
         total={BUSINESS_TOTAL_STEPS}
+        footer={leaveFooter}
         title="Where is it?"
-        subtitle="Type your address, then check the marker is on your door."
-        // Greyed while the answer is missing, like every other blocked step.
-        // It rendered full accent blue and swallowed the tap silently; the
-        // note alone carried "pick your city", and only before a city was
-        // picked. The grey button now says "not yet" the whole way.
-        continueDisabled={city == null || coords == null}
+        subtitle="Type your address and tap it when it comes up."
+        // Greyed while the marker is missing, like every other blocked step:
+        // the grey button says "not yet" the whole way. No city to wait on
+        // any more; the server names one from the marker.
+        continueDisabled={coords == null}
         note={
           addressFocused
-            ? 'Pick your street from the list.'
-            : city != null && coords == null
-              ? 'Pick your street above, or tap the map on your door.'
+            ? 'Pick your address from the list.'
+            : pinYourself && coords == null
+              ? 'Zoom in and tap the map on your door.'
               : null
         }
         onBack={() => go(4)}
         continueTestID="business-place-continue"
         onContinue={() => {
           setTouched(true);
-          if (coords == null || city == null) {
+          if (coords == null) {
             return;
           }
-          // Forward to the confirm step. This said go(3) and sent an owner
-          // back to the name screen instead, which is a loop with no way out
-          // of the form: the founder's "Is this right?" was unreachable.
+          // Forward to the confirm step. This said go(3) once and sent an
+          // owner back to the name screen instead, which is a loop with no
+          // way out of the form.
           go(6);
-        }}
-        footer={
+        }}>
+        {/* ONE BOX, ANYWHERE ON EARTH. No "Which city?" and no preset list:
+            the founder's 2026-09-05 decision retired the launch-city fence
+            for businesses the day after it went for pins. The address is the
+            way in; a suggestion sets both the words and the marker; typing
+            sets only the words; and the small line under the box is for an
+            address that is not coming up. The city is the server's answer
+            (city_for_spot), printed under the map once there is a marker. */}
+        <BusinessAddressField
+          onFocusChange={setAddressFocused}
+          value={address}
+          near={coords}
+          onChangeText={(next) => setAddress(next.slice(0, ADDRESS_MAX))}
+          onPick={(place) => {
+            setAddress(addressFrom(place));
+            setCoords({ lat: place.latitude, lng: place.longitude });
+          }}
+          onSetPin={
+            coords == null && !pinYourself
+              ? (near) => {
+                  // The nearest miss the search had, else the featured city
+                  // on this phone's clock zone at country scale (Intl only,
+                  // section 7 rule 2), else the world. Never a device fix.
+                  setMapStart(
+                    near
+                      ? { ...near, delta: 0.03 }
+                      : zoneCity
+                        ? { lat: zoneCity.cities.lat, lng: zoneCity.cities.lng, delta: 2.5 }
+                        : WORLD_START
+                  );
+                  setPinYourself(true);
+                }
+              : undefined
+          }
+        />
+        {!addressFocused && (coords != null || pinYourself) ? (
           <>
-            {launchCitiesQuery.isError ? (
-              <PrimaryButton
-                variant="ghost"
-                label="Try again"
-                onPress={() => launchCitiesQuery.refetch()}
-              />
-            ) : null}
-            {leaveFooter}
-          </>
-        }>
-        {launchCities.length > 0 && !addressFocused ? (
-          <View style={styles.block}>
-            <ThemedText type="callout">Which city?</ThemedText>
-            <ChipRail
-              wrap
-              options={launchCities.map((c) => ({
-                value: String(c.city_id),
-                label: c.cities.name,
-              }))}
-              selected={city ? String(city.city_id) : null}
-              onSelect={(value) => {
-                setCityId(Number(value));
-                // A marker belongs to the city it was placed in, and since
-                // 20260829160000 the server agrees: register_business runs the
-                // same radius check pins have. The address goes with it, since
-                // a street in Lisbon is not a street in Bangkok.
-                setCoords(null);
-                setAddress('');
-              }}
+            <LocationPicker
+              // Remounted when a marker first lands: the picker reads its
+              // centre once, through initialRegion, and the by-hand map
+              // opened at country scale has to fly to street scale.
+              key={coords ? 'placed' : 'placing'}
+              centerLat={coords?.lat ?? mapStart?.lat ?? WORLD_START.lat}
+              centerLng={coords?.lng ?? mapStart?.lng ?? WORLD_START.lng}
+              // Street level once there is a marker: "check the marker is
+              // on your door" cannot be answered by seven kilometres of city.
+              delta={coords ? 0.004 : (mapStart?.delta ?? WORLD_START.delta)}
+              lat={coords?.lat ?? mapStart?.lat ?? WORLD_START.lat}
+              lng={coords?.lng ?? mapStart?.lng ?? WORLD_START.lng}
+              // No marker until there is one to draw: a map with a marker
+              // on it, a greyed Continue, and a note asking for a marker
+              // was the screen this replaced.
+              placed={coords != null}
+              // The chip a traveler will actually tap, not MapKit's red
+              // balloon. Category is picked a step before this map.
+              marker={category ? <PlaceGlyph category={category} /> : undefined}
+              // Only the marker. The address stays exactly as typed, which
+              // is the founder's rule and the reason these are two fields.
+              onChange={(lat, lng) => setCoords({ lat, lng })}
             />
-            {/* The door for city five. A hostel in Porto used to hit a wall
-                here, quit, and the app never learned it existed - exactly the
-                demand signal that picks the next launch city. /contact
-                carries it with zero schema. */}
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel="Somewhere else? Tell us where."
-              haptic="light"
-              scaleTo={0.98}
-              onPress={() => router.push('/contact')}
-              style={styles.elsewhere}>
+            {coords != null ? (
               <ThemedText type="footnote" themeColor="textSecondary">
-                Somewhere else? Tell us where.
+                {address.trim().length > 0
+                  ? 'Move the marker as much as you like. Your address stays as you wrote it.'
+                  : 'Just the marker is fine. You can add the street later.'}
               </ThemedText>
-            </PressableScale>
-          </View>
-        ) : null}
-        {city ? (
-          <>
-            {/* The address is the DEFAULT way in, which is why it is first and
-                why the marker below starts at the city centre rather than
-                demanding a tap. Somebody who would rather just place the pin
-                types nothing and drags; the field being here does not make it
-                a requirement. */}
-            <BusinessAddressField
-              onFocusChange={setAddressFocused}
-              value={address}
-              cityName={city.cities.name}
-              cityLat={city.cities.lat}
-              cityLng={city.cities.lng}
-              onChangeText={(next) => setAddress(next.slice(0, ADDRESS_MAX))}
-              onPick={(place) => {
-                setAddress(addressFrom(place));
-                setCoords({ lat: place.latitude, lng: place.longitude });
-              }}
-            />
-            {addressFocused ? null : (
-              <>
-                <LocationPicker
-                  // Remounted on a city change: the picker reads its centre
-                  // once, through initialRegion, so without this the map keeps
-                  // showing the city that was chosen first.
-                  key={city.city_id}
-                  // Once the address geocodes, the map flies to it at street
-                  // level: "check the marker is on your door" cannot be
-                  // answered by seven kilometres of city. With nothing
-                  // geocoded it stays on the city at city scale.
-                  centerLat={coords?.lat ?? city.cities.lat}
-                  centerLng={coords?.lng ?? city.cities.lng}
-                  delta={coords != null ? 0.004 : 0.06}
-                  lat={coords?.lat ?? city.cities.lat}
-                  lng={coords?.lng ?? city.cities.lng}
-                  // No marker until there is one to draw. It used to sit on
-                  // the city centre, so the screen showed a marker, refused
-                  // Continue, and asked for a marker.
-                  placed={coords != null}
-                  // The chip a traveler will actually tap, not MapKit's red
-                  // balloon. Category is picked a step before this map.
-                  marker={category ? <PlaceGlyph category={category} /> : undefined}
-                  // Only the marker. The address stays exactly as typed, which
-                  // is the founder's rule and the reason these are two fields.
-                  onChange={(lat, lng) => setCoords({ lat, lng })}
-                />
-                {address.trim().length > 0 && coords != null ? (
-                  <ThemedText type="footnote" themeColor="textSecondary">
-                    Move the marker as much as you like. Your address stays as you wrote it.
-                  </ThemedText>
-                ) : null}
-              </>
-            )}
+            ) : null}
+            {coords != null && spotCity ? (
+              <ThemedText type="footnote" themeColor="textSecondary" testID="business-spot-city">
+                {`That puts you in ${spotCity.name}, ${spotCity.country_name}.`}
+              </ThemedText>
+            ) : null}
           </>
-        ) : (
-          <ThemedText themeColor="textSecondary">
-            {launchCitiesQuery.isError
-              ? 'The map could not load the cities. Check your connection and try again.'
-              : launchCities.length > 0
-                ? // The launch state, said plainly, and derived from the list
-                  // so it stays true when city five lands. Nothing is loading
-                  // here: the screen is waiting on a tap.
-                  `We're in ${cityCountWord(launchCities.length)} so far. Pick yours above and the map shows up.`
-                : 'Getting the cities.'}
-          </ThemedText>
-        )}
+        ) : null}
       </StepShell>
     );
   }
@@ -879,15 +850,15 @@ export default function BusinessSignupScreen() {
           <ThemedText type="headline">{name.trim()}</ThemedText>
           <ThemedText type="footnote" themeColor="textSecondary">
             {category ? CATEGORY_LABEL[category] : ''}
-            {city ? ` · ${city.cities.name}` : ''}
+            {spotCity ? ` · ${spotCity.name}, ${spotCity.country_name}` : ''}
           </ThemedText>
           <ThemedText type="body">
             {address.trim().length > 0 ? address.trim() : 'No address, just the marker.'}
           </ThemedText>
         </View>
-        {city && coords ? (
+        {coords ? (
           <LocationPicker
-            key={`confirm-${city.city_id}`}
+            key="confirm"
             centerLat={coords.lat}
             centerLng={coords.lng}
             lat={coords.lat}
@@ -902,7 +873,11 @@ export default function BusinessSignupScreen() {
             onChange={(lat, lng) => setCoords({ lat, lng })}
           />
         ) : null}
-        <PrimaryButton variant="ghost" label="Fix the address" onPress={() => go(5)} />
+        <PrimaryButton
+          variant="ghost"
+          label="Fix the address or the marker"
+          onPress={() => go(5)}
+        />
         {/* A small nudge onto the real door costs nothing since
             20260902100000: only a city change or a move over seventy-five
             metres sends a listed business back for another email check. */}
@@ -1255,7 +1230,7 @@ export default function BusinessSignupScreen() {
         detail={detail ?? null}
         fallbackName={name.trim()}
         category={category}
-        cityName={city?.cities.name ?? null}
+        cityName={spotCity?.name ?? businessCityRow?.name ?? null}
         // The heading promises what a traveler sees. While the listing is
         // unconfirmed no traveler sees any of it, so the promise is qualified
         // on the screen that makes it rather than one screen later.
@@ -1637,10 +1612,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   // A quiet full-height row: 44pt to tap, footnote-sized to read.
-  elsewhere: {
-    minHeight: HitTarget,
-    justifyContent: 'center',
-  },
   confirmCard: {
     gap: Space.xs,
     padding: Space.md,

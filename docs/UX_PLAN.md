@@ -346,7 +346,7 @@ Nothing here waits on a decision. Thirty-three are under an hour each, and fifty
 | Make passing a traveler undoable, and make the pass say it happened                               | Travelers          |   M    | over the air                   |
 | Add a +not-found route in the app's own voice                                                     | Account, settings, |   S    | over the air                   |
 | One voice: kill the banned noun, the developer word, and the two-sided facts                      | Business           |   S    | over the air                   |
-| Step 4: grey the blocked Continue, say the launch state, and take a name for city five            | Business           |   S    | over the air                   |
+| Step 4: grey the blocked Continue, say the launch state, and take a name for city five            | Business           |   S    | superseded 2026-09-05          |
 | Stop the business inbox saying three contradictory things about an empty room                     | Chat tab           |   S    | over the air                   |
 | Scale the fixed preview height with the text size                                                 | Chat tab           |   S    | over the air                   |
 | Give the public profile route the three states every other screen has                             | Design system      |   S    | over the air                   |
@@ -449,7 +449,7 @@ Ordered by effort. Several depend on a Wave 0 package landing first; those depen
 | Re-seed the curated pins by district so a heat cell can actually clear k                                          | Map                |   M    | over the air + Supabase deploy |
 | One message slot above the dock, with a priority order and the moments that matter in it                          | Map                |   M    | over the air                   |
 | Say how many plans survive the filter, and stop covering the map that is meant to prove it                        | Map                |   M    | over the air                   |
-| A business's map opens on its own city, shows why its listing is missing, and has a button on it                  | Map                |   M    | over the air                   |
+| A business's map opens on its own city, shows why its listing is missing, and has a button on it                  | Map                |   M    | done through useCity, any city |
 | The map opens where you are, and the analytics stop attributing everyone to Bangkok                               | Map                |   M    | over the air + Supabase deploy |
 | "Today" means the browsed city's today, not the reader's                                                          | Map                |   M    | over the air                   |
 | Show the address before the commit, and stop thudding at camera moves the user did not make                       | Map                |   M    | over the air                   |

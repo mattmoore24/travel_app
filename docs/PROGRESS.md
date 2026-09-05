@@ -3,6 +3,127 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **A business goes where its door is** (2026-09-05)
+
+The founder, the day after the pin fence went: _"businesses shouldn't be
+limited on where they can put their pin. It should instead just be a simple
+search bar where they can put in the business on the 'where is it?' page. The
+search bar should just be where they put in their business address, and then
+they can click the recommended option as it comes up as they search, or there
+can be an option in smaller text below that allows them to just set their pin
+if their address isn't popping up ... I'd rather have that for full
+flexibility and scalability than forcing business users to pick from preset
+cities set by me."_ So the "Which city?" chips, the launch-state sentence and
+the "Somewhere else? Tell us where." door are gone from step 5, and the server
+files a listing under the city its marker is in.
+
+### What changed, and where the fence went
+
+- **`resolve_business_city(p_lat, p_lng, p_hint)`** (20260905130000), three
+  tiers and never a refusal: the hint stands when the marker is within 20 km
+  of it (`validate_pin`'s rule, verbatim, which is what keeps a nudge from
+  ever changing `city_id`); else `nearest_city()` (distance over the fourth
+  root of population, null beyond about 55 km); else the nearest city on
+  earth by plain haversine, a full scan that runs only at sea or in the
+  outback, because `businesses.city_id` is NOT NULL and a business signing up
+  has no browsed city to fall back on. A forged hint that is no `cities` row
+  falls through to the marker. Authenticated only, like `nearest_city`.
+- **`city_for_spot(p_lat, p_lng, p_hint)`**, jsonb: `city_json` of the same
+  resolver with the same hint (null on a first registration, the stored city
+  on a re-entry), so "That puts you in Lisbon, Portugal.", the confirm card
+  and the stored row cannot disagree. Definer, because `city_json` is
+  authenticated-only; a guest cannot call either door.
+- **The two write doors, signatures unchanged.** `register_business` replaces
+  its `launch_cities` lookup with the resolver; `update_business_location`
+  passes `coalesce(p_city_id, stored city)` as the hint, so a nudge keeps the
+  city and a move past 20 km re-files the listing. Both `create or replace`
+  with grants restated, on purpose: no OUT list, argument or return type
+  moved, so there is no drop-first to do. The register door gains the
+  explicit `grant execute ... to authenticated` it had only by default
+  privileges until now.
+- **The label or the circle.** `city_businesses`, `city_whats_on` and
+  `city_rooms` read `b.city_id = p_city_id or haversine_km(...) <= map_radius_km()`,
+  bodies only. A Cascais door draws on the Lisbon map like a Cascais pin, and
+  a lodge filed 300 km from its city is still on that city's list, which the
+  circle alone would have dropped.
+- **Two raise literals are gone**, not reworded: "we have not launched in that
+  city yet" and "that marker is not in %. Drag it onto your door, or pick the
+  right city." `failure-message`'s `MARKER_OUTSIDE` goes with them. Column
+  comments say `launch_cities.radius_km` has no caller (kept because build
+  17's bundle still selects it) and that `businesses.city_id` is resolved on
+  every write, any city. Migration first, then the update: the new bundle
+  sends `p_city_id: null`, which the old function would have refused.
+
+### The client
+
+- **One box, one list, one small line.** Step 5 is `BusinessAddressField`
+  searching the world: MapKit with a continent-sized region hint, in its own
+  order, then `geocodeAsync` on the bare text; three characters before
+  anything fires, and only while the box has focus, so walking back from "Is
+  this right?" never pops a list under a settled address. Under it, "Not
+  coming up? Set the pin yourself." shows the picker with no marker, centred
+  on the near-miss the list had if it had one, else the featured city whose
+  clock is the phone's Intl zone at country scale, else the world, and the
+  person pinches in. The map appears once a marker exists or the line is
+  tapped; a pick sets both halves, a drag moves only the marker, and the city
+  line under it ("That puts you in Lisbon, Portugal.") comes from
+  `city_for_spot` and follows a drag across a border honestly.
+- Step 6's card carries "Cafe · Lisbon, Portugal" from the same answer, its
+  map is draggable, and the way back is "Fix the address or the marker".
+  `business_registered` carries the resolved `city_id`.
+- **`useCity(id)`** reads a `cities` row by id, and that is how the map flies
+  to the owner's own city, the editor and the place sheet name it, and step
+  12's preview says it: none of them look the business up in the launch list
+  any more. business-edit loses its City select and the plain Address
+  fallback; the search box and the draggable marker are the whole of "Where
+  you are".
+
+### What did not move
+
+Rule 2: the only search centres are a marker the person placed, a featured
+city picked by Intl timezone, or the origin; no expo-location position API
+anywhere, and app.json's location permissions stay false. Rule 5: the address
+is still screened by `screen_business_text` on every write. Rule 8: the
+traveler refusal in `register_business` and the six triggers are untouched.
+`lat`, `lng` and `city_id` are still server-owned columns.
+`business_rename_resets` is untouched and now unreachable by a nudge across a
+city line: the stored-city hint keeps `city_id` for every move inside 20 km,
+and a re-file is always over 75 m, which the trigger already resets. The
+seeders keep their `launch_cities` join; `validate_pin` is untouched, because
+pins were the day before's change. No return type moved: `register_business`
+still answers a uuid, and the city reaches the client through `city_for_spot`
+before the write and `my_business` after it.
+
+### Proof
+
+`77_a_business_goes_where_its_door_is.test.sql` (`plan(30)`), written as
+attacks: Midtown with no hint files under New York City and not Hoboken;
+Monaco under a Nice hint stands at 13 km; the Croisette under the same hint
+re-files to Cannes; a marker in the mid-Atlantic lands on the nearest city by
+plain distance; a forged hint that is no city is ignored; a 30 m nudge keeps
+the city and the badge, a move to Cannes re-files and costs it; Cascais draws
+on the Lisbon map, room list and What's on and not on Porto's; a far-filed
+listing is still on its own city's list; a guest can call neither door; the
+preview names Porto and honours the hint like the write; rule 8 restated.
+`21_business_accounts.test.sql` goes from `plan(41)` to `plan(45)`, four
+assertions flipped or added: "a marker in Porto under a Lisbon hint is saved,
+not refused" and filed under Porto; "a marker in Bairro Alto keeps the Lisbon
+hint: the hint stands within 20 km"; "moving the marker to Porto is allowed
+now" and the listing follows; back to Lisbon, "the stored Porto hint is 270 km
+away, so the marker decides". Every positional
+`register_business(..., pg_temp.lisbon(), 38.71, -9.14)` caller in the suite
+stays green through the first tier. Jest: `use-place-search.test.ts` (the
+continent hint, the marker bias, city mode byte-for-byte, the three-character
+floor, the bare text to the geocoder, honest emptiness, a stale answer never
+landing) and `address-field.test.tsx` (the placeholder, no search until focus,
+the small line and what pressing it does); business-edges, business-map and
+business-exits rewritten for the new step 5, the by-id map and the shared
+footer; browsing-city gains `cityInZone`; failure-message asserts
+`MARKER_OUTSIDE` is gone. The E2E run number and the screenshots (42, 42b for
+the by-hand map, 43, 44, 45, 46 and 71) are filled in by the implementer.
+
+_E2E: run and frames to be filled in._
+
 ## **Which trips the queue is for, and no limit on how far ahead** (2026-09-05)
 
 The founder, on the Travelers tab: "remove the descriptions around each distance,
@@ -102,6 +223,17 @@ now `homeRegion`: the fit once the plans are in, the city's box until then.
 The pill measures from it and lands on it, and a tap on the chip that is
 already lit lands there too instead of on the centroid (which for Denpasar
 summoned the pill again). camera.test.ts holds the Denpasar case.
+
+Run 119 then photographed what the pill had been hiding: the relaunch frame
+was a box on the rice fields between Seminyak's nine plans and a business chip
+in Ubud, saying "No plans over here", because `fitRegion` clamps a spread wider
+than the widest frame to the middle of that spread. It frames the most of its
+data now: each point anchors a window of the clamped size, the fullest wins,
+ties go to the middle. The same run showed the onboarding tour passing by
+skipping steps 6 to 14 (its "gate line gone" blocks were judged ten seconds
+after the pick, while the upload was still working); it waits the upload out
+first now, and pgTAP 56's 40-hour expiry became 48, because tomorrow at 19:00
+in Lisbon is past 40 hours from any clock between midnight and 02:00 UTC.
 
 ### Run 116: the rail reached the pin form, and stopped there
 
@@ -400,7 +532,8 @@ takes no argument and the pgTAP asserts its `pronargs` is 0. Rule 3 and rule
 6 as above. Rule 8: businesses still register in a launch city, which is the
 business side's decision and not this one's. `launch_cities` narrows to what
 it always half was: where a business can list, the seed of the rail, and a
-per-city override for k and the clock.
+per-city override for k and the clock. _Superseded 2026-09-05: businesses
+register anywhere too; see the entry above._
 
 ### Proof
 
@@ -1539,6 +1672,7 @@ checked the caller and nothing about geography; `businesses.city_id` pointed at
 while the listing claimed Bangkok — and business-signup carried a comment
 saying the server refused exactly that. It does now. The city is also a real
 choice: it used to default to whatever the launch-cities query returned first.
+_The geofence this added was retired 2026-09-05._
 
 Phone and WhatsApp are contact details now, on the founder's call that they
 need no code for the moment. They land as `business_links` rows, off the

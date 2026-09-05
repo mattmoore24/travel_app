@@ -124,7 +124,10 @@ Couchsurfing, Snap Map, and Zenly. Key conclusions:
    and a liquidity dashboard (active users with overlapping trips per city). Don't hardcode a
    global launch. _Founder decision 2026-09-04: the dense launch is a marketing plan, not a
    fence. A traveler can put a trip or a pin in any city; the seeded hubs are the rail's
-   featured cities and where businesses can list._
+   featured cities and where businesses can list._ _Founder decision 2026-09-05: the same
+   for businesses. A business types its address anywhere on earth, or places its pin by
+   hand; the server files it under the city its door is in. Nobody picks from a preset
+   list._
 7. **Retention between trips is a known later problem** (travelers delete apps between trips).
    Do NOT build a home-city mode in v1 — but don't architect anything that would preclude it.
 
@@ -178,8 +181,9 @@ dependency), solo-founder maintainability, fast iteration, and real-time feature
 - `reports`, `blocks`, `moderation_events` — full audit trail
 - `seeded_pins` — admin-curated pins (hostel events, walking tours) flagged as curated, no
   user attached
-- `launch_cities` — the seeded hubs: featured on the rail, where businesses list, per-city
-  k and clock overrides (a fence until 2026-09-04; not one since)
+- `launch_cities` — the seeded hubs: featured on the rail, home of the seeded venues,
+  per-city k and clock overrides (a fence for pins until 2026-09-04 and for businesses
+  until 2026-09-05; not one since)
 
 ### RLS invariants to enforce in Postgres (write tests for these)
 
@@ -278,3 +282,6 @@ and ask.
 > that rule, in the wording that was signed. The same sign-off also recorded how rules 3, 4
 > and 5 read for a business account; those readings narrow nothing above and live in
 > `docs/BUSINESS_ACCOUNTS.md` §2.
+>
+> A business's city is resolved from its marker by `resolve_business_city`, any city
+> (2026-09-05); rule 8 is unchanged by it.

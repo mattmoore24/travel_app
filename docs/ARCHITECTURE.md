@@ -140,9 +140,10 @@ Planned next (from brief §4), unchanged:
   status incl. blocked_by_moderation — hard rule 5)
 - `chats` / `messages` (created only on accept; Realtime)
 - `reports`, `blocks`, `moderation_events` (full audit trail)
-- `seeded_pins` (admin-curated, no user attached), `launch_cities` (where a business can
-  list, the seed of the map's rail, and a per-city override for `heat_k` and the clock; **not
-  a fence** since 2026-09-04 - a pin or a trip can be in any of the ~49,000 `cities`)
+- `seeded_pins` (admin-curated, no user attached), `launch_cities` (the seed of the map's
+  rail and a per-city override for `heat_k` and the clock; **not a fence** since 2026-09-04 -
+  a pin or a trip can be in any of the ~49,000 `cities`, and since 2026-09-05 so can a
+  business)
 
 **RLS invariants to be enforced in Postgres with tests** (brief §4): social-handle gating;
 pins readable only within the map's circle around a city the reader CHOSE, never a device
@@ -167,9 +168,10 @@ loads/month, needs token + config plugin + dev build).
 
 - **`launch_cities`** — seeded with the brief's candidate hubs (Lisbon, Mexico City,
   Bangkok, Denpasar), per-city `heat_k` (default 3) and a hand-set `timezone`. Since
-  2026-09-04 it is the seed of the rail and the business side's list, not a geofence:
-  `radius_km` is unused by pins, and `active = false` takes a city off the rail's guaranteed
-  slot without hiding a single pin. `cities` carries every city down to 5,000 people with
+  2026-09-05 it is the seed of the rail and the seeded venues' home, nothing else:
+  `radius_km` has zero callers (pins stopped reading it on 2026-09-04, and a business's
+  city is resolved from its marker since 2026-09-05), and `active = false` takes a city
+  off the rail's guaranteed slot without hiding a single pin. `cities` carries every city down to 5,000 people with
   its own `timezone` (`city_clock_zone()` reads the launch override first).
 - **`pins`** — venue-level future intent. Hard rule 3 is structural: `expires_at <=
 created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited past its
@@ -579,6 +581,25 @@ The impersonation scan is also the one branch in that worker that fails OPEN,
 because a scan that could not run is not evidence, and darkening a real business
 because the classifier was down would be the app doing the damage it exists to
 prevent.
+
+### A business goes where its door is (2026-09-05)
+
+The launch-city geofence on `register_business` and `update_business_location` (added
+2026-08-29) is retired, the day after the pin one. `resolve_business_city(p_lat, p_lng,
+p_hint)` files a listing under the city its marker is in: the hint when the marker is within
+20 km of it (`validate_pin`'s rule, so a nudge never changes `city_id`), else
+`nearest_city()`, else the nearest of the 49,025 `cities` by plain distance, because
+`businesses.city_id` is NOT NULL and a fresh business has no browsed city to fall back on.
+Both write doors keep their signatures and return types (`create or replace`, no drop-first);
+the client sends `p_city_id: null` and reads the answer through `city_for_spot(p_lat, p_lng,
+p_hint)`, a jsonb preview of the same resolver, so the "That puts you in Lisbon, Portugal."
+line, the confirm card and the stored row agree. The city readers (`city_businesses`,
+`city_whats_on`, `city_rooms`) take the label OR the 50 km circle, so every listing is on at
+least one map and a Cascais door draws for somebody browsing Lisbon. `launch_cities` is read
+by no business function after this; the map, the editor, the place sheet and the signup
+preview read the business's city by id (`useCity`). Migration before the OTA update: the old
+bundle's launch-city hint still resolves (tier 1), while the new bundle's null hint against
+the old function would have hit the retired raise.
 
 ### What the final audit changed (2026-08-27)
 
@@ -1674,18 +1695,19 @@ the smoke test' into "lives".
 screened five text columns and stamped `updated_at` on every write to the row. The
 enumeration of every write that is not an owner editing text, so it is not re-asked:
 
-| Write                                 | Columns                                                             | Source                 |
-| ------------------------------------- | ------------------------------------------------------------------- | ---------------------- |
-| `confirm_business_email`              | `state`, `listed_at`                                                | 20260827160000:566     |
-| `apply_business_verification_verdict` | `verified_at`                                                       | 20260903010000:115     |
-| `admin_resolve_business_verification` | `verified_at`                                                       | 20260827160000:246     |
-| `apply_business_scan_verdict`         | `state`, `verified_at`                                              | 20260827120000:703     |
-| `admin_resolve_business_report`       | `state`, `verified_at`, `active`                                    | 20260827120000:753-759 |
-| `update_business_location`            | `lat`, `lng`, `city_id`, `address`                                  | 20260829160000:218     |
-| owner toggling `public_preview`       | the RLS update grant; a switch                                      | 20260827100000:142-146 |
-| `businesses_rename_resets`            | amends NEW in the same statement; its body is guarded top to bottom | 20260902120000         |
-| cron                                  | none writes this table                                              |                        |
-| photo or post counters                | none live on it; those are rows elsewhere                           |                        |
+| Write                                 | Columns                                                                                                 | Source                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `confirm_business_email`              | `state`, `listed_at`                                                                                    | 20260827160000:566     |
+| `apply_business_verification_verdict` | `verified_at`                                                                                           | 20260903010000:115     |
+| `admin_resolve_business_verification` | `verified_at`                                                                                           | 20260827160000:246     |
+| `apply_business_scan_verdict`         | `state`, `verified_at`                                                                                  | 20260827120000:703     |
+| `admin_resolve_business_report`       | `state`, `verified_at`, `active`                                                                        | 20260827120000:753-759 |
+| `register_business`                   | the insert itself: `city_id` (resolved from the marker), `lat`, `lng`, `address`, `state`, `claimed_at` | 20260905130000         |
+| `update_business_location`            | `lat`, `lng`, `city_id` (resolved), `address`                                                           | 20260905130000         |
+| owner toggling `public_preview`       | the RLS update grant; a switch                                                                          | 20260827100000:142-146 |
+| `businesses_rename_resets`            | amends NEW in the same statement; its body is guarded top to bottom                                     | 20260902120000         |
+| cron                                  | none writes this table                                                                                  |                        |
+| photo or post counters                | none live on it; those are rows elsewhere                                                               |                        |
 
 **What each cost.** (1) The classifier re-ran. `screen_first_message` is the regex
 blocklist, not a model call, so the CPU is small, but the blocklist is a table the founder
@@ -1894,6 +1916,11 @@ halves.
   time (49,025 rows, threshold 5,000), read through `city_clock_zone()`; the three push
   clocks and the pin's hour check no longer inner-join `launch_cities`, so a trip to Porto
   gets its "tomorrow" push and a plan in Manhattan its last call.
+- **2026-09-05** — **A business can be in any city.** The founder retired the business
+  fence the day after the pin one: `resolve_business_city` (hint within 20 km, else
+  `nearest_city`, else nearest on earth) files a listing under the city its marker is in;
+  `city_businesses`/`city_whats_on`/`city_rooms` read the label or the 50 km circle like
+  `city_pins`; the client sends no city and reads the answer through `city_for_spot`.
 - **2026-08-28** — Read receipts (Delivered / Read) are **not** built, and this is a product
   decision rather than a backlog item: there is no recipient-scoped column to hang them on,
   and they create response pressure that works against the safety posture. "Sending" and

@@ -43,7 +43,8 @@ import { LISTING_SHARE_LABEL, shareListing } from '@/features/business/share-lis
 import { dayLabel } from '@/features/chat/separators';
 import { useIsGuest } from '@/features/guest/hooks';
 import { useMyChats } from '@/features/matching/hooks';
-import { useLaunchCities } from '@/features/pins/hooks';
+import { browseCityFromCityRow } from '@/features/pins/api';
+import { useCity } from '@/features/pins/hooks';
 import { openInMaps } from '@/features/pins/open-in-maps';
 import { PinFormSheet } from '@/features/pins/pin-form-sheet';
 import { useTheme } from '@/hooks/use-theme';
@@ -378,8 +379,9 @@ export default function PlaceScreen() {
   // 'Plan to go': the pin form, opened from here rather than from the map,
   // pre-filled with this business and posting its id explicitly. The form
   // wants the city's name and clock, which a business row does not carry;
-  // the launch-city list does, and a listed business is always in one.
-  const launchCitiesQuery = useLaunchCities();
+  // the city's own row does, read by id, because since 2026-09-05 a listed
+  // business can be in any of the 49,025 cities and not only a launch one.
+  const { data: planCityRow = null } = useCity(place?.city_id ?? null);
   const [planning, setPlanning] = useState(false);
   const [planned, setPlanned] = useState(false);
 
@@ -489,8 +491,7 @@ export default function PlaceScreen() {
   // covers the owner too, who is a business account by definition.
   const askAboutHours =
     hours.length === 0 && !place.hours_note && place.claimed && !isGuest && !isBusinessAccount;
-  const planCity =
-    (launchCitiesQuery.data ?? []).find((city) => city.city_id === place.city_id) ?? null;
+  const planCity = planCityRow ? browseCityFromCityRow(planCityRow) : null;
 
   return (
     <ThemedView style={styles.root}>

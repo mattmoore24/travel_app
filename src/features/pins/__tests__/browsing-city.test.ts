@@ -1,5 +1,5 @@
 import type { BrowseCity } from '@/features/pins/api';
-import { pickBrowsingCity } from '@/features/pins/browsing-city';
+import { cityInZone, pickBrowsingCity } from '@/features/pins/browsing-city';
 import type { TripWithCity } from '@/features/trips/api';
 import type { CityRow } from '@/lib/database.types';
 
@@ -155,5 +155,35 @@ describe('pickBrowsingCity', () => {
       cityId: 1,
       cityName: 'Lisbon',
     });
+  });
+});
+
+/**
+ * The clock-zone match on its own. Extracted from pickBrowsingCity so the
+ * business signup's set-the-pin map can open on the same city at country
+ * scale: Intl's zone name, never a location read (section 7 rule 2).
+ */
+describe('cityInZone', () => {
+  it('returns the featured city whose timezone is the device zone', () => {
+    expect(cityInZone(CITIES, 'Asia/Bangkok')).toBe(BANGKOK);
+    expect(cityInZone(CITIES, 'Europe/Lisbon')).toBe(LISBON);
+  });
+
+  it('answers null for a zone no featured city is on', () => {
+    // No "nearest" guess: a phone on Europe/Berlin is not in Lisbon, and the
+    // map that opens on null opens on the world instead.
+    expect(cityInZone(CITIES, 'Europe/Berlin')).toBeNull();
+  });
+
+  it('answers null for a null zone, and never throws on an empty rail', () => {
+    expect(cityInZone(CITIES, null)).toBeNull();
+    expect(cityInZone([], 'Asia/Bangkok')).toBeNull();
+    expect(cityInZone([], null)).toBeNull();
+  });
+
+  it('is the third step of pickBrowsingCity, so the two cannot disagree', () => {
+    expect(pickBrowsingCity(CITIES, [], TODAY, null, 'Asia/Bangkok').city).toBe(
+      cityInZone(CITIES, 'Asia/Bangkok')
+    );
   });
 });

@@ -66,15 +66,18 @@ export function browseCityFromCityRow(city: CityRow): BrowseCity {
   };
 }
 
-/** A business's own launch city, as the map browses it. */
-export function browseCityFromLaunch(city: LaunchCityWithCity): BrowseCity {
-  return {
-    city_id: city.city_id,
-    timezone: city.timezone,
-    cities: city.cities,
-    pin_count: null,
-    featured: true,
-  };
+/**
+ * One city by id: the row a business is filed under, which since 2026-09-05
+ * can be any of the ~49,000 rather than one of the launch cities, so the
+ * launch list can no longer answer for it. SELECT on cities is granted to
+ * anon and authenticated alike.
+ */
+export async function fetchCity(cityId: number): Promise<CityRow | null> {
+  const { data, error } = await supabase.from('cities').select('*').eq('id', cityId).maybeSingle();
+  if (error) {
+    throw error;
+  }
+  return (data ?? null) as CityRow | null;
 }
 
 /**

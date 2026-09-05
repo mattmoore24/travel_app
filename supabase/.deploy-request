@@ -467,3 +467,14 @@
              and build 17's bundle, which passes no argument, keeps working.
              Database first, then the update that carries the picker.
 
+
+2026-09-05 — 20260905130000_a_business_goes_where_its_door_is: the launch-city
+             fence on the business path goes. resolve_business_city files a
+             listing under the city its marker is in (the hint within 20 km,
+             else nearest_city, else the nearest city on earth); city_for_spot
+             is the client's preview of the same answer; register_business and
+             update_business_location keep their signatures and lose both
+             geographic refusals; city_businesses, city_whats_on and city_rooms
+             read the label or the 50 km circle. Database first, then the
+             update: the new bundle sends p_city_id null, which the old
+             function refused.

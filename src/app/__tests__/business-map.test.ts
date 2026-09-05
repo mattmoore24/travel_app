@@ -156,13 +156,17 @@ describe('the map is tailored to a business rather than trimmed', () => {
 
   it("the business's city is resolved from the LISTING, ahead of the store the chips write", () => {
     const code = src(MAP);
-    // my_business.city_id (when it is a launch city) outranks
-    // pickBrowsingCity. Seeding through applyCity → chooseCity instead used
-    // to bail whenever the persisted store held ANY value — and the rail is
-    // hidden for a business, so a pre-signin chip tap pinned the owner to
-    // the wrong city with no way out.
-    expect(code).toContain('const businessCityId =');
-    expect(code).toContain('launchCities.some((c) => c.city_id === ownBusiness.city_id)');
+    // my_business.city_id outranks pickBrowsingCity. Seeding through
+    // applyCity → chooseCity instead used to bail whenever the persisted
+    // store held ANY value — and the rail is hidden for a business, so a
+    // pre-signin chip tap pinned the owner to the wrong city with no way out.
+    // Any city, read by id (20260905130000): a listing is filed under the
+    // city its marker is in, which need not be a launch city, so the launch
+    // list can no longer answer for it.
+    expect(code).toContain('const businessCityId = ownBusiness?.city_id ?? null;');
+    expect(code).toContain('useCity(businessCityId)');
+    expect(code).toContain('browseCityFromCityRow(businessCityRow)');
+    expect(code).not.toContain('useLaunchCities');
     // The listing's city is tried first; the resolution's answer is what it
     // falls through to.
     expect(code).toContain(

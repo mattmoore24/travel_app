@@ -386,9 +386,12 @@ workflows refuse to ship a bundle without it.)
   `push_permission_state`, `push_opened`
 - **Safety and support**: `user_blocked`, `user_reported`,
   `support_message_sent`
-- **Business**: `business_registered`, `business_step_completed`,
-  `business_email_confirmed`, `business_storefront_submitted`,
-  `business_post_created`, `my_business_viewed`
+- **Business**: `business_registered` (`category`, `city_id`: since 2026-09-05
+  the city the server resolved from the marker, any city, and the per-city
+  demand count now that /contact no longer carries it),
+  `business_step_completed`, `business_email_confirmed`,
+  `business_storefront_submitted`, `business_post_created`,
+  `my_business_viewed`
 
 `matches_viewed` and `unmatched` used to be listed here and exist nowhere in
 `src/` — each would have produced a permanently empty chart, and an empty
@@ -419,9 +422,10 @@ written". Neither name may return: the vocabulary they came from is banned.
 
 ## Launch-city operations
 
-Since 2026-09-04 a pin or a trip can be in ANY city, so `launch_cities` no longer opens or
-closes anything. What a row still does: keeps the city on the map's rail whatever its plan
-count (`featured = true`), lets a business list there, and overrides the city's k and clock.
+Since 2026-09-04 a pin or a trip can be in ANY city, and since 2026-09-05 so can a business,
+so `launch_cities` no longer opens or closes anything. What a row still does: keeps the city
+on the map's rail whatever its plan count (`featured = true`), and overrides the city's k
+and clock.
 
 ```sql
 -- Feature a city on the rail regardless of its count / raise its k:

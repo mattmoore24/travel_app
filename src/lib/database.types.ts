@@ -1707,13 +1707,27 @@ export type Database = {
         Args: {
           p_name: string;
           p_category: BusinessCategory;
-          p_city_id: number;
+          /**
+           * A hint only (20260905130000): null from the app; the server
+           * resolves the city from the marker.
+           */
+          p_city_id: number | null;
           p_lat: number;
           p_lng: number;
           /** As typed or picked; never derived from the marker. */
           p_address?: string | null;
         };
         Returns: string;
+      };
+      /** Which city a marker will be filed under, before anything is written. */
+      city_for_spot: {
+        Args: { p_lat: number; p_lng: number; p_hint?: number | null };
+        Returns: CityRow | null;
+      };
+      /** The resolver itself: the hint within 20 km, else the nearest seeded city, else the nearest on earth. */
+      resolve_business_city: {
+        Args: { p_lat: number; p_lng: number; p_hint?: number | null };
+        Returns: number;
       };
       /** lat/lng are withheld from the client's UPDATE grant; this is the door. */
       update_business_location: {

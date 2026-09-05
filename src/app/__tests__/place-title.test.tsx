@@ -45,11 +45,12 @@ jest.mock('@/features/business/hooks', () => ({
   useRatingSummary: () => ({ data: null, isSuccess: true, refetch: jest.fn() }),
 }));
 jest.mock('@/features/guest/hooks', () => ({ useIsGuest: () => false }));
-// 'Plan to go' reads the launch cities for the form's city name and clock
-// (20260903110000); no city here means no button, which this file does not
-// look at. Mounted without a QueryClient, so the real hook cannot run.
+// 'Plan to go' reads the business's city row by id for the form's city name
+// and clock (any city since 2026-09-05, not only a launch one); no row here
+// means no button, which this file does not look at. Mounted without a
+// QueryClient, so the real hook cannot run.
 jest.mock('@/features/pins/hooks', () => ({
-  useLaunchCities: () => ({ data: [] }),
+  useCity: () => ({ data: null }),
   useCreatePin: () => ({ mutateAsync: jest.fn(), isPending: false }),
 }));
 jest.mock('@/features/matching/hooks', () => ({ useMyChats: () => ({ data: [] }) }));

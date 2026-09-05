@@ -190,8 +190,7 @@ const DB_COPY: Record<string, string> = {
   'add a profile photo before verifying': 'Add a profile photo first.',
 };
 
-// Two families are parameterised, so they are prefixes rather than fragments.
-const MARKER_OUTSIDE = 'Drag the marker onto your door, or pick the right city.';
+// One family is parameterised, so it is a prefix rather than a fragment.
 
 /** The mechanical form of "the database wrote an actual sentence". */
 function isWrittenSentence(raw: string): boolean {
@@ -224,12 +223,8 @@ export function saveFailureMessage(error: unknown): string {
   if (fragment.startsWith('make an account')) {
     return GUEST_WALL;
   }
-  // 'that marker is not in %' interpolates the city, so the whole string can
-  // never be a map key. The instruction half is the part worth keeping; the
-  // city is already on the screen the marker sits on.
-  if (fragment.startsWith('that marker is not in')) {
-    return MARKER_OUTSIDE;
-  }
+  // 'that marker is not in %' is gone (20260905130000): a business is filed
+  // under the city its marker is in, never refused on geography.
   return GENERIC_SAVE_FAILURE;
 }
 
@@ -245,7 +240,6 @@ export function loadFailureMessage(error: unknown, what: string): string {
 export const FAILURE_COPY_VALUES: string[] = [
   OFFLINE,
   GENERIC_SAVE_FAILURE,
-  MARKER_OUTSIDE,
   ...Object.values(HINT_COPY),
   ...Object.values(DB_COPY),
 ];

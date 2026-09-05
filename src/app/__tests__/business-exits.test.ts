@@ -84,12 +84,13 @@ describe('no screen replaces the root without checking it can go back', () => {
     const footers = code.match(/footer=\{(\w+)\}/g) ?? [];
     const shells = code.match(/<StepShell/g) ?? [];
     expect(shells.length).toBe(10);
-    expect(footers.length).toBe(shells.length - 1);
+    // Every shell, "Where is it?" included: its inline footer went with the
+    // launch-city fence it existed to retry.
+    expect(footers.length).toBe(shells.length);
     for (const footer of footers) {
       expect(['footer={leaveFooter}', 'footer={listingFooter}']).toContain(footer);
     }
-    // The one step whose footer is written inline rather than named is "Where
-    // is it?", which adds a Try again above the same element.
+    // listingFooter is the code box stacked on the same element.
     expect(code).toContain('{leaveFooter}');
     expect(code).toContain('const listingFooter = (');
   });

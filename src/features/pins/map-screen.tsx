@@ -36,14 +36,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Type, Elevation, HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
 import {
+  useCity,
   useDeletePin,
   useFeaturedCities,
   useHeatHistory,
   useJoinPinChat,
-  useLaunchCities,
   usePinCrew,
 } from '@/features/pins/hooks';
-import { browseCityFromCityRow, browseCityFromLaunch, type BrowseCity } from '@/features/pins/api';
+import { browseCityFromCityRow, type BrowseCity } from '@/features/pins/api';
 import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker';
 import { useCityBusinesses, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
 import { listingNotice } from '@/features/business/listing-notice';
@@ -982,10 +982,6 @@ export default function MapScreen() {
   const { reduceMotion } = useAccessibilitySettings();
   // Only so the points of interest can be turned off in a later commit than
   // the map type. See features/pins/basemap.
-  // The founder's launch cities, for the one thing they still decide on this
-  // screen: which city a BUSINESS's map opens on. Travelers browse the rail.
-  const launchCitiesQuery = useLaunchCities();
-  const launchCities = launchCitiesQuery.data ?? [];
   // The rail: the launch cities plus any city whose visible plans clear its
   // k, most plans first, each carrying its count.
   const featuredQuery = useFeaturedCities();
@@ -1017,12 +1013,10 @@ export default function MapScreen() {
   // pre-signin chip tap (or any stored choice) would otherwise pin the owner
   // to the wrong city with no control left to undo it — while a store write
   // of the listing's city would make map_viewed report `explicit: true` for
-  // a choice the owner never made. Launch-city membership is checked here so
-  // a deactivated city falls through to the ordinary resolution.
-  const businessCityId =
-    ownBusiness?.city_id != null && launchCities.some((c) => c.city_id === ownBusiness.city_id)
-      ? ownBusiness.city_id
-      : null;
+  // a choice the owner never made. Any city, read by id: since 2026-09-05 a
+  // listing is filed under the city its marker is in, which need not be a
+  // launch city, so the launch list can no longer answer for it.
+  const businessCityId = ownBusiness?.city_id ?? null;
   const today = toISODate(new Date());
   // Memoised on its inputs, because a city resolved from a trip is built
   // from the trip's row and the object has to hold still between renders.
@@ -1030,11 +1024,10 @@ export default function MapScreen() {
     () => pickBrowsingCity(featured, myTrips, today, chosenCity, deviceTimezone()),
     [featured, myTrips, today, chosenCity]
   );
-  const businessLaunchCity =
-    businessCityId != null ? launchCities.find((c) => c.city_id === businessCityId) : undefined;
+  const { data: businessCityRow = null } = useCity(businessCityId);
   const businessBrowseCity = useMemo(
-    () => (businessLaunchCity ? browseCityFromLaunch(businessLaunchCity) : undefined),
-    [businessLaunchCity]
+    () => (businessCityRow ? browseCityFromCityRow(businessCityRow) : undefined),
+    [businessCityRow]
   );
   const activeCity: BrowseCity | undefined = cityHydrated
     ? (businessBrowseCity ?? browsing.city ?? undefined)
@@ -1235,11 +1228,10 @@ export default function MapScreen() {
   // wrong city with extra steps. One shot, the flight applyCity makes minus
   // the chooseCity write; deferred a tick like the replay below, because a
   // synchronous setState cascade inside an effect is a lint error and a real
-  // render hazard. The ROW is the dependency, not the launchCities array —
-  // the array is re-created while the query loads and would churn the deps.
+  // render hazard. The memoised city is the dependency: it holds still
+  // between renders, where a fresh object per render would churn the deps.
   const flownToBusinessCity = useRef(false);
-  const businessCity =
-    businessCityId != null ? launchCities.find((c) => c.city_id === businessCityId) : undefined;
+  const businessCity = businessBrowseCity;
   useEffect(() => {
     if (flownToBusinessCity.current || businessCity == null) {
       return;
@@ -2653,7 +2645,7 @@ export default function MapScreen() {
           gated on isSuccess. So "I'm not seeing any pins" could mean the city
           is quiet OR that the request died, and nothing on the screen told
           anyone which. Every other query on this map already distinguishes the
-          two - launchCitiesQuery does it fifteen lines up. */}
+          two - featuredQuery does it for the rail. */}
       {slot === 'pins-error' ? (
         <View style={[styles.emptyBanner, { bottom: messageSlot }]}>
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>

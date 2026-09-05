@@ -45,6 +45,16 @@ export function deviceTimezone(): string | null {
   }
 }
 
+/**
+ * The featured city on the device's own clock zone, or null. Intl only, never
+ * a location read (section 7 rule 2): the business signup's set-the-pin map
+ * opens on this at country scale, and the map's own resolution below reads
+ * it as its third step.
+ */
+export function cityInZone(featured: BrowseCity[], deviceTz: string | null): BrowseCity | null {
+  return deviceTz != null ? (featured.find((city) => city.timezone === deviceTz) ?? null) : null;
+}
+
 const NOWHERE: BrowsingCity = { cityId: null, cityName: null, city: null };
 
 function named(city: BrowseCity): BrowsingCity {
@@ -84,7 +94,7 @@ export function pickBrowsingCity(
     return named(onRail.get(trip.city_id) ?? browseCityFromCityRow(trip.cities));
   }
 
-  const zoned = deviceTz != null ? featured.find((city) => city.timezone === deviceTz) : null;
+  const zoned = cityInZone(featured, deviceTz);
   if (zoned) {
     return named(zoned);
   }

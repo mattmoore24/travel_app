@@ -137,8 +137,9 @@ the extension exists).
 
 ```sql
 -- Which cities the rail always shows (brief §2.6 as a marketing plan, not a
--- fence: since 2026-09-04 a traveler can pin or plan a trip anywhere, and a
--- city with enough plans joins the rail on its own).
+-- fence, for travelers and businesses alike: since 2026-09-04 a traveler can
+-- pin or plan a trip anywhere, since 2026-09-05 a business can list anywhere,
+-- and a city with enough plans joins the rail on its own).
 update launch_cities set active = false;
 update launch_cities set active = true
   where city_id = (select id from cities where name = 'Lisbon' and country_code = 'PT');

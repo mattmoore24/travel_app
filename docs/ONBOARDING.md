@@ -112,21 +112,21 @@ continuous across the two stacks. Step 13 is on its own route for the same
 reason, and `BUSINESS_TOTAL_STEPS` in `features/signup/steps.ts` is what keeps
 the three stacks agreeing about the count.
 
-| #   | Screen                  | Asks                                     | Skippable      | Note                                                                |
-| --- | ----------------------- | ---------------------------------------- | -------------- | ------------------------------------------------------------------- |
-| 1   | Email                   | sign-in email                            | no             | founder's copy: just for signing in                                 |
-| 2   | Password                | password                                 | no             | —                                                                   |
-| 3   | What a listing gets you | nothing                                  | no             | the offer, and the word free — §7 rule 1 in a sentence              |
-| 4   | Name and kind           | name, category                           | no             | —                                                                   |
-| 5   | Where is it             | city, **address**, pin                   | no             | address first, pin adjustable — §5 below                            |
-| 6   | Is this right           | confirm address + pin                    | no             | the row is created here (`register_business`)                       |
-| 7   | How to reach you        | business email, phone, WhatsApp, website | email required | the code is emailed here, and the reason is said here               |
-| 8   | Photos                  | cover + more                             | **no**         | the real grid, in place; "Photos of the business, not of a person." |
-| 9   | What it is              | description                              | yes            | "A couple of lines a traveler would want to read."                  |
-| 10  | Hours                   | weekly hours + note                      | yes            | "Past midnight is fine. 20:00 to 2:00 reads as one night."          |
-| 11  | Links                   | menu, booking, socials                   | yes            | one list for links, socials and contact                             |
-| 12  | Here is your listing    | review                                   | —              | as a traveler sees it, and sends the code                           |
-| 13  | The code                | six digits                               | no             | this is what turns the lights on                                    |
+| #   | Screen                  | Asks                                     | Skippable      | Note                                                                                              |
+| --- | ----------------------- | ---------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------- |
+| 1   | Email                   | sign-in email                            | no             | founder's copy: just for signing in                                                               |
+| 2   | Password                | password                                 | no             | —                                                                                                 |
+| 3   | What a listing gets you | nothing                                  | no             | the offer, and the word free — §7 rule 1 in a sentence                                            |
+| 4   | Name and kind           | name, category                           | no             | —                                                                                                 |
+| 5   | Where is it             | **address** (anywhere), pin              | no             | one search box, a set-the-pin-yourself line, pin adjustable; the server names the city — §5 below |
+| 6   | Is this right           | confirm address + pin                    | no             | the row is created here (`register_business`)                                                     |
+| 7   | How to reach you        | business email, phone, WhatsApp, website | email required | the code is emailed here, and the reason is said here                                             |
+| 8   | Photos                  | cover + more                             | **no**         | the real grid, in place; "Photos of the business, not of a person."                               |
+| 9   | What it is              | description                              | yes            | "A couple of lines a traveler would want to read."                                                |
+| 10  | Hours                   | weekly hours + note                      | yes            | "Past midnight is fine. 20:00 to 2:00 reads as one night."                                        |
+| 11  | Links                   | menu, booking, socials                   | yes            | one list for links, socials and contact                                                           |
+| 12  | Here is your listing    | review                                   | —              | as a traveler sees it, and sends the code                                                         |
+| 13  | The code                | six digits                               | no             | this is what turns the lights on                                                                  |
 
 The business row is created at step 6 rather than at the end. It is
 `unconfirmed` until step 13, and `unconfirmed` is fully dark — no marker, no
@@ -188,8 +188,10 @@ The rebuilt step:
   marker can sit anywhere on earth inside the plain -90..90 / -180..180
   CHECKs while the listing claims a city. (business-signup's own catch comment
   says the server refuses "a marker outside the city's radius". It does not.
-  That sentence is about pins.) The rebuilt step adds the same radius check
-  pins have had since August.
+  That sentence is about pins.) The rebuilt step added the same radius check
+  pins had, and 2026-09-05 took it out again along with the chips: the server
+  resolves the city from the marker (`resolve_business_city`); the client
+  sends none.
 - **An address field, focused first**, with suggestions as you type. It shares
   the machinery `pin-search-field` already uses for travelers: the native
   `LocalSearch` module when the installed binary has it, geocoding as the

@@ -20,19 +20,25 @@ const mockMutateAsync = jest.fn(async (_input: Record<string, unknown>) => ({ id
 
 jest.mock('@/features/pins/hooks', () => ({
   useCreatePin: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
-  // The one launch city the fixture business is in, with the name and clock
-  // the form needs and a business row does not carry.
-  useLaunchCities: () => ({
-    data: [
-      {
-        city_id: 1,
-        active: true,
-        radius_km: 20,
-        heat_k: 3,
-        timezone: 'Europe/Lisbon',
-        cities: { id: 1, name: 'Lisbon' },
-      },
-    ],
+  // The city the fixture business is filed under, read by id: since
+  // 2026-09-05 that can be any city rather than a launch one, so the page
+  // asks for the row itself, which carries the name and clock the form needs
+  // and a business row does not.
+  useCity: (cityId: number | null) => ({
+    data:
+      cityId === 1
+        ? {
+            id: 1,
+            name: 'Lisbon',
+            country_code: 'PT',
+            country_name: 'Portugal',
+            admin: null,
+            lat: 38.7223,
+            lng: -9.1393,
+            population: 500_000,
+            timezone: 'Europe/Lisbon',
+          }
+        : null,
   }),
 }));
 // The Sheet is chrome this test does not exercise; render straight through.

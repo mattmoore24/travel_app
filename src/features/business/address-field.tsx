@@ -13,7 +13,7 @@ import { haptics } from '@/lib/haptics';
 import type { LocalSearchResult } from '@/modules/local-search';
 
 /**
- * A business typing its own address.
+ * A business typing its own address, anywhere on earth.
  *
  * Deliberately not PinSearchField, though it shares that screen's search
  * through `usePlaceSearch`. A traveler's field empties when they pick a
@@ -24,24 +24,34 @@ import type { LocalSearchResult } from '@/modules/local-search';
  * are separate pieces of state.
  *
  * Picking a suggestion sets both. Typing sets only the words. Dragging the
- * map sets only the marker. That is the whole contract.
+ * map sets only the marker. That is the whole contract. Two more rules since
+ * 2026-09-05: the search runs only while the box has focus, so a screen that
+ * mounts with an address (walking back from "Is this right?") never pops a
+ * list under a settled one; and the city is not this field's business. No
+ * city is chosen anywhere on the screen; the server files the listing under
+ * the city its marker is in, and says so a line under the map.
  */
 export function BusinessAddressField({
   value,
-  cityName,
-  cityLat,
-  cityLng,
+  near,
   onChangeText,
   onPick,
   onFocusChange,
+  onSetPin,
 }: {
   value: string;
-  cityName: string;
-  cityLat: number;
-  cityLng: number;
+  /** A marker the person already placed, to favour that neighbourhood. */
+  near?: { lat: number; lng: number } | null;
   onChangeText: (next: string) => void;
   /** A result from the map: worth both the words and the coordinates. */
   onPick: (place: LocalSearchResult) => void;
+  /**
+   * The small line under the box, for an address that is not coming up.
+   * Given the nearest miss the list had (the first suggestion's coordinate),
+   * or null, so the map it opens can start somewhere sensible. Rendered only
+   * while there is no marker yet; the parent stops passing it once there is.
+   */
+  onSetPin?: (near: { lat: number; lng: number } | null) => void;
   /**
    * Focused, so the step can get out of the way.
    *
@@ -57,15 +67,16 @@ export function BusinessAddressField({
   const inputRef = useRef<TextInput>(null);
   // Off while the value came from a pick, so echoing the chosen address back
   // into the field does not immediately search for itself and reopen the list
-  // under the user's thumb.
-  const [picked, setPicked] = useState(false);
+  // under the user's thumb. Seeded from the value: a field that mounts with
+  // an address already in it is showing one back, not typing one.
+  const [picked, setPicked] = useState(value.length > 0);
+  const [focused, setFocused] = useState(false);
 
   const { hits, message, searching, clear, minQuery } = usePlaceSearch({
     query: value,
-    cityName,
-    cityLat,
-    cityLng,
-    enabled: !picked,
+    anywhere: true,
+    near: near ?? null,
+    enabled: !picked && focused,
   });
 
   const change = (text: string) => {
@@ -102,11 +113,17 @@ export function BusinessAddressField({
               ref={inputRef}
               value={value}
               onChangeText={change}
-              placeholder={`Street and number in ${cityName}`}
+              placeholder="Street, number and city"
               placeholderTextColor={theme.textSecondary}
               returnKeyType="search"
-              onFocus={() => onFocusChange?.(true)}
-              onBlur={() => onFocusChange?.(false)}
+              onFocus={() => {
+                setFocused(true);
+                onFocusChange?.(true);
+              }}
+              onBlur={() => {
+                setFocused(false);
+                onFocusChange?.(false);
+              }}
               autoCorrect={false}
               autoCapitalize="words"
               clearButtonMode="never"
@@ -175,6 +192,34 @@ export function BusinessAddressField({
           {message}
         </ThemedText>
       ) : null}
+
+      {/* The other way in, in smaller text, right under whatever the search
+          said. Reachable with the keyboard up: the step's own scroller keeps
+          taps alive, and this sits inside the field's block rather than
+          three screens down. Blurs first, hands over the nearest miss, and
+          only then clears, so the map can open on the neighbourhood the
+          search almost found. */}
+      {onSetPin ? (
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel="Not coming up? Set the pin yourself."
+          testID="business-set-pin-yourself"
+          haptic="light"
+          scaleTo={0.98}
+          style={styles.setPin}
+          onPress={() => {
+            inputRef.current?.blur();
+            setFocused(false);
+            onFocusChange?.(false);
+            const first = hits[0];
+            clear();
+            onSetPin(first ? { lat: first.latitude, lng: first.longitude } : null);
+          }}>
+          <ThemedText type="footnote" themeColor="textSecondary">
+            Not coming up? Set the pin yourself.
+          </ThemedText>
+        </PressableScale>
+      ) : null}
     </View>
   );
 }
@@ -217,5 +262,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Space.md,
     paddingVertical: Space.sm,
     gap: 2,
+  },
+  // A footnote that is a button: the 44pt target the words alone would not
+  // give, centred on it.
+  setPin: {
+    minHeight: HitTarget,
+    justifyContent: 'center',
   },
 });

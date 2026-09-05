@@ -91,16 +91,26 @@ const CAPTIONS = {
     "The founder's line: this email is only for signing in.",
   ],
   '41-business-name': ['Name and kind', 'The name over the door, and what it is.'],
-  '42-business-where-empty': ['Where is it, empty', 'Waiting on a city, and saying so.'],
+  '42-business-where-empty': [
+    'Where is it, empty',
+    'One box for the address, and a quiet line for placing the pin by hand.',
+  ],
+  '42b-business-where-pin-yourself': [
+    'Set the pin yourself',
+    'The map at country scale, waiting for a tap.',
+  ],
   '43-business-address-typing': [
     'Typing an address',
-    'The chips and the map step aside so the suggestions get the screen.',
+    'The map steps aside so the suggestions get the screen.',
   ],
   '44-business-address-and-marker': [
     'Picked',
     'The address stays as written; the marker moves to the street.',
   ],
-  '45-business-where-final': ['Where is it, done', 'Both halves agreed.'],
+  '45-business-where-final': [
+    'Where is it, done',
+    'The address as written, the marker on the street, and the city the server filed it under.',
+  ],
   '46-business-confirm': [
     'Is this right?',
     'What a traveler sees when they tap you, at street zoom so the door can be checked.',

@@ -9,6 +9,7 @@ import {
   fetchBusinessForChat,
   fetchBusinessDetail,
   fetchCityBusinesses,
+  fetchCityForSpot,
   fetchLatestStorefrontCheck,
   fetchListingIntent,
   setListingIntent,
@@ -167,6 +168,23 @@ export function useRegisterBusiness() {
       // the flag), so the drift costs nothing. Leave it.
       queryClient.invalidateQueries({ queryKey: ['my-business', userId] });
     },
+  });
+}
+
+/**
+ * Which city a marker will be filed under, from the same resolver the write
+ * runs. Keyed on the coordinate rounded to four decimals (about 11 m), so a
+ * drag is one request when it ends rather than one per frame, and held for
+ * the session: a spot does not change city.
+ */
+export function useCityForSpot(coords: { lat: number; lng: number } | null, hint: number | null) {
+  const lat = coords ? Math.round(coords.lat * 1e4) / 1e4 : null;
+  const lng = coords ? Math.round(coords.lng * 1e4) / 1e4 : null;
+  return useQuery({
+    queryKey: ['city-for-spot', lat, lng, hint],
+    queryFn: () => fetchCityForSpot(lat!, lng!, hint),
+    enabled: isSupabaseConfigured && lat != null && lng != null,
+    staleTime: Infinity,
   });
 }
 

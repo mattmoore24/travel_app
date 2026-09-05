@@ -5,6 +5,7 @@ import { useRefetchOnRefocus } from '@/hooks/use-refetch-on-refocus';
 
 import {
   deletePin,
+  fetchCity,
   fetchCityPins,
   fetchFeaturedCities,
   fetchHeatCells,
@@ -20,9 +21,10 @@ import type { CityRow, HeatCellRow, PinCategory } from '@/lib/database.types';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 /**
- * The founder's launch cities: where a BUSINESS can list, and the seed of the
- * map's rail. Not where a traveler can go - that is any city, and the map
- * reads useFeaturedCities instead.
+ * The founder's launch cities: the seed of the map's rail, the seeded
+ * venues' home, and a per-city override for k and the clock. Since
+ * 2026-09-05 not where a business can list either; that is any city,
+ * resolved from its marker, and read back by id through useCity.
  */
 export function useLaunchCities() {
   return useQuery({
@@ -30,6 +32,20 @@ export function useLaunchCities() {
     queryFn: fetchLaunchCities,
     enabled: isSupabaseConfigured,
     staleTime: 60 * 60 * 1000, // launch cities change on founder action, not per-session
+  });
+}
+
+/**
+ * One city by id, for the rows that point at any of the ~49,000: a
+ * business's own city on its map, its editor, its place sheet and the
+ * listing preview. No auth gate: SELECT on cities is granted to anon too.
+ */
+export function useCity(cityId: number | null) {
+  return useQuery({
+    queryKey: ['city', cityId],
+    queryFn: () => fetchCity(cityId!),
+    enabled: isSupabaseConfigured && cityId != null,
+    staleTime: Infinity, // a city's row does not change under a session
   });
 }
 
