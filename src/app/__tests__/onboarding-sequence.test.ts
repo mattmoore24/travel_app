@@ -37,7 +37,7 @@ describe('every part of a profile is asked for', () => {
     ['What do you do?', 6],
     ['A bit about you', 7],
     ['Answer a prompt', 8],
-    ['Add your top priorities for your trip', 9],
+    ['Top priorities for your trip', 9],
     ['Where are you going?', 10],
     ['Your socials', 11],
     // The badge, as a step. It was a door on the audience step and the founder
@@ -111,6 +111,25 @@ describe('skip is only on the steps that may be skipped', () => {
     expect(shell).not.toContain('onSkip');
     expect(shell).toContain('Who can see you');
     expect(shell).toContain('Got it');
+  });
+
+  it('the audience step offers the badge as a button, not only as a locked row', () => {
+    // Founder, 2026-09-05: "if the user isn't already verified then there
+    // should be a button on that page where they can get verified." The
+    // locked rows have been doors since the badge step landed, but a door
+    // that looks disabled is not tapped. The button is unconditional on this
+    // screen's unverified face, so it cannot be reached only by guessing.
+    //
+    // Tonal rather than filled, because StepShell's own Continue is the
+    // filled one and a step with two filled buttons is a step with two
+    // answers. And the footnote above it must NOT re-explain the tap: the
+    // button is that sentence, and founder ask 3 is "less/no additional text
+    // whenever possible".
+    const shell = shellAt(13);
+    expect(shell).toContain('label={VERIFICATION_TITLE}');
+    expect(shell).toContain('variant="tonal"');
+    expect(shell).toContain('onPress={() => setCapturingBadge(true)}');
+    expect(shell).not.toContain('Tap one and you can take the selfie here');
   });
 
   it('every skip names what it is skipping', () => {

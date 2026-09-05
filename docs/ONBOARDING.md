@@ -79,7 +79,7 @@ bar, exactly as the two stacks already share `SIGNUP_TOTAL_STEPS`.
 | 6   | What you do          | occupation                     | yes                | "Two words is plenty. It gives people something to ask about."                                            |
 | 7   | About you            | bio                            | yes                | "What should somebody message you about?"                                                                 |
 | 8   | Prompts              | up to 3 answered prompts       | yes                | "The bit people actually read. Answer one and you are ahead of most."                                     |
-| 9   | What you are after   | top priorities                 | yes                | "What you are hoping to do, so the right people say hi."                                                  |
+| 9   | Top priorities       | top priorities                 | yes                | "What you are hoping to do, so the right people say hi."                                                  |
 | 10  | Your trips           | one trip                       | yes                | "Dates in a city. This is the whole matching engine, so one trip is worth more than everything above it." |
 | 11  | Socials              | handles                        | yes                | "Nobody sees these until you are both in a chat."                                                         |
 | 12  | Get your badge       | one live selfie                | yes, cost stated   | `VERIFICATION_SUBTITLE`: proves your photos are you, unlocks who can see you                              |

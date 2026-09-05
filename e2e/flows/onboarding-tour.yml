@@ -377,7 +377,7 @@ appId: com.mattmoore.samewhere
       - takeScreenshot: 58-signup-prompts
       - tapOn: 'Skip the prompts for now'
       - extendedWaitUntil:
-          visible: 'Add your top priorities for your trip'
+          visible: 'Top priorities for your trip'
           timeout: 15000
       - takeScreenshot: 59-signup-priorities
       - tapOn: 'Skip this for now'

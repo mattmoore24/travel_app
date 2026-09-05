@@ -220,27 +220,13 @@ export default function BusinessEmailScreen() {
         <>
           {changing ? (
             <>
-              <FormTextField
-                label="Where should we send it?"
-                accessibilityLabel="Business email address"
-                autoFocus
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                textContentType="emailAddress"
-                placeholder="hello@yourbusiness.com"
-                value={draft}
-                onChangeText={setDraft}
-                // Gated the way the button beside it is. Two quick returns fired
-                // two sends and burned two of the five a business gets in a
-                // day, and the second one unmounted a still-focused field.
-                onSubmitEditing={() => {
-                  if (!resend.isPending) {
-                    sendAgain(draft);
-                  }
-                }}
-                returnKeyType="send"
-              />
+              {/* The FIELD this button belongs to is not here: it is in the
+                  shell's children, above. The footer is the zone the keyboard
+                  covers, so an autoFocus field in it focused itself behind
+                  the keyboard the instant "Use a different address" was
+                  tapped - the exact complaint founder ask 6 is made of. The
+                  button stays: a covered button is the point, and the field's
+                  own return key sends without uncovering anything. */}
               <PrimaryButton
                 variant="ghost"
                 label="Send me a code"
@@ -315,11 +301,37 @@ export default function BusinessEmailScreen() {
           />
         </>
       }>
+      {changing ? (
+        <FormTextField
+          label="Where should we send it?"
+          accessibilityLabel="Business email address"
+          // It takes the focus while it is on screen, and the code field
+          // below gives it up: two autoFocus fields on one screen is a race
+          // whose winner is whichever mounted last.
+          autoFocus
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          textContentType="emailAddress"
+          placeholder="hello@yourbusiness.com"
+          value={draft}
+          onChangeText={setDraft}
+          // Gated the way the button beside it is. Two quick returns fired
+          // two sends and burned two of the five a business gets in a day,
+          // and the second one unmounted a still-focused field.
+          onSubmitEditing={() => {
+            if (!resend.isPending) {
+              sendAgain(draft);
+            }
+          }}
+          returnKeyType="send"
+        />
+      ) : null}
       <FormTextField
         label="Code"
         testID="business-code-input"
         accessibilityLabel="Six-digit code"
-        autoFocus
+        autoFocus={!changing}
         keyboardType="number-pad"
         // number-pad draws no return key at all on iOS, so the accessory bar
         // is the only way off this keyboard (skills/traps).

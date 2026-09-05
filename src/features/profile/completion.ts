@@ -69,7 +69,7 @@ export function profileGaps({ profile, prompts, priorities, trips, handles }: Ga
   if (priorities.length === 0) {
     gaps.push({
       key: 'priorities',
-      title: 'Say what you are after',
+      title: 'Top priorities for your trip',
       body: 'What you are hoping to do, so the right people say hi.',
       route: '/edit-priorities',
     });

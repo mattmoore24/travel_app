@@ -1,6 +1,7 @@
 import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -62,10 +63,29 @@ export function StepScreen({
   onClose,
 }: StepScreenProps) {
   const theme = useTheme();
+  // The footer's measured height, so the floor above it only grows by the
+  // part of the keyboard that reaches PAST the footer. Without it the
+  // scroller shrinks by the footer's height twice: once for the footer laid
+  // out beneath it, and again for the keyboard covering that footer.
+  // Same shape and same reason as the signup shell's.
+  const footerHeight = useSharedValue(0);
   return (
     <ThemedView style={styles.root}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-        <KeyboardFloor>
+        {/* THE FLOOR IS ROUND THE SCROLLER ONLY.
+            Founder, 2026-09-05: "Buttons and text above keyboard are
+            unneeded and should not rise with the keyboard. Instead they
+            should be covered by the keyboard when typing so that less of the
+            screen is taken up by the keyboard and buttons."
+
+            This scaffold used to wrap the footer in the floor as well, so
+            the note, the Continue and the caller's footer slot all rode up
+            on top of the keyboard on every screen built from it. The signup
+            shell was fixed to this shape first and the founder asked for it
+            everywhere; the footer is a sibling BELOW the floor now, and the
+            keyboard simply covers it. Every field carries a Hide keyboard
+            bar, which is the way back to the button. */}
+        <KeyboardFloor allowance={footerHeight}>
           <ScrollView
             ref={scrollRef}
             style={styles.flex}
@@ -99,21 +119,27 @@ export function StepScreen({
             {subtitle ? <ThemedText themeColor="textSecondary">{subtitle}</ThemedText> : null}
             {children}
           </ScrollView>
-          <ThemedView style={styles.footer}>
-            {note ? (
-              <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
-                {note}
-              </ThemedText>
-            ) : null}
-            <PrimaryButton
-              label={continueLabel}
-              disabled={continueDisabled}
-              loading={continueLoading}
-              onPress={onContinue}
-            />
-            {footer}
-          </ThemedView>
         </KeyboardFloor>
+
+        <ThemedView
+          style={styles.footer}
+          onLayout={(event) => {
+            // eslint-disable-next-line react-hooks/immutability -- Reanimated shared values are mutable by contract
+            footerHeight.value = event.nativeEvent.layout.height;
+          }}>
+          {note ? (
+            <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
+              {note}
+            </ThemedText>
+          ) : null}
+          <PrimaryButton
+            label={continueLabel}
+            disabled={continueDisabled}
+            loading={continueLoading}
+            onPress={onContinue}
+          />
+          {footer}
+        </ThemedView>
       </SafeAreaView>
     </ThemedView>
   );

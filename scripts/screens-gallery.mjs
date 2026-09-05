@@ -164,7 +164,7 @@ const CAPTIONS = {
     'The bar was tapped, so the footer is back and Continue is reachable.',
   ],
   '58-signup-prompts': ['Answer a prompt', 'The bit people actually read.'],
-  '59-signup-priorities': ['What are you after?', 'So the right people say hi.'],
+  '59-signup-priorities': ['Top priorities for your trip', 'So the right people say hi.'],
   '70-signup-trips': ['Where are you going?', 'The one step the whole matching engine runs on.'],
   '71-signup-socials': ['Your socials', 'Nobody sees these until you are both in a chat.'],
   '71b-signup-badge': [

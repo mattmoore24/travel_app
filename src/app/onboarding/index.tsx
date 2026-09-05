@@ -611,7 +611,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
       <StepShell
         step={9}
         total={SIGNUP_TOTAL_STEPS}
-        title="Add your top priorities for your trip"
+        title="Top priorities for your trip"
         subtitle="Places, food, a night out, the one thing you would hate to miss. So the right people say hi."
         continueLabel={priorities.length > 0 ? 'Continue' : 'Add one'}
         note={CHANGE_LATER}
@@ -829,9 +829,35 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         {/* WHY the rows below are locked, read before they are tapped rather
             than discovered after. */}
         {capturingBadge || profile.verified ? null : (
-          <ThemedText type="footnote" themeColor="textSecondary">
-            {AUDIENCE_NEEDS_BADGE} Tap one and you can take the selfie here.
-          </ThemedText>
+          <>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              {AUDIENCE_NEEDS_BADGE}
+            </ThemedText>
+            {/* THE DOOR, SAID AS A BUTTON. Founder, 2026-09-05: "if the user
+                isn't already verified then there should be a button on that
+                page where they can get verified." A locked row has been a
+                door since the badge step landed, but a door you have to
+                guess at is one most people walk past: the rows read as
+                disabled, and disabled things are not tapped. This says it
+                outright, and the footnote above lost its "Tap one and you
+                can take the selfie here." clause because the button is that
+                sentence.
+
+                Tonal, not filled: the screen's own Continue is the filled
+                one, and two filled buttons on a step is a step with two
+                answers. In place like the locked rows, and for the same
+                reason - `/verification` sits inside
+                `Stack.Protected guard={signedIn && onboarded}` and an
+                onboarding account satisfies neither half, so a push is a tap
+                that does nothing. No wanted audience is recorded here: the
+                person has not picked a row, so there is nothing to apply
+                when the badge lands. */}
+            <PrimaryButton
+              label={VERIFICATION_TITLE}
+              variant="tonal"
+              onPress={() => setCapturingBadge(true)}
+            />
+          </>
         )}
         {capturingBadge ? null : (
           <>
