@@ -185,6 +185,9 @@ export function useCityForSpot(coords: { lat: number; lng: number } | null, hint
     queryFn: () => fetchCityForSpot(lat!, lng!, hint),
     enabled: isSupabaseConfigured && lat != null && lng != null,
     staleTime: Infinity,
+    // The last city stays on screen until the next one lands, so a nudge
+    // does not blank the line and the confirm card for a round trip.
+    placeholderData: (previous) => previous,
   });
 }
 

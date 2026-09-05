@@ -146,16 +146,16 @@ appId: com.mattmoore.samewhere
 # The by-hand door is on screen before anything is typed. Tapped by its
 # spoken label: the row is a PressableScale carrying one, so its printed
 # words are not an element on iOS (traps).
-- assertVisible: 'Not coming up? Set the pin yourself.'
+- assertVisible: 'Not coming up? Place the marker yourself.'
 - takeScreenshot: 42-business-where-empty
 # The fallback first, so the picture exists: the map at country scale (the
 # featured city on the simulator's clock zone, else the world) waiting for a
 # tap. Nothing is placed here; the address path below is the one the tour
 # registers with.
-- tapOn: 'Not coming up? Set the pin yourself.'
+- tapOn: 'Not coming up? Place the marker yourself.'
 - waitForAnimationToEnd:
     timeout: 2000
-- assertVisible: 'Tap the map to drop your marker.'
+- assertVisible: 'Zoom in, then tap your door.'
 - takeScreenshot: 42b-business-where-pin-yourself
 # Then the address, with the city in the words: that is what the placeholder
 # coaches, and what keeps MapKit's world ranking the same on every simulator
@@ -180,11 +180,11 @@ appId: com.mattmoore.samewhere
 # the by-hand line leaves once a marker exists.
 - takeScreenshot: 44-business-address-and-marker
 - assertVisible: 'Move the marker as much as you like.*'
-- assertNotVisible: 'Not coming up? Set the pin yourself.'
+- assertNotVisible: 'Not coming up? Place the marker yourself.'
 # The server says which city the marker is in; nothing on this screen chose
 # it. Rua da Rosa is a kilometre from Lisbon's centre.
 - extendedWaitUntil:
-    visible: 'That puts you in Lisbon, Portugal.'
+    visible: 'That lists you under Lisbon, Portugal.'
     timeout: 10000
 - takeScreenshot: 45-business-where-final
 

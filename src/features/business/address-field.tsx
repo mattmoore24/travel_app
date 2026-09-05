@@ -105,7 +105,9 @@ export function BusinessAddressField({
         <SymbolView
           name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
           size={17}
-          tintColor={message ? theme.danger : theme.textSecondary}
+          // Never the danger colour: a street MapKit has not indexed is not an
+          // error, and the footnote under the box says what happened.
+          tintColor={theme.textSecondary}
         />
         <KeyboardDone>
           {(done) => (
@@ -202,7 +204,7 @@ export function BusinessAddressField({
       {onSetPin ? (
         <PressableScale
           accessibilityRole="button"
-          accessibilityLabel="Not coming up? Set the pin yourself."
+          accessibilityLabel="Not coming up? Place the marker yourself."
           testID="business-set-pin-yourself"
           haptic="light"
           scaleTo={0.98}
@@ -215,8 +217,12 @@ export function BusinessAddressField({
             clear();
             onSetPin(first ? { lat: first.latitude, lng: first.longitude } : null);
           }}>
-          <ThemedText type="footnote" themeColor="textSecondary">
-            Not coming up? Set the pin yourself.
+          {/* The accent, because it is the way forward when the search finds
+              nothing, and in the same grey as the message above it the line
+              read as a second hint. "Marker", never "pin": a pin is the
+              traveler's 72-hour object (vocabulary.ts). */}
+          <ThemedText type="footnote" themeColor="accent">
+            Not coming up? Place the marker yourself.
           </ThemedText>
         </PressableScale>
       ) : null}

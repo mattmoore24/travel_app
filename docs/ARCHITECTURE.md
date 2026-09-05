@@ -592,7 +592,7 @@ p_hint)` files a listing under the city its marker is in: the hint when the mark
 `businesses.city_id` is NOT NULL and a fresh business has no browsed city to fall back on.
 Both write doors keep their signatures and return types (`create or replace`, no drop-first);
 the client sends `p_city_id: null` and reads the answer through `city_for_spot(p_lat, p_lng,
-p_hint)`, a jsonb preview of the same resolver, so the "That puts you in Lisbon, Portugal."
+p_hint)`, a jsonb preview of the same resolver, so the "That lists you under Lisbon, Portugal."
 line, the confirm card and the stored row agree. The city readers (`city_businesses`,
 `city_whats_on`, `city_rooms`) take the label OR the 50 km circle, so every listing is on at
 least one map and a Cascais door draws for somebody browsing Lisbon. `launch_cities` is read

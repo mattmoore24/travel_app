@@ -133,7 +133,7 @@ export async function updateBusinessLocation(input: {
 /**
  * Which city a marker will be filed under, before anything is written: the
  * same resolver register_business and update_business_location run, with the
- * same hint, so "That puts you in Lisbon, Portugal." on the screen, the
+ * same hint, so "That lists you under Lisbon, Portugal." on the screen, the
  * confirm card and the stored row cannot disagree.
  */
 export async function fetchCityForSpot(

@@ -30,7 +30,7 @@ const mockSearchPlaces = searchPlaces as jest.MockedFunction<typeof searchPlaces
 const WELL_PAST_DEBOUNCE_MS = 1000;
 
 const PLACEHOLDER = 'Street, number and city';
-const SET_PIN = 'Not coming up? Set the pin yourself.';
+const SET_PIN = 'Not coming up? Place the marker yourself.';
 
 beforeEach(() => {
   jest.useFakeTimers();

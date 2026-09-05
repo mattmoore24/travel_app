@@ -82,7 +82,8 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
         <SymbolView
           name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
           size={17}
-          tintColor={message ? theme.danger : theme.textSecondary}
+          // Never the danger colour: nothing found is not an error.
+          tintColor={theme.textSecondary}
         />
         <KeyboardDone>
           {(done) => (

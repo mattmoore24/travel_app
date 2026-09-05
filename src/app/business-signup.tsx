@@ -71,6 +71,14 @@ import { haptics } from '@/lib/haptics';
 const WORLD_START = { lat: 20, lng: 0, delta: 120 };
 
 /**
+ * The widest map a tap counts as precise on, in degrees of latitude shown:
+ * about two kilometres top to bottom. A marker dropped on a map showing a
+ * country is a guess at a region, not a door, so the step keeps asking until
+ * the map is this close and the marker was placed at that scale.
+ */
+const PRECISE_DELTA = 0.02;
+
+/**
  * A stable slug per 1-based step, for `business_step_completed` — the same
  * `{ step_index, step_name }` shape signup_step_completed sends, so one
  * funnel vocabulary covers both flows. Steps 1 and 2 (email, password) live
@@ -226,6 +234,11 @@ export default function BusinessSignupScreen() {
   const [mapStart, setMapStart] = useState<{ lat: number; lng: number; delta: number } | null>(
     null
   );
+  // How much map was showing when the marker was placed (0 for a picked
+  // address), and how much is showing now. A tap at country scale is a rough
+  // marker: Continue waits for a tap or a drag made at street scale.
+  const [placedAtDelta, setPlacedAtDelta] = useState(0);
+  const [mapDelta, setMapDelta] = useState<number | null>(null);
   // Two pieces of state on purpose, and this is the founder's rule in code:
   // "keep their address the same as whatever they entered while adjusting the
   // pin location if needed". Picking a suggestion writes both; typing writes
@@ -274,9 +287,10 @@ export default function BusinessSignupScreen() {
 
   // The city is the SERVER'S answer, never a choice made here: the same
   // resolver register_business runs, asked ahead of the write so the screen
-  // can say "That puts you in Lisbon, Portugal." and the confirm card can
+  // can say "That lists you under Lisbon, Portugal." and the confirm card can
   // name it. The stored city is the hint on a re-entry; null the first time.
   const { data: spotCity = null } = useCityForSpot(coords, business?.city_id ?? null);
+  const roughMarker = coords != null && placedAtDelta > PRECISE_DELTA;
   // The row behind it, for a re-entry that has no marker in state yet.
   const { data: businessCityRow = null } = useCity(business?.city_id ?? null);
   // Where the by-hand map opens with nothing better to go on: Intl only,
@@ -736,19 +750,17 @@ export default function BusinessSignupScreen() {
         // Greyed while the marker is missing, like every other blocked step:
         // the grey button says "not yet" the whole way. No city to wait on
         // any more; the server names one from the marker.
-        continueDisabled={coords == null}
-        note={
-          addressFocused
-            ? 'Pick your address from the list.'
-            : pinYourself && coords == null
-              ? 'Zoom in and tap the map on your door.'
-              : null
-        }
+        continueDisabled={coords == null || roughMarker}
+        // One instruction at a time: the map carries its own caption while a
+        // marker is wanted, so the footer says nothing then. While the field
+        // has focus the map is off screen and this is the one line above the
+        // keyboard.
+        note={addressFocused ? 'Tap your address when it comes up.' : null}
         onBack={() => go(4)}
         continueTestID="business-place-continue"
         onContinue={() => {
           setTouched(true);
-          if (coords == null) {
+          if (coords == null || roughMarker) {
             return;
           }
           // Forward to the confirm step. This said go(3) once and sent an
@@ -771,6 +783,7 @@ export default function BusinessSignupScreen() {
           onPick={(place) => {
             setAddress(addressFrom(place));
             setCoords({ lat: place.latitude, lng: place.longitude });
+            setPlacedAtDelta(0);
           }}
           onSetPin={
             coords == null && !pinYourself
@@ -793,17 +806,29 @@ export default function BusinessSignupScreen() {
         {!addressFocused && (coords != null || pinYourself) ? (
           <>
             <LocationPicker
-              // Remounted when a marker first lands: the picker reads its
-              // centre once, through initialRegion, and the by-hand map
-              // opened at country scale has to fly to street scale.
-              key={coords ? 'placed' : 'placing'}
+              // Not remounted when a marker lands: the picker flies to a
+              // picked address on its own (a new centre at street scale),
+              // and a tap never moves the map at all, so a tap on a
+              // country-scale map leaves the person where they were, with
+              // the marker as a rough guess and the caption asking for a
+              // closer one.
               centerLat={coords?.lat ?? mapStart?.lat ?? WORLD_START.lat}
               centerLng={coords?.lng ?? mapStart?.lng ?? WORLD_START.lng}
-              // Street level once there is a marker: "check the marker is
-              // on your door" cannot be answered by seven kilometres of city.
-              delta={coords ? 0.004 : (mapStart?.delta ?? WORLD_START.delta)}
+              // Street level for a precise marker: "check the marker is on
+              // your door" cannot be answered by seven kilometres of city.
+              // A map still waiting for a marker, or holding a rough one,
+              // shows what the person opened it at.
+              delta={coords == null || roughMarker ? (mapStart?.delta ?? WORLD_START.delta) : 0.004}
               lat={coords?.lat ?? mapStart?.lat ?? WORLD_START.lat}
               lng={coords?.lng ?? mapStart?.lng ?? WORLD_START.lng}
+              caption={
+                coords == null
+                  ? 'Zoom in, then tap your door.'
+                  : roughMarker
+                    ? 'Zoom in and tap your door again.'
+                    : undefined
+              }
+              onRegionChange={setMapDelta}
               // No marker until there is one to draw: a map with a marker
               // on it, a greyed Continue, and a note asking for a marker
               // was the screen this replaced.
@@ -813,18 +838,26 @@ export default function BusinessSignupScreen() {
               marker={category ? <PlaceGlyph category={category} /> : undefined}
               // Only the marker. The address stays exactly as typed, which
               // is the founder's rule and the reason these are two fields.
-              onChange={(lat, lng) => setCoords({ lat, lng })}
+              // The scale it was placed at rides along, so a tap on a map
+              // showing a country is held as rough until a closer one.
+              onChange={(lat, lng) => {
+                setCoords({ lat, lng });
+                setPlacedAtDelta(mapDelta ?? mapStart?.delta ?? WORLD_START.delta);
+              }}
             />
-            {coords != null ? (
+            {coords != null && !roughMarker ? (
               <ThemedText type="footnote" themeColor="textSecondary">
                 {address.trim().length > 0
                   ? 'Move the marker as much as you like. Your address stays as you wrote it.'
                   : 'Just the marker is fine. You can add the street later.'}
               </ThemedText>
             ) : null}
-            {coords != null && spotCity ? (
+            {coords != null && !roughMarker && spotCity ? (
+              // "Lists you under", not "puts you in": the city is the label
+              // the listing is filed under, and a door outside every seeded
+              // town of 5,000 is filed under the nearest one.
               <ThemedText type="footnote" themeColor="textSecondary" testID="business-spot-city">
-                {`That puts you in ${spotCity.name}, ${spotCity.country_name}.`}
+                {`That lists you under ${spotCity.name}, ${spotCity.country_name}.`}
               </ThemedText>
             ) : null}
           </>
@@ -1611,7 +1644,6 @@ const styles = StyleSheet.create({
   footerLine: {
     textAlign: 'center',
   },
-  // A quiet full-height row: 44pt to tap, footnote-sized to read.
   confirmCard: {
     gap: Space.xs,
     padding: Space.md,

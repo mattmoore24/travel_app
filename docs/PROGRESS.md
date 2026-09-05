@@ -30,7 +30,7 @@ files a listing under the city its marker is in.
   falls through to the marker. Authenticated only, like `nearest_city`.
 - **`city_for_spot(p_lat, p_lng, p_hint)`**, jsonb: `city_json` of the same
   resolver with the same hint (null on a first registration, the stored city
-  on a re-entry), so "That puts you in Lisbon, Portugal.", the confirm card
+  on a re-entry), so "That lists you under Lisbon, Portugal.", the confirm card
   and the stored row cannot disagree. Definer, because `city_json` is
   authenticated-only; a guest cannot call either door.
 - **The two write doors, signatures unchanged.** `register_business` replaces
@@ -52,7 +52,12 @@ files a listing under the city its marker is in.
   comments say `launch_cities.radius_km` has no caller (kept because build
   17's bundle still selects it) and that `businesses.city_id` is resolved on
   every write, any city. Migration first, then the update: the new bundle
-  sends `p_city_id: null`, which the old function would have refused.
+  sends `p_city_id: null`, which the old function would have refused. Build
+  17 against the new functions, until the update lands: its chip city stands
+  while the marker is within 20 km of it; from 20 to 40 km (the old
+  `radius_km`) the listing is filed under the marker's own city instead of
+  being refused, and that build's confirm card, listing preview and City
+  select keep naming the chip until the update. No rows need fixing.
 
 ### The client
 
@@ -61,28 +66,46 @@ files a listing under the city its marker is in.
   order, then `geocodeAsync` on the bare text; three characters before
   anything fires, and only while the box has focus, so walking back from "Is
   this right?" never pops a list under a settled address. Under it, "Not
-  coming up? Set the pin yourself." shows the picker with no marker, centred
+  coming up? Place the marker yourself." shows the picker with no marker, centred
   on the near-miss the list had if it had one, else the featured city whose
   clock is the phone's Intl zone at country scale, else the world, and the
   person pinches in. The map appears once a marker exists or the line is
   tapped; a pick sets both halves, a drag moves only the marker, and the city
-  line under it ("That puts you in Lisbon, Portugal.") comes from
+  line under it ("That lists you under Lisbon, Portugal.") comes from
   `city_for_spot` and follows a drag across a border honestly.
 - Step 6's card carries "Cafe · Lisbon, Portugal" from the same answer, its
   map is draggable, and the way back is "Fix the address or the marker".
   `business_registered` carries the resolved `city_id`.
 - **`useCity(id)`** reads a `cities` row by id, and that is how the map flies
-  to the owner's own city, the editor and the place sheet name it, and step
-  12's preview says it: none of them look the business up in the launch list
-  any more. business-edit loses its City select and the plain Address
-  fallback; the search box and the draggable marker are the whole of "Where
-  you are".
+  to the owner's own city, the place sheet reads its clock, and step 12's
+  preview names it: none of them look the business up in the launch list any
+  more. business-edit loses its City select and the plain Address fallback;
+  the search box and the draggable marker are the whole of "Where you are",
+  and the editor prints no city line of its own.
+- **A rough tap is not a marker yet.** A tap on the by-hand map at country
+  scale drops the marker as a guess and holds Continue, the city line and the
+  "move it as much as you like" note until a tap or a drag made with the map
+  showing about two kilometres or less (`PRECISE_DELTA`); the picker's own
+  caption asks for the zoom, the footer says nothing while the map is on
+  screen, and a tap never moves the map (the four-reviewer pass found the
+  first cut flying to street scale around wherever the finger landed).
+- **"Marker", never "pin", in business copy.** The founder's words said
+  "pin"; on screen it is "Place the marker yourself", because a pin is the
+  traveler's 72-hour object (`vocabulary.ts`). The line is in the accent
+  colour: in the same grey as the search's message it read as a second hint.
+  "That lists you under Lisbon, Portugal." rather than "puts you in", because
+  the city is the label the listing is filed under, and a door outside every
+  seeded town of 5,000 is filed under the nearest one.
 
 ### What did not move
 
-Rule 2: the only search centres are a marker the person placed, a featured
-city picked by Intl timezone, or the origin; no expo-location position API
-anywhere, and app.json's location permissions stay false. Rule 5: the address
+Rule 2: the only centres the client computes are a marker the person placed,
+the first geocoded suggestion for text the person typed (the by-hand map's
+near miss), a featured city picked by Intl timezone, the world view (20, 0) as
+a constant, or the origin as MapKit's ranking hint; none is a device read, no
+expo-location position API appears anywhere, and app.json's location
+permissions stay false. (The migration's header under-lists them; applied
+migrations are not edited, so this paragraph is the record.) Rule 5: the address
 is still screened by `screen_business_text` on every write. Rule 8: the
 traveler refusal in `register_business` and the six triggers are untouched.
 `lat`, `lng` and `city_id` are still server-owned columns.

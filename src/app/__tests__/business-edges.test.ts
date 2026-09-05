@@ -255,7 +255,7 @@ describe('the listing steps read as a business', () => {
     // the note is free to talk about the street and the marker. Only the
     // marker now: there is no city to wait on since 2026-09-05, because the
     // server names one from the marker.
-    expect(code).toContain('continueDisabled={coords == null}');
+    expect(code).toContain('continueDisabled={coords == null || roughMarker}');
     expect(code).not.toContain('Pick your city first.');
   });
 
@@ -277,9 +277,25 @@ describe('the listing steps read as a business', () => {
     expect(code).not.toContain('Somewhere else? Tell us where.');
     // The city is the server's answer, printed under the map once there is
     // a marker, and a marker alone is enough to go on.
-    expect(code).toContain('That puts you in ${spotCity.name}, ${spotCity.country_name}.');
+    expect(code).toContain('That lists you under ${spotCity.name}, ${spotCity.country_name}.');
+    // A tap on a country-scale map is a rough marker: the step holds
+    // Continue and the city line until a tap or a drag made at street scale.
+    expect(code).toContain('continueDisabled={coords == null || roughMarker}');
+    expect(code).toContain('const roughMarker = coords != null && placedAtDelta > PRECISE_DELTA;');
+    expect(code).not.toContain("key={coords ? 'placed' : 'placing'}");
     expect(code).toContain('Just the marker is fine. You can add the street later.');
+    // The analytics line reads the preview's answer; registration itself
+    // sends no city at all, and the RPC call pins null where the id was.
     expect(code).toContain('city_id: spotCity?.id ?? null');
+    const register = between(code, 'await registerBusiness.mutateAsync({', '});');
+    expect(register).not.toContain('city');
+    const rpc = between(
+      src('src/features/business/api.ts'),
+      "supabase.rpc('register_business', {",
+      '});'
+    );
+    expect(rpc).toContain('p_city_id: null');
+    expect(rpc).not.toContain('cityId');
     // The by-hand map opens on the clock zone's city or the world, never a
     // device fix (section 7 rule 2).
     expect(code).not.toContain('expo-location');
@@ -287,7 +303,7 @@ describe('the listing steps read as a business', () => {
     // while the box has focus, so walking back to a settled address never
     // pops a list under it.
     const field = src(ADDRESS_FIELD);
-    expect(field).toContain('Not coming up? Set the pin yourself.');
+    expect(field).toContain('Not coming up? Place the marker yourself.');
     expect(field).toContain('enabled: !picked && focused');
   });
 });

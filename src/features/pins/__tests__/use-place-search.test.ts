@@ -163,9 +163,7 @@ describe('anywhere mode', () => {
     );
     await pause();
     await waitFor(() =>
-      expect(empty.result.current.message).toBe(
-        'Nothing found for that. Add the city, or set the pin yourself.'
-      )
+      expect(empty.result.current.message).toBe('Nothing found for that. Try adding the city.')
     );
     expect(empty.result.current.hits).toEqual([]);
     expect(empty.result.current.searching).toBe(false);
@@ -176,9 +174,7 @@ describe('anywhere mode', () => {
       usePlaceSearch({ query: 'Rua da Rosa 12, Lisboa', anywhere: true })
     );
     await pause();
-    await waitFor(() =>
-      expect(down.result.current.message).toBe('Search is down. Set the pin yourself for now.')
-    );
+    await waitFor(() => expect(down.result.current.message).toBe('Search is down right now.'));
     expect(down.result.current.hits).toEqual([]);
     expect(down.result.current.searching).toBe(false);
   });

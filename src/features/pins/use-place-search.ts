@@ -150,7 +150,10 @@ export function usePlaceSearch(
             return;
           }
           setHits([]);
-          setMessage('Nothing found for that. Add the city, or set the pin yourself.');
+          // No by-hand clause: the surface under the field carries that
+          // line only while a marker is still wanted, and said it twice
+          // when it did.
+          setMessage('Nothing found for that. Try adding the city.');
           return;
         }
 
@@ -208,9 +211,7 @@ export function usePlaceSearch(
         if (mine === seq.current) {
           setHits([]);
           setMessage(
-            anywhere
-              ? 'Search is down. Set the pin yourself for now.'
-              : 'Search is down. Drag the map to the spot.'
+            anywhere ? 'Search is down right now.' : 'Search is down. Drag the map to the spot.'
           );
         }
       } finally {

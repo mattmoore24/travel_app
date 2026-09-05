@@ -96,7 +96,7 @@ const CAPTIONS = {
     'One box for the address, and a quiet line for placing the pin by hand.',
   ],
   '42b-business-where-pin-yourself': [
-    'Set the pin yourself',
+    'Place the marker yourself',
     'The map at country scale, waiting for a tap.',
   ],
   '43-business-address-typing': [

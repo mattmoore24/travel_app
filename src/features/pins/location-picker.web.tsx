@@ -15,6 +15,8 @@ type LocationPickerProps = {
   marker?: ReactNode;
   placed?: boolean;
   delta?: number;
+  caption?: string | null;
+  onRegionChange?: (latitudeDelta: number) => void;
 };
 
 // Web dev fallback: no native map, so nothing can be placed here.

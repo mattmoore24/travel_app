@@ -13,7 +13,7 @@
 -- hide behind. The last block is the label-or-circle predicate the three
 -- city feeds share, proven from both sides.
 begin;
-select plan(30);
+select plan(33);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a1', 'ana@example.com'),
@@ -72,8 +72,10 @@ create function pg_temp.cannes() returns int language sql as $$ select pg_temp.c
 -- =============================================================================
 
 -- The new client sends p_city_id null on registration: the marker is the
--- only thing it knows. Midtown is 3 km from Hoboken's centre and 5 km from
--- New York's; nearest_city's weighting answers New York, as it does for a pin.
+-- only thing it knows. Midtown is about 4 km from Hoboken's centre and 5 km
+-- from New York's; nearest_city's weighting answers New York, as it does for
+-- a pin. The seed has to carry Hoboken for "not Hoboken" to mean anything.
+select isnt(pg_temp.hoboken(), null, 'the seed carries Hoboken, so "not Hoboken" is a real contrast');
 select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
 select lives_ok(
   $$ select public.register_business('Midtown Bar', 'bar', null, 40.754, -73.984) $$,
@@ -276,6 +278,14 @@ select is(
   'and its post is on Lisbon''s What''s on: the two feeds agree'
 );
 
+-- The label half, for all three feeds: Mid Atlantic is some 1,400 km from
+-- any city, so only the label can keep it on its city's lists, and the
+-- Cascais assertions above are satisfied by the circle alone. Its owner
+-- posts first, so What's on has a row to keep.
+select pg_temp.login('00000000-0000-0000-0000-0000000000b4');
+insert into public.business_posts (business_id, title)
+values ((select id from public.businesses where name = 'Mid Atlantic'), 'Dock party');
+
 -- As admin: the subselect reads businesses.city_id by name, and the row's
 -- listed state is nobody's to read at the table but the owner's and the
 -- service role's.
@@ -286,6 +296,20 @@ select is(
     where name = 'Mid Atlantic'),
   1,
   'and a listing far from its city''s centre is still on that city''s map: the label keeps it'
+);
+select is(
+  (select count(*)::int from public.city_rooms(
+     (select city_id from public.businesses where name = 'Mid Atlantic'))
+    where name = 'Mid Atlantic'),
+  1,
+  'and its room is in that city''s list: the label, not the circle'
+);
+select is(
+  (select count(*)::int from public.city_whats_on(
+     (select city_id from public.businesses where name = 'Mid Atlantic'))
+    where title = 'Dock party'),
+  1,
+  'and its post is on that city''s What''s on: the label, not the circle'
 );
 
 -- =============================================================================

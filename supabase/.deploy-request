@@ -478,3 +478,11 @@
              read the label or the 50 km circle. Database first, then the
              update: the new bundle sends p_city_id null, which the old
              function refused.
+
+2026-09-05 — 20260905130000, a note rather than a migration: build 17 against
+             the new functions, until the update lands. Its chip city stands
+             while the marker is within 20 km of it; from 20 to 40 km (the old
+             radius_km) the listing is filed under the marker's own city
+             instead of being refused, and that build's confirm card, listing
+             preview and City select keep naming the chip. No rows need
+             fixing. The re-run this entry triggers applies nothing.
