@@ -100,3 +100,42 @@ export function heatRings(cell: MergedHeatCell): HeatRing[] {
 export function compositeAlpha(perRing: number, layers: number): number {
   return 1 - Math.pow(1 - perRing, layers);
 }
+
+/**
+ * Which rows to draw when a day filter is on.
+ *
+ * A day filter evaluates the k-threshold against a third of the pins, so the
+ * layer used to vanish exactly when somebody was trying hardest to use it.
+ * When the day-filtered result is empty and the all-days one is not, the
+ * all-days layer is drawn instead — LABELLED, always, by the caller: those
+ * cells cleared k for their own pool (rule 6 holds), but an unlabelled
+ * fallback would report "busy tomorrow" from a pool that is not tomorrow's.
+ *
+ * Never touches the server: both inputs are already-thresholded rows.
+ */
+export function heatWithFallback<T>(
+  dayFiltered: boolean,
+  filtered: T[],
+  unfiltered: T[]
+): { rows: T[]; fallback: boolean } {
+  if (!dayFiltered || filtered.length > 0 || unfiltered.length === 0) {
+    return { rows: filtered, fallback: false };
+  }
+  return { rows: unfiltered, fallback: true };
+}
+
+/**
+ * Whether a heatmap VIEW may be recorded. The old `heatmap_rendered` fired
+ * when heat data arrived, not when a person saw anything, so the founder
+ * metric read healthy for a layer that had drawn zero pixels. A view needs
+ * pixels: a non-empty mounted layer, a map not covered by a sheet, and not
+ * place mode (the map is a viewfinder there). Once per city per session is
+ * the caller's half.
+ */
+export function heatViewReady(args: {
+  cells: number;
+  covered: boolean;
+  placing: boolean;
+}): boolean {
+  return args.cells > 0 && !args.covered && !args.placing;
+}

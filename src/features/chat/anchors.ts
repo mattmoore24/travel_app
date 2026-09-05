@@ -22,6 +22,7 @@ export type Anchor =
   | { kind: 'languages' }
   | { kind: 'home' }
   | { kind: 'bio' }
+  | { kind: 'priority' }
   | { kind: 'prompt'; promptKey: string }
   | { kind: 'pin'; venue: string | null };
 
@@ -49,6 +50,11 @@ export function parseAnchor(element: string): Anchor {
   if (element.startsWith('pin:')) {
     const venue = element.slice('pin:'.length).trim();
     return { kind: 'pin', venue: venue.length > 0 ? venue : null };
+  }
+  // Before the bio fallback, or a hello anchored on somebody's top priority
+  // is announced as being about their bio — which they may not even have.
+  if (element === 'priority' || element.startsWith('priority:')) {
+    return { kind: 'priority' };
   }
   return { kind: 'bio' };
 }
@@ -78,9 +84,43 @@ export function anchorStartedFrom(element: string, name: string | null): string 
       return `Started from ${whose} answer to "${promptLabelInline(anchor.promptKey)}"`;
     case 'pin':
       return anchor.venue ? `Started from a pin at ${anchor.venue}` : 'Started from a pin';
+    case 'priority':
+      return `Started from something on ${whose} list`;
     default:
       return `Started from ${whose} bio`;
   }
+}
+
+/**
+ * Second person, for the line above an opened chat when the READER is the
+ * one the hello was about. No name goes in: for the accepter the name on
+ * the chat row is the sender, and the anchor is about the reader's own
+ * profile, so a name here would attribute their photo to the other person.
+ */
+export function anchorTheyStartedFrom(element: string): string {
+  return `Started from ${anchorAboutYours(element)}`;
+}
+
+/**
+ * Which of the two renderers an opened chat's footer gets.
+ *
+ * The sender reads the third person about the other person's profile; the
+ * accepter reads the second person about their own. A null sender id counts
+ * as "not me" only when we know who "me" is — with no session (still
+ * loading, or a reader the row was never written for) the third-person
+ * string is the safe wrong answer, because it never claims the reader's
+ * profile started anything.
+ */
+export function footerAnchor(
+  element: string,
+  firstMessageSenderId: string | null,
+  ownUserId: string | null,
+  title: string | null
+): string {
+  if (ownUserId != null && firstMessageSenderId !== ownUserId) {
+    return anchorTheyStartedFrom(element);
+  }
+  return anchorStartedFrom(element, title);
 }
 
 /** Second person, for a hello that has just arrived. */
@@ -99,6 +139,8 @@ export function anchorAboutYours(element: string): string {
       return `your answer to "${promptLabelInline(anchor.promptKey)}"`;
     case 'pin':
       return anchor.venue ? `your pin at ${anchor.venue}` : 'your pin';
+    case 'priority':
+      return 'something on your list';
     default:
       return 'your bio';
   }

@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["9GSR77B4U5.com.mattmoore.samewhere"],
+        "components": [{ "/": "/i/*", "comment": "group invite" }]
+      }
+    ]
+  }
+}

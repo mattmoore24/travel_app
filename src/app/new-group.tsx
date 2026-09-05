@@ -14,18 +14,16 @@ import { Segmented } from '@/components/ui/segmented';
 import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { uploadGroupPhoto } from '@/features/groups/api';
 import { useCreateGroup } from '@/features/groups/hooks';
+import { SPEAKING_OPTIONS } from '@/features/groups/speaking';
 import { useOwnUserId } from '@/features/profile/hooks';
-import { addDays, formatDate, toISODate } from '@/features/trips/dates';
+import { endDateLabel, seedEndDate } from '@/features/rooms/end-date';
+import { useMyTrips } from '@/features/trips/hooks';
+import { parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { pickImage } from '@/lib/pick-image';
 import type { GroupSpeaking } from '@/lib/database.types';
 
 const NAME_MAX = 60;
-
-const SPEAKING_OPTIONS: { value: GroupSpeaking; label: string }[] = [
-  { value: 'everyone', label: 'Everyone' },
-  { value: 'granted', label: 'Only who I pick' },
-];
 
 /**
  * Start a group. Four decisions, in the order they matter: what it is called,
@@ -50,6 +48,15 @@ export default function NewGroupScreen() {
   const [pickingDate, setPickingDate] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // What "Pick a day" opens on. The end of the trip you are on, or of the next
+  // one you have planned, and thirty days from now only when there is neither
+  // — which is what the picker used to open on unconditionally, a number that
+  // meant nothing to anybody. This changes the OFFER only: "No end date" is
+  // still selected below and still the default.
+  const { data: trips } = useMyTrips();
+  const seed = seedEndDate(trips);
+  const maxStayISO = maxStay ? toISODate(maxStay) : null;
 
   const trimmed = name.trim();
   const ready = trimmed.length >= 2 && !busy && !createGroup.isPending;
@@ -159,7 +166,7 @@ export default function NewGroupScreen() {
       </View>
 
       <View style={styles.block}>
-        <ThemedText type="smallBold">Chat is active until</ThemedText>
+        <ThemedText type="smallBold">Group is active until</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
           {maxStay
             ? 'The chat is active through that day and closes the day after. Nobody can pick a later date to stay until.'
@@ -209,7 +216,7 @@ export default function NewGroupScreen() {
           haptic="selection"
           scaleTo={0.98}
           onPress={() => {
-            setMaxStay((current) => current ?? addDays(new Date(), 30));
+            setMaxStay((current) => current ?? parseISODate(seed.iso));
             setPickingDate(Platform.OS !== 'ios');
           }}>
           <ThemedView
@@ -231,7 +238,17 @@ export default function NewGroupScreen() {
               size={20}
               tintColor={maxStay != null ? theme.accent : theme.textSecondary}
             />
-            <ThemedText>{maxStay ? formatDate(toISODate(maxStay)) : 'Pick a day'}</ThemedText>
+            {/* The city rides along while the day is still the one the trip
+                suggested, so the row reads as an answer rather than a guess.
+                The moment somebody moves the picker it is their day, not
+                Lisbon's, and the label says only the day. */}
+            <ThemedText>
+              {maxStayISO == null
+                ? 'Pick a day'
+                : endDateLabel(
+                    maxStayISO === seed.iso ? seed : { iso: maxStayISO, cityName: null }
+                  )}
+            </ThemedText>
           </ThemedView>
         </PressableScale>
 

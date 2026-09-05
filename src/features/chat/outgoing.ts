@@ -37,6 +37,8 @@ export function optimisticMessage(input: {
   chatId: string;
   senderId: string;
   body: string;
+  /** What it answers, so the quoted strip is on the placeholder too. */
+  replyToMessageId?: string | null;
   at?: Date;
 }): ThreadMessage {
   const at = input.at ?? new Date();
@@ -47,6 +49,7 @@ export function optimisticMessage(input: {
     body: input.body,
     image_path: null,
     created_at: at.toISOString(),
+    reply_to_message_id: input.replyToMessageId ?? null,
     local: 'sending',
   };
 }
@@ -54,6 +57,10 @@ export function optimisticMessage(input: {
 export function optimisticRoomMessage(input: {
   senderId: string;
   body: string;
+  replyToMessageId?: string | null;
+  /** The parent's name and first line, which the RPC joins for real rows. */
+  replyToName?: string | null;
+  replyToBody?: string | null;
   at?: Date;
 }): RoomThreadMessage {
   const at = input.at ?? new Date();
@@ -67,9 +74,14 @@ export function optimisticRoomMessage(input: {
     removed: false,
     unsent_at: null,
     created_at: at.toISOString(),
+    reply_to_message_id: input.replyToMessageId ?? null,
+    reply_to_name: input.replyToName ?? null,
+    reply_to_body: input.replyToBody ?? null,
     // Text only. A photo never takes this path — it has an upload to finish
     // before there is anything to show — so there is no state to be in.
     photo_state: 'none',
+    // A person typed this; 'joined' lines are only ever written server-side.
+    kind: 'said',
     local: 'sending',
   };
 }

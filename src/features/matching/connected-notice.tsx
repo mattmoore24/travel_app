@@ -4,12 +4,11 @@ import { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 import { SymbolView } from 'expo-symbols';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { BottomTabInset, Elevation, Motion, Radius, Space } from '@/constants/theme';
+import { Elevation, Motion, Radius, Space } from '@/constants/theme';
+import { useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import type { AcceptedMatch } from '@/features/matching/use-accepted-celebration';
@@ -36,12 +35,21 @@ import { haptics } from '@/lib/haptics';
 export function ConnectedNotice({
   match,
   onDismiss,
+  onGoToChat,
 }: {
   match: AcceptedMatch;
+  /** The X: the notice is put away and nothing else happens. */
   onDismiss: () => void;
+  /**
+   * "Go to chat": the notice is put away because the person is leaving for
+   * the thread. A different callback from the X on purpose — the App Store
+   * review ask may follow a dismissal and must not follow a departure, and
+   * the hook that owns the ask can only tell the two apart if the card does.
+   */
+  onGoToChat: () => void;
 }) {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  const dockBottom = useTabDockBottom();
   const { data: photoUrl } = usePhotoUrl(match.photoPath);
 
   useEffect(() => {
@@ -53,7 +61,7 @@ export function ConnectedNotice({
     <Animated.View
       entering={FadeInDown.duration(Motion.standard)}
       exiting={FadeOutDown.duration(Motion.quick)}
-      style={[styles.dock, { bottom: BottomTabInset + insets.bottom + Space.sm }]}
+      style={[styles.dock, { bottom: dockBottom }]}
       pointerEvents="box-none">
       <ThemedView type="surface" style={[styles.card, Elevation.floating]}>
         <View style={styles.row}>
@@ -86,7 +94,7 @@ export function ConnectedNotice({
         <PrimaryButton
           label="Go to chat"
           onPress={() => {
-            onDismiss();
+            onGoToChat();
             router.push(`/chat/${match.chatId}`);
           }}
         />

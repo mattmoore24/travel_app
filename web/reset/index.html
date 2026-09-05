@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="stylesheet" href="/_style.css" />
+    <title>Reset your password · Samewhere</title>
+    <meta name="robots" content="noindex" />
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="mark"><img class="flame" src="/_mark.svg" alt="" /><span>Samewhere</span></div>
+      <h1>Reset your password</h1>
+      <p class="lede" id="lede">Opening Samewhere…</p>
+      <div class="row" id="actions" style="display: none">
+        <a class="btn" id="open" href="#">Open Samewhere</a>
+        <a class="btn ghost" href="https://apps.apple.com/app/id6802889254">Get the app</a>
+      </div>
+      <div class="card" style="margin-top: 28px">
+        <p style="margin: 0">
+          This link only works on the iPhone that has Samewhere installed, and it expires. If it has
+          stopped working, ask for a new one from the sign-in screen.
+        </p>
+      </div>
+      <footer>
+        <p>
+          <a href="/">Samewhere</a> · <a href="/privacy">Privacy</a> ·
+          <a href="/guidelines">House rules</a> · <a href="/support">Support</a> ·
+          <a href="mailto:hello@samewhere.io">hello@samewhere.io</a>
+        </p>
+      </footer>
+    </div>
+    <script>
+      // Supabase puts the recovery tokens in the URL fragment, and sometimes in the
+      // query string. Hand BOTH to the app untouched: src/features/auth/recovery.ts
+      // already reads either. Nothing is parsed, logged or sent anywhere from here.
+      (function () {
+        var tail =
+          window.location.hash ||
+          (window.location.search ? '#' + window.location.search.slice(1) : '');
+        var deep = 'samewhere://reset-password' + tail;
+        document.getElementById('open').href = deep;
+        document.getElementById('actions').style.display = 'flex';
+        document.getElementById('lede').textContent =
+          'Tap below to finish resetting your password in the app.';
+        // Try once automatically. If the app is not installed nothing happens, and
+        // the buttons above are already on screen.
+        window.location.replace(deep);
+      })();
+    </script>
+  </body>
+</html>

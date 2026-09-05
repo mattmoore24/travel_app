@@ -1,15 +1,18 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { Space } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
 import { signUpWithEmail, upgradeGuestToAccount } from '@/features/auth/api';
-import { AppleSignInButton } from '@/features/auth/apple-button';
+import { AppleSignInButton, useAppleSignInAvailable } from '@/features/auth/apple-button';
 import { ConsentNote } from '@/features/auth/consent-note';
+import { likelyEmailTypo } from '@/features/auth/email-typos';
 import { AccountKindChoice, type AccountKind } from '@/features/auth/account-kind';
+import { useRecordListingIntent } from '@/features/business/hooks';
 import { useAuthStore } from '@/features/auth/store';
 import { useIsGuestAccount } from '@/features/guest/hooks';
 import { StepShell } from '@/features/signup/step-shell';
@@ -25,16 +28,43 @@ const PASSWORD_MIN = 8;
  * chrome as the four profile steps that follow, so the whole thing reads as
  * one six-step sequence even though the account gets created in the middle
  * of it (that is what swaps the app from the auth stack to onboarding).
+ *
+ * UNCHANGED BY THE DELETE CONFIRM, on purpose, and worth saying here rather
+ * than only in features/auth/api. Deleting an account now asks who is holding
+ * the phone before it destroys every chat on both sides, and a GUEST has
+ * nothing to be asked for: an anonymous auth row has no password of ours and
+ * no Apple identity, so `identityProofFor` answers 'none' and the delete
+ * keeps its single confirm. That is not a gap for this screen to close by
+ * demanding credentials earlier. Nobody is asked for an account at the door;
+ * they are asked at the moment of an action, which is the whole of the guest
+ * design.
+ *
+ * What this screen DOES do for that path is give a guest something to be
+ * asked with. The email branch below calls `upgradeGuestToAccount`, which
+ * adds the address and the password to the SAME auth row - so from the tap
+ * that finishes step 2, the account has a password `confirmIdentity` can
+ * re-check, and it kept every chat it made as a guest.
  */
 export default function JoinScreen() {
+  const theme = useTheme();
   const isGuestAccount = useIsGuestAccount();
+  const appleAvailable = useAppleSignInAvailable();
   const listingStarted = useAuthStore((s) => s.listingStarted);
   const listingDone = useAuthStore((s) => s.listingDone);
+  const recordListingIntent = useRecordListingIntent();
 
-  // The flag follows the chooser rather than the submit, so the Apple button
-  // carries the answer too. Signing in through Apple never reaches
-  // `submitPassword`, and without this a place owner who took the one-tap
-  // option landed in traveler onboarding just as before.
+  // In-memory ONLY. The durable flag is written when the account is actually
+  // committed, never on a selection tap, and the difference is a real bug:
+  // a guest HAS a session, so a durable write from here succeeds. Somebody
+  // browsing as a guest who taps "A business" out of curiosity, backs out,
+  // comes back later and signs up as a traveller never taps the traveller
+  // row again (it is the default), so nothing ever takes the flag down — and
+  // a brand-new traveller account with wants_business true is read as
+  // already-onboarded and never gets onboarding at all, landing on the tabs
+  // with an empty profile and every editor missing from the navigator.
+  //
+  // The Apple path, which never reaches submitPassword, is covered where it
+  // actually belongs: business-signup writes the flag on mount.
   const chooseKind = (next: AccountKind) => {
     setKind(next);
     if (next === 'business') {
@@ -62,7 +92,26 @@ export default function JoinScreen() {
   const [loading, setLoading] = useState(false);
 
   const emailOk = EMAIL_PATTERN.test(email.trim());
+  // The shape check passes `a@gmial.com` perfectly, and with email
+  // confirmation off for v1 nothing downstream ever reveals the mistake: no
+  // mail arrives, password reset is deliberately oracle-free, and the account
+  // is unrecoverable including through support. A nudge, never a gate - it is
+  // their address, not ours.
+  const meant = likelyEmailTypo(email);
   const passwordOk = password.length >= PASSWORD_MIN;
+
+  // The denominator for the largest drop-off in the product: arriving here
+  // and leaving without touching anything. Once, on arrival — the ref rather
+  // than an empty dep array so the lint rule is satisfied without the event
+  // re-firing when the kind rows flip `forBusiness`.
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (startedRef.current) {
+      return;
+    }
+    startedRef.current = true;
+    analytics.capture('signup_started', { business: forBusiness });
+  }, [forBusiness]);
 
   const submitEmail = () => {
     setTouched(true);
@@ -71,7 +120,7 @@ export default function JoinScreen() {
     }
     haptics.light();
     setTouched(false);
-    analytics.capture('signup_step_completed', { step: 'email' });
+    analytics.capture('signup_step_completed', { step_index: 1, step_name: 'email' });
     setStep(2);
   };
 
@@ -94,7 +143,11 @@ export default function JoinScreen() {
         await signUpWithEmail(email.trim(), password);
       }
       haptics.success();
-      analytics.capture('signup_step_completed', { step: 'password', business: forBusiness });
+      analytics.capture('signup_step_completed', {
+        step_index: 2,
+        step_name: 'password',
+        business: forBusiness,
+      });
       // The root guard swaps to the profile steps on the auth event. For a
       // place we jump straight past them: `business-signup` sits outside the
       // onboarded guard precisely so it can be reached by an account that
@@ -105,6 +158,15 @@ export default function JoinScreen() {
       // the hold unmounts the navigator, and a queued navigation with nothing
       // mounted is dropped. Onboarding reads the flag and forwards. See
       // features/auth/store.
+      // The durable half of the same answer, written at COMMIT and for both
+      // branches. Awaited, because this is the write that has to survive the
+      // app being killed on step 7 of a form whose steps 4 to 11 had no exit
+      // at all. Both branches, because a false written here is what corrects
+      // an account that touched the business row earlier and changed its
+      // mind. recordListingIntent seeds the query cache the router gates on,
+      // so the read that fires from inside signUpWithEmail cannot win the
+      // race with a stale false.
+      await recordListingIntent(forBusiness).catch(() => {});
       if (forBusiness) {
         listingStarted();
         router.replace('/business-signup');
@@ -127,16 +189,22 @@ export default function JoinScreen() {
       <StepShell
         step={1}
         total={SIGNUP_TOTAL_STEPS}
-        title="What is your email?"
+        // A statement, not "What is your email?". The old question was
+        // answered by a full-width Apple pill that skips the email entirely,
+        // so the heading contradicted its own loudest action. "Make your
+        // account" covers all three things on this screen: the account-kind
+        // rows, the Apple button and the email field.
+        title="Make your account"
         // Founder's words, both of them. The old pair told people what the
         // email is NOT for, which invites the question, and the business one
         // promised a second email nobody had asked about yet. These say the
         // thing somebody actually wants to know: nobody sees it, and — for a
         // business, whose whole point is being reachable — where the number
-        // customers will actually call goes instead.
+        // travelers will actually call goes instead. "Travelers", not
+        // "customers": one word for the people on the other side, everywhere.
         subtitle={
           forBusiness
-            ? 'This email is just for signing in. You will enter your contact information where customers can reach you when creating your profile.'
+            ? 'This email is just for signing in. You will enter your contact information where travelers can reach you when you build your listing.'
             : 'Your email is never shown to other users.'
         }
         continueLabel="Continue"
@@ -176,6 +244,19 @@ export default function JoinScreen() {
             <AppleSignInButton label="signup" />
           </View>
         )}
+        {/* Apple and the email field are ALTERNATIVES, and stacked with
+            nothing between them they read as a sequence — tap the pill, then
+            fill in the field. Only while the pill actually rendered: a
+            divider with nothing above it is a stray line. */}
+        {!isGuestAccount && appleAvailable ? (
+          <View style={styles.orRow}>
+            <View style={[styles.orLine, { backgroundColor: theme.hairline }]} />
+            <ThemedText type="footnote" themeColor="textSecondary">
+              or
+            </ThemedText>
+            <View style={[styles.orLine, { backgroundColor: theme.hairline }]} />
+          </View>
+        ) : null}
         <FormTextField
           label="Email"
           testID="email-input"
@@ -205,6 +286,11 @@ export default function JoinScreen() {
           onSubmitEditing={submitEmail}
           error={touched && !emailOk ? 'Check that address and try again.' : null}
         />
+        {meant ? (
+          <ThemedText type="footnote" themeColor="warning">
+            Did you mean {meant}?
+          </ThemedText>
+        ) : null}
       </StepShell>
     );
   }
@@ -267,6 +353,14 @@ export default function JoinScreen() {
         hint={`At least ${PASSWORD_MIN} characters.`}
         error={touched && !passwordOk ? `At least ${PASSWORD_MIN} characters.` : null}
       />
+      {/* The address, back once, on the last screen where Back can still fix
+          it. Nothing after this ever shows it: confirmation is off for v1
+          (docs/LAUNCH_RUNBOOK.md), so no mail arrives to reveal a typo, and
+          the reset flow answers the same way whether or not the address
+          exists. */}
+      <ThemedText type="footnote" themeColor="textSecondary">
+        Signing up as {email.trim()}. This is where we will send a reset link if you ever need one.
+      </ThemedText>
       {passwordOk ? (
         <View style={styles.matchRow}>
           <ThemedText type="footnote" themeColor="textSecondary">
@@ -286,6 +380,16 @@ const styles = StyleSheet.create({
   },
   appleRow: {
     paddingBottom: Space.sm,
+  },
+  orRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    paddingBottom: Space.sm,
+  },
+  orLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
   },
   footer: {
     gap: Space.md,

@@ -1,10 +1,9 @@
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { ActionSheetIOS, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { Composer } from '@/features/chat/composer';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -14,17 +13,24 @@ import { LoadError } from '@/components/ui/load-error';
 import { Radius, MaxContentWidth, Spacing } from '@/constants/theme';
 import {
   useBlockUser,
+  useBlocks,
   useMessages,
   useDiscardFailed,
   useSendMessage,
   useSendPhoto,
   useLeaveChat,
 } from '@/features/chat/hooks';
+import { closedNotice } from '@/features/chat/closed-notice';
+import { MeetPrompt } from '@/features/chat/meet-prompt';
 import { MessageThread } from '@/features/chat/message-thread';
+import { ThreadHeader } from '@/features/chat/thread-header';
+import { flattenPages } from '@/features/chat/paging';
+import { quoteFromPage, type Quote } from '@/features/chat/reply';
 import type { ThreadMessage } from '@/features/chat/outgoing';
-import { anchorStartedFrom } from '@/features/chat/anchors';
+import { footerAnchor } from '@/features/chat/anchors';
 import { useMarkReadWhileOpen } from '@/features/chat/use-mark-read';
-import { useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
+import { firstUnreadId, useReachUnreadBoundary, useUnreadAtOpen } from '@/features/chat/unread';
+import { useMeetPromptDue, useMyChats, useUnlockedSocialHandles } from '@/features/matching/hooks';
 // Reactions are chat-shaped, not room-shaped: the table and the summary RPC
 // take any chat id, so direct chats reuse exactly what rooms use.
 import {
@@ -34,11 +40,30 @@ import {
   useUnsendMessage,
 } from '@/features/rooms/hooks';
 import { useOwnUserId, usePhotoUrl, usePublicProfile } from '@/features/profile/hooks';
+import { presentMenu, travelerMenuItems } from '@/features/profile/actions-menu';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { useTheme } from '@/hooks/use-theme';
-import { useBusinessForChat, useIsBusiness, useIsPlaceChat } from '@/features/business/hooks';
+import {
+  useBusinessForChat,
+  useIsBusiness,
+  useIsPlaceChat,
+  useOwnBusiness,
+  useSavedReplies,
+} from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import type { ChatListRow } from '@/lib/database.types';
+
+/**
+ * The label the shared action sheet gives its Report row.
+ *
+ * Written down here because this screen re-points that one row on a business
+ * thread and has nothing but the label to find it by. Exported so
+ * app/__tests__/report-place.test.tsx can assert the builder still emits
+ * exactly one row with this label: if somebody renames it there, the swap
+ * below would silently stop happening and every report about a hostel would
+ * quietly go back to naming its owner.
+ */
+export const REPORT_ROW = 'Report';
 
 function ChatHeader({ chat }: { chat: ChatListRow }) {
   const theme = useTheme();
@@ -125,47 +150,53 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
     router.back();
   };
 
+  // View profile / Report / Block come from the shared builder, so the three
+  // surfaces that offer them (here, a stranger's profile, and the Travelers
+  // card) cannot drift. What is local to a thread is the tail: a traveler
+  // can leave the chat, a business archives it.
+  //
+  // And, on a business thread, the SUBJECT of the report. The builder files
+  // against `userId`, which on this screen is `other_user_id` - the owner as
+  // a private person, not the hostel. So a traveler harassed by whoever is
+  // behind the bar's account filed a report about a stub profile they have
+  // never seen, in the person queue, named after the wrong subject. Rerouted
+  // here rather than in the builder because the other two surfaces that use
+  // it have no business to report. The builder should grow an `onReport`
+  // override the day somebody owns that file; until then this screen swaps
+  // the one row by its label, and a sibling test keeps the label honest.
   const openMenu = () => {
-    const items: { label: string; destructive?: boolean; run: () => void }[] = [
-      // A business has no traveler profile to open, and neither does the
-      // route: pushing /profile/[userId] from here was a tap that did
-      // nothing, in the screen a business uses most.
-      ...(viewerIsBusiness
-        ? []
-        : [{ label: 'View profile', run: () => router.push(`/profile/${chat.other_user_id}`) }]),
-      {
-        label: 'Report',
-        run: () =>
-          router.push({
-            pathname: '/report',
-            params: { userId: chat.other_user_id, context: `chat:${chat.chat_id}` },
-          }),
-      },
-      { label: 'Block', destructive: true, run: confirmBlock },
-      viewerIsBusiness
-        ? { label: 'Archive', run: archiveChat }
-        : { label: 'Leave chat', destructive: true, run: confirmLeaveChat },
-    ];
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: [...items.map((item) => item.label), 'Cancel'],
-          destructiveButtonIndex: items.findIndex((item) => item.destructive),
-          cancelButtonIndex: items.length,
-        },
-        (index) => items[index]?.run()
-      );
-    } else {
-      // Simple fallback for non-iOS dev targets.
-      Alert.alert('Options', undefined, [
-        ...items.map((item) => ({
-          text: item.label,
-          style: item.destructive ? ('destructive' as const) : undefined,
-          onPress: item.run,
-        })),
-        { text: 'Cancel', style: 'cancel' as const },
-      ]);
-    }
+    const items = travelerMenuItems({
+      userId: chat.other_user_id,
+      context: `chat:${chat.chat_id}`,
+      canViewProfile: !viewerIsBusiness,
+      onBlock: confirmBlock,
+      extra: [
+        viewerIsBusiness
+          ? { label: 'Archive', run: archiveChat }
+          : { label: 'Leave chat', destructive: true, run: confirmLeaveChat },
+      ],
+    });
+    // placeId is the listing this thread belongs to, and it is null until
+    // that query lands. Falling back to the person report is the behaviour
+    // this screen has always had: one report in the older queue beats a
+    // Report row that opens a form whose Send button cannot fire.
+    const business = isPlace && placeId != null ? placeId : null;
+    presentMenu(
+      business == null
+        ? items
+        : items.map((item) =>
+            item.label === REPORT_ROW
+              ? {
+                  ...item,
+                  run: () =>
+                    router.push({
+                      pathname: '/report-place',
+                      params: { id: business, name: chat.title ?? '' },
+                    }),
+                }
+              : item
+          )
+    );
   };
 
   // Where the name at the top of the screen goes, or null when it goes
@@ -181,61 +212,43 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
       : () => router.push(`/profile/${chat.other_user_id}`);
 
   return (
-    <View style={styles.header}>
-      <Pressable
-        accessibilityRole={openIdentity ? 'button' : 'header'}
-        accessibilityLabel={
-          openIdentity
-            ? isPlace
-              ? `About ${chat.title ?? 'this business'}`
-              : 'View profile'
-            : undefined
-        }
-        disabled={openIdentity == null}
-        onPress={openIdentity ?? undefined}
-        style={styles.headerIdentity}>
-        <View style={[styles.headerAvatar, { backgroundColor: theme.backgroundElement }]}>
-          {photoUrl ? (
-            <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
-          ) : (
+    <ThreadHeader
+      photoUrl={photoUrl ?? null}
+      glyph={
+        isPlace
+          ? { ios: 'storefront.fill', android: 'storefront', web: 'storefront' }
+          : { ios: 'person.fill', android: 'person', web: 'person' }
+      }
+      title={chat.title ?? (isPlace ? 'This business' : 'Traveler')}
+      subtitle={isPlace ? `The people who run ${chat.title ?? 'it'}` : undefined}
+      onPressIdentity={openIdentity}
+      identityLabel={
+        openIdentity
+          ? isPlace
+            ? `About ${chat.title ?? 'this business'}`
+            : 'View profile'
+          : undefined
+      }
+      trailing={
+        <>
+          {/* The third place trust is spent, after the Travelers hero and the
+              profile: this is the screen where somebody decides whether to
+              actually go and meet a stranger. */}
+          {other?.verified ? <VerifiedSeal size={13} name={chat.title} age={other.age} /> : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Conversation options"
+            onPress={openMenu}
+            hitSlop={10}>
             <SymbolView
-              name={
-                isPlace
-                  ? { ios: 'storefront.fill', android: 'storefront', web: 'storefront' }
-                  : { ios: 'person.fill', android: 'person', web: 'person' }
-              }
-              size={16}
-              tintColor={theme.textSecondary}
+              name={{ ios: 'ellipsis.circle', android: 'more_horiz', web: 'more_horiz' }}
+              size={22}
+              tintColor={theme.text}
             />
-          )}
-        </View>
-        <View style={styles.headerNames}>
-          <ThemedText type="smallBold">
-            {chat.title ?? (isPlace ? 'This business' : 'Traveler')}
-          </ThemedText>
-          {isPlace ? (
-            <ThemedText type="caption" themeColor="textSecondary">
-              {`The people who run ${chat.title ?? 'it'}`}
-            </ThemedText>
-          ) : null}
-        </View>
-        {/* The third place trust is spent, after the Travelers hero and the
-            profile: this is the screen where somebody decides whether to
-            actually go and meet a stranger. */}
-        {other?.verified ? <VerifiedSeal size={13} name={chat.title} age={other.age} /> : null}
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Conversation options"
-        onPress={openMenu}
-        hitSlop={10}>
-        <SymbolView
-          name={{ ios: 'ellipsis.circle', android: 'more_horiz', web: 'more_horiz' }}
-          size={22}
-          tintColor={theme.text}
-        />
-      </Pressable>
-    </View>
+          </Pressable>
+        </>
+      }
+    />
   );
 }
 
@@ -278,6 +291,11 @@ export default function ChatScreen() {
   // business reader this card can only ever come back empty, and asking is a
   // round trip for a promise the database already keeps.
   const viewerIsBusiness = useIsBusiness();
+  // The owner's three saved replies, asked for only where they can be used.
+  // A traveler's chat never asks: business_saved_replies has no policy for
+  // anybody but the owner, so the round trip could only come back empty.
+  const ownBusinessId = useOwnBusiness().data?.id ?? null;
+  const savedReplies = useSavedReplies(viewerIsBusiness ? ownBusinessId : null).data ?? [];
   const chatsQuery = useMyChats();
   // Both lists. Archiving a conversation used to make it unreadable: the
   // Archived screen still linked to it, and the thread it opened said "Chat
@@ -287,24 +305,71 @@ export default function ChatScreen() {
   const chat = [...(chatsQuery.data ?? []), ...(archivedQuery.data ?? [])].find(
     (c) => c.chat_id === id
   );
+  // Whether the closure is one THIS person made. Read from the server rather
+  // than held as a local flag, so the answer survives a remount and a cold
+  // start - the moment somebody most wants to check is usually not the moment
+  // they blocked. isSuccess is the guard: until the list has an answer the
+  // notice says the neutral sentence, never the reverse, or a beat of loading
+  // state would tell somebody they had not blocked a person they just did.
+  const blocksQuery = useBlocks();
+  const iBlockedThem =
+    blocksQuery.isSuccess &&
+    chat?.other_user_id != null &&
+    (blocksQuery.data ?? []).some((blocked) => blocked.userId === chat.other_user_id);
   const messagesQuery = useMessages(chat?.chat_id ?? null);
+  // "Did you two end up meeting", the day after the last date the two of you
+  // shared. The server decides the whole of when, and it never says anything
+  // about the other traveler's own answer (meet_prompt_due, 20260902240000).
+  // Asked on a one-to-one chat and nowhere else, because the function's first
+  // condition is `c.kind = 'direct'` and anything else could only ever come
+  // back false. The gate reads THIS THREAD's kind, not the reader's own
+  // account: it used to ask whether the viewer was a business, which is a
+  // different question with a different answer - a traveler writing to a
+  // hostel is not a business, and made the round trip anyway.
+  const meetPromptDue = useMeetPromptDue(chat?.kind === 'direct' ? chat.chat_id : null);
   const sendMessage = useSendMessage(chat?.chat_id ?? null);
   const discardFailed = useDiscardFailed(chat?.chat_id ?? null);
   const sendPhoto = useSendPhoto(chat?.chat_id ?? '');
   const { data: reactions = [] } = useReactions(chat?.chat_id ?? null);
   const toggleReaction = useToggleReaction(chat?.chat_id ?? '');
   const unsend = useUnsendMessage(chat?.chat_id ?? '');
+  // What the next message answers, held here rather than in the composer: the
+  // composer's contract is a draft, and both screens attach the reply at send.
+  const [replyTo, setReplyTo] = useState<(Quote & { messageId: string }) | null>(null);
+  // How much was waiting when this screen opened, held for as long as it is.
+  const unreadAtOpen = useUnreadAtOpen(chat?.unread_count ?? null);
   // Opening a conversation is what "reading" means; so is being in it
   // when the next message lands.
-  useMarkReadWhileOpen(chat?.chat_id ?? null, messagesQuery.data?.[0]?.created_at ?? null);
+  useMarkReadWhileOpen(
+    chat?.chat_id ?? null,
+    messagesQuery.data?.pages[0]?.[0]?.created_at ?? null
+  );
   // A picked photo waits here until it is actually sent. It used to fly off
   // the moment the picker closed, with no preview and no way to change your
   // mind — which is not how any messaging app behaves.
 
+  // ...and if the boundary cannot be placed in what is loaded, reach for it
+  // rather than waiting for the reader to scroll back far enough to trigger
+  // onEndReached themselves. Above the early return because it is a hook.
+  useReachUnreadBoundary({
+    unreadAtOpen,
+    loadedCount: flattenPages(messagesQuery.data).length,
+    hasNextPage: messagesQuery.hasNextPage,
+    isFetchingNextPage: messagesQuery.isFetchingNextPage,
+    fetchNextPage: messagesQuery.fetchNextPage,
+  });
+
   if (!chat) {
     return (
       <ThemedView style={styles.root}>
-        <SafeAreaView style={styles.loading}>
+        {/* The header belongs in the failure branch too. Switching the native
+            one off took the back chevron with it, and /chat/<id> is a real
+            push-notification destination: tapping one offline landed on a
+            LoadError with no visible way off the screen at all, only the edge
+            swipe. A plain title, no avatar and no trailing controls - there is
+            nothing yet to name or to act on. */}
+        <SafeAreaView style={styles.loading} edges={['top', 'bottom']}>
+          <ThreadHeader title="Conversation" />
           {chatsQuery.isError ? (
             // Not "Chat not found": a failed fetch used to render nothing at
             // all here, so tapping a push notification offline opened a blank
@@ -325,33 +390,60 @@ export default function ChatScreen() {
   }
 
   const closed = chat.chat_status !== 'active';
-  const messages = messagesQuery.data ?? [];
+  const messages = flattenPages(messagesQuery.data);
+  // Everything before the first screenful is a page away, so the two things
+  // that belong at the very START of a conversation - the opening message and
+  // the note saying what it answered - are held back until there is nothing
+  // older left to load. Otherwise both sat above message one hundred claiming
+  // the conversation began there.
+  const atTheBeginning = !messagesQuery.hasNextPage;
   // The opening message lives on the chat row rather than in messages, but
   // it is part of the conversation and reads as one (it can be reacted to
   // like any other message once it is a real row; until then it is shown in
   // place, oldest, at the bottom of the inverted list).
-  const thread = chat.first_message
-    ? [
-        ...messages,
-        {
-          id: `first:${chat.chat_id}`,
-          chat_id: chat.chat_id,
-          sender_id: chat.first_message_sender_id ?? '',
-          body: chat.first_message,
-          image_path: null,
-          created_at: chat.created_at,
-        },
-      ]
-    : messages;
+  const thread =
+    chat.first_message && atTheBeginning
+      ? [
+          ...messages,
+          {
+            id: `first:${chat.chat_id}`,
+            chat_id: chat.chat_id,
+            sender_id: chat.first_message_sender_id ?? '',
+            body: chat.first_message,
+            image_path: null,
+            created_at: chat.created_at,
+          },
+        ]
+      : messages;
+
+  // Two people, both known, so the name on a quoted line is either the person
+  // at the top of the screen or the word for yourself.
+  const quoteOf = (messageId: string | null | undefined): Quote | null =>
+    quoteFromPage(messageId, thread, (parent) =>
+      parent.sender_id === ownUserId ? 'You' : (chat.title ?? 'Traveler')
+    );
+  const quoteFor = (message: ThreadMessage): Quote | null => quoteOf(message.reply_to_message_id);
+
+  // Where reading stopped. Null while the count is larger than the loaded
+  // page: paging makes that self-healing, since the same walk succeeds once
+  // the older page arrives.
+  const unreadFrom = firstUnreadId(thread, ownUserId, unreadAtOpen);
 
   const busy = sendMessage.isPending || sendPhoto.isPending;
   // Retry: drop the failed bubble and send the same words again, which
   // produces a fresh "Sending" bubble in its place.
   const retry = (message: ThreadMessage) => {
     const body = message.body ?? '';
+    // The retry answers the same message the failed one did, or the quoted
+    // line disappears on the way through.
+    const quote = quoteOf(message.reply_to_message_id);
+    const parentId = message.reply_to_message_id;
     discardFailed(message.id);
     if (body.length > 0) {
-      sendMessage.mutate(body);
+      sendMessage.mutate({
+        body,
+        replyTo: quote && parentId ? { ...quote, messageId: parentId } : null,
+      });
     }
   };
 
@@ -364,12 +456,19 @@ export default function ChatScreen() {
 
   return (
     <ThemedView style={styles.root}>
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      {/* One storey, not two. Declared here rather than in the root layout so
+          the screen that draws its own header is the screen that turns the
+          native one off. */}
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <KeyboardFloor>
           <ChatHeader chat={chat} />
           {chat.other_user_id && !viewerIsBusiness ? (
             <SocialsCard userId={chat.other_user_id} />
           ) : null}
+          {/* Above the thread, and only on the server's own true. Answering
+              takes it away for good: there is no update policy and no delete
+              grant on the row, so this chat is never asked again. */}
+          {meetPromptDue.data === true ? <MeetPrompt chatId={chat.chat_id} /> : null}
           {/* The chat row can be served from cache while the messages call
               fails, and then the conversation reads as empty rather than as
               unloaded. */}
@@ -397,15 +496,45 @@ export default function ChatScreen() {
                   : 'Photo removed'
             }
             onRetry={retry}
+            unreadFrom={unreadFrom}
+            quoteFor={quoteFor}
+            // Not in a closed chat. The composer that would show the reply
+            // banner is replaced by "This chat is closed.", so Reply set state
+            // that nothing rendered: the menu dismissed and nothing happened,
+            // with no way to clear it. MessageThread's own comment on this
+            // prop states the rule ("an action that cannot be carried out is
+            // worse than one that was never offered") and the room screen
+            // already honours it.
+            onReply={
+              closed
+                ? undefined
+                : (messageId) => {
+                    const quote = quoteOf(messageId);
+                    if (quote) {
+                      setReplyTo({ ...quote, messageId });
+                    }
+                  }
+            }
             // Above the oldest bubble (the list is inverted, so a footer is
             // the top). The chat opens on the same context the recipient had
             // when they decided to accept, instead of on a reply to nothing.
+            onEndReached={() => {
+              if (messagesQuery.hasNextPage && !messagesQuery.isFetchingNextPage) {
+                messagesQuery.fetchNextPage();
+              }
+            }}
+            loadingMore={messagesQuery.isFetchingNextPage}
             footer={
-              chat.first_message_element ? (
+              chat.first_message_element && atTheBeginning ? (
                 <View style={styles.anchorRow}>
                   <ThemedView type="backgroundElement" style={styles.anchorCard}>
                     <ThemedText type="caption" themeColor="textSecondary">
-                      {anchorStartedFrom(chat.first_message_element, chat.title)}
+                      {footerAnchor(
+                        chat.first_message_element,
+                        chat.first_message_sender_id,
+                        ownUserId,
+                        chat.title
+                      )}
                     </ThemedText>
                   </ThemedView>
                 </View>
@@ -428,15 +557,23 @@ export default function ChatScreen() {
           />
           {closed ? (
             <ThemedView type="backgroundElement" style={styles.closedNotice}>
+              {/* sever_on_block closes the chat, and so does the other person
+                  leaving, so "This chat is closed." was the same sentence for
+                  both - ambiguous by construction at the one moment somebody
+                  needs certainty. WhatsApp's grammar: say who did it when it
+                  was you, and say nothing more than that when it was not. */}
               <ThemedText type="small" themeColor="textSecondary">
-                This chat is closed.
+                {closedNotice(iBlockedThem, chat.title)}
               </ThemedText>
             </ThemedView>
           ) : (
             <Composer
               inputTestID="chat-composer"
+              savedReplies={savedReplies}
               disabled={busy}
               photoBusy={sendPhoto.isPending}
+              replyingTo={replyTo}
+              onCancelReply={() => setReplyTo(null)}
               onSend={async ({ text, photoUri }) => {
                 // A photo and the words under it are ONE message. They used
                 // to be two, and they arrived in the wrong order: text is
@@ -449,23 +586,27 @@ export default function ChatScreen() {
                 // not: the words are already in a failed bubble in the
                 // thread, which is where the retry lives.
                 if (photoUri) {
-                  await sendPhoto.mutateAsync({ localUri: photoUri, body: text });
+                  await sendPhoto.mutateAsync({
+                    localUri: photoUri,
+                    body: text,
+                    replyToMessageId: replyTo?.messageId ?? null,
+                  });
+                  setReplyTo(null);
                   return;
                 }
                 if (text.length > 0) {
                   try {
-                    await sendMessage.mutateAsync(text);
+                    await sendMessage.mutateAsync({ body: text, replyTo });
+                    setReplyTo(null);
                   } catch {
-                    // Surfaced by the failed bubble.
+                    // Surfaced by the failed bubble. The reply target stays
+                    // put: the retry is the same answer to the same message.
                   }
                 }
               }}
             />
           )}
         </KeyboardFloor>
-        {/* Outside the scroller: iOS hosts it in the keyboard's own window,
-            so where it sits only decides which fields can reach it. */}
-        <KeyboardDoneBar />
       </SafeAreaView>
     </ThemedView>
   );
@@ -501,34 +642,6 @@ const styles = StyleSheet.create({
   },
   centerText: {
     textAlign: 'center',
-  },
-  fill: {
-    width: '100%',
-    height: '100%',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-  },
-  headerIdentity: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  headerNames: {
-    flexShrink: 1,
-  },
-  headerAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   socialsCard: {
     flexDirection: 'row',

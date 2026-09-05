@@ -6,6 +6,7 @@
 import '@/global.css';
 
 import { Platform } from 'react-native';
+import { ReduceMotion } from 'react-native-reanimated';
 
 /**
  * "Nocturne" — a traveler's map at night.
@@ -141,15 +142,21 @@ export const Fonts = Platform.select({
 /**
  * Seven type roles, generous line height. Sizes are defaults — they scale with
  * Dynamic Type because nothing disables `allowFontScaling`.
+ *
+ * The loosest three ratios are deliberate: an explicit lineHeight on a Text
+ * shears the stacked marks of Thai, Lao, Burmese, Devanagari and Vietnamese,
+ * and the old Latin-tight 1.19/1.25/1.27 on display, title and caption
+ * clipped exactly where names render (the profile hero). Nothing in the
+ * Latin rendering gets worse at these values; do not tighten them back.
  */
 export const Type = {
-  display: { fontSize: 32, lineHeight: 38, fontWeight: '700' },
-  title: { fontSize: 24, lineHeight: 30, fontWeight: '700' },
+  display: { fontSize: 32, lineHeight: 42, fontWeight: '700' },
+  title: { fontSize: 24, lineHeight: 32, fontWeight: '700' },
   headline: { fontSize: 18, lineHeight: 24, fontWeight: '600' },
   body: { fontSize: 16, lineHeight: 23, fontWeight: '400' },
   callout: { fontSize: 15, lineHeight: 20, fontWeight: '500' },
   footnote: { fontSize: 13, lineHeight: 18, fontWeight: '400' },
-  caption: { fontSize: 11, lineHeight: 14, fontWeight: '600', letterSpacing: 0.4 },
+  caption: { fontSize: 11, lineHeight: 15, fontWeight: '600', letterSpacing: 0.4 },
 } as const;
 
 export type TypeRole = keyof typeof Type;
@@ -219,14 +226,25 @@ export const Motion = {
  * without overshoot; `drop` lands with one crisp bounce; `pop` celebrates.
  */
 export const Springs = {
-  press: { damping: 30, stiffness: 500 },
-  release: { damping: 15, stiffness: 350 },
-  gentle: { damping: 22, stiffness: 220 },
-  bouncy: { damping: 12, stiffness: 200 },
-  sheet: { mass: 1, stiffness: 130, damping: 19 },
-  snap: { duration: 350, dampingRatio: 0.92, overshootClamping: true },
-  drop: { mass: 1, damping: 14, stiffness: 260 },
-  pop: { duration: 550, dampingRatio: 0.75 },
+  // `reduceMotion: ReduceMotion.System` on every preset: Reanimated then
+  // skips the travel and lands each spring at its end value when the OS
+  // Reduce Motion switch is on. Belt-and-braces (the library honours the
+  // flag for withSpring by default) and the one place all eight presets can
+  // promise it at once. It does NOT belong on `Motion` above - that is a
+  // duration map whose values are passed straight through as numbers.
+  press: { damping: 30, stiffness: 500, reduceMotion: ReduceMotion.System },
+  release: { damping: 15, stiffness: 350, reduceMotion: ReduceMotion.System },
+  gentle: { damping: 22, stiffness: 220, reduceMotion: ReduceMotion.System },
+  bouncy: { damping: 12, stiffness: 200, reduceMotion: ReduceMotion.System },
+  sheet: { mass: 1, stiffness: 130, damping: 19, reduceMotion: ReduceMotion.System },
+  snap: {
+    duration: 350,
+    dampingRatio: 0.92,
+    overshootClamping: true,
+    reduceMotion: ReduceMotion.System,
+  },
+  drop: { mass: 1, damping: 14, stiffness: 260, reduceMotion: ReduceMotion.System },
+  pop: { duration: 550, dampingRatio: 0.75, reduceMotion: ReduceMotion.System },
 } as const;
 
 /** Minimum tappable area (Apple HIG). */
@@ -246,5 +264,14 @@ export const Spacing = {
   six: 64,
 } as const;
 
+/**
+ * The tab bar's height at the DEFAULT text size — the floor of the real
+ * inset, never the inset itself on native. The bar's height is driven by its
+ * item labels and those scale with Dynamic Type, so native screens read
+ * `useTabBarInset()` (src/hooks/use-tab-bar-inset.ts), which scales this
+ * with fontScale. The web build keeps the constant: its bar is the app's own
+ * fixed-height chrome, not a label-driven native bar.
+ */
 export const BottomTabInset = Platform.select({ ios: 50, android: 80, web: 72 }) ?? 0;
+
 export const MaxContentWidth = 800;

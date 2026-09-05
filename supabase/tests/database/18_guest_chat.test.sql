@@ -107,7 +107,8 @@ select throws_ok(
   'a guest posts no trips');
 
 select pg_temp.admin();
-insert into public.launch_cities (city_id, active) values (pg_temp.lisbon(), true)
+insert into public.launch_cities (city_id, active, timezone)
+  values (pg_temp.lisbon(), true, 'Europe/Lisbon')
   on conflict (city_id) do update set active = true;
 select pg_temp.login(pg_temp.gus());
 select throws_ok(

@@ -7,7 +7,7 @@
 -- somebody can replace. So every assertion below acts AS the business and
 -- expects to be refused.
 begin;
-select plan(41);
+select plan(47);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a1', 'traveler@example.com'),
@@ -39,6 +39,11 @@ $$;
 
 create function pg_temp.lisbon() returns int language sql as
   $$ select id from public.cities where name = 'Lisbon' and country_code = 'PT' $$;
+create function pg_temp.city(p_name text, p_country text) returns int language sql as
+  $$ select id from public.cities where name = p_name and country_code = p_country
+     order by population desc limit 1 $$;
+create function pg_temp.porto() returns int language sql as
+  $$ select pg_temp.city('Porto', 'PT') $$;
 
 -- One real traveler, finished onboarding.
 update public.profiles set
@@ -88,27 +93,38 @@ select throws_ok(
 );
 select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
 
--- THE GEOFENCE, which did not exist until 20260829160000. A marker can sit
--- anywhere inside the plain -90..90 CHECKs, and until now nothing stopped a
--- listing claiming Lisbon from a marker in Porto — while the signup screen's
--- own comment said the server refused exactly that.
+-- WHERE THE DOOR IS. The geofence 20260829160000 added is gone
+-- (20260905130000): a business lists anywhere on earth, and the marker
+-- decides which city the listing is filed under. The city the client sends
+-- is only a hint, kept while the marker is within 20 km of it and dropped
+-- the moment it is not. So a Lisbon hint on a Porto marker is not a refusal
+-- any more; it is a Porto listing.
 select pg_temp.admin();
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000f1', 'porto@example.com');
 select pg_temp.login('00000000-0000-0000-0000-0000000000f1');
-select throws_ok(
+select lives_ok(
   $$ select public.register_business('Porto Bar', 'bar',
        (select id from public.cities where name = 'Lisbon' and country_code = 'PT'),
        41.1496, -8.6109) $$,
-  '23514',
-  null,
-  'a business marker outside the city radius is refused, like a pin'
+  'a marker in Porto under a Lisbon hint is saved, not refused'
 );
+select pg_temp.admin();
+select is(
+  (select city_id from public.businesses where name = 'Porto Bar'),
+  pg_temp.porto(),
+  'and filed under Porto, where its door is, not under the hint'
+);
+-- A second owner for the Lisbon bar, because f1 now runs Porto Bar and one
+-- account owns one business.
+insert into auth.users (id, email) values
+  ('00000000-0000-0000-0000-0000000000f2', 'bairro@example.com');
+select pg_temp.login('00000000-0000-0000-0000-0000000000f2');
 select lives_ok(
   $$ select public.register_business('Bairro Bar', 'bar',
        (select id from public.cities where name = 'Lisbon' and country_code = 'PT'),
        38.7130, -9.1450, 'Rua da Rosa 12') $$,
-  'and one inside it goes through, carrying the address it typed'
+  'and one inside the hint city goes through, carrying the address it typed'
 );
 select pg_temp.admin();
 select is(
@@ -121,21 +137,37 @@ select is(
   null,
   'and it did not go into place_label, which is the finding-the-door note'
 );
+select is(
+  (select city_id from public.businesses where name = 'Bairro Bar'),
+  pg_temp.lisbon(),
+  'a marker in Bairro Alto keeps the Lisbon hint: the hint stands within 20 km'
+);
 
 -- Moving the marker is not an ordinary edit: the column grant withholds
--- lat/lng, so it goes through a function that re-runs the geofence.
-select pg_temp.login('00000000-0000-0000-0000-0000000000f1');
-select throws_ok(
-  $$ select public.update_business_location(41.1496, -8.6109) $$,
-  '23514',
-  null,
-  'and moving it out of the city is refused too'
-);
+-- lat/lng, so it goes through a function, and that function re-files the
+-- listing under whichever city the marker lands in.
+select pg_temp.login('00000000-0000-0000-0000-0000000000f2');
 select lives_ok(
-  $$ select public.update_business_location(38.7100, -9.1390) $$,
-  'moving it within the city is fine'
+  $$ select public.update_business_location(41.1496, -8.6109) $$,
+  'moving the marker to Porto is allowed now'
 );
 select pg_temp.admin();
+select is(
+  (select city_id from public.businesses where name = 'Bairro Bar'),
+  pg_temp.porto(),
+  'and the listing follows its marker to Porto'
+);
+select pg_temp.login('00000000-0000-0000-0000-0000000000f2');
+select lives_ok(
+  $$ select public.update_business_location(38.7100, -9.1390) $$,
+  'and back to Lisbon'
+);
+select pg_temp.admin();
+select is(
+  (select city_id from public.businesses where name = 'Bairro Bar'),
+  pg_temp.lisbon(),
+  'the stored Porto hint is 270 km away, so the marker decides'
+);
 select is(
   (select address from public.businesses where name = 'Bairro Bar'),
   'Rua da Rosa 12',
@@ -285,7 +317,7 @@ select throws_ok(
 select throws_ok(
   $$ update public.businesses set description = 'you are so sexy'
       where name = 'Home Lisbon Hostel' $$,
-  'that text breaks our community guidelines',
+  'that text breaks our house rules',
   'business text is screened like a bio'
 );
 
@@ -316,6 +348,19 @@ select is(
   (select name from public.my_business()),
   'Home Lisbon Hostel',
   'my_business finds the caller their own listing'
+);
+-- The address it typed or picked, which the owner's page prints and the
+-- editor prefills. my_business() went without it from 2026-08-29 to
+-- 2026-09-05: "No address yet" under a row that had been filled in, and an
+-- editor box that opened empty and wrote the address away on save.
+select lives_ok(
+  $$ select public.update_business_location(38.7108, -9.1400, null, 'Rua de São Paulo 7') $$,
+  'the owner puts a street address on the listing'
+);
+select is(
+  (select address from public.my_business()),
+  'Rua de São Paulo 7',
+  'and my_business hands it back, so the page and the editor can print it'
 );
 select is(
   (select state::text from public.my_business()),

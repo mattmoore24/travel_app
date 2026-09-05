@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -77,7 +76,7 @@ export function StepScreen({
             // the only exit. Dragging closes it, same as the signup shell.
             keyboardDismissMode="interactive">
             <View style={styles.titleRow}>
-              <ThemedText type="subtitle" style={styles.title}>
+              <ThemedText type="title" style={styles.title}>
                 {title}
               </ThemedText>
               {onClose ? (
@@ -114,10 +113,6 @@ export function StepScreen({
             />
             {footer}
           </ThemedView>
-          {/* A sibling of the scroller, never inside it: iOS hosts the bar in
-              the keyboard's own window. One instance serves every field on
-              the screen that asks for it by id. */}
-          <KeyboardDoneBar />
         </KeyboardFloor>
       </SafeAreaView>
     </ThemedView>
@@ -159,6 +154,13 @@ const styles = StyleSheet.create({
   content: {
     gap: Spacing.three,
     padding: Spacing.four,
+    // Tail room so the last field clears the docked footer, which is a real
+    // sibling of this scroller: without it the Age field drew as an open
+    // rectangle sliced by the scroll edge under the keyboard. NOT
+    // automaticallyAdjustKeyboardInsets - KeyboardFloor already pads the
+    // parent by the keyboard height, and the ScrollView's own inset would
+    // double-count it.
+    paddingBottom: Spacing.four + HitTarget,
   },
   footer: {
     padding: Spacing.four,

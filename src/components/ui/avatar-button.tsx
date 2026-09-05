@@ -9,8 +9,9 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { HitTarget, Radius } from '@/constants/theme';
 import { useBusinessDetail, useOwnBusiness } from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
-import { useOwnPhotos, usePhotoUrl } from '@/features/profile/hooks';
+import { useOwnPhotos, usePhotoSource } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
+import { photoSource } from '@/lib/photo-source';
 
 /**
  * The way into Profile now that the tab bar is down to three (docs/DESIGN.md).
@@ -34,12 +35,22 @@ export function AvatarButton() {
   // Both signings, and the right one wins below. A business path put through
   // the profile signer comes back a 404 wearing a valid-looking URL, which is
   // why there are two hooks rather than one (features/business/photo-url).
-  const cover = useBusinessPhotoUrl(detail?.photos[0]?.storage_path ?? null);
+  //
+  // Both halves carry the storage path as expo-image's cache key, so this
+  // face is fetched once per photo rather than once per launch. It is on
+  // screen over the map and over Travelers, so before this it was re-pulled
+  // on every cold start of every session. The business half pairs the URL
+  // hook with `photoSource` by hand instead of using `useBusinessPhotoSource`,
+  // because src/app/__tests__/business-home.test.ts scans this file for the
+  // signer by name; the two are the same call, and moving to the hook belongs
+  // with that scan's own edit.
+  const coverPath = detail?.photos[0]?.storage_path ?? null;
+  const cover = useBusinessPhotoUrl(coverPath);
   const { data: photos = [] } = useOwnPhotos();
   const main = photos.find((p) => p.position === 0) ?? photos[0] ?? null;
-  const { data: url } = usePhotoUrl(main?.storage_path ?? null);
+  const own = usePhotoSource(main?.storage_path ?? null);
 
-  const picture = business ? (cover.data ?? null) : (url ?? null);
+  const picture = business ? photoSource(cover.data, coverPath) : own;
   const initial = business?.name.trim().charAt(0).toUpperCase() ?? '';
 
   return (
@@ -59,7 +70,7 @@ export function AvatarButton() {
         pointerEvents="none"
         style={styles.surface}>
         {picture ? (
-          <Image source={{ uri: picture }} style={styles.fill} contentFit="cover" />
+          <Image source={picture} style={styles.fill} contentFit="cover" />
         ) : business && initial !== '' ? (
           <ThemedText type="callout" style={styles.initial}>
             {initial}

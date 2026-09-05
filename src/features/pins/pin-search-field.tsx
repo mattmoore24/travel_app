@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Type, Elevation, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
@@ -82,29 +82,34 @@ export function PinSearchField({ cityName, cityLat, cityLng, onFound }: PinSearc
         <SymbolView
           name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
           size={17}
-          tintColor={message ? theme.danger : theme.textSecondary}
+          // Never the danger colour: nothing found is not an error.
+          tintColor={theme.textSecondary}
         />
-        <TextInput
-          ref={inputRef}
-          value={query}
-          onChangeText={onChangeText}
-          placeholder={
-            venueSearchAvailable ? `Search ${cityName}` : `Street or area in ${cityName}`
-          }
-          placeholderTextColor={theme.textSecondary}
-          returnKeyType="search"
-          autoCorrect={false}
-          autoCapitalize="words"
-          clearButtonMode="never"
-          // The Search key blurs, but nothing on screen said so, and "Pin
-          // here" sits underneath the keyboard the whole time somebody is
-          // typing. A labelled Done is the same affordance the pin form one
-          // step later already uses.
-          {...keyboardDoneProps}
-          accessibilityLabel={`Search ${cityName}`}
-          testID="pin-search-input"
-          style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
-        />
+        <KeyboardDone>
+          {(done) => (
+            <TextInput
+              ref={inputRef}
+              value={query}
+              onChangeText={onChangeText}
+              placeholder={
+                venueSearchAvailable ? `Search ${cityName}` : `Street or area in ${cityName}`
+              }
+              placeholderTextColor={theme.textSecondary}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="words"
+              clearButtonMode="never"
+              // The Search key blurs, but nothing on screen said so, and "Pin
+              // here" sits underneath the keyboard the whole time somebody is
+              // typing. A labelled Done is the same affordance the pin form one
+              // step later already uses.
+              {...done}
+              accessibilityLabel={`Search ${cityName}`}
+              testID="pin-search-input"
+              style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
+            />
+          )}
+        </KeyboardDone>
         {searching ? <ActivityIndicator size="small" color={theme.textSecondary} /> : null}
         {showClear && !searching ? (
           <Pressable

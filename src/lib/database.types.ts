@@ -28,13 +28,18 @@ export type ProfileRow = {
   occupation: string | null;
   gender: Gender;
   verified: boolean;
+  /**
+   * How far from each trip city the Travelers tab reaches, in km; 0 is that
+   * city only. Measured from cities.lat/lng, never from a device (§7 rule 2).
+   */
+  travelers_radius_km: number;
   onboarding_completed_at: string | null;
   created_at: string;
   updated_at: string;
 };
 
 export const PROFILE_COLUMNS =
-  'user_id, display_name, age, home_city, home_country, languages, bio, occupation, gender, verified, onboarding_completed_at, created_at, updated_at';
+  'user_id, display_name, age, home_city, home_country, languages, bio, occupation, gender, verified, travelers_radius_km, onboarding_completed_at, created_at, updated_at';
 
 // Columns the client is actually allowed to update (see the column-level
 // GRANT in the core migration) — verified/verification are server-owned.
@@ -47,11 +52,25 @@ export type ProfileUpdate = Partial<
     | 'home_country'
     | 'languages'
     | 'bio'
+    | 'travelers_radius_km'
     | 'occupation'
     | 'gender'
     | 'onboarding_completed_at'
   >
->;
+> & {
+  /**
+   * The phone's own BCP 47 tag, written once per sign-in so a moderation
+   * verdict about somebody's face or livelihood can be written in a language
+   * they read.
+   *
+   * WRITE-ONLY, which is why it is here and not in ProfileRow: the migration
+   * grants update and deliberately not select, because profiles_select_visible
+   * would otherwise hand every traveler who can see you your phone's language
+   * along with your bio. Nothing in the app reads it back; the moderation
+   * worker reads it as the service role.
+   */
+  locale?: string | null;
+};
 
 export type ProfilePhotoRow = {
   id: string;
@@ -60,6 +79,15 @@ export type ProfilePhotoRow = {
   position: number;
   moderation_status: ModerationStatus;
   moderation_attempts: number;
+  /**
+   * Why a rejected photo was rejected, and which engine decided. Both null
+   * until a verdict lands, and both null on an approved photo: only the
+   * rejection branch of apply_photo_verdict writes them. `moderation_engine`
+   * is 'failsafe' when the check gave up, which is NOT a rules breach - see
+   * src/constants/moderation.ts.
+   */
+  moderation_category: string | null;
+  moderation_engine: string | null;
   created_at: string;
 };
 
@@ -83,6 +111,12 @@ export type CityRow = {
   lat: number;
   lng: number;
   population: number;
+  /**
+   * IANA zone for the city's own clock (20260904110000). Seeded for every
+   * city; null only for a row that predates the column and was never
+   * refreshed, which the server reads as UTC.
+   */
+  timezone: string | null;
 };
 
 export type TripRow = {
@@ -91,6 +125,22 @@ export type TripRow = {
   city_id: number;
   start_date: string;
   end_date: string;
+  /**
+   * The window is a guess ("Bangkok, probably most of September"), not two
+   * days somebody picked. Added by 20260902230000 as `not null default
+   * false`, so once that migration has applied every row carries it and every
+   * row written before it reads as exact.
+   *
+   * OPTIONAL, for the window before it applies. supabase-deploy and testflight
+   * are independent jobs with no `needs:` between them, so this JavaScript can
+   * be on a phone against a project that has no such column - which is the
+   * window `updateTrip`'s PGRST204 retry and `createTrip`'s conditional key
+   * exist for, and `select('*, cities(*)')` comes back without it there.
+   * Typing it as always present is the one part of this change that assumed
+   * the deploy order the rest of it defends against. Undefined reads as
+   * exact, which is what every row was.
+   */
+  approximate?: boolean;
   status: TripStatus;
   created_at: string;
   updated_at: string;
@@ -102,6 +152,23 @@ export type TripRow = {
  * `kind === 'business'` branch in the client was typed as unreachable and
  * quietly deleted by the compiler's narrowing.
  */
+/**
+ * What a message IS, not who wrote it.
+ *
+ * 'said' is a person's words. The rest are the room's own voice, written by
+ * SECURITY DEFINER paths with moderation_status 'approved' — a line the room
+ * wrote has no author to moderate. They still carry a sender_id, because
+ * messages.sender_id is NOT NULL and the shipped convention (20260831130000)
+ * puts the person the line is ABOUT there; messages_kind_is_earned refuses
+ * any kind but 'said' from anon or authenticated, so the system voice cannot
+ * be forged.
+ *
+ * 'left', 'removed' and 'ends' arrived with the group membership log
+ * (20260902200000). Anything filtering for "what a person actually wrote"
+ * must test `kind === 'said'` rather than assume these do not exist.
+ */
+export type MessageKind = 'said' | 'joined' | 'left' | 'removed' | 'ends';
+
 export type ChatKind = 'direct' | 'room' | 'business';
 
 /** Row shape returned by the get_matches() RPC. */
@@ -124,6 +191,11 @@ export type MatchRow = {
   their_start: string;
   their_end: string;
   photo_path: string | null;
+  /** Their city's centre to mine, in whole km. 0 when it is the same city. */
+  distance_km: number;
+  /** Which of MY trip cities this overlap is measured from. */
+  my_city_id: number;
+  my_city_name: string;
 };
 
 /** traveler_trips() — every upcoming trip on someone's profile. */
@@ -134,20 +206,58 @@ export type TravelerTripRow = {
   city_country: string;
   start_date: string;
   end_date: string;
+  /**
+   * Whether those two dates are a claim. The OUT column added by
+   * 20260902230000, and the reason that migration paid for a drop and
+   * re-create: the profile is where a reader decides whether to believe
+   * somebody's dates, so a card that cannot see this prints a guess as a
+   * fact.
+   *
+   * Optional for the same deploy window as `TripRow.approximate` and
+   * `FeaturedTravelerRow.approximate`: until the migration applies, the RPC
+   * still has its old signature and answers without the column.
+   */
+  approximate?: boolean;
 };
 
-/** featured_traveler() — the one card a signed-out visitor sees. */
+/** featured_traveler() — the travelers a signed-out visitor is shown. */
 export type FeaturedTravelerRow = {
   user_id: string;
   display_name: string | null;
   age: number | null;
   verified: boolean;
-  languages: string[];
+  /**
+   * The lead card's bio, and null on every row under it (20260902260000).
+   *
+   * The rows below the lead render as a face, a name, an age, a seal and
+   * dates, so the server stops sending what they do not print: three faces
+   * was the change, three strangers' bios on a device with no account was
+   * not. `languages` used to be here too and is gone from the signature
+   * entirely — nothing on this screen has ever printed it.
+   */
   bio: string | null;
   city_name: string;
   their_start: string;
   their_end: string;
   photo_path: string | null;
+  /**
+   * Whether those dates are a claim, supplied by 20260902260000.
+   *
+   * This card prints "In Lisbon from Sep 3" to a SIGNED-OUT device, which is
+   * one specific day stated as a fact about somebody else - exactly what
+   * trips.approximate exists to stop (20260902230000: "anything that would
+   * state one of those dates as a FACT to another person has to consult this
+   * first").
+   *
+   * OPTIONAL, and staying that way. This package ships over the air AND as a
+   * Supabase deploy, and the two do not land together: a phone can be running
+   * this JavaScript against a project whose migration has not applied yet, and
+   * then the RPC answers without the column. Undefined reads as exact, which
+   * is what every row was before the column existed, so the only window where
+   * a guess can still be announced with a day is the gap between the two
+   * deploys.
+   */
+  approximate?: boolean;
 };
 
 /** public_city_pins() — deliberately has no identity columns. */
@@ -155,11 +265,21 @@ export type PublicPinRow = {
   id: string;
   venue_name: string;
   note: string | null;
+  /** What the person is doing there ("Sunset drinks"); the venue is the spot. */
+  plan: string | null;
   place_label: string | null;
   category: PinCategory;
   lat: number;
   lng: number;
   intent_date: string;
+  /** Postgres `time` as 'HH:MM:SS'. Null means "sometime that day". */
+  intent_time: string | null;
+  /** The end of the plan's window; at or before the start means past midnight. */
+  intent_time_end: string | null;
+  /** The author said the time is to be decided: an answer, not silence. */
+  time_tbd: boolean;
+  /** The listed business this plan is at; null for a business viewer. */
+  business_id: string | null;
   seeded: boolean;
   seed_note: string | null;
   expires_at: string;
@@ -244,6 +364,14 @@ export type BusinessLinkKind =
   | 'other';
 
 /** city_businesses() — one marker on the map. */
+/** city_whats_on() — the soonest live post at each listed business in a city. */
+export type CityWhatsOnRow = {
+  business_id: string;
+  post_id: string;
+  title: string;
+  happens_at: string | null;
+};
+
 export type CityBusinessRow = {
   id: string;
   chat_id: string | null;
@@ -256,6 +384,21 @@ export type CityBusinessRow = {
   /** Something on tonight. Earns a brighter ring, never a bigger marker. */
   has_live_post: boolean;
   member_count: number;
+  /**
+   * What that post actually says, or null when nobody has said.
+   *
+   * NOT a column of `city_businesses`, which returns only the boolean above:
+   * `fetchCityBusinesses` merges it in from `city_whats_on(p_city_id)`, whose
+   * filters are copied from `city_businesses` so the two cannot come to
+   * disagree about which listings exist. Null is also what a phone running
+   * an over-the-air update ahead of its database gets, which is why every
+   * reader treats it as an extra rather than as the answer.
+   *
+   * Optional for that reason and not as a convenience: absent, null and
+   * present are three states a reader has to survive, and `has_live_post`
+   * above stays the authority on whether there IS something on.
+   */
+  live_post?: CityWhatsOnRow | null;
 };
 
 export type BusinessPhotoJson = { id: string; storage_path: string };
@@ -267,11 +410,24 @@ export type BusinessLinkJson = {
 };
 /** `opens`/`closes` are 'HH:MM:SS'. closes < opens means past midnight. */
 export type BusinessHourJson = { weekday: number; opens: string; closes: string };
+/**
+ * Where a post's photo has got to, in the vocabulary `room_messages` settled
+ * on: 'none' is a post with no photo, 'ready' means `photo_path` above is
+ * real, 'checking' means the worker has it, 'blocked' means it was refused.
+ *
+ * The state is not a secret — every photo in this app is checked and saying so
+ * is the honest version of a blank rectangle — but the PATH is masked until
+ * the verdict lands, except to the owner, who can read their own upload
+ * anyway.
+ */
+export type PostPhotoState = 'none' | 'ready' | 'checking' | 'blocked';
+
 export type BusinessPostJson = {
   id: string;
   title: string;
   body: string | null;
   photo_path: string | null;
+  photo_state: PostPhotoState;
   happens_at: string | null;
   ends_at: string | null;
 };
@@ -323,12 +479,20 @@ export type BusinessVerificationRow = {
   reviewed_at: string | null;
 };
 
+/**
+ * The first five are complaints about the LISTING. The last two are about the
+ * people behind it, and they are why 20260902110000 exists: a hostel or a bar
+ * is a room this app sends strangers into, so "somebody there treated me
+ * badly" has to be sayable without dressing it up as a map correction.
+ */
 export type BusinessReportReason =
   | 'not_a_real_place'
   | 'permanently_closed'
   | 'not_this_business'
   | 'wrong_location'
-  | 'spam_or_offensive';
+  | 'spam_or_offensive'
+  | 'harassment_or_conduct'
+  | 'unsafe';
 
 export type RatingBucket = 'not_for_me' | 'fine' | 'loved';
 
@@ -404,6 +568,15 @@ export type RoomMessageRow = {
   unsent_at: string | null;
   created_at: string;
   /**
+   * What this message answers, joined by room_messages. The name is the
+   * parent sender's display name and never a handle (hard rule 4), and the
+   * body comes back null once the parent is unsent or removed rather than
+   * preserving a copy of something the reader may no longer be shown.
+   */
+  reply_to_message_id: string | null;
+  reply_to_name: string | null;
+  reply_to_body: string | null;
+  /**
    * Whether there is a photo here and where it has got to.
    *
    * `image_path` above is masked until a verdict lands, which is right — but
@@ -412,6 +585,12 @@ export type RoomMessageRow = {
    * wait. 'checking' is what the review tile is drawn from.
    */
   photo_state: 'none' | 'ready' | 'checking' | 'blocked';
+  /**
+   * 'said' is a person talking; 'joined' is the room recording an arrival
+   * ("Ana is in"), written by join_pin_chat. The thread renders the second
+   * as a centred line, never as a bubble somebody appears to have typed.
+   */
+  kind: MessageKind;
 };
 
 export type ReactionSummaryRow = {
@@ -422,16 +601,15 @@ export type ReactionSummaryRow = {
 };
 
 /**
- * Row shape returned by support_message_status(). Deliberately carries no body
- * and no address: it answers "what became of mine", not "show me the inbox".
+ * Row shape returned by incoming_requests().
+ *
+ * The three overlap columns are the shared city and the shared dates, and
+ * they are nullable for a reason: incoming_requests() is SECURITY INVOKER,
+ * so the sender's trips are read under the recipient's own
+ * trips_select_overlap policy. A hello that came from a pin rather than a
+ * trip match has no readable overlap and returns three nulls, which is the
+ * correct answer and not a gap.
  */
-export type SupportMessageStatusRow = {
-  created_at: string;
-  delivered_at: string | null;
-  attempts: number;
-};
-
-/** Row shape returned by incoming_requests(). */
 export type IncomingRequestRow = {
   id: string;
   sender_id: string;
@@ -442,12 +620,31 @@ export type IncomingRequestRow = {
   first_message: string;
   photo_path: string | null;
   created_at: string;
+  overlap_city: string | null;
+  overlap_start: string | null;
+  overlap_end: string | null;
+  /** The reader's own city for that window; differs from overlap_city under a radius. */
+  overlap_my_city: string | null;
 };
 
 /**
  * Row shape returned by sent_requests(). `state` deliberately collapses
- * pending/declined/expired into 'sent' — the DB never tells a sender they
- * were declined (invariant 4).
+ * pending, declined and expired into 'sent' — the DB never tells a sender
+ * they were declined (invariant 4), and expiry is carried by `expired_at`
+ * rather than by a sixth state.
+ *
+ * That split is not cosmetic. An over-the-air update is never applied on the
+ * launch that downloads it, so for at least one launch every phone runs the
+ * PREVIOUS bundle against the new schema: a state it has never heard of
+ * would drop the sender's own hello out of "You said hi" and, worse, make
+ * `saidHiAlready` answer "nothing is out to this traveler" and offer a
+ * second Say hi the unique constraint refuses. So `state` keeps its
+ * vocabulary and the new fact arrives as an extra nullable column, the same
+ * way the push payload's `kind` key did.
+ *
+ * `expired_at` is null unless the nightly sweep ended the row. It leaks
+ * nothing: the sweep stamps the unanswered rows and the declined ones in one
+ * statement, on a clock read off the SENDER's own trip dates.
  */
 export type SentRequestRow = {
   id: string;
@@ -458,6 +655,28 @@ export type SentRequestRow = {
   state: 'sent' | 'accepted' | 'blocked';
   chat_id: string | null;
   created_at: string;
+  /** When the sweep ended this hello; null while it is still answerable. */
+  expired_at: string | null;
+  /**
+   * When the SENDER took this hello back, or null.
+   *
+   * A column rather than a fourth `state`, deliberately: an over-the-air
+   * bundle is never applied on the launch that downloads it, so for one
+   * launch every phone runs the previous bundle against the new schema, and
+   * an unknown `state` would both drop the row out of "You said hi" and make
+   * saidHiAlready answer "nothing is out to this traveler" - offering a
+   * second Say hi the unique constraint refuses. Exactly the shape
+   * expired_at took, for exactly the same reason (20260902210000).
+   */
+  withdrawn_at: string | null;
+  /**
+   * True when the classifier stopped this message AFTER the app had already
+   * confirmed it was on its way, rather than the prefilter refusing it in
+   * the composer. The sender was never told about the first kind, so the row
+   * has to survive somewhere they can find it: see
+   * src/features/matching/sent-rows.ts.
+   */
+  blocked_after_send: boolean;
 };
 
 /** Row shape returned by my_chats(), pinned first then by last activity. */
@@ -495,6 +714,20 @@ export type ChatListRow = {
    * with no subject.
    */
   first_message_element: string | null;
+  /**
+   * The day the pin this room opened from is for. Null the moment that pin
+   * expires — the RPC guards on `expires_at > now()` rather than waiting for
+   * the fifteen-minute sweep, because hard rule 3 says nothing about an
+   * expired pin stays readable. Once the sweep does run, `groups.pin_id` goes
+   * null and the group carries on with no date at all: the conversation was
+   * never on the pin's timer.
+   */
+  plan_date: string | null;
+  /**
+   * Whether a business room can be read by anyone. Null for a traveler group,
+   * which is how the row tells a crew from a hostel.
+   */
+  public_preview: boolean | null;
 };
 
 /** One answered prompt on a profile (features/profile/prompts.ts). */
@@ -522,12 +755,49 @@ export type GroupRole = 'admin' | 'speaker' | 'member';
 
 export type GroupSpeaking = 'everyone' | 'granted';
 
+/**
+ * Who may hand out a group's invite link. Defaults to 'everyone', including
+ * for groups that existed before the column did: nobody chose admin-only
+ * under the old rule, because the app never offered the choice.
+ */
+export type GroupInvitesWho = 'everyone' | 'admin';
+
+/**
+ * Who may put you in a group. 'known' is anybody you have chatted with, the
+ * rule add_to_group has always enforced; 'link_only' is nobody, and you join
+ * by opening a link instead. Never readable as a column: my_group_adds and
+ * set_group_adds are the whole client surface.
+ */
+export type GroupAddPolicy = 'known' | 'link_only';
+
 export type GroupRow = {
   chat_id: string;
   created_by: string | null;
   name: string;
+  /**
+   * The group's own picture. Read it through features/groups/photo.ts, never
+   * directly: an approved photo is everybody's, a pending one is its
+   * uploader's alone, and a refused one has already been removed server-side
+   * (20260903050000). The bucket enforces the same rule on the signed URL,
+   * so a screen that ignored `photo_status` would draw a broken frame rather
+   * than an unchecked picture, but it should not get that far.
+   */
   photo_path: string | null;
+  /**
+   * NULL when there is no photo. Server-owned: the trigger sets it whenever
+   * photo_path changes, the worker moves it, and the table has no client
+   * write grant at all. 'rejected' survives the path's removal so the group
+   * page can tell the admin to pick another.
+   */
+  photo_status: ModerationStatus | null;
+  /** The worker's failed-attempt count for the current photo. Not for screens. */
+  moderation_attempts: number;
   speaking: GroupSpeaking;
+  /**
+   * Who may mint the invite link. Turning a live link off stays the admin's,
+   * whatever this says (revoke_group_invites is moderator-only).
+   */
+  invites: GroupInvitesWho;
   /**
    * The last day this chat is active; it closes the day after. NULL means no
    * end date, and the chat never closes.
@@ -539,6 +809,21 @@ export type GroupRow = {
    * white screen.
    */
   max_stay_until: string | null;
+  /**
+   * The pin this group opened from, while that pin is alive. Goes null when
+   * the pin expires or is taken down (ON DELETE SET NULL); the group
+   * survives that as an ordinary no-end-date group. On the wire since
+   * 20260829120000 — fetchGroup does `select('*')` — only the type was
+   * missing. Non-null is what tells the room to ask pin_for_group.
+   */
+  pin_id: string | null;
+  /**
+   * Stamped by the pins delete trigger the moment the plan's pin leaves the
+   * table, because expire_pins hard-deletes and ON DELETE SET NULL erases
+   * pin_id — this is what keeps the room's "burned out" line honest after
+   * the sweep. Null for groups that never had a pin or predate the stamp.
+   */
+  plan_ended_at: string | null;
   created_at: string;
 };
 
@@ -585,6 +870,12 @@ export type MessageRow = {
   removed_at?: string | null;
   created_at: string;
   /**
+   * What this message answers, or null for an ordinary one. Direct chats read
+   * `messages` with `select *`, so it arrives free; the quoted line itself is
+   * resolved from the loaded page (features/chat/reply.ts).
+   */
+  reply_to_message_id?: string | null;
+  /**
    * Where a photo on this message has got to. Present because direct chats
    * read `messages` with `select *`; a room reads the RPC instead and maps
    * its own `photo_state` onto this, so the thread has one question to ask.
@@ -594,10 +885,34 @@ export type MessageRow = {
    * never for deciding who may see a picture.
    */
   moderation_status?: 'pending' | 'approved' | 'rejected';
+  /**
+   * 'said' is a person talking; 'joined' is a room recording an arrival.
+   * Optional because direct chats read the table with `select *` and never
+   * carry a 'joined' row today — the column arrives whether or not a cached
+   * row was fetched before the migration added it.
+   */
+  kind?: MessageKind;
 };
 
+/**
+ * Mirrors public.report_reason, including the two values added after the
+ * enum was first created: 'impersonation' (20260827090000) and 'underage'
+ * (20260831200000). Both are listed here even though the report form offers
+ * only one of them, because src/app/__tests__/report-reasons.test.ts asserts
+ * every value is either offered or explicitly declined with a reason. The
+ * silent drift this fixes is real: 'impersonation' sat in the database for
+ * a month, absent from this union and from the form.
+ */
 export type ReportReason =
-  'flirtation_or_sexual' | 'harassment' | 'spam' | 'fake_profile' | 'safety_concern' | 'other';
+  | 'flirtation_or_sexual'
+  | 'harassment'
+  | 'spam'
+  | 'fake_profile'
+  | 'safety_concern'
+  | 'impersonation'
+  | 'underage'
+  | 'immediate_danger'
+  | 'other';
 
 export type SendRequestResult = {
   /**
@@ -624,7 +939,59 @@ export type SendRequestResult = {
   allowed: number;
   /** How many of them are spent, including this one. */
   used: number;
+  /**
+   * Which kind of wrong the prefilter named ('sexual', 'flirtation').
+   * Null on every branch except blocked — it exists so the refusal can say
+   * what actually went wrong, and it never names the matched phrase.
+   */
+  category: string | null;
 };
+
+/**
+ * The routing payload every push the database sends carries in `data`. The
+ * union is what lets the tap-routing switch be exhaustive rather than
+ * stringly typed — and old builds sent payloads with none of these keys, so
+ * every consumer must tolerate an empty object too.
+ */
+export type PushPayload =
+  | {
+      type: 'message';
+      chat_id: string;
+      /**
+       * Which screen a chat opens on: 'room' is /room/[id], everything else
+       * is /chat/[id]. Optional because pushes queued by older function
+       * definitions carry no kind.
+       */
+      kind?: 'direct' | 'room';
+    }
+  | { type: 'accepted'; chat_id: string }
+  | { type: 'request' }
+  | { type: 'moderation' }
+  | { type: 'verification' }
+  | { type: 'support' }
+  /**
+   * An urgent report (underage or immediate danger), raised to whoever is on
+   * support duty by log_report — see
+   * 20260901120100_an_urgent_report_wakes_somebody.sql.
+   *
+   * routeForPayload returns null for this one ON PURPOSE, and that is why it
+   * is written here rather than left to fall through the default: there is no
+   * in-app review queue to open. The reviewer works in the dashboard
+   * (docs/DASHBOARD.md), so the tap opens the app rather than dropping
+   * somebody on a screen that cannot help. `report_id` is carried for the
+   * reviewer's own copy-paste, not for routing.
+   */
+  | { type: 'report'; report_id: string }
+  /**
+   * One of the three within-trip clocks (20260902040000): your trip starts
+   * tomorrow. The other two are plan clocks and ride the 'message' payload,
+   * because what they open is the plan's own chat.
+   *
+   * `city_id` is carried for the reader's own copy, not for routing: the tap
+   * opens Travelers, which shows the city the app already knows they are
+   * browsing.
+   */
+  | { type: 'trip'; city_id: number };
 
 export type VerificationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -654,6 +1021,26 @@ export type LaunchCityRow = {
   created_at: string;
 };
 
+/**
+ * One row of the map's rail (featured_cities / public_featured_cities): the
+ * founder's launch cities plus any city whose visible plans clear its k.
+ */
+export type FeaturedCityRow = {
+  city_id: number;
+  name: string;
+  country_code: string;
+  country_name: string;
+  admin: string | null;
+  lat: number;
+  lng: number;
+  population: number;
+  timezone: string | null;
+  /** Plans this caller can see there, or null below the city's k. */
+  pin_count: number | null;
+  /** A launch city: on the rail whatever its count. */
+  featured: boolean;
+};
+
 /** Row shape returned by city_pins(). Seeded pins have user_id = null. */
 export type CityPinRow = {
   id: string;
@@ -663,14 +1050,24 @@ export type CityPinRow = {
   verified: boolean;
   photo_path: string | null;
   venue_name: string;
-  /** What the plan actually is, in the author's words. */
+  /** The finding-the-door detail, in the author's words. */
   note: string | null;
+  /** What the person is doing there ("Sunset drinks"); the venue is the spot. */
+  plan: string | null;
   /** Street or area the pin sits on, as the author confirmed it. */
   place_label: string | null;
   category: PinCategory;
   lat: number;
   lng: number;
   intent_date: string;
+  /** Postgres `time` as 'HH:MM:SS'. Null means "sometime that day". */
+  intent_time: string | null;
+  /** The end of the plan's window; at or before the start means past midnight. */
+  intent_time_end: string | null;
+  /** The author said the time is to be decided: an answer, not silence. */
+  time_tbd: boolean;
+  /** The listed business this plan is at, when the two are the same place. */
+  business_id: string | null;
   seeded: boolean;
   seed_note: string | null;
   expires_at: string;
@@ -682,6 +1079,22 @@ export type CityPinRow = {
   chat_id: string | null;
   /** How many are in that chat, counting the author. Zero when there is none. */
   crew: number;
+};
+
+/**
+ * Row shape returned by pin_for_group(): the plan a pin-born group came
+ * from, for the room's own card. Members only, and empty once the pin has
+ * expired (hard rule 3) or been taken down.
+ */
+export type PinForGroupRow = {
+  pin_id: string;
+  venue_name: string;
+  place_label: string | null;
+  category: PinCategory;
+  intent_date: string;
+  expires_at: string;
+  lat: number;
+  lng: number;
 };
 
 /** Row shape returned by pin_crew(): who is already going. */
@@ -777,6 +1190,30 @@ export type Database = {
         Update: ProfileUpdate;
         Relationships: [];
       };
+      /**
+       * The one notification switch this app owns. `chat` exists in the table
+       * and is deliberately absent here: nothing reads it and no screen
+       * offers it, so a client that could write it would be writing a
+       * preference that does nothing.
+       */
+      notification_prefs: {
+        Row: { user_id: string; trip_clocks: boolean; created_at: string };
+        Insert: { user_id: string; trip_clocks?: boolean };
+        Update: { trip_clocks?: boolean };
+        Relationships: [];
+      };
+      /**
+       * Words a traveler would rather not see, which fold a first message
+       * behind a tap on their own screen and do nothing else. RLS scopes every
+       * verb to auth.uid(), so there is no row here anybody but the owner can
+       * read or write, and no server path consults the table at all.
+       */
+      user_muted_words: {
+        Row: { user_id: string; word: string; created_at: string };
+        Insert: { user_id: string; word: string };
+        Update: never;
+        Relationships: [];
+      };
       profile_prompts: {
         Row: ProfilePromptRow;
         Insert: {
@@ -814,6 +1251,8 @@ export type Database = {
           storage_path: string;
           position: number;
           moderation_status: 'pending' | 'approved' | 'rejected';
+          moderation_category: string | null;
+          moderation_engine: string | null;
           created_at: string;
         };
         Insert: { business_id: string; storage_path: string; position: number };
@@ -871,6 +1310,8 @@ export type Database = {
           title: string;
           body: string | null;
           photo_path: string | null;
+          /** Server-owned: a trigger sets it, and pins it against a client. */
+          photo_status: ModerationStatus;
           happens_at: string | null;
           ends_at: string | null;
           archived_at: string | null;
@@ -888,9 +1329,37 @@ export type Database = {
         Update: {
           title?: string;
           body?: string | null;
+          photo_path?: string | null;
           happens_at?: string | null;
           ends_at?: string | null;
           archived_at?: string | null;
+        };
+        Relationships: [];
+      };
+      /**
+       * The owner's three private replies. Never delivered to anybody: the
+       * owner taps one into their composer, edits it if they want, and sends
+       * it as an ordinary message. Its own table rather than a column on
+       * `businesses`, whose select grant reaches anon - a traveler must never
+       * read the script the other side is answering from.
+       */
+      business_saved_replies: {
+        Row: {
+          id: string;
+          business_id: string;
+          /** 0, 1 or 2. The table refuses anything else. */
+          position: number;
+          body: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          business_id: string;
+          position: number;
+          body: string;
+        };
+        Update: {
+          body?: string;
         };
         Relationships: [];
       };
@@ -968,8 +1437,11 @@ export type Database = {
           city_id: number;
           start_date: string;
           end_date: string;
+          approximate?: boolean;
         };
-        Update: Partial<Pick<TripRow, 'city_id' | 'start_date' | 'end_date' | 'status'>>;
+        Update: Partial<
+          Pick<TripRow, 'city_id' | 'start_date' | 'end_date' | 'status' | 'approximate'>
+        >;
         Relationships: [];
       };
       blocks: {
@@ -999,6 +1471,11 @@ export type Database = {
           sender_id: string;
           body?: string;
           image_path?: string;
+          /**
+           * What this message answers. The database refuses a parent from
+           * another chat (messages_reply_same_chat), so this is a door.
+           */
+          reply_to_message_id?: string;
         };
         Update: never;
         Relationships: [];
@@ -1007,7 +1484,14 @@ export type Database = {
         Row: {
           id: string;
           reporter_id: string;
-          reported_user_id: string;
+          /**
+           * Null where the subject is the chat itself. A report needs a
+           * subject and does not need a person: `reports_has_a_subject`
+           * refuses one with neither.
+           */
+          reported_user_id: string | null;
+          /** The chat this is about, for a room that has gone bad. */
+          reported_chat_id: string | null;
           reason: ReportReason;
           details: string | null;
           context: string | null;
@@ -1015,7 +1499,8 @@ export type Database = {
         };
         Insert: {
           reporter_id: string;
-          reported_user_id: string;
+          reported_user_id?: string | null;
+          reported_chat_id?: string | null;
           reason: ReportReason;
           details?: string | null;
           context?: string | null;
@@ -1024,8 +1509,12 @@ export type Database = {
         Relationships: [];
       };
       groups: {
-        Row: GroupRow;
-        // Every write goes through create_group / update_group.
+        // Not readable from a client since 20260903130000: `select` on this
+        // table is column-level and the three photo columns are not in the
+        // grant, so `select('*')` is `permission denied` and a named list
+        // could never carry the masking a verdict needs. `group_detail()` is
+        // the read; `create_group` / `update_group` are the writes.
+        Row: never;
         Insert: never;
         Update: never;
         Relationships: [];
@@ -1069,6 +1558,7 @@ export type Database = {
           city_id: number;
           venue_name: string;
           note: string | null;
+          plan: string | null;
           place_label: string | null;
           category: PinCategory;
           lat: number;
@@ -1084,12 +1574,15 @@ export type Database = {
           city_id: number;
           venue_name: string;
           note?: string | null;
+          plan?: string | null;
           place_label?: string | null;
           category: PinCategory;
           lat: number;
           lng: number;
           intent_date: string;
           expires_at: string;
+          /** Granted per column since 20260902190000; null lets validate_pin infer one. */
+          business_id?: string | null;
         };
         Update: never;
         Relationships: [];
@@ -1149,7 +1642,8 @@ export type Database = {
         Returns: CityRow[];
       };
       get_matches: {
-        Args: Record<string, never>;
+        /** The caller's own trip ids to narrow the queue to; omitted is every trip. */
+        Args: { p_trip_ids?: string[] };
         Returns: MatchRow[];
       };
       traveler_trips: {
@@ -1213,13 +1707,27 @@ export type Database = {
         Args: {
           p_name: string;
           p_category: BusinessCategory;
-          p_city_id: number;
+          /**
+           * A hint only (20260905130000): null from the app; the server
+           * resolves the city from the marker.
+           */
+          p_city_id: number | null;
           p_lat: number;
           p_lng: number;
           /** As typed or picked; never derived from the marker. */
           p_address?: string | null;
         };
         Returns: string;
+      };
+      /** Which city a marker will be filed under, before anything is written. */
+      city_for_spot: {
+        Args: { p_lat: number; p_lng: number; p_hint?: number | null };
+        Returns: CityRow | null;
+      };
+      /** The resolver itself: the hint within 20 km, else the nearest seeded city, else the nearest on earth. */
+      resolve_business_city: {
+        Args: { p_lat: number; p_lng: number; p_hint?: number | null };
+        Returns: number;
       };
       /** lat/lng are withheld from the client's UPDATE grant; this is the door. */
       update_business_location: {
@@ -1243,6 +1751,10 @@ export type Database = {
       city_businesses: {
         Args: { p_city_id: number };
         Returns: CityBusinessRow[];
+      };
+      city_whats_on: {
+        Args: { p_city_id: number };
+        Returns: CityWhatsOnRow[];
       };
       business_detail: {
         Args: { p_business_id: string };
@@ -1318,7 +1830,16 @@ export type Database = {
         Returns: CityRoomRow[];
       };
       room_messages: {
-        Args: { p_chat_id: string; p_limit?: number };
+        Args: {
+          p_chat_id: string;
+          p_limit?: number;
+          /**
+           * The oldest `created_at` already on screen. A thread is
+           * newest-first, so the next page is OLDER, and null is the first
+           * page.
+           */
+          p_before?: string | null;
+        };
         Returns: RoomMessageRow[];
       };
       message_reaction_summary: {
@@ -1346,6 +1867,8 @@ export type Database = {
           p_clear_photo?: boolean;
           /** Turning the end date OFF, since null already means "leave it". */
           p_clear_max_stay?: boolean;
+          /** Who may hand out the link. Null leaves it alone. */
+          p_invites?: GroupInvitesWho | null;
         };
         Returns: undefined;
       };
@@ -1369,6 +1892,16 @@ export type Database = {
         Args: { p_token: string };
         Returns: GroupInvitePreviewRow[];
       };
+      /**
+       * The group row a member may hold. Members only, and the photo columns
+       * carry the server's masking: an approved photo is everybody's, a
+       * pending or refused one is its setter's alone. The table itself grants
+       * a client none of the three.
+       */
+      group_detail: {
+        Args: { p_chat_id: string };
+        Returns: GroupRow[];
+      };
       join_group_with_invite: {
         Args: { p_token: string; p_stay_until: string };
         Returns: { chat_id: string; stay_until: string; expires_at: string };
@@ -1382,12 +1915,10 @@ export type Database = {
         Returns: undefined;
       };
       submit_support_message: {
-        Args: { p_reply_to: string; p_body: string };
+        // p_category defaults to null in the database, so a build that
+        // predates the chip row keeps working through the OTA gap.
+        Args: { p_reply_to: string; p_body: string; p_category?: string };
         Returns: string;
-      };
-      support_message_status: {
-        Args: { p_id: string };
-        Returns: SupportMessageStatusRow[];
       };
       join_room: {
         Args: { p_chat_id: string; p_departure_date: string };
@@ -1438,8 +1969,34 @@ export type Database = {
           p_lng: number;
           p_intent_date: string;
           p_expires_at: string;
+          p_plan?: string | null;
+          p_intent_time?: string | null;
+          p_joinable?: boolean;
+          /**
+           * The listed business the plan names, when the form was opened from
+           * that business's page (20260903110000). Sent only when it has a
+           * value, so an ordinary pin keeps posting against a server that
+           * predates the parameter.
+           */
+          p_business_id?: string | null;
+          /** The end of the window, 'HH:MM'; sent only with a start. */
+          p_intent_time_end?: string | null;
+          /** The author says the time is to be decided. */
+          p_time_tbd?: boolean;
         };
-        Returns: { pin_id: string; chat_id: string };
+        /**
+         * `city` is the city the pin RESOLVED to (validate_pin), which is
+         * the browsed city unless the spot was a continent away from it.
+         */
+        Returns: { pin_id: string; chat_id: string | null; city: CityRow | null };
+      };
+      featured_cities: {
+        Args: Record<string, never>;
+        Returns: FeaturedCityRow[];
+      };
+      public_featured_cities: {
+        Args: Record<string, never>;
+        Returns: FeaturedCityRow[];
       };
       join_pin_chat: {
         Args: { p_pin_id: string };
@@ -1448,6 +2005,10 @@ export type Database = {
       pin_crew: {
         Args: { p_pin_id: string };
         Returns: PinCrewRow[];
+      };
+      pin_for_group: {
+        Args: { p_chat_id: string };
+        Returns: PinForGroupRow[];
       };
       people_you_know: {
         Args: { p_query?: string | null };
@@ -1489,9 +2050,50 @@ export type Database = {
         Args: Record<string, never>;
         Returns: ProfileAudience;
       };
+      my_group_adds: {
+        Args: Record<string, never>;
+        Returns: GroupAddPolicy;
+      };
+      set_group_adds: {
+        Args: { p_policy: GroupAddPolicy };
+        Returns: GroupAddPolicy;
+      };
+      /** The name of whoever added the caller to this chat, or null. */
+      who_added_me: {
+        Args: { p_chat_id: string };
+        Returns: string | null;
+      };
       set_visibility: {
         Args: { p_audience: ProfileAudience };
         Returns: ProfileAudience;
+      };
+      /**
+       * Whether the signed-out preview may include the caller (D22,
+       * 20260903080000). `profiles.shown_to_guests` carries no client grant
+       * in either direction; these two are the whole surface. Null on the
+       * row reads back as true.
+       */
+      my_shown_to_guests: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      set_shown_to_guests: {
+        Args: { p_shown: boolean };
+        Returns: boolean;
+      };
+      /**
+       * The listing-intent pair. `profiles.wants_business` carries no column
+       * grant at all (profiles_select_visible would otherwise publish it to
+       * every reader), so these two definer functions are the only door, and
+       * neither takes a user id.
+       */
+      listing_intent: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      set_listing_intent: {
+        Args: { p_wants: boolean };
+        Returns: boolean;
       };
     };
     Enums: {
@@ -1500,6 +2102,8 @@ export type Database = {
       moderation_status: ModerationStatus;
       social_platform: SocialPlatform;
       chat_status: ChatStatus;
+      group_invites_who: GroupInvitesWho;
+      group_add_policy: GroupAddPolicy;
       trip_status: TripStatus;
       request_source: RequestSource;
       verification_status: VerificationStatus;

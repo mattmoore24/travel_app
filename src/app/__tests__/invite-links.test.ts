@@ -1,0 +1,115 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { WEB_ORIGIN, WebLinks } from '@/constants/links';
+
+/**
+ * An invite is the one thing this app produces for somebody who does not have
+ * it yet. Three separate things have to agree for that to work, and each has
+ * been wrong on its own: the URL the app builds, the host it points at, and
+ * whether the route tree answers the path the association file promises iOS.
+ *
+ * Comments are stripped before scanning, same as invite-exits.test.ts, so a
+ * screen's prose can name the things it is ruling out.
+ */
+const APP = path.join(__dirname, '..');
+const read = (...parts: string[]): string =>
+  fs
+    .readFileSync(path.join(APP, ...parts), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+describe('an invite survives leaving the app', () => {
+  it('is an https link, because the recipient has no app to open a scheme with', () => {
+    const code = read('group', '[id].tsx');
+    expect(code).toContain('WebLinks.invite(token)');
+    expect(code).not.toContain('Linking.createURL');
+  });
+
+  it('shares the link itself, never a scheme, in the text somebody pastes on', () => {
+    // The invite leaves through the native share sheet as ONE string, so
+    // whatever is in that string is what lands in WhatsApp. A custom scheme
+    // there is dead for the entire population an invite exists for: iMessage
+    // and WhatsApp will not linkify it, and Safari answers "the address is
+    // invalid". This is the assertion the audit wanted made in Maestro; it
+    // cannot be, because there is no copy step to read back (the share sheet
+    // is the chooser) and the URL is never printed on screen.
+    //
+    // The share sheet itself now lives in features/share/share-link, which
+    // takes the finished string: what this pins is that the string the group
+    // hands it is built from the https builder and from nothing else.
+    const code = read('group', '[id].tsx');
+    expect(code).toContain('const shareMessage = (token: string) =>');
+    expect(code).toContain('${inviteUrl(token)}');
+    expect(code).not.toContain('samewhere://');
+  });
+
+  it('points at the host the pages and the association file are served from', () => {
+    expect(WEB_ORIGIN).toBe('https://link.samewhere.io');
+    expect(WebLinks.invite('abc123')).toBe('https://link.samewhere.io/i/abc123');
+  });
+
+  it('answers the path in the app as well as on the web', () => {
+    // Without this route the same URL opens the app and lands on +not-found,
+    // which tells the reader the invite expired. It did not. It is the join
+    // screen itself rather than a redirect to it: a router.replace from a
+    // focus effect is exactly what the root hold loses when it unmounts the
+    // stack, and a route that IS the destination cannot be lost that way.
+    expect(read('i', '[token].tsx')).toContain("export { default } from '../join-group/[token]'");
+  });
+
+  it('gives the https spelling of the invite the same chrome as the scheme one', () => {
+    // Root screenOptions are headerShown: false. An invite arriving on a
+    // first launch has no tab bar, so the header IS the back chevron.
+    expect(read('_layout.tsx')).toMatch(/name="i\/\[token\]"\s*options=\{\{ headerShown: true/);
+  });
+
+  it('offers the paste-a-code way in to somebody with no account', () => {
+    // web/i/index.html sends a fresh installer to Chat, then Groups, then
+    // "Have an invite?". A fresh installer has no account, so they are a
+    // guest, and the guest branch of the Chat tab returns early — the row
+    // has to be in both branches or the page's instruction is false for the
+    // one person it was written for. Both rows open the invite sheet, and
+    // both branches actually mount it.
+    const code = read('(tabs)', 'chat.tsx');
+    expect((code.match(/onPress=\{\(\) => setInviteOpen\(true\)\}/g) ?? []).length).toBe(2);
+    expect(
+      (code.match(/accessibilityLabel="Join a group with an invite link or code"/g) ?? []).length
+    ).toBe(2);
+    expect(
+      (code.match(/<InviteCodeSheet onClose=\{\(\) => setInviteOpen\(false\)\} \/>/g) ?? []).length
+    ).toBe(2);
+  });
+
+  it('digs the token out of whatever was pasted, not just a bare code', () => {
+    // People paste links and whole message bubbles, not bare codes: the
+    // bubble carries the https link AND the fallback line, and long-pressing
+    // a message copies all of it. The sheet's Join must run the paste
+    // through inviteTokenFrom or a pasted link joins nothing.
+    const sheet = read('..', 'features', 'chat', 'invite-code-sheet.tsx');
+    expect(sheet).toContain('inviteTokenFrom(pasted)');
+    expect(sheet).toContain('/join-group/${encodeURIComponent(token)}');
+    // Navigating out from under a presented sheet strands its scrim over the
+    // screen you come back to; the push has to go through leavingSheet.
+    expect(sheet).toContain('leavingSheet(onClose)(');
+  });
+
+  it('promises iOS nothing the route tree cannot answer', () => {
+    // Every entry here is a URL space claimed for the life of every install.
+    // Adding one means adding a route under src/app in the SAME commit.
+    const aasa = JSON.parse(
+      fs.readFileSync(
+        path.join(APP, '..', '..', 'web', '.well-known', 'apple-app-site-association'),
+        'utf8'
+      )
+    );
+    const details = aasa.applinks.details[0];
+    expect(details.appIDs).toEqual(['9GSR77B4U5.com.mattmoore.samewhere']);
+    expect(details.components.map((c: Record<string, string>) => c['/'])).toEqual(['/i/*']);
+  });
+
+  it('claims the domain the pages are actually served from', () => {
+    const appConfig = JSON.parse(fs.readFileSync(path.join(APP, '..', '..', 'app.json'), 'utf8'));
+    expect(appConfig.expo.ios.associatedDomains).toEqual(['applinks:link.samewhere.io']);
+  });
+});

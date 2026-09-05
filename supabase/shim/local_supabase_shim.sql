@@ -101,3 +101,27 @@ alter default privileges in schema public
   grant all on functions to anon, authenticated, service_role;
 alter default privileges in schema public
   grant all on sequences to anon, authenticated, service_role;
+
+-- The realtime publication ------------------------------------------------
+-- A hosted project ships an empty `supabase_realtime` publication and the
+-- dashboard adds tables to it. Three migrations here reason about it, each
+-- guarded by `if exists (select 1 from pg_publication ...)` so they no-op
+-- where it is absent — which locally meant they ALWAYS no-opped, and any test
+-- asking "is this table published?" could only ever answer no.
+--
+-- That made a real assertion vacuous: 61_did_you_two_actually_meet.test.sql
+-- checks that chat_meet_answers is NOT broadcast, because a realtime insert
+-- would push one person's answer down the channel the other person's thread is
+-- subscribed to. Against an empty catalog that assertion passes for a table
+-- that IS published, which is the worst kind of green.
+--
+-- Creating it here makes the question answerable and makes the two migrations
+-- that publish `messages` and `message_reactions` actually run, which is what
+-- production does anyway.
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    create publication supabase_realtime;
+  end if;
+end
+$$;

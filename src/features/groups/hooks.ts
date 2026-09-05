@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 
 import {
   addToGroup,
@@ -16,16 +17,50 @@ import {
   sharesGroupWith,
   updateGroup,
 } from '@/features/groups/api';
+import { groupView } from '@/features/groups/photo';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import type { GroupSpeaking } from '@/lib/database.types';
+import type { GroupInvitesWho, GroupRow, GroupSpeaking } from '@/lib/database.types';
 
 export function useGroup(chatId: string | null) {
+  const ownUserId = useOwnUserId();
+  // The row leaves this feature as a GroupView and nothing else: the two raw
+  // photo columns are replaced by the one client reading of them
+  // (features/groups/photo.ts), so no screen can draw a picture the server
+  // has not cleared, however it spells the column. `select` runs on the
+  // observer, which is why the cache and the poll below still hold the raw
+  // row.
+  //
+  // Since 20260903130000 the raw row IS the masked row: fetchGroup reads
+  // group_detail, which hands a member null for both photo columns while
+  // somebody else's photo is being checked. So this is UX on top of the
+  // server's answer, not the thing deciding it.
+  const select = useCallback((row: GroupRow | null) => groupView(row, ownUserId), [ownUserId]);
   return useQuery({
     queryKey: ['group', chatId],
     queryFn: () => fetchGroup(chatId!),
     enabled: isSupabaseConfigured && chatId != null,
+    select,
+    // A photo's verdict lands in the database, not in this app, and the
+    // group page is the screen most likely to be open while it does: the
+    // admin has just picked a picture and is looking at "Checking this
+    // photo". Without a watch it says that until they leave and come back,
+    // and a refused photo never gets to say "pick another". A poll rather
+    // than a subscription, for the reasons useBusinessPhotos gives: no
+    // channel, no policy, and it stops on its own the moment the row has
+    // nothing pending.
+    //
+    // Only the SETTER polls, and that is the rule rather than an oversight:
+    // the row is masked server-side now, so a member is handed no pending
+    // status to poll on - and a member whose app polled every five seconds
+    // BECAUSE a photo was pending would be a phone that knows the fact the
+    // server declined to tell it. Their page picks the picture up on the
+    // next refetch once it clears, the same way it picks up a name change.
+    refetchInterval: (query) =>
+      query.state.data?.photo_status === 'pending' && query.state.data.photo_path != null
+        ? 5_000
+        : false,
   });
 }
 
@@ -56,6 +91,7 @@ export function useUpdateGroup(chatId: string) {
     mutationFn: (input: {
       name?: string;
       speaking?: GroupSpeaking;
+      invites?: GroupInvitesWho;
       maxStayUntil?: string;
       clearMaxStay?: boolean;
       photoPath?: string | null;
@@ -181,6 +217,9 @@ export function useOpenDirectChat() {
   return useMutation({
     mutationFn: ({ userId, firstMessage }: { userId: string; firstMessage: string }) =>
       openDirectChat(userId, firstMessage),
+    // message/[userId].tsx catches every rejection and prints it under the
+    // field, so the cache's alert on top of it was the same sentence twice.
+    meta: { inlineFailure: true },
     onSuccess: (result) => {
       if (result.blocked) {
         return;

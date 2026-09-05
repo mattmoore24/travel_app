@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ImageSource } from 'expo-image';
 
 import { useAuthStore } from '@/features/auth/store';
 import {
@@ -8,6 +9,7 @@ import {
   deleteSocialHandle,
   fetchAccountStanding,
   fetchLatestVerification,
+  fetchOwnGuestPreview,
   fetchOwnProfile,
   fetchOwnSocialHandles,
   fetchOwnVisibility,
@@ -18,7 +20,9 @@ import {
   removeProfilePriority,
   saveProfilePriority,
   saveProfilePrompt,
+  setOwnGuestPreview,
   setOwnVisibility,
+  setPhotoPositions,
   signedPhotoUrl,
   submitVerificationSelfie,
   updateOwnProfile,
@@ -33,6 +37,7 @@ import type {
 } from '@/lib/database.types';
 import { analytics } from '@/lib/analytics';
 import { invalidateDiscoverySurfaces } from '@/features/profile/discovery-cache';
+import { photoSource } from '@/lib/photo-source';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export function useOwnUserId() {
@@ -189,8 +194,24 @@ export function useUploadPhoto() {
   return useMutation({
     mutationFn: ({ localUri, position }: { localUri: string; position: number }) =>
       uploadPhoto(userId!, localUri, position),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['photos', userId] });
+    onSuccess: (_data, { position }) => {
+      // On the mutation, not in PhotoGrid, so loss
+      // inside the iOS permission chain is separable from loss on signup's
+      // Continue button: a photo that lands emits this even if the person
+      // then quits on the gate.
+      analytics.capture('profile_photo_added', { position });
+      // RETURNED, so mutateAsync does not resolve until the refetch has
+      // landed. That is what lets PhotoGrid retire its local tile the moment
+      // the await returns, with the real row already on screen: dropping it
+      // any earlier flashes the empty dashed box, and keeping it any longer
+      // means keeping a dead entry that reappears the next time that slot is
+      // freed.
+      //
+      // Not the profile or the verification, unlike the delete and the
+      // reorder below: an upload lands pending, and the badge can only come
+      // off when the worker APPROVES it into the lead slot, minutes later
+      // and in no transaction of ours.
+      return queryClient.invalidateQueries({ queryKey: ['photos', userId] });
     },
   });
 }
@@ -202,11 +223,76 @@ export function useDeletePhoto() {
     mutationFn: (photo: ProfilePhotoRow) => deletePhoto(photo.id, photo.storage_path),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['photos', userId] });
+      // The badge can come off server-side on a delete
+      // (profile_photos_badge_follows_the_face, 20260904100000): removing
+      // the photo the selfie was compared against, with an unchecked one
+      // behind it, sets verified false and turns the approved verification
+      // into a rejected one with a reason. Each lives under its own key, and
+      // a profile screen still showing a seal the database has withdrawn is
+      // the wrong screen to be looking at.
+      queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+      queryClient.invalidateQueries({ queryKey: ['verification', userId] });
     },
   });
 }
 
-/** Signed URL for a photo in the private bucket (cached just under its TTL). */
+/**
+ * Move a photo to a new place in the order, and with it decide which one
+ * leads.
+ *
+ * Optimistic, because this is a rearrangement somebody is doing with their
+ * eyes on the grid: waiting several round trips to see the tile move would
+ * read as a broken drag. The plan is computed by the caller (photo-order.ts)
+ * so the same arithmetic that produced the new list produced the writes.
+ */
+export function useReorderPhotos() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      writes,
+    }: {
+      writes: { id: string; position: number }[];
+      next: ProfilePhotoRow[];
+    }) => setPhotoPositions(writes),
+    onMutate: async ({ next }) => {
+      // Cancel first, or a refetch already in flight lands the old order on
+      // top of the optimistic one.
+      await queryClient.cancelQueries({ queryKey: ['photos', userId] });
+      const previous = queryClient.getQueryData<ProfilePhotoRow[]>(['photos', userId]);
+      queryClient.setQueryData(['photos', userId], next);
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['photos', userId], context.previous);
+      }
+    },
+    onSuccess: () => {
+      analytics.capture('profile_photos_reordered');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['photos', userId] });
+      // The public copy is a different key, and the hero it feeds is the
+      // whole point of the reorder.
+      queryClient.invalidateQueries({ queryKey: ['public-photos', userId] });
+      // And the badge can come off server-side on a reorder too: an
+      // unchecked photo arriving at the lead slot is the exact write
+      // profile_photos_badge_follows_the_face (20260904100000) watches for.
+      queryClient.invalidateQueries({ queryKey: ['profile', userId] });
+      queryClient.invalidateQueries({ queryKey: ['verification', userId] });
+    },
+  });
+}
+
+/**
+ * Signed URL for a photo in the private bucket (cached just under its TTL).
+ *
+ * Prefer `usePhotoSource` below wherever the answer is going into an
+ * `<Image>`: a bare URL is a new expo-image cache key on every cold launch,
+ * and this hook cannot fix that on its own because the URL it returns is the
+ * half that changes.
+ */
 export function usePhotoUrl(storagePath: string | null) {
   return useQuery({
     queryKey: ['photo-url', storagePath],
@@ -215,6 +301,24 @@ export function usePhotoUrl(storagePath: string | null) {
     staleTime: 50 * 60 * 1000,
     gcTime: 55 * 60 * 1000,
   });
+}
+
+/**
+ * The same signed URL, carrying the storage path as expo-image's cache key.
+ *
+ * This is the hook an `<Image>` wants. `usePhotoUrl` hands back a string, so
+ * a call site that wanted the cache to survive a relaunch had to remember the
+ * path separately and pass it a second time; twenty-odd screens doing that by
+ * hand is twenty-odd chances to key on the wrong thing. Here the two halves
+ * travel together and `source={photo}` is the whole call site.
+ *
+ * Null while the URL is still being signed, and null when there is no photo:
+ * a caller renders its skeleton in both cases, which is what it did before.
+ * See src/lib/photo-source.ts for why the storage path is a safe key.
+ */
+export function usePhotoSource(storagePath: string | null): ImageSource | null {
+  const { data } = usePhotoUrl(storagePath);
+  return photoSource(data, storagePath);
 }
 
 /** Own users row (status + suspension expiry) — drives the account gate. */
@@ -275,6 +379,39 @@ export function useSetVisibility() {
       // invalidated nothing and the map sat on the old audience for up to a
       // minute. That was the "takes a while to update".
       invalidateDiscoverySurfaces(queryClient);
+    },
+  });
+}
+
+/**
+ * Whether the signed-out preview may include you (D22). Its own query, for
+ * the same reason visibility is: the column has no client SELECT grant, so
+ * it comes back through its own RPC. Undefined while loading and on a server
+ * that predates the column; the screen reads either as shown, which is the
+ * server's own default.
+ */
+export function useOwnGuestPreview() {
+  const userId = useOwnUserId();
+  return useQuery({
+    queryKey: ['shown-to-guests', userId],
+    queryFn: fetchOwnGuestPreview,
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+export function useSetGuestPreview() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setOwnGuestPreview,
+    meta: { failureTitle: 'Could not save that' },
+    // Optimistic, like the group-adds row beside it: it is a choice, and a
+    // control that waits on a round trip before it moves reads as dead.
+    onMutate: (shown: boolean) => {
+      queryClient.setQueryData(['shown-to-guests', userId], shown);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['shown-to-guests', userId] });
     },
   });
 }

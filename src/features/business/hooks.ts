@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 
 import { useAuthStore } from '@/features/auth/store';
 import {
@@ -8,7 +9,10 @@ import {
   fetchBusinessForChat,
   fetchBusinessDetail,
   fetchCityBusinesses,
+  fetchCityForSpot,
   fetchLatestStorefrontCheck,
+  fetchListingIntent,
+  setListingIntent,
   fetchMyRatings,
   fetchOwnBusiness,
   fetchRatingSummary,
@@ -21,6 +25,8 @@ import {
   submitStorefrontPhotos,
   updateBusinessLocation,
   updateOwnBusiness,
+  fetchSavedReplies,
+  setSavedReply,
 } from '@/features/business/api';
 import type { BusinessCategory, ChatKind } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -42,6 +48,77 @@ export function useOwnBusiness() {
     // asking on their behalf is a round trip whose answer is always null.
     enabled: isSupabaseConfigured && userId != null && !anonymous,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Whether this account is part way through listing a business, from the
+ * database rather than from memory.
+ *
+ * The in-memory flag in the auth store is still the fast path within one
+ * sitting; this is what survives a cold start. Steps 4 to 11 of the listing
+ * form had no exit at all, so the real abandonment was killing the app, and
+ * the flag went with it: the account came back reading as a traveler who had
+ * not finished, and the bar owner was asked for their first name in the one
+ * flow a business must never complete.
+ *
+ * Same shape and same guard as useOwnBusiness above, because the router asks
+ * both before it decides which stack to mount.
+ */
+export function useListingIntent() {
+  const userId = useAuthStore((s) => s.session?.user.id ?? null);
+  const anonymous = useAuthStore((s) => s.session?.user.is_anonymous === true);
+  return useQuery({
+    queryKey: ['listing-intent', userId],
+    queryFn: fetchListingIntent,
+    enabled: isSupabaseConfigured && userId != null && !anonymous,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * Write the listing intent AND repair the cache that gates on it.
+ *
+ * The bare api call is not enough anywhere, and the failure is invisible in
+ * testing. useListingIntent is enabled the instant a new session lands —
+ * which is inside the awaited signUpWithEmail — so the read races the write,
+ * frequently answers against a pre-write snapshot, and then caches `false`
+ * for five minutes with nothing to invalidate it. The router reads that
+ * false, decides the account is an unfinished traveler, and filters `(tabs)`
+ * out of the navigator; the listing form's own "Finish this later" then
+ * replaces to a route that is not mounted and silently does nothing, which
+ * is the dead-button trap the traps skill names. Seeding the cache from the
+ * write is what closes it: the write is the newer truth, so it does not need
+ * to be re-read to be believed.
+ */
+export function useRecordListingIntent() {
+  const queryClient = useQueryClient();
+  return useCallback(
+    async (wants: boolean) => {
+      await setListingIntent(wants);
+      const userId = useAuthStore.getState().session?.user.id ?? null;
+      queryClient.setQueryData(['listing-intent', userId], wants);
+    },
+    [queryClient]
+  );
+}
+
+/**
+ * Put the listing intent down for good.
+ *
+ * The flag is otherwise one-way: it keeps the tabs mounted, traveler
+ * onboarding is never asked for again, and the profile keeps offering a form
+ * the person has decided against. Invalidates its own query so the row
+ * disappears without a relaunch.
+ */
+export function useDropListingIntent() {
+  const queryClient = useQueryClient();
+  const userId = useAuthStore((s) => s.session?.user.id ?? null);
+  return useMutation({
+    mutationFn: () => setListingIntent(false),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['listing-intent', userId] });
+    },
   });
 }
 
@@ -71,8 +148,46 @@ export function useRegisterBusiness() {
       // The account has just changed KIND, so the router's answer has changed
       // with it. Anything less than a refetch leaves a fresh business sitting
       // in the traveler tabs.
+      //
+      // NOTHING ELSE GOES IN HERE, and the reason is written on this file's
+      // sibling test. Registering flips a guard, and a guard flip filters a
+      // route out of the navigator UNDERNEATH whichever business screen is
+      // showing; react-native-screens then has to reshuffle a stack whose
+      // first entry is a modal, and the app dies. The founder hit that once
+      // already, typing a confirmation code.
+      //
+      // A review finding asked for `setListingIntent(false)` here, on the
+      // grounds that nothing ever lowers wants_business for a listing that
+      // succeeded, so the column comes to mean "has ever started a listing".
+      // That is true and it is cosmetic. Adding the write killed the listing
+      // flow on its confirm step in two consecutive e2e runs, in both
+      // orderings — before the refetch and after it — because the write is a
+      // second guard-flipping fact landing in the same moment as the first.
+      // isBusiness outranks wants_business everywhere it is read
+      // (owesOnboarding returns false on isBusiness before it ever looks at
+      // the flag), so the drift costs nothing. Leave it.
       queryClient.invalidateQueries({ queryKey: ['my-business', userId] });
     },
+  });
+}
+
+/**
+ * Which city a marker will be filed under, from the same resolver the write
+ * runs. Keyed on the coordinate rounded to four decimals (about 11 m), so a
+ * drag is one request when it ends rather than one per frame, and held for
+ * the session: a spot does not change city.
+ */
+export function useCityForSpot(coords: { lat: number; lng: number } | null, hint: number | null) {
+  const lat = coords ? Math.round(coords.lat * 1e4) / 1e4 : null;
+  const lng = coords ? Math.round(coords.lng * 1e4) / 1e4 : null;
+  return useQuery({
+    queryKey: ['city-for-spot', lat, lng, hint],
+    queryFn: () => fetchCityForSpot(lat!, lng!, hint),
+    enabled: isSupabaseConfigured && lat != null && lng != null,
+    staleTime: Infinity,
+    // The last city stays on screen until the next one lands, so a nudge
+    // does not blank the line and the confirm card for a round trip.
+    placeholderData: (previous) => previous,
   });
 }
 
@@ -295,5 +410,29 @@ export function useTopRated(userId: string | null, cityId?: number | null) {
     queryKey: ['top-rated', userId, cityId ?? null],
     queryFn: () => fetchTopRated(userId!, cityId ?? null),
     enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+/**
+ * The owner's three saved replies, and the write that changes one.
+ *
+ * Enabled only for an owner: `business_saved_replies` has no policy for
+ * anybody else, so asking as a traveler is a round trip that can only come
+ * back empty.
+ */
+export function useSavedReplies(businessId: string | null) {
+  return useQuery({
+    queryKey: ['saved-replies', businessId],
+    queryFn: () => fetchSavedReplies(businessId!),
+    enabled: isSupabaseConfigured && businessId != null,
+  });
+}
+
+export function useSetSavedReply(businessId: string | null) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { position: number; body: string }) =>
+      setSavedReply(businessId!, input.position, input.body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['saved-replies', businessId] }),
   });
 }

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="26" height="26" role="img" aria-label="Samewhere">
+  <path d="M20 6c3 5 5 7.5 5 11a5 5 0 0 1-10 0c0-3.5 2-6 5-11z" fill="#FF9A5A"/>
+  <rect x="9" y="27" width="22" height="4" rx="2" transform="rotate(-12 20 29)" fill="#F1F0F7"/>
+  <rect x="9" y="27" width="22" height="4" rx="2" transform="rotate(12 20 29)" fill="#F1F0F7"/>
+</svg>

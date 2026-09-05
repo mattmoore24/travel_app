@@ -3,6 +3,1626 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **The owner never saw their own address** (2026-09-05)
+
+Run 124's My business frame said "No address yet" under "Where you are" on a
+listing the tour had just registered with a street address. `businesses.address`
+arrived on 2026-08-29; the owner's page prints it, the editor prefills its box
+from it, and the client's row type has carried it since that day. `my_business()`
+never did: its OUT list was written two days earlier and nothing extended it.
+Not cosmetic. The editor opened on an empty box, and saving the location
+screen with the box left as it came sent '' for `p_address`, which
+`update_business_location` takes as "typed nothing" and stores as null: the
+address written at signup was gone the first time the owner nudged the
+marker. Travelers were never affected: the place page's own reader selected
+the column from the day it existed.
+
+20260905170000 drops and recreates `my_business()` with `address` at the end
+of its OUT list (RETURNS TABLE grew a column, so drop first; grants restated),
+deployed through `supabase-deploy.yml`. pgTAP 21 goes to `plan(47)`: an
+address put on the listing through the location door is read back through
+`my_business()`. No client change: the page and the editor were already
+reading the column, so the phone shows the address on its next fetch. Every
+earlier run's frame 70 said "No address yet" and nobody read it as the bug it
+was; the business tour cannot assert the row's value (its Pressable carries a
+label that hides the words inside it), so the frame stays the evidence.
+
+Run 124 also caught the signed-in tour at the composer's confirmation beat:
+the "Sent to" mark holds 1.1 s, Maestro's settle after the Send tap can
+outlast it, and the wait pinned to it then burned the 4 s strip underneath
+too (run 123 had caught both). The tour waits for whichever beat is on
+screen, then the strip on its own.
+
+Run 125 (6360dc4) is the record: the My business frame reads "Rua da Rosa 12"
+under "Where you are", and the signed-in tour went green end to end for the
+first time since the trip rail landed, 10 through 35, both composer beats and
+the settings tail included. Its one red was the onboarding tour's profile
+photo, which sat at "Not sent": no upload reached storage in that window
+(the edge logs hold only the seed photos' signed reads), so the request died
+on the simulator's side; runs 122 to 124 passed the same step. Not changed.
+
+## **A business goes where its door is** (2026-09-05)
+
+The founder, the day after the pin fence went: _"businesses shouldn't be
+limited on where they can put their pin. It should instead just be a simple
+search bar where they can put in the business on the 'where is it?' page. The
+search bar should just be where they put in their business address, and then
+they can click the recommended option as it comes up as they search, or there
+can be an option in smaller text below that allows them to just set their pin
+if their address isn't popping up ... I'd rather have that for full
+flexibility and scalability than forcing business users to pick from preset
+cities set by me."_ So the "Which city?" chips, the launch-state sentence and
+the "Somewhere else? Tell us where." door are gone from step 5, and the server
+files a listing under the city its marker is in.
+
+### What changed, and where the fence went
+
+- **`resolve_business_city(p_lat, p_lng, p_hint)`** (20260905130000), three
+  tiers and never a refusal: the hint stands when the marker is within 20 km
+  of it (`validate_pin`'s rule, verbatim, which is what keeps a nudge from
+  ever changing `city_id`); else `nearest_city()` (distance over the fourth
+  root of population, null beyond about 55 km); else the nearest city on
+  earth by plain haversine, a full scan that runs only at sea or in the
+  outback, because `businesses.city_id` is NOT NULL and a business signing up
+  has no browsed city to fall back on. A forged hint that is no `cities` row
+  falls through to the marker. Authenticated only, like `nearest_city`.
+- **`city_for_spot(p_lat, p_lng, p_hint)`**, jsonb: `city_json` of the same
+  resolver with the same hint (null on a first registration, the stored city
+  on a re-entry), so "That lists you under Lisbon, Portugal.", the confirm card
+  and the stored row cannot disagree. Definer, because `city_json` is
+  authenticated-only; a guest cannot call either door.
+- **The two write doors, signatures unchanged.** `register_business` replaces
+  its `launch_cities` lookup with the resolver; `update_business_location`
+  passes `coalesce(p_city_id, stored city)` as the hint, so a nudge keeps the
+  city and a move past 20 km re-files the listing. Both `create or replace`
+  with grants restated, on purpose: no OUT list, argument or return type
+  moved, so there is no drop-first to do. The register door gains the
+  explicit `grant execute ... to authenticated` it had only by default
+  privileges until now.
+- **The label or the circle.** `city_businesses`, `city_whats_on` and
+  `city_rooms` read `b.city_id = p_city_id or haversine_km(...) <= map_radius_km()`,
+  bodies only. A Cascais door draws on the Lisbon map like a Cascais pin, and
+  a lodge filed 300 km from its city is still on that city's list, which the
+  circle alone would have dropped.
+- **Two raise literals are gone**, not reworded: "we have not launched in that
+  city yet" and "that marker is not in %. Drag it onto your door, or pick the
+  right city." `failure-message`'s `MARKER_OUTSIDE` goes with them. Column
+  comments say `launch_cities.radius_km` has no caller (kept because build
+  17's bundle still selects it) and that `businesses.city_id` is resolved on
+  every write, any city. Migration first, then the update: the new bundle
+  sends `p_city_id: null`, which the old function would have refused. Build
+  17 against the new functions, until the update lands: its chip city stands
+  while the marker is within 20 km of it; from 20 to 40 km (the old
+  `radius_km`) the listing is filed under the marker's own city instead of
+  being refused, and that build's confirm card, listing preview and City
+  select keep naming the chip until the update. No rows need fixing.
+
+### The client
+
+- **One box, one list, one small line.** Step 5 is `BusinessAddressField`
+  searching the world: MapKit with a continent-sized region hint, in its own
+  order, then `geocodeAsync` on the bare text; three characters before
+  anything fires, and only while the box has focus, so walking back from "Is
+  this right?" never pops a list under a settled address. Under it, "Not
+  coming up? Place the marker yourself." shows the picker with no marker, centred
+  on the near-miss the list had if it had one, else the featured city whose
+  clock is the phone's Intl zone at country scale, else the world, and the
+  person pinches in. The map appears once a marker exists or the line is
+  tapped; a pick sets both halves, a drag moves only the marker, and the city
+  line under it ("That lists you under Lisbon, Portugal.") comes from
+  `city_for_spot` and follows a drag across a border honestly.
+- Step 6's card carries "Cafe · Lisbon, Portugal" from the same answer, its
+  map is draggable, and the way back is "Fix the address or the marker".
+  `business_registered` carries the resolved `city_id`.
+- **`useCity(id)`** reads a `cities` row by id, and that is how the map flies
+  to the owner's own city, the place sheet reads its clock, and step 12's
+  preview names it: none of them look the business up in the launch list any
+  more. business-edit loses its City select and the plain Address fallback;
+  the search box and the draggable marker are the whole of "Where you are",
+  and the editor prints no city line of its own.
+- **A rough tap is not a marker yet.** A tap on the by-hand map at country
+  scale drops the marker as a guess and holds Continue, the city line and the
+  "move it as much as you like" note until a tap or a drag made with the map
+  showing about two kilometres or less (`PRECISE_DELTA`); the picker's own
+  caption asks for the zoom, the footer says nothing while the map is on
+  screen, and a tap never moves the map (the four-reviewer pass found the
+  first cut flying to street scale around wherever the finger landed).
+- **"Marker", never "pin", in business copy.** The founder's words said
+  "pin"; on screen it is "Place the marker yourself", because a pin is the
+  traveler's 72-hour object (`vocabulary.ts`); the founder read the wording
+  and kept it (2026-09-05). The line is in the accent
+  colour: in the same grey as the search's message it read as a second hint.
+  "That lists you under Lisbon, Portugal." rather than "puts you in", because
+  the city is the label the listing is filed under, and a door outside every
+  seeded town of 5,000 is filed under the nearest one.
+
+### What did not move
+
+Rule 2: the only centres the client computes are a marker the person placed,
+the first geocoded suggestion for text the person typed (the by-hand map's
+near miss), a featured city picked by Intl timezone, the world view (20, 0) as
+a constant, or the origin as MapKit's ranking hint; none is a device read, no
+expo-location position API appears anywhere, and app.json's location
+permissions stay false. (The migration's header under-lists them; applied
+migrations are not edited, so this paragraph is the record.) Rule 5: the address
+is still screened by `screen_business_text` on every write. Rule 8: the
+traveler refusal in `register_business` and the six triggers are untouched.
+`lat`, `lng` and `city_id` are still server-owned columns.
+`business_rename_resets` is untouched and now unreachable by a nudge across a
+city line: the stored-city hint keeps `city_id` for every move inside 20 km,
+and a re-file is always over 75 m, which the trigger already resets. The
+seeders keep their `launch_cities` join; `validate_pin` is untouched, because
+pins were the day before's change. No return type moved: `register_business`
+still answers a uuid, and the city reaches the client through `city_for_spot`
+before the write and `my_business` after it.
+
+### Proof
+
+`77_a_business_goes_where_its_door_is.test.sql` (`plan(33)`), written as
+attacks: Midtown with no hint files under New York City and not Hoboken;
+Monaco under a Nice hint stands at 13 km; the Croisette under the same hint
+re-files to Cannes; a marker in the mid-Atlantic lands on the nearest city by
+plain distance; a forged hint that is no city is ignored; a 30 m nudge keeps
+the city and the badge, a move to Cannes re-files and costs it; Cascais draws
+on the Lisbon map, room list and What's on and not on Porto's; a far-filed
+listing is still on its own city's list; a guest can call neither door; the
+preview names Porto and honours the hint like the write; rule 8 restated.
+`21_business_accounts.test.sql` goes from `plan(41)` to `plan(45)`, four
+assertions flipped or added: "a marker in Porto under a Lisbon hint is saved,
+not refused" and filed under Porto; "a marker in Bairro Alto keeps the Lisbon
+hint: the hint stands within 20 km"; "moving the marker to Porto is allowed
+now" and the listing follows; back to Lisbon, "the stored Porto hint is 270 km
+away, so the marker decides". Every positional
+`register_business(..., pg_temp.lisbon(), 38.71, -9.14)` caller in the suite
+stays green through the first tier. Jest: `use-place-search.test.ts` (the
+continent hint, the marker bias, city mode byte-for-byte, the three-character
+floor, the bare text to the geocoder, honest emptiness, a stale answer never
+landing) and `address-field.test.tsx` (the placeholder, no search until focus,
+the small line and what pressing it does); business-edges, business-map and
+business-exits rewritten for the new step 5, the by-id map and the shared
+footer; browsing-city gains `cityInZone`; failure-message asserts
+`MARKER_OUTSIDE` is gone.
+
+### Shipped
+
+Migration 20260905130000 went through `supabase-deploy.yml` on 2026-09-05,
+before any bundle sent `p_city_id: null`. The trip picker, the horizon and the
+way-home fix went over the air first (TestFlight run 87, iOS update
+01a06eb2-9ce9-72f4-908f-04a66bfbd1c0, commit 0b913ae); the business change,
+the rough-tap rule, the map framing and the wall fix followed (TestFlight run
+88, iOS update 01a071e4-f40e-7f7a-a4d2-9e7d055ea125, update group
+a1285906-aff4-4928-9536-9c2406944c3f, commit aac7b6b), both on build 17's
+runtime 0.2.0. E2E run 121 photographed the flow on the simulator: 42 (the
+empty address box), 42b (the by-hand map at world scale under "Zoom in, then
+tap your door."), 43 (the suggestions under typed text), 44 (a picked address
+and its marker), 45 ("That lists you under Lisbon, Portugal." with Continue
+lit), 46 (the confirm card naming the city) and 71 (the owner's map on the
+listing).
+
+Run 122 (f754b92) left two flows red for reasons of their own: the guest
+tour's venue row, and the pin form's hour slider, whose View had never said
+`accessible`, so iOS had no element to find and VoiceOver no control to
+adjust. Both are fixed in 7af7721: one prop and a test that fails without it;
+the plan list taken to its full detent and its end before the row; and the
+traps entry that had blamed a transform corrected. Run 123 photographed the
+guest reaching the venue's sheet, page and in-app browser (09a, 10, 10a) and
+the signed-in tour through the pin form, the posted pin, the Travelers rail
+(17, 17i, 17j) and the composer to the settings screens, stopping at an
+assertion written for the account row's old joined label (bc43b00 moves it
+to the screen that prints the address; run 124 is the re-run). The slider
+fix went over the air as TestFlight run 89 (iOS update
+01a07263-9e16-7f61-b981-c72de1e5e4cd, update group
+17ceafb7-1e22-4403-87f6-700d7f3c8cac, commit bc43b00).
+
+## **Which trips the queue is for, and no limit on how far ahead** (2026-09-05)
+
+The founder, on the Travelers tab: "remove the descriptions around each distance,
+the km conversion is enough", and "you should be able to select at the top near
+where it says 'today in Mexico City' ... which of your trips you want to show in
+the travelers section ... one, multiple, or all ... people could even put trips on
+their profile for the full year at the beginning of the year ... there'd be no
+limit."
+
+### What the code did before
+
+The queue already spanned every active trip: `get_matches` joined all of them,
+kept one row per other traveler and attributed it to whichever trip reached them
+soonest. Nothing let a person narrow it, the "8 more on your dates in Mexico
+City" line borrowed the city of whoever was on screen, and an overlap starting
+more than 180 days out was invisible in three places at once: the trips policy's
+predicate (`overlaps_own_trip`), `get_matches` and the hello.
+
+### What shipped
+
+- **The horizon is gone** (20260905090000). All three functions are restated
+  without `current_date + 180`; a trip added a year ahead is matched from the day
+  it is added. pgTAP 10's "not shown yet" became "shown: there is no horizon any
+  more", and the hello to somebody 200 days out goes through inside a savepoint.
+- **`get_matches(p_trip_ids uuid[] default null)`.** The only argument the queue
+  takes, and it is the caller's own trip ids: joined to `trips where user_id =
+auth.uid()`, so a foreign id names nothing (pgTAP 76 asserts the argument list
+  and all four shapes). Null is every trip, so `daily_spotlight`'s zero-argument
+  call and build 17's bundle are unchanged.
+- **The trip rail** at the top of Travelers, where "Today in <city>" was: the
+  app's own `ChipRail` in multi mode, "All trips" first, then one chip per
+  upcoming trip in date order, city names only (the month when a city repeats,
+  the day when the month does too), dates spoken to VoiceOver. "All trips" is a
+  zero state: one tap on a city narrows to that trip; untapping the last lit chip
+  is every trip again. Shown only with two or more trips. Kept per account on the
+  device (`features/matching/trip-selection`), read before the first fetch so the
+  tab never flashes the wrong queue, and read as every trip when it names a trip
+  that ended. `useMatches` keeps the last queue on screen while the next loads,
+  so a tap never drops the screen into its skeleton.
+- **The sentences follow, from one phrase.** `queueScope` says what the queue
+  is for ("in Lisbon", "in Lisbon and Porto", "across these 3 trips", "across all
+  your trips") and the count line, the empty wall's title and the VoiceOver
+  settle all read it, so they cannot disagree; the wall's title lost "with
+  travel plans matching yours" on the way, the one banned root on the screen.
+  While a tap's new queue loads the count line says "Checking Lisbon…" over the
+  face that stays. An empty wall the selection emptied says "You're only looking
+  at Lisbon, Mar 4 – 9." (or "sometime in September" for rough dates, or "2 of
+  your 7 trips") with "Show all trips" as the way back. The spotlight's sparkles
+  stay beside "Shown to you and Freja today."; its chip is gone.
+- **The radius rows** carry the conversion and nothing else ("32 km"); "This
+  city only" has no second line.
+
+### What did not move
+
+Who can see whom. The selection changes only what the person's own queue is
+built from: their profile is shown to everyone the audience setting allows, on
+every trip. The audience wall outranks the trip wall, because the audience hides
+people on every trip and its sentence stays true. No device location anywhere:
+the ids are the person's own trips, and every distance is still city centre to
+city centre (rule 2).
+
+### The review's grafts
+
+Four reviewers over the diff before the push. The empty wall now carries the
+rail too, with "Show all trips" whether or not the audience setting is what
+emptied it (a person narrowed to a trip nobody overlaps who had also set
+"verified only" had no way back), and while a chip tap's queue loads its title
+says "Checking Lisbon…" rather than "That's everyone" about a queue not yet
+fetched. The E2E account has a second trip now, Lisbon 400 days out, so the
+signed-in tour photographs the rail, the wall it produces (17i), the way back,
+and the queue narrowed to Bangkok (17j) for the rest of the tour. The workflow
+also seeds the launch venues' posts back before every run, through the
+Management API, because the guest tour's "something on tonight" row is a
+72-hour pin and went red in runs 110 to 115 while the app was fine. The header
+is rendered once above the page
+keyed on the person, so a Next no longer tears the rail down and resets its
+scroll. The first fetch waits for the trips as well as the stored choice, and
+the focus refetch waits on the same flag, because `refetch()` ignores
+`enabled`. A tap toggles from the selection the chips show, not the raw stored
+one, so a stored set that covers every remaining trip narrows on a tap rather
+than dropping a chip. The chip hints say what the tap does in its state
+("Looks at just this trip." from All trips). pgTAP 76 first proves the foreign
+id is real before proving it names nothing. The brief says the rule that
+holds: a start date up to two years ahead (a typo guard, not a plan limit),
+and no matching horizon. `expire_message_requests` keeps its 180-day term: its
+own 30-day cap makes the term unable to change a result, and the migration
+header says so.
+
+### The map's way home is where the app framed the city
+
+Frame 09 of run 115 photographed Denpasar right after a relaunch with "Back
+to Denpasar" over it. The map frames every plan a city has, and Denpasar's run
+from Ubud to Uluwatu, so the fit itself sits 6 km from the city's centroid;
+the pill measured from the centroid with a 4 km threshold, so the app's own
+framing counted as having drifted, on every cold start and chip tap. Home is
+now `homeRegion`: the fit once the plans are in, the city's box until then.
+The pill measures from it and lands on it, and a tap on the chip that is
+already lit lands there too instead of on the centroid (which for Denpasar
+summoned the pill again). camera.test.ts holds the Denpasar case.
+
+Run 119 then photographed what the pill had been hiding: the relaunch frame
+was a box on the rice fields between Seminyak's nine plans and a business chip
+in Ubud, saying "No plans over here", because `fitRegion` clamps a spread wider
+than the widest frame to the middle of that spread. It frames the most of its
+data now: each point anchors a window of the clamped size, the fullest wins,
+ties go to the middle. The same run showed the onboarding tour passing by
+skipping steps 6 to 14 (its "gate line gone" blocks were judged ten seconds
+after the pick, while the upload was still working); it waits the upload out
+first now, and pgTAP 56's 40-hour expiry became 48, because tomorrow at 19:00
+in Lisbon is past 40 hours from any clock between midnight and 02:00 UTC.
+
+### Run 116: the rail reached the pin form, and stopped there
+
+The first run on the update (0b913ae). Onboarding, business, invite and the
+large-text tour green; the guest tour red on the "something on tonight" row,
+as expected until the seed step lands; the signed-in tour red three steps
+after 14-pin-form, with a failure frame identical to it. The pin form's two
+text fields sit under the join choice, the day, the time and the expiry, and
+with a venue on the Where card (the chip tap earlier in the tour leaves it
+there) "What's the plan?" is fully below the scroller's fold. Maestro found
+the id anyway, tapped its coordinates, focused nothing, and typed two
+sentences into the void. The tour scrolls to the field first now, as it
+already did for Details.
+
+**Founder question, answered.** The same fold is there for a person: the form
+opens on Where, the join choice, When and Time, and the button underneath says
+"Say what the plan is first." about a field they cannot see until they scroll.
+The join choice was put above the fields on purpose (run 76: with a keyboard
+up the scroller is two rows tall and the choice was clipped in half), and the
+day, the time and the expiry could have moved below the two fields. Founder,
+2026-09-05: leave it as it is. Not changed.
+
+### A design panel first
+
+Three independent designs (least UI, trips as the hero, the words first), two
+judges, one synthesis, before a line of UI. The rail above is the synthesis;
+what it deliberately left out is recorded in the component: no sheet, no "All"
+that lights with every chip, no dates on the visible chips, no counts on chips,
+no "now" or "here" mark on a trip in progress, no automatic widening when a new
+trip is added while narrowed.
+
+## **A pin goes where the traveler goes** (2026-09-04)
+
+The founder tried to drop a pin in Manhattan and got "Could not save". The
+map had let them pan there, the geocoder had named the corner, and then
+`validate_pin` measured the spot against the centre of the city whose chip
+was lit - Bangkok, 13,924 km away - and refused it. The rule was the brief's
+"launch dense, not wide" (§2.6), doing its job. The founder's decision retires
+it: _"There is no reason to ever block someone from putting down a pin ...
+never limit travelers on where they can put their trips or pins."_ And with
+it: the rail becomes featured cities, nobody asks for a city to be opened,
+the time on a pin is optional and can be a window or TBD, the Details box is
+not cut off, and Travelers reaches a radius the person sets.
+
+### What changed, and where the fence went
+
+- **Every city knows its clock.** `cities.timezone` (20260904110000), seeded
+  for all 49,025 cities down to a population of 5,000 by `geo-tz` against
+  each coordinate (20260904110100; `scripts/generate-cities-seed.mjs` takes
+  `--min` and `--out`, and a rerun into a NEW file refreshes clocks without
+  rewriting a name a trip already points at). The threshold came down from
+  50,000 because the founder's own example - Nice, Cannes, Antibes, Monaco -
+  had Monaco missing, and the towns backpackers actually go to (Tulum, El
+  Nido, Byron Bay, Ericeira) are small. `city_clock_zone()` is the one
+  reader: a launch city's hand-set zone first, the seeded one otherwise.
+- **The pin's city is resolved, not trusted** (20260904120000). `pins.city_id`
+  points at `cities` now, and `validate_pin` keeps the browsed city when the
+  spot is within 20 km of it and otherwise asks `nearest_city()`: distance
+  over the fourth root of population, which is the smallest weighting that
+  says New York for Midtown (nearest by distance alone is Hoboken), Monaco
+  for Monaco and Jersey City for Jersey City. Nothing near anything (the
+  Atlantic) keeps the browsed city. Never a refusal.
+- **The map is a circle.** `city_pins`, `public_city_pins`, `heat_cells` and
+  `public_heat_cells` read every live pin within `map_radius_km()` (50) of
+  the browsed city's coordinate. A plan on the Croisette is on the Nice map
+  and the Cannes map both; `city_id` is a label for the funnel and the rail.
+  The two-door pattern (INVOKER for members, DEFINER with restated
+  visibility for guests) is unchanged, and k is `coalesce(launch_cities.heat_k, 3)`
+  everywhere - the founder can still raise a city's floor, nothing can lower
+  it. `heat_history` follows `cities` too, so the sweep remembers a city
+  nobody opened.
+- **Featured, not open.** `featured_cities()` and its guest twin replace the
+  `city_pin_counts` pair: every active launch city plus any city whose
+  visible plans clear its k, most plans first, eight at most. A city below
+  its k is not named - a chip reading "Podunk" with no number would still
+  say somebody has a plan in Podunk, which is the enumeration the floor
+  refuses. `request_city()` is dropped; `city_requests` stays as the record.
+- **A time is optional, a window, or TBD.** `intent_time_end` and `time_tbd`
+  on `pins`, through both feeds and `post_joinable_pin` (two defaulted
+  parameters, so the old signature is dropped and regranted). A window may
+  cross midnight ("10 PM to 2 AM"; an end at or before the start reads as
+  tomorrow) and its end is checked against the expiry exactly like the
+  single hour was (rule 3). The write path now answers with the CITY the pin
+  resolved to, so the map can follow it there.
+- **Travelers within a radius.** `profiles.travelers_radius_km` (default 32,
+  about twenty miles; 0 is this city only; CHECK 0..500) and
+  `cities_within_km()`, a plain SQL function the planner inlines, with a
+  latitude-band prefilter on the new `cities_lat_lng_idx`. The VIEWER's
+  radius from the VIEWER's trip city, read by every surface that has to
+  agree: `overlaps_own_trip` (the `trips_select_overlap` policy - a radius on
+  `get_matches` alone returned nothing new, because RLS hid the rows first),
+  `get_matches` (dropped and recreated with `distance_km`, `my_city_id`,
+  `my_city_name`), `send_message_request`'s trip branch, `incoming_requests`
+  (dropped and recreated with `overlap_my_city`) and `meet_prompt_due`. A
+  hello to somebody the queue just showed is never "recipient unavailable".
+- **The three clocks read every city's zone.** `push_trip_starts_tomorrow`,
+  `push_plan_is_soon` and `push_last_call` inner-joined `launch_cities`, so
+  a trip to Porto got no push at all. Left joins and `city_clock_zone()`;
+  the trip clock's rough-window exclusions are kept verbatim.
+
+### The client
+
+- The rail draws `useFeaturedCities()` with the browsed city in front when
+  it is not featured; the fifth chip is **Anywhere**, a search over
+  `search_cities` that browses any pick through the same `selectCity` door a
+  chip tap uses. The city store (`samewhere.map.city.v2`) keeps the whole
+  city - name, coordinate, clock - so a cold start can fly to a city the
+  rail has never listed; the live count is not persisted. `pickBrowsingCity`
+  resolves to any trip's city, built from the trip's own row.
+- The pin form's Time rail starts dark, leads with TBD, and grows an "Until"
+  rail under a chosen hour (`intentEndOptions`: eight hours, past midnight
+  included, never past the expiry). Tapping the lit chip puts it out. The
+  scroller carries bottom padding so Details clears the fade. `whenLabel`
+  says "Today, 19:00 to 22:00" and "Today, time TBD"; a pin with no hour
+  says the day alone, as before.
+- Travelers: a dial chip in the queue header ("Within 20 mi" / "Within 32
+  km", by the phone's region - `USES_MILES` in `lib/locale`), a five-row
+  sheet saved on the tap, "Look further than within 20 mi" on the empty
+  wall, and the shared-dates sentence names both cities when they differ:
+  "In Cannes while you're in Nice, Sep 3 – 8". The scope line counts the
+  reader's own city.
+
+### The replay that ran in the dark
+
+Runs 109 and 110 both failed the onboarding tour's last assertion: after
+finish-profile the map should have come back in place mode (the drop-pin
+door had been taken) and came back in browse mode instead, welcome notice
+and all. The intent had been recorded and consumed; nothing was on screen
+to show for it. The replay effect was keyed on `isGuest`, and a guest's
+session is upgraded at signup's FIRST step (`updateUser` on the anonymous
+session), so the map - still mounted under the signup route - replayed the
+intent into a screen nobody could see, entered place mode in the dark, and
+had lost it by the time the tabs came back. The effect now also waits for
+`useIsFocused()`: the intent is consumed only once a person can see the
+result. That guard was right and it was not enough: run 112 failed the
+same tail with the guard in place, and the log for run 111's onboarding
+tour turns out to be cut off before its tail, so the "passed end to end"
+this entry used to claim rests on nothing that can be re-read (the results
+branch is force-pushed each run). Run 111's four other failures were the
+suite, not the app: the sign-in form remembers the last address that
+signed up on the device (lib/last-email) and the tour typed the E2E address
+onto the end of the throwaway's, so the large-text tour after it ran signed
+out and met the gate instead of place mode; the business description step
+autofocuses and "Skip for now" sits under the keyboard it raises; and the
+filter sheet's category chip sat under the Done band, which the fade and
+the padding above now clear. The flows erase the field and hide the
+keyboard first. One thing in the app did come out of it: Reanimated's
+keyboard height leaves out the input accessory view, so every
+`KeyboardFloor` that lifted a footer above the keyboard lifted it 36pt
+short and the Hide keyboard bar lay across the bottom of Continue (screen
+60). The floor adds the bar's height while the keyboard is up.
+
+### Run 113: the replay works, and what it exposed
+
+The first run on the merged tree, with the timer held in a ref. The
+onboarding tour's guarded tail passed for the first time on record:
+`75-signup-done` shows the map back in place mode after finish-profile, spot
+card and venue chips and all. Three reds around it, each read from its
+picture rather than its assertion:
+
+- **The business tour landed in place mode too.** A guest who taps Drop a
+  pin, takes the business door, and finishes the listing later reaches the
+  tabs with the drop-pin intent still in the store, and now that the replay
+  actually fires it fired for them. The store's listing flag is cleared by
+  business-signup's own mount effect, so both guards (the map's replay and
+  the tabs handoff) now read `useWantsBusiness`, which also reads the column,
+  and the handoff lets the intent go for an owner-to-be the way it does for a
+  business. `pending-intent.test.ts` pins both.
+- **The sign-in tour's address had a tail.** `10b` photographs the typed
+  address followed by the end of the prefilled one: SecureStore lives in the
+  keychain, the workflow's state reset never touched it, so the onboarding
+  tour's throwaway was prefilled, iOS landed the caret where the tap was,
+  and `eraseText` only deletes backwards. Runs 111 to 113 all failed here,
+  each a different symptom of the same thing. The workflow resets the
+  simulator keychain before every flow now (a first-run app has an empty
+  one), and the field gets iOS's clear button while editing, because a
+  person with a second address had the same problem without a keychain
+  reset to save them.
+- **The guest tour's category chip was still under the footer.** Maestro
+  reports an element 100% visible from its frame, not from what is drawn
+  over it, so `scrollUntilVisible` was satisfied with the chip's lower half
+  behind the Done band and the tap on its centre landed on the band. The
+  step centres the element now.
+- And the tail itself tapped Cancel inside the drop-pin block, which made
+  the pin-variant block's `notVisible: 'Pin here'` true and ran it against a
+  map with no card. Place mode is left after both checks.
+
+The gallery is republished from run 113 (56 of 69 shots). The production
+update went out before this run finished (TestFlight run 85, iOS update
+01a06de1-2bb9-70cf-82ff-eb9ac40f35f8, commit cdeb3b6): the founder asked
+whether he could test, the gate was green, and the run's findings are all
+either the suite or the one rare path above, which ships next.
+
+### The bottom card came across, and a word came out of the database
+
+The founder compared the gallery's bottom strip with his phone and asked whether
+the update would put the old one back. It would have. The card on his phone
+(TestFlight run 84, cb1979d) came from `claude/popup-menu-layout-nrqpsc`, which
+forked from the same base as this branch and carried five commits this branch
+did not: the bottom of the map as one card (the plan list's sheet runs to the
+screen edge, the dock stands on a plate cut from the same surface,
+`features/pins/bottom-stack.ts`), the dock on the tab bar's real inset, the "not
+busy enough" chip removed, and the one-to-one refusal that says why once. That
+branch is merged here now, verbatim on the bottom stack; the one conflict was
+the removed chip, which had just been given a width ceiling, and the ceiling
+moved to the two chips that remain in the strip. Three independent reviewers
+then read the merge against both parents before it was pushed.
+
+The full jest run before that push found one more thing: the four raise
+literals reworded away from "request" said "hello", and the client's one-name
+rule keeps "hello" out of anything a person reads, which includes the strings
+the client matches those raises by. The reworded file had already applied, so
+the wording is restated in a fix-forward migration
+(`20260904200000_say_hi_in_the_databases_words`) as "already said hi to this
+traveler", "daily limit for saying hi reached" and "unknown source for saying
+hi", with the hints unchanged. Production raises the 2026-09-02 wording until
+that deploys; the client maps both.
+
+### Run 114: three of four green, and two flows behind the app
+
+With the timer held in a ref, the keychain reset per flow and the owner-to-be
+guard, run 114 photographed what runs 109 to 113 could not: the signup replay
+tail end to end (75-signup-done, then the ordinary map), a sign-in that lands
+on the map (11-signed-in-map), "Finish this later" landing an owner-to-be on
+the browse map with its dock (40a), and the large-text tour signed in through
+place mode, Travelers, Chat and a Say hi (zz-ax5-01 to 05). The guest tour
+cleared the filter chip it had failed on since run 111.
+
+What was still red was the suite trailing the app. The guest tour tapped
+'Denpasar' and the chip says "Denpasar 10" now (Maestro matches the whole
+string); it taps 'Denpasar.*'. The signed-in tour tapped Drop a pin on a map
+that was already in place mode, because the replay carries a guest's drop-pin
+intent across a sign-in as well as a signup - which is the feature - so the
+flow enters place mode only when the replay did not. The business tour reached
+the photo step for the first time in days and lost the cover to "stuck while
+preparing it" at 90 seconds, on a run that took fifteen minutes longer than
+the one before it; no crash report was written, the same pipeline uploaded the
+profile photo minutes earlier, and its retry sat on the splash. Slow hardware
+rather than the app, and left alone: the bound exists to end hangs, and the
+budget was raised twice already for exactly this.
+
+### The replay that cancelled itself
+
+The mechanism, found by putting the effect's shape on the real React in a
+test rather than by reading it again. The replay effect consumes the intent
+first (`intentHandled()`, a store write), then schedules `applyCity` and
+`enterPlaceMode` on a 0ms timer, and returned a cleanup that cleared that
+timer. A store write inside a passive effect is flushed synchronously,
+before React returns to the event loop, so the intent going null re-ran the
+effect, and its cleanup cleared the timer before the timer could fire. Every
+replay was cancelled by the act of recording that it had happened; the
+focus guard, the hydration guard and the rail guard all read correctly
+around a tick that never came. `features/pins/__tests__/replay-outlives-
+its-clear.test.tsx` shows both shapes: the cleanup-owned timer never fires,
+a ref-held timer cleared on unmount only fires exactly once. The map has
+the second shape now, `pending-intent.test.ts` refuses the first, and the
+traps skill carries the rule (an effect that consumes its trigger and
+defers its action must not own the deferral through its own cleanup).
+
+The sign-in half of run 112 is unexplained and worked around. The tour
+typed the address correctly, pressed Return, typed the password, and
+photographed an EMPTY password box under "do not match" - a submit that
+the form's own gate should not have allowed with nothing in that field.
+The flow now fills the sign-in form the way business-tour fills the join
+form and passes: tap the field, type, Hide keyboard, tap the next field,
+and it photographs each field after typing so the next run says where the
+password went if it goes anywhere again.
+
+### Seven seams the pictures showed
+
+Eight reviewers read run 109's ninety screenshots as pictures and fifteen
+verifiers tried to refute them; the confirmed list is long and most of it is
+design work for a later sitting. Seven were cheap and plainly wrong, and
+they are fixed: the onboarding scroller and the map's filter sheet fade at
+their bottom edge instead of slicing the last row of tiles, options or
+chips through the letters (54, 55, 72, 73, 05a); the profile-photo caption
+keeps the founder's sentence after a photo lands rather than swapping back
+to the old line (55); "Something else" gets its second line instead of
+clipping to "Somethi..." (71); the "Not busy enough" notice wraps inside
+the screen rather than losing its dot off one edge and its close off the
+other, and stops being a lozenge at five lines (40a, zz-ax5); the Filters
+chip grows with Dynamic Type instead of chopping the word (zz-ax3); and the
+signed-out Chat tab says "Chats at hostels and bars are under Groups"
+rather than calling one thing a chat, a room and a group in two sentences
+(04). Still open from that review, for the record: the business flow's
+Continue pill under the keyboard bar (60), the "1 of 14" on the role step
+before a business has said it is one (40), the empty-state steps that draw
+the same control twice with a void between (58, 59, 70), the business
+offer card with no photo (40c), and the address step with no keyboard bar
+(43), which needs a picture from run 111 before it is believed.
+
+### What did not move
+
+§7 rule 2: every radius is measured from a city a person CHOSE; `get_matches`
+takes no argument and the pgTAP asserts its `pronargs` is 0. Rule 3 and rule
+6 as above. Rule 8: businesses still register in a launch city, which is the
+business side's decision and not this one's. `launch_cities` narrows to what
+it always half was: where a business can list, the seed of the rail, and a
+per-city override for k and the clock. _Superseded 2026-09-05: businesses
+register anywhere too; see the entry above._
+
+### Proof
+
+`76_a_pin_goes_where_the_traveler_goes.test.sql` (56 assertions): the
+Manhattan pin, its resolution, the Monaco/Cannes/Atlantic cases, the circle
+from New York and Hoboken and not Bangkok, both doors, the clock and its
+CHECK, a window past midnight, TBD, the rule 3 edge for a window at every
+hour of the day, the rail's ranking and its k, heat and the sweep for a city
+nobody opened, the retired functions, and Nice/Cannes/Antibes/Lisbon through
+`get_matches`, the policy, the hello and the inbox chip at 0, 20 and 32 km.
+Five existing files changed with the decision (06, 26, 56, 64, 72) and the
+rest of the suite passed unchanged. Client: browsing-city, city-store, the
+rail scan, pin-form-hour (window, TBD, put-out), the hour helpers, the radius
+words, and the two-city overlap sentence.
+
+## **The keyboard bar was built three times and bound once** (2026-09-04)
+
+The founder sent two screenshots and six comments. The one that mattered most
+was the one they had made before: "I've said it many times but it still isn't
+there. EVERY KEYBOARD MUST HAVE THE DISMISS KEYBOARD BUTTON." The bio step,
+keyboard up, no bar, and the footer riding on top of the keyboard.
+
+Every piece of that bar was in the tree. `StepShell` mounted it, `FormTextField`
+pointed at it by id, a source scan asserted both halves, and it had been
+written on 2026-08-24, widened on 08-28 and lifted into the shell on 08-30. It
+was on the phone for exactly one field per screen, and the reason is in React
+Native's own source rather than in any of the three attempts.
+
+### The cause
+
+Under Fabric, `RCTInputAccessoryComponentView.didMoveToWindow` is guarded by
+`if (self.window && !_textInput)`: it walks the window ONCE, when the BAR enters
+it, takes the first field whose `inputAccessoryViewID` matches, caches it, and
+never looks again. The field side never looks at all —
+`RCTTextInputComponentView.setDefaultInputAccessoryView` returns early the
+moment an id is set, so a field that missed the one-shot bind gets nothing, not
+even iOS's default toolbar. The documented shape (one bar per screen, one
+shared id, every field pointing at it) was right under Paper, where the FIELD
+looked the bar up on its own mount, and is quietly wrong under Fabric: the bar
+bound to whichever field existed when the shell first mounted, and every field
+mounted later — the next signup step, a search box revealed by a tap — had
+none. That is the screenshot: step 7, reached from step 6.
+
+So it is one bar per field now, mounted with it, rendered BEFORE it.
+`KeyboardDone` (`components/form/keyboard-done-bar.tsx`) is a render prop that
+draws the bar and hands the field a `useId`, so neither half can be forgotten
+or reordered; `FormTextField` uses it and the seven raw `TextInput`s wrap
+themselves in it. Before, not after, read out of `Differentiator.cpp`: a new
+subtree is assembled bottom-up and attached whole, so `didMoveToWindow`
+cascades parent-first over a subtree that is already complete, and an
+earlier-sibling bar binds before the field's own `didMoveToWindow` fires
+`autoFocus`. The eight shell mounts and the shared id are gone.
+
+**The old scan let two fields through with no bar at all.** `language-field`
+spread the props onto a `SymbolView` icon; `pin-form-sheet`'s venue input had
+none, because a `FormTextField` elsewhere in the same file carried them. A file
+that mentions a prop is not an element that has it. The new test walks the
+rendered tree for the pair (bar first, ids equal, ids unique) and the scan
+requires every `<TextInput` to sit between a `<KeyboardDone>` and its close.
+Mutation-checked three ways, each breaking a named assertion. Recorded in the
+`traps` skill, under Keyboard, with the file paths.
+
+### The rest of the list
+
+- **The footer goes under the keyboard.** "Just keep these options at the
+  bottom but have the keyboard go over them when the user is typing."
+  `KeyboardFloor` takes an `allowance` (the measured footer height) and
+  `StepShell` puts the floor under the scroller only, so the field's last line
+  meets the keyboard's top edge and Continue, the skip and Sign out are
+  covered until the bar is used. **Sign out is a footnote-sized line** under
+  the skip rather than a ghost button: "not really a need for the sign out
+  prompt to be so prominent". Still 44pt, still on every step, for the
+  hostel-wifi reason it exists.
+- **"Rather not say" is gone from both gender pickers.** "It goes against our
+  filters", and it did exactly: `audience_admits` puts an unspecified profile
+  in none of the three gendered audiences while `set_visibility` let it choose
+  one, so somebody could narrow to verified women without being filterable as
+  anything. `basicsProblem` refuses the value now rather than honouring a tap;
+  the `genderTouched` flag goes with the option it existed to tell apart;
+  edit-profile cannot save without one; `resumeStep` lands a legacy opt-out
+  back on step 3. No migration: `'unspecified'` is the column default every
+  row is born with and the guest trigger compares against it, so the enum
+  value stays and only the offer goes.
+- **Copy.** The photo tile says "Make sure your face is clearly visible in
+  your profile photo." Step 9 is titled "Add your top priorities for your
+  trip". The badge subtitle ends "so you can choose verified travelers only
+  and filter by gender".
+- **The badge is a step.** It was a door on the audience step, opened only by
+  tapping a locked row, and the founder walked the whole sequence without
+  meeting it: "There should be an option to verify your profile during
+  onboarding." Step 12 is Get your badge, skippable, with the cost of skipping
+  said under the skip (the verified-only rows on the next screen stay locked);
+  audience is 13, the review 14, the door on 13 stays for whoever skipped.
+  `SIGNUP_TOTAL_STEPS` is 14 and the slug `badge` is inserted rather than any
+  renamed, since the slugs are the funnel's event schema.
+- **Place mode: the venue chips scroll, and the spot's name is not a fourth
+  chip.** The second screenshot, Bangkok: three venue names clipped at both
+  screen edges, and "the actual location bubble is no different than the
+  three that are above it". The chips sat in a centred flex row where a chip
+  could shrink and its text could not; they are a horizontal scroller now,
+  centred while they fit, capped at 240pt with an ellipsis. The spot's name
+  was a pill in the chips' own surface, footnote and shadow; it is a card:
+  the pin's glyph in the pin's colour, the place over its district or street
+  (`splitSpotLabel`, at the first ", " the map itself joined them with), the
+  sunken surface with a hairline and a card's corner. Photographed by the
+  signed-in tour's `12-place-mode` / `13-place-after-pan` on the next run.
+
+### Verification: the two questions, and the hole the second one found
+
+**"Will the verification fail if their profile photo includes multiple
+people?"** The code cannot say. The worker sends the selfie, the first two
+APPROVED profile photos by position, and the one question "Is this selfie
+plausibly the same person as the profile photos?"; the verdict schema is
+`approve | reject` with a reason, nothing counts faces, and the decision lives
+in the classifier prompt, which is a secret by design. What the code does with
+each answer is fixed: approve stamps the badge, reject shows the reason and
+allows a retry (three a day), a refusal or an unparseable answer retries up to
+ten times and then rejects. Two adjacent facts: a group shot can BE the
+approved position-0 photo (photo moderation has no "one person" category), and
+only the first two approved photos are ever compared.
+
+**"If they change their profile photo, will the account need to be
+re-verified?"** It did not, and that was a hole. The only write of
+`profiles.verified = true` in the schema was the approve branch; every trigger
+on `profile_photos` was INSERT-only; the verdict recorded nothing about which
+photos it compared. So a verified traveler could delete the lead, upload a
+different face, move an unchecked gallery photo into the lead, and keep the
+badge and the narrowed audience it had earned — while `submit_verification`
+refused to let even an honest person re-verify ("already verified"). The
+badge's own explanation to strangers, "we compared it against their profile
+photos", was false after the first swap.
+
+Now the badge follows the face (`20260904100000_a_badge_follows_the_face`):
+the verdict records the photo ids it compared; an AFTER trigger on
+`profile_photos` revokes the badge when a photo that was not compared becomes
+the lead (arrives at position 0, is approved into the lead, or inherits the
+lead because a compared one was deleted or un-approved); revoking flips
+`verified` so `profiles_reset_visibility` drops the audience to everyone, marks
+the approved request rejected with a reason the app already renders, writes a
+`verification_revoked` event that is not a strike, and queues a push. The rule
+is keyed on the ROW that changes, never on "the lead is not compared" derived
+after each write, because `photoWritePlan` on a full gallery vacates slot 0 for
+one round trip. `submit_verification` accepts a pending photo and the worker
+waits for it rather than rejecting (counted as `waiting` in its report),
+which is what lets the badge step sit seven screens after the photo step. The
+verdict and the trigger take the per-user advisory lock `submit_verification`
+already took, so a verdict and a photo write in the same instant cannot leave
+a badge judged against a snapshot. pgTAP `75_a_badge_follows_the_face`: 53
+assertions, every guard broken in turn and the first failing assertion
+recorded in the file's header; one guard (`old.moderation_status <>
+'approved'` on the approval rule) is unreachable by any state and is kept as
+change-detection, said so in the header rather than left to look tested.
+
+### Evidence
+
+E2E run #109, `build: true` — the one-time 0.2.0 simulator build the
+workflow's own note has been asking for since the version bump. The flow now
+taps `Hide keyboard` by its label wherever a button sits under a keyboard
+(password, age, bio; business password and phone), so a bar that is not on
+that field fails the run rather than a screenshot. `57-signup-bio` is taken
+with the keyboard up; `57b` after the bar is tapped; `71b` is the badge step.
+
+Deploy order: the migration first (it only widens `submit_verification` and
+adds a trigger, and an OTA bundle is never applied on the launch that
+downloads it), then the production update.
+
+## **Sign in with Apple, as far as a browser can take it** (2026-09-03)
+
+The founder has no local machine, so everything Apple-side runs through GitHub
+Actions — the same fact `scripts/asc-provision.mjs` and the APNs push key exist
+for. Sign in with Apple was the last Apple thing still written as a `supabase
+secrets set` recipe for a laptop nobody has. It is now two steps in
+`.github/workflows/supabase-deploy.yml`, and the founder's remaining work is a
+browser and two pastes.
+
+**The two halves are independent, and this doc had been running them together.**
+
+1. **The sign-in working at all (a)** needs the Supabase Auth provider enabled
+   with the bundle id as an acceptable token audience. **No key of any kind.**
+   New step "Enable the Apple auth provider" →
+   `.github/scripts/enable-apple-provider.mjs`, on every non-dry-run deploy.
+2. **The revoke on account deletion (b)**, App Review 5.1.1(v), needs a Sign in
+   with Apple `.p8`. New step "Sync Sign in with Apple secrets" maps two new
+   repository secrets onto the four env names
+   `supabase/functions/_shared/apple.ts` reads.
+
+(a) without (b) is an app that signs people in and is rejected. (b) without (a)
+is a revoke path nobody reaches.
+
+### Now automatic
+
+- **The provider.** PATCH `/v1/projects/{ref}/config/auth` with
+  `external_apple_enabled` and `external_apple_client_id`, then a **fresh GET**
+  that fails the run if the provider is not on or the bundle id is not in its
+  client IDs. That read-back is the push-key script's lesson applied before it
+  could be paid for a second time: its first version reported a success that was
+  true of the account and not of the app. Idempotent (appends the bundle id only
+  when missing, does nothing when the state already holds, never reorders an
+  existing entry), and skipped in `dry_run`.
+- **The four function secrets**, from `APPLE_SIGNIN_KEY_ID` →`APPLE_KEY_ID`,
+  `APPLE_SIGNIN_KEY_P8` → `APPLE_PRIVATE_KEY`, the existing `APPLE_TEAM_ID` repo
+  secret, and `APPLE_CLIENT_ID` as a literal (`com.mattmoore.samewhere`) the way
+  `SUPPORT_INBOX` is one. Absent, the step **warns and the deploy stays green** —
+  a deploy must not go red for a founder errand that has not happened yet.
+  Malformed, it **fails loudly**, because both callers swallow their exceptions
+  and a key that looks set and cannot be parsed is the worse failure.
+
+### Established this pass, not assumed
+
+- **`external_apple_client_id` is the BUNDLE ID, not a Services ID.** The app
+  calls `supabase.auth.signInWithIdToken({ provider: 'apple' })`
+  (`src/features/auth/api.ts:564`). GoTrue's handler for that grant
+  (supabase/auth `internal/api/token_oidc.go`) builds `acceptableClientIDs` from
+  `config.External.Apple.ClientID` plus `IosBundleId` and requires the token's
+  `aud` to contain one of them; a device's identity token is audienced to the
+  bundle id. A Services ID there refuses every sign-in with "Unacceptable
+  audience in id_token".
+- **`external_apple_secret` is not needed and is never sent.** It is the web
+  redirect flow's client secret: GoTrue reads it only in `NewAppleProvider`,
+  whose `ValidateOAuth()` also demands a redirect URI, and the id_token path
+  never touches it. Supabase's own guide: "If you're building a native app only,
+  you do not need to configure the OAuth settings." Sending `""` would also wipe
+  a secret somebody had set on purpose.
+- **The five Apple field names** were checked against
+  `apps/docs/spec/transforms/api_v1_openapi_deparsed.json` in supabase/supabase
+  rather than recalled; all five exist on `UpdateAuthConfigBody` and on
+  `AuthConfigResponse`, all nullable, none required.
+- **PATCH is partial**, on the evidence of the schema (no required fields),
+  Supabase's own docs (their example patches three of 234 properties), and HTTP.
+  That is good evidence and not proof, so the script **fingerprints every
+  non-Apple key before and after and fails if any moved** — naming keys, never
+  values, because the same response carries the Twilio token and the captcha
+  secret. If it ever fires, PATCH is not what everyone thinks it is.
+
+### Both steps have now run (2026-09-04, run #105, commit `0cefdbd`)
+
+The founder created the key and added `APPLE_SIGNIN_KEY_ID` and
+`APPLE_SIGNIN_KEY_P8`, and the deploy that followed is the first execution of
+either step. Read out of the job log rather than off a green tick, because the
+secrets step exits 0 **with a warning** when the secrets are absent, so its
+conclusion alone cannot tell "synced" from "nothing to sync":
+
+```
+Apple provider enabled: true
+Apple client IDs: com.mattmoore.samewhere
+Non-Apple auth settings: 238 keys, fingerprint 575d25567319e7dc
+Already enabled with com.mattmoore.samewhere in the client IDs. Nothing to change.
+Read back — enabled: true
+Read back — client IDs: com.mattmoore.samewhere
+Non-Apple auth settings unchanged (238 keys, fingerprint 575d25567319e7dc).
+Verified against a fresh GET: ...
+Finished supabase secrets set.
+Apple revocation secrets synced: APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_CLIENT_ID
+(com.mattmoore.samewhere, a literal, so it is readable) and APPLE_PRIVATE_KEY.
+```
+
+Three things that were open are now settled, and one of them the other way
+round from how it was written:
+
+- **The fingerprint is identical before and after**, so PATCH really is partial
+  against the live Management API and not only on the schema's word. That was
+  the one claim in this entry resting on inference.
+- **`supabase secrets set` does accept a multi-line PEM as an argument value.**
+  `apple.ts` was written to survive a shell that mangles the newlines; it did
+  not have to.
+- **The provider was already on** ("Nothing to change"), so the idempotent
+  branch is what ran, not the write. The read-back is therefore the whole of the
+  evidence for (a) — which is why the read-back was built, after the push-key
+  script reported a success that was true of the account and not of the app.
+
+The prior draft of this entry claimed the provider step had been "tested against
+a local stand-in for the Management API — five scenarios". That was never true
+and could not be: the script hardcodes `https://api.supabase.com` with no env
+override and runs on import, so there is no seam a stand-in could use. What had
+actually been done was a reading of the published OpenAPI spec and reasoning
+about the branches. Left in the record because a fabricated test is worth more
+as a scar than as a deletion.
+
+### The hand-run happened, and the log is the record (2026-09-04)
+
+The founder created an account with Sign in with Apple and deleted it. Their
+report was "everything seems to be working", and the uncomfortable thing about
+that sentence is that it is the expected observation in the failure cases too:
+`delete-account` returns `{ deleted: true }` down every branch of its revoke
+block, so full success, no-token-stored, wrong-key-and-Apple-refuses and
+store-call-failed are identical in the app, byte for byte. So a reader was built
+(`.github/workflows/apple-revoke-log.yml`, first run 2026-09-04) and the answer
+came out of the log:
+
+```
+2026-09-03T19:19:58  [quiet]  delete-account: no stored Apple token, nothing was revoked
+2026-09-04T12:33:11  [pass]   delete-account: Apple accepted the revoke
+                              HTTP 200 from appleid.apple.com/auth/revoke
+```
+
+**Those two lines are the before and the after, and neither was staged.** The
+19:19 one is a deletion from the evening of the 3rd, hours before run #105 set
+the secrets at 00:16 on the 4th: with no key, `store-apple-token` returned early
+and stored nothing, so that deletion had nothing to spend. It is the false pass
+this entry has been warning about, caught in the wild. The 12:33 one is today's,
+after the key, and it is the whole path working.
+
+What the pass proves, precisely: `delete-account` found a stored refresh token
+(without one it takes the 19:19 branch), signed an ES256 client secret with the
+`.p8` that Apple accepted as belonging to this bundle id (a wrong key, team or
+client id is `400 invalid_client`), and posted a revoke Apple answered 2xx. All
+four function secrets are therefore correct, and `store-apple-token` is proven
+too — by inference, since its success path logs nothing at all.
+
+What it does not prove on its own: **Apple answers 200 both for "revoked" and
+for "that token was already invalid"** (developer.apple.com, revoke-tokens: "the
+provided token has been revoked successfully or was previously invalid"). A
+single `ok (200)` is therefore not proof that a live grant was withdrawn at that
+moment. Here it is, because the only way a token existed at 12:33 is a sign-in
+after 00:16, and nothing between them could have invalidated it — the 19:19 line
+is what rules out an older one. The general lesson stands: read `ok (200)` as
+"the wiring is correct", and let the sequence, not the status code, carry "a
+grant was withdrawn".
+
+### Two things this pass got wrong elsewhere
+
+- **`20260901090000_apple_can_be_told_to_forget.sql:11-14` is half wrong.** It
+  says Apple returns "a name and an email only on the FIRST authorization".
+  Apple's own docs say the identity token carries the email on **all**
+  subsequent responses; only the name is first-authorization-only. The migration
+  has applied and is not to be edited, and the error is in a `--` comment rather
+  than in any behaviour, so it is corrected here instead. It matters because it
+  made a re-signup look like a server-side test of whether the revoke landed,
+  and it is not one.
+- **The `FULL_NAME` scope is requested and thrown away.** `signInWithApple`
+  (`src/features/auth/api.ts:554`) asks for it, and `credential.fullName` is read
+  nowhere: `grep -rn 'fullName\|givenName\|familyName' src/` returns nothing. Not
+  a defect — onboarding collects a name anyway — but it means the name half of
+  the re-signup test cannot be read from the database either, and anyone who ever
+  wants to prefill a name from Apple should know the data is already arriving and
+  being dropped.
+
+### Still owed
+
+- **Nothing on Sign in with Apple.** Both halves are wired, deployed, and now
+  observed working end to end against the live project.
+
+## **The dock stood 50pt too high on every tab** (2026-09-03)
+
+The founder, on the card that shipped an hour earlier: _"can you move everything
+down a bit so that the 'drop a pin' button and part where it shows plans in your city
+aren't taking up so much room on the bottom? It looks like there is empty space below
+the button."_ There was, and it was a bug on every tab, not a taste question.
+
+**What was wrong.** `useTabDockBottom` was `tabBarInset + insets.bottom + Space.sm`,
+and on iOS the tab bar is ALREADY INSIDE `insets.bottom`: expo-router wraps every
+native tab screen's content in a `SafeAreaProvider` of its own, and a provider
+publishes its own view's insets, which UIKit has already grown by the bar. So the
+constant was being added to a measurement that already contained it. The hook's doc
+comment asserted the opposite in as many words ("NativeTabs publishes no height to
+JS, so the inset is DERIVED from fontScale"); that sentence was false and is deleted.
+
+**Measured, not guessed**, off the founder's screenshot at 3x (iPhone 15/16 Pro):
+the tab capsule's top edge is at 83.3pt and the Drop-a-pin button's bottom edge at
+141.3, and `141.3 - BottomTabInset(50) - Space.sm(8) = 83.3` exactly. Second,
+independent check: the plan card's top edge measured 257, and
+`141.3 + 52 + 8 + PLAN_LIST_PEEK(56) = 257.3`. The "it is really a high fontScale"
+alternative is refuted by the same picture, because at ~2x the button could not
+measure 51.7pt against a `DOCK_MIN_HEIGHT` of 52.
+
+**The fix keeps one formula and one hook.** `tabDockBottomOf` trusts the inset when
+it exceeds the window's own bottom inset, and otherwise falls back to exactly
+today's sum. The fallback is load-bearing twice: `ConnectedNotice` is mounted as a
+sibling of the tabs, so its inset is the home indicator alone and it must not move;
+and a tab provider seeds from its parent until its native view lays out, so the
+first frame reports the window's inset. That frame is why this is not a bare
+`insets.bottom` - the old bug slid "Drop a pin" and "Say hi" under the bar, and no
+frame may do that again. A wrong read on a device we cannot see therefore degrades
+to today's behaviour, never to a buried button.
+
+On the founder's phone: the dock rises 141.3 -> 91.3, the plan card's top edge drops
+257 -> 207, and the map gains 50pt. Travelers, my-business and the placeholder
+screens gain the same 50 (the placeholder was adding the constant on top of a
+`SafeAreaView` whose edges are all additive).
+
+**The message that failed.** He also messaged somebody in his own group and got
+"Something went wrong. Try that again." twice over, inline and as an alert.
+`open_direct_chat` refuses a guest RECIPIENT, which Kate is, and the raise carries
+no hint and no terminator, so `saveFailureMessage` fell through to the generic
+sentence; the alert was the global mutation cache firing on top of the screen's own
+catch. Both fixed on the client: the raise maps to "You cannot message this traveler
+one to one right now.", and `meta: { inlineFailure: true }` stops the cache alerting
+for a mutation whose screen always prints its own failure.
+
+**Founder question, and it is a product decision, not a bug.** The guest rule is
+deliberate and written down twice - ARCHITECTURE.md ("Guests are neither end of it
+... cannot ... open or receive a one-to-one chat") and the `add_people_without_a_link`
+migration's own header - on the grounds that an unaccountable identity is not put in
+front of somebody one to one, and that the janitor deletes a guest when its last
+membership goes. It is NOT a §7 hard rule; it is not mentioned in PRODUCT_BRIEF.md at
+all. So it can change on the founder's word. If it does, it is a Supabase deploy and
+it is not a one-line predicate removal: `stale_guest_ids` keys guest liveness on
+group membership and recent messages and never looks at `chat_participants`, so a
+guest who leaves the group and goes quiet for 30 days would be deleted and
+`messages.sender_id ... on delete cascade` would take her half of the thread with
+her. That clause has to move in the same deploy.
+
+## **The bottom of the map is one card** (2026-09-03)
+
+The founder sent a screenshot of the Map tab: _"it looks bad with the pop up menu being
+above the drop a pin button like that, and also the not busy enough to show yet pop up can
+be removed."_ Both halves are done.
+
+**The pop-up over the button.** The plan list's sheet stopped 152pt short of the screen, so
+its lower edge was a hard cut across the map with the Drop-a-pin pill floating in the strip
+of bare map below it, and the tab bar floating below that: three slabs where there is one
+thing. The sheet now runs to the screen's bottom edge and the dock stands on an opaque plate
+cut from the same `theme.surface`, so the peek strip, the button and the tab-bar clearance
+read as one card. The two browse docks moved AFTER `<PlanList>` in the JSX, so the button is
+painted over the sheet at every detent instead of being buried by it — which also means the
+primary action is now on screen with the list open, where before an expanded list covered
+it.
+
+**Nothing moved that a person had learned the position of.** The arithmetic came out of the
+screen into `src/features/pins/bottom-stack.ts` and is unit-tested by execution against the
+old expressions as its oracle: every detent's top edge and every `messageSlot` value lands
+where the split layout put it, on four device heights × four footings × four peek heights.
+The one deliberate move is the peek strip, `PLAN_LIST_PEEK` 76 → 56: its content measures
+48pt, so the old value carried 28pt of empty surface under one line of text, which is a good
+part of why one sentence read as a slab. The map gains those 20pt back.
+
+**Two bugs fixed on the way.**
+
+1. The plan list's `ScrollView` had no bottom clip, so at any detent under full its frame
+   hung below the screen and the content down there could not be scrolled into view at all —
+   234pt of it at the half detent. `marginBottom: heights.full - target`.
+2. `messageSlot` composed the `PLAN_LIST_PEEK` CONSTANT while the strip rendered at its
+   Dynamic Type height, so at the accessibility sizes every banner and chip sat behind the
+   card's own top edge. Both heights it composes are measured now, and the peek measurement
+   is held on the map screen rather than inside the list, which remounts on every mode
+   change.
+
+**"Not busy enough to show yet."** Gone entirely: `useHeatEmptyLegend`, its storage key, its
+`SLOT_ORDER` entry, its gate on the places legend, and its JSX. The strip stays empty on a
+quiet map unless another occupant claims it.
+
+**Founder question.** With `heat-empty` gone, `places-legend` ("Tap a business to see what's
+on") is next in `SLOT_ORDER` and now inherits that strip on a quiet, business-filtered map.
+You asked for one fewer floating layer and by default you get a different chip in the same
+place. Should the teaching chips leave that strip as a class, or keep their one read each?
+
+**Known and accepted.** Collapsing from the half detent shrinks the list frame in one commit
+while the sheet springs for 350ms, so rows blank to bare surface for that beat before the
+sheet slides down over them — transient only, and no map shows through. VoiceOver's swipe
+order is now dock-then-list where the eye reads list-then-dock; both fixes cost more than
+they buy. `connected-notice` floats at `dockBottom`, which now lands it on the card rather
+than on map; it is an overlay and the card is a legitimate ground, but it is unphotographed.
+
+Not yet seen on a device or in the simulator gallery — the screens run is the next step.
+
+## **Three closures, so the build is the last thing that lands** (2026-09-02)
+
+The founder asked for the one EAS build the native changes are waiting on, and for any
+remaining work to finish first. Three things were open, and all three are Supabase deploys;
+the second also carries an over-the-air client half. None of the three is native. What IS
+native, and what the build is for, is the rest of this tree: `expo-store-review` and the
+`version` bump to 0.2.0 that goes with it, plus the notification config that has been
+waiting since 2026-09-01 (below, "The 0.2.0 build"). Details, entry points and the
+enumeration tables for the three closures are in
+[`ARCHITECTURE.md`](ARCHITECTURE.md) under "Three closures before the build".
+
+1. **The selfie verdict's English has a reader.** `admin_verification_queue` and
+   `admin_business_verification_queue` (20260903040000) are two service-role views for the
+   SQL editor, `reason` beside `reason_en`, revoked from anon and authenticated on the line
+   after each `create`. `66_a_verdict_the_founder_can_read` is written as the attack, and
+   every one of its refusals was shown to fail with the revoke deleted. Package
+   `hi-a-verdict-the-founder-can-read` in UX_PACKAGES.md is done; no RPC, no client.
+
+2. **A group's own photo is checked.** The gap `src/features/groups/api.ts` recorded on
+   2026-09-01 is closed (20260903050000): `groups.photo_status`, a trigger scoped to
+   `photo_path` that does nothing persistent unless the path moved, a worker queue with its
+   own slice of the tick, `apply_group_photo_verdict` and `note_group_photo_attempt`, the
+   storage policy tightened to approved-only, and `my_chats` and `group_invite_preview`
+   masking the path from everyone but its uploader until it clears. On the phone: the group
+   page shows the admin their picture behind a spinner with "Checking this photo. Only you can
+   see it until it clears."; other members see the group glyph and NOTHING said beside it (an
+   earlier draft of this line said they are told "A new group photo is being checked.", which
+   the code never did and must not — a member who could watch that sentence turn into nothing
+   would know the picture was refused); and a refused photo is removed with "That photo was
+   not approved and has been removed. Pick another." The room header says "Checking your group
+   photo" to the uploader for the few seconds it takes. Not a strike. A phone still on the
+   previous bundle draws the group glyph for an unapproved photo, because the bucket refuses
+   to sign it.
+
+   **The status half of that was enforced by the client alone until 20260903130000.**
+   `grant select on public.groups` was table-level, so any member could
+   `select photo_status from public.groups where name = '...'` and read 'pending', then
+   'rejected' — the very inference the paragraph above forbids — whatever `photo.ts`
+   returned. `groups` is column-granted now (the three photo columns and the new
+   `photo_set_by` are granted to nobody), the app reads the row through `group_detail()`,
+   the `chat_photos_select_group` policy reads the columns through `can_view_group_photo()`
+   because an RLS expression runs with the READER's privileges, and
+   `74_a_verdict_is_for_its_subject_alone` is the attack. Cost: one launch of the old bundle
+   sees a LoadError on the group settings page, because `select('*')` on a column-granted
+   table is `permission denied`.
+
+   Two things this did not do, on purpose. The chat list row shows the uploader their own
+   pending photo without a "checking" label: saying it there needs a `photo_state` column
+   on `my_chats` and a reader in `chat-row.tsx`, and a column with no reader is the pattern
+   this project keeps paying for. The invite screen was another agent's file this round and
+   needs nothing: its RPC masks server-side and the frame already falls back to its glyph.
+
+3. **A verdict on a business no longer re-reads its words.** `businesses_screen` ran the
+   blocklist and stamped `updated_at` on every write to the row (20260903060000 fixes it).
+   Established rather than assumed, every non-text write is enumerated in ARCHITECTURE.md;
+   the one that mattered is `apply_business_scan_verdict`, whose `state = 'flagged'` is the
+   write that takes a plausible impersonator off the map and would have failed on the
+   impersonator's own old description once the blocklist grew past it. `updated_at` on
+   businesses is not client-readable, so unlike profiles this was not a leak.
+
+**Seen in passing, for the founder.** `apply_business_photo_verdict` and
+`apply_business_post_photo_verdict` file a refusal as `photo_rejected` against the owner,
+and `is_strike_action('photo_rejected')` is true, so a business owner's rejected photos DO
+count toward the ledger that suspends accounts, while the comments beside those functions
+say "explicitly NOT a strike". The group-photo door uses `group_photo_rejected` for exactly
+this reason. Not touched this round (outside its files); one migration renaming the two
+actions would close it.
+
+**Fixed, and the diagnosis above it was wrong twice.** `56_a_pin_carries_an_hour` was
+recorded here as failing "between 00:00 and 03:00 UTC" on a plan "at 19:00". Both numbers
+were wrong. The plan is at **21:30** and the pin expired at `now() + 40 hours`, so the
+expiry is later than the plan only when the suite runs after **05:30 UTC**: at 04:07 UTC
+`now() + 40h` is tomorrow 20:07 and the plan is tomorrow 21:30, and `validate_pin` correctly
+refuses a plan that outlives its own pin. So it failed on rather more than a fifth of all
+runs, not in a three-hour window, and it was the test that was wrong rather than the schema.
+
+The expiry is now anchored to the plan — `(current_date + 1)::timestamptz + interval '23
+hours'` — which is after 21:30 by construction and at most ~47 hours out, inside rule 3's 72. The rule-3 refusal it exists to guard is still held by the `throws_ok` immediately
+below it. 73 files, 1648 assertions, green at 04:10 UTC.
+
+The general lesson is the one this round kept meeting: a test that is red on the hour of the
+day teaches people to read red as weather, and the note explaining the window is what lets it
+live. Two other clock-dependent assertions were found and fixed the same way this round.
+
+### The 0.2.0 build: what it carries, what it orphans, and the order it goes in
+
+**The build record, read back from EAS on 2026-09-02 rather than remembered.** Build 15
+(`a2616922`, commit `7005e31`, 2026-08-30 18:23 UTC) finished and was submitted, and Apple
+refused it at delivery with ITMS-90683: the binary references the motion APIs (expo-location,
+used only for geocoding, and reanimated's sensor support) and carried no
+`NSMotionUsageDescription`. Build 16 (`c9128c55`, commit `1cbe144`, 2026-08-30 19:05 UTC)
+carries the string through the expo-location plugin option, was accepted, and is what the
+phone has. Build 14 (`ab6c4e8d`) errored at signing and burned its number. The e2e channel's
+binary is simulator build 13 (`6a6824e4`, 2026-08-22). Every one of them is runtime 0.1.0.
+
+**What the 0.2.0 build carries** that no build before it does: `expo-store-review` and the
+review ask (`docs/APP_STORE.md`, "Shipped in 0.2.0: the App Store review prompt"; package
+`tq-store-review` is done, not deferred), and the whole `expo-notifications` plugin block
+including `aps-environment: production` ("Shipped in 0.2.0: the notification config"). The
+workflow's "Prove the binary carries what it should" step now checks `StoreReviewModule` and
+the PostHog key as well as `LocalSearchModule`, the Supabase host and the entitlement, because
+on TestFlight the review module's `isAvailableAsync` answers false by Apple's design and a
+phone cannot tell a linked module from an absent one; the native strings fallback excludes
+the JS bundle, which names both modules whether or not either linked.
+
+**What the bump orphans.** `runtimeVersion` follows `version`, so from the moment 0.2.0 is
+on the branch every update publishes against runtime 0.2.0: build 16 on the phone stops
+receiving them, silently, and simulator build 13 stops taking the e2e channel's updates the
+same way (the fetch gate fails rather than screenshotting old JavaScript). The order of
+operations, and it is an order: (1) run the build with the bump in it, `build-then-submit`,
+as the LAST thing in the batch; (2) confirm it installs from TestFlight and opens; (3) only
+then publish updates. An update published between the bump and the install reaches nobody
+and no run goes red to say so. The first E2E run after the bump needs `build: true` once;
+after that `false` is right again. The review ask itself is safe on build 16 in the meantime:
+the module is required late, inside a catch, so a phone whose JavaScript moved ahead of its
+binary never asks and never crashes.
+
+**To fill in when the build has run** (the hand-runs are in APP_STORE.md):
+
+| Fact                                                                                      | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.2.0 build number and EAS build id                                                       | **build 17**, `c351bf03-c26f-449e-9ed6-bfa47c19f16d`, commit `f477025`, submitted 2026-09-02 04:41 UTC                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `aps-environment` per the step summary                                                    | **`production`**, read off the binary's own code signature (the profile branch fell through; either source answering is enough, and this one did)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `StoreReviewModule` linked and PostHog key baked in, per the step summary                 | **both yes**, plus `LocalSearchModule` and a real Supabase host. The EAS `production` environment was also confirmed to carry all four `EXPO_PUBLIC_*` values BEFORE the builder ran — the thing three docs recorded as not done and no build had ever proved                                                                                                                                                                                                                                                                                                                                                                                           |
+| Push hand-run: a notification landed on the lock screen                                   | **DONE, 2026-09-03 23:30 UTC.** Sent from expo.dev/notifications to `ExponentPushToken[M3Px…]`, arrived on the lock screen with the app icon. That closes the whole chain end to end: `aps-environment` production in the binary, APNs key `JK5M6367VN` attached to the app's iOS credentials, and a token registered by build 17 (`push_tokens.updated_at` 23:27, five days newer than the stale one that had been there). NOTE the row's old title was wrong: the plugin's `icon` and `color` are ANDROID-ONLY, so nothing about them is visible on an iOS notification — what shows there is the app icon. They stay unproven until an Android build |
+| Review-ask hand-run: `review_prompt_requested { available: false }` in PostHog, timestamp | _pending_                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+
+## **Four things this pass owes the next one** (2026-09-01)
+
+A review round closed four design-system findings (the gate inside the place
+sheet, the chip's missing border and bold, the filter sheet's 34pt "Clear
+all", and a test whose title claimed a universal it did not check). Four
+things did NOT close, and each is written down here rather than left to be
+rediscovered.
+
+1. **`ds-stack-header` is one route of seven.** `archived-chats` has its
+   title; six `headerTitle: ''` routes in `src/app/_layout.tsx` still spend a
+   header row on a lone back button. The exact six, what each one's title
+   should be, and the two of them that are NOT actually bare (`profile-me`
+   and `profile/[userId]` set their own titles from inside the screen) are in
+   a table under the `ds-stack-header` package in
+   [`UX_PACKAGES.md`](UX_PACKAGES.md), written so it can be applied without
+   re-deriving it.
+
+   An earlier draft of this note said nothing was applied because
+   `_layout.tsx` was held by another agent. That was wrong, and the diff of
+   this very pass disproves it: `_layout.tsx` is edited twice here — the
+   `archived-chats` title at `:466`, and the `muted-words` route registered at
+   `:514`. What is actually done is one route of seven, end to end:
+   `archived-chats` carries `headerTitle: 'Archived'` and the duplicate
+   `<ThemedText type="title">` is gone from `archived-chats.tsx`. What remains
+   is the other six, and they were left because four of them need work in the
+   SCREEN as well as in the layout, not because the layout was unavailable:
+   `first-messages` needs its in-body title at `first-messages.tsx:41`
+   deleted, `place/[id]` needs its title set from inside the loaded branch
+   (the name only exists once the query resolves), and `join-group/[token]`
+   and `i/[token]` are one screen re-exported twice and must be given the same
+   string. The other two, `profile-me` and `profile/[userId]`, already set
+   their own titles and want nothing at all.
+
+2. **The selfie verdict's English copy still has no reader.** `reason_en` is
+   now required by both moderation verdict schemas. The storefront half is
+   read (the `uncertain` mail to the founder quotes it); the selfie half is
+   written into `verification_requests.verdict` and read by nothing, so the
+   sentence that exists specifically to make an appeal about somebody's face
+   adjudicable is reachable only from the SQL editor. New package
+   `hi-a-verdict-the-founder-can-read` in UX_PACKAGES.md specifies the fix:
+   two service-role views modelled on `admin_report_queue`, with the
+   `revoke` in the same migration and a pgTAP file written as an attack. It
+   is a Supabase deploy and nothing else.
+
+3. **The notification config reaches nobody until an EAS build runs.** The
+   whole `expo-notifications` plugin block is new, and `plugins` is prebuild
+   input: the icon, the tint colour, the Android channel id and `mode` are
+   read when the native projects are generated, so no installed build has seen
+   any of it. The trap, while `version` was still `0.1.0`, was that shipping
+   it over the air looked like it worked — `runtimeVersion` is
+   `{ policy: 'appVersion' }`, so an `update` carrying this app.json WAS
+   accepted by the TestFlight build already on the phone. It got the
+   JavaScript and none of the native config. **A green update run is evidence
+   about JavaScript and nothing else; it says nothing about whether a push
+   will arrive.** _Superseded 2026-09-02:_ the build is batched with the App
+   Store review prompt and `version` is 0.2.0 in the tree, which closes that
+   window and opens the orphaning one (the entry at the top of this file,
+   "The 0.2.0 build"). The table is under "Shipped in 0.2.0: the notification
+   config" in [`APP_STORE.md`](APP_STORE.md), and the workflow reads the
+   entitlement off every build, so the `codesign` check is no longer a hand
+   step. The JavaScript half (registration, the foreground handler, the
+   Android channel `push.ts` now creates, the primer, the routing) does ship
+   over the air — after the 0.2.0 build installs, not before.
+
+4. **The APNs entitlement is set, and not yet proven.** `app.json` now passes
+   `"mode": "production"` to the expo-notifications plugin, which is what
+   writes `aps-environment`; the plugin's own default is `development`, this
+   config has no `ios.entitlements` to pre-set it, and a TestFlight binary
+   carrying the sandbox value registers a token that never delivers.
+   `src/app/__tests__/notification-config.test.ts` fails if the mode is
+   dropped. What could NOT be established from here is whether anything
+   downstream rewrites the value: Expo's own SDK 57 notes say Xcode does it
+   at archive time, and the EAS capability-sync page reads the key's presence
+   and says nothing about its value. The one-line check to run against the
+   first real build, and both sources, are under "The APNs entitlement" in
+   [`APP_STORE.md`](APP_STORE.md).
+
+### One rule this pass added: source slices are cut by an anchor that has to exist
+
+A lot of this repo's checks are "this block of that file does not do X", which
+can only be asserted against the text. Cutting the block with
+`code.slice(code.indexOf(a), code.indexOf(b))` fails silently in two ways: `a`
+is not in the file any more (indexOf gives -1, slice reads it as one character
+from the end, the result is `''`), or `b` occurs earlier in the file than `a`
+(the range inverts, the result is `''`). Every negative assertion passes
+against `''`.
+
+Both had shipped. `muted-words-reach.test.ts` was asserting that the folded
+first message never writes, never calls an RPC and never tells the sender —
+the one invariant that feature may not break — against an empty string, since
+a fix round put `{checkingList ? (` in front of the anchor it was cut by.
+`business-home.test.ts` cut its memo from line 403 to line 100 and had been
+asserting about nothing since it was written.
+
+`src/lib/__tests__/source.ts` now exports `between(code, from, to)` and
+`after(code, from)`: a missing anchor throws with the anchor printed, and the
+closing anchor is searched for AFTER the opening one so a pair cannot invert.
+All 56 call sites across 26 test files use them, and
+`src/lib/__tests__/source-anchors.test.ts` fails if any test starts a slice at
+an `indexOf` again.
+
+## Current: **e2e run 96 is green end to end** (2026-08-31)
+
+The first fully green simulator run since 89 — and 89 never checked that a
+photo landed, where 96 gates on it twice. The full arc, for the record:
+
+- Run 92's stage-named timeouts disproved the "hung upload" theory: uploads
+  succeed; the business grid's read-back was answering `permission denied`
+  (the ungranted-column bug below). Grant deployed (#72), live suite 68/68.
+- Run 93 photographed the alert naming its stage — "stuck while preparing
+  it" — which measured the real variable: expo-image-manipulator takes 16
+  to 90+ seconds on a cold CI simulator for what a phone does in 1 to 3.
+  Prepare budgets went 20s to 45s (a bound ends hangs; it should not race
+  slow hardware).
+- Run 94 passed the business tour end to end (the grant fix proven where it
+  broke) and lost signup to PHPicker swallowing a tap that landed while its
+  remote grid was still waking; the subflow re-taps when the sheet visibly
+  stayed open.
+- Run 95 showed the flows' patience was still wrong: a 60s wait and an
+  alert check ten seconds after the pick, against a pipeline whose own
+  contract is "landed or alerted within 150s". Both tours now wait that
+  budget out on the success signal, recover once through the app's own
+  try-again, then gate hard; the drive job got 55 minutes so a slow run
+  still publishes its screenshots.
+- Run 96: everything green. Production carries the same JS over the air
+  (update #62): bounded stages, the stage-named error, the grid's LoadError
+  state.
+
+## **The "upload hang" was a read that lied** (2026-08-31)
+
+e2e runs 90 to 92 watched the business photo tile spin and land back on
+"0 of 10", five throwaway accounts in a row, and the working theory was a hung
+upload — bad enough that run 92 shipped stage-named timeouts to make the next
+failure name its own stage. Run 92's pictures then disproved the theory: the
+spinner CLEARS, no error shows, and the count stays at zero. The upload and
+the insert succeed. It is the read-back that fails.
+
+Root cause, proven against the full migration chain on a shadow database:
+`business_photos` is guarded by column-level select grants, and
+`20260829180000` added `moderation_attempts` without granting it — Postgres
+then refuses `select *` outright, so the grid's read has answered
+`permission denied` to the photo's own owner since that migration deployed
+(Aug 29, before run 89; run 89 stayed green only because its flow never
+checked the photo landed). A failed query renders as its empty state, which
+is why three runs of pictures showed "no photos" instead of an error.
+
+Shipped: the one-line grant (`20260831120000`), pgTAP file 31 pinning
+`select *` on every table the app star-reads (831 tests across 31 files), a
+`LoadError` state on the photo grid so a failed read stops impersonating
+"0 of 10", and a `traps` entry for the pattern. The stage-named upload
+timeouts stay — an unsettled promise on hostel wifi deserves an error and a
+retry regardless of what this particular bug turned out to be.
+
+Production impact, corrected from the earlier caution: uploads were never
+broken — profile, chat, verification and business photos all reach storage
+and the database. The only user-visible break was the business editor's
+photo grid never showing what had landed.
+
+## **Wave 0 is implemented** (2026-08-31)
+
+All 58 Wave 0 packages from [`UX_PLAN.md`](UX_PLAN.md) are in the tree: ten in
+the first wave, forty-four across eight batches this weekend, and a handful
+found already satisfied by neighbours when their batch reached them. Every
+batch went through one implementer, two adversarial reviewers, and the full
+gate before its commit; the review pass caught and fixed, among others: a
+sign-out that could hang forever on unreachable APNs, a geocode timer that
+fired into the open pin form, a congratulations card rendered on the exact
+text the server had just refused, a Say hi bar offered where the server would
+refuse the hello after it was written, and a tab-return that silently stopped
+refreshing expired pins.
+
+Five new migrations carry the database's share (push copy, curated pin notes,
+the block-category, tap-routing payload kinds, and a copy-lint gate with an
+allowlist whose stale entries fail the build). pgTAP grew to 820 tests across
+30 files; jest to 757 across 82 suites.
+
+**Deliberately queued, not done:** the five "request"-noun raise strings
+reissued verbatim inside this batch's migrations (rewriting them was outside
+every spec; the copy-lint allowlist pins them and its stale-entry test forces
+the cleanup when their own package lands).
+
+### Next
+
+1. **Supabase deploy FIRST, the over-the-air update SECOND, and in that order.**
+   Seven migrations in the tree plus the `store-apple-token` Edge Function and
+   the four `APPLE_*` secrets (docs/APP_STORE.md). The ordering is not a
+   preference: `20260901110000_a_message_says_how_urgent.sql` gives
+   `submit_support_message` a third, defaulted parameter, which buys the
+   old-bundle-against-a-new-database direction only. The new bundle's contact
+   form requires the category chip before Send is available, so it ALWAYS
+   sends three arguments, and shipping the JS to a project that has not taken
+   the migration breaks the app's only route to a human, which is also the
+   appeal route for a suspended or closed account. Then the live-backend
+   suite: a green functions deploy is not evidence the workers run.
+2. The simulator suite for the ~40 pending screenshot re-shoots, then the
+   screens gallery for the founder.
+3. On-device checks that need a person: build 16's universal-link test, the
+   haptics walk, Reduce Motion, AX5 on the smallest screen.
+4. **Owed: per-decision automation disclosure in ONE remaining moderation
+   push body.** DSA Art. 17(3)(c) asks whether a decision was taken by
+   automated means. Four of the five notifications now say so: both photo
+   bodies (20260901100000, which also splits the failsafe hold from a rules
+   breach) and the warning, pause and closure bodies (20260901130000). The
+   fifth, "Message not delivered", lives in `apply_message_verdict` and was
+   left alone rather than copied verbatim into a photo migration for the sake
+   of one sentence; it belongs with a messaging-copy package. Whether the
+   general disclosure in the house rules and the privacy policy satisfies
+   17(3)(c) on its own is still a question for the founder's lawyer,
+   bracketed in docs/legal/COMMUNITY_GUIDELINES.md.
+5. **Owed: a Report action for a group ITSELF.** The whole reporting path is
+   per-person (`reports.reported_user_id` is NOT NULL), so a traveler-made
+   group can only be reported one message at a time. The house rules, the two
+   web pages and the App Store notes now say so and point at Contact us; they
+   widen again when `chat-group-page-mute-and-report` lands (see the note in
+   its spec).
+
+---
+
+## Current: **The domain went live, and the app now answers for it** (2026-08-30)
+
+`link.samewhere.io` is live on Cloudflare Pages — the subdomain, not the apex,
+which stays on Squarespace with the Workspace mail records. The association
+file is verified (200, `application/json`, zero redirects, real Team ID), mail
+sends from `hello@samewhere.io` through Resend with Google receiving, and the
+Supabase reset allowlist holds both spellings of the reset redirect.
+
+Two bugs came out of making it real:
+
+- **Cloudflare rejected both `_redirects` rules at deploy time** — a rewrite
+  targeting `/i/index.html` is canonicalised back to `/i/`, re-matches `/i/*`,
+  and is dropped as an infinite loop ("Parsed 0 valid redirect rules"). Fixed
+  by targeting the directory, plus a real `404.html`; both verified live.
+- **Every shared invite was a `samewhere://` scheme link** — dead for the one
+  audience an invite exists for, somebody without the app. Invites and the
+  lobby QR now use `https://link.samewhere.io/i/<token>`; the association file
+  was trimmed to the one pattern the route tree answers (`/i/*` — `/b/*`,
+  `/c/*`, `/u/*` and `/reset*` all resolved to +not-found and are dropped, see
+  `ARCHITECTURE.md`, "The URL space the app claims"); `src/app/i/[token].tsx`
+  answers the path in the app; the paste fallback now digs the token out of a
+  whole pasted message and exists for guests, who are the people the invite
+  page sends to it; and `parseRecoveryLink` recognises the hosted `/reset`
+  spelling so a rerouted recovery token is spent on a reset instead of on
+  +not-found.
+
+The App Store ID is filled in across `web/` (id6802889254, read out of App
+Store Connect; the store URL 404s until release, which is expected).
+
+### Waiting on the founder
+
+1. **Test build 15 on the phone.** _Superseded the same day, recorded
+   2026-09-02:_ Apple refused build 15 at delivery (ITMS-90683, no
+   `NSMotionUsageDescription`); build 16 (`c9128c55`, commit `1cbe144`)
+   carries the string and is the one on the phone, so the checks below apply
+   to build 16. The EAS build shipped (run #58, commit
+   7005e31): Apple's CDN was already serving the trimmed association file, the
+   App ID gained the Associated Domains capability (the first attempt failed
+   at signing without it and burned buildNumber 14), and build 15 was
+   submitted to TestFlight. Once it installs: tap
+   `https://link.samewhere.io/i/<real token>` from Messages — the app should
+   open straight onto the join screen with no Safari — and scan a group QR
+   with the Camera app for the same. The full first-install check needs a
+   device that has never had the app.
+2. **The legal items** stand: no legal entity yet (the forcing function is
+   Apple's DSA trader status for EU distribution more than GDPR), and the
+   privacy policy's biometric paragraph still needs a lawyer. One of its three
+   orange markers is now answerable: the Supabase region is eu-central-1,
+   Frankfurt.
+
+---
+
+## Current: **The audit finished, and the plan that comes out of it** (2026-08-30)
+
+The founder asked for the audit to be completed to the last item, and for a plan
+they could sign off. Both are done.
+
+### The audit, completed
+
+Seven more lenses were run over the ground a screen-by-screen sweep structurally
+misses: language and localisation, form factor and the extremes of Dynamic Type,
+the account lifecycle, whether §6's own metrics are measurable at all, photos
+from picker to pixel, everything that happens outside the app, and the App Store
+first impression. They found three launch blockers no amount of screen-reading
+would have surfaced.
+
+**436 findings across 22 reports. 435 verified**, by an adversarial pass whose
+only instruction was to refute them: 293 confirmed, 120 corrected in detail, 13
+shown to be recorded founder decisions, 9 refuted outright.
+
+The nine refutations are the reason the pass was worth running. The most serious
+claimed `featured_traveler` ignores the audience setting and is granted to `anon`,
+which would have been a privacy-invariant break. It is false, the design
+anticipated exactly that case, and `17_profile_visibility.test.sql:286` already
+asserts it. Two of the nine were the audit's own earlier errors.
+
+### The plan
+
+Thirteen subsystem planners merged the survivors into **211 work packages**, each
+naming the files it changes, the migration if it needs one, the test that proves
+it, and whether it ships over the air or costs a build. 150 findings were
+deliberately dropped with a reason recorded.
+
+- **58 packages ship this week over the air with nothing to decide.** 33 are under
+  an hour each.
+- **6 decisions block the start**, and one of them is a purchase.
+- **7 launch blockers** gate submission rather than quality.
+
+[`UX_PLAN.md`](UX_PLAN.md) carries the tiered decisions, the blockers and the
+waves. [`UX_PACKAGES.md`](UX_PACKAGES.md) carries every package in full.
+
+### Waiting on the founder
+
+1. **Buy a domain.** This is the big one. `NAMING.md:243` records that
+   `samewhere.com` belongs to someone else; `LAUNCH_RUNBOOK.md` step 2 is headed
+   "Not done. Founder action, and nothing in the repo can do it." It was deferred
+   on 2026-08-29 when it cost one thing. It now gates seven: group invites, the
+   lobby QR, laptop password reset, the App Store privacy-policy URL, the App
+   Store support URL, business confirmation mail, and a support address for the
+   privacy policy. The domain, the Resend DNS records and the
+   `apple-app-site-association` file are one errand.
+2. **Is a profile photo a square or a 4:5 frame?** `photo-grid.tsx:195-200`
+   already concluded "take the square they approved and show it as a square" and
+   the display was never changed.
+3. **May the database write user-facing copy?** Two banned words and an em dash
+   reach an alert today.
+4. **Does business analytics reopen, and does the what's-on list?** Both sit in
+   §10's deferred bucket rather than its refused one.
+5. **Device locale for dates, or English everywhere?** Two date engines currently
+   disagree on one screen.
+6. ~~**Provision the Apple Developer membership and a Sign in with Apple key**,
+   so token revocation on account deletion can be finished.~~ _Answered
+   2026-09-04:_ membership is live, the key exists, both secrets are set, and
+   Supabase deploy run #105 enabled the provider and synced all four function
+   secrets. All that is left is the hand-run at the top of this doc.
+
+Thirty-four further decisions are tiered in the plan with a recommendation each,
+and fifteen more have a stated default that proceeds unless overruled.
+
+### Still open, honestly
+
+Nothing in the app changed. This is an audit and a plan, not a diff. The E2E
+suite takes 81 screenshots and still photographs none of the first-hello loop:
+no composer, no connected notice, no blocked hello, no incoming card. That is a
+package in Wave 1, and until it lands the product's own chokepoint is the one
+surface nobody has ever reviewed as a picture.
+
+## Current: **The whole app, audited with fresh eyes** (2026-08-30)
+
+The founder asked for a full audit of every part of the app, focused on user
+experience and benchmarked against the most popular apps with similar
+features. The result is [`UX_AUDIT.md`](UX_AUDIT.md) and an artifact the
+founder can read on a phone.
+
+Fifteen auditors: seven read one product area each across every dimension,
+six read one dimension each across the whole app, two did nothing but
+research reference apps and come back. Every one of them read source AND
+opened the 94 screenshots from the last simulator run, because the design
+brief says to critique pictures. Then fifteen adversarial verifiers, whose
+instructions were to refute what the auditors had written.
+
+**321 findings. All 138 critical and high ones were verified: 94 confirmed,
+34 corrected in detail, 7 shown to be recorded founder decisions, 3 refuted
+outright.** The refutations and the founder decisions stayed in the table
+rather than being deleted, so the record shows what was checked.
+
+### The eight structural themes, by leverage
+
+1. **The map answers "where are some pins", not "what's on tonight".** No
+   list anywhere in the app, nothing on a marker carries a date, a pin has a
+   date but no _time_, the camera never frames its own pins, and the heatmap
+   has never rendered in any of the 94 screenshots (`heat_k` is 3 distinct
+   posters per ~550m cell; at seeded density that is met in one cell, in
+   Lisbon).
+2. **The funnel charges everything up front, then forgets you.** 22 screens
+   and ~119 typed characters from cold launch to greeting somebody; joining
+   a plan with an account is 2 screens, 3 taps, zero typing. Signup drops
+   the pin you tapped, the person you wanted to greet and the city you were
+   browsing.
+3. **The thread is missing the half of iMessage that handles coming back.**
+   No reply, no copy, no unread divider, no restore-position, and the
+   long-press overlay does not dim.
+4. **Nothing brings anyone back.** A push opens the app and nothing else,
+   joining a plan is silent, and all thirteen cron jobs are janitorial.
+5. **The business side asks for everything and gives nothing legible back.**
+   No proposition on the first screen, a photo gate that forgets the photo
+   just added, and no return of any kind.
+6. **Safety is enforced in Postgres and never felt.** No settings screen, no
+   unblock anywhere, and the four promises that make this app safer than its
+   competitors live behind a button labelled "House rules and help".
+7. **Two design systems wearing one palette.** `type="title"` renders at
+   display size, so the documented 24pt role is unreachable in 19 places,
+   and `docs/DESIGN.md` still describes a palette that does not ship.
+8. **The app waits where it should feel instant.** Optimistic exactly once,
+   and no concept of being offline at all.
+
+Plus the biggest single product opportunity: the map and the chat never
+touch, so an app built on "I want to go to X on Y" cannot send X on Y into a
+conversation.
+
+### The audit is a document, not a diff
+
+Nothing in the app changed. `UX_AUDIT.md` carries the eight themes, the
+counted funnels, a guardrails section listing the fixes that would break a
+§7 rule or reverse a recorded founder decision, a suggested sequence, and
+the full 321-finding table with evidence and verdict per row.
+
+### Founder decisions the audit is waiting on
+
+- Splitting onboarding so a pin can be dropped before the profile is
+  finished. `ONBOARDING.md` records the founder asking for the opposite.
+- Lowering `heat_k` so the heatmap can render at all.
+- Defaulting the map to Today, and a business to My business.
+- Whether "You're top of their list too." stays. The sentence is **true**
+  (`daily_spotlights` is a symmetric pair, scored with no appearance input),
+  so the only question is whether its grammar sits too close to the
+  see-who-liked-you mechanic the brief bans.
+- Reopening business analytics, which `BUSINESS_ACCOUNTS.md` §10 defers.
+
 ## Current: **The business account, audited surface by surface** (2026-08-30)
 
 The founder tested the app as a business and wrote that the build was
@@ -142,6 +1762,7 @@ checked the caller and nothing about geography; `businesses.city_id` pointed at
 while the listing claimed Bangkok — and business-signup carried a comment
 saying the server refused exactly that. It does now. The city is also a real
 choice: it used to default to whatever the launch-cities query returned first.
+_The geofence this added was retired 2026-09-05._
 
 Phone and WhatsApp are contact details now, on the founder's call that they
 need no code for the moment. They land as `business_links` rows, off the
@@ -2170,3 +3791,180 @@ dashboard), `bb7`/`bb9`/`bb10`, per-pin audience, a tap target on the heat
 layer, timestamps-on-demand and a typing indicator all remain partial — they
 were confirmed by the refuters and are not done. `bb11`'s Copy action still
 needs `expo-clipboard`, which is a native build.
+
+### Two decisions taken without the founder, and one thing that cannot ship yet
+
+**D17 was overridden.** The recorded recommendation was "no setting" for who
+can add you to a group. The setting was built anyway, and UX_PLAN's D17 row now
+says so rather than reading as though the plan had been followed. The reasoning:
+a per-user control is the only version matching the consent-before-exposure
+grammar the rest of the product keeps, and `visibility.tsx` IS the privacy
+screen, so a second row there is where somebody looks for it. It is enforced in
+the database (`profiles.group_adds`, `set_group_adds`, and a guard inside
+`add_to_group`), never client-side. The link half of D17 was taken as written:
+any member may mint the invite link, the admin keeps the kill switch, and a
+guest member is refused — the same refusal `add_to_group` already makes one RPC
+over, now proven in pgTAP.
+
+**D38's email half shipped early**, on the reading that its stated condition
+(the sending domain) has since been met. Recorded in ONBOARDING.md 6a with the
+evidence, so the decision list is not quietly rewritten.
+
+**A business still has no listing to share, and that is the one thing
+`chat-business-room-has-a-next-action` could not close.** The group invite works
+because `/i/<token>` is a real hosted page with a store fallback; there is no
+equivalent page for a place, and `is_room_moderator` covers establishments and
+their staff rather than businesses, so a business owner cannot mint a room
+invite either. A custom-scheme link is dead for anybody who does not already
+have the app, which is every person a hostel is trying to reach. So the empty
+owner room now ends on the action the owner actually holds — "Say what's on
+tonight", which is what earns the brighter marker `city_businesses.has_live_post`
+draws — and the share half waits on a hosted page for a listing. Founder
+question: is that page worth building, and on which domain?
+
+## Phase 11 — Wave 1 of the UX plan
+
+### The Business batch, and the crash that was finally answered
+
+Eleven packages landed together (`c1e481d`). The signup half moved the photo
+grid out of the 1,500-line editor into one shared component and mounted it
+inside step 7, which had been a headline over 1,000pt of black; Continue now
+counts the photo the OWNER can see rather than only an approved one, so an
+owner whose cover is in review is no longer told "one photo is the only thing
+we need here" by a screen already showing their photo. The progress track
+gained a role, a value and a spoken "Step N of M". The email is asked for with
+its consequence named where it is asked, and the code can be typed from any
+later step. A new step 3 says what a listing gets you before the form starts.
+
+The owner's tab got the thing it never had: something that came back from the
+world. "How it's going" is one sentence built from two numbers already on the
+screen. It counts CONVERSATIONS, never senders, and names nobody — the rating
+block one section below is the anti-retaliation control, and a leak from next
+door would undo it. Your details is reordered by what each row does to the
+listing, every empty value says what filling it buys instead of four identical
+"Nothing yet"s, and "3 of 5 done" gives the list an end. Share your page offers
+the link and a QR for the counter.
+
+**The business-tour crash is answered.** Three fixes had failed. The cause was
+that `(tabs)` stays mounted underneath `business-signup`, so `BusinessLanding`'s
+navigate ran from a route below the focused one and expo-router's StackRouter
+appended a second `(tabs)` rather than replacing. All four navigating handoffs
+are now gated on `useIsFocused`. The evidence is the run itself: the tour drove
+deep into signup — name, address, marker, confirm, contact, photos — which it
+could not do at all while crashing at the door.
+
+### Three e2e failures that were not the app
+
+Run 97 went red in six flows, and none of it was app behaviour.
+
+**One system alert cost four flows.** `invite-first-launch` opens
+`samewhere://join-group/...` against a stopped app; iOS answers with "Open in
+Samewhere?". That is a SYSTEM alert — not in the app's view hierarchy, and it
+outlives `stopApp`. Nothing tapped it, so that flow failed and then
+`large-text-tour`, `onboarding-tour` and `signed-in-tour` each failed on their
+first assertion, in alphabetical order, with the intro tour plainly visible
+behind the dialog in every failure screenshot. Worth recording as a class: a
+flow that opens a custom-scheme link poisons every flow that runs after it.
+
+**A bound set inside its own tolerance.** The photo stage was capped at 45s
+next to a comment describing the case it covers as "16-60s on a cold CI
+simulator". It failed exactly as that arithmetic predicts, twice. Now 90s, and
+the two stages no longer share the word "preparing it", so the next failure
+screenshot says whether the render or the JPEG encode stalled.
+
+**The same misdirection, one step further along.** `guest-tour` tapped the
+business post, warned past an OPTIONAL wait for the sheet, warned past an
+optional scroll, and went red on a missing 'Website' — reporting a missing link
+when the sheet was what was missing. That is the exact failure the paragraph
+standing above it already described; only the first of four steps had been made
+hard. All of them are hard now, with a budget the machine can meet.
+
+### Still open, honestly
+
+Whether the business sheet's "See the whole page" was slow or genuinely absent
+is not yet settled — 10s could not tell those apart, and 30s will. The photo
+pipeline's real timing on CI is likewise unmeasured; the raised bound ends the
+symptom without proving which stage was slow, and the split stage names exist
+to answer that on the next failure rather than to claim it is answered now.
+
+## Wave 2 backend: four migrations, and the order they have to be deployed in
+
+Four migrations are in the tree and **not yet deployed**: 20260902230000 (`trips.approximate`
+plus a rebuilt `traveler_trips()` and a narrowed `push_trip_starts_tomorrow()`),
+20260902240000 (`meet_answer`, `chat_meet_answers`, `meet_prompt_due()`,
+`answer_meet_prompt()`, `admin_meet_answers`), 20260902250000 (`my_report_status()`,
+`my_support_messages()`) and 20260902260000 (`featured_traveler()` returning three).
+`docs/ARCHITECTURE.md` carries what each one is for and why it is shaped the way it is;
+this is the status and the open questions.
+
+**Deploy order does not matter, and that is deliberate.** `supabase-deploy` and `testflight`
+are independent `workflow_dispatch` jobs with no `needs:` between them, so an over-the-air
+update can land on the founder's phone before the migrations apply. Every read added in this
+change was written for that window (`FeaturedTravelerRow.approximate` is optional,
+`useFeaturedPhoto` accepts both row shapes, `useMeetPromptDue` carries `retry: false`), and
+the trip WRITE path now matches:
+
+- `createTrip` omits `approximate` entirely when it is false. False is the column's own
+  default, so the row written is identical either way, and the key is the difference between
+  an ordinary trip posting and PostgREST answering PGRST204 and refusing the whole insert.
+- `updateTrip` still SENDS false — omitting it always would leave a rough trip unfixable,
+  since an absent field is dropped — and retries once without it on PGRST204. A project with
+  no column has no rough trips in it, so false is what a re-read would say anyway.
+- A `true` is sent in both writers and is allowed to FAIL against a database with no column.
+  Storing a guessed window as an exact one would print it as a fact on a stranger's screen,
+  which is the sentence 20260902230000 exists to stop. The person tries again after the
+  deploy; nobody is told a date that was never entered.
+
+`src/features/trips/__tests__/a-trip-survives-the-deploy-window.test.ts` holds all four cases.
+
+### Still open, honestly
+
+**The overlap sentence still states exact days.** "Both in Lisbon Sep 3 – 8" is printed on
+three surfaces from three sources, and only one of them (the profile, through `ProfileTrip`)
+knows whether the window is a guess. `get_matches()` was left without the column on purpose,
+because whether a rough trip matches at full weight, is de-ranked, or is excluded is the
+founder question recorded on prof-rough-trip-dates in `docs/UX_PACKAGES.md` and it decides
+how wide a rough window's read access to other people's trips is. Hedging the one surface
+that can would put the same pair of people in front of two different sentences about their
+own dates, which is the drift `features/matching/overlap` exists to close — and even that
+surface knows only half, because the window is an intersection and the READER's own trip may
+be the rough one. Hedge all three at once, after the founder question is answered.
+
+**A rough trip's read access is unchanged.** Until that same question is answered,
+`overlaps_own_trip()` and the `trips_select_overlap` policy treat a rough window exactly like
+an exact one. A 90-day guess therefore reads as wide a slice of other people's trips as a
+90-day plan. That is today's behaviour and not a regression, but it is the thing the answer
+changes.
+
+## What Wave 2 did NOT build: the App Store review prompt
+
+_Superseded 2026-09-02._ The deferral below lasted a day: `tq-store-review`
+was un-deferred and batched with the notification config into the 0.2.0
+build, exactly as the last line here said to. `expo-store-review ~57.0.2` is
+a dependency, `version` is 0.2.0, `useAcceptedCelebration` asks after the
+notice's X, and `use-accepted-celebration.test.tsx` covers every gate. The
+write-up moved to "Shipped in 0.2.0: the App Store review prompt" in
+`docs/APP_STORE.md`; the record of the build itself is at the top of this
+file under "The 0.2.0 build". What follows is the deferral as it was written
+on 2026-09-01.
+
+`tq-store-review` was **deferred, not done**, written down here so the package
+list and the tree agreed. Nothing had shipped: `expo-store-review` was not a
+dependency, `useAcceptedCelebration` called nothing new, and there was no test
+for a prompt that did not exist.
+
+The reason is the package's own "Waits on" question, answered rather than
+dodged. It is a native module, so it cannot go over the air; an EAS build
+draws down real credit; and on a pre-launch app with no users the prompt has
+nothing to convert yet. What DID get produced was the runbook —
+`docs/APP_STORE.md` carried "Queued for the next build: the App Store
+review prompt" (since renamed "Shipped in 0.2.0: the App Store review
+prompt"), listing the four things that must land in one change (the
+dependency, the `version` bump so `runtimeVersion` moves with it, the
+`requestReview()` call after the notice is dismissed, and a hand-run on
+TestFlight because Apple owns the dialog and no screenshot can prove it) and
+the rules for when it may fire: once per install ever, never during
+onboarding, never after a block or a report, and no custom pre-prompt.
+
+Un-defer it when the next native change is queued and batch the two.
+`docs/UX_PACKAGES.md` carries the same status line on the package itself.

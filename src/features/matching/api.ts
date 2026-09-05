@@ -1,3 +1,5 @@
+import type { PostgrestError } from '@supabase/supabase-js';
+
 import type {
   ChatListRow,
   IncomingRequestRow,
@@ -8,8 +10,18 @@ import type {
 } from '@/lib/database.types';
 import { supabase } from '@/lib/supabase';
 
-export async function fetchMatches() {
-  const { data, error } = await supabase.rpc('get_matches');
+/**
+ * The Travelers queue, computed from the caller's own trips. `tripIds`
+ * narrows it to some of them (the picker on the tab); null is every trip.
+ * The ids are the ONLY argument the function takes, and they are the
+ * caller's: the server joins them to `trips where user_id = auth.uid()`, so
+ * somebody else's id filters to nothing. Never a coordinate (§7 rule 2).
+ */
+export async function fetchMatches(tripIds: string[] | null = null) {
+  const { data, error } = await supabase.rpc(
+    'get_matches',
+    tripIds == null ? {} : { p_trip_ids: tripIds }
+  );
   if (error) {
     throw error;
   }
@@ -54,18 +66,22 @@ export async function respondToRequest(requestId: string, accept: boolean) {
 }
 
 /**
- * Would this draft be stopped? Read-only, so the composer can offer a reword
- * while the sentence is still being written rather than after it was sent.
+ * Would this draft be stopped, and which kind of wrong is it? Read-only, so
+ * the composer can offer a reword while the sentence is still being written
+ * rather than after it was sent.
  *
- * Returns false on any failure. A network blip must never turn into a
- * warning about somebody's perfectly ordinary message.
+ * Returns wouldBlock false on any failure. A network blip must never turn
+ * into a warning about somebody's perfectly ordinary message.
  */
-export async function previewFirstMessage(text: string): Promise<boolean> {
+export async function previewFirstMessage(
+  text: string
+): Promise<{ wouldBlock: boolean; category: string | null }> {
   const { data, error } = await supabase.rpc('preview_first_message', { p_text: text });
   if (error) {
-    return false;
+    return { wouldBlock: false, category: null };
   }
-  return (data ?? [])[0]?.would_block === true;
+  const row = (data ?? [])[0];
+  return { wouldBlock: row?.would_block === true, category: row?.category ?? null };
 }
 
 /**
@@ -94,12 +110,87 @@ export async function fetchFirstMessageBudget() {
   return { used: row?.used ?? 0, allowed: row?.allowed ?? 8 };
 }
 
+/**
+ * A hello you sent, plus the one fact 20260902210000 added to it.
+ *
+ * Declared here rather than widening SentRequestRow in
+ * src/lib/database.types.ts because that file is owned by another implementer
+ * this session - the report's "NEEDS WIRING" section names the line it
+ * belongs on. sent_requests() already returns the column, so this widening is
+ * a description of what arrives rather than a hope.
+ *
+ * `withdrawn_at` and not a fourth `state`: an over-the-air update is never
+ * applied on the launch that downloads it, so for at least one launch every
+ * phone runs the PREVIOUS bundle against the new schema, and a state it has
+ * never heard of drops the sender's own hello out of "You said hi" (see
+ * SentRequestRow's own note in database.types).
+ */
+export type SentRequest = SentRequestRow & { withdrawn_at: string | null };
+
 export async function fetchSentRequests() {
   const { data, error } = await supabase.rpc('sent_requests');
   if (error) {
     throw error;
   }
-  return (data ?? []) as SentRequestRow[];
+  return (data ?? []) as SentRequest[];
+}
+
+/**
+ * withdraw_message_request is not in database.types.ts's Functions map yet
+ * (same reason as SentRequest above), and `supabase.rpc` only accepts a name
+ * it finds there. One narrow door, and a door rather than an `any`: the
+ * argument object and the answer are both still typed at the call below.
+ * Delete it the moment the Functions entry lands - features/rooms/api.ts
+ * carries the same door for the same reason.
+ */
+type UntypedRpc = <T>(
+  name: string,
+  args: Record<string, unknown>
+) => PromiseLike<{ data: T | null; error: PostgrestError | null }>;
+
+const untypedRpc = supabase.rpc as unknown as UntypedRpc;
+
+/**
+ * Take back a hello you sent.
+ *
+ * The row is NOT deleted. `unique (sender_id, recipient_id)` is one shot per
+ * direction, ever - the anti-pester constraint - and deleting frees that
+ * slot, so a delete would turn "take it back" into unlimited re-sends at the
+ * person who did not answer. The server stamps `withdrawn_at` instead.
+ *
+ * `withdrawn: false` is an ordinary answer and never an error: the row was
+ * already taken back, or was already accepted, or was never the caller's. It
+ * is deliberately the SAME answer for all three, because a refusal that said
+ * which would tell a sender what the recipient did - the one thing
+ * sent_requests() exists to never say (invariant 4).
+ */
+export async function withdrawMessageRequest(requestId: string) {
+  const { data, error } = await untypedRpc<{ withdrawn: boolean }>('withdraw_message_request', {
+    p_request_id: requestId,
+  });
+  if (error) {
+    throw error;
+  }
+  return data?.withdrawn === true;
+}
+
+/**
+ * Say that this account opened the app today.
+ *
+ * A DATE and nothing else - no time, no city, no coordinates. It is what
+ * makes admin_liquidity's `liquidity_reachable` countable: a trip can be
+ * posted weeks ahead and run for weeks, so without this the number gating a
+ * second city counts people who installed once and never came back. Kept to a
+ * day on purpose: a per-minute last-seen is a presence signal, and presence is
+ * one step from the live-location promise the product refuses (hard rule 2).
+ *
+ * Never surfaced to another user; no client can even read the column.
+ */
+export async function touchLastSeen() {
+  const { error } = await untypedRpc<null>('touch_last_seen', {});
+  if (error) {
+    throw error;
+  }
 }
 
 export async function fetchMyChats(archived = false) {
@@ -120,6 +211,60 @@ export async function markChatRead(chatId: string) {
   if (error) {
     throw error;
   }
+}
+
+/**
+ * The three answers to the meet question, and the only three.
+ *
+ * A string union rather than a generated enum type because database.types.ts
+ * is owned by another implementer this session (same door as SentRequest
+ * above); the report names the line it belongs on. The database has the real
+ * enum (public.meet_answer, 20260902240000) and refuses anything else, so
+ * this is a description of what is accepted rather than the guard.
+ */
+export type MeetAnswer = 'yes' | 'no' | 'unsure';
+
+/**
+ * Should this chat show the meet question?
+ *
+ * The answer depends on the shared trip dates and on whether the CALLER has
+ * already answered. It never depends on what the other person answered, or on
+ * whether they answered at all - that would be the reciprocal-interest reveal
+ * §1 refuses, delivered as a boolean. The rule is enforced in
+ * meet_prompt_due() and proved from both sides in
+ * supabase/tests/database/61_did_you_two_actually_meet.test.sql; nothing here
+ * can restore it if the function is ever rewritten, which is why it is not
+ * computed here.
+ */
+export async function fetchMeetPromptDue(chatId: string) {
+  const { data, error } = await untypedRpc<boolean>('meet_prompt_due', {
+    p_chat_id: chatId,
+  });
+  if (error) {
+    throw error;
+  }
+  return data === true;
+}
+
+/**
+ * Answer it, once and for all.
+ *
+ * There is no update policy and no delete grant on chat_meet_answers, so the
+ * first answer is the answer forever and a second tap is a no-op rather than
+ * an error. `true` means this call was the one that recorded it, which is the
+ * only thing the caller needs in order to count it exactly once. It says
+ * nothing about the other traveler, who cannot read this row and is never
+ * told it exists.
+ */
+export async function answerMeetPrompt(chatId: string, answer: MeetAnswer) {
+  const { data, error } = await untypedRpc<boolean>('answer_meet_prompt', {
+    p_chat_id: chatId,
+    p_answer: answer,
+  });
+  if (error) {
+    throw error;
+  }
+  return data === true;
 }
 
 export async function fetchSocialHandles(userId: string) {

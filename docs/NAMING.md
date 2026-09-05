@@ -1,8 +1,11 @@
 # Naming
 
-Working doc for the app's name. Nothing here is decided — the founder picks, and
-the pick then flows into the bundle identifier, `app.json`, icon artwork, the App
-Store listing and every string of user-facing copy.
+How the name was chosen, and what is still owed before the first submission.
+
+**The name is decided: Samewhere.** It is in `app.json`, in the bundle
+identifier `com.mattmoore.samewhere`, on `link.samewhere.io`, and in every
+string the app shows. The rest of this document is the record of how that was
+picked, plus one checklist at the foot that is still open and is blocking.
 
 ## What was actually verified
 
@@ -272,9 +275,25 @@ different fields, and all of them are indexed:
 So a short brand costs nothing in discoverability. The pattern is standard:
 _Hostelworld: Hostel Travel App_, _Meetup: Social Events & Groups_.
 
-## Before committing to a name
+## BLOCKING before the first App Store submission
 
-- [ ] App Store search (from a device) for the finalist and near-spellings
-- [ ] Plain web search for existing travel/social apps using it
-- [ ] Decide the bundle identifier — currently `com.mattmoore.travelapp`, and
-      painful to change after the first App Store submission
+The bundle identifier `com.mattmoore.samewhere` is already in `app.json:11`,
+and **it cannot be changed after the first submission**. So the one
+irreversible decision in this launch currently rests on a check this document
+says was never performed. It is ten minutes of work and this is the last
+moment it is cheap.
+
+| Check                                                                                         | Why it is here                                                                                |
+| --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **App Store search from a real phone** for `Samewhere`, `Same Where`, `Somewhere`, `Samewear` | The iTunes Search API is blocked from this sandbox, so no collision note above was looked up. |
+| **Plain web search** for travel or social apps using the name or a near-spelling              | A live app that never shipped to the App Store still owns the search result and the goodwill. |
+| **USPTO word-mark search** (TESS) in classes 9 and 42                                         | US registration is where an objection is most likely to arrive with a lawyer attached.        |
+| **EUIPO word-mark search** in classes 9 and 42                                                | The first launch city is in the EU.                                                           |
+| **Sanity check the App Store name field** is not already taken by a live app                  | Apple rejects a duplicate app name outright, at submission, with no warning beforehand.       |
+
+[LEGAL: classes 9 (software) and 42 (SaaS) are the obvious two. Confirm
+whether class 45, where online social networking services sit, needs adding
+before anything is filed.]
+
+Record the outcome of each check here, with the date, whichever way it goes. A
+negative result is worth as much as a positive one the day somebody asks.

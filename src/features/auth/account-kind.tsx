@@ -44,7 +44,10 @@ export function AccountKindChoice({
         value={value}
         onChange={onChange}
         glyph={{ ios: 'figure.walk', android: 'hiking', web: 'hiking' }}
-        title="I'm travelling"
+        // A noun phrase against "I run a business", and the American spelling
+        // — "travelling" was the only British spelling in src/, two lines
+        // above "travelers who can message you".
+        title="I'm a traveler"
         detail="A profile, the map, and people to meet."
       />
       <Row

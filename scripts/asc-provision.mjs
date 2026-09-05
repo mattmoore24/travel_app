@@ -86,8 +86,11 @@ if (bid) {
 }
 
 // 2. Capabilities the app's entitlements need: aps-environment (from
-// expo-notifications) and Sign in with Apple (usesAppleSignIn). A profile
-// minted without them fails at signing, not here.
+// expo-notifications), Sign in with Apple (usesAppleSignIn), and Associated
+// Domains (ios.associatedDomains, for universal links). A profile minted
+// without them fails at signing, not here — run #57 failed exactly that way
+// the day associatedDomains was added: "Provisioning profile doesn't include
+// the Associated Domains capability."
 const have = new Set(
   // This relationship endpoint rejects paging params (400 PARAMETER_ERROR.ILLEGAL).
   (await asc('GET', `/bundleIds/${bid.id}/bundleIdCapabilities`)).data.map(
@@ -100,6 +103,7 @@ const wanted = [
     capabilityType: 'APPLE_ID_AUTH',
     settings: [{ key: 'APPLE_ID_AUTH_APP_CONSENT', options: [{ key: 'PRIMARY_APP_CONSENT' }] }],
   },
+  { capabilityType: 'ASSOCIATED_DOMAINS' },
 ];
 for (const cap of wanted) {
   if (have.has(cap.capabilityType)) {

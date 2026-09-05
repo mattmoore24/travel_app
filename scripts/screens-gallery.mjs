@@ -36,7 +36,11 @@ const CAPTIONS = {
   '00-welcome': ['Welcome', 'The splash dissolves into this. The mark never moves.'],
   '00a-tour-map': ['Tour: the map', 'The mark has docked; pages parallax under it.'],
   '00b-tour-travelers': ['Tour: travelers', 'Same dates, same city.'],
-  '00c-tour-choice': ['Tour: the choice', 'Make a profile, or keep looking.'],
+  '00c-tour-chat': ['Tour: saying hi', 'Send a first message; they accept, the chat opens.'],
+  '00d-tour-privacy': [
+    'Tour: the promise, and the choice',
+    'We never ask where you are. Make a profile, or keep looking.',
+  ],
   '01-cold-start': ['Straight to the map', 'Dismissing the tour lands on the app itself.'],
   '02-map-tab': ['Map, as a guest', 'Plain glyphs: no faces until you have an account.'],
   '03-travelers-guest': ['Travelers, as a guest', 'One real person, then the gate.'],
@@ -47,11 +51,27 @@ const CAPTIONS = {
   '12-place-mode': ['Placing a pin', 'The map moves under a fixed pin.'],
   '13-place-after-pan': ['Panned', 'The pin lifts and settles as the map moves.'],
   '14-pin-form': ['What is the plan?', 'Name, the street it sits on, details.'],
-  '15-pin-form-filled': ['Filled in', 'Drop it stays above the keyboard.'],
+  '15-pin-form-filled': ['Filled in', 'Put it on the map stays above the keyboard.'],
   '16-pin-posted': ['Posted', 'The plan, the street, and how long it has left.'],
   '17-travelers-signed-in': [
     'Travelers',
     'One person at a time, and the days you overlap said beside the name.',
+  ],
+  '09a-what-the-business-row-did': [
+    'A venue, from the list',
+    "The What's on row opens the venue's sheet: what is on, and the way to its whole page.",
+  ],
+  '10-business-page-links': [
+    'The business page',
+    'Hours, links and posts; Website opens over the app, not in Safari.',
+  ],
+  '17i-travelers-just-lisbon': [
+    'Just Lisbon',
+    'The wall a choice produces keeps the rail, names the choice, and offers the way back.',
+  ],
+  '17j-travelers-just-bangkok': [
+    'Just Bangkok',
+    'The queue narrowed to one trip; the lit chip says which.',
   ],
   '18-profile-me': ['Your profile', 'Exactly the page a stranger sees, plus edit.'],
   '19-house-rules': ['House rules', 'What is not allowed, and what is never collected.'],
@@ -87,16 +107,26 @@ const CAPTIONS = {
     "The founder's line: this email is only for signing in.",
   ],
   '41-business-name': ['Name and kind', 'The name over the door, and what it is.'],
-  '42-business-where-empty': ['Where is it, empty', 'Waiting on a city, and saying so.'],
+  '42-business-where-empty': [
+    'Where is it, empty',
+    'One box for the address, and a quiet line for placing the pin by hand.',
+  ],
+  '42b-business-where-pin-yourself': [
+    'Place the marker yourself',
+    'The map at country scale, waiting for a tap.',
+  ],
   '43-business-address-typing': [
     'Typing an address',
-    'The chips and the map step aside so the suggestions get the screen.',
+    'The map steps aside so the suggestions get the screen.',
   ],
   '44-business-address-and-marker': [
     'Picked',
     'The address stays as written; the marker moves to the street.',
   ],
-  '45-business-where-final': ['Where is it, done', 'Both halves agreed.'],
+  '45-business-where-final': [
+    'Where is it, done',
+    'The address as written, the marker on the street, and the city the server filed it under.',
+  ],
   '46-business-confirm': [
     'Is this right?',
     'What a traveler sees when they tap you, at street zoom so the door can be checked.',
@@ -125,11 +155,22 @@ const CAPTIONS = {
   '54-signup-photo-gate': ['Add a photo', 'The one mandatory thing on every profile.'],
   '55-signup-photo-added': ['A face', 'Which is what makes the rest worth answering.'],
   '56-signup-occupation': ['What do you do?', 'The first step that may be skipped.'],
-  '57-signup-bio': ['A bit about you', 'What somebody should message you about.'],
+  '57-signup-bio': [
+    'A bit about you',
+    'Keyboard up: the Hide keyboard bar above it, and Continue under it rather than on top of it.',
+  ],
+  '57b-signup-bio-keyboard-away': [
+    'A bit about you, keyboard away',
+    'The bar was tapped, so the footer is back and Continue is reachable.',
+  ],
   '58-signup-prompts': ['Answer a prompt', 'The bit people actually read.'],
   '59-signup-priorities': ['What are you after?', 'So the right people say hi.'],
   '70-signup-trips': ['Where are you going?', 'The one step the whole matching engine runs on.'],
   '71-signup-socials': ['Your socials', 'Nobody sees these until you are both in a chat.'],
+  '71b-signup-badge': [
+    'Get your badge',
+    'The selfie check as a step of its own, skippable, with the cost of skipping under it.',
+  ],
   '72-signup-audience': ['Who sees you', 'A default rather than a decision you must make now.'],
   '73-signup-review': ['Here you are', 'Exactly what a stranger sees.'],
   '74-signup-review-scrolled': ['The rest of it', 'Same page, further down.'],

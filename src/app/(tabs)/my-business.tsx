@@ -3,7 +3,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useIsFocused } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  Linking,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -11,13 +19,14 @@ import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
+import { DockedActionBar, dockedActionBarHeight } from '@/components/ui/docked-action-bar';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import type { Section as EditSection } from '@/app/business-edit';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  BottomTabInset,
   HitTarget,
   MaxContentWidth,
+  Motion,
   Radius,
   Space,
   type ThemeColor,
@@ -30,25 +39,47 @@ import {
   useOwnBusiness,
   useRatingSummary,
 } from '@/features/business/hooks';
-import { CATEGORY_ICON, CATEGORY_LABEL, TAG_LABEL, openLine } from '@/features/business/vocabulary';
+import {
+  LISTING_QR_CAPTION,
+  LISTING_SHARE_LABEL,
+  listingShareMessage,
+  listingUrl,
+  shareListing,
+} from '@/features/business/share-listing';
+import {
+  CATEGORY_ICON,
+  CATEGORY_LABEL,
+  TAG_LABEL,
+  countChatsSince,
+  detailsDone,
+  openLine,
+  weekLine,
+} from '@/features/business/vocabulary';
+import { useBusinessPhotos } from '@/features/business/business-photos';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
+import { useMyChats } from '@/features/matching/hooks';
+import { ShareLink } from '@/features/share/share-link';
 import { dayLabel } from '@/features/chat/separators';
 import { usePushPrimer } from '@/features/notifications/primer-store';
+import {
+  notificationValueLine,
+  useNotificationPermission,
+} from '@/features/notifications/notifications-row';
+import { useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
+import { clocks } from '@/lib/locale';
 import { analytics } from '@/lib/analytics';
 import type { BusinessPostJson, MyBusinessRow } from '@/lib/database.types';
 import { countOf } from '@/lib/plural';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
-const TIME = new Intl.DateTimeFormat('en', { hour: '2-digit', minute: '2-digit', hour12: false });
+// No local formatter, and the comment that used to sit here ("24-hour, so an
+// event time reads next to 'Open · till 2:00' as one clock") is now exactly
+// backwards: shortTime follows the PHONE since biz-one-clock, so a pinned
+// hour12:false printed "20:00" for the event beside "till 8:00 PM" for the
+// hours, on the same card. One clock means one source, not one format.
 
 const HERO_RATIO = 3 / 2;
-
-/** Room under the scroll for the docked button and the tab bar beneath it. */
-const DOCK_CLEARANCE = 120;
-
-/** PrimaryButton's filled height, which the backdrop has to cover exactly. */
-const DOCK_BUTTON = 52;
 
 /** Twenty minutes, which is what the migration gives a code. */
 const CODE_TTL_MS = 20 * 60 * 1000;
@@ -170,7 +201,34 @@ function Section({
  * whole screen to host one destructive button is more ceremony than the
  * decision deserves.
  */
-function PostCard({ post, onTakeDown }: { post: BusinessPostJson; onTakeDown: () => void }) {
+/**
+ * One live post, and the three things an owner can do to it.
+ *
+ * The card used to have exactly one action - take it down - so a typo in a
+ * quiz night's time could only be answered by deleting the post and writing
+ * it again from nothing, and last week's quiz night could not go back up at
+ * all. business-post.tsx has supported both since biz-post-edit-and-repeat
+ * (`postId` opens a post to be fixed, `postId + again` copies its words onto
+ * a new row with a date somebody has to look at), but nothing in the app
+ * navigated to it with either param, so the whole screen was reachable only
+ * as a blank composer and every string written for the other two was dead.
+ *
+ * An alert rather than three buttons on the card: the card is a summary and
+ * the actions are all one tap deep, which is the shape "Take this down?"
+ * already had. Fix it first because it is the commonest and the least
+ * destructive; take it down stays last and stays the only destructive one.
+ */
+function PostCard({
+  post,
+  onTakeDown,
+  onFix,
+  onAgain,
+}: {
+  post: BusinessPostJson;
+  onTakeDown: () => void;
+  onFix: () => void;
+  onAgain: () => void;
+}) {
   const at = post.happens_at ? new Date(post.happens_at) : null;
   const today = at != null && at.toDateString() === new Date().toDateString();
   const theme = useTheme();
@@ -178,13 +236,15 @@ function PostCard({ post, onTakeDown }: { post: BusinessPostJson; onTakeDown: ()
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={`${post.title}. Take it down.`}
+      accessibilityLabel={`${post.title}. Fix it, put it up again, or take it down.`}
       scaleTo={0.99}
       haptic="soft"
       onPress={() =>
-        Alert.alert('Take this down?', post.title, [
-          { text: 'Keep it up', style: 'cancel' },
+        Alert.alert(post.title, undefined, [
+          { text: 'Fix it', onPress: onFix },
+          { text: 'Put it up again', onPress: onAgain },
           { text: 'Take it down', style: 'destructive', onPress: onTakeDown },
+          { text: 'Cancel', style: 'cancel' },
         ])
       }>
       <View style={[styles.card, { backgroundColor: theme.surface }]}>
@@ -193,7 +253,7 @@ function PostCard({ post, onTakeDown }: { post: BusinessPostJson; onTakeDown: ()
             // Warm light is this app's "happening now", the same signal the map
             // puts on a place with something on tonight.
             <ThemedText type="caption" themeColor={today ? 'highlight' : 'textSecondary'}>
-              {`${dayLabel(post.happens_at)} · ${TIME.format(at)}`}
+              {`${dayLabel(post.happens_at)} · ${clocks().instant.format(at)}`}
             </ThemedText>
           ) : null}
           <ThemedText type="callout">{post.title}</ThemedText>
@@ -224,22 +284,32 @@ function DetailRow({
   onPress?: () => void;
 }) {
   const theme = useTheme();
+  // Neither a section nor a handler: the row is information, and it renders
+  // inert - no scale, no haptic, no button role. A full press affordance
+  // that silently does nothing is the pattern this screen exists to remove.
+  const press =
+    onPress ??
+    (section ? () => router.push({ pathname: '/business-edit', params: { section } }) : undefined);
   return (
     <PressableScale
-      accessibilityRole="button"
-      accessibilityLabel={onPress ? label : `Edit ${label.toLowerCase()}`}
+      accessibilityRole={press ? 'button' : 'text'}
+      accessibilityLabel={onPress ? label : section ? `Edit ${label.toLowerCase()}` : label}
       accessibilityHint={value}
-      haptic="light"
-      scaleTo={0.98}
-      onPress={
-        onPress ??
-        (() => router.push({ pathname: '/business-edit', params: { section: section! } }))
-      }
+      haptic={press ? 'light' : 'none'}
+      scaleTo={press ? 0.98 : 1}
+      disabled={press == null}
+      onPress={press ?? (() => {})}
       style={[styles.row, { backgroundColor: theme.surface }]}>
       <SymbolView name={icon} size={16} tintColor={theme.textSecondary} />
       <View style={styles.rowText}>
         <ThemedText type="callout">{label}</ThemedText>
-        <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+        {/* Two lines, not one. The values used to be "Nothing yet" and a
+            count; they are now sentences saying what filling the row buys
+            ("Add hours so travelers know when to come"), and at the larger
+            text sizes one line elided them to about three words - which is
+            the row saying nothing again, in a longer way. Two lines lets the
+            row grow instead of the sentence disappearing. */}
+        <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
           {value}
         </ThemedText>
       </View>
@@ -263,6 +333,13 @@ function DetailRow({
  */
 export default function MyBusinessScreen() {
   const insets = useSafeAreaInsets();
+  // Dynamic Type grows the native tab bar; the constants it replaces did not.
+  const dockBottom = useTabDockBottom();
+  // The dock's real height, measured by the bar (it grows with Dynamic
+  // Type). Seeded from the shared formula so the first frame is right; the
+  // measurement only corrects it. Feeds the scroll clearance, so the last
+  // rows can never run under the button again.
+  const [barHeight, setBarHeight] = useState(() => dockedActionBarHeight(dockBottom));
   const theme = useTheme();
   const ownQuery = useOwnBusiness();
   const business = ownQuery.data ?? null;
@@ -281,6 +358,31 @@ export default function MyBusinessScreen() {
   const delivery = useBusinessCodeStatus(business?.state === 'unconfirmed').data;
   const codeRunOut = useCodeRunOut(delivery?.sent_at);
   const codeBounced = delivery?.failed === true;
+  // The live OS state for the Notifications row below. Same hook as the
+  // account pages, so the two renderings can never disagree.
+  const { state: pushState, enable: enablePush } = useNotificationPermission();
+  // The one signal on this screen that comes back from the world rather than
+  // out of the owner's own typing. Conversations, never senders: see
+  // vocabulary.weekLine.
+  const chatsQuery = useMyChats();
+  const chats = chatsQuery.data ?? null;
+  // A disabled query never leaves isPending, and this one is disabled for
+  // anybody without a session, so "settled" has to include "never going to
+  // ask" - the same shape place/[id].tsx needed for its owner check.
+  const chatsKnown = !chatsQuery.isPending || chatsQuery.fetchStatus === 'idle';
+  // The owner's own photos, NOT business_detail's, which is filtered to
+  // approved. This is the second half of biz-photo-grid-in-place and it is
+  // the half that bites hardest: with require_photo_moderation on (which is
+  // how production runs) an owner adds their cover, sees it chipped "In
+  // review" one tap away in the editor, comes back here and is told to add
+  // photos. This batch made that worse before it made it better - the row
+  // now reads "Add photos so you have a cover" and the new counter scores it
+  // 0, so the screen states the lie twice and quantifies it.
+  const ownPhotos = useBusinessPhotos(business?.id ?? null).data ?? null;
+  // Whether the square is on screen. Off by default - it is the counter case,
+  // not the common one, and a 200pt QR above 'Your account' on every open
+  // would push the settings rows below the fold for everybody.
+  const [qrOpen, setQrOpen] = useState(false);
 
   // One reading of the clock per data change rather than one per render, so
   // the Hours row cannot flip from open to closed mid-scroll.
@@ -288,6 +390,17 @@ export default function MyBusinessScreen() {
     () => (detail ? openLine(detail.hours, new Date(), detail.lng) : null),
     [detail]
   );
+
+  // Conversations a traveler opened with this business inside seven days.
+  // Counted off the list this screen's own tab already holds, so it costs no
+  // query: my_chats returns kind 'business' rows to an owner, one per
+  // traveler who wrote in.
+  //
+  // Same shape as hoursLine above, and for the same two reasons: the clock is
+  // read once per data change rather than once per render, and the counting
+  // itself is a pure function in vocabulary.ts, so it can be tested without a
+  // component and cannot drift with the render schedule.
+  const chatsThisWeek = useMemo(() => countChatsSince(chats, new Date()), [chats]);
 
   useEffect(() => {
     analytics.capture('my_business_viewed');
@@ -334,10 +447,8 @@ export default function MyBusinessScreen() {
   if (!isSupabaseConfigured) {
     return (
       <PlaceholderScreen
+        configError
         icon={{ ios: 'storefront', android: 'storefront', web: 'storefront' }}
-        title="My business"
-        phase="waiting on backend keys"
-        description="Add Supabase keys to .env to put a business on the map."
       />
     );
   }
@@ -386,8 +497,18 @@ export default function MyBusinessScreen() {
 
   const status = statusOf(business);
   const posts = detail?.posts ?? [];
-  const photos = detail?.photos ?? [];
+  // What the OWNER has, for the rows and the counter below. `detail.photos`
+  // is the public read and still owns the cover thumbnail at the top of this
+  // screen, which is right: that image IS what a traveler sees.
+  const photos = ownPhotos ?? detail?.photos ?? [];
   const links = detail?.links ?? [];
+  const done = detailsDone({
+    hasAddress: business.address != null,
+    photos: photos.length,
+    hasHours: hoursLine != null,
+    hasDescription: business.description != null,
+    links: links.length,
+  });
   const dark = business.state !== 'listed' || !business.active;
 
   // The screen's biggest button is whatever this owner has to do next.
@@ -418,10 +539,28 @@ export default function MyBusinessScreen() {
     <ThemedView style={styles.root}>
       <View style={styles.column}>
         <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: BottomTabInset + DOCK_CLEARANCE },
-          ]}
+          // An owner whose listing came back thin had to find the Try again
+          // button; this is the gesture they reach for first. All three
+          // queries, because the sections below are drawn from all three and
+          // half a refresh is its own kind of stale.
+          //
+          // isRefetching, not isFetching: this screen renders its skeletons
+          // while the detail and rating queries are still on their first
+          // trip, and a spinner nobody pulled for reads as a stuck page.
+          refreshControl={
+            <RefreshControl
+              refreshing={
+                ownQuery.isRefetching || detailQuery.isRefetching || ratingQuery.isRefetching
+              }
+              onRefresh={() => {
+                void ownQuery.refetch();
+                void detailQuery.refetch();
+                void ratingQuery.refetch();
+              }}
+              tintColor={theme.textSecondary}
+            />
+          }
+          contentContainerStyle={[styles.content, { paddingBottom: barHeight + Space.xl }]}
           showsVerticalScrollIndicator={false}>
           {/* No header above it: the cover IS the header, and a business
               opening this tab should see the picture travelers see first. */}
@@ -433,7 +572,7 @@ export default function MyBusinessScreen() {
                   source={{ uri: cover.data }}
                   style={StyleSheet.absoluteFill}
                   contentFit="cover"
-                  transition={180}
+                  transition={Motion.standard}
                 />
                 {/* This tab carries no navigation header, so the cover runs
                     under the status bar and the clock lands on whatever the
@@ -540,10 +679,10 @@ export default function MyBusinessScreen() {
                 onRetry={detailQuery.refetch}
               />
             ) : detailQuery.isPending || ratingQuery.isPending ? (
-              // Shapes, not empty states. Every row below reads "Nothing yet"
-              // before its query lands, and telling a business it has no
-              // hours, no links and no rating while we are still asking is
-              // the same lie LoadError exists to stop.
+              // Shapes, not empty states. Every row below falls back to its
+              // "add this" line before its query lands, and telling a
+              // business to add hours it already has while we are still
+              // asking is the same lie LoadError exists to stop.
               <View style={styles.loadingSections}>
                 <Skeleton width="35%" height={14} />
                 <Skeleton height={56} />
@@ -556,15 +695,39 @@ export default function MyBusinessScreen() {
                   title="What's on"
                   icon={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}>
                   {posts.length > 0 ? (
-                    posts.map((post) => (
-                      <PostCard
-                        key={post.id}
-                        post={post}
-                        onTakeDown={() => {
-                          archivePost.mutate(post.id);
-                        }}
-                      />
-                    ))
+                    <>
+                      {/* The first of the two numbers this screen already
+                          holds and never said: how much of yours is live on
+                          the listing right now. */}
+                      <ThemedText type="footnote" themeColor="textSecondary">
+                        {countOf(posts.length, 'post')} live on your listing
+                      </ThemedText>
+                      {posts.map((post) => (
+                        <PostCard
+                          key={post.id}
+                          post={post}
+                          onTakeDown={() => {
+                            archivePost.mutate(post.id);
+                          }}
+                          onFix={() =>
+                            router.push({
+                              pathname: '/business-post',
+                              params: { postId: post.id },
+                            })
+                          }
+                          // `again: '1'` copies the words onto a NEW row with
+                          // a date the owner has to look at, rather than
+                          // clearing archived_at - un-archiving by hand would
+                          // put last week's date back on the map.
+                          onAgain={() =>
+                            router.push({
+                              pathname: '/business-post',
+                              params: { postId: post.id, again: '1' },
+                            })
+                          }
+                        />
+                      ))}
+                    </>
                   ) : (
                     <ThemedText type="footnote" themeColor="textSecondary">
                       {
@@ -577,6 +740,12 @@ export default function MyBusinessScreen() {
                 <Section
                   title="Your details"
                   icon={{ ios: 'list.bullet', android: 'list', web: 'list' }}>
+                  {/* Somewhere to get to. Five rows with no total is a list
+                      that never ends; '3 of 5 done' is the same five rows
+                      with a finish line on them. */}
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    {`${done} of 5 done`}
+                  </ThemedText>
                   {/* A business that moved premises had a listing on the wrong
                       door forever: this screen covered hours, links, words and
                       photos and had no way to the address, the city or the
@@ -593,17 +762,36 @@ export default function MyBusinessScreen() {
                     }}
                     value={business.address ?? 'No address yet'}
                   />
+                  {/* Ordered by what each one does to the listing on the
+                      map, not by the order the columns happen to sit in:
+                      photos are the cover a traveler decides on, hours are
+                      the question they opened the page to answer, and links
+                      are the last of the five. 'Where you are' stays first
+                      because a listing on the wrong door is not a listing.
+
+                      And every empty value says what filling it BUYS. Four
+                      rows reading 'Nothing yet' is a column of the same
+                      shrug, and it tells an owner who has just signed up
+                      that this screen is a list of their failures. */}
+                  <DetailRow
+                    label="Photos"
+                    section="photos"
+                    icon={{
+                      ios: 'photo.on.rectangle',
+                      android: 'photo_library',
+                      web: 'photo_library',
+                    }}
+                    value={
+                      photos.length > 0
+                        ? countOf(photos.length, 'photo')
+                        : 'Add photos so you have a cover'
+                    }
+                  />
                   <DetailRow
                     label="Hours"
                     section="hours"
                     icon={{ ios: 'clock', android: 'schedule', web: 'schedule' }}
-                    value={hoursLine ?? 'Nothing yet'}
-                  />
-                  <DetailRow
-                    label="Links"
-                    section="links"
-                    icon={{ ios: 'link', android: 'link', web: 'link' }}
-                    value={links.length > 0 ? countOf(links.length, 'link') : 'Nothing yet'}
+                    value={hoursLine ?? 'Add hours so travelers know when to come'}
                   />
                   <DetailRow
                     label="Description"
@@ -613,17 +801,17 @@ export default function MyBusinessScreen() {
                     // scrolling to the field the row named.
                     section="details"
                     icon={{ ios: 'text.alignleft', android: 'notes', web: 'notes' }}
-                    value={business.description ?? 'Nothing yet'}
+                    value={business.description ?? 'Say what it is like'}
                   />
                   <DetailRow
-                    label="Photos"
-                    section="photos"
-                    icon={{
-                      ios: 'photo.on.rectangle',
-                      android: 'photo_library',
-                      web: 'photo_library',
-                    }}
-                    value={photos.length > 0 ? countOf(photos.length, 'photo') : 'Nothing yet'}
+                    label="Links"
+                    section="links"
+                    icon={{ ios: 'link', android: 'link', web: 'link' }}
+                    value={
+                      links.length > 0
+                        ? countOf(links.length, 'link')
+                        : 'A menu, a booking page, your socials'
+                    }
                   />
                 </Section>
 
@@ -634,18 +822,61 @@ export default function MyBusinessScreen() {
                   <Section
                     title="Your chat"
                     icon={{ ios: 'bubble.left.and.bubble.right', android: 'forum', web: 'forum' }}>
+                    {/* The second number, promoted to the row's own headline:
+                        membership is the closest thing to an audience figure
+                        this screen honestly has. Worded as membership, never
+                        as reach — member_count is who joined the chat, not
+                        who saw the listing, and an owner reading it as views
+                        would be being lied to. */}
+                    {/* Written once, tapped into any chat. A bar mid-service
+                        either answers in three taps or does not answer, and
+                        the rating that judges it is largely a responsiveness
+                        score. */}
                     <DetailRow
-                      label="Open your chat"
-                      icon={{ ios: 'bubble.left', android: 'chat', web: 'chat' }}
-                      value={
+                      label="Quick replies"
+                      icon={{ ios: 'text.bubble', android: 'chat_bubble', web: 'chat_bubble' }}
+                      value="Three answers you write once"
+                      onPress={() => router.push('/saved-replies')}
+                    />
+                    <DetailRow
+                      label={
                         detail && detail.member_count > 0
-                          ? `${countOf(detail.member_count, 'person', 'people')} here`
+                          ? `${countOf(detail.member_count, 'traveler')} in your chat`
                           : 'Nobody in yet'
                       }
+                      icon={{ ios: 'bubble.left', android: 'chat', web: 'chat' }}
+                      value="Open your chat"
                       onPress={() => router.push(`/room/${business.chat_id}`)}
                     />
                   </Section>
                 ) : null}
+
+                {/* The only section on this screen that is not the owner's
+                    own typing read back to them. One sentence, from numbers
+                    the screen already holds - see vocabulary.weekLine for
+                    why it is a sentence and not a dashboard, and why it
+                    counts conversations rather than people. */}
+                <Section
+                  title="How it's going"
+                  icon={{
+                    ios: 'chart.line.uptrend.xyaxis',
+                    android: 'trending_up',
+                    web: 'trending_up',
+                  }}>
+                  {chatsKnown ? (
+                    <ThemedText type="footnote" themeColor="textSecondary">
+                      {weekLine({ chatsThisWeek, memberCount: detail?.member_count ?? 0 })}
+                    </ThemedText>
+                  ) : (
+                    // Not the zero sentence. countChatsSince(null) is 0, so
+                    // rendering while the list is still in flight told an
+                    // owner "no new conversations this week" and then changed
+                    // its mind - which is the same lie the skeletons above
+                    // exist to prevent, on the one line of this screen that
+                    // is supposed to be believable.
+                    <Skeleton width="80%" height={14} />
+                  )}
+                </Section>
 
                 <Section
                   title="Your rating"
@@ -692,6 +923,50 @@ export default function MyBusinessScreen() {
                   )}
                 </Section>
 
+                {/* The map was the only route to a business page, so a
+                    hostel that wanted "we're on Samewhere" behind reception
+                    had nothing to point at. The square is the counter case
+                    and is closed by default; the share sheet is the one for
+                    a booking confirmation or an Instagram bio. */}
+                <Section
+                  title="Share your page"
+                  icon={{
+                    ios: 'square.and.arrow.up',
+                    android: 'ios_share',
+                    web: 'ios_share',
+                  }}>
+                  <DetailRow
+                    label={LISTING_SHARE_LABEL}
+                    icon={{
+                      ios: 'square.and.arrow.up',
+                      android: 'ios_share',
+                      web: 'ios_share',
+                    }}
+                    value="Send the link to your page"
+                    onPress={() => {
+                      void shareListing({ id: business.id, name: business.name });
+                    }}
+                  />
+                  <DetailRow
+                    label="Show a QR code"
+                    icon={{ ios: 'qrcode', android: 'qr_code', web: 'qr_code' }}
+                    value={qrOpen ? 'Hide the square' : 'For the counter'}
+                    onPress={() => setQrOpen((open) => !open)}
+                  />
+                  {qrOpen ? (
+                    <ShareLink
+                      url={listingUrl(business.id)}
+                      message={listingShareMessage({ id: business.id, name: business.name })}
+                      caption={LISTING_QR_CAPTION}
+                      // The row above this one IS the share sheet. A second
+                      // button under the square with the same name and the
+                      // same action is two controls a screen reader cannot
+                      // tell apart.
+                      shareLabel={null}
+                    />
+                  ) : null}
+                </Section>
+
                 {/* The account controls, from the tab the account page sends
                     every owner to. They were reachable only by leaving this
                     tab for another one and tapping a person icon, which is a
@@ -700,7 +975,7 @@ export default function MyBusinessScreen() {
                   title="Your account"
                   icon={{ ios: 'gearshape', android: 'settings', web: 'settings' }}>
                   <DetailRow
-                    label="Account and rules"
+                    label="House rules and account"
                     icon={{
                       ios: 'person.crop.circle',
                       android: 'account_circle',
@@ -709,6 +984,31 @@ export default function MyBusinessScreen() {
                     value="Sign out, delete, how this works"
                     onPress={() => router.push('/profile-me')}
                   />
+                  {pushState != null ? (
+                    <DetailRow
+                      label="Notifications"
+                      icon={{
+                        ios: 'bell.badge',
+                        android: 'notifications',
+                        web: 'notifications',
+                      }}
+                      value={notificationValueLine(pushState)}
+                      // The same three-state action as the account pages:
+                      // never been asked goes straight to the OS dialog
+                      // (Settings has no Samewhere entry yet), a denial goes
+                      // to Settings, and On passes NO handler at all, so the
+                      // row renders inert instead of swallowing the tap.
+                      onPress={
+                        pushState === 'granted'
+                          ? undefined
+                          : pushState === 'undetermined'
+                            ? enablePush
+                            : () => {
+                                Linking.openSettings().catch(() => {});
+                              }
+                      }
+                    />
+                  ) : null}
                 </Section>
               </>
             )}
@@ -731,32 +1031,22 @@ export default function MyBusinessScreen() {
 
         {/* The button lives outside the scroll on purpose: a primary action
             inside one is reachable only by scrolling to it, and this is the
-            thing a business opens the tab to do. The gradient gives it a
-            ground so the text passing underneath does not compete with the
-            label on top of it. */}
-        <LinearGradient
-          colors={['transparent', theme.background]}
-          locations={[0, 0.55]}
-          style={[styles.dockBackdrop, { height: dockHeight(insets.bottom) + Space.xxl }]}
-          pointerEvents="none"
+            thing a business opens the tab to do. DockedActionBar is the same
+            chrome Travelers docks: an opaque plate exactly as tall as the
+            measured bar, a short ramp fading down to it, and hit-testing
+            that lets taps through — the single gradient it replaces reached
+            full opacity 55% of the way down its own height, so the button
+            row sat on a half-transparent wash and the page read through. */}
+        <DockedActionBar
+          primaryLabel={next.label}
+          primaryAccessibilityLabel={next.hint}
+          onPrimary={next.onPress}
+          bottomInset={dockBottom}
+          onBarHeight={setBarHeight}
         />
-        <View
-          style={[styles.dock, { paddingBottom: BottomTabInset + insets.bottom / 2 + Space.sm }]}
-          pointerEvents="box-none">
-          <PrimaryButton label={next.label} accessibilityLabel={next.hint} onPress={next.onPress} />
-        </View>
       </View>
     </ThemedView>
   );
-}
-
-/**
- * How tall the docked bar actually is, so the fade starts AT it rather than
- * a line and a half above it. Handing this the scroll clearance instead is
- * what dissolved the last line of a traveler's trip dates on run 44.
- */
-function dockHeight(bottomInset: number) {
-  return Space.sm + DOCK_BUTTON + Space.sm + BottomTabInset + bottomInset / 2;
 }
 
 const styles = StyleSheet.create({
@@ -882,19 +1172,5 @@ const styles = StyleSheet.create({
   },
   seeItBlock: {
     gap: Space.sm,
-  },
-  dockBackdrop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  dock: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: Space.lg,
-    paddingTop: Space.sm,
   },
 });

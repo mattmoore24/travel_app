@@ -59,6 +59,18 @@ describe('a cold-start invite has somewhere to go', () => {
     expect(source('(tabs)', '_layout.tsx')).toContain('PendingInviteHandoff');
   });
 
+  it('takes the invite paste through a real field on every platform', () => {
+    // The old way in was Alert.prompt, which exists only on iOS: Android and
+    // web got a plain alert with no input at all, so somebody holding a code
+    // had no route into the group whatsoever. The invite entry point must
+    // never branch on Platform.OS again — the sheet is the same field
+    // everywhere.
+    const code = source('(tabs)', 'chat.tsx');
+    expect(code).not.toContain('Alert.prompt');
+    expect(code).not.toContain('Platform.OS');
+    expect(code).toContain('InviteCodeSheet');
+  });
+
   it('returns a new guest to the screen that asked for their name', () => {
     // `router.replace(next)` pushed a SECOND copy of the invite over the
     // first, which is why picking one of the two doors made the other

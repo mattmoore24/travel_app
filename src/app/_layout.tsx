@@ -1,23 +1,36 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { StyleSheet, View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+
+// Side effect: installs the foreground notification handler at module scope,
+// so it exists from launch rather than whenever the tabs happen to pull the
+// module in through the push primer.
+import '@/features/notifications/push';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { ConnectionBanner } from '@/components/ui/connection-banner';
 import { IntroTour } from '@/features/intro/intro-tour';
 import { useIntroState } from '@/features/intro/store';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Colors, Spacing, SplashField } from '@/constants/theme';
+import { Colors, MaxContentWidth, Spacing, SplashField } from '@/constants/theme';
 import { signOut } from '@/features/auth/api';
+import { useAppleRevokeWatch } from '@/features/auth/apple-revoke';
+import { accountLoadFailure } from '@/features/auth/load-error';
+import { signedOutNoticeCopy, type SignedOutReason } from '@/features/auth/signed-out-reason';
 import { useAuthStore } from '@/features/auth/store';
 import { ResetPasswordScreen } from '@/features/auth/reset-password-screen';
 import { owesOnboarding, rootIsReady } from '@/features/auth/routing';
+import { gateCopy, type GateView } from '@/features/auth/gate-copy';
 import { useAuthListener } from '@/features/auth/use-auth-listener';
-import { useOwnBusiness } from '@/features/business/hooks';
+import { useListingIntent, useOwnBusiness } from '@/features/business/hooks';
 import { useAccountStanding, useOwnProfile } from '@/features/profile/hooks';
+import { ContactForm } from '@/features/support/contact-form';
+import { GuidelinesBody } from '@/features/support/guidelines-body';
 import { queryClient } from '@/lib/query-client';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -36,37 +49,77 @@ SplashScreen.preventAutoHideAsync();
  */
 export const unstable_settings = { anchor: '(tabs)' };
 
+/**
+ * The centred column both root-level dead ends are drawn in: the load error
+ * and the account gate.
+ *
+ * It SCROLLS, and that is the whole point of it being a component. A centred
+ * View was right while the gate held a title, one line of body and a single
+ * Sign out. The gate now holds a title, a paragraph, and three buttons — and
+ * at the larger Dynamic Type sizes the last of them, Appeal this, fell off
+ * the bottom of the one screen in the app whose entire purpose is giving a
+ * suspended or closed account a way back. Nothing scrolled, so there was no
+ * way to reach it: on that screen the appeal route did not exist.
+ *
+ * flexGrow: 1 with a centred content container is the pairing that serves
+ * both: the short case stays vertically centred and the tall case scrolls.
+ * The padding and the gap live on the content container rather than the
+ * static style for the same reason — on a ScrollView they belong to the
+ * content, not to the frame.
+ */
+function CenteredPage({ children }: { children: ReactNode }) {
+  return (
+    <ThemedView style={styles.errorRoot}>
+      <SafeAreaView style={styles.errorContent}>
+        <ScrollView contentContainerStyle={styles.errorScroll}>{children}</ScrollView>
+      </SafeAreaView>
+    </ThemedView>
+  );
+}
+
 // Shown when we're signed in but a fetch the router depends on failed
 // (offline cold start, server error) — without it, users would be routed into
 // a blank onboarding stack with no way out.
 function AccountLoadError({
   title,
+  error,
   onRetry,
   retrying,
 }: {
   title: string;
+  /** The failure itself, so the screen can tell a bad wifi from a gone row. */
+  error: unknown;
   onRetry: () => void;
   retrying: boolean;
 }) {
+  // "Check your connection and try again" over a Try again button was what
+  // this said when the account no longer EXISTS - deleted on another device,
+  // swept by the guest janitor, removed by an admin - and that button can
+  // never succeed. Read off the error rather than guessed: PostgrestError is
+  // not an Error, so instanceof would swallow it (features/auth/load-error).
+  const closed = accountLoadFailure(error) === 'gone';
   return (
-    <ThemedView style={styles.errorRoot}>
-      <SafeAreaView style={styles.errorContent}>
-        <ThemedText type="subtitle" style={styles.errorText}>
-          {title}
-        </ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.errorText}>
-          Check your connection and try again.
-        </ThemedText>
-        <PrimaryButton label="Retry" loading={retrying} onPress={onRetry} />
-        <PrimaryButton
-          variant="ghost"
-          label="Sign out"
-          onPress={() => {
-            signOut().catch(() => {});
-          }}
-        />
-      </SafeAreaView>
-    </ThemedView>
+    <CenteredPage>
+      <ThemedText type="title" style={styles.errorText}>
+        {closed ? 'This account has been closed' : title}
+      </ThemedText>
+      <ThemedText themeColor="textSecondary" style={styles.errorText}>
+        {closed
+          ? 'We cannot find it any more. It may have been deleted from another device. Sign out and you can make a new one.'
+          : 'Check your connection and try again.'}
+      </ThemedText>
+      {/* The same words as the body copy above it. "Retry" is a
+          developer's word, and two labels for one act is one too many. */}
+      {closed ? null : <PrimaryButton label="Try again" loading={retrying} onPress={onRetry} />}
+      <PrimaryButton
+        // The only thing left to do, so it looks like it.
+        variant={closed ? 'filled' : 'ghost'}
+        label="Sign out"
+        onPress={() => {
+          signOut().catch(() => {});
+        }}
+      />
+    </CenteredPage>
   );
 }
 
@@ -75,6 +128,24 @@ function AccountLoadError({
 // other writes are merely invisible to others via the visibility helpers.
 // This screen tells the user what happened instead of surfacing permission
 // errors — it is UX, not the enforcement layer.
+
+/**
+ * The one screen a suspended or closed account can reach, and until now the
+ * only button on it was Sign out.
+ *
+ * docs/legal/COMMUNITY_GUIDELINES.md promises an appeal "from Contact us in
+ * the app, which is open even when you cannot sign in", and the app had
+ * hidden that from exactly this person: `guidelines` and `contact` are
+ * declared inside the <Stack> this component is returned INSTEAD OF, so
+ * router.push to either is a silent no-op here. That is why these are view
+ * modes rather than navigation, and why the two bodies are components.
+ *
+ * Moving the gate inside the Stack as a Stack.Protected group is the
+ * tempting alternative and it is a trap: it means adding `&& !gated` to every
+ * other guard in this file and getting initial-route resolution right on a
+ * cold start, in the one file whose comments already record four routing bugs
+ * paid for in full.
+ */
 function AccountGate({
   status,
   suspendedUntil,
@@ -82,42 +153,130 @@ function AccountGate({
   status: string;
   suspendedUntil: string | null;
 }) {
-  const suspended = status === 'suspended';
-  const until = suspendedUntil ? new Date(suspendedUntil) : null;
+  const [view, setView] = useState<GateView>('gate');
+  const copy = gateCopy(status, suspendedUntil);
+
+  if (view === 'rules') {
+    return (
+      <ThemedView style={styles.gateRoot}>
+        <SafeAreaView style={styles.gatePage}>
+          <GuidelinesBody onContact={() => setView('appeal')} />
+          <View style={styles.gateFooter}>
+            <PrimaryButton label="Back" onPress={() => setView('gate')} />
+          </View>
+        </SafeAreaView>
+      </ThemedView>
+    );
+  }
+
+  if (view === 'appeal') {
+    return (
+      <ThemedView style={styles.gateRoot}>
+        {/* Top edge only. StepScreen's own SafeAreaView is edges={['bottom']}
+            because every other thing that renders one is a modal route with a
+            native header over it — and this one is returned INSTEAD OF the
+            <Stack>, so there is no header and no modal card. Bare, the form's
+            title drew under the status bar and into the notch. The bottom
+            stays StepScreen's, which is where its docked Send button is. */}
+        <SafeAreaView style={styles.gatePage} edges={['top']}>
+          <ContactForm
+            initialBody={copy.appeal}
+            showReportHint={false}
+            onDone={() => setView('gate')}
+            onClose={() => setView('gate')}
+          />
+        </SafeAreaView>
+      </ThemedView>
+    );
+  }
+
   return (
-    <ThemedView style={styles.errorRoot}>
-      <SafeAreaView style={styles.errorContent}>
-        <ThemedText type="subtitle" style={styles.errorText}>
-          {suspended ? 'Account suspended' : 'Account banned'}
-        </ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.errorText}>
-          {suspended
-            ? `Your account is suspended${
-                until ? ` until ${until.toLocaleDateString()}` : ''
-              } for breaking our community guidelines.`
-            : 'Your account is closed for repeatedly breaking our community guidelines.'}
-        </ThemedText>
-        <PrimaryButton
-          variant="ghost"
-          label="Sign out"
-          onPress={() => {
-            signOut().catch(() => {});
-          }}
-        />
-      </SafeAreaView>
-    </ThemedView>
+    <CenteredPage>
+      <ThemedText type="title" style={styles.errorText}>
+        {copy.title}
+      </ThemedText>
+      <ThemedText themeColor="textSecondary" style={styles.errorText}>
+        {copy.body}
+      </ThemedText>
+      <PrimaryButton
+        variant="ghost"
+        label="Read the house rules"
+        onPress={() => setView('rules')}
+      />
+      <PrimaryButton variant="ghost" label="Appeal this" onPress={() => setView('appeal')} />
+      <PrimaryButton
+        variant="ghost"
+        label="Sign out"
+        onPress={() => {
+          signOut().catch(() => {});
+        }}
+      />
+    </CenteredPage>
+  );
+}
+
+/**
+ * The session ended and nobody here asked for it.
+ *
+ * supabase-js emits one SIGNED_OUT event whether the person tapped Sign out
+ * or the server threw the refresh token away, so a revoked session, a global
+ * sign-out from another device, a deleted account and the guest sweep all
+ * used to arrive as the app silently becoming the signed-out app: the chats
+ * gone, the pins gone, the avatar a guest avatar, and nothing said.
+ *
+ * Rendered INSTEAD OF the stack, in the same position the recovery branch
+ * pre-empts everything else, so there is no navigator while it is up. That is
+ * why Sign in parks a flag rather than pushing a route: clearing the notice
+ * remounts the stack at its anchor and any navigation dispatched a tick
+ * earlier is dropped (the root-hold trap this file has already paid for). The
+ * tabs spend the flag the moment they mount, exactly as they do the invite.
+ */
+function SignedOutNotice({ reason }: { reason: SignedOutReason }) {
+  const seen = useAuthStore((s) => s.signedOutNoticeSeen);
+  const signInWanted = useAuthStore((s) => s.signInWanted);
+  const copy = signedOutNoticeCopy(reason);
+
+  return (
+    <CenteredPage>
+      <ThemedText type="title" style={styles.errorText}>
+        {copy.title}
+      </ThemedText>
+      <ThemedText themeColor="textSecondary" style={styles.errorText}>
+        {copy.body}
+      </ThemedText>
+      <PrimaryButton
+        label="Sign in"
+        onPress={() => {
+          signInWanted();
+          seen();
+        }}
+      />
+      <PrimaryButton variant="ghost" label="Not now" onPress={seen} />
+    </CenteredPage>
   );
 }
 
 function RootNavigator() {
   useAuthListener();
+  // Beside the auth listener because it is the same kind of thing: one watch,
+  // mounted once, that can end a session. It notices somebody telling iOS to
+  // stop using their Apple ID with this app, which nothing did before.
+  useAppleRevokeWatch();
   const session = useAuthStore((s) => s.session);
   const initialized = useAuthStore((s) => s.initialized);
   const recovery = useAuthStore((s) => s.recovery);
+  const signedOutNotice = useAuthStore((s) => s.signedOutNotice);
+  const listingIntent = useAuthStore((s) => s.listingIntent);
   const intro = useIntroState();
   const profileQuery = useOwnProfile();
   const standingQuery = useAccountStanding();
   const businessQuery = useOwnBusiness();
+  // "Part way through listing a business", from the database rather than from
+  // memory. The in-memory flag is lost by a cold start, and losing it is what
+  // put a bar owner into traveler onboarding: the one flow a business must
+  // never finish, because register_business refuses an account that carries
+  // the stamp it ends with.
+  const listingQuery = useListingIntent();
 
   const signedIn = session != null;
   const onboarded = profileQuery.data?.onboarding_completed_at != null;
@@ -126,10 +285,15 @@ function RootNavigator() {
   // A business account is the second kind that can never be onboarded, and
   // for the same structural reason a guest cannot. See features/auth/routing.
   const isBusiness = businessQuery.data != null;
+  // The store's flag OR the column, so the answer is right within a sitting
+  // (the column is written a beat after the chooser) and right after a cold
+  // start (the store is empty and the column is not).
+  const wantsBusiness = listingIntent || listingQuery.data === true;
   const needsProfile = owesOnboarding(
     session,
     profileQuery.data?.onboarding_completed_at,
-    isBusiness
+    isBusiness,
+    wantsBusiness
   );
   // Hold routing until the persisted session is restored and (when signed in)
   // the first profile + standing fetches settle — otherwise users flash
@@ -142,6 +306,7 @@ function RootNavigator() {
     profileSettled: profileQuery.isSuccess || profileQuery.isError,
     standingSettled: standingQuery.isSuccess || standingQuery.isError,
     businessSettled: businessQuery.isSuccess || businessQuery.isError,
+    listingSettled: listingQuery.isSuccess || listingQuery.isError,
   });
 
   if (!ready || intro.seen === null) {
@@ -162,6 +327,7 @@ function RootNavigator() {
     return (
       <AccountLoadError
         title="Can't load your profile"
+        error={profileQuery.error}
         onRetry={() => profileQuery.refetch()}
         retrying={profileQuery.isFetching}
       />
@@ -182,6 +348,7 @@ function RootNavigator() {
     return (
       <AccountLoadError
         title="Can't load your account"
+        error={businessQuery.error}
         onRetry={() => businessQuery.refetch()}
         retrying={businessQuery.isFetching}
       />
@@ -199,6 +366,13 @@ function RootNavigator() {
   // trip taken specifically to change it.
   if (recovery != null) {
     return <ResetPasswordScreen />;
+  }
+
+  // After recovery (a live recovery session is a sign-in somebody is in the
+  // middle of) and before the tour, which would otherwise greet a person
+  // whose session just died as though they had never opened the app.
+  if (signedOutNotice != null) {
+    return <SignedOutNotice reason={signedOutNotice.reason} />;
   }
 
   // First launch, no account: explain the three tabs before anything else.
@@ -236,13 +410,25 @@ function RootNavigator() {
           on it still asks for an account at the moment it is taken. */}
       <Stack.Screen
         name="place/[id]"
+        // `headerTitle: ''` is the pre-resolve placeholder, not a bare row by
+        // design: the business name only exists once the detail query lands,
+        // so the screen sets it from inside its loaded branch, the way
+        // profile/[userId] does. Until then the row carries the chevron over
+        // the skeleton, which is the one state where there is no name to say.
         options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
       />
       {/* Business rooms are readable signed-out (the public preview), so this
           sits outside the guards like guidelines does. */}
       <Stack.Screen
         name="room/[id]"
-        options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        // The screen draws its own one-storey header (features/chat/thread-header).
+        // Switched off HERE rather than from inside the screen: a <Stack.Screen>
+        // inside the component applies through setOptions AFTER mount, so the
+        // native stack pushes the route with an empty nav bar and removes it a
+        // frame later - the content jumps by a header's height on every thread
+        // open, which is the two-storey chrome this was meant to delete,
+        // flashing once per push.
+        options={{ headerShown: false }}
       />
       {/* Profile opens from the avatar in the Map/Travelers headers, and it
           is deliberately OUTSIDE the signed-in guard: a guest who taps the
@@ -263,12 +449,44 @@ function RootNavigator() {
       <Stack.Protected guard={signedIn}>
         <Stack.Screen
           name="chat/[id]"
-          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+          // The screen draws its own one-storey header (features/chat/thread-header).
+          // Switched off HERE rather than from inside the screen: a <Stack.Screen>
+          // inside the component applies through setOptions AFTER mount, so the
+          // native stack pushes the route with an empty nav bar and removes it a
+          // frame later - the content jumps by a header's height on every thread
+          // open, which is the two-storey chrome this was meant to delete,
+          // flashing once per push.
+          options={{ headerShown: false }}
         />
+        {/* A REAL title in the header row, not an empty one with the word
+            drawn again underneath. `headerTitle: ''` spent a whole row on a
+            lone glass back button and then made the screen repeat itself
+            below it, which is where the two-storey chrome on this spine came
+            from. The row already exists; it was just empty. The title paints
+            in Nocturne's own text token because NavigationTheme sets
+            `colors.text` (below) — native headers take their colour from the
+            navigation appearance, never from a component's style. */}
         <Stack.Screen
           name="archived-chats"
-          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+          options={{ headerShown: true, headerTitle: 'Archived', headerShadowVisible: false }}
         />
+        {/* Where the waiting first messages go once there are too many of
+            them to keep in the inbox. signedIn, not signedIn && onboarded:
+            the same guard the rest of the chat surfaces sit behind, so a
+            route the Chat tab can offer is always a route the navigator
+            has. Titled here like archived-chats: the inbox section this
+            opens from is "Waiting on you" ((tabs)/chat.tsx), and the screen
+            no longer writes it a second time under the chevron. */}
+        <Stack.Screen
+          name="first-messages"
+          options={{ headerShown: true, headerTitle: 'Waiting on you', headerShadowVisible: false }}
+        />
+        {/* signedIn, deliberately NOT `signedIn && onboarded`. A business
+            account never satisfies `onboarded` by design (routing.ts), and
+            that is exactly how three other routes ended up doing nothing for
+            them - while an owner is as likely as a traveler to need to change
+            the password on the account their listing hangs off. */}
+        <Stack.Screen name="account-credentials" options={{ presentation: 'modal' }} />
       </Stack.Protected>
       <Stack.Protected guard={signedIn && onboarded}>
         <Stack.Screen name="edit-profile" options={{ presentation: 'modal' }} />
@@ -286,8 +504,22 @@ function RootNavigator() {
         <Stack.Screen name="report-place" options={{ presentation: 'modal' }} />
         <Stack.Screen name="verification" options={{ presentation: 'modal' }} />
         <Stack.Screen name="visibility" options={{ presentation: 'modal' }} />
+        {/* The inventory a block never had. Beside visibility because it is
+            the same kind of thing: who can see you, and who you have already
+            decided cannot. */}
+        <Stack.Screen name="blocked" options={{ presentation: 'modal' }} />
+        {/* The reader's own line on what a hello may say. It was the one real
+            route file in src/app/ the layout did not name, and expo-router
+            appends those - so it rendered outside every guard with the root's
+            headerShown false and a card presentation, which is a full-bleed
+            page under the Dynamic Island with no header, no back chevron and
+            no Close on it. That is /my-reports one batch ago, exactly. Beside
+            blocked and visibility because the settings spine files it beside
+            them, and on the same guard they are on: the row that leads here
+            is hidden for an account with no onboarding stamp (profile-me),
+            so the client and the navigator agree about who can reach it. */}
+        <Stack.Screen name="muted-words" options={{ presentation: 'modal' }} />
         <Stack.Screen name="compose-request" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="drop-pin" options={{ presentation: 'modal' }} />
         <Stack.Screen
           name="profile/[userId]"
           options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
@@ -302,7 +534,14 @@ function RootNavigator() {
         <Stack.Screen name="message/[userId]" options={{ presentation: 'modal' }} />
         <Stack.Screen
           name="group/[id]"
-          options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+          // The screen draws its own one-storey header (features/chat/thread-header).
+          // Switched off HERE rather than from inside the screen: a <Stack.Screen>
+          // inside the component applies through setOptions AFTER mount, so the
+          // native stack pushes the route with an empty nav bar and removes it a
+          // frame later - the content jumps by a header's height on every thread
+          // open, which is the two-storey chrome this was meant to delete,
+          // flashing once per push.
+          options={{ headerShown: false }}
         />
       </Stack.Protected>
       {/* The three editors signup now sends people into, which is why they
@@ -345,12 +584,15 @@ function RootNavigator() {
         <Stack.Screen name="business-storefront" options={{ presentation: 'modal' }} />
         <Stack.Screen name="business-edit" options={{ presentation: 'modal' }} />
         <Stack.Screen name="business-post" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="saved-replies" />
       </Stack.Protected>
-      {/* Outside every guard so it's readable BEFORE sign-up (the welcome
-          screen links to it) and from the profile tab after — but declared
-          LAST: the first child of the stack becomes the anchor route, and an
-          unguarded screen in that slot swallows every cold start. */}
+      {/* Outside every guard so both policy screens are readable BEFORE
+          sign-up (the welcome screen and the consent line link to them) and
+          from the profile tab after — but declared LAST: the first child of
+          the stack becomes the anchor route, and an unguarded screen in that
+          slot swallows every cold start. */}
       <Stack.Screen name="guidelines" options={{ presentation: 'modal' }} />
+      <Stack.Screen name="privacy" options={{ presentation: 'modal' }} />
       {/* Unguarded for the same reason, and one more: somebody who cannot
           sign in is the person most likely to need to write in. */}
       <Stack.Screen name="contact" options={{ presentation: 'modal' }} />
@@ -361,6 +603,17 @@ function RootNavigator() {
           actions do not get to be the ones that quietly fail. */}
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="report" options={{ presentation: 'modal' }} />
+        {/* The other half of reporting: what became of the ones you sent.
+            expo-router appends any route file the layout does not name, so
+            /my-reports rendered without this — and inherited the root's
+            headerShown false with a card presentation, which is a full-bleed
+            page pushed under the Dynamic Island with no Close on it. Every
+            sibling on this spine (guidelines, privacy, contact, report) is a
+            modal, and this belongs with them. signedIn and not
+            `signedIn && onboarded`: a business account never satisfies
+            `onboarded` by design (features/auth/routing), and the business
+            account page offers this row too. */}
+        <Stack.Screen name="my-reports" options={{ presentation: 'modal' }} />
       </Stack.Protected>
       {/* Typing a name is how somebody with no account BECOMES a guest, so
           it has to mount before there is a session, and again afterwards so
@@ -370,10 +623,23 @@ function RootNavigator() {
       <Stack.Screen name="guest-name" options={{ presentation: 'modal' }} />
       {/* An invite link can arrive before a person has an account. The screen
           shows what the group is and offers to make one, rather than bouncing
-          them to a welcome page that says nothing about why they tapped. */}
+          them to a welcome page that says nothing about why they tapped.
+          One title over all of the screen's branches (the invite is open,
+          not open, ended, already joined, or not for a business): the header
+          says what the screen IS, and each branch's headline says what
+          happened. The same string sits on i/[token] below, and
+          __tests__/stack-header.test.ts keeps the two from drifting. */}
       <Stack.Screen
         name="join-group/[token]"
-        options={{ headerShown: true, headerTitle: '', headerShadowVisible: false }}
+        options={{ headerShown: true, headerTitle: 'Group invite', headerShadowVisible: false }}
+      />
+      {/* The https spelling of the same invite, the one iOS hands over for
+          link.samewhere.io/i/<token>. Same screen, same options: the root
+          defaults to headerShown false, and on a cold start the header is
+          where the back chevron lives. */}
+      <Stack.Screen
+        name="i/[token]"
+        options={{ headerShown: true, headerTitle: 'Group invite', headerShadowVisible: false }}
       />
     </Stack>
   );
@@ -406,12 +672,38 @@ export default function RootLayout() {
       <ThemeProvider value={NavigationTheme}>
         <AnimatedSplashOverlay />
         <RootNavigator />
+        {/* A sibling of the navigator, not a child of any screen: the phone
+            being offline is a fact about the room somebody walked into, and
+            it outlives whatever screen they happen to be on. It renders null
+            unless the query client has actually seen requests fail, so on a
+            working connection this costs one subscription and nothing else.
+
+            Mounted here because it was mounted NOWHERE: the component, its
+            store and its 117 lines of passing tests all shipped in the same
+            commit as a feature no person could ever see. Four review lenses
+            found it independently. */}
+        <ConnectionBanner />
       </ThemeProvider>
     </QueryClientProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  // The rules, read from behind the gate. Same shape as the /guidelines
+  // screen, minus the router it cannot use.
+  gateRoot: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  gatePage: {
+    flex: 1,
+    maxWidth: MaxContentWidth,
+  },
+  gateFooter: {
+    padding: Spacing.four,
+    paddingTop: Spacing.two,
+  },
   // Must equal the native splash background, for the same reason the splash
   // overlay does (components/animated-icon.tsx).
   bootHold: {
@@ -426,6 +718,11 @@ const styles = StyleSheet.create({
   errorContent: {
     flex: 1,
     maxWidth: 480,
+  },
+  // The content container, not the frame: a ScrollView centres its children
+  // through flexGrow on this, and pads and spaces them here too.
+  errorScroll: {
+    flexGrow: 1,
     alignItems: 'stretch',
     justifyContent: 'center',
     gap: Spacing.three,

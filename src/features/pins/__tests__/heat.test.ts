@@ -2,6 +2,8 @@ import {
   compositeAlpha,
   heatPeakAlpha,
   heatRings,
+  heatViewReady,
+  heatWithFallback,
   mergeHeatCells,
   HEAT_CELL_RADIUS_M,
   type HeatRing,
@@ -78,5 +80,45 @@ describe('heatRings', () => {
 
   it('never gets opaque enough to hide the street underneath', () => {
     expect(compositeAlpha(alphaOf(rings(50)[0]), 3)).toBeLessThanOrEqual(0.3);
+  });
+});
+
+describe('heatWithFallback', () => {
+  // A day filter evaluates k against a third of the pins, so the layer used
+  // to vanish exactly when somebody was trying hardest to use it.
+  const a = cell({ pin_count: 3 });
+
+  it('falls back to the all-days pool only when the day emptied and the pool is not', () => {
+    expect(heatWithFallback(true, [], [a])).toEqual({ rows: [a], fallback: true });
+  });
+
+  it('never falls back when the day-filtered layer has something', () => {
+    const day = cell({ pin_count: 4 });
+    expect(heatWithFallback(true, [day], [a])).toEqual({ rows: [day], fallback: false });
+  });
+
+  it('never falls back with no day filter on', () => {
+    expect(heatWithFallback(false, [], [a])).toEqual({ rows: [], fallback: false });
+  });
+
+  it('has nothing to fall back to when both pools are empty', () => {
+    expect(heatWithFallback(true, [], [])).toEqual({ rows: [], fallback: false });
+  });
+});
+
+describe('heatViewReady', () => {
+  // heatmap_rendered measured data arrival; heatmap_viewed needs pixels a
+  // person can see. Once-per-city is the caller's half.
+  it('needs a non-empty layer', () => {
+    expect(heatViewReady({ cells: 0, covered: false, placing: false })).toBe(false);
+    expect(heatViewReady({ cells: 2, covered: false, placing: false })).toBe(true);
+  });
+
+  it('does not fire while a sheet covers the map', () => {
+    expect(heatViewReady({ cells: 2, covered: true, placing: false })).toBe(false);
+  });
+
+  it('does not fire in place mode, where the map is a viewfinder', () => {
+    expect(heatViewReady({ cells: 2, covered: false, placing: true })).toBe(false);
   });
 });

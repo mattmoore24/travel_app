@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="stylesheet" href="/_style.css" />
+    <style>
+      mark.todo {
+        background: #4a1f12;
+        color: #ff9a5a;
+        padding: 2px 7px;
+        border-radius: 5px;
+        font-weight: 600;
+      }
+      table.processors {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 18px 0;
+      }
+      table.processors th,
+      table.processors td {
+        text-align: left;
+        vertical-align: top;
+        padding: 8px 10px;
+        border-bottom: 1px solid #2e3350;
+      }
+    </style>
+    <title>Privacy Policy · Samewhere</title>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="mark"><img class="flame" src="/_mark.svg" alt="" /><span>Samewhere</span></div>
+      <h1>Privacy Policy</h1>
+      <p><em>Last updated: 2026-08-31</em></p>
+      <p>
+        <strong>Samewhere</strong> ("we") helps travelers make friends. This policy explains what we
+        collect, why, who touches it, and what you can ask us to do about it.
+      </p>
+      <h2>What we collect</h2>
+      <ul>
+        <li><strong>Account</strong>: your email address. Sign-in is handled by Supabase Auth.</li>
+        <li>
+          <strong>Profile you build</strong>: display name, age, gender, home city and country,
+          languages, bio, photos, and any social handles you choose to add.
+        </li>
+        <li>
+          <strong>Travel intent you share</strong>: trip cities and date ranges, and map pins (a
+          venue, a category, an optional note and a day). Pins are permanently deleted within 72
+          hours.
+        </li>
+        <li>
+          <strong>Messages</strong>: first messages you send, and the chats, groups and business
+          rooms you take part in.
+        </li>
+        <li>
+          <strong>Verification selfie</strong> (optional): a face comparison. It has its own section
+          below, because it is the most sensitive thing in this list and a bullet is not enough room
+          to be precise about it.
+        </li>
+        <li>
+          <strong>Usage analytics</strong>: which screens you open and which features you use,
+          recorded through PostHog. The PostHog mobile library also creates its own identifier for
+          your installation and stores it on your device, and attaches your device model, operating
+          system version, app version, language and time zone to every event. Once you sign in,
+          events are tied to your user id. Events go to PostHog's <strong>EU</strong> cloud
+          (eu.i.posthog.com). There is no in-app analytics opt-out today; if that changes, this
+          paragraph changes with it.
+        </li>
+        <li>
+          <strong>Support messages</strong>: if you write to us from Contact us, we keep your
+          message and the address you asked us to reply to, along with the one word you picked for
+          what it is about, so an urgent message can be answered first.
+        </li>
+        <li>
+          <strong>A Sign in with Apple token</strong> (only if you sign in with Apple): Apple issues
+          a refresh token once, at your first sign-in, and we keep it for the life of your account
+          for exactly one purpose. When you delete your account we have to tell Apple to forget it
+          too, and this token is the only thing that can make that call. It is held on our server
+          where no app, browser or signed-in user can read it, including you; it is never sent
+          anywhere except to Apple, and it is destroyed with your account. If you signed up with an
+          email address, this does not exist for you.
+        </li>
+      </ul>
+      <h2>What we deliberately do NOT collect</h2>
+      <ul>
+        <li>
+          <strong>Your device location. Never.</strong> The app asks for no location permission and
+          holds none. The map shows only venue-level future plans that people typed in themselves.
+        </li>
+        <li>Your birthdate. We store an age number only.</li>
+        <li>
+          Your contacts, your photo library beyond the photos you pick, your microphone, your
+          calendar, or anything about what you do in other apps.
+        </li>
+        <li>
+          We do not track you across other companies' apps or websites, and we do not sell anything
+          about you to anybody.
+        </li>
+      </ul>
+      <h2>Verification, and why we call it biometric</h2>
+      <p>
+        Getting the verified badge is optional and nothing else in the app is withheld if you skip
+        it.
+      </p>
+      <p>
+        Here is exactly what happens. You take a selfie in the app; the photo library is never
+        offered, because a picture chosen from a library proves nothing. The selfie goes into a
+        private storage bucket that only you can write to and no other user can read. A server-side
+        worker then signs short-lived links to that selfie and to up to two of your approved profile
+        photos, sends those images to Anthropic's vision model with one question, "Is this selfie
+        plausibly the same person as the profile photos?", and stores the answer.
+      </p>
+      <ul>
+        <li>
+          <strong>No face template is computed.</strong> Nothing measures your face, no faceprint or
+          embedding is produced, and nothing derived from your face is retained.
+        </li>
+        <li>
+          <strong>The selfie is deleted as soon as a verdict lands</strong>, whichever way the
+          verdict went.
+        </li>
+        <li><strong>What survives is the verdict text and the badge.</strong> Nothing else.</li>
+      </ul>
+      <p>
+        Even so, a check that compares one face against another is biometric processing. Under the
+        GDPR it is Article 9 special category data, and Apple puts it in the Sensitive Info category
+        on the App Store privacy card. We treat it that way rather than argue the point: we process
+        it <strong>only on your explicit consent</strong>, which is you choosing to start the check,
+        only for that one purpose, and only for as long as it takes to answer the question.
+      </p>
+      <p>
+        The badge is a plausibility check against casual catfishing. It is not identity
+        verification: there is no document check and no liveness challenge.
+        <mark class="todo">NEEDS LEGAL REVIEW - biometric declaration, decision D21</mark>
+      </p>
+      <h2>Business accounts</h2>
+      <p>
+        A business account is a different thing from a traveler account and collects a different
+        set. If you run a listing, we hold:
+      </p>
+      <ul>
+        <li>The <strong>trading name</strong>, the description, and the category.</li>
+        <li>
+          A <strong>street address, a city, and the map marker you place on your door</strong>, plus
+          any note about finding the entrance. A listing's location is the business's own address,
+          which is public information about a premises. It is not anybody's whereabouts.
+        </li>
+        <li><strong>Opening hours</strong>, and any note about what the hours miss.</li>
+        <li>
+          <strong>Links</strong> you add: website, menu, phone, email, WhatsApp number, and social
+          handles.
+        </li>
+        <li><strong>Photos</strong> of the business.</li>
+        <li>
+          The <strong>email address</strong> the confirmation code is sent to. Confirming that
+          address is what puts a listing on the map. Changing the name or moving the marker takes
+          the listing off the map until a new code is confirmed.
+        </li>
+        <li>Posts you write in your own room, and replies to travelers who wrote to you.</li>
+      </ul>
+      <p>
+        Two things are deliberately public:
+        <strong>a listing is visible to everyone, including people who are signed out</strong>,
+        because being findable is the whole point of it; and a business never sees who rated it.
+        Travelers rate a business out of ten, ratings are anonymous to the business, and
+        <strong>no public number appears until at least five travelers have rated it</strong>.
+      </p>
+      <p>
+        Deleting a business account deletes the listing with it, from
+        <strong>Profile → Delete account</strong>, the same door a traveler uses. The listing, its
+        photos, links, hours, posts and room go with it.
+      </p>
+      <h2>How your information is shared with other users</h2>
+      <ul>
+        <li>
+          Your profile (name, age, photos, bio, languages, verified badge) is visible to any
+          signed-in traveler who can reach it: someone whose trip overlaps yours, someone who taps
+          one of your pins, or someone opening your profile from a chat or a group you share.
+        </li>
+        <li>
+          <strong
+            >Your social handles are hidden until you and another traveler are both in a chat
+            together.</strong
+          >
+          This is enforced by the database, not just by the app.
+        </li>
+        <li>
+          Your upcoming trips are part of your profile, so any signed-in traveler who can open your
+          profile can see them. Finished trips are private to you.
+        </li>
+        <li>
+          <strong>You choose who can see you.</strong> The visibility setting (Everyone, Verified
+          only, Verified men, Verified women, Verified non-binary) works in both directions and is
+          enforced in the database.
+        </li>
+        <li>
+          <strong>One traveler at a time can be shown to signed-out visitors.</strong> The Travelers
+          tab shows a single featured card for a city: name, age, photo, bio, languages, city and
+          dates. It is chosen automatically from whoever in that city other travelers are writing to
+          most. You are eligible only if you have a trip in that city <strong>and</strong> your
+          visibility is set to Everyone, which is the default. Narrow your visibility to anything
+          else and a signed-out visitor cannot see you at all, there or anywhere else. Nobody can
+          message you without an account.
+        </li>
+        <li>
+          Heat on the map is aggregated and de-identified. Areas with only a few plans are never
+          shown to anybody.
+        </li>
+      </ul>
+      <h2>Content moderation</h2>
+      <p>
+        First messages, profile photos, business content and verification selfies are screened
+        automatically before they land. The screening runs server-side and uses an AI classifier
+        through Anthropic's API. Moderation decisions and reports are logged so we can answer for
+        them. <strong>Your content is never used to train AI models.</strong>
+      </p>
+      <p>
+        Reports are anonymous to the person reported. Blocking somebody hides you from each other
+        everywhere, immediately.
+      </p>
+      <h2>Appeals, and a person at the end of it</h2>
+      <p>
+        <strong>Any automated decision can be reviewed by a human.</strong> If a message was
+        blocked, a photo removed, a verification refused, or an account warned, suspended or
+        removed, write to us from <strong>Contact us</strong> in the app (it is open to signed-out
+        users, which is the point) or to <a href="mailto:hello@samewhere.io">hello@samewhere.io</a>,
+        and a person will look at the decision itself, not just at the log. We answer within 30 days
+        and we tell you what we decided and why.
+      </p>
+      <p>
+        This is how we meet GDPR Article 22 on decisions taken by automated means, and DSA Article
+        17 on telling you why your content was restricted.
+      </p>
+      <h2>Who processes your data for us</h2>
+      <p>
+        We use a small number of providers, and only ever share what a provider needs to do its job:
+      </p>
+      <table class="processors">
+        <tr>
+          <th>Provider</th>
+          <th>What it does for us</th>
+        </tr>
+        <tr>
+          <td><strong>Supabase</strong></td>
+          <td>Database, file storage, and authentication. Hosted in the EU.</td>
+        </tr>
+        <tr>
+          <td><strong>Expo</strong></td>
+          <td>Over-the-air app updates, and the push notification service.</td>
+        </tr>
+        <tr>
+          <td><strong>Apple</strong></td>
+          <td>Push delivery through APNs, and Sign in with Apple.</td>
+        </tr>
+        <tr>
+          <td><strong>PostHog</strong></td>
+          <td>Product analytics, on their EU cloud.</td>
+        </tr>
+        <tr>
+          <td><strong>Anthropic</strong></td>
+          <td>The moderation and verification classifiers, run server-side. No model training.</td>
+        </tr>
+        <tr>
+          <td><strong>Resend</strong></td>
+          <td>Sending our email: support replies and business confirmation codes.</td>
+        </tr>
+      </table>
+      <p>
+        Every one of them is bound by terms that require them to protect your information at least
+        as well as this policy does, to use it only to provide their service to us, and never to
+        sell it or use it for their own advertising. We do not sell your data to anyone, and none of
+        these providers is an advertising network.
+        <mark class="todo">CONFIRM a signed DPA with each of the six before publishing</mark>
+      </p>
+      <h2>Where your data lives</h2>
+      <p>
+        Your account, photos and messages are stored with Supabase (Postgres and object storage) in
+        the <strong>EU</strong> (<mark class="todo">REGION - confirm in the Supabase dashboard</mark
+        >). Analytics events are stored in PostHog's EU cloud. Push notifications travel through
+        Expo and Apple. Content sent for moderation or verification is processed by Anthropic's API
+        and is not retained by us beyond the verdict.
+      </p>
+      <h2>Retention and deletion</h2>
+      <ul>
+        <li><strong>Pins</strong>: deleted within 72 hours, always.</li>
+        <li><strong>Verification selfies</strong>: deleted as soon as the check has an answer.</li>
+        <li><strong>Finished trips</strong>: kept on your profile only for you.</li>
+        <li>
+          <strong>Delete your account any time</strong> from
+          <strong>Profile → Delete account</strong>. Your profile, photos, trips, pins, first
+          messages and chats (for both sides) are permanently deleted, and a business listing goes
+          with the account that runs it. It is immediate and it cannot be undone.
+        </li>
+        <li>
+          <strong>The Sign in with Apple token</strong> is spent and then destroyed as part of that
+          deletion: we call Apple to revoke your sign-in before the account row goes, so Apple stops
+          treating this app as one you have signed into. Nothing about it survives the deletion.
+        </li>
+        <li>
+          <strong>Moderation records</strong> are kept with your identity removed. Safety records
+          have to outlive the accounts they are about, or a banned account is a fresh start.
+        </li>
+      </ul>
+      <h2>Your rights</h2>
+      <p>
+        Depending on where you live (including the EU under the GDPR), you have rights to see,
+        correct, export, restrict or delete what we hold about you, and to object to some of it.
+      </p>
+      <p>
+        Deletion you can do yourself, in the app, in one tap, and it is thorough:
+        <strong>Profile → Delete account</strong> removes everything listed above, on both sides of
+        every chat. For anything else, write to us from <strong>Contact us</strong> in the app or to
+        <a href="mailto:hello@samewhere.io">hello@samewhere.io</a>.
+        <strong>A person handles these by hand</strong>, and we reply within 30 days, which is the
+        maximum the GDPR allows. There is no self-service export button today, and we would rather
+        say so than promise one.
+      </p>
+      <p>
+        You can also complain to your local data protection authority. In Portugal that is the CNPD.
+      </p>
+      <h2>Children</h2>
+      <p>
+        This app is for adults, 18 and over. Age is checked when an account is made and the database
+        refuses anything under 18. If you believe somebody on Samewhere is under 18, report them and
+        pick <strong>They are under 18</strong>; those reports go to the front of our queue and a
+        person reviews them.
+      </p>
+      <h2>Changes to this policy</h2>
+      <p>
+        The current version of this policy is always on this page, and the summary in the app is
+        updated in the same release. If we make a material change, we will change the date at the
+        top and say so here. We do not currently have a way to notify you inside the app, and this
+        document will not claim one until we do.
+      </p>
+      <p>
+        <strong>Contact</strong>: the in-app <strong>Contact us</strong> form, or
+        <a href="mailto:hello@samewhere.io">hello@samewhere.io</a> ·
+        <mark class="todo">LEGAL ENTITY NAME AND ADDRESS - required for GDPR and the DSA</mark>
+      </p>
+      <footer>
+        <p>
+          <a href="/">Samewhere</a> · <a href="/privacy">Privacy</a> ·
+          <a href="/guidelines">House rules</a> · <a href="/support">Support</a> ·
+          <a href="mailto:hello@samewhere.io">hello@samewhere.io</a>
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

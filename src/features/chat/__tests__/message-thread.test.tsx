@@ -30,6 +30,43 @@ jest.mock('@/features/profile/hooks', () => ({
   usePhotoUrl: () => ({ data: null }),
 }));
 
+// The plan card and the reactor sheet both talk to the server. What is under
+// test here is which of them is BUILT and when, so the queries are stubbed and
+// the calls are counted.
+// `mock`-prefixed, because a jest.mock factory is hoisted above every other
+// statement in the file and may only reach variables named that way.
+const mockJoinPlan = jest.fn();
+const mockReactors = jest.fn(() => ({
+  data: [{ user_id: 'u1', display_name: 'Omar', photo_path: null, emoji: '🔥' }],
+  isPending: false,
+  isError: false,
+}));
+jest.mock('@/features/rooms/hooks', () => ({
+  useJoinPlanFromMessage: () => ({ mutate: mockJoinPlan, isPending: false, isSuccess: false }),
+  useReactors: () => mockReactors(),
+}));
+
+const mockIsBusiness = jest.fn(() => false);
+jest.mock('@/features/business/hooks', () => ({
+  useIsBusiness: () => mockIsBusiness(),
+}));
+
+/**
+ * A row as `room_messages` hands it over: the joined pin columns ride along
+ * with everything else, which is exactly why the thread reads them off the row
+ * instead of asking its caller for them.
+ */
+const planned = (over: Record<string, unknown> = {}): MessageRow =>
+  ({
+    ...message(),
+    pin_id: 'pin-1',
+    pin_venue_name: 'Park Bar',
+    pin_plan: 'Sunset drinks',
+    pin_category: 'bar',
+    pin_intent_date: '2026-09-04',
+    ...over,
+  }) as MessageRow;
+
 const message = (over: Partial<MessageRow> = {}): MessageRow => ({
   id: 'm1',
   chat_id: 'c1',
@@ -90,10 +127,38 @@ describe('the reaction menu', () => {
     expect(onToggleReaction).toHaveBeenCalledWith('m1', '❤️', false);
   });
 
-  it('does not open for somebody who cannot react', () => {
+  it('does not open for somebody who cannot react and has nothing to flag', () => {
     renderThread({ canReact: false });
     fireEvent(screen.getByLabelText('First one in'), 'longPress');
     expect(screen.queryByLabelText('Dismiss')).toBeNull();
+  });
+
+  // canReact used to gate reporting too, so a visitor reading a public
+  // business room — the surface most likely to show a stranger's message —
+  // had no way to flag abuse at all.
+  it('opens with Report and no emoji for a reader who cannot react', () => {
+    renderThread({ canReact: false, onReport: jest.fn() });
+    fireEvent(screen.getByLabelText('First one in'), 'longPress');
+    expect(screen.getByLabelText('Report')).toBeTruthy();
+    expect(screen.queryByLabelText('❤️')).toBeNull();
+    expect(screen.queryByLabelText('More reactions')).toBeNull();
+  });
+
+  // The menu paints a COPY of the pressed bubble above its scrim while the
+  // original stays mounted in the thread. Unless the source row is blanked,
+  // the words appear twice — a ghost no scrim opacity could hide, which is
+  // what runs 35 and 37 photographed. Blanked with opacity, not unmounted:
+  // the row must keep its measured height or the list reflows under the
+  // open menu.
+  it('blanks the source row while its copy is lifted, and restores it on dismiss', () => {
+    renderThread();
+    const rowStyle = () => flattenStyle(screen.getByTestId('bubble-m1').props.style);
+
+    expect(rowStyle().opacity).toBeUndefined();
+    fireEvent(screen.getByLabelText('First one in'), 'longPress');
+    expect(rowStyle().opacity).toBe(0);
+    fireEvent.press(screen.getByLabelText('Dismiss'));
+    expect(rowStyle().opacity).toBeUndefined();
   });
 });
 
@@ -146,6 +211,84 @@ describe('what a group needs and a one-to-one chat does not', () => {
     // And there is nothing left to react to.
     fireEvent(screen.getByText('Message removed by the host'), 'longPress');
     expect(screen.queryByLabelText('Dismiss')).toBeNull();
+  });
+
+  // "Ana is in" is the room recording an arrival, not Ana talking. Drawn as
+  // a bubble under her name it reads as something she typed, which in a
+  // thread that must follow iMessage conventions exactly is a lie.
+  it('prints a join line centred, with no bubble, no author and no menu', () => {
+    renderThread({
+      messages: [message({ body: 'Ana is in' })],
+      systemFor: () => 'Ana is in',
+      authorFor: () => 'Ana',
+    });
+    // The sentence is on screen as plain text…
+    expect(screen.getByText('Ana is in')).toBeTruthy();
+    // …but not as a bubble: a Bubble is a Pressable labelled with its body,
+    // and that element must not exist for a system line.
+    expect(screen.queryByLabelText('Ana is in')).toBeNull();
+    // No author line above it — the sentence already carries the name.
+    expect(screen.queryByText('Ana')).toBeNull();
+    // And nothing to react to.
+    fireEvent(screen.getByText('Ana is in'), 'longPress');
+    expect(screen.queryByLabelText('Dismiss')).toBeNull();
+  });
+});
+
+describe('the menu does the job', () => {
+  // The moderator's menu used to swap Report OUT for Remove, so the person
+  // best placed to spot abuse early had no way to escalate a message they
+  // had to delete. Two actions, two handlers, side by side.
+  it('shows a moderator Remove and Report, calling different handlers', () => {
+    const onRemove = jest.fn();
+    const onReport = jest.fn();
+    renderThread({ onRemove, onReport });
+    fireEvent(screen.getByLabelText('First one in'), 'longPress');
+
+    fireEvent.press(screen.getByLabelText('Remove'));
+    expect(onRemove).toHaveBeenCalledWith('m1');
+    expect(onReport).not.toHaveBeenCalled();
+
+    fireEvent(screen.getByLabelText('First one in'), 'longPress');
+    fireEvent.press(screen.getByLabelText('Report'));
+    expect(onReport).toHaveBeenCalledWith('m1');
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers Share on a message with words in it', () => {
+    renderThread();
+    fireEvent(screen.getByLabelText('First one in'), 'longPress');
+    expect(screen.getByLabelText('Share')).toBeTruthy();
+  });
+
+  it('does not offer Share on a bare photo', () => {
+    renderThread({ messages: [message({ body: null, image_path: 'p.jpg' })] });
+    fireEvent(screen.getByLabelText('Photo'), 'longPress');
+    expect(screen.getByLabelText('Dismiss')).toBeTruthy();
+    expect(screen.queryByLabelText('Share')).toBeNull();
+  });
+});
+
+describe('the marks under a bubble read as one column', () => {
+  // Screenshot 26 of the E2E suite showed the tapback and "Sent" at almost
+  // the same height on OPPOSITE sides of an empty gap - two unrelated
+  // controls, not marks on the message above. The order is bubble, reaction,
+  // status; and the status speaks in footnote (13/400), not caption's
+  // 11pt-semibold section-heading voice.
+  it('stacks reaction above status, and keeps "Sent" quiet', () => {
+    renderThread({
+      messages: [message({ sender_id: 'me', body: 'On my way' })],
+      reactions: [{ message_id: 'm1', emoji: '❤️', count: 1, reacted_by_me: false }],
+    });
+
+    const sent = screen.getByText('Sent');
+    expect(flattenStyle(sent.props.style).fontSize).toBe(13);
+
+    // Child order inside the bubble column: the reaction chip renders before
+    // the delivery status. The serialized tree preserves render order.
+    const tree = JSON.stringify(screen.toJSON());
+    expect(tree.indexOf('❤️')).toBeGreaterThan(-1);
+    expect(tree.indexOf('❤️')).toBeLessThan(tree.indexOf('Sent'));
   });
 });
 
@@ -230,8 +373,152 @@ describe('the action card colours only what destroys', () => {
   });
 });
 
-function colorOf(node: ReturnType<typeof screen.getByText>): unknown {
-  const style = node.props.style;
-  const flat = Array.isArray(style) ? Object.assign({}, ...style.flat(Infinity)) : style;
-  return flat?.color;
+function flattenStyle(style: unknown): Record<string, unknown> {
+  return Array.isArray(style)
+    ? Object.assign({}, ...style.flat(Infinity).filter(Boolean))
+    : ((style as Record<string, unknown>) ?? {});
 }
+
+function colorOf(node: ReturnType<typeof screen.getByText>): unknown {
+  return flattenStyle(node.props.style).color;
+}
+
+// ---------------------------------------------------------------------------
+// A PIN IN A CONVERSATION
+// ---------------------------------------------------------------------------
+
+describe('a plan sent into the conversation', () => {
+  it('draws the venue, the plan and the day, with no caller passing anything', () => {
+    renderThread({ messages: [planned()] });
+    expect(screen.getByText('Park Bar')).toBeTruthy();
+    expect(screen.getByText('Sunset drinks')).toBeTruthy();
+    expect(screen.getByText('Sep 4')).toBeTruthy();
+  });
+
+  it('offers Join this plan, and joins the message it is drawn from', () => {
+    renderThread({ messages: [planned()] });
+    fireEvent.press(screen.getByLabelText('Join this plan. Park Bar, Sep 4.'));
+    expect(mockJoinPlan).toHaveBeenCalledWith('m1', expect.anything());
+  });
+
+  // The server would answer the tap with the very pin the card is drawn from.
+  it('offers nothing to join on your own plan', () => {
+    renderThread({ messages: [planned({ sender_id: 'me' })] });
+    expect(screen.getByText('Park Bar')).toBeTruthy();
+    expect(screen.queryByLabelText('Join this plan. Park Bar, Sep 4.')).toBeNull();
+  });
+
+  // "Under no circumstances should a business account ever have the option to
+  // join... any other pin of any kind."
+  it('offers nothing to join to a business account', () => {
+    mockIsBusiness.mockReturnValueOnce(true);
+    renderThread({ messages: [planned()] });
+    expect(screen.queryByLabelText('Join this plan. Park Bar, Sep 4.')).toBeNull();
+  });
+
+  // HARD RULE 3, the client half. room_messages nulls every pin column at
+  // expiry, so the row still carries an id and nothing else. The card must not
+  // be drawn from the id alone, or an expired plan would render as a card with
+  // no venue and a live-looking button on it.
+  it('draws nothing for a plan the server has already emptied', () => {
+    renderThread({
+      messages: [
+        planned({
+          pin_id: null,
+          pin_venue_name: null,
+          pin_plan: null,
+          pin_intent_date: null,
+        }),
+      ],
+    });
+    expect(screen.queryByText('Park Bar')).toBeNull();
+    expect(screen.queryByText('Sunset drinks')).toBeNull();
+    // The words the person wrote are untouched by any of it.
+    expect(screen.getByLabelText('First one in')).toBeTruthy();
+  });
+
+  // A direct chat reads the `messages` table, which carries pin_id and none of
+  // the joined columns, so there is nothing to draw and nothing to break.
+  it('draws nothing in a thread whose rows carry no joined plan', () => {
+    renderThread({ messages: [message()] });
+    expect(screen.queryByText('Park Bar')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A LINE THE ROOM WROTE
+// ---------------------------------------------------------------------------
+
+describe('a membership line', () => {
+  // The reason this is read off `kind` and not off a prop: the kinds have
+  // grown from one to four, and a thread that made its CALLER enumerate them
+  // renders the next one as a bubble the person appears to have typed — "Pia
+  // was removed", signed by Pia, with her face beside it.
+  it.each(['joined', 'left', 'removed', 'ends'])(
+    'is centred with no bubble and no menu for kind %s, with no systemFor passed',
+    (kind) => {
+      renderThread({
+        messages: [message({ body: 'Pia was removed', kind } as Partial<MessageRow>)],
+        authorFor: () => 'Pia',
+        avatarFor: () => null,
+      });
+      expect(screen.getByText('Pia was removed')).toBeTruthy();
+      // A Bubble is a Pressable labelled with its body. There must not be one.
+      expect(screen.queryByLabelText('Pia was removed')).toBeNull();
+      expect(screen.queryByText('Pia')).toBeNull();
+      fireEvent(screen.getByText('Pia was removed'), 'longPress');
+      expect(screen.queryByLabelText('Dismiss')).toBeNull();
+    }
+  );
+
+  it('leaves an ordinary message alone', () => {
+    renderThread({ messages: [message({ kind: 'said' } as Partial<MessageRow>)] });
+    expect(screen.getByLabelText('First one in')).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WHO REACTED
+// ---------------------------------------------------------------------------
+
+describe('who reacted', () => {
+  const rows = [{ message_id: 'm1', emoji: '🔥', count: 2, reacted_by_me: false }];
+
+  it('names the people behind a chip in a group', () => {
+    renderThread({
+      messages: [message()],
+      reactions: rows,
+      // The discriminator: a room passes faces, a one-to-one chat does not.
+      avatarFor: () => null,
+      // Deliberately not the reactor's name: the assertion below has to be
+      // reading the sheet, not the author line above the bubble.
+      authorFor: () => 'Priya',
+    });
+    fireEvent(screen.getByLabelText('🔥 2'), 'longPress');
+    expect(screen.getByText('Who reacted')).toBeTruthy();
+    expect(screen.getByText('Omar')).toBeTruthy();
+  });
+
+  // §7: a one-to-one chat has exactly two people in it, so naming the reactor
+  // answers "does the other person like what I said". The database refuses it
+  // outright (message_reactors returns nothing for a chat whose kind is not
+  // 'room'); this is the half that means nobody is offered the control.
+  it('names nobody in a one-to-one chat', () => {
+    renderThread({ messages: [message()], reactions: rows });
+    fireEvent(screen.getByLabelText('🔥 2'), 'longPress');
+    expect(screen.queryByText('Who reacted')).toBeNull();
+  });
+
+  it('leaves the tap as the toggle, which is the grammar people already have', () => {
+    const onToggleReaction = jest.fn();
+    renderThread({
+      messages: [message()],
+      reactions: rows,
+      avatarFor: () => null,
+      onToggleReaction,
+    });
+    fireEvent.press(screen.getByLabelText('🔥 2'));
+    expect(onToggleReaction).toHaveBeenCalledWith('m1', '🔥', true);
+    expect(screen.queryByText('Who reacted')).toBeNull();
+  });
+});

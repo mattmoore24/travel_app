@@ -46,6 +46,17 @@ export function usePassedTravelers() {
     [entries, persist]
   );
 
+  /**
+   * Take one person back out — the undo for a mis-tapped pass. Removing an
+   * id that was never added is a no-op for everyone else on the list.
+   */
+  const remove = useCallback(
+    (userId: string) => {
+      persist(entries.filter((e) => e.id !== userId));
+    },
+    [entries, persist]
+  );
+
   const reset = useCallback(() => {
     persist([]);
   }, [persist]);
@@ -54,6 +65,7 @@ export function usePassedTravelers() {
     has: (userId: string) => entries.some((e) => e.id === userId),
     count: entries.length,
     add,
+    remove,
     reset,
   };
 }

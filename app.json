@@ -2,7 +2,7 @@
   "expo": {
     "name": "Samewhere",
     "slug": "samewhere",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "samewhere",
@@ -11,8 +11,10 @@
       "bundleIdentifier": "com.mattmoore.samewhere",
       "supportsTablet": false,
       "usesAppleSignIn": true,
+      "associatedDomains": ["applinks:link.samewhere.io"],
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleAllowMixedLocalizations": true
       }
     },
     "android": {
@@ -47,8 +49,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Lets you choose profile photos to share with other travelers.",
-          "cameraPermission": "Lets you take a photo for your profile, for a chat, or a selfie to verify your profile photos are really you.",
+          "photosPermission": "For a profile photo, a photo in a chat, or your business listing. Profile and listing photos are seen by other travelers, a chat photo only by the people in it.",
+          "cameraPermission": "For a profile photo, a photo in a chat, or a verification selfie. Profile photos and chat photos are checked before anyone else sees them, and verification selfies are deleted straight after.",
           "microphonePermission": false
         }
       ],
@@ -58,10 +60,22 @@
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
           "locationWhenInUsePermission": false,
-          "motionUsagePermission": false
+          "motionUsagePermission": "Samewhere does not track motion. Apple requires this notice because a software library the app is built with refers to the motion tools."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#8AA6F0",
+          "defaultChannel": "default",
+          "mode": "production"
         }
       ]
     ],
+    "locales": {
+      "en": "./locales/en.json"
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

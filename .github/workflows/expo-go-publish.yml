@@ -38,11 +38,15 @@ jobs:
           TOKEN: ${{ secrets.EXPO_TOKEN }}
           URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          PH: ${{ secrets.EXPO_PUBLIC_POSTHOG_API_KEY }}
         run: |
           missing=()
           [ -n "$TOKEN" ] || missing+=(EXPO_TOKEN)
           [ -n "$URL" ] || missing+=(EXPO_PUBLIC_SUPABASE_URL)
           [ -n "$KEY" ] || missing+=(EXPO_PUBLIC_SUPABASE_ANON_KEY)
+          # Metro inlines the analytics key here too; same guard as
+          # testflight.yml so the two publish paths cannot drift.
+          [ -n "$PH" ] || missing+=(EXPO_PUBLIC_POSTHOG_API_KEY)
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing repository secrets: ${missing[*]}"
             exit 1
@@ -70,6 +74,10 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          # Metro inlines EXPO_PUBLIC_* here too, so without these the Expo Go
+          # bundle ships with analytics disabled. See testflight.yml.
+          EXPO_PUBLIC_POSTHOG_API_KEY: ${{ secrets.EXPO_PUBLIC_POSTHOG_API_KEY }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ secrets.EXPO_PUBLIC_POSTHOG_HOST }}
           EXPO_NO_TELEMETRY: '1'
         run: |
           # Without pipefail the step takes tee's exit code, so a failed

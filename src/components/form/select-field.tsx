@@ -78,7 +78,9 @@ export function SelectField<T extends string>({
       ) : null}
 
       {open ? (
-        <Sheet onClose={() => setOpen(false)}>
+        // `scrolls`: a long option list gives way and scrolls instead of
+        // running its tail off the bottom of the screen.
+        <Sheet scrolls onClose={() => setOpen(false)}>
           {label ? <ThemedText type="headline">{label}</ThemedText> : null}
           <View style={styles.options}>
             {options.map((option, i) => {
@@ -88,7 +90,7 @@ export function SelectField<T extends string>({
                   <PressableScale
                     accessibilityRole="button"
                     accessibilityState={{ selected: isSelected }}
-                    haptic="selection"
+                    haptic="none"
                     scaleTo={0.985}
                     onPress={() => {
                       haptics.selection();

@@ -17,6 +17,18 @@
 # rather than PHPicker, which is why there is a permission sheet at all.
 appId: com.mattmoore.samewhere
 ---
+# The app's own ask comes first: pickImage offers 'Take a photo' before the
+# library, and the simulator has no camera worth pointing at anything, so
+# photograph the sheet (the camera branch's only evidence) and go through
+# the library. Optional like everything else here — web and any path that
+# skips the sheet just fall through.
+- takeScreenshot: 89-add-photo-ask
+- tapOn:
+    text: 'Choose from library'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
 # The permission sheet, whichever wording this iOS uses.
 - tapOn:
     text: 'Allow Access to All Photos'
@@ -46,6 +58,23 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2500
 - takeScreenshot: 91-photo-crop
+# PHPicker (the profile-photo path; no crop, no permission sheet) hosts its
+# grid in another process, and a tap that lands while that process is still
+# waking is swallowed with the tap step reporting success — run 94
+# photographed the sheet still open after a COMPLETED cell tap, twice.
+# 'Collections' exists only on that sheet's own header, so its visibility IS
+# the sheet being open: wait a beat and tap the cell again.
+- runFlow:
+    when:
+      visible: 'Collections'
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn:
+          point: '18%,28%'
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2500
 
 # The crop editor's confirm, whichever word it uses.
 - tapOn:

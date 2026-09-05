@@ -235,6 +235,23 @@ try {
       !pinErr && (pins ?? []).every((x) => !('user_id' in x)),
       pinErr?.message
     );
+    // The curated-pin copy rule, proven on the LIVE rows a traveler reads:
+    // 20260830030000 rewrote the sixteen seeded notes and swept the
+    // already-seeded ones, and only this surface shows whether the sweep ran
+    // where it matters. Every visible text field rides in — the rule is "no
+    // em dash reaches a map", not "no em dash survives in one column".
+    const seededPins = (pins ?? []).filter((x) => x.seeded);
+    check(
+      'curated pins are live and no visible pin text holds an em dash',
+      seededPins.length > 0 &&
+        (pins ?? []).every(
+          (x) =>
+            !`${x.venue_name ?? ''}${x.note ?? ''}${x.seed_note ?? ''}${x.place_label ?? ''}`.includes(
+              '—'
+            )
+        ),
+      `${seededPins.length} seeded of ${(pins ?? []).length} pins`
+    );
   }
   const { data: guestProfiles } = await guest.from('profiles').select('*').limit(1);
   check('guest CANNOT read profiles table', (guestProfiles ?? []).length === 0);
@@ -363,14 +380,25 @@ try {
 
           if (converted) {
             users[users.length - 1].email = samEmail;
+            // Filtered to what they SAID, and checked against the actual
+            // words. The old shape counted every row from this sender and
+            // asserted exactly one, which was a proxy that stopped being
+            // true the moment a group started logging its own churn: the
+            // arrival line (20260902200000) carries the arriving person as
+            // sender_id, by the convention messages.sender_id being NOT NULL
+            // forces, so this sender now has two rows and only one of them
+            // is theirs. This is tighter than the count it replaces, not
+            // looser - it now also proves the words survived, which is what
+            // the assertion is named after.
             const { data: stillIn } = await sam
               .from('messages')
-              .select('id')
+              .select('id, body, kind')
               .eq('chat_id', joined.chat_id)
               .eq('sender_id', samId);
+            const said = (stillIn ?? []).filter((row) => row.kind === 'said');
             check(
               'keeping the chat they joined and what they said in it',
-              (stillIn ?? []).length === 1
+              said.length === 1 && said[0].body === 'just checked in, hi all'
             );
 
             // And the refusals lift in the same statement that converted them.
@@ -431,6 +459,32 @@ try {
 
   const { data: supportRows } = await brit.client.from('support_messages').select('*').limit(1);
   check('the support inbox itself stays unreadable', (supportRows ?? []).length === 0);
+
+  // DECLARED DEVIATION: no live case for "a suspended account can still
+  // appeal".
+  //
+  // The spec for acct-a-way-back-from-the-gate asked for one here, and this
+  // suite cannot write it. `users.status` is server-owned - stripped from
+  // every client column grant, with no policy that would let a client set it
+  // - so with the anon key, which is the whole contract of this file ("these
+  // tests hold exactly the power a phone does"), there is no way to suspend
+  // an account and no way to lift it afterwards. The by-hand alternative the
+  // spec pairs with the screenshot step (suspend a test account from the SQL
+  // editor) needs the service role, and a failed run would leave a suspended
+  // row behind on the live project with nothing in this file able to undo it.
+  //
+  // What stands in for it: the "THE APPEAL ROUTE" block in
+  // supabase/tests/database/11_groups_support.test.sql, which suspends a real
+  // user, calls submit_support_message as that user, bans them, and calls it
+  // again. The claim is a negative about a policy - support_messages_insert
+  // checks authorship and nothing else, so there is no standing check on the
+  // one insert the whole appeal route runs through - and a policy claim is
+  // what pgTAP is for. The screenshot half of the spec still needs a person.
+  console.log(
+    'note DEVIATION: the suspended-account appeal is not asserted here (no ' +
+      'anon-key way to suspend an account); covered by pgTAP ' +
+      '11_groups_support.test.sql, "THE APPEAL ROUTE"'
+  );
 
   // --- the spotlight cannot reach past a block ----------------------------
   //
@@ -500,6 +554,59 @@ try {
       !detailErr && (detail ?? []).length === 1,
       detailErr?.message
     );
+
+    // AND that it has something ON it, in EVERY active launch city.
+    //
+    // The first version of this check was Lisbon-only, which is the one city
+    // the symptom did not appear in: the plan list came up empty in DENPASAR
+    // while Home Lisbon Hostel was fine. A watcher that cannot see the failure
+    // it was added for is worse than none, because it reports green. All four
+    // venues are seeded by one call, so a per-city gap is exactly what this
+    // has to catch.
+    const placeRow = (detail ?? [])[0];
+    check(
+      'the place page carries the link the content seeder puts there',
+      (placeRow?.links ?? []).length > 0,
+      'no links on Home Lisbon Hostel — run select seed_launch_business_content();'
+    );
+    check(
+      'and the standing post as well',
+      (placeRow?.posts ?? []).length > 0,
+      'no posts on Home Lisbon Hostel — run select seed_launch_business_content();'
+    );
+
+    const LAUNCH_VENUES = [
+      ['Lisbon', 'Home Lisbon Hostel'],
+      ['Mexico City', 'Casa Pepe'],
+      ['Bangkok', 'Once Again Hostel'],
+      ['Denpasar', 'Puri Garden Ubud'],
+    ];
+    // Read the active launch cities exactly the way the app does
+    // (src/features/pins/api.ts fetchLaunchCities), with anon-key power only.
+    const { data: launchCities } = await guest
+      .from('launch_cities')
+      .select('city_id, active, cities(name)')
+      .eq('active', true);
+    for (const [cityName, venue] of LAUNCH_VENUES) {
+      const city = (launchCities ?? []).find((c) => c.cities?.name === cityName);
+      if (!city) {
+        check(
+          `${cityName} is an active launch city`,
+          false,
+          'not returned by launch_cities — a switched-off city shows no venues at all'
+        );
+        continue;
+      }
+      const { data: cityPlaces } = await guest.rpc('city_businesses', { p_city_id: city.city_id });
+      const row = (cityPlaces ?? []).find((p) => p.name === venue);
+      check(
+        `${cityName} has ${venue} with something on, so its map can draw ON TONIGHT`,
+        row?.has_live_post === true,
+        row
+          ? `${venue} is on the map but has_live_post is false — run select seed_launch_business_content();`
+          : `${venue} is not in city_businesses at all — check businesses.active and state, then run select seed_launch_businesses();`
+      );
+    }
 
     // --- ratings. Anyone may rate: the founder's call, on the grounds that
     // somebody may have been there without ever entering the trip here.
@@ -750,6 +857,22 @@ try {
       typeof capShape?.[0]?.used === 'number' &&
       typeof capShape?.[0]?.allowed === 'number',
     capErr?.message
+  );
+
+  // --- the Apple refresh token is server-only, in production too ----------
+  //
+  // apple_refresh_tokens holds a credential against somebody's Apple account,
+  // kept only so delete-account can revoke it. pgTAP proves the grants on a
+  // throwaway cluster; this proves the deployed project agrees, from a client
+  // holding exactly what a phone holds. A signed-in user must not be able to
+  // read it, not even their own row.
+  const { data: appleRows, error: appleErr } = await alex.client
+    .from('apple_refresh_tokens')
+    .select('user_id');
+  check(
+    'apple_refresh_tokens is unreadable with an anon key',
+    Boolean(appleErr) && (appleRows ?? []).length === 0,
+    appleErr ? '' : 'the table answered a client'
   );
 } catch (e) {
   failed += 1;

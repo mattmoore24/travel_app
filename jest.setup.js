@@ -69,6 +69,11 @@ jest.mock('react-native-reanimated', () => {
     withSequence: (to) => to,
     interpolate: (value) => value,
     runOnJS: (fn) => fn,
+    // Reduce Motion: the enum theme.ts stamps on every Springs preset, and
+    // the hook the two infinite loops (skeleton, intro glow) gate on. The
+    // test that flips the hook to true supplies its own per-file mock.
+    ReduceMotion: { System: 'system', Always: 'always', Never: 'never' },
+    useReducedMotion: () => false,
   };
 });
 
@@ -85,7 +90,17 @@ jest.mock('react-native-gesture-handler', () => {
 
   const builder = () => {
     const chain = {};
-    for (const key of ['onUpdate', 'onEnd', 'onBegin', 'onStart', 'onFinalize', 'enabled']) {
+    for (const key of [
+      'onUpdate',
+      'onEnd',
+      'onBegin',
+      'onStart',
+      'onFinalize',
+      'enabled',
+      // The sheet's pull needs a 10pt downward dead zone now that the drag
+      // target is the whole card rather than the grabber.
+      'activeOffsetY',
+    ]) {
       chain[key] = () => chain;
     }
     return chain;

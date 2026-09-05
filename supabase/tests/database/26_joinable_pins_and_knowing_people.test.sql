@@ -101,15 +101,17 @@ select is(
 );
 
 -- Every guard the ordinary pin path has still fires, because they are
--- triggers on the table and a SECURITY DEFINER insert is still an insert.
+-- CHECKs and triggers on the table and a SECURITY DEFINER insert is still an
+-- insert. (The geofence this used to prove went with 20260904120000; the
+-- 72-hour ceiling, hard rule 3, is the guard that stays.)
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select throws_ok(
   $$ select public.post_joinable_pin(
-       pg_temp.lisbon(), 'Somewhere in Porto', null, null, 'bar',
-       41.1496, -8.6109, current_date, now() + interval '24 hours') $$,
+       pg_temp.lisbon(), 'Forever pin', null, null, 'bar',
+       38.7112, -9.1442, current_date, now() + interval '80 hours') $$,
   '23514',
   null,
-  'the geofence still refuses a pin in another city'
+  'the 72-hour ceiling still refuses a pin through the definer'
 );
 select throws_ok(
   $$ select public.post_joinable_pin(

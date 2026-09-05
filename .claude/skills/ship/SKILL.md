@@ -67,15 +67,18 @@ to the working branch, then:
   servers are contacted only to check the project exists and to bump the
   remote build number. Standard macOS runners are free and unlimited on a
   **public** repository. Takes ~30-40 minutes (no build cache) plus Apple
-  processing. **This is the default for native changes.**
-- **Build, hosted:** `build-then-submit`. Faster and cached, but spends one of
-  the plan's monthly iOS builds. Reserve it for when the local path is broken
-  or the quota is genuinely spare.
+  processing. It WAS the default for native changes until the toolchain
+  broke; the hosted path above is the one that works.
 
 **Simulator builds draw on the same credit.** Every E2E run with
 `build: true` is a real iOS build. Leave it `false` unless native code
-changed — a false run reuses the last binary and pushes current JS to it over
-the `e2e` channel, which costs nothing.
+changed or `version` moved — a false run reuses the last binary and pushes
+current JS to it over the `e2e` channel, which costs nothing.
+
+**After any `version` bump, one E2E run needs `build: true`**: a false run
+publishes an update for the new runtime that the reused binary cannot take,
+and the fetch gate fails rather than screenshotting old JavaScript. The 0.2.0
+one was run 109 (2026-09-04); `false` is right again since.
 
 The workflow's own input description used to contradict this, claiming the
 simulator could not reach `u.expo.dev`. It was wrong, and the evidence for it
@@ -99,8 +102,8 @@ them.
 that are then refused or that fail — several numbers were burned that way on
 2026-08-20. Read the number back from the finished build instead.
 
-**The local path is not behind that wall**, which is why it is the default.
-Its own limit is the repository being public. When the repo flips private at
+**The local path was not behind that wall**, which is why it was the default
+until the toolchain broke. Its own limit is the repository being public. When the repo flips private at
 launch (`docs/LAUNCH_RUNBOOK.md`), macOS minutes start billing at 10x against
 the 2,000 free minutes a month — roughly 200 real macOS minutes, or about five
 builds. Revisit the shipping strategy at that point.
@@ -114,6 +117,20 @@ check there whenever a build could plausibly succeed while shipping nothing.
 `runtimeVersion` is `{policy: 'appVersion'}`, so an update only reaches
 builds whose `version` in `app.json` matches. Bumping `version` orphans
 every existing install from future updates until a new build ships.
+
+**That happened on 2026-09-02: `version` is 0.2.0 in the tree.** The phone
+has build 16 (`c9128c55`, commit `1cbe144`, 2026-08-30) and the e2e channel
+has simulator build 13 (2026-08-22); both are runtime 0.1.0, and neither
+takes an update published from this tree. The order of operations, from
+`docs/APP_STORE.md` "The version moved to 0.2.0":
+
+1. Run the build (`build-then-submit`) with the bump in it. It is the last
+   thing to land in a batch of native changes, never the first.
+2. Confirm the build installs from TestFlight and opens.
+3. Only then publish updates. An update published between the bump and the
+   install reaches nobody, and no run goes red to say so.
+
+The first E2E run after the bump needs `build: true` once (above).
 
 ## 3b. A green deploy does not mean the workers run
 

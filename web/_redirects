@@ -1,0 +1,15 @@
+# Cloudflare Pages redirects.
+#
+# /i/<token> and /reset are single pages that read the rest of the URL in JS, so
+# every path under them has to reach the same file with a 200 rather than a
+# redirect. A 301 here would also break the association file's path matching.
+#
+# The target MUST be the directory (/i/), never /i/index.html. Cloudflare
+# canonicalises /i/index.html back to /i/, sees the result re-match /i/*, calls
+# the rule an infinite loop and REJECTS IT AT DEPLOY TIME. a5b4fdd shipped that
+# way and its build log reads "Parsed 0 valid redirect rules ... Infinite loop
+# detected in this rule and has been ignored" while the site served with no
+# rewrites at all. After any edit here, check the deploy log says
+# "Parsed 2 valid redirect rules".
+/i/*      /i/      200
+/reset/*  /reset/  200

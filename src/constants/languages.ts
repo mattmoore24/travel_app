@@ -204,15 +204,31 @@ export function languageLabel(code: string): string {
 }
 
 /**
- * Matches on either name, so "German" and "Deutsch" both find de. Accents are
- * stripped so "Espanol" finds Español.
+ * Matches on either name or the ISO code, so "German", "Deutsch" and "de" all
+ * find de. Accents are stripped so "Espanol" finds Español.
+ *
+ * The code is the half that was missing, and it mattered: a Spanish speaker
+ * typing "aleman", a French speaker typing "allemand" and a Portuguese
+ * speaker typing "alemão" all got an empty list from a corpus that contains
+ * their answer, on a required onboarding field that gates finishing signup.
+ * The codes are the one spelling every traveler already knows, off every
+ * airline and hotel site they have ever used.
+ *
+ * `===` on the code rather than `includes`, deliberately. A two-letter query
+ * substring-matched against 200 entries is noise: "pt" would pull in
+ * everything containing those letters. Equality means "pt" returns Portuguese
+ * and the name match handles the rest.
  */
 export function matchesLanguage(language: (typeof LANGUAGES)[number], query: string): boolean {
   const needle = fold(query);
   if (needle.length === 0) {
     return true;
   }
-  return fold(language.label).includes(needle) || fold(language.native).includes(needle);
+  return (
+    language.value === needle ||
+    fold(language.label).includes(needle) ||
+    fold(language.native).includes(needle)
+  );
 }
 
 function fold(value: string): string {

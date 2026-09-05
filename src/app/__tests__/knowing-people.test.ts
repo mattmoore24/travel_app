@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { after, between } from '@/lib/__tests__/source';
+
 /**
  * The three doors that come with "people you already know".
  *
@@ -39,19 +41,18 @@ describe('a face in a chat is a person you can reach', () => {
   });
 
   it('lets anybody in the group bring somebody, not only the admin', () => {
-    const addBlock = group.slice(group.indexOf('group-add-people'));
+    const addBlock = after(group, 'group-add-people');
     expect(addBlock).toContain("pathname: '/add-people/[chatId]'");
     // Not wrapped in an isAdmin branch: the row before it is the member map,
     // and the admin-only hint comes after.
-    const beforeAdd = group.slice(
-      group.indexOf('{members.map('),
-      group.indexOf('group-add-people')
-    );
+    const beforeAdd = between(group, '{members.map(', 'group-add-people');
     expect(beforeAdd).not.toContain('isAdmin ?');
   });
 
   it('gives a group a way out, which it did not have', () => {
-    expect(group).toContain('Leave this chat');
+    // "group", not "chat": a traveler-made one is a group everywhere it is
+    // named, and "chat" is only ever a one-to-one.
+    expect(group).toContain('Leave this group');
     expect(group).toContain('leaveRoom.mutate');
   });
 });
@@ -76,8 +77,10 @@ describe('messaging somebody you already share a chat with', () => {
   });
 
   it('drops the say-hi bubbles once you share a group, not only once connected', () => {
-    // They are a slower way to open a conversation you can already have.
-    expect(profile).toContain('known || !userId');
+    // They are a slower way to open a conversation you can already have —
+    // and once a hello is already on its way, every bubble would route into
+    // the same unique-constraint refusal.
+    expect(profile).toContain('known || alreadySaidHi || !userId');
   });
 });
 

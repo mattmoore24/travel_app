@@ -267,3 +267,229 @@
              gives the person who runs a room the admin role it already
              grants them through is_room_moderator.
              804 pgTAP assertions, 16 new and about exactly this.
+
+2026-09-01 — functions only, no migration: the moderation tick gets a wall-clock
+             budget with a slice per queue, one request gets a 90s timeout and
+             no SDK-level retries, and the npm imports are pinned to the
+             versions the last good deploy resolved. Live backend went red on
+             d0b690f with a clean first message held the full five minutes and
+             the SAME commit re-run passed in eleven seconds, so this is not a
+             regression being fixed — it is the mechanism that produces exactly
+             that symptom being removed.
+
+2026-09-01 — deploy BEFORE the OTA, and this one matters more than usual.
+             Four migrations: trips.approximate + traveler_trips (drop/recreate,
+             new OUT column); chat_meet_answers with meet_prompt_due /
+             answer_meet_prompt and the admin_meet_answers view;
+             my_report_status / my_support_messages; and featured_traveler
+             raised from one row to three, now with a block filter and with the
+             bio narrowed to the lead row.
+             The featured-photo Edge Function is rewritten in the same change
+             and MUST land with them: it now asks featured_traveler as the
+             CALLER rather than as the service role, which is the only reason
+             the new block filter applies to the photo call at all, and it
+             returns {user_id, url} pairs so a face can never be drawn under
+             somebody else's name. `db push` then `functions deploy` are two
+             steps of one job here, so they land together; the phone is the lag.
+             Publishing the OTA first would 400 every trip write until this
+             applies, exact trips included, because trips.approximate would not
+             exist yet.
+
+2026-09-01 — deploy BEFORE the OTA. Four migrations, two of them fixes to
+             triggers on public.profiles that the same batch's own once-per-
+             launch locale write turned into something else:
+             20260903000000 user_muted_words (new table, RLS, select/insert/
+             delete only - update revoked by name);
+             20260903010000 profiles.locale plus reason_en on the two verdicts
+             the moderation worker writes about a person's face or livelihood;
+             20260903020000 profiles_updated_at becomes an ALLOW-list of the
+             thirteen columns that are an edit, so a bookkeeping write cannot
+             stamp a client-readable timestamp - the deny-list version does NOT
+             work, measured, see the file;
+             20260903030000 screen_profile_text stops spending its 30-per-day
+             cap on writes that changed no text, which past thirty launches was
+             locking an account out of its own profile.
+             The moderation-worker function is redeployed with them: the two
+             verdict schemas now require reason_en and the prompts carry the
+             subject's locale. `db push` then `functions deploy` are one job,
+             so they land together.
+
+2026-09-02 — deploy BEFORE the 0.2.0 EAS build. Nine migrations:
+             20260903040000 two service-role views so a selfie or storefront
+             refusal written in Thai has an English copy the founder can
+             adjudicate (reason beside reason_en);
+             20260903050000 a group's own photo is checked before anyone but
+             its setter can see it — status, trigger, verdict door, worker
+             queue, and the client half;
+             20260903060000 screen_business_text stops screening and stamping
+             on writes that changed no text (the profiles fix, applied to the
+             one trigger with the same shape);
+             20260903070000 admin_ops_health goes from three moderation-queue
+             counts (held first messages, profile photos, selfie
+             verifications) to seven, adding the business, post, chat and
+             group photo queues, so a stuck photo backlog is visible to the
+             smoke test. It is NOT every queue despite its title: the worker
+             drains nine after the group branch in 20260903050000, and
+             storefront checks and impersonation scans still have no column
+             (20260903140000, below, adds them);
+             20260903080000 a traveler can keep their face out of the
+             signed-out preview (D22), enforced in featured_traveler;
+             20260903090000 validate_business_link refuses shortener hosts and
+             IP literals on every kind of link, not one branch of two;
+             20260903100000 the fifth moderation push carries the DSA Art.
+             17(3)(c) automation disclosure;
+             20260903110000 a pin can name the business it is for, with the
+             traveler entry point that was missing;
+             20260903120000 push-worker records a ticket error that is not
+             DeviceNotRegistered, so an APNs credential wall is visible
+             instead of being stamped as sent.
+             The moderation-worker function is redeployed with them (ninth
+             queue). db push then functions deploy are one job.
+
+2026-09-02 — deploy: the two queues the smoke test still could not see.
+             20260903140000: admin_ops_health gains
+             pending_storefronts (business_verifications) and pending_scans
+             (business_scans), the last two of the moderation worker's nine
+             queues and the only two that PAUSE when
+             MODERATION_PROMPTS_BUSINESS is missing a key — which has
+             happened twice (see the 2026-08-27 runs above) and both times
+             read as all zeros to `select * from admin_ops_health;`. View
+             only: dropped and recreated with the eleven existing columns
+             unchanged in name and order, revoke restated. No function
+             change, so migrations alone.
+
+2026-09-03 — deploy BEFORE the OTA, and it is the OTA's precondition rather
+             than a nicety: the new bundle's fetchGroup calls an RPC that does
+             not exist until this applies.
+             20260903130000 a verdict is for its subject alone, at the table.
+             20260903050000 wrote down that a group photo being checked is
+             "the person who uploaded it, and nobody else", and the PATH half
+             was enforced (my_chats, group_invite_preview, the storage policy)
+             while the STATUS half was enforced by the client alone:
+             `grant select on public.groups to authenticated` is table-level,
+             so any member could `select photo_status from public.groups where
+             name = '...'` and watch 'pending' become 'rejected' — the exact
+             inference the paragraph forbids, with an anon key and no app.
+             The grant is column-level now (the three photo columns and the
+             new photo_set_by are granted to no client role), group_detail()
+             is the app's only read of a group row and masks them, and
+             can_view_group_photo() carries the storage policy's predicate
+             because an RLS expression runs with the READER's privileges and
+             an inline one would RAISE rather than answer false — measured:
+             every authenticated read of storage.objects dies without it.
+             photo_set_by is what remembers the subject after a verdict
+             removes the path it was read from.
+             KNOWN COST, deliberate: for one launch every phone runs the old
+             bundle, whose `select('*')` on a column-granted table is
+             permission denied, so the group SETTINGS page shows its LoadError
+             and the room header falls back to the glyph. Publish the OTA
+             promptly after this run. 74_a_verdict_is_for_its_subject_alone is
+             the attack, 32 assertions, every one run against the mutation
+             that removes what it names. Migrations only; no function change.
+
+2026-09-02 — THE ORDER IS INVERTED FOR THIS ONE, and it is the only migration
+             here that has to go AFTER the over-the-air update rather than
+             before it.
+             20260903130000 REVOKES the table-level select on public.groups
+             (the three photo columns are granted to nobody) and puts the row
+             behind group_detail(). Every other migration in this repo adds
+             something the new bundle reads, so the schema goes first. This one
+             takes away something the bundle ALREADY ON THE PHONE selects
+             through: build 17 ships `.from('groups').select('*')`, which
+             answers `permission denied` the moment this applies, and an
+             expo-updates bundle is never applied on the launch that downloads
+             it - so migrating first means at least one launch of a broken
+             group page on the build the founder is installing right now.
+             So: publish the update, let it land, then push this.
+             fetchGroup reads both schemas (the RPC when it exists, the named
+             columns when PGRST202 says it does not), so the update is correct
+             against the project before and after.
+             Also here: 20260903140000, admin_ops_health counts the two queues
+             that can pause (storefront photos and impersonation scans), which
+             20260903070000 left out while its title claimed every queue.
+
+2026-09-04 — no migrations; this one is for the two new Apple steps. The
+             provider step enables Sign in with Apple with the bundle id as an
+             acceptable audience (half (a), needs no key) and reads it back;
+             the secrets step syncs the four APPLE_* function secrets from the
+             new APPLE_SIGNIN_* repository secrets, which turns account-deletion
+             revocation from a logged no-op into the real call App Review
+             5.1.1(v) asks for (half (b)). Watch for "Verified against a fresh
+             GET" and "Apple revocation secrets synced" in the log.
+
+2026-09-04 — one migration, 20260904100000_a_badge_follows_the_face, plus the
+             moderation worker. Order matters and this is the safe way round:
+             the migration only WIDENS submit_verification (a pending photo is
+             accepted) and ADDS a trigger, so build 17's bundle keeps working
+             on it, while the production update that follows exposes a badge
+             step during signup that needs the wider guard. Watch for the
+             migration in "Migrations — after" and the worker in the deploy
+             list; the first tick after should report verifications.waiting
+             as a number rather than undefined.
+
+2026-09-04 — three migrations: 20260904110000_every_city_knows_its_clock
+             (cities.timezone), 20260904110100_seed_cities_with_clocks (49,025
+             rows, 4 MB, every city down to 5,000 people with its zone) and
+             20260904120000_a_pin_goes_where_the_traveler_goes (the pin fence
+             comes out, the map reads a circle, featured_cities() replaces the
+             chip counts, a time can be a window or TBD, get_matches reaches a
+             radius). Database FIRST, then the production update: build 17's
+             bundle keeps working on the new schema except for the rail (it
+             reads city_pin_counts, which is dropped; the rail draws without
+             counts until the update lands, and everything else keeps working
+             because post_joinable_pin's new parameters default). Watch for
+             all three in "Migrations — after"; the seed is the slow one.
+
+2026-09-04 — 20260904120000 again, edited before anyone posted through it:
+             the four raise literals in send_message_request that said
+             "request" say "hello". The migration is already recorded as
+             applied, so this deploy will NOT re-run it; the function body is
+             re-applied by the next migration that restates it, or by hand
+             from the SQL editor. Recorded here so the drift is on paper.
+
+2026-09-04 — 20260904200000_say_hi_in_the_databases_words: the fix-forward
+             the entry above asked for. send_message_request is restated with
+             its final wording ("already said hi to this traveler", "daily
+             limit for saying hi reached", "unknown source for saying hi"):
+             not "request" (banned from copy) and not "hello" (the client's
+             one-name rule, and the client matches these strings). Hints
+             unchanged. Database first; the update that reads the new
+             strings follows, and build 17's bundle keys on the hints, so it
+             keeps working either way.
+
+2026-09-05 — 20260905090000_a_trip_can_be_as_far_ahead_as_you_plan: the
+             180-day horizon comes out of overlaps_own_trip, get_matches and
+             send_message_request (a trip can be as far ahead as somebody
+             plans), and get_matches takes the caller's own trip ids
+             (p_trip_ids uuid[] default null) so the Travelers tab can look at
+             one trip at a time. The zero-argument function is dropped and
+             recreated with a default, so daily_spotlight's call is unchanged
+             and build 17's bundle, which passes no argument, keeps working.
+             Database first, then the update that carries the picker.
+
+
+2026-09-05 — 20260905130000_a_business_goes_where_its_door_is: the launch-city
+             fence on the business path goes. resolve_business_city files a
+             listing under the city its marker is in (the hint within 20 km,
+             else nearest_city, else the nearest city on earth); city_for_spot
+             is the client's preview of the same answer; register_business and
+             update_business_location keep their signatures and lose both
+             geographic refusals; city_businesses, city_whats_on and city_rooms
+             read the label or the 50 km circle. Database first, then the
+             update: the new bundle sends p_city_id null, which the old
+             function refused.
+
+2026-09-05 — 20260905130000, a note rather than a migration: build 17 against
+             the new functions, until the update lands. Its chip city stands
+             while the marker is within 20 km of it; from 20 to 40 km (the old
+             radius_km) the listing is filed under the marker's own city
+             instead of being refused, and that build's confirm card, listing
+             preview and City select keep naming the chip. No rows need
+             fixing. The re-run this entry triggers applies nothing.
+2026-09-05 — 20260905170000_the_owner_sees_their_own_address: my_business()
+             returns the address (drop-first, RETURNS TABLE grew a column;
+             grants restated). The owner's page and editor have read
+             business.address since 2026-08-29 and the function never sent
+             it: "No address yet" under a filled row, and an editor box that
+             opened empty and wrote the address away on save. No rows need
+             fixing.

@@ -6,9 +6,22 @@ import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { Segmented } from '@/components/ui/segmented';
 import { Sheet } from '@/components/ui/sheet';
 import { HitTarget, Radius, Space } from '@/constants/theme';
-import { addDays, formatDateRange, toISODate, validateTripRange } from '@/features/trips/dates';
+import {
+  addDays,
+  formatDateRange,
+  rangeForRoughDates,
+  toISODate,
+  validateTripRange,
+} from '@/features/trips/dates';
+import {
+  RoughDatesPicker,
+  defaultRoughDates,
+  roughDatesFor,
+  type RoughDates,
+} from '@/features/trips/rough-dates';
 import { useCitySearch, useCreateTrip, useDeleteTrip, useUpdateTrip } from '@/features/trips/hooks';
 import { TripCalendar, defaultEndFor } from '@/features/trips/trip-calendar';
 import { useTheme } from '@/hooks/use-theme';
@@ -21,6 +34,12 @@ export type EditableTrip = {
   cityLabel: string;
   startDate: string;
   endDate: string;
+  /**
+   * The window is a guess. Carried in so the editor opens on the tab the trip
+   * was posted from - a rough trip reopening on the calendar would ask its
+   * owner to invent the two days they said they did not have.
+   */
+  approximate?: boolean;
 };
 
 /**
@@ -49,11 +68,24 @@ export function TripEditor({
   const [end, setEnd] = useState<string | null>(
     trip ? trip.endDate : defaultEndFor(toISODate(addDays(new Date(), 7)))
   );
+  const [mode, setMode] = useState<'exact' | 'rough'>(trip?.approximate ? 'rough' : 'exact');
+  // Reconstructed from the stored window, which is all the database keeps: the
+  // month it opens in and the largest length that still fits it. Fitting
+  // downwards is what makes reopening and saving a no-op (rough-dates.tsx).
+  const [rough, setRough] = useState<RoughDates>(() =>
+    trip?.approximate ? roughDatesFor(trip.startDate, trip.endDate) : defaultRoughDates(start)
+  );
 
   const search = useCitySearch(city ? '' : query);
   const suggestions = search.data ?? [];
+  // What gets saved. A rough window is still a real start and a real end,
+  // under the one rule in rangeForRoughDates.
+  const approximate = mode === 'rough';
+  const roughRange = rangeForRoughDates(rough.monthISO, rough.lengthDays);
+  const startDate = approximate ? roughRange.start : start;
+  const endDate = approximate ? roughRange.end : end;
   // Half a range is not an error, it is a range still being picked.
-  const rangeError = end ? validateTripRange(start, end) : null;
+  const rangeError = endDate ? validateTripRange(startDate, endDate) : null;
   // A trip you are already on started in the past; the picker must not
   // forbid its own current value.
   const todayISO = toISODate(new Date());
@@ -73,7 +105,7 @@ export function TripEditor({
     // Saving there sent only the start, `updateTrip` drops an absent field, so
     // the row kept its old end date and the profile showed a window nobody
     // entered. get_matches joins on exactly those two columns.
-    if (!city || !end || rangeError) {
+    if (!city || !endDate || rangeError) {
       return;
     }
     try {
@@ -81,15 +113,21 @@ export function TripEditor({
         await updateTrip.mutateAsync({
           tripId: trip.id,
           cityId: city.id,
-          startDate: start,
-          endDate: end!,
+          startDate,
+          endDate,
+          // Always sent, both ways. `updateTrip` drops an absent field, so a
+          // save that only ever sent `true` would let a traveler make a trip
+          // rough and never make it exact again - the same shape as the
+          // missing end date above.
+          approximate,
         });
       } else {
         await createTrip.mutateAsync({
           cityId: city.id,
           cityName: city.label,
-          startDate: start,
-          endDate: end!,
+          startDate,
+          endDate,
+          approximate,
         });
       }
       haptics.success();
@@ -128,16 +166,43 @@ export function TripEditor({
   };
 
   return (
-    <Sheet onClose={onClose} avoidKeyboard>
+    // `scrolls`: the calendar and the suggestion rows give way and scroll,
+    // while the submit stays pinned in the footer below - a primary action
+    // inside a ScrollView is reachable only by scrolling (traps).
+    <Sheet
+      onClose={onClose}
+      avoidKeyboard
+      scrolls
+      footer={
+        <>
+          <PrimaryButton
+            label={trip ? 'Save changes' : 'Add trip'}
+            testID="save-trip"
+            disabled={!city || !endDate || rangeError != null || busy}
+            loading={busy}
+            onPress={save}
+          />
+          {trip ? (
+            <PrimaryButton variant="danger" label="Delete this trip" onPress={remove} />
+          ) : null}
+        </>
+      }>
       <ThemedText type="headline">{trip ? 'Edit this trip' : 'Add a trip'}</ThemedText>
 
       {city ? (
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel={`Change city, currently ${city.label}`}
-          haptic="light"
+          // "none", not "light": this row lives inside a sheet that scrolls
+          // when the form is tall, and PressableScale fires its haptic on
+          // touch-DOWN, so a flick over the row buzzed. The tap's feedback
+          // moves into onPress, where it means the action actually fired.
+          haptic="none"
           scaleTo={0.985}
-          onPress={() => setCity(null)}
+          onPress={() => {
+            haptics.light();
+            setCity(null);
+          }}
           style={[styles.row, { backgroundColor: theme.accentSoft }]}>
           <SymbolView
             name={{ ios: 'mappin.and.ellipse', android: 'place', web: 'place' }}
@@ -174,7 +239,8 @@ export function TripEditor({
             <PressableScale
               key={row.id}
               accessibilityRole="button"
-              haptic="selection"
+              // Same scroller rule; pickCity fires haptics.selection() itself.
+              haptic="none"
               scaleTo={0.985}
               onPress={() => pickCity(row)}
               style={[styles.row, { backgroundColor: theme.surfaceSunken }]}>
@@ -192,22 +258,42 @@ export function TripEditor({
           pickers could not draw the days in between at all - the part of a
           trip a person is actually picturing. */}
       <View style={styles.dates}>
-        <ThemedText type="smallBold">
-          {end ? formatDateRange(start, end) : 'Pick the day you arrive'}
-        </ThemedText>
-        <ThemedText type="footnote" themeColor="textSecondary">
-          {end ? 'Tap any day to start again.' : 'Now tap the day you leave.'}
-        </ThemedText>
-        <TripCalendar
-          scroll
-          start={start}
-          end={end}
-          minISO={minISO}
-          onChange={(nextStart, nextEnd) => {
-            setStart(nextStart);
-            setEnd(nextEnd);
-          }}
+        {/* The second tab, and the reason this sheet has tabs at all: a
+            traveler who does not know the two days posts nothing, or posts a
+            guess and never corrects it. */}
+        <Segmented
+          accessibilityLabel="How well do you know your dates?"
+          options={[
+            { value: 'exact', label: 'Exact dates' },
+            { value: 'rough', label: 'Rough dates' },
+          ]}
+          value={mode}
+          onChange={setMode}
         />
+        {approximate ? (
+          <RoughDatesPicker value={rough} onChange={setRough} />
+        ) : (
+          <>
+            <ThemedText type="smallBold">
+              {end ? formatDateRange(start, end) : 'Pick the day you arrive'}
+            </ThemedText>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              {end ? 'Tap any day to start again.' : 'Now tap the day you leave.'}
+            </ThemedText>
+            {/* No `scroll`: the Sheet's own scroller carries this now, and the
+                calendar's doc is explicit that two stacked vertical scrollers
+                freeze each other. Full height inside the outer scroll. */}
+            <TripCalendar
+              start={start}
+              end={end}
+              minISO={minISO}
+              onChange={(nextStart, nextEnd) => {
+                setStart(nextStart);
+                setEnd(nextEnd);
+              }}
+            />
+          </>
+        )}
       </View>
 
       {rangeError ? (
@@ -215,15 +301,6 @@ export function TripEditor({
           {rangeError}
         </ThemedText>
       ) : null}
-
-      <PrimaryButton
-        label={trip ? 'Save changes' : 'Add trip'}
-        testID="save-trip"
-        disabled={!city || !end || rangeError != null || busy}
-        loading={busy}
-        onPress={save}
-      />
-      {trip ? <PrimaryButton variant="danger" label="Delete this trip" onPress={remove} /> : null}
     </Sheet>
   );
 }
@@ -246,10 +323,5 @@ const styles = StyleSheet.create({
   },
   dates: {
     gap: Space.xs,
-    // The sheet is capped to the screen and its buttons sit under this block,
-    // so this is the one part that gives way. Without it fourteen months of
-    // calendar laid out at full height and pushed "Add trip" clean off the
-    // bottom edge, with no scroller anywhere to reach it.
-    flexShrink: 1,
   },
 });

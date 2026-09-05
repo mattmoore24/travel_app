@@ -36,19 +36,31 @@ appId: com.mattmoore.samewhere
     timeout: 10000
 - tapOn:
     id: 'email-input'
+# The field is PREFILLED with the last address that signed in or up on this
+# device (lib/last-email, SecureStore), which on a full run used to be the
+# onboarding tour's throwaway: the workflow's state reset left the keychain
+# alone. Run 111 typed onto the end of it; runs 112 and 113 erased first and
+# still typed into the MIDDLE of it, because iOS lands the caret at the tap
+# and eraseText only deletes backwards. The workflow resets the keychain
+# before every flow now, so the field is empty here; the erase stays as a
+# no-op guard.
+- eraseText: 120
 - inputText: ${E2E_EMAIL}
-# Return, not a tap on the next field. Tapping a second field while the
-# keyboard is up does not reliably move focus under XCUITest, and run 23
-# proved it does not on a device either: the password box came back empty.
-# The form now wires Return to move along, so this is the human path too.
-- pressKey: Enter
-- inputText: ${E2E_PASSWORD}
-# Return on the password field submits. hideKeyboard has no reliable dismiss
-# path here, which is where the same run actually died.
-- pressKey: Enter
+- takeScreenshot: 10b-sign-in-email-typed
+# Field by field, keyboard down between them, the way business-tour fills
+# the join form and passes. Run 112 typed the address correctly, pressed
+# Return, typed the password, and photographed an EMPTY password box under
+# "do not match": whatever Return did with focus that time, the password
+# went somewhere that was not the password field. Every field carries a
+# Hide keyboard bar now, so the next tap lands on a screen with no keyboard
+# over it, which is the one case XCUITest focuses reliably.
+- tapOn: 'Hide keyboard'
 - tapOn:
-    text: 'Sign in'
-    optional: true
+    id: 'password-input'
+- inputText: ${E2E_PASSWORD}
+- takeScreenshot: 10c-sign-in-password-typed
+- tapOn: 'Hide keyboard'
+- tapOn: 'Sign in'
 # iOS offers to save the password after a successful sign-in; the system
 # dialog owns the a11y tree and eats taps until dismissed. It can arrive
 # seconds late, so wait for it, dismiss it, and guard once more below.
@@ -66,22 +78,102 @@ appId: com.mattmoore.samewhere
 - tapOn:
     text: 'Not Now'
     optional: true
-- tapOn: 'Drop a pin'
+# THE INTENT CARRIED ACROSS THE WALL, for a returning user too: the guest
+# tapped Drop a pin, took the gate's "I already have an account", and the
+# map replays that intent the moment they are signed in - so this arrives
+# IN PLACE MODE already (run 114, screen 11), and tapping Drop a pin on a
+# screen that has Pin here instead was the failure. Enter place mode only
+# when the replay did not (a pin card open, or a slow rail).
+- runFlow:
+    when:
+      notVisible: 'Pin here'
+    commands:
+      - tapOn: 'Drop a pin'
+- extendedWaitUntil:
+    visible: 'Pin here'
+    timeout: 10000
 - takeScreenshot: 12-place-mode
 - swipe:
     start: 50%, 62%
     end: 58%, 42%
+# The venue chips arrive after the settle's debounced lookup, so give them a
+# moment — but never require them. MKLocalPointsOfInterestRequest returns
+# nothing at all in some regions and over water (this very pan once landed on
+# a river), and the row is designed to be absent rather than empty there. A
+# binary without nearbyAsync has no row either, by the same design.
+- extendedWaitUntil:
+    visible:
+      id: 'nearby-venue-0'
+    timeout: 8000
+    optional: true
 - takeScreenshot: 13-place-after-pan
+# When MapKit named the block, prove a chip carries its venue into the form
+# the way a searched place does: the venue's own name, not a reverse-geocoded
+# street, heads the place card. Conditional for the same reason the wait
+# above is optional.
+- runFlow:
+    when:
+      visible:
+        id: 'nearby-venue-0'
+    commands:
+      - tapOn:
+          id: 'nearby-venue-0'
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - takeScreenshot: 13b-nearby-venue-picked
+      - tapOn: 'Pin here'
+      # The venue reached the form: the Where card's maps link exists only
+      # for a spot with a name and a coordinate, which is what a chip carries
+      # in and a bare pan does not. Not the venue's name: copyTextFrom on the
+      # chip left maestro.copiedText undefined (run 115, "undefined" is
+      # visible), the same plumbing this flow already gave up on for the
+      # passed-traveler bar. The screenshot carries the name.
+      - assertVisible: 'View in Maps'
+      - takeScreenshot: 13c-nearby-venue-in-form
+      # Back out to place mode so the main flow's own 'Pin here' below still
+      # lands there. A pull on the grabber, because the scrim's full-screen
+      # bounds centre on the sheet itself and a tap there would land on a
+      # field. Nothing has been typed, so the discard guard lets it through.
+      - swipe:
+          from:
+            id: 'sheet-grabber'
+          direction: DOWN
+      - waitForAnimationToEnd:
+          timeout: 3000
 - tapOn: 'Pin here'
 - takeScreenshot: 14-pin-form
+# The button is grey here and the footnote says why. Asserted before typing,
+# so the disabled reason is proved rather than only photographed.
+- assertVisible: 'Say what the plan is first.'
+# SCROLL TO IT FIRST. The two text fields sit under the join choice, the day,
+# the time and the expiry, so with a venue on the Where card (the chip tap
+# above leaves it there) the plan field is fully below the scroller's fold.
+# Maestro still finds the id and taps its coordinates, which land on the
+# fade under the fold and focus nothing; run 116 typed both sentences into
+# the void and failed on the details assertion three steps later with a
+# frame identical to 14-pin-form. The details field already scrolls; this
+# one has to as well.
+# centerElement, because Maestro's visibility test ignores the scroller's
+# own clip (traps): the field's frame was already "visible" under the fold,
+# so run 119's scroll did nothing and the tap landed on the fade again.
+- scrollUntilVisible:
+    element:
+      id: 'plan-input'
+    direction: DOWN
+    timeout: 8000
+    centerElement: true
 - tapOn:
-    id: 'venue-input'
+    id: 'plan-input'
 - inputText: 'Rooftop hello from Maestro'
 # Return first: Name is single-line, so this dismisses the keyboard, and the
 # tap below then lands on the details field. Tapping a second field with the
 # keyboard still up is what silently appended the details onto the name in
 # three earlier runs.
 - pressKey: Enter
+# NOT centred: Details is the last thing in the scroller, so once the plan
+# field above has been centred the scroller is at its end and a centring
+# scroll can only time out (run 120). Plain visibility is enough here; the
+# plan field's centring is what brought this one onto the screen.
 - scrollUntilVisible:
     element:
       id: 'note-input'
@@ -105,6 +197,32 @@ appId: com.mattmoore.samewhere
 # a newline is exactly what `.` does not match.
 - assertVisible: 'Meeting by the door around 7.*'
 - takeScreenshot: 15-pin-form-filled
+# THE DISCARD GUARD. A pull on the grabber with a plan mid-sentence must ask,
+# not eat it: the sheet used to unmount on this exact gesture with all state
+# gone, and "Pin here" again gave an empty form. The refusal also proves the
+# sheet survives the gesture — sprung back home, everything still in it —
+# rather than sitting parked halfway off screen.
+- swipe:
+    from:
+      id: 'sheet-grabber'
+    direction: DOWN
+- assertVisible: 'Discard this plan?'
+- tapOn: 'Keep writing'
+- assertVisible: 'Rooftop hello from Maestro'
+# The keyboard goes away before the form is judged: Details is multiline, so
+# nothing above dismissed it, and with a venue on the Where card the scroller
+# under a keyboard is two rows tall. Run 121 asserted the expiry slider into
+# that window and failed with "Disappears after" showing and the slider
+# itself below the fold. Conditional, because the bar exists only while a
+# field has focus.
+- runFlow:
+    when:
+      visible: 'Hide keyboard'
+    commands:
+      - tapOn: 'Hide keyboard'
+      - waitForAnimationToEnd:
+          timeout: 2000
+- assertVisible: 'Meeting by the door around 7.*'
 # HOW PEOPLE COME ALONG. The choice that turns a pin into a plan somebody can
 # join in one tap, versus the hello-and-wait the app had only ever offered.
 # It sits ABOVE the fields now: run 76 photographed it below them, clipped in
@@ -114,10 +232,24 @@ appId: com.mattmoore.samewhere
 # scrollUntilVisible: the whole claim is that no scrolling is needed.
 - assertVisible: 'Anyone can join.*'
 - assertVisible: 'Message me first.*'
+# THE DAY AND THE LIFETIME. Same reasoning as the join rows above:
+# assertVisible, not scrollUntilVisible, because the whole claim is that the
+# two controls that define what a pin IS need no scrolling to reach.
+- assertVisible: 'When'
+- assertVisible: 'Disappears after.*'
+# The slider itself, by its spoken label (an adjustable carries its own
+# accessibilityLabel, and that is what Maestro sees, once the View says
+# `accessible`: run 122 found nothing here with the keyboard down, because
+# until then it did not). The 72h cap is a §7
+# hard rule, and a user who cannot reach this control cannot set it — the
+# slider was once clipped off the bottom of the scroll viewport while the
+# form's tests stayed green, so a future regression fails the run here
+# rather than only the eye.
+- assertVisible: 'How long this pin stays up'
 - takeScreenshot: 15b-pin-join-mode
-# 'Drop it' sits outside the form's scroll area and the sheet lifts with the
-# keyboard, so it is reachable with the keyboard still up.
-- tapOn: 'Drop it'
+# 'Put it on the map' sits outside the form's scroll area and the sheet lifts
+# with the keyboard, so it is reachable with the keyboard still up.
+- tapOn: 'Put it on the map'
 # Exact, deliberately: a loose match here passed a run in which the details
 # had been appended to the name.
 - extendedWaitUntil:
@@ -129,36 +261,313 @@ appId: com.mattmoore.samewhere
 # the one place the whole path — RPC, group, room_members, the map re-read —
 # is checked in one line.
 - assertVisible: 'Your plan, open to join'
-# ASSERT THE APP STILL RESPONDS. Run 42 posted a pin and then went deaf:
-# Close, Travelers, Map and the avatar were all "tapped" — Maestro found every
-# one of them in the tree and reported success — while the screen did not
-# change by a single pixel for the next minute. Three screenshots came back
-# byte-identical and the run only failed four steps later, on a name that was
-# never going to appear. A tap that is allowed to do nothing is how a frozen
-# app passes as a working one, so from here on every tap out of this card has
-# to prove it landed.
-- tapOn: 'Close'
-# The card's own headline going away is the proof, and it has to be this
-# rather than something about the Map tab: "Drop a pin" is ALSO the label on
-# the Travelers empty state, and "Travelers" is the tab's own label whichever
-# tab you are on. An assertion that is true either way is exactly the kind
-# that let a dead app through.
-- waitForAnimationToEnd:
-    timeout: 3000
-- assertNotVisible: 'Rooftop hello from Maestro'
+# THE PIN-BORN ROOM, photographed for the first time. The run had never once
+# entered it — the room it does photograph later ("Maestro crew") is the
+# hand-made group from the 22/23 flow, which is why "the room loses the plan"
+# survived the audit's own evidence. This tap is also the liveness proof the
+# old 'Close' tap carried (run 42 posted a pin and then went deaf): the wait
+# below matches room-only content, so a tap that did nothing fails HERE.
+- tapOn: 'Open the chat'
+# Wait on ROOM-ONLY content first: the map's own pin card behind this push
+# prints the same burnOutLabel, so a wait keyed on the burn line would pass
+# at t=0 with the tap having done nothing. The membership line exists only
+# in the room. Then the card's own line, anchored for the whole-element
+# match ('Today · burns out in 24h' is one Text), and the Maps link by its
+# SPOKEN label - the Pressable hides its inner text (traps).
+- extendedWaitUntil:
+    visible: '1 person in this chat.*'
+    timeout: 20000
+- assertVisible: '.*burns out (in .*|soon)'
+- assertVisible: 'View .* in Maps'
+- takeScreenshot: 16b-pin-born-room
+# Relaunch rather than `back` — Maestro's back does not reliably pop an iOS
+# push (see the Chat section below). The session survives (keychain, not the
+# data container) and the app lands on the Map tab. Do NOT add clearState.
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
 - tapOn: 'Travelers'
 - takeScreenshot: 17-travelers-signed-in
-- tapOn: 'Map'
+# WHICH TRIPS THE QUEUE IS FOR. The account has two trips (Bangkok this
+# week, Lisbon more than a year out), so the rail above the hero is on: All
+# trips, Bangkok, Lisbon. A chip carries its spoken label ("Lisbon, Oct 10 –
+# 15"), which is what Maestro sees instead of the printed city (traps), and
+# nothing else on this screen starts with a city and a comma.
+- assertVisible:
+    id: 'trip-chip-all'
+# Just Lisbon. Nobody in the seed has a trip there a year from now, so this
+# is the wall a choice produces: the rail still on it, the choice named, and
+# the way back underneath.
+- tapOn: 'Lisbon, .*'
 - extendedWaitUntil:
-    visible: 'Drop a pin'
+    visible: "That's everyone on your dates in Lisbon"
     timeout: 15000
+- assertVisible: "You're only looking at Lisbon, .*"
+- takeScreenshot: 17i-travelers-just-lisbon
+- tapOn: 'Show all trips'
+- extendedWaitUntil:
+    visible: 'Say hi'
+    timeout: 15000
+# Just Bangkok for the rest of the tour. The anchor step below scrolls to a
+# Bangkok trip card, and with Lisbon in view too whoever is first in the
+# queue is not promised to have one.
+- tapOn: 'Bangkok, .*'
+- extendedWaitUntil:
+    visible: '(Last one for now|One more on your dates in Bangkok|[0-9]+ more on your dates in Bangkok)'
+    timeout: 15000
+- takeScreenshot: 17j-travelers-just-bangkok
+# THE COMPOSER, PHOTOGRAPHED. The say-hi composer is this product's
+# chokepoint and not one of the tour's PNGs had ever shown it: no field, no
+# anchor card, no counter, no warning. Reading the source and imagining the
+# result is exactly how a screen with two concatenated fields passed review
+# once, so it gets photographed here, one tap from a screen that needs
+# nobody else on it.
+#
+# Nothing is SENT here. A first message is one shot per pair for ever
+# (20260816200000:394), and the tour already spends its one send further
+# down, on the strip after a hello. This visit types, gets warned, and
+# throws the draft away.
+#
+# The numbering skips 17a-17d, which the passed-undo, said-hi, safety and
+# anchor frames already hold. Two flows photographing the same screens under
+# clashing names is a gallery nobody can read.
+- tapOn: 'Say hi'
+# The FIELD's label, not the title: the title repeats the button's own words
+# and would match the Travelers screen behind it, the same trap the group
+# name step further down already guards against.
+- extendedWaitUntil:
+    visible: 'Your first message'
+    timeout: 15000
+- takeScreenshot: 17e-composer
+- tapOn:
+    id: 'first-message-input'
+- inputText: 'Hey, I am in Bangkok the same week. Any good night markets?'
+- takeScreenshot: 17f-composer-typed
+# The live warning. It is a debounced network round trip (700ms of debounce
+# plus the RPC), so this waits rather than asserting, and waits generously:
+# a cold function is slow the first time and a bare assertVisible here would
+# be a flake factory.
+- eraseText: 100
+- inputText: 'Want to hook up at the night market?'
+- extendedWaitUntil:
+    visible: 'This might not go through'
+    timeout: 15000
+- takeScreenshot: 17g-composer-warned
+# Out, through the announced exit and the guard that stops a pull-down
+# throwing away something somebody wrote. The assertNotVisible is what
+# proves the tap LANDED: the composer is a presented modal, and a Close that
+# silently did nothing is the shape of the dropped-presentation bug (traps).
+- tapOn: 'Close'
+- extendedWaitUntil:
+    visible: 'Discard'
+    timeout: 10000
+# The fourth frame the package asks for. The guard is exercised by the steps
+# above but was never photographed, so its copy and its button order were the
+# one part of this composer nobody could check by eye.
+- takeScreenshot: 17h-composer-discard
+- tapOn: 'Discard'
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertNotVisible: 'Your first message'
+# THE QUEUE HAS SCOPE NOW. The header line above the hero says how many
+# people are behind this one. The count depends on live supply, so the
+# pattern covers the three wordings the helper can produce — but nothing
+# else: a screen without the line fails here, naming it.
+- assertVisible: '(Last one for now|One more on your dates in .*|[0-9]+ more on your dates in .*)'
+# Pull to refresh must refresh, not navigate or blank the page. The swipe
+# starts on the hero; afterwards the same traveler page (its primary action)
+# must still be on screen.
+- swipe:
+    start: 50%, 35%
+    end: 50%, 75%
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertVisible: 'Say hi'
+- assertVisible: '(Last one for now|One more on your dates in .*|[0-9]+ more on your dates in .*)'
+# ONE VERB FOR SAYING HI. The chip beside 'Travel plans' prints 'About this'
+# now, not 'Reply' — but a Pressable carrying its own accessibilityLabel
+# hides its printed text from Maestro (see traps), so what is asserted is
+# the spoken label, which carries the same verb.
+- scrollUntilVisible:
+    element:
+      text: 'About this. Say hi about their travel plans.'
+    direction: DOWN
+    timeout: 10000
+- assertVisible: 'About this. Say hi about their travel plans.'
+# SAFETY, ON THE CARD YOU READ A STRANGER ON. Travelers is where somebody
+# spends the most time with one stranger at a time, and it carried no report
+# and no block at all: reporting the man on screen meant opening his full
+# profile first and finding the nav bar's overflow. Same sheet, same three
+# items, one builder (features/profile/actions-menu).
+- tapOn: 'More about .*'
+- extendedWaitUntil:
+    visible: 'Report'
+    timeout: 10000
+- assertVisible: 'Block'
+- takeScreenshot: 17c-travelers-safety
+- tapOn: 'Cancel'
+- waitForAnimationToEnd:
+    timeout: 3000
+# A PASS IS RECOVERABLE. Tap the Next pill (its spoken label — the pill's own
+# accessibilityLabel hides the printed word from Maestro, see traps) and the
+# undo bar names who was moved past. The name depends on live supply, so the
+# pattern closes over the exact demo roster and nothing else; the copied text
+# is what lets the flow prove Undo brings back the SAME person rather than
+# whoever sorts first. All of this happens inside the bar's 5-second window,
+# so the copy and the eval come before the screenshot.
+- tapOn: 'Next traveler'
+# A NAMED bar, not a bare regex on 'Moved past': the roster below is the demo
+# seed, so the name half of the copy is proven without copyTextFrom - run 90
+# showed the copiedText/evalScript plumbing leaving output.passedName unset
+# and failing the flow while the FEATURE worked on screen (the pass, the bar,
+# and the undo restoring Kai were all in the photographs). Who exactly comes
+# back on top is pinned by jest (passed.test.ts hoist cases); this flow
+# proves the interaction: pass, named bar, undo, bar gone.
+- assertVisible: 'Moved past (Maya|Dev|Sofia|Priya|Nora|Theo|Marcus|Tomas|Ines|Kai|Freja|Luca)'
+- takeScreenshot: 17a-passed-undo
+- tapOn: 'Undo'
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertNotVisible: 'Moved past .*'
+# THE BLOCK IS THE TAP TARGET. The trip card is the largest, most obvious
+# object in the section and it did nothing when tapped, while the affordance
+# that worked was a 26pt caption chip in the header beside it. Tapped
+# straight after Undo re-mounts the page, which is the case the old per-row
+# stagger could not survive: a view at opacity 0 is skipped by UIKit
+# hit-testing entirely (traps), so the rows were untappable while they
+# landed. The city is Bangkok because that is where the E2E account's own
+# trip is and Travelers only surfaces overlapping ones.
+- scrollUntilVisible:
+    element:
+      text: 'Bangkok.*Say hi about this\.'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Bangkok.*Say hi about this\.'
+- extendedWaitUntil:
+    visible: 'Saying hi about their travel plans'
+    timeout: 15000
+- takeScreenshot: 17d-anchor-from-the-trip-card
+- tapOn: 'Close'
+- waitForAnimationToEnd:
+    timeout: 3000
+# THE BEAT AFTER A HELLO. Saying hi used to end in a face swap nobody asked
+# for: the composer's confirmation popped after about a second, a different
+# stranger had silently taken the page underneath, and Travelers carried no
+# trace that anything had been said. The strip is that trace, and it is a
+# beat rather than a resting state - so both halves are proven here, the
+# arrival and the going.
+#
+# Safe to send for real, and idempotent despite one-shot-per-pair: the run's
+# account is created by `node e2e/account.mjs setup` and destroyed at
+# teardown every run, so the SENDER is a fresh row each time and
+# unique(sender_id, recipient_id) never sees the same pair twice.
+# message_requests cascade with the account, so nothing here burns a demo
+# traveler permanently either.
+#
+# RENUMBERING: hi-the-composer-gets-photographed plans its own composer
+# frames and has to number around 17b/17c here rather than interleave with
+# them. Two flows photographing the same screens under clashing names is a
+# gallery nobody can read.
+- tapOn: 'Say hi'
+- extendedWaitUntil:
+    visible: 'Your first message'
+    timeout: 15000
+- tapOn:
+    id: 'first-message-input'
+- inputText: 'Both in town the same week. Any market worth the walk?'
+- tapOn: 'Send'
+# EITHER beat. The composer's confirmation holds 1.1 s (CONFIRM_MS) and the
+# strip under it 4 s; Maestro's settle after a tap can outlast the first, and
+# a wait pinned to it then burned the second too (run 124: 25 s on 'Sent to'
+# while the strip came and went underneath; run 123 had caught it). One wait
+# for whichever is on screen, then the strip on its own.
+- extendedWaitUntil:
+    visible: '(Sent to .*|Said hi to .*)'
+    timeout: 25000
+# The composer pops itself after its confirmation; the strip is underneath,
+# floating over whoever the queue handed up next.
+- extendedWaitUntil:
+    visible: 'Said hi to .* It.s in Chat under .You said hi..'
+    timeout: 20000
+- takeScreenshot: 17b-said-hi
+# A beat, not a wall. Four seconds of screen time and it clears itself.
+- extendedWaitUntil:
+    notVisible: 'Said hi to .*'
+    timeout: 20000
+
+# WHAT THE REPORT FORM LETS SOMEBODY SAY. The chip order IS the triage order
+# a frightened person reads, so the two urgent reasons have to be in the
+# picture and they have to be at the top of it. Both are new: the form had no
+# way to say either, so a traveler certain the man she is chatting with is 15,
+# or one who has just been followed back to her hostel, had to file it as
+# 'Other' and land behind a spam complaint.
+- tapOn: 'More about .*'
+- extendedWaitUntil:
+    visible: 'Report'
+    timeout: 10000
+- tapOn: 'Report'
+- extendedWaitUntil:
+    visible: 'What happened?'
+    timeout: 15000
+- assertVisible: 'Somebody here is in danger'
+- assertVisible: 'They are under 18'
+- takeScreenshot: 17d-report-reasons
+# Relaunch rather than `back`: this screen is a modal with no close control
+# (nothing is sent, and a report form should not carry a stray Done), and the
+# flow already relies on a relaunch to reset - it keeps the session, which
+# lives in the keychain rather than the data container, and lands on the Map
+# tab. Do NOT add clearState - see the note at the top of this file.
+#
+# And then WAIT ON THE TAB BAR, NOT ON THE MAP. After a mid-flow launchApp
+# nothing on the map screen is matchable - not the legend chip's printed
+# words, not its accessibility label, not a marker, not 'Drop a pin'. Runs 64
+# and 66 both died exactly there, on screenshots that plainly show the thing
+# being asserted (the long note further down this file has the whole finding).
+# So this mirrors the three relaunches in this flow that DO work: wait for the
+# tab bar's own 'Travelers' label, tap it, and carry on from a screen Maestro
+# can read.
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+- tapOn: 'Travelers'
 # The avatar's first tap is the regression under test here; the name is
-# the above-the-fold proof the profile actually opened.
+# the above-the-fold proof the profile actually opened. The header avatar is
+# the same AvatarButton on Travelers as on the Map, so the regression is
+# still the one under test - it is only reached from a tab that answers.
 - tapOn: 'Your profile'
 - extendedWaitUntil:
     visible: 'Maestro Test.*'
     timeout: 15000
 - takeScreenshot: 18-profile-me
+# YOUR PROFILE AS A STRANGER GETS IT. The page claims in its own comment to
+# be exactly that, and in the way that matters it was not: a stranger's copy
+# is covered in reply chips and yours has Edit buttons in the same slots, so
+# you could never see that your bio had nothing worth tapping. Same
+# component, owner off, handles empty (hard rule 4).
+- tapOn: 'Preview your profile as a stranger sees it'
+- extendedWaitUntil:
+    visible: 'This is what .* sees'
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 18d-profile-preview
+- tapOn: 'Stop previewing your profile'
+- waitForAnimationToEnd:
+    timeout: 2000
+# THE SECOND ASK, when this account has anything left to answer.
+#
+# Steps 6 to 11 of signup are one-tap skips, and nothing used to notice
+# afterwards. Conditional on purpose: the card draws nothing at all on a
+# complete profile, and that empty case is the one the jest table pins. So
+# this photographs it when it is there and says nothing when it is not,
+# rather than asserting a state the account may legitimately not be in.
+- runFlow:
+    when:
+      visible: 'Finish your profile'
+    commands:
+      - takeScreenshot: 18a-finish-your-profile
 
 # WHO YOU SEE, AND WHO SEES YOU
 #
@@ -186,7 +595,137 @@ appId: com.mattmoore.samewhere
     visible: 'Verified non-binary.*'
     timeout: 15000
 - takeScreenshot: 18b-who-can-see-you
+# THE SENTENCE THAT USED TO BE WRONG. "Chat is separate: anyone can still
+# message you" implied the say-hi gate applies to everybody, and it does not:
+# open_direct_chat checks standing, guest/business, the blocked pair and
+# SHARED GROUP membership, so eleven strangers in one open plan can each open
+# a one-to-one thread nobody accepted. The founder's decision stays; the
+# sentence had to. The new clause is longer and this screen has pushed a line
+# off the fold before, which is what 18b above is for: assert the words, look
+# at the picture for the wrap.
+- assertVisible: 'One setting, both ways\..*group with you can write to you directly\.'
+# A LOCKED ROW IS A DOOR, NOT A DEAD END. This account is unverified, so
+# 'Verified women' cannot be picked — tapping it must open verification
+# rather than swallow the tap, which is what the dimmed rows used to do.
+# The label pattern closes over the appended '. Needs the verified badge.
+# Opens verification.' suffix.
+- tapOn: 'Verified women.*'
+- extendedWaitUntil:
+    visible: 'Get your badge'
+    timeout: 15000
+- takeScreenshot: 18c-get-your-badge
+- tapOn: 'Close'
+- extendedWaitUntil:
+    visible: 'Verified non-binary.*'
+    timeout: 15000
 - tapOn: 'Done'
+
+# A SETTINGS SPINE, NOT A STACK OF GHOST BUTTONS. The page used to end in
+# eight identical full-width ghost buttons where Edit profile weighed the
+# same as House rules and House rules weighed the same as Sign out, and
+# reaching a human was four taps and two long scrolls through a rulebook
+# written for somebody else. One heading, grouped rows with chevrons, and the
+# two controls App Review requires to be reachable in-app sitting apart from
+# everything above them at the bottom.
+- scrollUntilVisible:
+    element:
+      text: 'Settings'
+    direction: DOWN
+    timeout: 12000
+- takeScreenshot: 18e-settings
+# THE INVENTORY A BLOCK NEVER HAD. Blocking cuts visibility both ways and had
+# nowhere at all to look afterwards, so blocking the wrong person from a
+# crowded group thread was a one-way door and the founder got "my friend has
+# disappeared" as a support case. What a live tour can prove is the door, the
+# screen and its empty state; what unblocking does and does NOT undo is
+# pinned by pgTAP 44, which can attack it without blocking a real traveler
+# mid-run.
+- scrollUntilVisible:
+    element:
+      text: 'Blocked'
+    direction: DOWN
+    timeout: 12000
+- tapOn: 'Blocked'
+- extendedWaitUntil:
+    visible: 'Nobody blocked'
+    timeout: 15000
+- assertVisible: 'Nobody here can see you.*'
+- takeScreenshot: 18g-blocked
+- tapOn: 'Done'
+- waitForAnimationToEnd:
+    timeout: 2000
+- scrollUntilVisible:
+    element:
+      text: 'Delete account'
+    direction: DOWN
+    timeout: 12000
+# Structural, not a picture: the separation IS the finding, so it is asserted
+# rather than left to whoever looks at the screenshot.
+- assertVisible:
+    text: 'Delete account'
+    below: 'Sign out'
+- takeScreenshot: 18f-settings-exits
+# Back up to the head of the list, so the blocks below still scroll DOWN to
+# rows that are now above the bottom of the page.
+- scrollUntilVisible:
+    element:
+      text: 'Settings'
+    direction: UP
+    timeout: 12000
+
+# THE PRIVACY POLICY — App Review 5.1.1(i) wants it readable inside the app,
+# not only on the store listing. The asserted line is the promise the whole
+# product stands on, rendered from PRIVACY_SECTIONS' top card, so a picture
+# of it is a picture of the policy actually shipping. This sits BEFORE the
+# house-rules block because the block below deliberately ends inside the
+# contact form with the keyboard up.
+- scrollUntilVisible:
+    element:
+      text: 'Privacy'
+    direction: DOWN
+    timeout: 12000
+- tapOn: 'Privacy'
+- extendedWaitUntil:
+    visible: 'We never collect your location.*'
+    timeout: 15000
+- takeScreenshot: 19c-privacy
+- tapOn: 'Done'
+
+# EMAIL AND PASSWORD - the two changes that used to need a signed-OUT screen.
+#
+# Nothing is submitted: a live backend would really change the password, and a
+# screenshot is what this step is for. The account this suite signs in as is an
+# email account, so the two password fields are the ones that must be on
+# screen; an Apple account draws a sentence in their place instead.
+- scrollUntilVisible:
+    element:
+      text: 'Email and password.*'
+    direction: DOWN
+    timeout: 12000
+# THE ADDRESS THE ACCOUNT IS UNDER, on the row that opens it. Email
+# confirmation is off for v1, so a typo at signup makes a working account
+# that never receives a single piece of mail revealing the mistake, and
+# nothing in the app used to show it back. The run's account is
+# `<base>+sw-e2e-<run>@<domain>`, so '+sw-e2e-' is the part that is ours
+# whatever inbox the runner is configured with. The row's spoken label is
+# its printed name and nothing else since Wave 2 (a Pressable's label
+# replaces its children, and the address rides the row's accessibility
+# VALUE, which Maestro's text match does not read); run 123 went red on the
+# old joined form. So the row by its name here, and the address two screens
+# down, where "You sign in with <address> today." prints it as plain text.
+- assertVisible: 'Email and password'
+- tapOn: 'Email and password'
+- extendedWaitUntil:
+    visible: 'Current password'
+    timeout: 15000
+- takeScreenshot: 19d-email-and-password
+- tapOn: 'Change your email'
+- extendedWaitUntil:
+    visible: 'New email'
+    timeout: 15000
+- assertVisible: 'You sign in with .*\+sw-e2e-.* today.*'
+- takeScreenshot: 19e-change-your-email
+- tapOn: 'Close'
 
 # HOUSE RULES AND THE CONTACT FORM
 #
@@ -197,14 +736,26 @@ appId: com.mattmoore.samewhere
 # wrong here before (a field hidden behind the keyboard renders fine in a
 # test and is unusable on a phone). Nothing is sent: the keyboard stays up on
 # purpose so the shot shows the message field clear of it.
+# UP first. The settings spine put 'Help and rules' ABOVE 'Account', and the
+# step before this one tapped 'Email and password' in the Account group - so
+# the scroll position is already at or below the target and scrollUntilVisible
+# only ever moves one way. Going back to the head of the list makes the DOWN
+# search below mean what it says.
+- scrollUntilVisible:
+    element:
+      text: 'Settings'
+    direction: UP
+    timeout: 12000
 - scrollUntilVisible:
     element:
       text: 'House rules and help'
     direction: DOWN
     timeout: 12000
 - tapOn: 'House rules and help'
+# The screen the button opens now agrees with the button (decision D32): one
+# name for the rulebook, and the screenshot is the proof the two match.
 - extendedWaitUntil:
-    visible: 'Community guidelines'
+    visible: 'House rules'
     timeout: 15000
 - takeScreenshot: 19-house-rules
 - scrollUntilVisible:
@@ -218,6 +769,11 @@ appId: com.mattmoore.samewhere
       id: 'contact-message'
     timeout: 15000
 - takeScreenshot: 19a-contact-form
+# WHICH KIND OF MESSAGE THIS IS. One box used to serve an appeal against a
+# closed account, a bug report, and somebody being followed back to their
+# hostel, and nothing let a one-person queue tell them apart. The chip is
+# required, so this tap is also what makes Send available.
+- tapOn: 'Something happened'
 - tapOn:
     id: 'contact-message'
 - inputText: 'Checking the form works. Nothing to answer.'
@@ -238,17 +794,39 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
-- tapOn: 'Chat'
+- tapOn: 'Chat(, .*)?'
 - extendedWaitUntil:
     visible: 'Groups'
     timeout: 15000
 - takeScreenshot: 20-chat-individual
+# The list is virtualized now, and everything that used to sit at the bottom
+# of a plain ScrollView - the skeletons, both LoadErrors, the empty state,
+# RoomDiscovery, the invite row and the Archived door - moved into the
+# SectionList's footer. A screenshot of the top proves none of it. Scroll to
+# the Archived row and assert it: it is the last thing in the footer, so
+# reaching it proves the whole tail survived the conversion.
+- scrollUntilVisible:
+    element:
+      text: 'Archived'
+    direction: DOWN
+    timeout: 12000
+- assertVisible: 'Archived'
+- takeScreenshot: 20a-chat-list-footer
+- scrollUntilVisible:
+    element:
+      text: 'Chats'
+    direction: UP
+    timeout: 12000
 - tapOn: 'Groups'
+# The tab body fades in over Motion.quick; an unwaited screenshot catches a
+# semi-transparent, mid-fade list.
+- waitForAnimationToEnd:
+    timeout: 2000
 - takeScreenshot: 21-chat-groups
-# "Start a chat" on both segments now, not "Start a group" on one of them:
-# the '+' used to change under the person's hand, which is the thing the
-# founder could not learn.
-- tapOn: 'Start a chat'
+# The '+' goes to /new-group on both segments and now SAYS so: its spoken
+# label is 'New group'. A Pressable with its own accessibilityLabel hides the
+# text inside it from Maestro, so this taps the spoken label, not a glyph.
+- tapOn: 'New group'
 # Wait on the field, not the title: the screen's heading and the button that
 # opened it are the same words, so a text match would pass before it opened.
 - extendedWaitUntil:
@@ -266,6 +844,10 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Maestro crew'
     timeout: 20000
+# A brand-new group has one person in it, and the empty state's job is to
+# offer the one thing they need next: getting anybody else in. "Go first"
+# only appears once there are people to hear it.
+- assertVisible: 'Invite people'
 - takeScreenshot: 23-group-created
 # A message to react to.
 - tapOn:
@@ -303,24 +885,52 @@ appId: com.mattmoore.samewhere
       id: 'message-menu'
     timeout: 10000
 - assertVisible: 'Dismiss'
+# The way out for an address or a handle: the share sheet is the system's
+# text/email/copy chooser, and it is on the card under the lifted message.
+- assertVisible: 'Share'
 - takeScreenshot: 25-reaction-menu
 - tapOn: '❤️'
 - waitForAnimationToEnd:
     timeout: 2000
 - takeScreenshot: 26-reacted
+# ANSWERING ONE MESSAGE RATHER THAN THE ROOM.
+#
+# In a group of six discussing three plans for tonight, "I'm in" carries no
+# information on its own, and the app's own five-minute grouping window welds
+# it to whatever came before it. Reply leads the card, ahead of Pin, so this
+# also photographs the order.
+#
+# The keyboard is up when the press lands, deliberately: that is the case that
+# was broken for a real finger (run 34), and a sacrificial tap here would hide
+# it again.
+- longPressOn: 'First one in'
+- extendedWaitUntil:
+    visible: 'Reply'
+    timeout: 10000
+- tapOn: 'Reply'
+- tapOn:
+    id: 'room-composer'
+- inputText: 'Second one in'
+# The composer is multiline, so Return would add a line rather than send.
+- tapOn: 'Send'
+- extendedWaitUntil:
+    visible: 'Second one in'
+    timeout: 15000
+# The evidence is the picture: the quoted line above the new bubble.
+- takeScreenshot: 26b-reply
 # The group's own page: who is in it, who may post, and the invite link.
 - tapOn: 'Group details'
 - extendedWaitUntil:
     visible: 'WHO CAN POST'
     timeout: 15000
 # The renamed section, and the control that turns the end date off. Asserted
-# rather than merely photographed: "Chat is active until" is a promise the
+# rather than merely photographed: "Group is active until" is a promise the
 # database now keeps, and a screen that silently lost the label would mean the
 # words and the mechanism had come apart again.
-# The rename, asserted. This one passes and is worth keeping: "Chat is active
+# The rename, asserted. This one passes and is worth keeping: "Group is active
 # until" is a promise the database now enforces, and a screen that quietly
 # lost the label would mean the words and the mechanism had come apart.
-- assertVisible: 'Chat is active until'
+- assertVisible: 'Group is active until'
 # The no-end-date control is NOT asserted, and that is a considered stop
 # rather than an omission. Runs 50 and 51 both failed on it — first
 # assertVisible (the control is below the fold), then scrollUntilVisible,
@@ -331,6 +941,17 @@ appId: com.mattmoore.samewhere
 # control exists and is the default.
 - scroll
 - takeScreenshot: 27-group-settings
+# A room that has gone bad had no exit that told anybody: the whole reporting
+# path was per-person, and picking one person to blame for a group is a guess.
+# Asserted as a DOOR rather than walked through: /report is a pushed screen and
+# Maestro's `back` on iOS does not reliably pop one here (runs 28, 46 and 47),
+# so opening it would cost this flow a relaunch to get back to the group.
+- scrollUntilVisible:
+    element:
+      text: 'Report this group'
+    direction: DOWN
+    timeout: 10000
+- takeScreenshot: 27f-group-report-and-leave
 
 # ADDING SOMEBODY WITHOUT LEAVING THE APP, and a door out of a group.
 #
@@ -371,7 +992,7 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
-- tapOn: 'Chat'
+- tapOn: 'Chat(, .*)?'
 - extendedWaitUntil:
     visible: 'Groups'
     timeout: 15000
@@ -382,6 +1003,60 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2000
 - takeScreenshot: 27a-chat-list-with-a-row
+
+# THE INVITE SHEET — a real field on every platform now, not an iOS-only
+# Alert.prompt whose Android arm was an alert with no input at all. The row
+# is addressed by its spoken label: a Pressable with its own
+# accessibilityLabel hides the text inside it from Maestro. The row sits
+# below the open rooms, so scroll to it rather than assuming it is on screen.
+- scrollUntilVisible:
+    element: 'Join a group with an invite link or code'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Join a group with an invite link or code'
+# The exact label on the field, asserted before the screenshot so a sheet
+# that does not open fails HERE, naming the sheet. Never loosen this to a
+# wildcard.
+- extendedWaitUntil:
+    visible: 'Invite code'
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 27e-invite-sheet
+- tapOn: 'Cancel'
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# THE ARCHIVE, as a conversation list. Archived was the one list that never
+# got the redesign — floating cards, no avatar, no timestamp — and it now
+# renders the inbox's own ChatRow. Archive the crew group, walk into the
+# archive, photograph it, and put the group back so the run leaves no state.
+- scrollUntilVisible:
+    element: 'Maestro crew'
+    direction: UP
+    timeout: 10000
+- longPressOn: 'Maestro crew'
+- tapOn: 'Archive'
+# The door to the archive appears once something is archived; it sits below
+# the rooms and the invite row.
+- scrollUntilVisible:
+    element: 'Archived'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Archived'
+- extendedWaitUntil:
+    visible: 'Maestro crew'
+    timeout: 15000
+- takeScreenshot: 27d-archived
+# Un-archiving uses the inbox's own vocabulary: the long-press menu (the
+# swipe exists too, but a long press is dependable under Maestro). No
+# assertion on 'Nothing archived.' afterwards: archive_idle_chats archives
+# any chat idle 14 days, so an account that has run this flow before may
+# legitimately hold older archived groups.
+- longPressOn: 'Maestro crew'
+- tapOn: 'Put back'
+- waitForAnimationToEnd:
+    timeout: 2000
 
 # ─────────────────────────────────────────────────────────────────────────
 # PLACES AND TOP PRIORITIES — the surface built on 2026-08-27, never yet

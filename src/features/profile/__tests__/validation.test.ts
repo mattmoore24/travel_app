@@ -1,4 +1,5 @@
 import {
+  basicsProblem,
   missingOnboardingFields,
   normalizeHandle,
   validateAge,
@@ -27,6 +28,18 @@ describe('profile validation (client mirror of DB CHECK constraints)', () => {
     expect(validateBio('x'.repeat(501))).not.toBeNull();
   });
 
+  // The DB counts codepoints (`char_length`); a JS string's .length counts
+  // UTF-16 units, where an emoji costs 2. The client must pass everything
+  // the DB would pass, or an emoji writer is cut off at 250 and told 500.
+  it('counts codepoints, matching char_length, so emoji cost 1 not 2', () => {
+    expect(validateBio('🌍'.repeat(500))).toBeNull();
+    expect(validateBio('🌍'.repeat(501))).not.toBeNull();
+    // Non-BMP CJK (𠀀 is U+20000, .length 2, char_length 1).
+    expect(validateBio('𠀀'.repeat(500))).toBeNull();
+    expect(validateDisplayName('🌍'.repeat(50))).toBeNull();
+    expect(validateDisplayName('🌍'.repeat(51))).not.toBeNull();
+  });
+
   it('normalizes handles the way they are stored (bare, lowercase)', () => {
     expect(normalizeHandle('@Alice.Travels ')).toBe('alice.travels');
     expect(normalizeHandle('@@double')).toBe('double');
@@ -37,6 +50,43 @@ describe('profile validation (client mirror of DB CHECK constraints)', () => {
     expect(validateHandle('@')).not.toBeNull();
     expect(validateHandle('has space')).not.toBeNull();
     expect(validateHandle('@ok_handle')).toBeNull();
+  });
+});
+
+describe('step 3 cannot be passed without a gender', () => {
+  const answered = { name: 'Alice', age: '28', gender: 'woman' as const };
+
+  it('lets a fully answered step through', () => {
+    expect(basicsProblem(answered)).toBeNull();
+  });
+
+  // The case that made this a finding: name and age valid, gender still at
+  // the column default, and the old expression let Continue through — so the
+  // women-only audience filter filled with 'unspecified' from people who were
+  // never shown the question.
+  it('refuses valid name and age while gender is still the column default', () => {
+    const problem = basicsProblem({ ...answered, gender: 'unspecified' });
+    expect(problem).not.toBeNull();
+    expect(problem).toContain('gender');
+    // The signup e2e taps Continue unanswered and asserts this prefix.
+    expect(problem).toMatch(/^Pick a gender\./);
+  });
+
+  it.each(['woman', 'man', 'nonbinary'] as const)('accepts %s', (gender) => {
+    expect(basicsProblem({ ...answered, gender })).toBeNull();
+  });
+
+  it('names the name and age problems in their own words first', () => {
+    expect(basicsProblem({ ...answered, name: '  ' })).toBe(validateDisplayName('  '));
+    expect(basicsProblem({ ...answered, age: '17' })).toBe(validateAge('17'));
+  });
+
+  // "Rather not say" was an option and a deliberate tap on it passed. Founder,
+  // 2026-09-04: it "goes against our filters" — an unspecified profile sits in
+  // none of the gendered audiences while being free to choose one. There is
+  // no tap to honour any more; only the value counts.
+  it('no longer accepts an opt-out, deliberate or not', () => {
+    expect(basicsProblem({ name: 'Alice', age: '28', gender: 'unspecified' })).not.toBeNull();
   });
 });
 

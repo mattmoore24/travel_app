@@ -27,11 +27,13 @@ export const PRIORITY_MAX = 40;
  * specific, and none of them a sentence.
  */
 export const PRIORITY_PLACEHOLDERS = [
-  'day trip to Sintra',
+  // Index 0 is what everyone sees first, whoever and wherever they are, so
+  // it must be city-neutral. The Lisbon-specific ones stay, further down.
+  'rooftop for the sunset',
   'learn to surf',
   'pastel de nata crawl',
   'find a record shop',
-  'rooftop for the sunset',
+  'day trip to Sintra',
   'sunrise hike',
 ] as const;
 

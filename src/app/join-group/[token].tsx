@@ -159,7 +159,7 @@ export default function JoinGroupScreen() {
         <View style={styles.centered}>
           <ThemedText type="headline">{`${group.name} has ended`}</ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
-            This chat closed
+            This group closed
             {closeDayLabel(group.max_stay_until)
               ? ` on ${closeDayLabel(group.max_stay_until)}`
               : ''}
@@ -207,7 +207,6 @@ export default function JoinGroupScreen() {
           <SignUpGate
             reason="Rather have a full profile?"
             where="group-invite"
-            cta="Make a profile"
             onNavigate={leaveForAccount}
           />
           {/* Nobody has to answer this to use the app. The link is somebody
@@ -277,8 +276,8 @@ export default function JoinGroupScreen() {
         <ThemedText type="smallBold">Stay in the group until</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
           {group.max_stay_until
-            ? `You drop out on your own afterwards. This chat is active until ${formatDate(group.max_stay_until)}, so that is the latest anyone can pick.`
-            : 'You drop out on your own afterwards. This chat has no end date, so pick whatever suits your trip.'}
+            ? `You drop out on your own afterwards. This group is active until ${formatDate(group.max_stay_until)}, so that is the latest anyone can pick.`
+            : 'You drop out on your own afterwards. This group has no end date, so pick whatever suits your trip.'}
         </ThemedText>
         {Platform.OS === 'ios' ? (
           <DateTimePicker

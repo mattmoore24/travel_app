@@ -5,9 +5,10 @@ import { useState } from 'react';
 import { FlatList, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { KeyboardDoneBar, keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { EmptyState } from '@/components/ui/empty-state';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Fonts, HitTarget, MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
@@ -63,21 +64,25 @@ export default function AddPeopleScreen() {
             size={16}
             tintColor={theme.textSecondary}
           />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search by name"
-            placeholderTextColor={theme.textSecondary}
-            autoCorrect={false}
-            autoCapitalize="words"
-            clearButtonMode="while-editing"
-            accessibilityLabel="Search people you know"
-            testID="add-people-search"
-            style={[styles.searchInput, { color: theme.text, fontFamily: Fonts?.sans }]}
-            // A search field with no Return that dismisses is how a list ends
-            // up hidden behind a keyboard with no way back.
-            {...keyboardDoneProps}
-          />
+          <KeyboardDone>
+            {(done) => (
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search by name"
+                placeholderTextColor={theme.textSecondary}
+                autoCorrect={false}
+                autoCapitalize="words"
+                clearButtonMode="while-editing"
+                accessibilityLabel="Search people you know"
+                testID="add-people-search"
+                style={[styles.searchInput, { color: theme.text, fontFamily: Fonts?.sans }]}
+                // A search field with no Return that dismisses is how a list ends
+                // up hidden behind a keyboard with no way back.
+                {...done}
+              />
+            )}
+          </KeyboardDone>
         </View>
 
         {error ? (
@@ -93,12 +98,18 @@ export default function AddPeopleScreen() {
           keyboardDismissMode="on-drag"
           contentContainerStyle={styles.list}
           ListEmptyComponent={
-            isLoading ? null : (
-              <ThemedText themeColor="textSecondary" style={styles.empty}>
-                {query.trim()
-                  ? 'Nobody by that name in your chats.'
-                  : 'Nobody yet. People you chat with, one to one or in a group, show up here.'}
-              </ThemedText>
+            isLoading ? null : query.trim() ? (
+              <EmptyState
+                style={styles.empty}
+                title="Nobody by that name"
+                body="Only people you have chatted with show up here."
+              />
+            ) : (
+              <EmptyState
+                style={styles.empty}
+                title="Nobody yet"
+                body="People you chat with, one to one or in a group, show up here."
+              />
             )
           }
           renderItem={({ item }) => (
@@ -132,7 +143,6 @@ export default function AddPeopleScreen() {
           </ThemedText>
         </PressableScale>
       </SafeAreaView>
-      <KeyboardDoneBar />
     </ThemedView>
   );
 }
@@ -262,7 +272,6 @@ const styles = StyleSheet.create({
   },
   empty: {
     paddingTop: Space.xl,
-    textAlign: 'center',
   },
   error: {
     textAlign: 'center',

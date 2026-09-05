@@ -78,7 +78,11 @@ describe('a business is never offered a traveler on the map', () => {
 
   it('the pins feed a business reads is the anonymous one', () => {
     const code = src(FEED);
-    expect(code).toContain('const anonymous = isGuest || isBusiness;');
+    // Three kinds now, not two. An account part way through listing a
+    // business has the tabs mounted for it - that is what gives somebody
+    // backing out of the listing form somewhere to go - so it reaches this
+    // feed, and there is no reason to hand it names while it waits.
+    expect(code).toContain('const anonymous = isGuest || isBusiness || wantsBusiness;');
     expect(code).toContain("const rpc = anonymous ? 'public_city_pins' : 'city_pins';");
     // Two doors, two cache entries. Keyed on `isGuest` alone, one account
     // kind's rows could be served to the other on the same device.
@@ -148,5 +152,105 @@ describe('the map is tailored to a business rather than trimmed', () => {
     // be, so it is hidden from them — and hiding it left a blank map that
     // read as a failed load.
     expect(src(MAP)).toContain('Plans travelers make here show up on this map.');
+  });
+
+  it("the business's city is resolved from the LISTING, ahead of the store the chips write", () => {
+    const code = src(MAP);
+    // my_business.city_id outranks pickBrowsingCity. Seeding through
+    // applyCity → chooseCity instead used to bail whenever the persisted
+    // store held ANY value — and the rail is hidden for a business, so a
+    // pre-signin chip tap pinned the owner to the wrong city with no way out.
+    // Any city, read by id (20260905130000): a listing is filed under the
+    // city its marker is in, which need not be a launch city, so the launch
+    // list can no longer answer for it.
+    expect(code).toContain('const businessCityId = ownBusiness?.city_id ?? null;');
+    expect(code).toContain('useCity(businessCityId)');
+    expect(code).toContain('browseCityFromCityRow(businessCityRow)');
+    expect(code).not.toContain('useLaunchCities');
+    // The listing's city is tried first; the resolution's answer is what it
+    // falls through to.
+    expect(code).toContain(
+      'pickBrowsingCity(featured, myTrips, today, chosenCity, deviceTimezone())'
+    );
+    guards(code, 'businessBrowseCity ??', 'browsing.city', 100);
+    // What is left for the effect is the CAMERA only (activeCityId flips
+    // after the MapView mounted on initialRegion): one shot, and never a
+    // write into the shared store.
+    const flown = code.indexOf('flownToBusinessCity.current = true;');
+    expect(flown).toBeGreaterThan(-1);
+    const flight = code.indexOf('mapRef.current?.animateToRegion', flown);
+    expect(flight).toBeGreaterThan(-1);
+    expect(flight - flown).toBeLessThan(700);
+    const effectStart = code.indexOf('const flownToBusinessCity');
+    expect(effectStart).toBeGreaterThan(-1);
+    const effect = code.slice(effectStart, code.indexOf('}, [businessCity,', effectStart));
+    // Calls, not the words — the effect's own comments are allowed to name
+    // the functions it deliberately does not use.
+    expect(effect).not.toContain('chooseCity(');
+    expect(effect).not.toContain('applyCity(');
+  });
+
+  it('map_viewed reports explicit only for a real chip tap, never the listing resolution', () => {
+    const code = src(MAP);
+    // A business owner CANNOT tap a chip (no rail), so a business city on
+    // screen must count as explicit: false — while a traveler's persisted
+    // chip choice (chosenCityId) still reports true. The old seed wrote the
+    // listing's city into the same store the chips write, so every business
+    // reported explicit: true forever.
+    expect(code).toContain('explicit: businessCityId == null && chosenCityId != null,');
+    // The traveler chip path is untouched: a tap still persists the choice
+    // that makes explicit true.
+    guards(code, 'const applyCity = (city: BrowseCity) => {', 'chooseCity(city);', 300);
+  });
+
+  it('the city rail is not drawn for a business', () => {
+    // One city, seeded from the listing. Four chips including two continents
+    // away is a navigation task where a fact should be.
+    guards(src(MAP), '{isBusiness ? null : (', 'style={styles.cityScroll}', 700);
+  });
+
+  it("the dock button is a business action, gated on 'listed', never the pin path", () => {
+    const code = src(MAP);
+    // The gate: no live listing, no button — the own-listing card stands in
+    // its place, or the button posts into a listing nobody can see.
+    expect(code).toContain(
+      "const businessDockShown = isBusiness && ownBusiness?.state === 'listed';"
+    );
+    const dock = code.indexOf('&& businessDockShown && !selectedPin ? (');
+    expect(dock).toBeGreaterThan(-1);
+    const block = code.slice(dock, dock + 2200);
+    // Explicitly routed, never enterPlaceMode (which silently no-ops for a
+    // business) and never the traveler's label.
+    expect(block).toContain("router.push('/business-post')");
+    expect(block).toContain('"Post what\'s on"');
+    expect(block).toContain("'Update tonight'");
+    expect(block).not.toContain('Drop a pin');
+    expect(block).not.toContain('enterPlaceMode');
+  });
+
+  it('a missing listing is explained in the message slot, one state at a time', () => {
+    const code = src(MAP);
+    expect(code).toContain(
+      "isBusiness && ownBusiness != null && ownBusiness.state !== 'listed' && !ownChipOnMap"
+    );
+    expect(code).toContain("'own-listing': listingMissing,");
+    // Only the fixable state is a tap, and it goes to the email step.
+    guards(
+      code,
+      "slot === 'own-listing' && ownListingNotice ? (",
+      "router.push('/business-email')",
+      700
+    );
+  });
+
+  it('a business account lands on My business, one shot, beside the invite handoff', () => {
+    const layout = src('src/app/(tabs)/_layout.tsx');
+    // D8: a one-shot navigation, never a reorder of the NativeTabs triggers
+    // (app-tabs.tsx records why the trigger list must not change shape).
+    expect(layout).toContain('function BusinessLanding()');
+    expect(layout).toContain("router.navigate('/(tabs)/my-business')");
+    expect(layout).toContain('landed.current = true;');
+    expect(layout).toContain('<BusinessLanding />');
+    expect(src('src/components/app-tabs.tsx')).toContain('hidden={!isBusiness}');
   });
 });

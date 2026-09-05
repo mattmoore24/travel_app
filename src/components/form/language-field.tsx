@@ -10,7 +10,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet } from '@/components/ui/sheet';
@@ -67,7 +67,10 @@ export function LanguageField({
       return;
     }
     if (atMax) {
-      haptics.warning();
+      // A limit, not a destruction. `warning` is the destructive-confirmation
+      // word (unsend, leave, take a pin down), and refusing an eighth
+      // language is not that.
+      haptics.selection();
       return;
     }
     haptics.selection();
@@ -108,7 +111,6 @@ export function LanguageField({
           name={{ ios: 'chevron.down', android: 'expand_more', web: 'expand_more' }}
           size={14}
           tintColor={theme.textSecondary}
-          {...keyboardDoneProps}
         />
       </PressableScale>
 
@@ -135,19 +137,24 @@ export function LanguageField({
               size={16}
               tintColor={theme.textSecondary}
             />
-            <TextInput
-              ref={search}
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search languages"
-              placeholderTextColor={theme.textSecondary}
-              autoCorrect={false}
-              autoCapitalize="none"
-              clearButtonMode="while-editing"
-              accessibilityLabel="Search languages"
-              testID="language-search"
-              style={[styles.searchInput, { color: theme.text, fontFamily: Fonts?.sans }]}
-            />
+            <KeyboardDone>
+              {(done) => (
+                <TextInput
+                  ref={search}
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search languages"
+                  placeholderTextColor={theme.textSecondary}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  clearButtonMode="while-editing"
+                  accessibilityLabel="Search languages"
+                  testID="language-search"
+                  {...done}
+                  style={[styles.searchInput, { color: theme.text, fontFamily: Fonts?.sans }]}
+                />
+              )}
+            </KeyboardDone>
           </View>
 
           <ThemedText type="footnote" themeColor="textSecondary">

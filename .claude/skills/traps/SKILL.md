@@ -153,6 +153,51 @@ device does something else.
 
 ## Keyboard
 
+- **Under Fabric, an `InputAccessoryView` binds to ONE field, ONCE, when the
+  BAR enters the window — and the field never looks for it.** This is why the
+  "Hide keyboard" bar was built three times (2026-08-24, 08-28, 08-30) and was
+  never on the founder's phone. Read the native file, not the docs:
+  `RCTInputAccessoryComponentView.mm`'s `didMoveToWindow` is guarded by
+  `if (self.window && !_textInput)`; it runs `RCTFindTextInputWithNativeId`
+  over the whole window, takes the FIRST field whose `inputAccessoryViewID`
+  matches, caches it, and never looks again. On the field side,
+  `RCTTextInputComponentView.setDefaultInputAccessoryView` returns early the
+  moment an `inputAccessoryViewID` is set — so a field that missed the
+  one-shot bind gets nothing, not even iOS's default toolbar. The documented
+  pattern (one bar per screen, one shared id, every field pointing at it) was
+  right under Paper, where the FIELD looked the bar up on its own mount, and
+  is quietly wrong under Fabric: the bar binds to whichever field exists when
+  the shell first mounts and every field mounted later (the next signup step,
+  a search box revealed by a tap) has none. Symptom: the bar works on the
+  first screen you try and on no other, and the shared-id source scan is
+  green throughout. The shape that works is one bar per field, mounted with
+  it, rendered BEFORE it in sibling order — `components/form/keyboard-done-bar`'s
+  `KeyboardDone` render prop, which `FormTextField` uses and every raw
+  `TextInput` wraps itself in. Before, not after, because Fabric assembles a
+  new subtree bottom-up (`Differentiator.cpp`: `createMutations`, then the
+  children's `downwardMutations`, then this level's `insertMutations`) and
+  attaches it whole, so `didMoveToWindow` cascades parent-first over a subtree
+  that is already complete: an earlier-sibling bar finds its field and binds
+  before the field's own `didMoveToWindow` fires `autoFocus`; a later-sibling
+  bar binds to a keyboard already showing, and nothing calls
+  `reloadInputViews`.
+- **A source scan that checks a FILE contains a prop is not a check that the
+  prop is on the element.** The old bar test passed a `language-field.tsx`
+  whose `{...keyboardDoneProps}` sat on a `SymbolView` icon, and a
+  `pin-form-sheet.tsx` whose one raw `TextInput` had no props at all because
+  a `FormTextField` elsewhere in the file carried them. The replacement walks
+  the rendered tree for the pair and, for the scan, requires each `<TextInput`
+  to sit between a `<KeyboardDone>` and its `</KeyboardDone>`.
+- **Reanimated's `useAnimatedKeyboard().height` is the keyboard's frame and
+  NOT the input accessory view above it.** With a Hide keyboard bar on every
+  field, a floor sized to that height lifts a footer 36pt short and the bar
+  lies across the bottom third of the Continue pill (run 109, screen 60;
+  the tap still lands, the picture is wrong). `components/ui/keyboard-floor`
+  adds `KEYBOARD_BAR_HEIGHT` while the keyboard is up; a floor of its own
+  anywhere else has to do the same. And a control the floor puts UNDER the
+  keyboard on purpose (step-shell's footer) is still in the hierarchy, so a
+  Maestro `tapOn` finds it, reports COMPLETED, and taps the keys: hide the
+  keyboard first in the flow.
 - Lifting a bottom-anchored sheet by `translateY` works for short sheets and
   fails for tall ones: either the top runs off screen, or (once clamped) it
   cannot move at all and its own submit button stays buried. **Grow
@@ -176,6 +221,23 @@ device does something else.
   the keyboard, and it works on the second try. This is what stopped the chat
   reaction menu from ever opening, through two wrong fixes, because component
   tests call the handler directly and never enter the responder system.
+
+## Effects that consume what they act on
+
+- **A store write inside an effect re-renders the component BEFORE the event
+  loop turns, so a cleanup keyed on the written value runs before any 0ms
+  timer the same effect scheduled.** The map's intent replay consumed the
+  intent (`intentHandled()`, a Zustand write), scheduled `applyCity` and
+  `enterPlaceMode` on a `setTimeout(..., 0)`, and returned
+  `() => clearTimeout(timer)`. React flushes a sync-lane update scheduled
+  during passive effects synchronously, so the intent going null re-ran the
+  effect, its cleanup cleared the timer, and the replay never fired - every
+  guard around it read correctly and the onboarding tour's tail was red for
+  four runs. Hold the timer in a ref and clear it on unmount only
+  (`features/pins/__tests__/replay-outlives-its-clear.test.tsx` shows both
+  shapes on the real React). The general rule: an effect that both consumes
+  its trigger and defers its action must not own the deferral through its
+  own cleanup.
 
 ## Lists
 
@@ -201,6 +263,12 @@ device does something else.
   earlier statements in the migration have already applied. Always
   `drop function if exists` first — and re-state the `grant`s, which the
   drop removes.
+- **A change of RETURN TYPE needs the same drop-first** (say `uuid` to
+  `jsonb`): Postgres refuses that through `create or replace` too, and the
+  failure lands after the earlier statements have applied. 20260905130000
+  avoided one on purpose: `register_business` keeps its `uuid`, and the client
+  reads the resolved city through `city_for_spot` before the write and
+  `my_business` after it.
 - `distinct on (...)` requires those same expressions to lead the
   `ORDER BY`. Deduplicating in a subquery and ordering in the outer query is
   the way to keep both.
@@ -209,6 +277,17 @@ device does something else.
   screen does it — check policies for enumerability, not just correctness.
 - `PostgrestError` is not an `Error`. `catch (e) { if (e instanceof Error) }`
   silently swallows every database message.
+- **`add column` on a table with column-level grants revokes `select *`.**
+  Postgres refuses a star select unless EVERY column is granted, so a new
+  column on a column-granted table breaks the app's `.select('*')` (and
+  `returning *` via bare `.select()` after insert) with `permission denied` —
+  while the column-listed insert keeps working, so the write half looks fine
+  and the read-back dies. Rendered through a screen that has not opted into
+  `LoadError`, the failure IS the empty state: the business photo grid
+  answered every successful upload with "0 of 10" for three e2e runs
+  (90 to 92) before anything named the cause. Grant the new column in the
+  same migration, and keep `31_select_star_stays_readable.test.sql` listing
+  every table the app star-reads.
 
 **A Postgres Changes subscription filtered to `INSERT` cannot see a verdict.**
 Anything that lands in a pending state and is later cleared by a worker
@@ -294,16 +373,23 @@ Merging matters as much as subscribing: a handler that treats a known id as
   fix in `e2e.yml`: publish, launch once to fetch, poll `expo-v2.db` for the
   published update id at `status = 1`, then reset only the app's own storage
   between flows. Never re-introduce a state clear into a flow.
-- **The iOS Simulator on GitHub's macOS runners cannot reach `u.expo.dev`.**
-  expo-updates' own log says
-  `checkError: "Unknown error: A TLS error caused the secure connection to
-failed"` on every check, while the same simulator talks to Supabase over
-  HTTPS without trouble, and expo-updates uses a plain
-  `URLSessionConfiguration.default`. So it is the environment, not the
-  config. The consequence is that **the E2E suite cannot be run against a
-  reused binary**: `build: true` is the default and the only honest setting
-  there, because it embeds the code under test rather than relying on a
-  fetch that always fails.
+- **The iOS Simulator on GitHub's macOS runners CAN reach `u.expo.dev`, and
+  this entry used to say the opposite.** The evidence for "cannot" was
+  expo-updates' log line `checkError: "Unknown error: A TLS error caused the
+secure connection to failed"`, read off a step that had died 0.1s after
+  launching the app: `DB=$(ls ... | tail -1)` under `bash -e` with pipefail
+  took the step down the first time the updates database was missing, which
+  is exactly the case the wait loop exists to wait out, so the log was read
+  before the app had waited for anything. With that fixed, run 43 fetched
+  the published update and drove the flows against it. So **`build: false`
+  is the honest default for a JavaScript change** (`e2e.yml`'s own input
+  description says so): the reused binary fetches the `e2e` channel's update,
+  and the workflow fails outright rather than falling back to embedded JS
+  when the fetch does not land, printing the updates table and expo-updates'
+  own log so the next "cannot fetch" is read rather than assumed.
+  `build: true` is for a native change, and once after a `version` bump: a
+  runtime-0.1.0 simulator binary cannot take a runtime-0.2.0 update, so the
+  first run after 2026-09-02's bump to 0.2.0 needs a fresh binary.
 - **The updates database is `expo-v11.db` today, and was `expo-v2.db` not
   long ago.** `UpdatesDatabaseInitialization.swift` bumps the filename with
   every schema migration. Anything inspecting it must glob `expo-v*.db`;
@@ -369,6 +455,22 @@ function), so a helper that joins `chats` returns NULL the moment the suite
 becomes `authenticated`, and every insert afterwards goes to a null chat and
 is refused by RLS with an error that says nothing about the real cause. Read
 `groups.chat_id`.
+
+## Maestro judges a sheet row visible while the dock is painted over it
+
+The plan list (`plan-list.tsx`) is a ScrollView inside a sliding sheet, and
+the dock's opaque plate covers the bottom `footing` points of that
+ScrollView's frame. Maestro reads frames, not what is drawn over them:
+`scrollUntilVisible` on a row in the list's last section stops the moment
+the row's frame is inside the list's, which is under the dock, and the tap
+lands on the tab bar. Runs 106, 120 and 121 all photographed the Travelers
+tab after "tapping" a What's on row, by label and by id alike. The rows'
+frames are otherwise true (plan-list-row-0 is tapped by id at the half
+detent every run), and the venue's map annotation is no way round it:
+Maestro cannot address a MapKit annotation by label (runs 106, 120, 122).
+What works: the sheet to its full detent (a drag on the strip; the strip's
+tap only toggles peek and half), the list to its end (the last row's
+padding clears the dock), then the row by id.
 
 ## Apple Maps props: two that silently do nothing, and one ordering hazard
 

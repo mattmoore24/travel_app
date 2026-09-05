@@ -1,6 +1,7 @@
 import type {
   CityPinRow,
   CityRow,
+  FeaturedCityRow,
   HeatCellRow,
   PinCategory,
   PinCrewRow,
@@ -12,13 +13,91 @@ export type LaunchCityWithCity = {
   active: boolean;
   radius_km: number;
   heat_k: number;
+  /** IANA zone name for the city's own clock (launch_cities.timezone). */
+  timezone: string;
   cities: CityRow;
 };
+
+/**
+ * A city the map can browse: any of the ~49,000 in the reference table,
+ * with its clock, and - when it came off the rail - how many plans it is
+ * showing this viewer. The shape keeps LaunchCityWithCity's `cities` nesting
+ * on purpose, so every `activeCity.cities.lat` on the map still reads.
+ */
+export type BrowseCity = {
+  city_id: number;
+  /** The city's own clock (city_clock_zone). Null only for an unrefreshed row. */
+  timezone: string | null;
+  cities: CityRow;
+  /** Plans this viewer can see there, or null below the city's k, or null when unknown. */
+  pin_count: number | null;
+  /** A launch city: on the rail whatever its count. */
+  featured: boolean;
+};
+
+export function browseCityFromRow(row: FeaturedCityRow): BrowseCity {
+  return {
+    city_id: row.city_id,
+    timezone: row.timezone,
+    cities: {
+      id: row.city_id,
+      name: row.name,
+      country_code: row.country_code,
+      country_name: row.country_name,
+      admin: row.admin,
+      lat: row.lat,
+      lng: row.lng,
+      population: row.population,
+      timezone: row.timezone,
+    },
+    pin_count: row.pin_count,
+    featured: row.featured,
+  };
+}
+
+/** A city chosen from search or carried by a trip: no count, not featured. */
+export function browseCityFromCityRow(city: CityRow): BrowseCity {
+  return {
+    city_id: city.id,
+    timezone: city.timezone ?? null,
+    cities: city,
+    pin_count: null,
+    featured: false,
+  };
+}
+
+/**
+ * One city by id: the row a business is filed under, which since 2026-09-05
+ * can be any of the ~49,000 rather than one of the launch cities, so the
+ * launch list can no longer answer for it. SELECT on cities is granted to
+ * anon and authenticated alike.
+ */
+export async function fetchCity(cityId: number): Promise<CityRow | null> {
+  const { data, error } = await supabase.from('cities').select('*').eq('id', cityId).maybeSingle();
+  if (error) {
+    throw error;
+  }
+  return (data ?? null) as CityRow | null;
+}
+
+/**
+ * The rail. Two doors, the split useMapPins makes: a member reads the count
+ * RLS lets them see, a guest or a business reads the identity-free feed's.
+ */
+export async function fetchFeaturedCities(anonymous: boolean): Promise<BrowseCity[]> {
+  const { data, error } = await supabase.rpc(
+    anonymous ? 'public_featured_cities' : 'featured_cities'
+  );
+  if (error) {
+    throw error;
+  }
+  return ((data ?? []) as FeaturedCityRow[]).map(browseCityFromRow);
+}
 
 export async function fetchLaunchCities() {
   const { data, error } = await supabase
     .from('launch_cities')
-    .select('city_id, active, radius_km, heat_k, cities(*)')
+    .select('city_id, active, radius_km, heat_k, timezone, cities(*)')
     .eq('active', true)
     .order('city_id'); // deterministic: the default city must not flip on refetch
   if (error) {
@@ -51,6 +130,7 @@ export async function createPin(input: {
   cityId: number;
   venueName: string;
   note?: string | null;
+  plan?: string | null;
   placeLabel?: string | null;
   category: PinCategory;
   lat: number;
@@ -65,6 +145,7 @@ export async function createPin(input: {
       city_id: input.cityId,
       venue_name: input.venueName,
       note: input.note ?? null,
+      plan: input.plan ?? null,
       place_label: input.placeLabel ?? null,
       category: input.category,
       lat: input.lat,
@@ -93,6 +174,7 @@ export async function postJoinablePin(input: {
   cityId: number;
   venueName: string;
   note?: string | null;
+  plan?: string | null;
   placeLabel?: string | null;
   category: PinCategory;
   lat: number;
@@ -104,6 +186,7 @@ export async function postJoinablePin(input: {
     p_city_id: input.cityId,
     p_venue_name: input.venueName,
     p_note: input.note ?? null,
+    p_plan: input.plan ?? null,
     p_place_label: input.placeLabel ?? null,
     p_category: input.category,
     p_lat: input.lat,

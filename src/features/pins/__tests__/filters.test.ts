@@ -4,8 +4,10 @@ import {
   daysFor,
   heatDay,
   isDefault,
+  mapResultCount,
   pinPasses,
   showsBusinesses,
+  showsHeat,
   toggle,
   type MapFilters,
 } from '@/features/pins/filters';
@@ -47,9 +49,27 @@ describe('the default is a map with nothing hidden', () => {
     expect(showsBusinesses(DEFAULT_FILTERS)).toBe(true);
   });
 
+  it('draws the heat layer by default', () => {
+    // Client-side only: the toggle decides whether already-thresholded cells
+    // are painted, never what the server is asked.
+    expect(showsHeat(DEFAULT_FILTERS)).toBe(true);
+    expect(showsHeat(withFilters({ kinds: ['travelers'] }))).toBe(false);
+  });
+
   it('asks the heat RPC about no day in particular', () => {
     expect(heatDay('any', NOW)).toBeNull();
     expect(daysFor('any', NOW)).toBeNull();
+  });
+
+  it("asks the heat RPC about the CITY's day when a city clock is given", () => {
+    // A device on the evening of the 28th browsing a city already into the
+    // 29th: the single day the RPC gets is the city's, and the marker set
+    // still accepts the device-written date (widened, never swapped).
+    const city = new Date(2026, 7, 29, 3, 0);
+    expect(heatDay('today', NOW, city)).toBe('2026-08-29');
+    const days = daysFor('today', NOW, city)!;
+    expect(days.has('2026-08-29')).toBe(true);
+    expect(days.has('2026-08-28')).toBe(true);
   });
 });
 
@@ -149,5 +169,15 @@ describe('who and what is on the map', () => {
     const noPlaces = withFilters({ kinds: ['travelers', 'picks'] });
     expect(showsBusinesses(noPlaces)).toBe(false);
     expect(pinPasses(pin(), noPlaces, null)).toBe(true);
+  });
+});
+
+describe('the count the filter sheet prints', () => {
+  it('is the filtered pins plus the places only while businesses are drawn', () => {
+    // The same arithmetic the markers use, or the number contradicts the
+    // dots the moment Businesses is unticked.
+    expect(mapResultCount(3, 4, DEFAULT_FILTERS)).toBe(7);
+    expect(mapResultCount(3, 4, withFilters({ kinds: ['travelers', 'picks'] }))).toBe(3);
+    expect(mapResultCount(0, 0, DEFAULT_FILTERS)).toBe(0);
   });
 });

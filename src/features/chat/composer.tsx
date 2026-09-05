@@ -1,12 +1,20 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoButton } from '@/components/ui/photo-button';
-import { Fonts, Radius, Spacing } from '@/constants/theme';
+import { PressableScale } from '@/components/ui/pressable-scale';
+import { Fonts, HitTarget, Radius, Space, Spacing, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ComposerDraft = { text: string; photoUri: string | null };
@@ -32,6 +40,9 @@ export function Composer({
   photoBusy = false,
   disabled = false,
   inputTestID,
+  replyingTo,
+  onCancelReply,
+  savedReplies,
   onSend,
 }: {
   placeholder?: string;
@@ -41,12 +52,40 @@ export function Composer({
   disabled?: boolean;
   inputTestID?: string;
   /**
+   * The message this one will answer, shown above the field. The reply itself
+   * is the caller's: this only draws what was picked and offers the way out.
+   */
+  replyingTo?: { name: string; body: string | null } | null;
+  onCancelReply?: () => void;
+  /**
+   * A business owner's three saved replies, or empty.
+   *
+   * Tapping one PUTS IT IN THE FIELD. It does not send: these are private
+   * notes, and the whole point is that the owner reads it, changes the bit
+   * that is wrong ("after six" becomes "after seven") and presses send
+   * themselves. A chip that sent on tap would make a stored sentence into a
+   * message nobody re-read, which is how a saved reply answers the wrong
+   * question confidently.
+   */
+  savedReplies?: readonly { id: string; body: string }[];
+  /**
    * Send it. Resolve and the staged photo is cleared; throw and it stays put
    * so the same picture can go again without being found a second time.
    */
   onSend: (draft: ComposerDraft) => Promise<void> | void;
 }) {
   const theme = useTheme();
+  // The field's type rides the scale like every other string in the app —
+  // it was the one hardcoded font size left, so at the accessibility sizes
+  // a 120pt box held about a line and a half of the message being composed,
+  // on a product where every first message is moderated and has to be right
+  // first time. Four lines' worth of room, growing with fontScale, clamped
+  // to a third of the window so the box can never eat the thread.
+  const { fontScale, height } = useWindowDimensions();
+  const inputMaxHeight = Math.min(
+    4 * Type.callout.lineHeight * fontScale + 2 * Spacing.two,
+    height / 3
+  );
   const [draft, setDraft] = useState('');
   const [attachment, setAttachment] = useState<string | null>(null);
 
@@ -88,6 +127,57 @@ export function Composer({
 
   return (
     <View>
+      {/* Above the field and below the reply banner, so the row a thumb
+          reaches first is the one nearest the keyboard. Hidden once there is
+          anything in the field: they are a way to START an answer, and a strip
+          of chips over a half-typed sentence is chrome in the way. */}
+      {savedReplies && savedReplies.length > 0 && draft.length === 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.chipRow}>
+          {savedReplies.map((reply) => (
+            <PressableScale
+              key={reply.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Use saved reply: ${reply.body}`}
+              haptic="light"
+              scaleTo={0.97}
+              onPress={() => setDraft(reply.body)}
+              style={[styles.chip, { backgroundColor: theme.surfaceSunken }]}>
+              <ThemedText type="footnote" numberOfLines={1} style={styles.chipText}>
+                {reply.body}
+              </ThemedText>
+            </PressableScale>
+          ))}
+        </ScrollView>
+      ) : null}
+      {replyingTo ? (
+        <View style={[styles.replyBanner, { borderLeftColor: theme.accent }]}>
+          <View style={styles.replyText}>
+            <ThemedText type="caption" themeColor="accent" numberOfLines={1}>
+              {`Replying to ${replyingTo.name}`}
+            </ThemedText>
+            <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={1}>
+              {replyingTo.body ?? 'Message no longer here'}
+            </ThemedText>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            // Says what happens, and names what it lets go of: two identical
+            // "Close" labels on one screen are ambiguous under VoiceOver.
+            accessibilityLabel={`Stop replying to ${replyingTo.name}`}
+            hitSlop={10}
+            onPress={onCancelReply}>
+            <SymbolView
+              name={{ ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' }}
+              size={20}
+              tintColor={theme.textSecondary}
+            />
+          </Pressable>
+        </View>
+      ) : null}
       {attachment ? (
         <View style={styles.attachmentRow}>
           <View style={styles.attachment}>
@@ -114,50 +204,83 @@ export function Composer({
         {allowPhotos ? (
           <PhotoButton busy={photoBusy} disabled={attachment != null} onPick={setAttachment} />
         ) : null}
-        <TextInput
-          testID={inputTestID}
-          style={[
-            styles.input,
-            {
-              color: theme.text,
-              backgroundColor: theme.surfaceSunken,
-              fontFamily: Fonts?.sans,
-            },
-          ]}
-          placeholder={attachment ? 'Add a message…' : placeholder}
-          placeholderTextColor={theme.textSecondary}
-          value={draft}
-          onChangeText={setDraft}
-          multiline
-          maxLength={BODY_MAX}
-          // Multiline: Return inserts a newline, so the keyboard has no exit
-          // of its own and dragging the thread was the only one, which
-          // nothing on screen says.
-          {...keyboardDoneProps}
-        />
-        <Pressable
+        <KeyboardDone>
+          {(done) => (
+            <TextInput
+              testID={inputTestID}
+              style={[
+                styles.input,
+                {
+                  color: theme.text,
+                  backgroundColor: theme.surfaceSunken,
+                  fontFamily: Fonts?.sans,
+                  maxHeight: inputMaxHeight,
+                },
+              ]}
+              placeholder={attachment ? 'Add a message…' : placeholder}
+              placeholderTextColor={theme.textSecondary}
+              value={draft}
+              onChangeText={setDraft}
+              multiline
+              maxLength={BODY_MAX}
+              // Multiline: Return inserts a newline, so the keyboard has no exit
+              // of its own and dragging the thread was the only one, which
+              // nothing on screen says.
+              {...done}
+            />
+          )}
+        </KeyboardDone>
+        {/* Disabled is expressed by COLOUR, never by opacity. `opacity: 0.4`
+            dims the label and the ground together and lands at 2.35:1 on this
+            canvas, under the 3:1 floor for a control, while still looking
+            completely tappable — the trap this repo has already measured once
+            in PrimaryButton. The arrow's tint has to move with the fill or the
+            same collapse comes back at a different value.
+
+            Layout goes on containerStyle and paint on style, because
+            PressableScale scales an INNER view: sizing only the inner one
+            shrinks the touch target mid-press and drops taps. */}
+        <PressableScale
           accessibilityRole="button"
           accessibilityLabel="Send"
           // 40pt drawn, 44pt to hit.
           hitSlop={2}
+          scaleTo={0.9}
+          haptic="soft"
           onPress={submit}
           disabled={!canSend}
+          containerStyle={styles.sendTarget}
           style={[
             styles.sendButton,
-            { backgroundColor: theme.accentDeep, opacity: canSend ? 1 : 0.4 },
+            { backgroundColor: canSend ? theme.accentDeep : theme.surfaceSunken },
           ]}>
           <SymbolView
             name={{ ios: 'arrow.up', android: 'arrow_upward', web: 'arrow_upward' }}
             size={18}
-            tintColor={theme.onAccentDeep}
+            tintColor={canSend ? theme.onAccentDeep : theme.textSecondary}
           />
-        </Pressable>
+        </PressableScale>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  chipRow: {
+    gap: Space.sm,
+    paddingHorizontal: Space.md,
+    paddingBottom: Space.sm,
+  },
+  chip: {
+    maxWidth: 260,
+    minHeight: HitTarget,
+    justifyContent: 'center',
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.sm,
+  },
+  chipText: {
+    // One line: the chip is a handle for a sentence, not the sentence.
+  },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -168,11 +291,16 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     minHeight: 40,
-    maxHeight: 120,
+    // maxHeight is inline: it scales with fontScale. fontSize comes from the
+    // scale (Type.callout) — nothing in the app hardcodes a font size.
     borderRadius: Radius.lg,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
-    fontSize: 15,
+    fontSize: Type.callout.fontSize,
+  },
+  sendTarget: {
+    width: 40,
+    height: 40,
   },
   sendButton: {
     width: 40,
@@ -180,6 +308,19 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  replyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    marginHorizontal: Spacing.four,
+    marginTop: Spacing.two,
+    paddingLeft: Spacing.two,
+    borderLeftWidth: 2,
+  },
+  replyText: {
+    flex: 1,
+    gap: 1,
   },
   attachmentRow: {
     flexDirection: 'row',

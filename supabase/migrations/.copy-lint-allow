@@ -1,0 +1,152 @@
+# Historical strings the copy-lint gate (src/app/__tests__/copy-lint.test.ts)
+# tolerates, one file:line per entry. Two kinds live here:
+#
+#   * Copy a later migration has already replaced (the em-dashed pin notes,
+#     the old push bodies): migration history is not rewritten to satisfy a
+#     lint, so the dead definitions stay as they shipped.
+#   * Raise-exception literals that carry the word "request". Most are
+#     superseded definitions of send_message_request; a few are live
+#     service-facing errors (e.g. 'request is not awaiting moderation') or
+#     live sender feedback ('request already sent to this traveler') that
+#     this batch was not asked to rewrite. When a copy pass retires one of
+#     these for real, delete its entry - the gate fails on stale entries.
+#
+# New migrations do not get entries here unless they reissue one of these
+# strings byte for byte (20260830030000 reissues apply_message_verdict,
+# 20260830110000 reissues send_message_request, and 20260903010000 reissues
+# apply_business_verification_verdict to change one coalesce, raise literals
+# included, which is why they appear below). Those two are service-facing:
+# only the moderation worker can call that function, so the strings reach a
+# report note and never a person.
+20260816200000_trips_matching.sql:495
+20260816200000_trips_matching.sql:538
+20260816200000_trips_matching.sql:574
+20260816200000_trips_matching.sql:583
+20260816210000_map_pins.sql:321
+20260816210000_map_pins.sql:361
+20260816210000_map_pins.sql:385
+20260816220000_chat_realtime.sql:225
+20260816220000_chat_realtime.sql:249
+20260816220000_chat_realtime.sql:250
+20260817090000_trust_safety.sql:219
+20260817090000_trust_safety.sql:270
+20260817090000_trust_safety.sql:308
+20260817090000_trust_safety.sql:348
+20260817090000_trust_safety.sql:389
+20260817090000_trust_safety.sql:423
+20260817090000_trust_safety.sql:488
+20260817090000_trust_safety.sql:489
+20260817090000_trust_safety.sql:548
+20260817090000_trust_safety.sql:557
+20260817090000_trust_safety.sql:826
+20260817090000_trust_safety.sql:930
+20260817150000_launch_hardening.sql:253
+20260817150000_launch_hardening.sql:256
+20260817150000_launch_hardening.sql:298
+20260817150000_launch_hardening.sql:338
+20260817150000_launch_hardening.sql:37
+20260817190000_guest_mode.sql:291
+20260817190000_guest_mode.sql:294
+20260817190000_guest_mode.sql:331
+20260817190000_guest_mode.sql:361
+20260818000000_worker_diagnostics.sql:108
+20260818000000_worker_diagnostics.sql:117
+20260818000000_worker_diagnostics.sql:123
+20260818000000_worker_diagnostics.sql:127
+20260818000000_worker_diagnostics.sql:133
+20260818000000_worker_diagnostics.sql:139
+20260818001000_set_worker_credentials.sql:47
+20260818001000_set_worker_credentials.sql:52
+20260818010000_seed_launch_content.sql:24
+20260818010000_seed_launch_content.sql:26
+20260818010000_seed_launch_content.sql:28
+20260818010000_seed_launch_content.sql:31
+20260818010000_seed_launch_content.sql:33
+20260818010000_seed_launch_content.sql:35
+20260818010000_seed_launch_content.sql:37
+20260818010000_seed_launch_content.sql:39
+20260818010000_seed_launch_content.sql:42
+20260818010000_seed_launch_content.sql:44
+20260818010000_seed_launch_content.sql:46
+20260818010000_seed_launch_content.sql:48
+20260818010000_seed_launch_content.sql:51
+20260818010000_seed_launch_content.sql:53
+20260818010000_seed_launch_content.sql:55
+20260818010000_seed_launch_content.sql:57
+20260819210000_profile_first.sql:163
+20260819210000_profile_first.sql:166
+20260819210000_profile_first.sql:203
+20260819210000_profile_first.sql:233
+20260820001000_copy_pass.sql:124
+20260820001000_copy_pass.sql:190
+20260821090000_trip_date_slack.sql:159
+20260821090000_trip_date_slack.sql:162
+20260821090000_trip_date_slack.sql:199
+20260821090000_trip_date_slack.sql:229
+20260822140000_featured_and_caps.sql:188
+20260822140000_featured_and_caps.sql:191
+20260822140000_featured_and_caps.sql:228
+20260822140000_featured_and_caps.sql:258
+20260822235000_review_fixes.sql:261
+20260822235000_review_fixes.sql:264
+20260822235000_review_fixes.sql:301
+20260822235000_review_fixes.sql:331
+20260823020000_curated_pins_stay_current.sql:34
+20260823020000_curated_pins_stay_current.sql:36
+20260823020000_curated_pins_stay_current.sql:38
+20260823020000_curated_pins_stay_current.sql:41
+20260823020000_curated_pins_stay_current.sql:43
+20260823020000_curated_pins_stay_current.sql:45
+20260823020000_curated_pins_stay_current.sql:47
+20260823020000_curated_pins_stay_current.sql:49
+20260823020000_curated_pins_stay_current.sql:52
+20260823020000_curated_pins_stay_current.sql:54
+20260823020000_curated_pins_stay_current.sql:56
+20260823020000_curated_pins_stay_current.sql:58
+20260823020000_curated_pins_stay_current.sql:61
+20260823020000_curated_pins_stay_current.sql:63
+20260823020000_curated_pins_stay_current.sql:65
+20260823020000_curated_pins_stay_current.sql:67
+20260827120000_business_listing.sql:423
+20260827120000_business_listing.sql:426
+20260827160000_places_polish.sql:139
+20260827160000_places_polish.sql:142
+20260827160000_places_polish.sql:236
+20260830030000_curated_pins_say_it_plainly.sql:115
+20260830110000_a_block_says_which_kind.sql:131
+20260830110000_a_block_says_which_kind.sql:161
+20260830110000_a_block_says_which_kind.sql:91
+20260830110000_a_block_says_which_kind.sql:94
+20260831140000_a_failure_says_what_to_do.sql:400
+20260831140000_a_failure_says_what_to_do.sql:404
+20260831140000_a_failure_says_what_to_do.sql:442
+20260831140000_a_failure_says_what_to_do.sql:472
+20260816220000_chat_realtime.sql:86
+20260831140000_a_failure_says_what_to_do.sql:130
+20260902010000_a_reword_is_not_a_strike.sql:290
+20260902010000_a_reword_is_not_a_strike.sql:294
+20260902010000_a_reword_is_not_a_strike.sql:332
+20260902010000_a_reword_is_not_a_strike.sql:362
+
+# 20260902150000 re-states send_message_request verbatim to add one line (the
+# city the hello belongs to), so every raise literal in it is a HISTORICAL
+# string moved, not a new one written. Each already sits on this list under
+# the migration that last carried it. None reaches a person: they are matched
+# by their `hint` code in src/lib/failure-message.ts, which answers every one
+# with a sentence written on the client.
+20260902150000_a_funnel_that_names_its_city.sql:122
+20260902150000_a_funnel_that_names_its_city.sql:126
+20260902150000_a_funnel_that_names_its_city.sql:174
+20260902150000_a_funnel_that_names_its_city.sql:204
+
+# 20260902210000 re-states respond_to_message_request verbatim to add one
+# clause to its lookup (a first message that has been taken back can no longer
+# be accepted), so both raise literals in it are HISTORICAL strings moved, not
+# new ones written. Both already sit on this list under 20260817090000, which
+# is where they were last carried. Neither is a new sentence and neither says
+# anything the deployed function did not already say.
+20260902210000_a_hello_can_be_taken_back.sql:241
+20260902210000_a_hello_can_be_taken_back.sql:250
+20260903010000_a_verdict_speaks_your_language.sql:105
+20260903010000_a_verdict_speaks_your_language.sql:108
+20260903100000_a_verdict_says_a_machine_made_it.sql:60

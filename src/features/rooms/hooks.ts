@@ -1,26 +1,39 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
-import { carryFailed, type RoomThreadMessage } from '@/features/chat/outgoing';
+import { useAuthStore } from '@/features/auth/store';
+import { stampArchiveNoticeRead } from '@/features/chat/archive-notice';
+import { carryFailed, type RoomThreadMessage, type ThreadMessage } from '@/features/chat/outgoing';
+import {
+  ROOM_MESSAGE_PAGE,
+  mapEveryPage,
+  nextBefore,
+  type ThreadPages,
+} from '@/features/chat/paging';
 import { useOwnUserId } from '@/features/profile/hooks';
 import {
   setReaction,
   fetchCityRooms,
   fetchReactions,
+  fetchReactors,
   fetchRoomMessages,
+  joinPlanFromMessage,
   joinRoom,
   leaveRoom,
   removeReaction,
   unsendMessage,
   removeRoomMessage,
   setChatPref,
+  fetchPinForGroup,
   fetchRoomInfo,
   fetchRoomPins,
   pinMessage,
   unpinMessage,
   subscribeToRoomMessages,
 } from '@/features/rooms/api';
+import { applyToggle } from '@/features/rooms/reactions';
 import { analytics } from '@/lib/analytics';
+import type { ReactionSummaryRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export function useCityRooms(cityId: number | null) {
@@ -41,6 +54,19 @@ export function useRoomInfo(chatId: string | null) {
   });
 }
 
+/**
+ * The plan a pin-born group opened from. Pass null unless the group row
+ * carries a non-null pin_id — the answer is a round trip, and a group made
+ * any other way has nothing to ask about.
+ */
+export function usePinForGroup(chatId: string | null) {
+  return useQuery({
+    queryKey: ['pin-for-group', chatId],
+    queryFn: () => fetchPinForGroup(chatId!),
+    enabled: isSupabaseConfigured && chatId != null,
+  });
+}
+
 /** What a host has kept at the top of this room. */
 export function useRoomPins(chatId: string | null) {
   return useQuery({
@@ -55,6 +81,7 @@ export function usePinMessage(chatId: string) {
   return useMutation({
     mutationFn: (input: { messageId: string; hours?: number }) =>
       pinMessage(input.messageId, input.hours),
+    meta: { failureTitle: 'Could not pin that' },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['room-pins', chatId] });
     },
@@ -71,18 +98,36 @@ export function useUnpinMessage(chatId: string) {
   });
 }
 
+/**
+ * A room's thread, a page at a time. The RPC has taken a limit since it was
+ * written and nobody passed one, so a busy hostel room stopped at sixty
+ * messages with nothing on screen to say so.
+ *
+ * The realtime subscription keeps invalidating, which refetches every loaded
+ * page rather than merging one row. That is acceptable at these sizes and it
+ * is the only honest option: room_messages joins the sender's name and photo,
+ * which this client cannot synthesise from a raw `messages` row.
+ */
 export function useRoomMessages(chatId: string | null) {
   const queryClient = useQueryClient();
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ['room-messages', chatId],
-    // Failed sends survive the refetch. A room refetches on every realtime
-    // insert, so without this the next thing anybody else posted deleted the
-    // greyed "Not sent" bubble and the sentence inside it.
-    queryFn: async () =>
-      carryFailed<RoomThreadMessage>(
-        queryClient.getQueryData<RoomThreadMessage[]>(['room-messages', chatId]),
-        await fetchRoomMessages(chatId!)
-      ),
+    // Failed sends survive the refetch, and only on the newest page. A room
+    // refetches on every realtime insert, so without this the next thing
+    // anybody else posted deleted the greyed "Not sent" bubble and the
+    // sentence inside it.
+    queryFn: async ({ pageParam }) => {
+      const page = await fetchRoomMessages(chatId!, pageParam);
+      return pageParam == null
+        ? carryFailed<RoomThreadMessage>(
+            queryClient.getQueryData<ThreadPages<RoomThreadMessage>>(['room-messages', chatId])
+              ?.pages[0],
+            page
+          )
+        : page;
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage: RoomThreadMessage[]) => nextBefore(lastPage, ROOM_MESSAGE_PAGE),
     enabled: isSupabaseConfigured && chatId != null,
     // Same reasoning as direct chats: realtime can land between renders, so
     // never serve a stale first paint.
@@ -113,7 +158,13 @@ export function useJoinRoom(chatId: string) {
   return useMutation({
     mutationFn: (departureDate: string) => joinRoom(chatId, departureDate),
     onSuccess: () => {
-      analytics.capture('room_joined', { chat_id: chatId });
+      // NO chat_id. It is a join key straight into our own database: a room
+      // belongs to one business, so a processor holding these events and the
+      // database can say which venue's room a person joined and when, which
+      // is a presence fact this app does not otherwise hold about anybody.
+      // Nothing on docs/DASHBOARD.md counts rooms per room — the per-room
+      // question is a SQL question — so the id bought no metric at all.
+      analytics.capture('room_joined');
       queryClient.invalidateQueries({ queryKey: ['chats'] });
       queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
     },
@@ -125,7 +176,8 @@ export function useLeaveRoom(chatId: string) {
   return useMutation({
     mutationFn: () => leaveRoom(chatId),
     onSuccess: () => {
-      analytics.capture('room_left', { chat_id: chatId });
+      // Same reason as room_joined above.
+      analytics.capture('room_left');
       queryClient.invalidateQueries({ queryKey: ['chats'] });
     },
   });
@@ -143,8 +195,69 @@ export function useChatPref() {
       muted?: boolean;
       archived?: boolean;
     }) => setChatPref(chatId, pref),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      // A hand archive stamps the notice as read on the spot. Both this and
+      // archive_idle_chats write chat_prefs.archived_at, and without the
+      // stamp the inbox would tell somebody "1 quiet chat moved to Archived"
+      // about the chat they had just archived themselves.
+      if (variables.archived === true) {
+        void stampArchiveNoticeRead(useAuthStore.getState().session?.user.id ?? null);
+      }
       queryClient.invalidateQueries({ queryKey: ['chats'] });
+      queryClient.invalidateQueries({ queryKey: ['archived-at'] });
+    },
+  });
+}
+
+/**
+ * Who reacted to one message, for the sheet a long press on the chip opens.
+ *
+ * Enabled only once there is a message to ask about, which is what keeps a
+ * thread from firing a round trip per bubble: the sheet sets the id when it
+ * opens and clears it when it closes, so exactly one of these is ever live.
+ *
+ * Rooms and groups only, and that is the SERVER's rule rather than this
+ * hook's — message_reactors returns nothing for a chat whose kind is not
+ * 'room'. The thread still declines to offer the control in a one-to-one
+ * chat, because an action that comes back empty is worse than one that was
+ * never offered, but the enforcement is not here.
+ */
+export function useReactors(messageId: string | null) {
+  return useQuery({
+    queryKey: ['reactors', messageId],
+    queryFn: () => fetchReactors(messageId!),
+    enabled: isSupabaseConfigured && messageId != null,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Joining a plan somebody sent into the conversation: your own pin, at the
+ * same venue, on the same day.
+ *
+ * The map's own pin lists are invalidated because that is where the new pin
+ * has to appear — the whole argument for this action over a link is that a
+ * plan agreed in a chat reaches the map and the heat.
+ */
+export function useJoinPlanFromMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (messageId: string) => joinPlanFromMessage(messageId),
+    meta: { failureTitle: 'Could not join that plan' },
+    onSuccess: () => {
+      analytics.capture('pin_joined');
+      // No pin id and no chat id in the payload, the same reasoning
+      // room_joined carries above: a venue plus a person is a presence fact
+      // this app does not otherwise hold about anybody.
+      //
+      // The city is not known here — the thread has a message, not a map —
+      // so the four map keys are invalidated by PREFIX, which covers whatever
+      // city the plan was in. The lists are small and this happens once per
+      // tap.
+      queryClient.invalidateQueries({ queryKey: ['city-pins'] });
+      queryClient.invalidateQueries({ queryKey: ['map-pins'] });
+      queryClient.invalidateQueries({ queryKey: ['heat-cells'] });
+      queryClient.invalidateQueries({ queryKey: ['map-heat'] });
     },
   });
 }
@@ -161,6 +274,12 @@ export function useReactions(chatId: string | null) {
 /**
  * `on: false` takes your reaction back; `on: true` sets it, replacing
  * whichever emoji you had on that message before. Nobody stacks six.
+ *
+ * Optimistic, the way useSendMessage already is: the chip lands the instant
+ * the emoji is picked, not after set_reaction AND the summary refetch have
+ * crossed hostel wifi. Nothing here fights realtime — no channel writes the
+ * ['reactions', chatId] cache; it only ever changes by fetch or by this
+ * setQueryData, and both use fetchReactions' row shape.
  */
 export function useToggleReaction(chatId: string) {
   const userId = useOwnUserId();
@@ -168,7 +287,26 @@ export function useToggleReaction(chatId: string) {
   return useMutation({
     mutationFn: ({ messageId, emoji, on }: { messageId: string; emoji: string; on: boolean }) =>
       on ? setReaction(messageId, emoji) : removeReaction(messageId, userId!),
-    onSuccess: () => {
+    onMutate: async ({ messageId, emoji, on }) => {
+      // Stop an in-flight refetch (staleTime is 0, so there often is one)
+      // from landing after this write and putting the old rows back.
+      await queryClient.cancelQueries({ queryKey: ['reactions', chatId] });
+      const previous = queryClient.getQueryData<ReactionSummaryRow[]>(['reactions', chatId]);
+      queryClient.setQueryData<ReactionSummaryRow[]>(['reactions', chatId], (rows = []) =>
+        applyToggle(rows, { messageId, emoji, on, userId })
+      );
+      return { previous };
+    },
+    // No `instanceof Error` guard here on purpose: PostgrestError is not an
+    // Error, and React Query hands whatever was thrown straight through.
+    onError: (_error, _input, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(['reactions', chatId], context.previous);
+      }
+    },
+    // Settled, not success: after a rollback the server is still the
+    // authority on what the rows really are.
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['reactions', chatId] });
     },
   });
@@ -178,6 +316,67 @@ export function useUnsendMessage(chatId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (messageId: string) => unsendMessage(messageId),
+    // The thread already renders `unsent_at != null` as the UnsentNote, so
+    // stamping it locally swaps the bubble the moment the person confirms
+    // instead of leaving their message on screen until five invalidated
+    // queries land. Only one of the two message caches exists for any given
+    // thread; stamping whichever is there keeps this hook ignorant of which
+    // kind it serves, the same way the invalidations below are.
+    //
+    // The realtime paths tolerate the early write: the direct-chat channel
+    // merges rows by id (the server's UPDATE arrives with the real
+    // unsent_at), and the room channel invalidates, which refetches.
+    onMutate: async (messageId) => {
+      // Same race useToggleReaction cancels: these caches run staleTime 0,
+      // so a refetch is often in flight, and one landing after this write
+      // would put the un-stamped row back until the server answered.
+      await queryClient.cancelQueries({ queryKey: ['messages', chatId] });
+      await queryClient.cancelQueries({ queryKey: ['room-messages', chatId] });
+      const unsentAt = new Date().toISOString();
+      // Every page, not only the newest: a message somebody unsends may be
+      // several pages back by the time they think better of it.
+      const stamp = <T extends { id: string; unsent_at?: string | null }>(
+        pages: ThreadPages<T> | undefined
+      ) =>
+        mapEveryPage(pages, (rows) =>
+          rows.map((row) => (row.id === messageId ? { ...row, unsent_at: unsentAt } : row))
+        );
+      const direct = queryClient.getQueryData<ThreadPages<ThreadMessage>>(['messages', chatId]);
+      const room = queryClient.getQueryData<ThreadPages<RoomThreadMessage>>([
+        'room-messages',
+        chatId,
+      ]);
+      queryClient.setQueryData(['messages', chatId], stamp(direct));
+      queryClient.setQueryData(['room-messages', chatId], stamp(room));
+      // The rollback restores the one stamped ROW, never the whole array: a
+      // peer's message that arrives while the unsend is in flight lives in
+      // the current array only (the direct channel merges each row exactly
+      // once), and a snapshot rollback would erase it for good.
+      return {
+        directRow: direct?.pages.flat().find((row) => row.id === messageId),
+        roomRow: room?.pages.flat().find((row) => row.id === messageId),
+      };
+    },
+    // PostgrestError is not an Error — no `instanceof` guard, ever, or every
+    // database refusal is silently swallowed and the rollback never runs.
+    onError: (_error, messageId, context) => {
+      if (context?.directRow !== undefined) {
+        queryClient.setQueryData<ThreadPages<ThreadMessage>>(['messages', chatId], (pages) =>
+          mapEveryPage(pages, (rows) =>
+            rows.map((row) => (row.id === messageId ? context.directRow! : row))
+          )
+        );
+      }
+      if (context?.roomRow !== undefined) {
+        queryClient.setQueryData<ThreadPages<RoomThreadMessage>>(
+          ['room-messages', chatId],
+          (pages) =>
+            mapEveryPage(pages, (rows) =>
+              rows.map((row) => (row.id === messageId ? context.roomRow! : row))
+            )
+        );
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['messages', chatId] });
       queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });

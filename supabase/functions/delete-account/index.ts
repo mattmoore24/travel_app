@@ -14,13 +14,21 @@
 //      ratings and its chat — owned by nobody and editable by nobody. That is
 //      not what "delete my account" means, and 5.1.1(v) applies to a business
 //      account exactly as it does to a traveler's.
-//   5. Delete the auth user — the FK graph cascades users -> profiles,
+//   5. Tell Apple to forget the account, if it signed in with Apple. This has
+//      to happen BEFORE step 6, because the stored refresh token cascades away
+//      with the user row and there would be nothing left to revoke. It fails
+//      soft: a revoke that does not land is logged and the deletion carries
+//      on, because somebody's right to delete their account cannot depend on
+//      another company's endpoint being up.
+//   6. Delete the auth user — the FK graph cascades users -> profiles,
 //      photos, handles, trips, pins, requests, blocks, reports, tokens.
 //      moderation_events survive with subject_user_id = null (audit spine).
 //
 // Deploy: supabase functions deploy delete-account
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+
+import { appleConfig, revokeRefreshToken } from '../_shared/apple.ts';
 
 Deno.serve(async (req) => {
   const authHeader = req.headers.get('Authorization') ?? '';
@@ -140,7 +148,46 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 5. The auth user — cascades the entire public-schema footprint.
+  // 5. Apple, if this account signed in with Apple.
+  //
+  // Fail soft, loudly. App Review requires the revoke call, and a silent
+  // failure here is the shape of bug that only shows up as a rejection months
+  // later, so every branch logs which one it took: no token, no key, an error
+  // from Apple, or a status code. What it must never do is throw, return, or
+  // otherwise stand between somebody and the deletion they asked for.
+  //
+  // Ordering matters. apple_refresh_tokens references public.users with
+  // on delete cascade, so after step 6 the token is gone and the grant would
+  // stay live under iOS Settings forever.
+  try {
+    const { data: appleRow, error: appleReadError } = await admin
+      .from('apple_refresh_tokens')
+      .select('refresh_token')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (appleReadError) {
+      console.error(`apple revoke: could not read token: ${appleReadError.message}`);
+    } else if (!appleRow) {
+      // Every account that never used Sign in with Apple lands here.
+      console.log('apple revoke: no token for this account, nothing to revoke');
+    } else {
+      const config = appleConfig();
+      if (!config) {
+        console.error('apple revoke: Sign in with Apple key not provisioned; token NOT revoked');
+      } else {
+        const result = await revokeRefreshToken(config, appleRow.refresh_token);
+        if (result.ok) {
+          console.log(`apple revoke: ok (${result.status})`);
+        } else {
+          console.error(`apple revoke: failed (${result.status}): ${result.detail}`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error(`apple revoke: threw: ${String(error)}`);
+  }
+
+  // 6. The auth user — cascades the entire public-schema footprint.
   const { error: deleteError } = await admin.auth.admin.deleteUser(user.id);
   if (deleteError) {
     return Response.json({ error: deleteError.message }, { status: 500 });

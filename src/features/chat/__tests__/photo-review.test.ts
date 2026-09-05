@@ -22,6 +22,17 @@ const source = (...parts: string[]): string =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 
+const component = (...parts: string[]): string =>
+  fs
+    .readFileSync(path.join(__dirname, '..', '..', '..', 'components', 'ui', ...parts), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+const grid = fs
+  .readFileSync(path.join(__dirname, '..', '..', '..', 'components', 'photo-grid.tsx'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .replace(/^\s*\/\/.*$/gm, '');
+
 const app = (...parts: string[]): string =>
   fs
     .readFileSync(path.join(__dirname, '..', '..', '..', 'app', ...parts), 'utf8')
@@ -31,7 +42,10 @@ const app = (...parts: string[]): string =>
 describe('a photo and its caption are one message', () => {
   it('sends both fields in a single insert', () => {
     const code = source('api.ts');
-    expect(code).toMatch(/sendPhotoMessage\([\s\S]*?body\?: string\s*\)/);
+    // The caption is a parameter of the PHOTO send, not a second call. The
+    // signature has since grown a reply target, so the assertion names the
+    // parameter that matters rather than the end of the argument list.
+    expect(code).toMatch(/sendPhotoMessage\([\s\S]*?body\?: string[\s\S]*?\)\s*\{/);
     expect(code).toContain('...(caption.length > 0 ? { body: caption } : {})');
   });
 
@@ -40,7 +54,7 @@ describe('a photo and its caption are one message', () => {
       // The `return` after the photo send is the whole guarantee: without it
       // the caption goes twice, once attached and once on its own.
       expect(screen).toMatch(
-        /await sendPhoto\.mutateAsync\(\{ localUri: photoUri, body: text \}\)[\s\S]{0,400}?return;/
+        /await sendPhoto\.mutateAsync\(\{[\s\S]{0,200}?body: text,[\s\S]{0,400}?return;/
       );
     }
   });
@@ -49,17 +63,26 @@ describe('a photo and its caption are one message', () => {
 describe('the wait is drawn, not hidden', () => {
   it('reserves the photo’s real frame while it is checked', () => {
     const code = source('message-thread.tsx');
-    expect(code).toContain('function PhotoCheck(');
+    expect(component('photo-check.tsx')).toContain('export function PhotoCheck(');
     // Same style as a delivered photo, so nothing in the thread moves when
     // the verdict lands.
-    expect(code).toContain('style={[styles.photo, styles.photoCheck');
+    expect(code).toContain('<PhotoCheck url={imageUrl ?? null} style={styles.photo} />');
     expect(code).not.toContain('Photo in review');
   });
 
   it('says how long it usually takes, from one number', () => {
-    const code = source('message-thread.tsx');
-    expect(code).toContain('const PHOTO_CHECK_SECONDS =');
+    const code = component('photo-check.tsx');
+    expect(code).toContain('export const PHOTO_CHECK_SECONDS =');
     expect(code).toContain('Usually about {PHOTO_CHECK_SECONDS} seconds.');
+  });
+
+  it('is one card, so the profile grid cannot say it differently', () => {
+    // The profile grid used to answer the identical wait with the two words
+    // "In review" and no reason and no duration, twenty files away from the
+    // chat bubble that explained it.
+    expect(grid).toContain("from '@/components/ui/photo-check'");
+    expect(grid).toContain('<PhotoCheckVeil />');
+    expect(grid).not.toContain('Usually about');
   });
 
   it('keys the tile off the state, not off a path a room masks', () => {

@@ -1,4 +1,5 @@
-import { StyleSheet, View } from 'react-native';
+import { useEffect } from 'react';
+import { AccessibilityInfo, StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
@@ -29,8 +30,31 @@ export function LoadError({
   onRetry: () => void;
   compact?: boolean;
 }) {
+  // Failures are SPOKEN, not only drawn. VoiceOver hears nothing when a
+  // screen swaps its skeletons for this component, so without the
+  // announcement a failed load was indistinguishable from an empty one.
+  // announceForAccessibility is the primary mechanism on iOS; the
+  // liveRegion below is the Android path only. Re-announced per new error
+  // (a retry that fails again is a new fact), guarded so it does no work
+  // when no screen reader is running.
+  useEffect(() => {
+    let live = true;
+    AccessibilityInfo.isScreenReaderEnabled()
+      .then((on) => {
+        if (on && live) {
+          AccessibilityInfo.announceForAccessibility(loadFailureMessage(error, what));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [error, what]);
+
   return (
-    <View style={[styles.root, compact ? styles.compact : styles.full]}>
+    <View
+      style={[styles.root, compact ? styles.compact : styles.full]}
+      accessibilityLiveRegion="polite">
       <ThemedText type={compact ? 'footnote' : 'callout'} themeColor="textSecondary">
         {loadFailureMessage(error, what)}
       </ThemedText>

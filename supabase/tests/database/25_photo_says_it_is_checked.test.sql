@@ -8,7 +8,7 @@
 -- `photo_state` must be honest to everybody, and `image_path` must still be
 -- withheld from everybody but the person who took the picture.
 begin;
-select plan(9);
+select plan(19);
 
 create function pg_temp.login(uid uuid) returns void language plpgsql as $$
 begin
@@ -135,6 +135,129 @@ select is(
   (select r.image_path from public.room_messages(pg_temp.crew()) r),
   '00000000-0000-0000-0000-0000000000a5/beach.jpg',
   'and the path is finally handed over'
+);
+
+-- A REFUSED PROFILE PHOTO SAYS WHY -----------------------------------------
+--
+-- Two rejections that must never read the same. `photo_rejected_failsafe` is
+-- the classifier giving up: explicitly not a strike, and telling that person
+-- they broke the rules is the whole bug 20260901100000 exists to fix. The row
+-- has to carry enough for the screen to tell them apart, and no more - the
+-- model's free-text reason is deliberately not stored.
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000a5');
+insert into public.profile_photos (user_id, storage_path, position)
+values ('00000000-0000-0000-0000-0000000000a5',
+        '00000000-0000-0000-0000-0000000000a5/timeout.jpg', 0);
+
+select pg_temp.admin();
+select public.apply_photo_verdict(
+  (select id from public.profile_photos
+    where storage_path = '00000000-0000-0000-0000-0000000000a5/timeout.jpg'),
+  '{"action":"block","category":"moderation_unavailable","reason":"classification failed 3 times","engine":"failsafe"}'::jsonb
+);
+
+select is(
+  (select moderation_engine from public.profile_photos
+    where storage_path = '00000000-0000-0000-0000-0000000000a5/timeout.jpg'),
+  'failsafe',
+  'a check that gave up is recorded as the failsafe engine'
+);
+
+select is(
+  (select moderation_category from public.profile_photos
+    where storage_path = '00000000-0000-0000-0000-0000000000a5/timeout.jpg'),
+  'moderation_unavailable',
+  'and the category it came with is kept as written'
+);
+
+-- bool_or over the two rejection actions, not the bare action: the insert
+-- trigger already logged queued_for_llm against this photo, so a scalar
+-- subquery over every event for it returns two rows and dies.
+select is(
+  (select bool_or(public.is_strike_action(e.action)) from public.moderation_events e
+    where e.entity_id = (select id from public.profile_photos
+      where storage_path = '00000000-0000-0000-0000-0000000000a5/timeout.jpg')
+      and e.action in ('photo_rejected', 'photo_rejected_failsafe')),
+  false,
+  'still not a strike: apply_strike_policy never counts a failsafe'
+);
+
+select is(
+  (select q.body from public.push_queue q
+    where q.user_id = '00000000-0000-0000-0000-0000000000a5'
+      and q.title = 'Photo could not be checked'),
+  'Our automatic check could not read one of your photos, so nobody else can see it. Nothing about it broke a rule. Upload it again and the check runs once more.',
+  'and the push says a machine decided, and says it was not a rules breach'
+);
+
+-- The other kind: a real rules rejection, which keeps the category the screen
+-- turns into a sentence of its own.
+select pg_temp.login('00000000-0000-0000-0000-0000000000a5');
+insert into public.profile_photos (user_id, storage_path, position)
+values ('00000000-0000-0000-0000-0000000000a5',
+        '00000000-0000-0000-0000-0000000000a5/broke.jpg', 1);
+
+select pg_temp.admin();
+select public.apply_photo_verdict(
+  (select id from public.profile_photos
+    where storage_path = '00000000-0000-0000-0000-0000000000a5/broke.jpg'),
+  '{"action":"block","category":"explicit","confidence":0.97,"reason":"model prose that must never reach a screen","engine":"claude-moderator"}'::jsonb
+);
+
+select is(
+  (select moderation_category from public.profile_photos
+    where storage_path = '00000000-0000-0000-0000-0000000000a5/broke.jpg'),
+  'explicit',
+  'a rules rejection keeps its category, which is what names the reason'
+);
+
+select is(
+  (select moderation_engine from public.profile_photos
+    where storage_path = '00000000-0000-0000-0000-0000000000a5/broke.jpg'),
+  'claude-moderator',
+  'and the engine, so the screen can tell it from a timeout'
+);
+
+select is(
+  (select bool_or(public.is_strike_action(e.action)) from public.moderation_events e
+    where e.entity_id = (select id from public.profile_photos
+      where storage_path = '00000000-0000-0000-0000-0000000000a5/broke.jpg')
+      and e.action in ('photo_rejected', 'photo_rejected_failsafe')),
+  true,
+  'this one IS a strike'
+);
+
+select is(
+  (select q.body from public.push_queue q
+    where q.user_id = '00000000-0000-0000-0000-0000000000a5'
+      and q.title = 'Photo removed'),
+  'One of your photos breaks our house rules, so nobody else can see it. An automatic check made that call. Open your photos to see why, and tap Contact us if it got it wrong.',
+  'the push names the house rules, says a machine decided, and offers a person'
+);
+
+-- THE ATTACK ----------------------------------------------------------------
+--
+-- The reason is the owner''s business and nobody else''s. profile_photos has
+-- no column-level select grant, so what keeps a stranger out is RLS: the
+-- approved-only policy hides the whole ROW, columns included.
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000b5');
+select is(
+  (select count(*)::int from public.profile_photos
+    where user_id = '00000000-0000-0000-0000-0000000000a5'
+      and moderation_category is not null),
+  0,
+  'a stranger cannot read why somebody else''s photo was refused'
+);
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000a5');
+select is(
+  (select count(*)::int from public.profile_photos
+    where user_id = '00000000-0000-0000-0000-0000000000a5'
+      and moderation_category is not null),
+  2,
+  'the owner can, which is the only way the screen can say why'
 );
 
 select * from finish();

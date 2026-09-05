@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useState, type ReactNode } from 'react';
 import {
+  Pressable,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -12,19 +13,25 @@ import {
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
+import { PhotoCheckVeil } from '@/components/ui/photo-check';
+import { PhotoViewer, type ViewablePhoto } from '@/components/ui/photo-viewer';
+import { Skeleton } from '@/components/ui/skeleton';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { languageLabel } from '@/constants/languages';
-import { MaxContentWidth, Radius, Space } from '@/constants/theme';
+import { SOCIALS_HIDDEN_NOTE } from '@/constants/policies';
+import { MaxContentWidth, Motion, Radius, Space } from '@/constants/theme';
+import { overlapSentence } from '@/features/matching/overlap';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
 import { SocialLogo } from '@/features/profile/social-logo';
-import { formatDateRange } from '@/features/trips/dates';
+import { daysUntil, formatDateRange, formatTripDates } from '@/features/trips/dates';
 import { TripEditor, type EditableTrip } from '@/features/trips/trip-editor';
 import { TopRatedShelf } from '@/features/business/top-rated-shelf';
 import { MAX_PRIORITIES } from '@/features/profile/priorities';
 import { MAX_PROMPTS, promptLabel, promptLabelInline } from '@/features/profile/prompts';
 import { useTheme } from '@/hooks/use-theme';
+import { splitDemoMarker } from '@/lib/demo-marker';
 import type {
   ProfilePriorityRow,
   ProfilePromptRow,
@@ -39,9 +46,39 @@ export type ProfileTrip = {
   cityLabel: string;
   startDate: string;
   endDate: string;
+  /**
+   * The window is a guess ("Bangkok, probably most of September"), not two
+   * days somebody picked. The dates are still real dates — the widest range
+   * the traveler stands behind — so nothing that does arithmetic on them
+   * changes; what changes is that the card must not print them as a fact.
+   * Absent on a trip whose source has not been widened for the column yet,
+   * which reads the same as false.
+   */
+  approximate?: boolean;
   /** Set when the viewer's own trip overlaps this one. */
   overlap?: { start: string; end: string } | null;
 };
+
+/**
+ * The dates on a trip card.
+ *
+ * The spec asked for an unqualified range with a small "roughly" chip beside
+ * it. One sentence beats a fact and a disclaimer sitting next to each other:
+ * a reader deciding whether to book flights around somebody's plans should
+ * not have to notice a second element to learn that the first one is a guess.
+ */
+function tripDates(trip: ProfileTrip): string {
+  return formatTripDates(trip.startDate, trip.endDate, trip.approximate);
+}
+
+/**
+ * How close the window has to get before the owner is asked for real dates.
+ *
+ * Two weeks out is when a rough month stops being honest and starts being
+ * stale — flights are booked, and the people reading the profile are the ones
+ * who will be there.
+ */
+const ROUGH_NUDGE_DAYS = 14;
 
 /**
  * Something on a profile you can answer, the way Hinge lets you reply to one
@@ -55,12 +92,70 @@ export type RespondTarget = {
   quote?: string | null;
 };
 
-function Photo({ path, style }: { path: string; style?: object }) {
+function Photo({
+  path,
+  label,
+  style,
+  onOpen,
+}: {
+  path: string;
+  /**
+   * What this photo is of. A "Photos" heading over unlabelled images is a
+   * heading over nothing as far as VoiceOver is concerned — the rule the
+   * business pages already follow (src/app/place/[id].tsx).
+   */
+  label?: string;
+  style?: object;
+  /**
+   * Open this photo full screen.
+   *
+   * The SIGNED URL goes with it, because this is the component holding it.
+   * The viewer signs nothing itself — the photos bucket is private and every
+   * caller's photo lives in a different one — so whoever has the URL hands it
+   * over (components/ui/photo-viewer.tsx says why).
+   */
+  onOpen?: (photo: ViewablePhoto) => void;
+}) {
   const theme = useTheme();
   const { data: url } = usePhotoUrl(path);
+  // A photo that still arrives late crossfades into the frame instead of
+  // snapping into it. The frame is surfaceSunken underneath, so the snap read
+  // as a glitch on the one screen whose whole pitch is the face.
+  const image = url ? (
+    <Image
+      source={{ uri: url }}
+      style={styles.fill}
+      contentFit="cover"
+      transition={Motion.quick}
+      // Only when the frame itself is not the button. A Pressable with its
+      // own label makes its children invisible to VoiceOver and to Maestro,
+      // so the label moves up rather than being said twice.
+      accessibilityLabel={onOpen && url ? undefined : label}
+    />
+  ) : (
+    // Loading, not missing. A flat rectangle on a slow connection is
+    // indistinguishable from a photo that failed to arrive.
+    <Skeleton style={StyleSheet.absoluteFill} radius={0} />
+  );
   return (
     <View style={[styles.photoFrame, { backgroundColor: theme.surfaceSunken }, style]}>
-      {url ? <Image source={{ uri: url }} style={styles.fill} contentFit="cover" /> : null}
+      {onOpen && url ? (
+        // A plain Pressable, not PressableScale: a photo that shrinks under
+        // the thumb reads as a card, and this one is meant to read as the
+        // picture itself. It sits UNDER the reply chip and the edit button in
+        // the hero, so neither of their targets is swallowed — the tap only
+        // lands here where nothing else claimed it.
+        <Pressable
+          accessibilityRole="imagebutton"
+          accessibilityLabel={label}
+          accessibilityHint="Opens it full screen."
+          style={styles.fill}
+          onPress={() => onOpen({ uri: url, label: label ?? 'Photo' })}>
+          {image}
+        </Pressable>
+      ) : (
+        image
+      )}
     </View>
   );
 }
@@ -68,13 +163,29 @@ function Photo({ path, style }: { path: string; style?: object }) {
 /** The affordance itself: a bubble you tap to answer one specific thing. */
 function ReplyButton({
   label,
+  text = 'About this',
   onPress,
   onPhoto = false,
+  wide = false,
 }: {
   label: string;
+  /**
+   * The visible chip text. Not 'Reply' — a stranger who has said nothing is
+   * not being replied to — and not 'Say hi' either: the primary on the same
+   * card already reads 'Say hi', and two differently-scoped controls must
+   * not carry identical text.
+   */
+  text?: string;
   onPress: () => void;
   /** Sitting on an image, where it needs its own ground to stay legible. */
   onPhoto?: boolean;
+  /**
+   * A bigger target, for the one section whose content cannot become one.
+   * A bio is free text up to 500 characters: wrapping it in a button costs
+   * text selection and hands VoiceOver a single enormous element, so About
+   * keeps a paragraph and gets a chip somebody can actually hit.
+   */
+  wide?: boolean;
 }) {
   const theme = useTheme();
   return (
@@ -85,35 +196,39 @@ function ReplyButton({
       scaleTo={0.9}
       // The inline chip is 26pt tall and the one on a photo is 40. Both keep
       // their drawing; both now take a 44pt press.
-      hitSlop={onPhoto ? 2 : { top: 9, bottom: 9, left: 6, right: 6 }}
+      hitSlop={onPhoto || wide ? 2 : { top: 9, bottom: 9, left: 6, right: 6 }}
       onPress={onPress}
       containerStyle={onPhoto ? styles.replyAnchor : undefined}
       style={[
-        onPhoto ? styles.replyOnPhoto : styles.replyInline,
+        onPhoto ? styles.replyOnPhoto : wide ? styles.replyWide : styles.replyInline,
         { backgroundColor: onPhoto ? theme.surface : theme.accentSoft },
       ]}>
       <SymbolView
         name={{ ios: 'bubble.left', android: 'chat_bubble', web: 'chat_bubble' }}
-        size={onPhoto ? 17 : 13}
+        size={onPhoto || wide ? 17 : 13}
         tintColor={theme.accent}
       />
-      {onPhoto ? null : (
-        <ThemedText type="footnote" themeColor="accent">
-          Reply
-        </ThemedText>
-      )}
+      {/* The word, on the photo too. Travelers offered three routes to the
+          same composer and one of them was an unlabelled glyph floating on a
+          photo, so a first-time reader could not tell whether the bubble did
+          something different from the two controls that read "About this"
+          and "Say hi". It did not. */}
+      <ThemedText type="footnote" themeColor="accent">
+        {text}
+      </ThemedText>
     </PressableScale>
   );
 }
 
-/** What "reply to this section" is called out loud, per section. */
+/** What "say hi about this section" is called out loud, per section. */
 const REPLY_LABELS: Record<string, string> = {
-  About: 'Reply to their bio',
-  Details: 'Reply to their details',
-  'Travel plans': 'Reply to their travel plans',
-  // Not "Reply to top priorities". The control names what the traveler is
-  // actually doing, and what they are doing is joining a plan.
-  'Top priorities': "Say you're in",
+  // The chip prints "About this", so the spoken name starts with it: Voice
+  // Control matches commands against the accessible name, and a visible
+  // label missing from it strands "tap About this" (WCAG 2.5.3) — the same
+  // rule the priorities chip follows with "I'm in".
+  About: 'About this. Say hi about their bio.',
+  Details: 'About this. Say hi about their details.',
+  'Travel plans': 'About this. Say hi about their travel plans.',
 };
 
 function SectionHeader({
@@ -121,12 +236,21 @@ function SectionHeader({
   icon,
   onEdit,
   onReply,
+  replyText,
+  replyLabel,
+  replyWide = false,
 }: {
   title: string;
   icon: SymbolViewProps['name'];
   onEdit?: () => void;
   /** Visitors get this where the owner gets Edit; never both. */
   onReply?: () => void;
+  /** Overrides the chip's visible text (default 'About this'). */
+  replyText?: string;
+  /** Overrides the spoken label. Must contain the visible text (WCAG 2.5.3). */
+  replyLabel?: string;
+  /** For a section whose body stays a paragraph. See ReplyButton's `wide`. */
+  replyWide?: boolean;
 }) {
   const theme = useTheme();
   return (
@@ -153,10 +277,14 @@ function SectionHeader({
         </PressableScale>
       ) : onReply ? (
         <ReplyButton
-          // Not `Reply to their ${title.toLowerCase()}`: that produced "Reply
-          // to their about", which is not a sentence. The section names read
-          // as things in some cases and not others, so they are mapped.
-          label={REPLY_LABELS[title] ?? `Reply to ${title.toLowerCase()}`}
+          // Not `Say hi about their ${title.toLowerCase()}`: that produced
+          // "about their about", which is not a sentence. The section names
+          // read as things in some cases and not others, so they are mapped.
+          label={
+            replyLabel ?? REPLY_LABELS[title] ?? `About this. Say hi about ${title.toLowerCase()}.`
+          }
+          text={replyText}
+          wide={replyWide}
           onPress={onReply}
         />
       ) : null}
@@ -202,6 +330,11 @@ function PrioritiesSection({
         title="Top priorities"
         icon={{ ios: 'list.star', android: 'checklist', web: 'checklist' }}
         onEdit={owner && onEdit ? () => onEdit(null) : undefined}
+        // "I'm in", because joining a plan is what the tap does — and the
+        // spoken label carries the same words, so what VoiceOver announces
+        // is the name the chip displays (WCAG 2.5.3).
+        replyText="I'm in"
+        replyLabel={priorities.length > 0 ? `I'm in. ${priorities[0].text}.` : undefined}
         onReply={
           onRespondTo && priorities.length > 0
             ? () =>
@@ -306,6 +439,17 @@ function PromptCard({
   onRespondTo?: (target: RespondTarget) => void;
 }) {
   const theme = useTheme();
+  // One target, built once, used by the chip in the header AND by the answer
+  // itself. The chip stays the visible affordance; the answer is the thing a
+  // first-time reader actually taps, and it used to do nothing.
+  const respond = onRespondTo
+    ? () =>
+        onRespondTo({
+          key: `prompt:${prompt.prompt_key}`,
+          label: `"${promptLabelInline(prompt.prompt_key)}"`,
+          quote: prompt.answer,
+        })
+    : undefined;
   return (
     <View style={[styles.promptCard, { backgroundColor: theme.surfaceSunken }]}>
       <View style={styles.sectionHeader}>
@@ -325,20 +469,25 @@ function PromptCard({
               Edit
             </ThemedText>
           </PressableScale>
-        ) : onRespondTo ? (
+        ) : respond ? (
           <ReplyButton
-            label={`Reply to "${promptLabelInline(prompt.prompt_key)}"`}
-            onPress={() =>
-              onRespondTo({
-                key: `prompt:${prompt.prompt_key}`,
-                label: `"${promptLabelInline(prompt.prompt_key)}"`,
-                quote: prompt.answer,
-              })
-            }
+            label={`Say hi about "${promptLabelInline(prompt.prompt_key)}"`}
+            onPress={respond}
           />
         ) : null}
       </View>
-      <ThemedText type="headline">{prompt.answer}</ThemedText>
+      {respond ? (
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`${prompt.answer}. Say hi about this.`}
+          haptic="light"
+          scaleTo={0.99}
+          onPress={respond}>
+          <ThemedText type="headline">{prompt.answer}</ThemedText>
+        </PressableScale>
+      ) : (
+        <ThemedText type="headline">{prompt.answer}</ThemedText>
+      )}
     </View>
   );
 }
@@ -352,19 +501,30 @@ function PromptCard({
 function WovenPhoto({
   photo,
   index,
+  label,
   onRespondTo,
+  onOpenPhoto,
 }: {
   photo: ProfilePhotoRow;
   index: number;
+  /** What VoiceOver says this photo is: "Mara, photo 3 of 5". */
+  label: string;
   onRespondTo?: (target: RespondTarget) => void;
+  /** Open it full screen. Always supplied — a gallery photo is for looking at. */
+  onOpenPhoto?: (photo: ViewablePhoto) => void;
 }) {
   return (
     <View>
-      <Photo path={photo.storage_path} style={styles.galleryPhoto} />
+      <Photo
+        path={photo.storage_path}
+        label={label}
+        style={styles.galleryPhoto}
+        onOpen={onOpenPhoto}
+      />
       {onRespondTo ? (
         <ReplyButton
           onPhoto
-          label={`Reply to photo ${index + 2}`}
+          label={`Say hi about photo ${index + 2}`}
           onPress={() =>
             onRespondTo({
               key: `photo:${photo.position}`,
@@ -382,18 +542,26 @@ function WovenPhoto({
 function TripsSection({
   trips,
   owner,
+  pending = false,
   heroOverlapTripId,
   onEditTrip,
   onAddTrip,
-  onReply,
+  onRespondTo,
 }: {
   trips: ProfileTrip[];
   owner: boolean;
+  /** The trips query has not answered (still in flight, or failed). */
+  pending?: boolean;
   /** The trip whose overlap window the hero already carries, if any. */
   heroOverlapTripId?: string;
   onEditTrip: (trip: ProfileTrip) => void;
   onAddTrip: () => void;
-  onReply?: () => void;
+  /**
+   * Visitors only. Both the header chip and every trip card build a target
+   * from it, because the card is the large obvious object and the chip is a
+   * 26pt caption beside it: a first-time reader taps the card.
+   */
+  onRespondTo?: (target: RespondTarget) => void;
 }) {
   const theme = useTheme();
 
@@ -401,18 +569,37 @@ function TripsSection({
     <View style={styles.section}>
       <SectionHeader
         title="Travel plans"
-        onReply={onReply}
+        onReply={
+          onRespondTo
+            ? () =>
+                onRespondTo({
+                  key: 'trip',
+                  label: 'their travel plans',
+                  quote: trips[0]?.cityLabel ?? null,
+                })
+            : undefined
+        }
         icon={{ ios: 'airplane', android: 'flight', web: 'flight' }}
       />
-      {trips.length === 0 ? (
+      {trips.length === 0 && pending ? (
+        // A fetch that failed (or has not landed) must never be rendered as
+        // an absence: "No trips yet." on a real person's page is the one
+        // thing that makes them look like a fake one.
+        <Skeleton height={72} radius={Radius.lg} />
+      ) : trips.length === 0 ? (
         <View style={[styles.emptyTrips, { backgroundColor: theme.surfaceSunken }]}>
           <ThemedText themeColor="textSecondary">
             {owner ? "Add a trip and you'll see who else is there." : 'No trips yet.'}
           </ThemedText>
         </View>
       ) : (
-        <View style={styles.tripList}>
-          {trips.map((trip, i) => {
+        /* One entrance for the block, not one per row. A view at opacity 0
+           is skipped by UIKit hit-testing entirely (traps), so a 40ms
+           stagger is a real dead zone under a finger — and Travelers
+           remounts this whole page on every Next, so it re-staggered on
+           every card. */
+        <Animated.View entering={FadeInDown.duration(260)} style={styles.tripList}>
+          {trips.map((trip) => {
             const row = (
               <View
                 style={[
@@ -421,9 +608,7 @@ function TripsSection({
                 ]}>
                 <View style={styles.tripText}>
                   <ThemedText type="headline">{trip.cityLabel}</ThemedText>
-                  <ThemedText themeColor="textSecondary">
-                    {formatDateRange(trip.startDate, trip.endDate)}
-                  </ThemedText>
+                  <ThemedText themeColor="textSecondary">{tripDates(trip)}</ThemedText>
                   {/* Not on the trip the hero is already showing: two
                       copies of one window is noise, and this is the copy the
                       floating Say hi bar fades. A second overlapping trip
@@ -446,9 +631,23 @@ function TripsSection({
                 ) : null}
               </View>
             );
-            return (
-              <Animated.View key={trip.id} entering={FadeInDown.delay(i * 40).duration(260)}>
-                {owner ? (
+            if (owner) {
+              // A rough window is fine while the trip is months away and
+              // stale once it is close: by then flights are booked, and the
+              // people reading this are the ones who will be there. Owner
+              // only — nobody else can do anything about it, and a stranger
+              // being told somebody's dates are vague twice is noise.
+              // Both bounds. daysUntil goes NEGATIVE once the window opens
+              // and fetchMyTrips keeps a trip on the profile until its end
+              // date passes, so an upper bound alone asked somebody on day
+              // five of a rough Bangkok window to firm up dates for the trip
+              // they were already on. Nothing to firm up, and the one place
+              // it could appear is the profile they are living out of.
+              const startsIn = daysUntil(trip.startDate);
+              const askForDates =
+                trip.approximate === true && startsIn >= 0 && startsIn <= ROUGH_NUDGE_DAYS;
+              return (
+                <View key={trip.id} style={styles.tripEntry}>
                   <PressableScale
                     accessibilityRole="button"
                     accessibilityLabel={`Edit trip to ${trip.cityLabel}`}
@@ -457,13 +656,65 @@ function TripsSection({
                     onPress={() => onEditTrip(trip)}>
                     {row}
                   </PressableScale>
-                ) : (
-                  row
-                )}
-              </Animated.View>
+                  {askForDates ? (
+                    <PressableScale
+                      accessibilityRole="button"
+                      accessibilityLabel={`Know your dates yet? Edit your trip to ${trip.cityLabel}.`}
+                      testID="rough-dates-nudge"
+                      haptic="light"
+                      scaleTo={0.98}
+                      onPress={() => onEditTrip(trip)}>
+                      <View style={[styles.promptEmpty, { borderColor: theme.hairline }]}>
+                        <SymbolView
+                          name={{
+                            ios: 'calendar',
+                            android: 'calendar_month',
+                            web: 'calendar_month',
+                          }}
+                          size={18}
+                          tintColor={theme.accent}
+                        />
+                        <View style={styles.promptEmptyText}>
+                          <ThemedText type="callout">Know your dates yet?</ThemedText>
+                          <ThemedText type="footnote" themeColor="textSecondary">
+                            Swap the rough window for the days you actually go.
+                          </ThemedText>
+                        </View>
+                      </View>
+                    </PressableScale>
+                  ) : null}
+                </View>
+              );
+            }
+            if (!onRespondTo) {
+              return <View key={trip.id}>{row}</View>;
+            }
+            return (
+              <PressableScale
+                key={trip.id}
+                accessibilityRole="button"
+                // The words on the card, then what tapping does. A
+                // Pressable's own label REPLACES its children, so the city
+                // and the dates have to be in it or they are gone.
+                accessibilityLabel={`${trip.cityLabel}, ${tripDates(trip)}.${
+                  trip.overlap && trip.id !== heroOverlapTripId
+                    ? ` Both there ${formatDateRange(trip.overlap.start, trip.overlap.end)}.`
+                    : ''
+                } Say hi about this.`}
+                haptic="light"
+                scaleTo={0.985}
+                onPress={() =>
+                  onRespondTo({
+                    key: 'trip',
+                    label: 'their travel plans',
+                    quote: trip.cityLabel,
+                  })
+                }>
+                {row}
+              </PressableScale>
             );
           })}
-        </View>
+        </Animated.View>
       )}
       {owner ? (
         <PressableScale
@@ -508,8 +759,13 @@ function SocialsSection({
           title="Socials"
           icon={{ ios: 'at', android: 'alternate_email', web: 'alternate_email' }}
         />
+        {/* The strongest of the four safety promises, said where a stranger
+            actually looks for somebody's Instagram. Strengthened from
+            "Shared once you're chatting." because that reads as a delay and
+            this reads as a rule - which is what it is: RLS refuses the row
+            (hard rule 4), so nothing about it is a client courtesy. */}
         <ThemedText type="footnote" themeColor="textSecondary">
-          Shared once you&apos;re chatting.
+          {SOCIALS_HIDDEN_NOTE}
         </ThemedText>
       </View>
     );
@@ -572,6 +828,7 @@ function Identity({
   profile,
   home,
   overlap,
+  alsoSpeaks,
   onPhoto,
   style,
 }: {
@@ -584,6 +841,13 @@ function Identity({
    * far enough down the page to land under the floating Say hi bar at rest.
    */
   overlap?: string | null;
+  /**
+   * "Also speaks Portuguese", when the two of you share a language that is
+   * not just English. Under the overlap chip and quieter than it: the shared
+   * window is why this person is on the screen, and this is what would make
+   * the first message easy to write.
+   */
+  alsoSpeaks?: string | null;
   onPhoto: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -630,6 +894,21 @@ function Identity({
           </ThemedText>
         </View>
       ) : null}
+      {alsoSpeaks ? (
+        // Supporting the overlap chip, not competing with it: the same pill
+        // geometry in the soft fill, so the eye reads the window first and
+        // this second.
+        <View
+          style={[
+            styles.overlapPill,
+            styles.identityOverlap,
+            { backgroundColor: theme.accentSoft },
+          ]}>
+          <ThemedText type="caption" themeColor="accent">
+            {alsoSpeaks}
+          </ThemedText>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -648,13 +927,18 @@ export function ProfileView({
   trips,
   handles,
   photosPending = false,
+  photoChecking = false,
+  tripsPending = false,
   owner,
   connected = false,
+  alsoSpeaks = null,
   actions,
   onEditSection,
   onEditPrompt,
   onEditPriorities,
+  onEditTrips,
   onRespondTo,
+  onAnswerYourOwnPrompt,
 }: {
   profile: ProfileRow;
   photos: ProfilePhotoRow[];
@@ -674,11 +958,34 @@ export function ProfileView({
    * screen already did before the band existed.
    */
   photosPending?: boolean;
+  /**
+   * The hero photo is still waiting on its moderation verdict.
+   *
+   * Owner only, and only when it is the only photo there is: the page would
+   * otherwise fall through to the photo-less band and offer an "Add a photo"
+   * button to somebody who has just added one. Behind the same scrim and the
+   * same sentence a chat photo gets, so the wait is explained rather than
+   * hidden.
+   */
+  photoChecking?: boolean;
+  /**
+   * The trips query has not answered yet, or failed. Same rule as photos: a
+   * failed fetch must never render as "No trips yet." — an absence this page
+   * cannot actually claim.
+   */
+  tripsPending?: boolean;
   trips: ProfileTrip[];
   handles: SocialHandleRow[];
   owner: boolean;
   /** Viewer mode: true once a chat with this person is open. */
   connected?: boolean;
+  /**
+   * "Also speaks Portuguese" — a language the viewer and this traveler share
+   * that is not just English. The score already weights it (6 points each,
+   * up to 18, second only to the date overlap) and used to spend all of it
+   * on ordering; this is the same fact, said out loud.
+   */
+  alsoSpeaks?: string | null;
   /** Screen-supplied buttons (say hi, report, sign out…). */
   actions?: ReactNode;
   onEditSection?: (section: 'photos' | 'about' | 'details' | 'socials') => void;
@@ -690,16 +997,43 @@ export function ProfileView({
    */
   onEditPriorities?: (slot: number | null) => void;
   /**
+   * Owner only, and only where a sheet must not open.
+   *
+   * Both trip affordances present the TripEditor in place, which is right on
+   * a profile screen and wrong inside signup's review step: StepShell is
+   * itself a full-screen scene, and a presentation that starts while another
+   * is dismissing does not lose the sheet on Fabric, it kills touch for the
+   * whole app (traps). When this is supplied, editing a trip and adding one
+   * both call it instead, and the caller sends the person to the step that
+   * owns trips.
+   */
+  onEditTrips?: () => void;
+  /**
    * Supplied when the viewer could still open a conversation. Every photo
    * and every written block then carries a reply bubble, so the first
    * message is about one specific thing instead of about nothing.
    */
   onRespondTo?: (target: RespondTarget) => void;
+  /**
+   * Reader only, and only when the READER'S own profile has no prompt.
+   *
+   * Reading somebody else's answer is the moment a prompt's value is
+   * obvious: it is the one thing on the page that gives a stranger something
+   * specific to say hi about. Supplied by the screen, which asks
+   * `profileGaps` - the trigger lives here, what counts as a gap lives
+   * there, so there is one component that knows what a complete profile is.
+   */
+  onAnswerYourOwnPrompt?: () => void;
 }) {
   const theme = useTheme();
   const { width } = useWindowDimensions();
   const [editingTrip, setEditingTrip] = useState<EditableTrip | null>(null);
   const [addingTrip, setAddingTrip] = useState(false);
+  // The photo being looked at full screen, from the hero or from anywhere in
+  // the gallery. One viewer for the page, mounted at the bottom: it presents
+  // nothing until a photo is set, and it asks whether a modal is already up at
+  // the moment of the tap rather than watching a count from before it.
+  const [viewing, setViewing] = useState<ViewablePhoto | null>(null);
 
   const main = photos.find((p) => p.position === 0) ?? photos[0] ?? null;
   const gallery = photos.filter((p) => p.id !== main?.id);
@@ -711,15 +1045,27 @@ export function ProfileView({
   const woven = gallery.slice(0, INTERLEAVED);
   const remaining = gallery.slice(INTERLEAVED);
   const home = [profile.home_city, profile.home_country].filter(Boolean).join(', ');
-  // Just the city: cityLabel is "Bangkok, Thailand", and "Both in Bangkok,
-  // Thailand Aug 23 - 28" wraps to two lines on a phone.
+  // What VoiceOver says each photo IS. Owner mode says "your" rather than
+  // the name, because reading your own name back at you on every photo is
+  // not how anybody describes their own page.
+  const who = profile.display_name ?? 'this traveler';
+  const heroPhotoLabel = owner ? 'Your profile photo' : `Profile photo of ${who}`;
+  const galleryPhotoLabel = (index: number) =>
+    owner
+      ? `Your photo ${index + 2} of ${photos.length}`
+      : `${who}, photo ${index + 2} of ${photos.length}`;
+  // The seeded "[demo]" suffix out of the prose, onto a chip (lib/demo-marker).
+  const about = splitDemoMarker(profile.bio);
+  // One builder for the whole app: the pill here, the anchor Travelers
+  // quotes into a first message, and the chip on the card that hello is
+  // answered on all come from features/matching/overlap, so the same pair of
+  // people can never be told two different sentences about their own dates.
   const overlapTrip = owner ? undefined : trips.find((trip) => trip.overlap);
-  const overlap = overlapTrip?.overlap
-    ? `Both in ${overlapTrip.cityLabel.split(',')[0]} ${formatDateRange(
-        overlapTrip.overlap.start,
-        overlapTrip.overlap.end
-      )}`
-    : null;
+  const overlap = overlapSentence(
+    overlapTrip?.cityLabel,
+    overlapTrip?.overlap?.start,
+    overlapTrip?.overlap?.end
+  );
   const heroWidth = Math.min(width, MaxContentWidth);
   const edit = (section: 'photos' | 'about' | 'details' | 'socials') =>
     onEditSection ? () => onEditSection(section) : undefined;
@@ -751,13 +1097,22 @@ export function ProfileView({
              (edcd8d7 tried exactly that); it hands the fill a screen-tall
              box and pushes the name below the fold, which is what E2E run 33
              photographed and 612bb5c reverted. A profile with no photo gets
-             the separate branch below instead. */
-          <View style={[styles.hero, { width: heroWidth, height: heroWidth * 1.15 }]}>
+             the separate branch below instead.
+
+             The ratio itself is 1:1 per decision D2(a): the iOS editor crops
+             square, so the hero shows the square people approved, whole. */
+          <View style={[styles.hero, { width: heroWidth, height: heroWidth }]}>
             {main ? (
-              <Photo path={main.storage_path} style={StyleSheet.absoluteFill} />
+              <Photo
+                path={main.storage_path}
+                label={heroPhotoLabel}
+                style={StyleSheet.absoluteFill}
+                onOpen={setViewing}
+              />
             ) : (
               <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.surfaceSunken }]} />
             )}
+            {photoChecking ? <PhotoCheckVeil /> : null}
             <LinearGradient
               colors={['transparent', 'rgba(14,16,32,0.05)', 'rgba(14,16,32,0.82)']}
               locations={[0, 0.55, 1]}
@@ -772,7 +1127,13 @@ export function ProfileView({
                 chat header. VoiceOver announced a button that could not be
                 activated. The wrapper itself still takes no touches. */}
             <View style={styles.heroText} pointerEvents="box-none">
-              <Identity profile={profile} home={home} overlap={overlap} onPhoto />
+              <Identity
+                profile={profile}
+                home={home}
+                overlap={overlap}
+                alsoSpeaks={alsoSpeaks}
+                onPhoto
+              />
             </View>
             {owner && onEditSection ? (
               <PressableScale
@@ -799,7 +1160,7 @@ export function ProfileView({
             {onRespondTo && main ? (
               <ReplyButton
                 onPhoto
-                label="Reply to this photo"
+                label="Say hi about this photo"
                 onPress={() =>
                   onRespondTo({
                     key: 'photo:0',
@@ -834,6 +1195,7 @@ export function ProfileView({
                 profile={profile}
                 home={home}
                 overlap={overlap}
+                alsoSpeaks={alsoSpeaks}
                 onPhoto={false}
                 style={styles.flex}
               />
@@ -864,27 +1226,22 @@ export function ProfileView({
           <TripsSection
             trips={trips}
             owner={owner}
+            pending={tripsPending}
             heroOverlapTripId={overlapTrip?.id}
             onEditTrip={(trip) =>
-              setEditingTrip({
-                id: trip.id,
-                cityId: trip.cityId,
-                cityLabel: trip.cityLabel,
-                startDate: trip.startDate,
-                endDate: trip.endDate,
-              })
+              onEditTrips
+                ? onEditTrips()
+                : setEditingTrip({
+                    id: trip.id,
+                    cityId: trip.cityId,
+                    cityLabel: trip.cityLabel,
+                    startDate: trip.startDate,
+                    endDate: trip.endDate,
+                    approximate: trip.approximate === true,
+                  })
             }
-            onAddTrip={() => setAddingTrip(true)}
-            onReply={
-              onRespondTo
-                ? () =>
-                    onRespondTo({
-                      key: 'trip',
-                      label: 'their travel plans',
-                      quote: trips[0]?.cityLabel ?? null,
-                    })
-                : undefined
-            }
+            onAddTrip={() => (onEditTrips ? onEditTrips() : setAddingTrip(true))}
+            onRespondTo={onRespondTo}
           />
 
           {/* Trips say where and when; this says what. The pair is the whole
@@ -897,7 +1254,15 @@ export function ProfileView({
             onRespondTo={onRespondTo}
           />
 
-          {woven[0] ? <WovenPhoto photo={woven[0]} index={0} onRespondTo={onRespondTo} /> : null}
+          {woven[0] ? (
+            <WovenPhoto
+              photo={woven[0]}
+              index={0}
+              label={galleryPhotoLabel(0)}
+              onRespondTo={onRespondTo}
+              onOpenPhoto={setViewing}
+            />
+          ) : null}
 
           {profile.bio || owner ? (
             <View style={styles.section}>
@@ -905,14 +1270,28 @@ export function ProfileView({
                 title="About"
                 icon={{ ios: 'text.quote', android: 'format_quote', web: 'format_quote' }}
                 onEdit={edit('about')}
+                replyWide
                 onReply={
-                  onRespondTo && profile.bio
-                    ? () => onRespondTo({ key: 'bio', label: 'their bio', quote: profile.bio })
+                  onRespondTo && about.bio
+                    ? // The STRIPPED text, never profile.bio: the reply chip
+                      // quotes the bio into a first message, and the demo
+                      // marker must not end up inside somebody's hello.
+                      () => onRespondTo({ key: 'bio', label: 'their bio', quote: about.bio })
                     : undefined
                 }
               />
-              {profile.bio ? (
-                <ThemedText>{profile.bio}</ThemedText>
+              {/* The fixture's "[demo]" suffix renders as a chip, not as a
+                  fourth line of prose — the disclosure survives, and the bio
+                  reads as a person wrote it. See lib/demo-marker. */}
+              {about.isDemo ? (
+                <View style={[styles.demoChip, { backgroundColor: theme.surfaceSunken }]}>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    Sample profile
+                  </ThemedText>
+                </View>
+              ) : null}
+              {about.bio ? (
+                <ThemedText>{about.bio}</ThemedText>
               ) : (
                 <ThemedText themeColor="textSecondary">Say what you&apos;re up for.</ThemedText>
               )}
@@ -928,7 +1307,42 @@ export function ProfileView({
             />
           ) : null}
 
-          {woven[1] ? <WovenPhoto photo={woven[1]} index={1} onRespondTo={onRespondTo} /> : null}
+          {/* The second ask, at the moment it argues for itself. Under the
+              FIRST prompt only: repeating it under all three would be a
+              lecture on somebody else's page. */}
+          {!owner && prompts[0] && onAnswerYourOwnPrompt ? (
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Your profile has no prompts. Answer one."
+              accessibilityHint="Opens your own prompts."
+              haptic="light"
+              scaleTo={0.98}
+              onPress={onAnswerYourOwnPrompt}>
+              <View style={[styles.promptEmpty, { borderColor: theme.hairline }]}>
+                <SymbolView
+                  name={{ ios: 'plus.bubble', android: 'add_comment', web: 'add_comment' }}
+                  size={18}
+                  tintColor={theme.accent}
+                />
+                <View style={styles.promptEmptyText}>
+                  <ThemedText type="callout">Your profile has none of these</ThemedText>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    Answer one and people have something to reply to.
+                  </ThemedText>
+                </View>
+              </View>
+            </PressableScale>
+          ) : null}
+
+          {woven[1] ? (
+            <WovenPhoto
+              photo={woven[1]}
+              index={1}
+              label={galleryPhotoLabel(1)}
+              onRespondTo={onRespondTo}
+              onOpenPhoto={setViewing}
+            />
+          ) : null}
 
           {profile.languages.length > 0 || owner ? (
             <View style={styles.section}>
@@ -975,7 +1389,15 @@ export function ProfileView({
             cityId={overlapTrip?.cityId ?? trips[0]?.cityId ?? null}
           />
 
-          {woven[2] ? <WovenPhoto photo={woven[2]} index={2} onRespondTo={onRespondTo} /> : null}
+          {woven[2] ? (
+            <WovenPhoto
+              photo={woven[2]}
+              index={2}
+              label={galleryPhotoLabel(2)}
+              onRespondTo={onRespondTo}
+              onOpenPhoto={setViewing}
+            />
+          ) : null}
 
           {prompts[2] ? (
             <PromptCard
@@ -1031,7 +1453,9 @@ export function ProfileView({
                   key={photo.id}
                   photo={photo}
                   index={INTERLEAVED + index}
+                  label={galleryPhotoLabel(INTERLEAVED + index)}
                   onRespondTo={onRespondTo}
+                  onOpenPhoto={setViewing}
                 />
               ))}
             </Animated.View>
@@ -1043,6 +1467,10 @@ export function ProfileView({
 
       {addingTrip ? <TripEditor trip={null} onClose={() => setAddingTrip(false)} /> : null}
       {editingTrip ? <TripEditor trip={editingTrip} onClose={() => setEditingTrip(null)} /> : null}
+      {/* One for the whole page rather than one per photo. With no photo set
+          it carries nothing at all: no gesture tree, no registration, no
+          window size it is not using. */}
+      <PhotoViewer photo={viewing} onClose={() => setViewing(null)} />
     </>
   );
 }
@@ -1142,11 +1570,16 @@ const styles = StyleSheet.create({
     bottom: Space.md,
   },
   replyOnPhoto: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    // A pill with a word in it now, not a 40pt circle with a glyph. Height
+    // is a minimum so the chip grows with Dynamic Type instead of clipping
+    // its own label.
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Space.xs,
+    minHeight: 40,
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.pill,
   },
   replyInline: {
     flexDirection: 'row',
@@ -1156,12 +1589,30 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: Radius.pill,
   },
+  /* The About chip. Same pill, drawn at the size of the one on a photo,
+     because it is the only way into the composer from a section whose body
+     must stay selectable text. */
+  replyWide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Space.xs,
+    minHeight: 40,
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.pill,
+  },
   body: {
     padding: Space.lg,
     gap: Space.xl,
   },
   section: {
     gap: Space.sm,
+  },
+  demoChip: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: Space.sm,
+    paddingVertical: Space.xs,
+    borderRadius: Radius.pill,
   },
   promptEmpty: {
     flexDirection: 'row',
@@ -1196,6 +1647,12 @@ const styles = StyleSheet.create({
     paddingVertical: Space.xs,
   },
   tripList: {
+    gap: Space.sm,
+  },
+  /* One trip and whatever the owner is being asked about it, kept together
+     so the nudge reads as belonging to the card above it rather than to the
+     next one down. */
+  tripEntry: {
     gap: Space.sm,
   },
   tripCard: {
@@ -1244,7 +1701,10 @@ const styles = StyleSheet.create({
   },
   galleryPhoto: {
     width: '100%',
-    aspectRatio: 4 / 5,
+    // Square, decision D2(a): the iOS editor crops square, and stretching
+    // that square into 4:5 cut a further fifth off each side of the frame
+    // people actually approved.
+    aspectRatio: 1,
     borderRadius: Radius.lg,
     borderCurve: 'continuous',
   },

@@ -9,7 +9,9 @@ import {
   type VerificationRequestRow,
 } from '@/lib/database.types';
 import { tightenSlots } from '@/features/profile/slots';
+import { forgetAppleUser } from '@/lib/apple-user';
 import { processAndUploadImage, removeUploadedImage } from '@/lib/image-upload';
+import { forgetLastEmail } from '@/lib/last-email';
 import { supabase } from '@/lib/supabase';
 
 export const PHOTO_BUCKET = 'profile-photos';
@@ -183,7 +185,14 @@ export async function fetchPhotos(userId: string) {
  * server-side moderation chokepoint).
  */
 export async function uploadPhoto(userId: string, localUri: string, position: number) {
-  const storagePath = await processAndUploadImage(PHOTO_BUCKET, userId, localUri);
+  // A profile photo IS the hero: it fills the card a stranger decides on, so
+  // an upscaled thumbnail off a chat app is soft at exactly the size that
+  // matters. This is one of the two callers the floor is for; the pipeline's
+  // default is off because the same function carries chat and group photos,
+  // where a small screenshot is legitimate.
+  const storagePath = await processAndUploadImage(PHOTO_BUCKET, userId, localUri, {
+    fillsAFrame: true,
+  });
   const { data, error } = await supabase
     .from('profile_photos')
     .insert({ user_id: userId, storage_path: storagePath, position })
@@ -194,6 +203,30 @@ export async function uploadPhoto(userId: string, localUri: string, position: nu
     throw error;
   }
   return data;
+}
+
+/**
+ * Move photos into new slots, one statement per row, IN THE ORDER GIVEN.
+ *
+ * The order is the safety property, not an implementation detail: PostgREST
+ * cannot carry per-row values in a single PATCH, and the only write a client
+ * has on this table is `grant update (position)` (20260816190000:359-362), so
+ * an RPC would mean opening a second and wider door to the same rows. The
+ * plan comes from features/profile/photo-order.ts, which is where the reason
+ * each write can safely happen when it does is written down.
+ */
+export async function setPhotoPositions(updates: { id: string; position: number }[]) {
+  for (const update of updates) {
+    // No .select(): a returning clause rides the same grants as select * and
+    // this call has nothing to read back.
+    const { error } = await supabase
+      .from('profile_photos')
+      .update({ position: update.position })
+      .eq('id', update.id);
+    if (error) {
+      throw error;
+    }
+  }
 }
 
 export async function deletePhoto(photoId: string, storagePath: string) {
@@ -293,6 +326,33 @@ export async function setOwnVisibility(audience: ProfileAudience) {
 }
 
 /**
+ * Whether the signed-out preview may include you (D22).
+ *
+ * A device with no account is shown up to three travelers for a city: face,
+ * name, age and dates (featured_traveler, 20260902260000). This is the one
+ * way to say no to that without narrowing the audience or deleting the trip.
+ * Same shape as visibility: the column has no client grant in either
+ * direction, so both halves are definer RPCs bound to auth.uid()
+ * (20260903080000). A missing answer reads as shown, because shown is the
+ * default the server keeps for anybody who has not touched the row.
+ */
+export async function fetchOwnGuestPreview(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('my_shown_to_guests');
+  if (error) {
+    throw error;
+  }
+  return (data as boolean | null) ?? true;
+}
+
+export async function setOwnGuestPreview(shown: boolean): Promise<boolean> {
+  const { data, error } = await supabase.rpc('set_shown_to_guests', { p_shown: shown });
+  if (error) {
+    throw error;
+  }
+  return (data as boolean | null) ?? shown;
+}
+
+/**
  * Permanently delete the signed-in account (App Review 5.1.1(v)). The Edge
  * Function removes storage objects, hard-deletes the user's chats for both
  * members, then deletes the auth user — cascading the whole profile.
@@ -302,6 +362,12 @@ export async function deleteAccount() {
   if (error) {
     throw error;
   }
+  // The remembered address is kept across an uninstall on purpose (founder
+  // decision D39), so the one thing that must clear it is the person saying
+  // this account is gone. Here rather than at the two call sites, so both
+  // the traveler branch and the business branch get it.
+  await forgetLastEmail();
+  await forgetAppleUser();
   return data as { deleted: boolean };
 }
 

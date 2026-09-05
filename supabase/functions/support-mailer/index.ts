@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
 
   const { data: pending, error } = await supabase
     .from('support_messages')
-    .select('id, user_id, reply_to, body, created_at, delivery_attempts')
+    .select('id, user_id, reply_to, body, category, created_at, delivery_attempts')
     .is('delivered_at', null)
     .lt('delivery_attempts', MAX_ATTEMPTS)
     // Only what is due. A row that just failed waits out its backoff instead
@@ -140,6 +140,9 @@ Deno.serve(async (req) => {
   // got sent either.
   for (const message of (pending ?? []) as any[]) {
     const who = message.user_id ? `account ${message.user_id}` : 'a guest';
+    // The sender's own triage hint, in the subject where an inbox sorts on
+    // it. Null for anything written by a build that predates the chip row.
+    const kind = message.category ?? 'other';
     try {
       const response = await fetch(RESEND_URL, {
         method: 'POST',
@@ -153,15 +156,17 @@ Deno.serve(async (req) => {
           // Replying in a mail client should reach the person who wrote in,
           // which is the whole point of asking for their address.
           reply_to: message.reply_to,
-          subject: `Samewhere support: ${message.reply_to}`,
+          subject: `Samewhere support (${kind}): ${message.reply_to}`,
           text: [
             `From: ${message.reply_to} (${who})`,
+            `About: ${kind}`,
             `Sent: ${message.created_at}`,
             '',
             message.body,
           ].join('\n'),
           html:
             `<p><strong>From:</strong> ${escapeHtml(message.reply_to)} (${escapeHtml(who)})<br>` +
+            `<strong>About:</strong> ${escapeHtml(kind)}<br>` +
             `<strong>Sent:</strong> ${escapeHtml(message.created_at)}</p>` +
             `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(message.body)}</pre>`,
         }),

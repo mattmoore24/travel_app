@@ -21,6 +21,7 @@ const src = (file: string): string => fs.readFileSync(path.join(REPO, file), 'ut
 const CHAT_TAB = 'src/app/(tabs)/chat.tsx';
 const CHAT_THREAD = 'src/app/chat/[id].tsx';
 const ROOM = 'src/app/room/[id].tsx';
+const ACTIONS_MENU = 'src/features/profile/actions-menu.ts';
 
 describe('the chat list a business reads', () => {
   it('does not filter a business out of its own room', () => {
@@ -31,16 +32,23 @@ describe('the chat list a business reads', () => {
     expect(code).toContain(
       "const ownRoom = isBusiness ? chats.filter((c) => c.kind === 'room') : [];"
     );
-    expect(code).toContain(
-      "const inTab = isBusiness\n    ? chats.filter((c) => c.kind !== 'room')"
-    );
+    // Asserted as the invariant rather than as one exact line, because the
+    // expression is now wrapped in the inbox search filter. What must not
+    // change is which rows a BUSINESS starts from: everything that is not its
+    // own room, which ownRoom above renders separately.
+    expect(code).toContain("? chats.filter((c) => c.kind !== 'room')");
+    expect(code).toMatch(/const inTab = filterChats\(\s+isBusiness/);
   });
 
   it('gives that room a section of its own', () => {
     const code = src(CHAT_TAB);
     const heading = code.indexOf('Your room');
     expect(heading).toBeGreaterThan(-1);
-    expect(code).toContain('<OwnRoomRow key={chat.chat_id} chat={chat} />');
+    // The inbox is a SectionList now, so the room is a section of its own
+    // with its own renderer rather than a mapped block.
+    expect(code).toContain("key: 'own-room'");
+    expect(code).toContain("data: ownRoom.map((chat) => ({ kind: 'ownRoom' as const, chat })),");
+    expect(code).toContain('<OwnRoomRow chat={item.chat} />');
     // Pin and archive are housekeeping for a list of many conversations. In a
     // section of one they change nothing anybody can see, so the row carries
     // mute and nothing else.
@@ -55,13 +63,29 @@ describe('the chat list a business reads', () => {
     const code = src(CHAT_TAB);
     // Nobody says hi to a business: travelers write in through
     // message_business, which opens a conversation rather than a request.
-    expect(code).toContain("{requests.length > 0 && tab === 'individual' && !isBusiness ? (");
-    expect(code).toContain("{tab === 'individual' && waitingOnThem.length > 0 && !isBusiness ? (");
+    expect(code).toContain("if (requests.length > 0 && tab === 'individual' && !isBusiness) {");
+    expect(code).toContain(
+      "if (tab === 'individual' && waitingOnThem.length > 0 && !isBusiness) {"
+    );
     expect(code).toContain('requestsQuery.isError && !chatsQuery.isError && !isBusiness ? (');
   });
 
-  it('says messages, not chats, when the inbox is empty', () => {
-    expect(src(CHAT_TAB)).toContain("? 'No messages yet'");
+  it('offers the owner of an empty inbox something to do about it', () => {
+    const code = src(CHAT_TAB);
+    // The old card said "No messages yet" and stopped. An owner looking at an
+    // empty inbox had no action on the screen, while the row above it stamped
+    // a time on a room nobody had spoken in and called it "0 people here".
+    expect(code).toContain("? 'Nobody has dropped in yet'");
+    expect(code).toContain("router.push('/business-post')");
+    // A room with nothing said in it has no honest timestamp: created_at is
+    // when the listing registered, not when anybody wrote. The row lives in
+    // the shared module now (features/chat/chat-row.tsx), so read it there.
+    const rowModule = src('src/features/chat/chat-row.tsx');
+    expect(rowModule).toContain('isRoom && chat.last_message_at == null');
+    // ...and at zero members the row says what My business says about the
+    // same room, rather than a "0 people" claim. One first day, one voice.
+    expect(rowModule).toContain('chat.member_count > 0');
+    expect(rowModule).toContain(": 'Nobody in yet'");
   });
 });
 
@@ -73,14 +97,17 @@ describe('the conversation a business answers', () => {
     // mounted for it. Both taps that used to push it are gone: the header
     // name and the menu's first item.
     expect(code).toContain('const openIdentity = viewerIsBusiness\n    ? null');
-    expect(code).toContain('disabled={openIdentity == null}');
-    expect(code).toContain('onPress={openIdentity ?? undefined}');
-    const menu = code.indexOf('const openMenu = () => {');
-    const viewProfile = code.indexOf("{ label: 'View profile'");
-    expect(menu).toBeGreaterThan(-1);
-    expect(viewProfile).toBeGreaterThan(menu);
-    // Present, but only on the branch that is not a business.
-    expect(code).toContain('...(viewerIsBusiness\n        ? []');
+    // The header is one shared row now (features/chat/thread-header). A null
+    // here is what makes the name a heading rather than a button, which
+    // thread-header.test.tsx pins from the other end.
+    expect(code).toContain('onPressIdentity={openIdentity}');
+    // The sheet is built in one shared place now (three surfaces offer the
+    // same three items), so the business branch is pinned at both ends: the
+    // caller says it cannot view a profile, and the builder honours that.
+    expect(code).toContain('canViewProfile: !viewerIsBusiness');
+    const menu = src(ACTIONS_MENU);
+    expect(menu).toContain("{ label: 'View profile'");
+    expect(menu).toContain('...(canViewProfile && userId');
   });
 
   it('offers Archive rather than an unmatch that deletes the traveler side', () => {
@@ -88,7 +115,7 @@ describe('the conversation a business answers', () => {
     // unmatch_chat hard-deletes the chats row, which takes the conversation
     // away from the traveler too. A business tidying its inbox must not be
     // able to wipe a customer's copy of what it told them.
-    expect(code).toContain("viewerIsBusiness\n        ? { label: 'Archive', run: archiveChat }");
+    expect(code).toContain("viewerIsBusiness\n          ? { label: 'Archive', run: archiveChat }");
     expect(code).toContain('pref.mutate({ chatId: chat.chat_id, archived: true });');
     // And the traveler still has the traveler wording.
     expect(code).toContain("{ label: 'Leave chat', destructive: true, run: confirmLeaveChat }");
@@ -130,8 +157,9 @@ describe('the room a business runs', () => {
     // business room reads NULL - while is_room_moderator returns true for
     // them (20260827160000).
     expect(code).toContain("const isModerator = membership?.my_role === 'admin' || isOwnRoom;");
-    // Which is what decides Remove-versus-Report and whether pinning exists.
-    expect(code).toContain("reportLabel={isModerator ? 'Remove' : 'Report'}");
+    // Which is what decides who can Remove and whether pinning exists.
+    // Remove is its own handler beside Report now, never a relabelling of it.
+    expect(code).toContain('onRemove={\n              isModerator');
   });
 
   it('never offers the owner a way to leave the chat it runs', () => {
@@ -142,8 +170,12 @@ describe('the room a business runs', () => {
 
   it('tells the owner they run the room instead of telling them to join in', () => {
     const code = src(ROOM);
-    expect(code).toContain('{chatsQuery.isPending ? null : isOwnRoom ? (');
-    expect(code).toContain('here · you run this chat');
+    // The line is computed above the return now (it is the shared header's
+    // subtitle), so the branch reads as an assignment rather than as JSX.
+    expect(code).toContain('const headerLine = chatsQuery.isPending ? null : isOwnRoom ? (');
+    // "in this chat", not "here": the count is chat membership, and "here"
+    // read as presence in the app that promises never to know it.
+    expect(code).toContain('in this chat · you run it');
     // And in somebody else's room a business is not told to join in either.
     expect(code).toContain("? 'Anyone can read this chat.'");
     expect(code).toContain(": 'Anyone can read this chat. Join in to post.'");
@@ -160,7 +192,7 @@ describe('the room a business runs', () => {
     const code = src(ROOM);
     const guard = code.indexOf(') : viewerIsBusiness ? (');
     const question = code.indexOf('When do you check out?');
-    const picker = code.indexOf('CHECKING OUT');
+    const picker = code.indexOf('Checking out');
     const join = code.indexOf('label="Join this room"');
     expect(guard).toBeGreaterThan(-1);
     // All three are downstream of the branch that turns a business away.

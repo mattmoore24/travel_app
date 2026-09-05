@@ -2,9 +2,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
-import { ChipRow } from '@/components/form/chip-row';
+import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
@@ -63,15 +62,10 @@ export default function EditPromptScreen() {
       await save.mutateAsync({ slot, promptKey, answer: trimmed });
       haptics.success();
       router.back();
-    } catch (error) {
-      // The one failure worth naming: the same filter the bio goes through.
-      const raw = (error as { message?: unknown })?.message;
-      Alert.alert(
-        'Could not save that',
-        typeof raw === 'string' && /community guidelines/i.test(raw)
-          ? 'That answer breaks our community guidelines. Reword it and try again.'
-          : 'Check your connection and try again.'
-      );
+    } catch {
+      // The global mutation handler (src/lib/query-client.ts) owns the
+      // message — one vocabulary, one place to look. This catch only keeps
+      // the screen from navigating away on failure.
     }
   };
 
@@ -121,10 +115,11 @@ export default function EditPromptScreen() {
         ) : null
       }>
       <ThemedText type="smallBold">Question</ThemedText>
-      <ChipRow
+      <ChipRail
+        wrap
         options={options}
-        selected={[promptKey]}
-        onToggle={(value) => {
+        selected={promptKey}
+        onSelect={(value) => {
           setPromptKey(value);
           // The placeholder changes with the question, so an answer typed
           // against the old one would read as an answer to the new one.
@@ -145,7 +140,6 @@ export default function EditPromptScreen() {
           value={answer}
           onChangeText={setAnswer}
           hint={`${answer.length}/${PROMPT_ANSWER_MAX}`}
-          {...keyboardDoneProps}
         />
       </View>
     </StepScreen>

@@ -26,10 +26,12 @@ on:
     inputs:
       action:
         description: >-
-          seed/purge the accounts, or drive the request loop: accept (they
-          answer a request you sent), ping (one of them writes to you), both
+          seed/purge the accounts, check that a purge took (the launch gate:
+          red while any demo account can still sign in), or drive the
+          request loop: accept (they answer a request you sent), ping (one
+          of them writes to you), both
         type: choice
-        options: [seed, purge, accept, ping, both]
+        options: [seed, purge, check, accept, ping, both]
         default: seed
 
 jobs:
@@ -51,6 +53,6 @@ jobs:
           TEST_EMAIL_BASE: ${{ secrets.TEST_EMAIL_BASE }}
         run: |
           case "${{ inputs.action }}" in
-            seed|purge) node scripts/seed-demo-travelers.mjs "${{ inputs.action }}" ;;
-            *)          node scripts/demo-interactions.mjs "${{ inputs.action }}" ;;
+            seed|purge|check) node scripts/seed-demo-travelers.mjs "${{ inputs.action }}" ;;
+            *)                node scripts/demo-interactions.mjs "${{ inputs.action }}" ;;
           esac

@@ -25,6 +25,7 @@ const profile: ProfileRow = {
   occupation: null,
   gender: 'unspecified',
   verified: false,
+  travelers_radius_km: 32,
   onboarding_completed_at: null,
   created_at: '',
   updated_at: '',
@@ -62,6 +63,21 @@ describe('Top priorities on somebody else', () => {
       key: 'priority:1',
       label: 'something on their list',
       quote: 'learn to surf',
+    });
+  });
+
+  // WCAG 2.5.3: the chip in the section header displays "I'm in", so its
+  // spoken name must contain those words — it used to display 'Reply' while
+  // announcing "Say you're in", a name the button never showed.
+  it("names the header chip I'm in, out loud and in print", () => {
+    const onRespondTo = jest.fn();
+    renderProfile({ priorities: LIST, onRespondTo });
+    expect(screen.getByText("I'm in")).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("I'm in. day trip to Sintra."));
+    expect(onRespondTo).toHaveBeenCalledWith({
+      key: 'priority',
+      label: 'something on their list',
+      quote: 'day trip to Sintra',
     });
   });
 

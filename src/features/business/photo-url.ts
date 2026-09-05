@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
+import type { ImageSource } from 'expo-image';
 
 import { BUSINESS_PHOTO_BUCKET } from '@/features/business/api';
+import { photoSource } from '@/lib/photo-source';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 /**
@@ -33,4 +35,22 @@ export function useBusinessPhotoUrl(storagePath: string | null) {
     staleTime: 40 * 60 * 1000,
     gcTime: 45 * 60 * 1000,
   });
+}
+
+/**
+ * The same cover, carrying its storage path as expo-image's cache key.
+ *
+ * The twin of `usePhotoSource` (features/profile/hooks), and it exists for the
+ * same reason: a signed URL changes on every cold launch, so an `<Image>`
+ * given a bare URL re-downloads a photo the phone already holds. A business
+ * cover is the worst case of that — it is the first thing on the traveler's
+ * business page, on My business, on the map sheet and in the header avatar, so
+ * one listing is fetched four times over.
+ *
+ * Null while the URL is being signed and null when there is no photo, so a
+ * caller keeps whatever it already renders in those two cases.
+ */
+export function useBusinessPhotoSource(storagePath: string | null): ImageSource | null {
+  const { data } = useBusinessPhotoUrl(storagePath);
+  return photoSource(data, storagePath);
 }

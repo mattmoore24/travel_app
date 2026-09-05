@@ -10,6 +10,14 @@ type PrimaryButtonProps = Omit<PressableProps, 'children'> & {
   loading?: boolean;
   /** `filled` is the one primary action per screen; everything else is quiet. */
   variant?: 'filled' | 'ghost' | 'danger' | 'tonal';
+  /**
+   * Cap Dynamic Type on the label. Only for buttons inside a bar whose
+   * height is a constant a layout formula depends on (the Travelers action
+   * bar): an uncapped label outgrows the 52pt minHeight and lifts the button
+   * off the opaque plate under it. Everywhere else, leave it unset and let
+   * the text scale.
+   */
+  maxFontSizeMultiplier?: number;
 };
 
 export function PrimaryButton({
@@ -18,6 +26,7 @@ export function PrimaryButton({
   variant = 'filled',
   disabled,
   style: _style,
+  maxFontSizeMultiplier,
   ...rest
 }: PrimaryButtonProps) {
   const theme = useTheme();
@@ -71,7 +80,10 @@ export function PrimaryButton({
       {loading ? (
         <ActivityIndicator color={labelColor} />
       ) : (
-        <ThemedText type="callout" style={[styles.label, { color: labelColor }]}>
+        <ThemedText
+          type="callout"
+          maxFontSizeMultiplier={maxFontSizeMultiplier}
+          style={[styles.label, { color: labelColor }]}>
           {label}
         </ThemedText>
       )}

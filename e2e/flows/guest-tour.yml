@@ -1,9 +1,10 @@
 # The guest ladder, walked by a robot: cold start with no account must land
 # on the tabs, and each tab must render something real from the live backend.
-# The first-run tour is part of the ladder now — this flow walks all four
-# pages and dismisses through the real "Just looking for now" choice, so the
-# welcome scene and the transitions are in the screenshot record. (The
-# signed-in flow still covers the Skip path.)
+# The first-run tour is part of the ladder now — this flow walks all SIX
+# pages (welcome, the three tabs, the safety promise, and the account choice
+# on a page of its own) and dismisses through the real "Just looking for now"
+# button, so the welcome scene and the transitions are in the screenshot
+# record. (The signed-in flow still covers the Skip path.)
 appId: com.mattmoore.samewhere
 ---
 # State is reset by the workflow before this flow runs, not by Maestro's
@@ -38,11 +39,42 @@ appId: com.mattmoore.samewhere
     start: 85%, 50%
     end: 15%, 50%
 - extendedWaitUntil:
-    visible: 'Just looking for now'
+    visible: 'Say hi, then make plans'
     timeout: 5000
 - waitForAnimationToEnd:
     timeout: 2000
-- takeScreenshot: 00c-tour-choice
+- takeScreenshot: 00c-tour-chat
+# THE FOURTH PAGE, AND THE REASON ANYBODY INSTALLS THIS. The three pages
+# before it describe the tabs; this one says the thing that decides an
+# install against GAFFL, Couchsurfing or Bumble BFF. It is deliberately last
+# of the explainers, so it sits directly above the account choice rather than
+# three swipes away from it. The tour is the one composition in the app that
+# does not scroll, so the picture is the evidence: read it at the 1.2x
+# Dynamic Type cap before believing the exit code.
+- swipe:
+    start: 85%, 50%
+    end: 15%, 50%
+- extendedWaitUntil:
+    visible: 'We never ask where you are'
+    timeout: 5000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 00d-tour-privacy
+# THE FIFTH PAGE: the choice, on a page of its own. It used to be bolted onto
+# the page above, so four controls stacked under a heading about something
+# else. Asserting the heading as well as the button is what proves the split
+# actually happened rather than the buttons simply moving down.
+- swipe:
+    start: 85%, 50%
+    end: 15%, 50%
+- extendedWaitUntil:
+    visible: 'Ready when you are'
+    timeout: 5000
+- assertVisible: 'Just looking for now'
+- assertVisible: 'Run a business? Put it on the map'
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 00e-tour-choice
 - tapOn: 'Just looking for now'
 - takeScreenshot: 01-cold-start
 - extendedWaitUntil:
@@ -51,7 +83,36 @@ appId: com.mattmoore.samewhere
 - takeScreenshot: 02-map-tab
 - tapOn: 'Travelers'
 - takeScreenshot: 03-travelers-guest
-- tapOn: 'Chat'
+# The guest account screen, through the header avatar. The sign-in door
+# ('I already have an account') now renders for BOTH kinds of guest; the
+# named-guest branch (the 30-day sweep line) needs a guest named through a
+# join-group invite link, which this suite cannot drive, so only the
+# anonymous branch is walked here.
+- tapOn: 'Your profile'
+- extendedWaitUntil:
+    visible: 'Browsing as a guest'
+    timeout: 15000
+- assertVisible: 'I already have an account'
+- takeScreenshot: 03a-guest-account
+# The pushed profile screen hides the tab bar, and run 90 proved the native
+# minimal back chevron answers to no label Maestro can see - the 'Back' tap
+# found nothing. Relaunch instead, the pattern the suite already trusts
+# (signed-in-tour: "Relaunch rather than back"): the guest session persists,
+# the intro is seen-once, so the app comes back up on the tabs.
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+- tapOn: 'Chat(, .*)?'
+# Same fade as the member Chat tab: wait it out or the shot is mid-fade.
+- waitForAnimationToEnd:
+    timeout: 2000
+# The exact sentence, never a wildcard. This tab used to be one grey footnote
+# floating in a screen of nothing, with no heading and no mark on it, and the
+# line asserted here is the one that stops the OTHER segment reading as inert
+# too: city_rooms is granted to anon, so Groups genuinely has rooms on it.
+- assertVisible: 'No chats yet'
+- assertVisible: 'Chats at hostels and bars are under Groups.'
 - takeScreenshot: 04-chat-guest
 - tapOn: 'Map'
 - takeScreenshot: 05-back-to-map
@@ -77,7 +138,25 @@ appId: com.mattmoore.samewhere
 # "Verified travelers only", which sits under the Done button and the tab bar:
 # the element is in the hierarchy with coordinates behind the tab bar, so the
 # tap landed on Travelers and the flow carried on somewhere else entirely.
-# Anything asserted here has to be on screen without scrolling.
+#
+# SCROLL FIRST, because the same thing happened again in run 107 and the rule
+# above is why. "Anything asserted here has to be on screen without scrolling"
+# was true when it was written and the sheet has grown since: "What to show"
+# now carries four description cards, and "Kind of plan" sits below the "16
+# plans on the map" footer, clipped. The chip is in the hierarchy, so `tapOn`
+# reports COMPLETED and lands on the footer instead, and the flow then fails
+# four steps later on a count that was never turned on. scrollUntilVisible
+# taps what a person would tap after the same scroll.
+# centerElement, because Maestro's visibility check reads the element's
+# frame and not what is drawn over it: at 100% "visible" the chip's lower
+# half was still under the footer (run 113, 05b), and the tap on its centre
+# landed on the footer. Scrolled to the middle of the screen it is clear.
+- scrollUntilVisible:
+    element:
+      id: 'filter-category-bar'
+    direction: DOWN
+    timeout: 8000
+    centerElement: true
 - tapOn:
     id: 'filter-category-bar'
 - waitForAnimationToEnd:
@@ -99,6 +178,85 @@ appId: com.mattmoore.samewhere
 - tapOn: 'Done'
 - waitForAnimationToEnd:
     timeout: 2000
+
+# The plan list: the peek strip above the dock is the only place the city's
+# plan count is ever stated, and expanding it is the first list-shaped
+# discovery in the app. Tapped by testID (the strip is a Pressable carrying
+# its own accessibility label, so its printed words are not elements on iOS).
+# Every step is optional: a city the seeder has not reached renders no list.
+- tapOn:
+    id: 'plan-list-peek'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: 05e-plan-list
+- tapOn:
+    id: 'plan-list-row-0'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+# A seeded row opens the curated pin card; the assertion inside the sheet is
+# the point — the list and the marker share one selection model.
+- runFlow:
+    when:
+      visible: 'One of our picks. Show up.'
+    commands:
+      - takeScreenshot: 05f-plan-list-card
+      - tapOn: 'Close'
+      - waitForAnimationToEnd:
+          timeout: 2000
+# On live-backend state a non-seeded pin can be row 0, and the gated flow
+# above is the only place a card gets closed — so close whatever the row
+# opened (no-op when the seeded branch already did), then collapse the list
+# back to its peek so the pan segment starts on a bare map.
+- tapOn:
+    text: 'Close'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    id: 'plan-list-peek'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# Pan away from the city. A blank frame with no pins used to be the whole
+# answer; now the way home is a pill above the dock, asserted by its spoken
+# label (a PressableScale with its own label is one element on iOS). Two
+# swipes: one span is roughly the pill's distance threshold, two clear it.
+- swipe:
+    start: 15%, 45%
+    end: 85%, 45%
+- swipe:
+    start: 15%, 45%
+    end: 85%, 45%
+- extendedWaitUntil:
+    visible: 'Back to Bangkok'
+    timeout: 10000
+- takeScreenshot: 05g-panned-away
+- tapOn: 'Back to Bangkok'
+- waitForAnimationToEnd:
+    timeout: 2000
+
+# The pin-card gate, which no flow had ever photographed. Which marker is on
+# screen depends on the seeded city's data, so every step is optional and the
+# tap goes by the "open to join" suffix every joinable pin's spoken label
+# carries — the assertion inside the sheet is the point: one gate, one
+# wording, the same "Make a profile" the drop-pin gate below leads with.
+- tapOn:
+    text: '.*open to join.*'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- runFlow:
+    when:
+      visible: "See who's going and say hi"
+    commands:
+      - assertVisible: 'Make a profile'
+      - takeScreenshot: 05d-pin-card-gate
+      - tapOn: 'Close'
+      - waitForAnimationToEnd:
+          timeout: 2000
 
 # The account-kind choice, photographed. Founder, 2026-08-28: "it should be
 # clear right from the start if you are creating or signing into a business
@@ -128,3 +286,198 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2000
 - takeScreenshot: 08-account-kind-business
+
+# THE PRIVACY POLICY, FROM THE CONSENT LINE (platform-privacy-in-app)
+#
+# 5.1.1(i) wants the policy readable inside the app, and the reader who most
+# needs it is this one: signed out, being asked to agree, no account yet. The
+# link is a child span of the consent sentence rather than a button, so this
+# also proves the span is tappable and not decorative. 19-house-rules has a
+# sibling now.
+#
+# The sentence carries TWO links, 'house rules' and 'privacy policy', and iOS
+# publishes a paragraph as one element for the whole sentence plus one per
+# link fragment (RCTParagraphComponentAccessibilityProvider). So assert the
+# sentence first — if the fragments are missing this fails here, naming the
+# consent line, rather than three steps later on a screen nobody expected —
+# and then tap the fragment by its whole label, which the sentence element
+# cannot match.
+- assertVisible: '.*By continuing you agree to our.*'
+- tapOn: 'privacy policy'
+# NOT 'Privacy policy': the house rules screen now renders a button with
+# exactly that label, so the wait stopped telling the two screens apart and a
+# tap that landed on the sibling link would have gone green on the wrong
+# screen. This heading is the privacy screen's own first section and nothing
+# else in the app says it.
+- extendedWaitUntil:
+    visible: 'What we never collect'
+    timeout: 15000
+# The exact sentence a human reads, per change-review: never loosen this to a
+# wildcard. It is the strongest promise the app makes and it leads the screen.
+- assertVisible:
+    text: 'We never collect your location. The map only shows plans people typed in themselves.'
+- takeScreenshot: 08a-privacy-policy
+- tapOn: 'Done'
+- extendedWaitUntil:
+    visible: 'What are you signing up as?'
+    timeout: 15000
+
+# THE MAP REMEMBERS THE CITY (map-remembers-your-city): choose a city, kill
+# the app, and the choice survives the relaunch — this is the whole point and
+# only an E2E step proves it. Chips are PressableScales carrying their own
+# labels, the same addressing 'Filters' already trusts. Denpasar because it
+# is the second chip and needs no rail scroll.
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+# 'Denpasar.*', not 'Denpasar': since 2026-09-04 the chip is the featured
+# rail's row and carries its plan count ("Denpasar 10"), and Maestro's text
+# match is the whole string. Run 114 failed here on the bare name.
+- tapOn: 'Denpasar.*'
+- waitForAnimationToEnd:
+    timeout: 2500
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+- extendedWaitUntil:
+    visible: 'Denpasar.*'
+    timeout: 15000
+- assertVisible:
+    text: 'Denpasar.*'
+    selected: true
+- takeScreenshot: 09-city-remembered
+
+# ─────────────────────────────────────────────────────────────────────────
+# THE IN-APP BROWSER (platform-in-app-browser)
+#
+# A business's Website and Menu now open OVER the app with a Done button
+# instead of throwing the reader into Safari. "Does it look right" is the
+# only question that matters about a presentation style, so this segment
+# exists to photograph it.
+#
+# Every navigation STEP is optional, and that is not the banned kind of
+# loosening: what is uncertain here is Maestro's REACH, not the app's
+# behaviour. The route to a business page runs through the plan list, whose
+# rows only exist where a seeded launch business has a live post and the map
+# is drawn below city scale. The kind-to-opener rule itself is asserted
+# properly, in jest, in src/features/business/__tests__/links.test.ts.
+#
+# ARRIVING is not optional, though, and that is the difference from the first
+# version of this segment: with every step optional and nothing asserted, a
+# run that never left the map took two screenshots of the map and reported
+# green. A hard assertion goes in front of each screenshot, so a run that did
+# not get there fails instead of photographing whatever was on screen.
+#
+# The seeded businesses all carry exactly one link, a 'Website'
+# (20260827150000_seed_business_content.sql), so that row is present wherever
+# this route is. If it is ever missing, seed it back - do not loosen this.
+#
+# The screenshots are the evidence. Note that iOS renders SFSafariViewController
+# in a separate process, so 10a may come back empty; the frame around it is
+# still the proof that the app did not leave.
+#
+# OPEN THE LIST FIRST. This segment used to start by tapping the business row
+# directly, and it could never have passed: the step above it relaunches the
+# app to prove the city survives a cold start, so what is on screen here is
+# the MAP, and the row it wants lives inside the plan list that relaunch
+# collapsed. Every step to it was optional, so the miss was silent right up
+# to the hard assert on 'Website', which then failed with a message about a
+# link rather than about a list that was never opened. Tapped by testID for
+# the same reason the 05e segment does it: the peek strip is a Pressable
+# carrying its own accessibility label, so its printed words are not elements
+# on iOS.
+# WHICH TAB IS THIS? The step above relaunches the app to prove the city
+# survives a cold start, and its proof that the app came up is `assertVisible:
+# 'Travelers'` - which is the TAB BAR LABEL, present on every tab. So nothing
+# in this flow has ever asserted it is on the MAP before doing map things.
+#
+# Run 106 is why that matters. 09-city-remembered photographed the map in
+# Denpasar; the screenshot taken immediately after the venue tap below
+# photographed the TRAVELERS TAB showing Bangkok, and runs 120 and 121 did
+# it again with the row addressed by its label and then by its id. Not a
+# transform: plan-list-row-0 is tapped by id at the half detent every run
+# (05f). A What's on row is the list's LAST section, and scrollUntilVisible
+# judged it visible the moment its frame entered the list's, which is under
+# the dock's opaque plate, so the tap landed on the tab bar. Run 122 tried
+# the venue's map annotation by its label and Maestro found nothing, as the
+# traps skill already said it would. So: the list to its full detent (a
+# drag on the strip; its tap only toggles peek and half), the list to its
+# END (the last row's padding clears the dock), then the row by id. Lisbon,
+# whose seeded venue sits among its plans. 'Drop a pin' first: it is on the
+# map and nowhere else, so a run that started on the wrong tab fails here
+# and not three steps later with a message about a link.
+- assertVisible: 'Drop a pin'
+- tapOn: 'Lisbon.*'
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn:
+    id: 'plan-list-peek'
+- waitForAnimationToEnd:
+    timeout: 2000
+# The strip sits at about 51% of the screen at the half detent (05e); a drag
+# from it past the midpoint of the half-to-full distance snaps to full.
+- swipe:
+    start: 50%, 51%
+    end: 50%, 12%
+- waitForAnimationToEnd:
+    timeout: 2000
+# Three swipes inside the list reach its end whatever the city's row count;
+# a list that already fits just bounces.
+- swipe:
+    start: 50%, 75%
+    end: 50%, 25%
+- swipe:
+    start: 50%, 75%
+    end: 50%, 25%
+- swipe:
+    start: 50%, 75%
+    end: 50%, 25%
+- waitForAnimationToEnd:
+    timeout: 2000
+- assertVisible:
+    id: 'whats-on-row-0'
+- tapOn:
+    id: 'whats-on-row-0'
+- takeScreenshot: 09a-what-the-business-row-did
+# HARD, for the same reason the tap above is, and this is the step run 97
+# proved was still optional one too long. The row was tapped and COMPLETED,
+# the sheet's 'See the whole page' WARNED (not found), the scroll WARNED, and
+# the flow finally went red on 'Website' - pointing at a missing link when
+# what was actually missing was the sheet three steps earlier. That is the
+# exact misdirection the paragraph above this describes, left in place
+# because only the FIRST of the four steps had been made hard.
+#
+# So: if the sheet does not open on a business's post, this says so here.
+#
+# 30s, not the 10s it waited: the tap COMPLETED and the wait elapsed 11s
+# later, in a run where the photo pipeline was also overrunning a 45s budget,
+# so "the sheet is slow to fetch its business on a cold simulator" and "the
+# sheet has no such link" both fit the evidence and 10s cannot tell them
+# apart. A hard assertion with a budget the machine can actually meet can: if
+# this still fails at 30s, the link is genuinely not there and the place to
+# look is place-sheet.tsx's viewerIsBusiness branch, not the clock.
+- extendedWaitUntil:
+    visible: 'See the whole page'
+    timeout: 30000
+- tapOn:
+    text: 'See the whole page'
+- scrollUntilVisible:
+    element:
+      text: 'Website'
+    direction: DOWN
+    timeout: 10000
+    optional: true
+# Hard: this is the business page with its links on it, or there is no
+# picture worth taking.
+- assertVisible: 'Website'
+- takeScreenshot: 10-business-page-links
+# Hard too, and for the same reason: 10a is a photograph OF THIS TAP. Nothing
+# can be asserted after it - SFSafariViewController's chrome belongs to
+# another process and Maestro cannot see into it - so the tap on a row that
+# was just asserted is what makes the next screenshot mean anything.
+- tapOn: 'Website'
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: 10a-in-app-browser

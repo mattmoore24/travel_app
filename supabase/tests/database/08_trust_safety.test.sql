@@ -3,7 +3,7 @@
 -- standing gates on suspended/banned senders, the photo moderation flag, the
 -- selfie verification flow, and the admin report queue.
 begin;
-select plan(75);
+select plan(94);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -196,6 +196,31 @@ select lives_ok(
      ('00000000-0000-0000-0000-00000000000a', '00000000-0000-0000-0000-00000000000c') $$,
   'recipient blocks the sender while the message is held'
 );
+
+-- WHO CAN READ THE BLOCK ITSELF. The app grew a Blocked list, and a list is
+-- only safe if the table under it cannot be read by anybody but its owner:
+-- a blocked person who could see the row naming them would learn the one
+-- fact a block must never tell, and a third party could enumerate who is
+-- avoiding whom. Written as the attack from both sides.
+select pg_temp.login('00000000-0000-0000-0000-00000000000c');
+select is(
+  (select count(*)::int from public.blocks),
+  0,
+  'the blocked person cannot see the row naming them'
+);
+select pg_temp.login('00000000-0000-0000-0000-00000000000d');
+select is(
+  (select count(*)::int from public.blocks),
+  0,
+  'and a third party reading blocks in bulk gets nothing at all'
+);
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  (select count(*)::int from public.blocks),
+  1,
+  'while the blocker reads their own, which is what the Blocked list shows'
+);
+
 select pg_temp.admin();
 select is(
   (select status::text from public.message_requests
@@ -284,6 +309,15 @@ select is(
   1,
   'sender is notified their message was not delivered'
 );
+select is(
+  (select body from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000c'
+      and title = 'Message not delivered'),
+  'Your message wasn''t delivered. It came across as explicit, so reword it and try again. '
+  'An automatic check made that call, and a person will look again if you write to us from '
+  'House rules and help.',
+  'the refusal push is plain sentences, no em dash, and says a machine decided (20260903100000)'
+);
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select is(
   (public.send_message_request(
@@ -309,10 +343,91 @@ select is(
 select is(
   (select count(*)::int from public.moderation_events
     where subject_user_id = '00000000-0000-0000-0000-00000000000c'
-      and action in ('blocked', 'llm_blocked', 'photo_rejected', 'admin_strike')),
+      and public.is_strike_action(action)),
   1,
   'failsafe block did NOT add a strike (still just the real one)'
 );
+
+-- A REWORD IS NOT A STRIKE ----------------------------------------------------
+--
+-- The prefilter is a regex. It says maybe, nobody reads the sentence, and the
+-- composer then tells the writer to reword it and send again. Counting that as
+-- evidence closes an account for trying to arrange a beer at the night market,
+-- so a prefilter block is audited under its own action and left off
+-- is_strike_action's list - the same distinction apply_message_verdict already
+-- draws with 'blocked_failsafe'.
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select is(
+  (public.send_message_request(
+     '00000000-0000-0000-0000-00000000000d', 'trip_match',
+     'you look so sexy in that photo', 'photo:0')) ->> 'blocked',
+  'true',
+  'the prefilter still stops a risky first message before delivery'
+);
+select pg_temp.admin();
+select is(
+  (select count(*)::int from public.moderation_events
+    where subject_user_id = '00000000-0000-0000-0000-00000000000a'
+      and entity_type = 'message_request'
+      and action = 'prefilter_blocked'),
+  1,
+  'a prefilter block is audited under its own action, never as "blocked"'
+);
+select is(
+  (select count(*)::int from public.moderation_events
+    where subject_user_id = '00000000-0000-0000-0000-00000000000a'
+      and public.is_strike_action(action)),
+  0,
+  'and it leaves the sender''s strike count exactly where it was'
+);
+-- The creep early-warning must not read as a safety improvement on the day a
+-- rename ships: admin_moderation_stats counts the new action too.
+select is(
+  (select blocked_prefilter::int from public.admin_moderation_stats),
+  1,
+  'the creep metric still counts the prefilter block after the rename'
+);
+select is(
+  (select blocked::int from public.admin_moderation_stats),
+  2,
+  'and it is still inside the blocked total, beside the LLM block'
+);
+
+-- NINETY DAYS, NOT FOR EVER ---------------------------------------------------
+--
+-- Six strikes from another season plus one today is one strike, not seven. A
+-- lifetime counter closes an account in month eighteen for four bad nights
+-- spread over two years.
+insert into public.moderation_events
+  (subject_user_id, entity_type, entity_id, action, source, created_at)
+select '00000000-0000-0000-0000-00000000000d', 'user',
+       '00000000-0000-0000-0000-00000000000d', 'admin_strike', 'test',
+       now() - interval '100 days'
+from generate_series(1, 6);
+insert into public.moderation_events (subject_user_id, entity_type, entity_id, action, source)
+  values ('00000000-0000-0000-0000-00000000000d', 'user',
+          '00000000-0000-0000-0000-00000000000d', 'admin_strike', 'test');
+select is(
+  (select count(*)::int from public.moderation_events
+    where subject_user_id = '00000000-0000-0000-0000-00000000000d'
+      and public.is_strike_action(action)),
+  7,
+  'seven strike rows sit on the account'
+);
+select is(
+  (select status::text from public.users
+    where id = '00000000-0000-0000-0000-00000000000d'),
+  'active',
+  'but six aged out, so the ladder counts one and the account stays open'
+);
+select is(
+  (select count(*)::int from public.moderation_events
+    where subject_user_id = '00000000-0000-0000-0000-00000000000d'
+      and action in ('warning_issued', 'suspended', 'banned')),
+  0,
+  'no rung is reached by strikes that have aged out'
+);
+
 
 -- Flag back off: direct delivery returns.
 update public.app_config set value = 'false'::jsonb where key = 'require_llm_moderation';
@@ -390,9 +505,19 @@ select is(
 select is(
   (select count(*)::int from public.push_queue
     where user_id = '00000000-0000-0000-0000-00000000000e'
-      and title = 'Community guidelines warning'),
+      and title = 'House rules warning'),
   1,
-  'warning is pushed to the user'
+  'warning is pushed to the user, under the one name the rulebook has (D32)'
+);
+-- The exact sentence, not a substring. A notice that closes a door has to
+-- name the rulebook the app calls it, say a machine made the call (DSA Art.
+-- 17(3)(c)), and use the same word for the consequence the gate screen uses.
+select is(
+  (select body from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000e'
+      and title = 'House rules warning'),
+  'Recent messages or photos broke our house rules, on an automatic check. More of it will pause your account.',
+  'and it says a machine decided, and calls the next rung a pause'
 );
 insert into public.moderation_events (subject_user_id, entity_type, entity_id, action, source)
   values ('00000000-0000-0000-0000-00000000000e', 'user',
@@ -411,6 +536,13 @@ select is(
     where id = '00000000-0000-0000-0000-00000000000e'),
   true,
   'suspension carries an expiry timestamp'
+);
+select is(
+  (select body from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000e'
+      and title = 'Account paused'),
+  'Your account is paused for 7 days for repeated house rules breaches. Our checks are automatic, so if that is wrong, open the app and tap Appeal this.',
+  'and the notification names the way back, which is the button the gate now has'
 );
 
 -- Suspended accounts are cut off at the DB layer.
@@ -481,6 +613,13 @@ select is(
       and action = 'banned'),
   1,
   'ban is audit-logged'
+);
+select is(
+  (select body from public.push_queue
+    where user_id = '00000000-0000-0000-0000-00000000000e'
+      and title = 'Account closed'),
+  'Your account is closed for repeated house rules breaches. Our checks are automatic, so if that is wrong, open the app and tap Appeal this.',
+  'and the last notice anybody gets still points at an appeal'
 );
 
 -- Photo moderation flag: uploads hold at pending until a verdict.
@@ -709,6 +848,44 @@ select throws_ok(
        '00000000-0000-0000-0000-00000000000d', 'trip_match', 'hey', 'bio') $$,
   'account banned',
   'banned sender is refused at the DB layer'
+);
+
+-- An underage report: collectable at all, and first in the queue (D34).
+--
+-- Dave is the only account still active and unreported at this point, and
+-- alice is a live reporter. The older spam report is what makes the ordering
+-- assertion mean something: on created_at alone it would come first.
+select pg_temp.admin();
+insert into public.reports (reporter_id, reported_user_id, reason, details, created_at)
+  values ('00000000-0000-0000-0000-00000000000b',
+          '00000000-0000-0000-0000-00000000000d',
+          'spam', 'posting the same link in every group', now() - interval '2 days');
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
+select lives_ok(
+  $$ insert into public.reports (reporter_id, reported_user_id, reason, details)
+     values ('00000000-0000-0000-0000-00000000000a',
+             '00000000-0000-0000-0000-00000000000d',
+             'underage', 'says on their profile they are still at school') $$,
+  'a traveler can report that somebody is under 18'
+);
+select pg_temp.admin();
+select is(
+  (select reason::text from public.reports
+    where reported_user_id = '00000000-0000-0000-0000-00000000000d'
+      and reporter_id = '00000000-0000-0000-0000-00000000000a'),
+  'underage',
+  'the report lands with the reason it was filed under'
+);
+select is(
+  (select reason::text from public.admin_report_queue limit 1),
+  'underage',
+  'an underage report sorts ahead of every older open report'
+);
+select is(
+  (select distinct reported_user_strikes::int from public.admin_report_queue
+    where reported_user_id = '00000000-0000-0000-0000-00000000000d'),
+  1,
+  'the triage queue counts strikes over the same ninety days the ladder does'
 );
 
 select * from finish();

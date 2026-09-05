@@ -33,6 +33,14 @@ delete-account teardown. Re-run it any time from the Actions tab.
 > has no confirmation deep-link flow, so every real signup silently dead-ends —
 > the canary caught this. Before public launch, either keep it off knowingly or
 > build the deep-linked confirmation flow first, then re-enable.
+>
+> While it is off, nothing but the app itself can reveal a typed address. Two
+> places do: signup warns on the near-miss domains
+> (`src/features/auth/email-typos.ts`) and echoes the address back on the
+> password step, and Settings shows the address the account is under. A change
+> of address still goes through `supabase.auth.updateUser({ email })`, which
+> sends a confirmation to the NEW address, so `src/app/account-credentials.tsx`
+> writes nothing anywhere until that link is opened.
 
 **a. Keys** — add `ANTHROPIC_API_KEY` **and `MODERATION_PROMPTS`** to GitHub
 repo secrets and touch `supabase/.deploy-request`; the deploy workflow syncs
@@ -72,9 +80,16 @@ arrive, and `select * from admin_moderation_stats;` must count it as blocked.
 
 ## 2. Verify a sending domain in Resend
 
-**Not done. Founder action, and nothing in the repo can do it.** Until it is,
-the only inbox in the world that can receive a Samewhere email is the one the
-Resend account was opened with.
+**Step 2b below supersedes the state of this section.** `samewhere.io` was
+registered on 2026-08-30 and mail now goes out from `hello@samewhere.io`
+through Resend with Google receiving. What is left is a founder check, not a
+setup: confirm the `SUPPORT_FROM` repo secret is set and the functions have
+been redeployed since, then take the delivery proof at the foot of 2b. The
+rest of this section is kept because it is the procedure, and because it
+explains the failure mode if any of it is ever undone.
+
+Before the domain existed, the only inbox in the world that could receive a
+Samewhere email was the one the Resend account was opened with.
 
 `support-mailer` sends from `SUPPORT_FROM`, which is unset, so it falls back to
 Resend's shared `onboarding@resend.dev`. That address is a sandbox: with no
@@ -121,7 +136,10 @@ the extension exists).
 ## 4. Open the city and seed it
 
 ```sql
--- Only Lisbon at first: launch dense, not wide (brief §2.6).
+-- Which cities the rail always shows (brief §2.6 as a marketing plan, not a
+-- fence, for travelers and businesses alike: since 2026-09-04 a traveler can
+-- pin or plan a trip anywhere, since 2026-09-05 a business can list anywhere,
+-- and a city with enough plans joins the rail on its own).
 update launch_cities set active = false;
 update launch_cities set active = true
   where city_id = (select id from cities where name = 'Lisbon' and country_code = 'PT');
@@ -147,10 +165,12 @@ pre-launch. Before opening the app to real users, in this order:
   pins force-pushed to a git branch. Private repo makes that branch private
   again; delete the historical branch too (`git push origin :e2e-results`).
 - **Purge the demo travelers**: Actions -> **Demo travelers** -> Run workflow ->
-  `purge`. Six seeded accounts (Maya, Dev, Freja, Theo, Nora, Luca) exist so the
-  Travelers tab, matching and message requests can be tested on a real device.
-  They are AI-generated, not real people, and every bio carries a `[demo]`
-  marker, but no real user should ever see them.
+  `purge`, then run it again with `check` — the check is the gate, and it stays
+  red while any demo account can still sign in, so a half-taken purge cannot
+  pass on trust. The seeded accounts exist so the Travelers tab, matching and
+  first messages can be tested on a real device. They are AI-generated, not
+  real people, and every bio carries a `[demo]` marker (shown in the app as a
+  "Sample profile" chip), but no real user should ever see them.
 - **Re-check Actions billing**: private CI bills minutes again. Set a spending
   limit (Settings → Billing) that covers ~$1.10 per full E2E run and pennies
   per deploy/TestFlight orchestration, or lean on the 2,000 free monthly
@@ -169,7 +189,15 @@ Needs the Apple Developer membership.
 Daily, from [`DASHBOARD.md`](DASHBOARD.md): `admin_liquidity` (the number that
 matters), `admin_request_funnel` (accept rate — a collapse means creep),
 `admin_moderation_stats` (blocked % — the early warning), and
-`admin_report_queue` (act on reports with `admin_resolve_report`).
+`admin_report_queue` (act on reports with `admin_resolve_report`). A report may
+name a chat and not a person - act on somebody in the room by their user id, or
+dismiss it; `admin_resolve_report` refuses to guess. See DASHBOARD.md.
+
+When somebody appeals a refused selfie or storefront through Contact us, open
+`admin_verification_queue` or `admin_business_verification_queue`
+(20260903040000): `reason` is the sentence they were shown, in their own
+language, and `reason_en` beside it is what it says. Service-role views for
+the SQL editor, nothing on the client.
 
 Target before opening city #2: **500–1,000 in-season users with a live trip
 or pin** in city #1.
@@ -178,8 +206,76 @@ or pin** in city #1.
 
 | Situation                           | Lever                                                                                                                                                        |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Abuse spike in a city               | `update launch_cities set active = false where city_id = ...;` — hides its pins, blocks new ones                                                             |
+| Abuse spike in a city               | Ban or shadowban the accounts (`admin_resolve_report`); since 2026-09-04 no switch hides a city's pins or blocks new ones                                    |
 | Moderation API outage               | Messages hold automatically (fail-closed). To keep delivering with regex only: `update app_config set value = 'false' where key = 'require_llm_moderation';` |
 | Bad actor                           | `select admin_resolve_report(<id>, 'ban');` or `'shadowban'`                                                                                                 |
-| Heat too revealing in a sparse city | `update launch_cities set heat_k = 5 where city_id = ...;`                                                                                                   |
+| Heat too revealing in a sparse city | `update launch_cities set heat_k = 5 where city_id = ...;` (insert a row with `timezone` first for a city not yet in the table; the default k is 3)          |
 | Bad migration                       | Fix forward: new migration + trigger a deploy (never edit an applied one)                                                                                    |
+
+## 2b. The domain, and everything behind it
+
+`samewhere.io` exists as of 2026-08-30, with `hello@samewhere.io`. That one
+purchase unblocks seven things, and they need doing in this order.
+
+**Resend only sends. It does not give you an inbox.** Verifying the domain lets
+the app send _from_ `hello@samewhere.io`; it does not make that address receive
+anything. `SUPPORT_INBOX` is where support mail and every business report lands,
+so set up receiving first — Cloudflare Email Routing or ImprovMX forwards to an
+existing inbox for free, and forwarding is fine for launch.
+
+1. **Receiving.** Publish the forwarder's MX records. Send yourself a test.
+2. **Sending.** Resend → Domains → add `samewhere.io`, publish the SPF, DKIM and
+   return-path records, wait for all three green. Keep Resend's return path on a
+   subdomain (`send.samewhere.io`) so it cannot collide with the forwarder's MX.
+3. **DMARC**, recommended: `_dmarc.samewhere.io` TXT
+   `v=DMARC1; p=none; rua=mailto:hello@samewhere.io`. Start at `p=none`.
+4. **Secrets:** `SUPPORT_FROM` = `Samewhere <hello@samewhere.io>` and
+   `RESEND_API_KEY`. `SUPPORT_INBOX` needs no secret any more — it is pinned to
+   `hello@samewhere.io` in the deploy workflow itself, and an old
+   `SUPPORT_INBOX` repo secret can be deleted. Then Actions →
+   **Supabase deploy**.
+5. **Analytics secrets**, unrelated to mail but on the same checklist because
+   nothing measures anything until they exist: `EXPO_PUBLIC_POSTHOG_API_KEY` and
+   `EXPO_PUBLIC_POSTHOG_HOST` as repo secrets, and the same pair in the EAS
+   environment for builds. The update workflows pass them and their preflight
+   now FAILS without the key, the same loud check the Supabase pair gets — a
+   bundle published without it ships every capture() as a silent no-op, and the
+   launch window cannot be measured after the fact. Create the PostHog project
+   in the EU region; the privacy policy promises EU data residency.
+6. **Hosting.** DONE: [`web/`](../web/README.md) is served at
+   `link.samewhere.io` — the subdomain, not the apex, which stays on
+   Squarespace with the Workspace mail records. The association file is live
+   and verified: 200, `application/json`, zero redirects, real Team ID.
+
+   Six paths are served, and every one of them is load-bearing for something
+   that cannot be fixed after submission:
+
+   | Path                                      | Who breaks without it                                                    |
+   | ----------------------------------------- | ------------------------------------------------------------------------ |
+   | `/.well-known/apple-app-site-association` | every universal link falls back to Safari, silently                      |
+   | `/privacy`                                | App Store Connect's Privacy Policy URL field is mandatory                |
+   | `/guidelines`                             | the DSA wants the rules and the appeal route public                      |
+   | `/support`                                | App Store Connect's Support URL, and guideline 1.2's "published" contact |
+   | `/i/<token>`                              | anybody who is sent an invite and does not have the app                  |
+   | `/reset`                                  | anybody who opens a password reset on a laptop                           |
+
+   After any deploy, run the whole-surface curl loop at the foot of
+   [`web/README.md`](../web/README.md) — it checks all six plus a real 404,
+   and the association file without `-L`, which is what proves zero redirects.
+
+7. **Then the app:** DONE in code — `ios.associatedDomains:
+["applinks:link.samewhere.io"]` in `app.json` AND the route
+   `src/app/i/[token].tsx`, in one commit. The route is not optional: a
+   declared path with no route opens the app on +not-found, which is worse
+   than the Safari page it replaced. What remains is the EAS build, and
+   before submitting it, the Apple CDN check in web/README.md §3. Leave
+   `UNIVERSAL_LINKS_LIVE` **false** — the reset link already reaches the app
+   through Supabase's own 302 to `samewhere://reset-password`, the allowlist
+   holds both spellings, and the association file deliberately does not claim
+   `/reset*`. See the header of `src/constants/links.ts` for the four things
+   that have to be true before that flag can move.
+
+Proof for step 2: sign up a business on an address that is **not** the Resend
+account's own and confirm the code arrives, then
+`select * from outbound_mail order by created_at desc limit 5;` — every row
+should carry `sent_at` and a null `delivery_error`.

@@ -1,12 +1,13 @@
 import { SymbolView } from 'expo-symbols';
-import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Image } from 'expo-image';
-import { useRef, useState } from 'react';
+import * as Linking from 'expo-linking';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
   Keyboard,
   Modal,
+  Share,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -15,13 +16,22 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
+import { PhotoCheck } from '@/components/ui/photo-check';
+import { PhotoViewer, type ViewablePhoto } from '@/components/ui/photo-viewer';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { useRegisterNativeModal } from '@/components/ui/sheet';
+import { Sheet, SHEET_SETTLE_MS, useRegisterNativeModal } from '@/components/ui/sheet';
 import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
+import { useIsBusiness } from '@/features/business/hooks';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
+import { splitLinks } from '@/features/chat/links';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { isLocalId, type ThreadMessage } from '@/features/chat/outgoing';
+import type { Quote } from '@/features/chat/reply';
 import { separatorFor } from '@/features/chat/separators';
+import { PinGlyph } from '@/features/pins/pin-marker';
+import { pinOnMessage, type MessagePin } from '@/features/rooms/message-pin';
+import { useJoinPlanFromMessage, useReactors } from '@/features/rooms/hooks';
+import { formatDate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import type { MessageRow, ReactionSummaryRow } from '@/lib/database.types';
@@ -105,59 +115,48 @@ const ACTION_SCALE_CAP = 1.4;
 /** Stand-in bubble height before a measurement arrives. */
 const UNMEASURED_HEIGHT = 80;
 
+/**
+ * How far back the thread will jump to put the New line on screen.
+ *
+ * There is no getItemLayout here and bubble heights vary, so a jump is an
+ * estimate that gets less true the further it reaches. Past this many messages
+ * the thread opens where every messaging app opens - at the newest - and the
+ * line is found by scrolling, which is honest. The number is also the count of
+ * unread messages, since that is what the index counts.
+ */
+const UNREAD_JUMP_MAX = 30;
+
 /** Breathing room between the lifted message and the things around it. */
 const LIFT_GAP = 10;
 
-/**
- * The menu's own scrim, darker than theme.scrim.
- *
- * theme.scrim is tuned for a sheet, which covers most of the screen and is
- * its own bright surface — a light touch is enough there. Here the dimmed
- * thing sits directly around the menu, and rgba(6,7,16,0.62) over the dark
- * theme's #0E1020 lands on #090A16: a real change on paper and no change at
- * all to look at, so the menu read as a pill floating over a live thread and
- * the date separator underneath stayed perfectly legible. Screenshot 25 of
- * E2E run 35 is that, photographed.
- *
- * 0.86 was still not enough. Run 37 showed the thread's own date separator
- * reading clearly THROUGH the scrim, landing between the lifted message and
- * the Unsend card — so the menu appeared to contain a stray line of text. The
- * lifted copy sits above the original (the group shifts up to fit the actions
- * underneath), which is what puts the separator in the gap. At 0.95 the thread
- * behind is a hint of depth rather than legible content.
- *
- * Not a theme token, because every sheet in the app uses that one and none of
- * them asked for this.
- */
-/**
- * The backdrop behind a lifted message.
- *
- * Blurred where iOS can blur, which is what Messages does and what makes the
- * lifted bubble read as ABOVE the thread rather than pasted over a black
- * rectangle. The tint is on the glass rather than instead of it: a blur
- * alone does not dim, and this menu's whole job is to say "only this
- * message matters right now".
- *
- * No new native module — expo-glass-effect already ships in the binary
- * (docs/DESIGN.md), so this reaches the founder's phone over the air rather
- * than costing an EAS build.
- *
- * The flat value is the fallback and is deliberately near-opaque: a
- * translucent scrim over a dark thread did not read at all, which is the bug
- * this menu has already been fixed for once.
- */
+/** The face at the foot of somebody's run in a group thread, in points. */
 const RUN_AVATAR = 26;
 /**
- * The dim behind a lifted message. Opaque enough that the thread, the header
- * and the composer all read as BEHIND the menu rather than beside it.
+ * The dim behind a lifted message, darker than theme.scrim.
+ *
+ * Before reaching for a different opacity, know what the last three values
+ * bought. This climbed 0.62 → 0.86 → 0.88-with-a-GlassView-blur chasing
+ * content that kept reading through, and the worst of that content was the
+ * pressed MESSAGE itself: the overlay paints a lifted COPY of the bubble
+ * while the original stays mounted in the thread underneath, so any scrim
+ * thin enough to leave the thread as depth left the original as a legible
+ * double directly under the copy. No opacity wins that fight. The real fix
+ * is Bubble's `lifted` prop, which blanks the source row while its copy is
+ * up — the same trick Messages uses.
+ *
+ * With the ghost gone, the scrim's remaining job is the chrome: the header,
+ * the composer and the day separators must read as BEHIND the menu, not
+ * beside it. Near-opaque because run 37 photographed a day separator legible
+ * through 0.86. The GlassView blur went out with the opacity ladder: on iOS
+ * 26.2, where Liquid Glass IS available, it rendered nothing anybody could
+ * see — a dim that depends on a GPU effect being present and effective is
+ * not a dim — and under a near-opaque scrim a blur is a GPU effect nobody
+ * can see by construction.
+ *
+ * Not a theme token, because every sheet in the app uses theme.scrim and
+ * none of them asked for this.
  */
-const MENU_SCRIM = 'rgba(2,3,9,0.88)';
-/**
- * The glass laid over that scrim where the platform has it. Much lighter
- * than the scrim it used to replace, because it is now an enhancement on top
- * rather than the only thing doing the work.
- */
-const MENU_GLASS_OVER_SCRIM = 'rgba(2,3,9,0.18)';
+const MENU_SCRIM = 'rgba(2,3,9,0.95)';
 
 type Rect = { x: number; y: number; width: number; height: number };
 
@@ -169,27 +168,43 @@ type MenuTarget = Rect & {
 
 function Reactions({
   rows,
+  mine,
   onToggle,
+  onOpenReactors,
 }: {
   rows: ReactionSummaryRow[];
+  /** On your own right-aligned bubble the chip hangs off the bubble's own
+   * trailing edge rather than drifting to the column's far side. */
+  mine: boolean;
   onToggle: (emoji: string, on: boolean) => void;
+  /**
+   * Name the people behind this chip. Absent in a one-to-one chat, where the
+   * bare pill is already correct — there is only one other person it could be,
+   * and naming them would be a reciprocal-interest reveal by another route.
+   */
+  onOpenReactors?: () => void;
 }) {
   const theme = useTheme();
   if (rows.length === 0) {
     return null;
   }
   return (
-    <View style={styles.reactionRow}>
+    <View style={[styles.reactionRow, { alignSelf: mine ? 'flex-end' : 'flex-start' }]}>
       {rows.map((row) => (
         <PressableScale
           key={row.emoji}
           accessibilityRole="button"
           accessibilityLabel={`${row.emoji} ${row.count}`}
+          // The tap stays the toggle. That is the iMessage grammar people
+          // already have in their thumbs and it must not move; the hold is the
+          // spare gesture, which is where the names go.
+          accessibilityHint={onOpenReactors ? 'Press and hold to see who reacted' : undefined}
           haptic="light"
           scaleTo={0.9}
           // The chip is drawn at ~22pt because a taller one would crowd the
           // bubble it hangs off. The TARGET is 44, which is what this buys.
           hitSlop={{ top: 11, bottom: 11, left: 6, right: 6 }}
+          onLongPress={onOpenReactors}
           onPress={() => onToggle(row.emoji, !row.reacted_by_me)}
           style={[
             styles.reactionChip,
@@ -273,20 +288,282 @@ function RunAvatar({
   );
 }
 
+function QuotedStrip({ quote, mine }: { quote: Quote; mine: boolean }) {
+  const theme = useTheme();
+  return (
+    <View
+      style={[
+        styles.quote,
+        // A leading rule rather than a tinted card: on your own accentDeep
+        // bubble a fill would have to be a third colour, and the rule reads
+        // the same on both sides.
+        { borderLeftColor: mine ? theme.onAccentDeep : theme.accent },
+      ]}>
+      <ThemedText
+        type="caption"
+        style={mine ? { color: theme.onAccentDeep } : undefined}
+        themeColor={mine ? undefined : 'accent'}
+        numberOfLines={1}>
+        {quote.name}
+      </ThemedText>
+      <ThemedText
+        type="footnote"
+        style={mine ? { color: theme.onAccentDeep } : undefined}
+        themeColor={mine ? undefined : 'textSecondary'}
+        numberOfLines={1}>
+        {/* A parent that was taken back or taken down keeps its name and
+            loses its line: nobody goes on reading, inside a quote, something
+            the thread itself has stopped showing. A parent that is merely
+            older than the loaded pages is a different sentence - it still
+            exists, and one more page would show it - so it must never borrow
+            the deletion one. */}
+        {quote.body ?? (quote.state === 'offPage' ? 'Earlier message' : 'Message no longer here')}
+      </ThemedText>
+    </View>
+  );
+}
+
+/**
+ * A plan, inside the bubble that carries it.
+ *
+ * A LEFT RULE, not a filled card, and that is the same answer QuotedStrip
+ * reached for the same reason: on your own accentDeep bubble a fill would have
+ * to be a third colour, and the rule reads identically on both sides.
+ *
+ * The glyph is the map's own PinGlyph rather than a category emoji, so the
+ * line from marker to card survives the trip into a conversation — the pin
+ * marker's comment holds the history of the emoji labels that broke it twice.
+ *
+ * There is no clock on it. room_messages nulls every pin column the moment the
+ * plan expires (hard rule 3), so a card that is on screen at all is a plan
+ * that is still on, and a countdown here would only ever be counting down to
+ * the card disappearing.
+ */
+function PinCard({ pin, mine }: { pin: MessagePin; mine: boolean }) {
+  const theme = useTheme();
+  const join = useJoinPlanFromMessage();
+  // "Under no circumstances should a business account ever have the option to
+  // join... any other pin of any kind" (the founder, and
+  // src/app/__tests__/business-cannot-join.test.ts). The database refuses it
+  // too (assert_not_business), but a refusal nobody could have predicted is
+  // worse than no button.
+  const viewerIsBusiness = useIsBusiness();
+  // A guest never reaches this at all: room_messages hands the pin columns to
+  // members and moderators only, so a public-preview reader gets the message
+  // with no plan on it and this component is never built.
+  const ink = mine ? theme.onAccentDeep : theme.text;
+  const quiet = mine ? theme.onAccentDeep : theme.textSecondary;
+
+  return (
+    <View style={[styles.planCard, { borderStartColor: mine ? theme.onAccentDeep : theme.accent }]}>
+      <View style={styles.planHead}>
+        <PinGlyph category={pin.category} size={26} />
+        <View style={styles.planText}>
+          <ThemedText type="smallBold" style={{ color: ink }} numberOfLines={2}>
+            {pin.venueName}
+          </ThemedText>
+          {pin.plan ? (
+            <ThemedText type="footnote" style={{ color: quiet }} numberOfLines={2}>
+              {pin.plan}
+            </ThemedText>
+          ) : null}
+          <ThemedText type="footnote" style={{ color: quiet }}>
+            {formatDate(pin.intentDate)}
+          </ThemedText>
+        </View>
+      </View>
+      {/* Not on your own plan: the pin is already yours, and the server would
+          answer the tap with the very pin the card is drawn from. */}
+      {mine || viewerIsBusiness ? null : (
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`Join this plan. ${pin.venueName}, ${formatDate(pin.intentDate)}.`}
+          accessibilityState={{ disabled: join.isPending }}
+          haptic="light"
+          scaleTo={0.97}
+          // The label is drawn small so it does not shout over the message it
+          // sits under; the slop is what makes the TARGET 44. The pill is
+          // about 26pt tall (a footnote line plus Space.xs top and bottom), so
+          // ten each way clears the floor rather than landing just under it.
+          hitSlop={{ top: 10, bottom: 10, left: 12, right: 12 }}
+          onPress={() => {
+            if (join.isPending) {
+              return;
+            }
+            join.mutate(pin.messageId, {
+              // The map is where the answer shows up, so the confirmation is
+              // the one the map already gives a posted pin.
+              onSuccess: () => haptics.success(),
+              // No local onError: the global mutation alert answers with the
+              // shared vocabulary (src/lib/failure-message.ts), which is where
+              // "active pin limit reached" already has a written sentence.
+            });
+          }}
+          style={[styles.planJoin, { borderColor: theme.accent }]}>
+          <ThemedText type="footnote" themeColor="accent">
+            {join.isSuccess ? 'You are in' : 'Join this plan'}
+          </ThemedText>
+        </PressableScale>
+      )}
+    </View>
+  );
+}
+
+/**
+ * The space a photo in a bubble occupies, reserved from its first paint.
+ *
+ * THE HEIGHT IS NOT A VARIABLE. Every photo bubble stands this tall whether
+ * the image has loaded or not, because an inverted list is anchored to its own
+ * bottom: a cell that changed height when its photo landed would slide
+ * everything above it down the screen, which is the thread moving under the
+ * reader's finger half a second after they opened it. This is the same
+ * anchoring the unread jump and the reaction menu both reason about below.
+ *
+ * The column itself caps at 80%, so this is also the widest a photo gets.
+ */
+const PHOTO_SIZE = 220;
+/**
+ * And the narrowest, for a photo far taller than it is wide. Below this a
+ * 9:16 video still reads as a sliver rather than as a picture of something.
+ */
+const PHOTO_MIN_WIDTH = 120;
+
+/**
+ * How wide the frame is for a photo of this shape. Only the width moves.
+ *
+ * `aspect` is width over height, straight off the loaded image, and null until
+ * it has loaded. A portrait or square photo therefore gets a frame of exactly
+ * its own shape at the reserved height, and a photo too wide for the column
+ * keeps the reserved square and letterboxes inside it (contentFit contain,
+ * below) - which is still the WHOLE photo, which is the thing the old centre
+ * crop was hiding. A width change moves nothing vertically, so no version of
+ * this reflows the thread.
+ */
+function photoFrame(aspect: number | null): { width: number } {
+  if (aspect == null || !Number.isFinite(aspect) || aspect <= 0) {
+    return { width: PHOTO_SIZE };
+  }
+  return { width: Math.max(PHOTO_MIN_WIDTH, Math.min(PHOTO_SIZE, PHOTO_SIZE * aspect)) };
+}
+
+/**
+ * A photo inside a bubble: its own shape, and openable.
+ *
+ * It was a fixed 220 square drawn `contentFit="cover"`, which is a centre
+ * crop - so a landscape photo of the meeting spot arrived as its middle
+ * third, with no press target, and neither side could ever see the rest of
+ * it. Both halves of that are answered here: the photo is drawn whole inside
+ * a frame that takes its shape, and a press hands the URL to the thread's
+ * PhotoViewer. The frame's HEIGHT is reserved before the image loads and never
+ * changes - see photoFrame - so nothing in the thread moves when it lands.
+ *
+ * The URL is signed by whoever already has it (`useChatPhotoUrl`, against the
+ * `chat-photos` bucket) and passed on. The viewer deliberately signs nothing
+ * itself - `usePhotoUrl` signs against `profile-photos`, which is a different
+ * bucket, and a viewer that signed for itself would show nothing here.
+ */
+function ChatPhoto({
+  uri,
+  testID,
+  onOpen,
+  onLongPress,
+}: {
+  uri: string;
+  /** `photo-<message id>`, so a test can press the photo and not the bubble. */
+  testID?: string;
+  /** Open it full screen. Absent leaves the old, unopenable behaviour. */
+  onOpen?: () => void;
+  /**
+   * The bubble's own menu. Forwarded for the same reason the link spans get
+   * it: a pressable child claims the touch responder, so the ancestor never
+   * arms its long press and a photo message would have no reachable menu.
+   */
+  onLongPress?: () => void;
+}) {
+  const [aspect, setAspect] = useState<number | null>(null);
+  const frame = photoFrame(aspect);
+  const image = (
+    <Image
+      source={{ uri }}
+      // The frame is the thing under test in a-chat-photo-can-be-opened, and
+      // the press target above carries the plain `photo-<id>` that the other
+      // cases press.
+      testID={testID ? `${testID}-image` : undefined}
+      style={[styles.photo, frame]}
+      // contain, never cover: for a portrait or square photo the frame IS the
+      // photo's shape and the two are identical, and for one wider than the
+      // column this is the difference between the whole picture and its
+      // middle third, which was the defect.
+      contentFit="contain"
+      onLoad={(event) => {
+        const { width, height } = event.source;
+        if (width > 0 && height > 0) {
+          setAspect(width / height);
+        }
+      }}
+    />
+  );
+  if (!onOpen) {
+    return image;
+  }
+  return (
+    <PressableScale
+      // The bubble around this carries its own accessibilityLabel, which
+      // makes it one element on iOS and hides everything inside it from
+      // VoiceOver anyway. Opening the photo is offered there as a rotor
+      // action on the bubble instead (see Bubble), so this stays out of the
+      // tree rather than sitting in it unreachable.
+      accessible={false}
+      testID={testID}
+      haptic="none"
+      scaleTo={0.98}
+      delayLongPress={220}
+      onPress={onOpen}
+      onLongPress={onLongPress}>
+      {image}
+    </PressableScale>
+  );
+}
+
 function BubbleBody({
   message,
   mine,
   tailed,
+  quote,
+  onSpanLongPress,
+  onOpenPhoto,
 }: {
   message: ThreadMessage;
   mine: boolean;
   /** Last of its group: the corner that gets the tail. */
   tailed: boolean;
+  /** What this message answers, drawn INSIDE the bubble. */
+  quote?: Quote | null;
+  /**
+   * The bubble's own menu-open handler, forwarded to link spans: a pressable
+   * text fragment claims the touch responder, so the ancestor PressableScale
+   * never arms its long-press for a hold that lands ON the link. Without
+   * this, a message that is entirely a URL (the classic spam shape) has no
+   * reachable menu, and holding it OPENS the link on release.
+   */
+  onSpanLongPress?: () => void;
+  /**
+   * Open this message's photo full screen. Takes the URL because this is the
+   * component holding it; the thread owns the viewer and the words spoken
+   * over it.
+   */
+  onOpenPhoto?: (uri: string) => void;
 }) {
   const theme = useTheme();
   const { data: imageUrl } = useChatPhotoUrl(message.image_path);
   const tail = tailed ? Radius.xs : Radius.bubble;
   const checking = message.moderation_status === 'pending';
+  // Straight off the row rather than through a prop the caller has to
+  // remember to pass. room_messages joins the plan onto every message it
+  // returns, so a group thread renders the card with no change at either call
+  // site — which is the difference between a feature that ships and a
+  // component nothing mounts.
+  const pin = pinOnMessage(message);
 
   return (
     <View
@@ -301,85 +578,75 @@ function BubbleBody({
         message.local === 'sending' && styles.bubbleSending,
         message.local === 'failed' && { borderWidth: 1, borderColor: theme.danger },
       ]}>
+      {/* Inside the bubble, above the content. Inside, because an inverted
+          list flips a cell's children and a strip emitted as a sibling would
+          land under the message it belongs to (traps). */}
+      {quote ? <QuotedStrip quote={quote} mine={mine} /> : null}
+      {/* The plan this message carries, above the words that came with it.
+          `pin` is null in a direct chat, for a public-preview reader, and for
+          any plan that has expired — room_messages decides all three, so
+          nothing here has to remember hard rule 3 on its own. */}
+      {pin ? <PinCard pin={pin} mine={mine} /> : null}
       {/* `checking` rather than `image_path`, because a room MASKS the path
           until a verdict lands — so keying off the path drew nothing at all
           for everybody but the sender, which is the empty bubble people were
           looking at. */}
       {checking ? (
-        <PhotoCheck url={imageUrl ?? null} />
+        <PhotoCheck url={imageUrl ?? null} style={styles.photo} />
       ) : message.image_path ? (
         imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.photo} contentFit="cover" />
+          <ChatPhoto
+            uri={imageUrl}
+            testID={`photo-${message.id}`}
+            onOpen={onOpenPhoto ? () => onOpenPhoto(imageUrl) : undefined}
+            onLongPress={onSpanLongPress}
+          />
         ) : (
-          // The path is there and the signing call has not answered yet.
-          // Same frame, so the bubble does not resize under the thread when
-          // it does.
+          // The path is there and the signing call has not answered yet. The
+          // square is the space every photo bubble reserves, loaded or not, so
+          // handing over to the real photo changes the bubble's width and
+          // never its height.
           <View style={[styles.photo, { backgroundColor: theme.surfaceSunken }]} />
         )
       ) : null}
       {message.body ? (
         <ThemedText style={mine ? { color: theme.onAccentDeep } : undefined}>
-          {message.body}
+          {/* A URL in a message used to be dead grey text, and §7 rule 4
+              means a chat is the only place one can arrive. Nested Text, not
+              `dataDetectorType`: that prop is Android-only on Text (and the
+              TextInput spelling does nothing here either), so on an iOS-first
+              app it reads as a fix and does nothing on a device.
+
+              Underlined AND recoloured, because on your own accentDeep
+              bubble the accent has no contrast — there the underline carries
+              the whole "this is a link" on its own, in onAccentDeep. */}
+          {splitLinks(message.body).map((span, index) =>
+            span.url ? (
+              <ThemedText
+                key={`${index}-${span.text}`}
+                style={[styles.link, { color: mine ? theme.onAccentDeep : theme.accent }]}
+                onLongPress={onSpanLongPress}
+                onPress={() => {
+                  const url = span.url;
+                  if (!url) {
+                    return;
+                  }
+                  try {
+                    // Leaves the app rather than pushing a route, so it is
+                    // safe from inside anything presented (see traps).
+                    Linking.openURL(url).catch(() => {});
+                  } catch {
+                    // A malformed URL is not worth an error screen.
+                  }
+                }}>
+                {span.text}
+              </ThemedText>
+            ) : (
+              span.text
+            )
+          )}
         </ThemedText>
       ) : null}
-    </View>
-  );
-}
-
-/**
- * How long people should expect to wait for a photo to clear.
- *
- * An estimate from the measured chain rather than a hope: the insert now pokes
- * the worker directly (20260828170000) instead of waiting on a once-a-minute
- * cron, chat photos drain before every other queue, and the classification
- * runs at low effort. That is a cold start, a signed URL and one vision call.
- *
- * `admin_moderation_latency` measures the real thing, per queue, over the last
- * seven days. When there is enough live traffic to read a p95 off it, this
- * number comes from there — and a promise nobody can keep is worse than no
- * promise, so if it turns out slower this says so instead.
- */
-const PHOTO_CHECK_SECONDS = 5;
-
-/**
- * A photo waiting on its verdict, at the size the photo itself will be.
- *
- * It used to be the words "Photo in review" in a text bubble — a tiny grey
- * rectangle that then jumped to 220pt square when the picture arrived, which
- * is the founder's "tiny bubble". Reserving the real frame means nothing in
- * the thread moves when the verdict lands, and saying WHY out loud is the
- * honest version of a blank space: every photo in this app is checked, and a
- * person who knows that is waiting rather than wondering.
- *
- * The sender sees their own picture behind the scrim (storage lets them read
- * their own upload before it clears, and the room RPC unmasks it for them);
- * everybody else sees the frame. Both read the same sentence.
- */
-function PhotoCheck({ url }: { url: string | null }) {
-  const theme = useTheme();
-  return (
-    <View style={[styles.photo, styles.photoCheck, { backgroundColor: theme.surfaceSunken }]}>
-      {url ? (
-        <Image source={{ uri: url }} style={StyleSheet.absoluteFill} contentFit="cover" />
-      ) : null}
-      <View
-        style={[StyleSheet.absoluteFill, styles.photoCheckVeil, { backgroundColor: theme.scrim }]}>
-        {/* On a solid card, not straight onto the scrim. The scrim sits over
-            the sender's own photo, so the effective background is whatever
-            they photographed: textSecondary over a 0.62 veil on a bright
-            picture measures 2.5:1, and no veil opacity fixes that without
-            hiding the photo this card exists to show. A card makes the ratio
-            the palette's, whatever is behind it. */}
-        <View style={[styles.photoCheckCard, { backgroundColor: theme.surface }]}>
-          <ActivityIndicator color={theme.textSecondary} />
-          <ThemedText type="callout" style={styles.photoCheckTitle}>
-            Checking this photo
-          </ThemedText>
-          <ThemedText type="footnote" themeColor="textSecondary" style={styles.photoCheckNote}>
-            We check every photo before it goes out. Usually about {PHOTO_CHECK_SECONDS} seconds.
-          </ThemedText>
-        </View>
-      </View>
     </View>
   );
 }
@@ -391,21 +658,29 @@ function Bubble({
   last,
   reactions,
   onToggleReaction,
+  onOpenReactors,
   onOpenMenu,
   onRetry,
   avatarPath,
   avatarName,
   onOpenSender,
+  quote,
   delivered = false,
+  lifted = false,
+  onOpenPhoto,
 }: {
   message: ThreadMessage;
   mine: boolean;
+  /** What this message answers, or null. */
+  quote?: Quote | null;
   /** Same sender as the message before it, close in time. */
   grouped: boolean;
   /** Last of its group — the one that gets the tail. */
   last: boolean;
   reactions: ReactionSummaryRow[];
   onToggleReaction: (emoji: string, on: boolean) => void;
+  /** Groups and rooms only; see Reactions. */
+  onOpenReactors?: () => void;
   onOpenMenu?: (rect: Rect | null) => void;
   /** Re-send a message that failed. Absent for anything already delivered. */
   onRetry?: () => void;
@@ -425,15 +700,107 @@ function Bubble({
    * question you were asking.
    */
   delivered?: boolean;
+  /**
+   * The long-press menu is open on THIS message, and the copy it paints
+   * above its scrim is standing in for it. Blank the row (opacity, never
+   * `display: 'none'` and never a conditional return: the measureInWindow
+   * rect the menu was positioned from must stay valid, and the row's height
+   * must stay in the layout or the list reflows under the open menu) so the
+   * words appear once, not as a ghost under the lifted copy — which no scrim
+   * opacity could hide, and which is what Messages blanks too.
+   */
+  lifted?: boolean;
+  /** Open this message's photo full screen. Forwarded to the body. */
+  onOpenPhoto?: (uri: string) => void;
 }) {
   const anchor = useRef<View>(null);
+  // The same signed URL the body already asks for. Read again here rather
+  // than threaded up through a prop: React Query serves both calls from one
+  // cache entry, and the rotor action HAS to hang off this element, because
+  // the bubble carries an accessibilityLabel and iOS therefore collapses
+  // everything inside it into a single accessibility element.
+  const { data: photoUrl } = useChatPhotoUrl(message.image_path);
+  // Not while the photo is still being checked: nothing is drawn then but a
+  // review tile, and an action that opens a photo nobody can see yet is an
+  // action that lies about what it does.
+  const photoAction =
+    onOpenPhoto && photoUrl && message.moderation_status !== 'pending'
+      ? () => onOpenPhoto(photoUrl)
+      : null;
+
+  const bodyLinks = message.body ? splitLinks(message.body).filter((span) => span.url) : [];
+  // Hoisted so the link spans inside BubbleBody can arm the same long-press
+  // (see onSpanLongPress there): one handler, whoever's press wins.
+  const openMenu = onOpenMenu
+    ? () => {
+        haptics.soft();
+        // Open FIRST, then refine. This used to happen only
+        // inside measureInWindow's callback, which made the whole
+        // interaction a silent no-op whenever that callback did
+        // not arrive — the press did nothing at all, with no way
+        // to tell that from a press that never registered. A long
+        // press must always produce a menu; where it sits is a
+        // detail the measurement improves a frame later.
+        const open = () => {
+          onOpenMenu(null);
+          anchor.current?.measureInWindow((x, y, width, height) => {
+            if (width > 0 && height > 0) {
+              onOpenMenu({ x, y, width, height });
+            }
+          });
+        };
+
+        if (!Keyboard.isVisible()) {
+          open();
+          return;
+        }
+
+        // The keyboard goes, the way it does in Messages. The
+        // menu has to WAIT for it rather than race it: the thread
+        // stands on a keyboard-sized floor (KeyboardFloor) and an
+        // inverted list is anchored to its own bottom, so every
+        // bubble slides down by the keyboard's height as that
+        // floor collapses. Measuring before the slide would pin
+        // the menu to where the message used to be — off by
+        // roughly a third of the screen.
+        let settled = false;
+        let hidden: { remove: () => void } | null = null;
+        let failsafe: ReturnType<typeof setTimeout> | null = null;
+        const openOnceStill = () => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          hidden?.remove();
+          if (failsafe) {
+            clearTimeout(failsafe);
+          }
+          // Two frames past the event. keyboardDidHide says the
+          // SYSTEM keyboard has finished; the floor above it is a
+          // Reanimated style, and measureInWindow reads whatever
+          // the native view's frame is at that instant.
+          requestAnimationFrame(() => requestAnimationFrame(open));
+        };
+        hidden = Keyboard.addListener('keyboardDidHide', openOnceStill);
+        // A long press must always produce a menu, so a
+        // keyboardDidHide that never lands cannot be the only way
+        // out. Slightly longer than iOS's own 250ms dismissal.
+        failsafe = setTimeout(openOnceStill, 400);
+        Keyboard.dismiss();
+      }
+    : undefined;
 
   return (
     <View
+      testID={`bubble-${message.id}`}
       style={[
         styles.bubbleRow,
         mine ? styles.rowMine : styles.rowTheirs,
         { marginTop: grouped ? 2 : Space.sm },
+        // A view at opacity 0 is skipped by UIKit hit-testing (traps), which
+        // is harmless here: the menu's modal is over the whole screen for as
+        // long as this is blank.
+        lifted && styles.rowLifted,
       ]}>
       {avatarPath !== undefined && !mine ? (
         <RunAvatar path={avatarPath} name={avatarName ?? null} onPress={onOpenSender} />
@@ -447,72 +814,55 @@ function Bubble({
             accessibilityRole="button"
             accessibilityLabel={message.body ?? 'Photo'}
             accessibilityHint={onOpenMenu ? 'Press and hold to react' : undefined}
+            // VoiceOver collapses the bubble into one element, so the link
+            // spans inside are unreachable by touch there; the URL is offered
+            // as a rotor action instead.
+            accessibilityActions={
+              // Opening the photo is offered the same way and for the same
+              // reason: the bubble is one accessibility element, so a press
+              // target inside it is unreachable by touch and a rotor action
+              // is the only door VoiceOver has.
+              photoAction || bodyLinks.length > 0
+                ? [
+                    ...(photoAction ? [{ name: 'openPhoto', label: 'Open photo' }] : []),
+                    ...(bodyLinks.length > 0
+                      ? [{ name: 'openLink', label: `Open ${bodyLinks[0].text}` }]
+                      : []),
+                  ]
+                : undefined
+            }
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'openPhoto') {
+                photoAction?.();
+                return;
+              }
+              if (event.nativeEvent.actionName === 'openLink' && bodyLinks[0]?.url) {
+                Linking.openURL(bodyLinks[0].url).catch(() => {});
+              }
+            }}
             haptic="none"
             scaleTo={0.98}
             delayLongPress={220}
-            onLongPress={
-              onOpenMenu
-                ? () => {
-                    haptics.soft();
-                    // Open FIRST, then refine. This used to happen only
-                    // inside measureInWindow's callback, which made the whole
-                    // interaction a silent no-op whenever that callback did
-                    // not arrive — the press did nothing at all, with no way
-                    // to tell that from a press that never registered. A long
-                    // press must always produce a menu; where it sits is a
-                    // detail the measurement improves a frame later.
-                    const open = () => {
-                      onOpenMenu(null);
-                      anchor.current?.measureInWindow((x, y, width, height) => {
-                        if (width > 0 && height > 0) {
-                          onOpenMenu({ x, y, width, height });
-                        }
-                      });
-                    };
-
-                    if (!Keyboard.isVisible()) {
-                      open();
-                      return;
-                    }
-
-                    // The keyboard goes, the way it does in Messages. The
-                    // menu has to WAIT for it rather than race it: the thread
-                    // stands on a keyboard-sized floor (KeyboardFloor) and an
-                    // inverted list is anchored to its own bottom, so every
-                    // bubble slides down by the keyboard's height as that
-                    // floor collapses. Measuring before the slide would pin
-                    // the menu to where the message used to be — off by
-                    // roughly a third of the screen.
-                    let settled = false;
-                    let hidden: { remove: () => void } | null = null;
-                    let failsafe: ReturnType<typeof setTimeout> | null = null;
-                    const openOnceStill = () => {
-                      if (settled) {
-                        return;
-                      }
-                      settled = true;
-                      hidden?.remove();
-                      if (failsafe) {
-                        clearTimeout(failsafe);
-                      }
-                      // Two frames past the event. keyboardDidHide says the
-                      // SYSTEM keyboard has finished; the floor above it is a
-                      // Reanimated style, and measureInWindow reads whatever
-                      // the native view's frame is at that instant.
-                      requestAnimationFrame(() => requestAnimationFrame(open));
-                    };
-                    hidden = Keyboard.addListener('keyboardDidHide', openOnceStill);
-                    // A long press must always produce a menu, so a
-                    // keyboardDidHide that never lands cannot be the only way
-                    // out. Slightly longer than iOS's own 250ms dismissal.
-                    failsafe = setTimeout(openOnceStill, 400);
-                    Keyboard.dismiss();
-                  }
-                : undefined
-            }>
-            <BubbleBody message={message} mine={mine} tailed={last} />
+            onLongPress={openMenu}>
+            <BubbleBody
+              message={message}
+              mine={mine}
+              tailed={last}
+              quote={quote}
+              onSpanLongPress={openMenu}
+              onOpenPhoto={onOpenPhoto}
+            />
           </PressableScale>
         </View>
+        {/* The marks under a bubble stack in one column — reaction first,
+            delivery status beneath it — so both read as marks ON the message
+            above rather than a two-column row of unrelated controls. */}
+        <Reactions
+          rows={reactions}
+          mine={mine}
+          onToggle={onToggleReaction}
+          onOpenReactors={onOpenReactors}
+        />
         {/* The delivery ladder, in full: Sending, then Sent, or Not sent with
             the way out. "Sending" is honest about the pause the first-message
             moderation check creates; "Sent" is the confirmation the founder
@@ -542,8 +892,11 @@ function Bubble({
             hitSlop={message.local === 'failed' ? { top: 8, bottom: 14, left: 16, right: 8 } : 0}
             onPress={message.local === 'failed' ? onRetry : undefined}
             style={styles.statusRow}>
+            {/* footnote, not caption: 13/400 reads as a quiet status, where
+                caption's 11pt-semibold-letterspaced voice is a section
+                heading and shouted louder than the message above it. */}
             <ThemedText
-              type="caption"
+              type="footnote"
               themeColor={message.local === 'failed' ? 'danger' : 'textSecondary'}>
               {message.local === 'failed'
                 ? 'Not sent. Tap to try again.'
@@ -553,7 +906,6 @@ function Bubble({
             </ThemedText>
           </PressableScale>
         ) : null}
-        <Reactions rows={reactions} onToggle={onToggleReaction} />
       </View>
     </View>
   );
@@ -582,21 +934,34 @@ function UnsentNote({ mine, otherName }: { mine: boolean; otherName?: string | n
 function MessageMenu({
   target,
   existingEmoji,
+  canReact,
+  quote,
   onPick,
+  onReply,
   onPin,
+  onShare,
+  onRemove,
   onUnsend,
   onReport,
-  reportLabel,
   onClose,
 }: {
   target: MenuTarget;
   existingEmoji: string | null;
+  /** False for somebody who may flag a message but not react to it. */
+  canReact: boolean;
+  /** What the lifted message itself answers, so the copy matches the row. */
+  quote?: Quote | null;
   onPick: (emoji: string) => void;
+  /** Answer this one message. First on the card, ahead of everything else. */
+  onReply?: () => void;
   /** Room hosts only: keep this message at the top of the room. */
   onPin?: () => void;
+  /** The system share sheet — which IS the text/email/copy chooser. */
+  onShare?: () => void;
+  /** Room moderators only: take this message down for everyone. */
+  onRemove?: () => void;
   onUnsend?: () => void;
   onReport?: () => void;
-  reportLabel: string;
   onClose: () => void;
 }) {
   const theme = useTheme();
@@ -613,14 +978,31 @@ function MessageMenu({
   // Unsend. Red means "this takes something away"; if it means everything it
   // means nothing.
   const actions: { label: string; run: () => void; destructive: boolean }[] = [];
+  // First, ahead of Pin. In a room of six discussing three plans it is the
+  // action people reach for most, and the one that makes the thread readable
+  // for somebody who arrives an hour late.
+  if (onReply) {
+    actions.push({ label: 'Reply', run: onReply, destructive: false });
+  }
   if (onPin) {
     actions.push({ label: 'Pin to the top', run: onPin, destructive: false });
+  }
+  // "Share", not "Copy": the system share sheet is where text, email and
+  // copy already live, and a control says exactly what happens.
+  if (onShare) {
+    actions.push({ label: 'Share', run: onShare, destructive: false });
+  }
+  // Remove and Report side by side, never one instead of the other: a
+  // moderator taking a message down is exactly the person who may also need
+  // to escalate it.
+  if (onRemove) {
+    actions.push({ label: 'Remove', run: onRemove, destructive: true });
   }
   if (onUnsend) {
     actions.push({ label: 'Unsend', run: onUnsend, destructive: true });
   }
   if (onReport) {
-    actions.push({ label: reportLabel, run: onReport, destructive: true });
+    actions.push({ label: 'Report', run: onReport, destructive: true });
   }
 
   const { fontScale, height: windowHeight } = useWindowDimensions();
@@ -641,8 +1023,10 @@ function MessageMenu({
   // the home indicator eat.
   const ceiling = insets.top + Space.md;
   const floor = windowHeight - Math.max(insets.bottom, Space.md);
-  // Whichever shape the emoji block is currently in.
-  const pillBlock = grid ? GRID_HEIGHT : PILL_HEIGHT;
+  // Whichever shape the emoji block is currently in — or nothing at all for
+  // a reader who cannot react, whose card must not float a pill's height
+  // away from the message it belongs to.
+  const pillBlock = canReact ? (grid ? GRID_HEIGHT : PILL_HEIGHT) : 0;
   const wantedTop = top - LIFT_GAP - pillBlock - Space.md;
   const wantedBottom = top + target.height + LIFT_GAP + actionsHeight + Space.md;
   let shift = 0;
@@ -671,25 +1055,12 @@ function MessageMenu({
       entering={FadeIn.duration(120)}
       // No exiting animation: the modal below unmounts this subtree the
       // instant `visible` flips, so an exit would have nothing to play on.
-      // ALWAYS the scrim, with the glass over it rather than instead of it.
-      // This used to hand the whole job to GlassView wherever Liquid Glass
-      // was available — and on iOS 26.2 it IS available and rendered nothing
-      // anybody could see: a simulator run photographed the menu open with
-      // the composer at full brightness beside it, which is the founder's
-      // original complaint arriving back by a different route. A dim that
-      // depends on a GPU effect being both present and effective is not a
-      // dim. The tint drops now that it is layered, so the two together land
-      // where the scrim alone used to.
+      // The flat scrim is the whole dim, on purpose — MENU_SCRIM's comment
+      // holds the history of the glass blur that used to sit here and why it
+      // left. The message the person pressed is not fighting this layer any
+      // more either: the thread blanks the source row (Bubble's `lifted`)
+      // while the copy above this scrim stands in for it.
       style={[styles.menuLayer, { backgroundColor: MENU_SCRIM }]}>
-      {isLiquidGlassAvailable() ? (
-        <GlassView
-          glassEffectStyle="regular"
-          colorScheme="dark"
-          tintColor={MENU_GLASS_OVER_SCRIM}
-          pointerEvents="none"
-          style={StyleSheet.absoluteFill}
-        />
-      ) : null}
       <PressableScale
         accessibilityRole="button"
         accessibilityLabel="Dismiss"
@@ -700,54 +1071,58 @@ function MessageMenu({
         style={StyleSheet.absoluteFill}
       />
 
-      {/* The emoji row, directly above the message. */}
-      <View
-        style={[styles.menuSide, { top: top + shift - LIFT_GAP - pillBlock }, sideOf(mine)]}
-        pointerEvents="box-none">
-        <Animated.View
-          entering={FadeIn.duration(140)}
-          style={[
-            grid ? styles.pillGrid : styles.pill,
-            Elevation.floating,
-            { backgroundColor: theme.surface },
-          ]}>
-          {(grid ? MORE_REACTIONS : QUICK_REACTIONS).map((emoji) => (
-            <PressableScale
-              key={emoji}
-              accessibilityRole="button"
-              accessibilityLabel={emoji}
-              haptic="light"
-              scaleTo={0.85}
-              onPress={() => onPick(emoji)}
-              style={[
-                styles.pillItem,
-                existingEmoji === emoji ? { backgroundColor: theme.accentSoft } : undefined,
-              ]}>
-              <ThemedText type="title">{emoji}</ThemedText>
-            </PressableScale>
-          ))}
-          {grid ? null : (
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel="More reactions"
-              haptic="light"
-              scaleTo={0.85}
-              onPress={() => setGrid(true)}
-              style={[styles.pillItem, { backgroundColor: theme.surfaceSunken }]}>
-              <SymbolView
-                name={{ ios: 'plus', android: 'add', web: 'add' }}
-                size={17}
-                tintColor={theme.textSecondary}
-              />
-            </PressableScale>
-          )}
-        </Animated.View>
-      </View>
+      {/* The emoji row, directly above the message. Not for a reader who
+          cannot react — a visitor previewing a public room gets the card
+          below (Report and nothing else), never controls that would fail. */}
+      {canReact ? (
+        <View
+          style={[styles.menuSide, { top: top + shift - LIFT_GAP - pillBlock }, sideOf(mine)]}
+          pointerEvents="box-none">
+          <Animated.View
+            entering={FadeIn.duration(140)}
+            style={[
+              grid ? styles.pillGrid : styles.pill,
+              Elevation.floating,
+              { backgroundColor: theme.surface },
+            ]}>
+            {(grid ? MORE_REACTIONS : QUICK_REACTIONS).map((emoji) => (
+              <PressableScale
+                key={emoji}
+                accessibilityRole="button"
+                accessibilityLabel={emoji}
+                haptic="light"
+                scaleTo={0.85}
+                onPress={() => onPick(emoji)}
+                style={[
+                  styles.pillItem,
+                  existingEmoji === emoji ? { backgroundColor: theme.accentSoft } : undefined,
+                ]}>
+                <ThemedText type="display">{emoji}</ThemedText>
+              </PressableScale>
+            ))}
+            {grid ? null : (
+              <PressableScale
+                accessibilityRole="button"
+                accessibilityLabel="More reactions"
+                haptic="light"
+                scaleTo={0.85}
+                onPress={() => setGrid(true)}
+                style={[styles.pillItem, { backgroundColor: theme.surfaceSunken }]}>
+                <SymbolView
+                  name={{ ios: 'plus', android: 'add', web: 'add' }}
+                  size={17}
+                  tintColor={theme.textSecondary}
+                />
+              </PressableScale>
+            )}
+          </Animated.View>
+        </View>
+      ) : null}
 
       {/* The message itself, lifted out of the dimmed thread. */}
       <View style={[styles.menuSide, { top: top + shift }, sideOf(mine)]} pointerEvents="none">
         <View style={styles.liftedWidth}>
-          <BubbleBody message={target.message} mine={mine} tailed />
+          <BubbleBody message={target.message} mine={mine} tailed quote={quote} />
         </View>
       </View>
 
@@ -791,6 +1166,98 @@ function sideOf(mine: boolean) {
 }
 
 /**
+ * The line a ROOM wrote about itself, rather than something anybody typed.
+ *
+ * Read off the row's own `kind`, not from a caller. The kinds have grown —
+ * 'joined' was the first, and 20260902200000 adds 'left', 'removed' and
+ * 'ends' — and every one of them arrives on the same column through the same
+ * RPC. A thread that asked its caller to enumerate them would render the next
+ * one as a BUBBLE the person appears to have typed ("Pia was removed",
+ * signed by Pia, with her face beside it), which is the exact failure the
+ * centred line exists to prevent. `systemFor` still wins where a caller
+ * passes one, so the room screen's existing answer is untouched.
+ *
+ * `kind` is optional because a direct chat reads the `messages` table and its
+ * rows predate the column; undefined means an ordinary message.
+ */
+function systemLine(message: ThreadMessage): string | null {
+  const kind = message.kind;
+  return kind != null && kind !== 'said' ? (message.body ?? null) : null;
+}
+
+/**
+ * Who reacted, for the sheet a long press on a chip opens.
+ *
+ * The list is small by nature — a chip with twelve people behind it is a
+ * twelve-person room, not a scroll — so this is a plain column rather than a
+ * list, and it is the sheet's own scroller that handles the day somebody
+ * proves that wrong.
+ */
+function ReactorRow({
+  name,
+  photoPath,
+  emoji,
+}: {
+  name: string | null;
+  photoPath: string | null;
+  emoji: string;
+}) {
+  const theme = useTheme();
+  const { data: url } = usePhotoUrl(photoPath);
+  const initial = name?.trim()?.[0]?.toUpperCase() ?? null;
+  return (
+    <View style={styles.reactorRow}>
+      <View style={[styles.reactorFace, { backgroundColor: theme.surfaceSunken }]}>
+        {url ? (
+          <Image source={{ uri: url }} style={styles.runAvatarImage} contentFit="cover" />
+        ) : initial ? (
+          <ThemedText type="caption" themeColor="textSecondary" style={styles.runAvatarInitial}>
+            {initial}
+          </ThemedText>
+        ) : null}
+      </View>
+      <ThemedText style={styles.reactorName} numberOfLines={1}>
+        {name ?? 'Traveler'}
+      </ThemedText>
+      <ThemedText type="footnote">{emoji}</ThemedText>
+    </View>
+  );
+}
+
+function ReactorSheet({ messageId, onClose }: { messageId: string; onClose: () => void }) {
+  const { data: reactors, isPending, isError } = useReactors(messageId);
+  return (
+    <Sheet onClose={onClose} scrolls>
+      <ThemedText type="title">Who reacted</ThemedText>
+      {isPending ? (
+        <ActivityIndicator style={styles.loadingMore} />
+      ) : isError ? (
+        // Not folded into the empty state below. "Nobody reacted" is a claim
+        // about the room, and making it because a request failed on hostel
+        // wifi is telling somebody something untrue.
+        <ThemedText type="footnote" themeColor="textSecondary">
+          Could not load who reacted. Close this and open it again.
+        </ThemedText>
+      ) : (reactors ?? []).length === 0 ? (
+        // A reaction taken back between the press and the answer lands here.
+        <ThemedText type="footnote" themeColor="textSecondary">
+          Nobody on this one any more.
+        </ThemedText>
+      ) : (
+        (reactors ?? []).map((reactor) => (
+          <ReactorRow
+            key={`${reactor.user_id}-${reactor.emoji}`}
+            name={reactor.display_name}
+            photoPath={reactor.photo_path}
+            emoji={reactor.emoji}
+          />
+        ))
+      )}
+    </Sheet>
+  );
+}
+
+/**
  * The conversation itself, shaped like every messaging app people already
  * use: newest at the bottom, own messages on the right, consecutive messages
  * from one person grouped under a single tail, time stamps between clusters
@@ -803,18 +1270,25 @@ export function MessageThread({
   otherName,
   reactions,
   onToggleReaction,
+  onReply,
+  quoteFor,
   onPin,
+  onRemove,
   onUnsend,
   onReport,
-  reportLabel = 'Report',
+  canReport = true,
   authorFor,
   avatarFor,
   onOpenSender,
   noteFor,
+  systemFor,
   canReact = true,
   emptyState,
   footer,
   onRetry,
+  onEndReached,
+  loadingMore = false,
+  unreadFrom,
 }: {
   messages: ThreadMessage[];
   ownUserId: string | null;
@@ -823,20 +1297,33 @@ export function MessageThread({
   reactions: ReactionSummaryRow[];
   onToggleReaction: (messageId: string, emoji: string, on: boolean) => void;
   /**
+   * Answer one message. The caller holds the reply target, because it is the
+   * caller that owns the composer the quoted banner appears above.
+   */
+  onReply?: (messageId: string) => void;
+  /**
+   * What a message answers, resolved by the caller: a direct chat looks the
+   * parent up in the loaded page, a room reads the columns room_messages
+   * joins for it.
+   */
+  quoteFor?: (message: ThreadMessage) => Quote | null;
+  /**
    * Room hosts only: keep this message at the top of the room. Absent
    * everywhere else, which is what keeps the action out of the menu for
    * anybody who could not carry it out.
    */
   onPin?: (messageId: string) => void;
+  /**
+   * Room moderators only: take this message down for everyone. Its own
+   * handler, never a relabelled Report — the moderator used to get "Remove"
+   * INSTEAD of "Report", which left the person best placed to spot abuse
+   * early with no way to escalate a message they had to delete.
+   */
+  onRemove?: (messageId: string) => void;
   onUnsend?: (messageId: string) => void;
   onReport?: (messageId: string) => void;
-  /**
-   * What the second action is called. A one-to-one chat and an ordinary room
-   * member are reporting; a room's moderator is removing, and the button used
-   * to say "Report" while the confirmation it opened said "Remove this
-   * message?" — two different acts under one word.
-   */
-  reportLabel?: string;
+  /** False where reporting is offered but this reader may not use it. */
+  canReport?: boolean;
   /**
    * Who sent this, when that is not obvious. A one-to-one chat has exactly
    * two people and needs no labels; a group has to say. Returns the name to
@@ -861,6 +1348,15 @@ export function MessageThread({
    * a caller whose messages can be taken down by somebody else.
    */
   noteFor?: (message: ThreadMessage) => string | null;
+  /**
+   * A line that belongs to the ROOM, not to anybody in it — "Ana is in",
+   * written by the server when somebody joins a plan. Rendered centred with
+   * no bubble, no author line and no reactions, because a system fact drawn
+   * as a bubble reads as something the person appears to have typed.
+   * Distinct from noteFor, whose line stands in for a message somebody DID
+   * send and so keeps the theirs-side alignment.
+   */
+  systemFor?: (message: ThreadMessage) => string | null;
   /** False for somebody reading a room they have not joined. */
   canReact?: boolean;
   /** Shown when there are no messages at all. */
@@ -869,9 +1365,72 @@ export function MessageThread({
   footer?: React.ReactElement | null;
   /** Re-send a message that failed to leave the device. */
   onRetry?: (message: ThreadMessage) => void;
+  /**
+   * Reaching the oldest loaded message. On an inverted list this fires at the
+   * visual TOP, which is exactly where "earlier" is, so a conversation pages
+   * backwards by being read rather than by a button.
+   */
+  onEndReached?: () => void;
+  /** A page is on its way. Drawn above whatever footer the caller passed. */
+  loadingMore?: boolean;
+  /**
+   * The oldest message this reader has not seen. The New line is drawn above
+   * it, and the thread opens there rather than at the newest message.
+   */
+  unreadFrom?: string | null;
 }) {
   const [menu, setMenu] = useState<MenuTarget | null>(null);
+  /**
+   * The message whose reactors are on screen, or null.
+   *
+   * Groups and rooms only, and the discriminator is `avatarFor` — the prop a
+   * room passes and a one-to-one chat does not, because a chat with two people
+   * in it needs neither faces nor names. No new option defaulted off for
+   * somebody to forget to set: the surface that already says "this thread has
+   * more than two people in it" says it once, here as well.
+   */
+  const [reactorsFor, setReactorsFor] = useState<string | null>(null);
+  /**
+   * The photo being looked at full screen, or null.
+   *
+   * One viewer for the whole thread, mounted at the bottom rather than inside
+   * a cell: a viewer in a list row would unmount the moment the row recycled.
+   * It presents nothing until a photo is set - the decision about what else is
+   * on screen is taken then, at the tap, not watched from before it.
+   */
+  const [viewingPhoto, setViewingPhoto] = useState<ViewablePhoto | null>(null);
+  const namesReactors = avatarFor != null;
   const { height: windowHeight } = useWindowDimensions();
+  const theme = useTheme();
+  const loadingTint = theme.textSecondary;
+  const list = useRef<FlatList<ThreadMessage>>(null);
+  // The opening jump happens at most once per mount, and never while the
+  // keyboard is moving: the thread stands on a keyboard-sized floor and an
+  // inverted list is anchored to its own bottom, so a measured scroll taken
+  // across a keyboard dismissal is off by a keyboard's height (traps).
+  const jumped = useRef(false);
+  const laidOut = useRef(false);
+  const retriedJump = useRef(false);
+  const [pastAScreen, setPastAScreen] = useState(false);
+
+  const jumpToUnread = () => {
+    if (jumped.current || !laidOut.current || unreadFrom == null) {
+      return;
+    }
+    const index = messages.findIndex((message) => message.id === unreadFrom);
+    // Marked done either way: a boundary too far back to place is a decision,
+    // not something to retry on the next layout pass.
+    jumped.current = true;
+    if (index < 0 || index > UNREAD_JUMP_MAX) {
+      return;
+    }
+    list.current?.scrollToIndex({ index, viewPosition: 0.85, animated: false });
+  };
+
+  // Both doors, because neither alone is enough: the list can lay out before
+  // the first page arrives (nothing to jump to), and data can arrive without
+  // the frame ever changing again (no second onLayout).
+  useEffect(jumpToUnread);
   // This one is a raw <Modal> rather than a Sheet, so it has to declare
   // itself. A count that only knows about Sheets is a count that lies, and
   // the thing waiting on it presents into the collision anyway.
@@ -889,14 +1448,63 @@ export function MessageThread({
     messages.find((m) => m.sender_id === ownUserId && m.local == null)?.id ?? null;
   const myEmojiOn = (messageId: string) =>
     (byMessage.get(messageId) ?? []).find((r) => r.reacted_by_me)?.emoji ?? null;
+  /**
+   * What the photo IS, spoken. Built here rather than in the bubble because
+   * this is the level that knows who is who: a group asks authorFor, a
+   * one-to-one chat has the other person's name in a prop, and neither fact
+   * reaches a bubble.
+   */
+  const photoLabelFor = (message: ThreadMessage) => {
+    if (message.sender_id === ownUserId) {
+      return 'Photo you sent';
+    }
+    const from = authorFor?.(message) ?? otherName ?? null;
+    return from ? `Photo from ${from}` : 'Photo in this chat';
+  };
 
   return (
     <View style={styles.flex}>
       <FlatList
+        ref={list}
         style={styles.flex}
         inverted
         data={messages}
+        onLayout={() => {
+          laidOut.current = true;
+          jumpToUnread();
+        }}
+        // No getItemLayout and bubbles of every height, so a jump can miss.
+        // Land on the estimate, then try the real index once on the next
+        // frame, by which time the cells around it have been measured.
+        onScrollToIndexFailed={(info) => {
+          list.current?.scrollToOffset({
+            offset: info.averageItemLength * info.index,
+            animated: false,
+          });
+          if (retriedJump.current) {
+            return;
+          }
+          retriedJump.current = true;
+          requestAnimationFrame(() => {
+            list.current?.scrollToIndex({
+              index: info.index,
+              viewPosition: 0.85,
+              animated: false,
+            });
+          });
+        }}
+        // Inverted, so the offset GROWS as the reader goes back in time.
+        onScroll={(event) => {
+          const past = event.nativeEvent.contentOffset.y > windowHeight;
+          setPastAScreen((current) => (current === past ? current : past));
+        }}
+        scrollEventThrottle={16}
         keyExtractor={(m) => m.id}
+        // The inline renderItem closes over `menu`, which USUALLY forces a
+        // re-render; extraData is the guarantee VirtualizedList re-renders
+        // the cells when the menu opens and closes, so the blanked source row
+        // (Bubble's `lifted`) tracks the menu rather than trailing it.
+        extraData={menu?.message.id}
         contentContainerStyle={styles.list}
         keyboardDismissMode="interactive"
         // WITHOUT THIS, A LONG PRESS ON A BUBBLE DOES NOTHING while the
@@ -927,32 +1535,48 @@ export function MessageThread({
           const newer = messages[index - 1];
           const mine = mineFor(item);
           const unsent = item.unsent_at != null;
+          // A system line breaks a run in both directions. It carries its
+          // joiner's sender_id, so without this the first thing somebody says
+          // after "X is in" groups against the caption: no author line above
+          // their opening bubble, grouped corners butting a centred line.
+          const systemOf = (m: ThreadMessage) => systemFor?.(m) ?? systemLine(m);
+          const olderIsRun = older != null && systemOf(older) == null;
+          const newerIsRun = newer != null && systemOf(newer) == null;
           const grouped =
-            older != null &&
+            olderIsRun &&
             older.sender_id === item.sender_id &&
             new Date(item.created_at).getTime() - new Date(older.created_at).getTime() <
               GROUP_WINDOW_MS;
           const last =
-            newer == null ||
+            !newerIsRun ||
             newer.sender_id !== item.sender_id ||
             new Date(newer.created_at).getTime() - new Date(item.created_at).getTime() >=
               GROUP_WINDOW_MS;
           // The opening message is carried on the chat row, not the messages
           // table, so there is no id for a reaction to hang off.
           const note = noteFor?.(item) ?? null;
+          const system = systemOf(item);
           // A message the server has never seen has no id to hang a reaction
           // or a report off, so the menu stays shut until it lands.
-          const reactable =
-            canReact &&
+          //
+          // Reacting is not the only reason to open the menu: a visitor
+          // reading a public room may not react, but flagging abuse must
+          // never sit behind the same gate — canReact used to conflate the
+          // two, so the surface most likely to show a stranger's message was
+          // the one with no menu at all.
+          const menuable =
+            (canReact || (canReport && onReport != null) || onRemove != null) &&
             !item.id.startsWith('first:') &&
             !isLocalId(item.id) &&
             !unsent &&
-            note == null;
+            note == null &&
+            system == null;
           const separator = separatorFor(item, older);
           // Only above the first bubble of a run, and never above your own:
           // repeating a name on every bubble is what makes a group thread
-          // unreadable.
-          const author = !mine && !grouped ? (authorFor?.(item) ?? null) : null;
+          // unreadable. A system line has no author at all — the room said
+          // it, and the sentence already carries the name.
+          const author = !mine && !grouped && system == null ? (authorFor?.(item) ?? null) : null;
 
           // One wrapper, not two siblings: an inverted list flips the cell
           // itself, so a fragment's children come out bottom-to-top and the
@@ -967,12 +1591,32 @@ export function MessageThread({
                   </ThemedText>
                 </View>
               ) : null}
+              {/* Where reading stopped. INSIDE the same wrapper as the
+                  bubble, under the day separator and above the author line:
+                  an inverted list flips a cell's children, so a line emitted
+                  as a sibling marks the boundary against the wrong message
+                  (traps). */}
+              {item.id === unreadFrom ? (
+                <View style={styles.unreadRow}>
+                  <View style={[styles.unreadRule, { backgroundColor: theme.highlight }]} />
+                  <ThemedText type="caption" style={{ color: theme.highlight }}>
+                    New
+                  </ThemedText>
+                  <View style={[styles.unreadRule, { backgroundColor: theme.highlight }]} />
+                </View>
+              ) : null}
               {author ? (
                 <ThemedText type="caption" themeColor="textSecondary" style={styles.authorLine}>
                   {author}
                 </ThemedText>
               ) : null}
-              {note ? (
+              {system ? (
+                <View style={styles.systemRow}>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    {system}
+                  </ThemedText>
+                </View>
+              ) : note ? (
                 <View style={[styles.bubbleRow, styles.unsentRow, styles.rowTheirs]}>
                   <ThemedText type="caption" themeColor="textSecondary">
                     {note}
@@ -1003,12 +1647,26 @@ export function MessageThread({
                       ? () => onOpenSender(item.sender_id)
                       : undefined
                   }
+                  quote={quoteFor?.(item) ?? null}
                   reactions={byMessage.get(item.id) ?? []}
                   onToggleReaction={(emoji, on) => onToggleReaction(item.id, emoji, on)}
+                  // Never while the long-press menu is up: its own <Modal> is
+                  // over the whole screen, and iOS silently drops a
+                  // presentation begun while another is dismissing — on Fabric
+                  // that does not lose a sheet, it kills touch for the app
+                  // (traps). The chip is behind the scrim anyway; this is the
+                  // belt.
+                  onOpenReactors={
+                    namesReactors && !isLocalId(item.id) && menu == null
+                      ? () => setReactorsFor(item.id)
+                      : undefined
+                  }
                   onRetry={item.local === 'failed' && onRetry ? () => onRetry(item) : undefined}
                   delivered={item.id === deliveredId}
+                  lifted={menu?.message.id === item.id}
+                  onOpenPhoto={(uri) => setViewingPhoto({ uri, label: photoLabelFor(item) })}
                   onOpenMenu={
-                    reactable
+                    menuable
                       ? (rect) =>
                           setMenu(
                             rect
@@ -1036,8 +1694,51 @@ export function MessageThread({
           );
         }}
         ListEmptyComponent={emptyState}
-        ListFooterComponent={footer}
+        // 0.4 rather than the default 2: the thread is tall, and firing a
+        // page fetch two screens early on a conversation somebody is only
+        // scrolling through spends a round trip nobody asked for.
+        onEndReachedThreshold={0.4}
+        onEndReached={onEndReached}
+        // One element, not two: the footer slot is already taken by the
+        // caller's anchor card, and an inverted list flips a cell's children
+        // (traps), so the spinner and the card have to be ordered inside one
+        // view rather than emitted as siblings.
+        ListFooterComponent={
+          loadingMore || footer ? (
+            <View>
+              {loadingMore ? (
+                <ActivityIndicator style={styles.loadingMore} color={loadingTint} />
+              ) : null}
+              {footer}
+            </View>
+          ) : null
+        }
       />
+
+      {/* The way back to the bottom, and the escape hatch if the opening jump
+          lands somewhere surprising. Shown once the reader is more than a
+          screen back, which on an inverted list means a growing offset. */}
+      {pastAScreen ? (
+        <Animated.View
+          entering={FadeIn.duration(120)}
+          style={styles.jumpWrap}
+          pointerEvents="box-none">
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel="Jump to the latest message"
+            haptic="light"
+            scaleTo={0.96}
+            onPress={() => list.current?.scrollToOffset({ offset: 0, animated: true })}
+            style={[styles.jump, Elevation.floating, { backgroundColor: theme.surface }]}>
+            <SymbolView
+              name={{ ios: 'chevron.down', android: 'expand_more', web: 'expand_more' }}
+              size={13}
+              tintColor={theme.text}
+            />
+            <ThemedText type="footnote">Jump to latest</ThemedText>
+          </PressableScale>
+        </Animated.View>
+      ) : null}
 
       {/* In a modal, so the scrim covers the header and the composer too. An
           overlay inside this component can only ever dim the thread, which
@@ -1052,7 +1753,35 @@ export function MessageThread({
           <MessageMenu
             target={menu}
             existingEmoji={myEmojiOn(menu.message.id)}
-            reportLabel={reportLabel}
+            canReact={canReact}
+            quote={quoteFor?.(menu.message) ?? null}
+            onReply={
+              // Not for a message that has been taken back or taken down, and
+              // not for a reader with no composer: an action that cannot be
+              // carried out is worse than one that was never offered.
+              onReply
+                ? () => {
+                    const id = menu.message.id;
+                    setMenu(null);
+                    onReply(id);
+                  }
+                : undefined
+            }
+            onShare={
+              menu.message.body
+                ? () => {
+                    const body = menu.message.body ?? '';
+                    setMenu(null);
+                    // The share sheet is a native presentation, and iOS
+                    // silently drops one that starts while the menu's modal
+                    // is still dismissing — on Fabric that kills touch for
+                    // the whole app (see traps). Wait the settle window.
+                    setTimeout(() => {
+                      Share.share({ message: body }).catch(() => {});
+                    }, SHEET_SETTLE_MS);
+                  }
+                : undefined
+            }
             onPick={(emoji) => {
               // Tapping the one you already used takes it back; tapping a
               // different one moves yours, since a person gets one reaction.
@@ -1074,12 +1803,24 @@ export function MessageThread({
                 ? () => {
                     const id = menu.message.id;
                     setMenu(null);
+                    // The vocabulary's destructive word, at the destructive
+                    // act. Unsend completed with no feedback at all.
+                    haptics.warning();
                     onUnsend(id);
                   }
                 : undefined
             }
+            onRemove={
+              !menu.mine && onRemove
+                ? () => {
+                    const id = menu.message.id;
+                    setMenu(null);
+                    onRemove(id);
+                  }
+                : undefined
+            }
             onReport={
-              !menu.mine && onReport
+              !menu.mine && canReport && onReport
                 ? () => {
                     const id = menu.message.id;
                     setMenu(null);
@@ -1091,6 +1832,20 @@ export function MessageThread({
           />
         ) : null}
       </Modal>
+
+      {/* Its own Sheet rather than a row inside the message menu: the menu is
+          a raw <Modal>, and presenting the sheet's Modal out of it is exactly
+          the collision above. Opened from the thread, there is nothing to
+          collide with. */}
+      {reactorsFor ? (
+        <ReactorSheet messageId={reactorsFor} onClose={() => setReactorsFor(null)} />
+      ) : null}
+
+      {/* At the thread root rather than inside a cell: a viewer in a list row
+          would unmount the moment the row recycled. Mounted with no photo it
+          carries nothing at all - no gesture tree, no registration - and asks
+          whether anything is in its way at the moment of the tap. */}
+      <PhotoViewer photo={viewingPhoto} onClose={() => setViewingPhoto(null)} />
     </View>
   );
 }
@@ -1128,6 +1883,9 @@ const styles = StyleSheet.create({
   bubbleSending: {
     opacity: 0.55,
   },
+  link: {
+    textDecorationLine: 'underline',
+  },
   statusRow: {
     alignSelf: 'flex-end',
     paddingTop: 2,
@@ -1142,6 +1900,11 @@ const styles = StyleSheet.create({
   rowTheirs: {
     justifyContent: 'flex-start',
   },
+  // Blank but present: the row keeps its measured height and window rect
+  // while the menu's lifted copy stands in for it.
+  rowLifted: {
+    opacity: 0,
+  },
   bubbleColumn: {
     maxWidth: '80%',
   },
@@ -1153,32 +1916,12 @@ const styles = StyleSheet.create({
     gap: Space.xs,
   },
   photo: {
-    width: 220,
-    height: 220,
+    // The reserved space, shared by the loaded photo, the signing placeholder
+    // and the review tile so that all three are the same size. Only `width` is
+    // ever overridden (photoFrame); the height is the whole point.
+    width: PHOTO_SIZE,
+    height: PHOTO_SIZE,
     borderRadius: Radius.md,
-  },
-  photoCheck: {
-    overflow: 'hidden',
-    borderCurve: 'continuous',
-  },
-  photoCheckVeil: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Space.md,
-  },
-  photoCheckCard: {
-    alignItems: 'center',
-    gap: Space.sm,
-    padding: Space.md,
-    borderRadius: Radius.md,
-    borderCurve: 'continuous',
-  },
-  photoCheckTitle: {
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  photoCheckNote: {
-    textAlign: 'center',
   },
   unsentRow: {
     marginTop: Space.sm,
@@ -1187,7 +1930,10 @@ const styles = StyleSheet.create({
   reactionRow: {
     flexDirection: 'row',
     gap: Space.xs,
-    marginTop: -6,
+    // A small positive gap, not the old -6 overlap: the negative pull was
+    // tuned for a chip hanging alone under the bubble and stopped working
+    // once the delivery status shared the band beneath it.
+    marginTop: 2,
     marginHorizontal: Space.sm,
   },
   reactionChip: {
@@ -1199,10 +1945,96 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
     borderWidth: 1,
   },
+  quote: {
+    borderLeftWidth: 2,
+    paddingLeft: Space.sm,
+    marginBottom: 2,
+    gap: 1,
+  },
+  planCard: {
+    // Logical, not physical: this rule is new, so there is no reason for it to
+    // start out unable to mirror itself in a right-to-left locale. The quote
+    // strip above it is grandfathered, not a precedent.
+    borderStartWidth: 2,
+    paddingStart: Space.sm,
+    marginBottom: Space.xs,
+    gap: Space.xs,
+  },
+  planHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+  },
+  planText: {
+    // The words take whatever is left after the glyph, so a long venue name
+    // wraps inside the bubble instead of pushing the glyph off it.
+    flex: 1,
+    gap: 1,
+  },
+  planJoin: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: Radius.pill,
+    borderCurve: 'continuous',
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.xs,
+  },
+  reactorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    minHeight: HitTarget,
+  },
+  reactorFace: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reactorName: {
+    flex: 1,
+  },
+  loadingMore: {
+    paddingVertical: Space.md,
+  },
+  unreadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    paddingTop: Space.lg,
+    paddingBottom: Space.sm,
+  },
+  unreadRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+  },
+  jumpWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: Space.md,
+    alignItems: 'center',
+  },
+  jump: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+    minHeight: HitTarget,
+    paddingHorizontal: Space.lg,
+    borderRadius: Radius.pill,
+  },
   separatorRow: {
     alignItems: 'center',
     paddingTop: Space.lg,
     paddingBottom: Space.sm,
+  },
+  // Centred like a day separator, spaced like a message: a join line belongs
+  // to the room, not to either side of the conversation.
+  systemRow: {
+    alignItems: 'center',
+    paddingVertical: Space.sm,
   },
   menuLayer: {
     position: 'absolute',

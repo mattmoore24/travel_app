@@ -1,23 +1,12 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  View,
-  type LayoutChangeEvent,
-} from 'react-native';
+import { useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { FormTextField } from '@/components/form/form-text-field';
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { LoadError } from '@/components/ui/load-error';
 import { SelectField } from '@/components/form/select-field';
@@ -27,26 +16,23 @@ import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { BusinessAddressField, addressFrom } from '@/features/business/address-field';
-import { BUSINESS_PHOTO_BUCKET } from '@/features/business/api';
+import { PlaceGlyph } from '@/features/business/business-marker';
+import { BusinessPhotos } from '@/features/business/business-photos';
 import {
   useOwnBusiness,
   useUpdateBusinessLocation,
   useUpdateOwnBusiness,
 } from '@/features/business/hooks';
 import { LINK_LABEL, shortTime, weekdayLabel } from '@/features/business/vocabulary';
-import { useBusinessPhotoUrl } from '@/features/business/photo-url';
-import { useLaunchCities } from '@/features/pins/hooks';
 import { LocationPicker } from '@/features/pins/location-picker';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import type { BusinessLinkKind, Database, MyBusinessRow } from '@/lib/database.types';
 import { haptics } from '@/lib/haptics';
-import { processAndUploadImage, removeUploadedImage } from '@/lib/image-upload';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 type HourRow = Database['public']['Tables']['business_hours']['Row'];
 type LinkRow = Database['public']['Tables']['business_links']['Row'];
-type PhotoRow = Database['public']['Tables']['business_photos']['Row'];
 
 /** Which block the caller's Edit affordance was pointing at. */
 /**
@@ -57,6 +43,32 @@ type PhotoRow = Database['public']['Tables']['business_photos']['Row'];
  */
 export type Section = 'details' | 'location' | 'hours' | 'links' | 'photos';
 
+/**
+ * The screen's own name, per section, and the list of sections there are.
+ *
+ * A caller that names a section gets ONLY that block, titled for it. It used
+ * to get the whole 1,430-line form scrolled to a heading, which is how three
+ * signup steps in a row promised a step and delivered somebody else's
+ * settings screen: run 49 photographed what an owner saw after asking for
+ * photos, which was 'Add different hours for some days', a links list, an
+ * orphaned 'What is it? / Pick one' showing no selection, '2 of 10', a dashed
+ * square, '0 of 10' and Save. A Save button that writes nine other fields is
+ * also the wrong control to put under a one-question step.
+ *
+ * Every field belongs to exactly one section, so nothing becomes unreachable:
+ * 'Finding the door' is location's (it is what a map cannot say) and
+ * 'Anything the hours miss' is hours'. The spec for this change named only
+ * name/description/website and address/city/marker, and those two would have
+ * had no home at all.
+ */
+const SECTION_TITLE: Record<Section, string> = {
+  details: 'Your name and description',
+  location: 'Where you are',
+  hours: 'Your hours',
+  links: 'Links and contact',
+  photos: 'Your photos',
+};
+
 const NAME_MIN = 2;
 const NAME_MAX = 80;
 const DESCRIPTION_MAX = 600;
@@ -64,17 +76,76 @@ const PLACE_LABEL_MAX = 120;
 const ADDRESS_MAX = 160;
 const HOURS_NOTE_MAX = 200;
 const WEBSITE_MAX = 300;
-/** Both caps are the database's; these only keep the UI honest about them. */
+/** The database's cap; this only keeps the UI honest about it. */
 const LINKS_MAX = 10;
-const PHOTOS_MAX = 10;
-
-const PHOTO_COLUMNS = 3;
-const PHOTO_GAP = Space.sm;
 
 const LINK_OPTIONS = (Object.keys(LINK_LABEL) as BusinessLinkKind[]).map((kind) => ({
   value: kind,
   label: LINK_LABEL[kind],
 }));
+
+// -- What actually costs the check ---------------------------------------------
+//
+// `business_rename_resets` used to compare name, city_id, lat and lng with `is
+// distinct from`, so "Cafe Janis" becoming "Café Janis", or the marker moving
+// onto the actual door, nulled verified_at and dropped a listed business back
+// to 'unconfirmed'. The badge was earned by somebody standing outside taking
+// two photos and it was destroyed by a typo fix, which meant the app was
+// honestly telling owners that the safest thing they could do was leave a
+// wrong name and a wrong marker alone. Those are exactly the corrections that
+// make the map better.
+//
+// 20260902100000_a_typo_is_not_a_hijack.sql narrowed the trigger to a
+// NORMALISED rename, a city change, or a move over seventy-five metres. The
+// two helpers below are the client's copy of the same two thresholds, and
+// they exist so the warnings on this screen say what the database will
+// actually do rather than the worst case.
+
+/** Seventy-five metres: wider than a doorway, narrower than a building. */
+export const MOVE_RESETS_KM = 0.075;
+
+/** The same great-circle distance `public.haversine_km` computes, in km. */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const h =
+    Math.sin(rad(lat2 - lat1) / 2) ** 2 +
+    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lng2 - lng1) / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+
+/**
+ * Whether this marker move is far enough to cost the listing and the check.
+ *
+ * A ten-metre nudge onto the real door is not a move; it is an owner making
+ * the map right. Exported for its own unit test, because the threshold IS the
+ * argument and an off-by-a-factor here either re-punishes accuracy or lets a
+ * surf shack walk to the Marriott's address.
+ */
+export function movedFar(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number }
+): boolean {
+  return haversineKm(from.lat, from.lng, to.lat, to.lng) > MOVE_RESETS_KM;
+}
+
+/**
+ * A name as the trigger compares it: case-folded, whitespace-collapsed and
+ * stripped of accents.
+ *
+ * Deliberately a SUBSET of what Postgres `unaccent` folds away — this strips
+ * combining marks and nothing else, where unaccent also maps ß to ss and Æ to
+ * AE. That direction is the safe one: this can only decide two names differ
+ * when the database would call them the same, so the screen can over-warn but
+ * never promise a check that the trigger is about to take.
+ */
+export function normalizedName(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
 
 // -- Round trips ---------------------------------------------------------------
 //
@@ -107,19 +178,6 @@ async function fetchLinks(businessId: string) {
     throw error;
   }
   return (data ?? []) as LinkRow[];
-}
-
-async function fetchBusinessPhotos(businessId: string) {
-  const { data, error } = await supabase
-    .from('business_photos')
-    .select('*')
-    .eq('business_id', businessId)
-    .order('position')
-    .order('created_at');
-  if (error) {
-    throw error;
-  }
-  return (data ?? []) as PhotoRow[];
 }
 
 /**
@@ -186,45 +244,6 @@ async function removeLink(linkId: string) {
   }
 }
 
-/** Upload, then register the row, which is what opens the moderation check. */
-async function uploadBusinessPhoto(input: {
-  businessId: string;
-  userId: string;
-  localUri: string;
-  position: number;
-}) {
-  const storagePath = await processAndUploadImage(
-    BUSINESS_PHOTO_BUCKET,
-    input.userId,
-    input.localUri
-  );
-  const { error } = await supabase.from('business_photos').insert({
-    business_id: input.businessId,
-    storage_path: storagePath,
-    position: input.position,
-  });
-  if (error) {
-    await removeUploadedImage(BUSINESS_PHOTO_BUCKET, storagePath);
-    throw error;
-  }
-}
-
-async function deleteBusinessPhoto(photo: PhotoRow) {
-  const { error } = await supabase.from('business_photos').delete().eq('id', photo.id);
-  if (error) {
-    throw error;
-  }
-  // storage-js reports failures in the result rather than by throwing. An
-  // orphan is invisible to everyone (reads resolve through the photo row),
-  // so log it rather than failing a delete that has already happened.
-  const { error: removeError } = await supabase.storage
-    .from(BUSINESS_PHOTO_BUCKET)
-    .remove([photo.storage_path]);
-  if (removeError) {
-    console.warn(`orphaned storage object ${photo.storage_path}: ${removeError.message}`);
-  }
-}
-
 function useBusinessHours(businessId: string | null) {
   return useQuery({
     queryKey: ['business-hours', businessId],
@@ -237,14 +256,6 @@ function useBusinessLinks(businessId: string | null) {
   return useQuery({
     queryKey: ['business-links', businessId],
     queryFn: () => fetchLinks(businessId!),
-    enabled: isSupabaseConfigured && businessId != null,
-  });
-}
-
-function useBusinessPhotos(businessId: string | null) {
-  return useQuery({
-    queryKey: ['business-photos', businessId],
-    queryFn: () => fetchBusinessPhotos(businessId!),
     enabled: isSupabaseConfigured && businessId != null,
   });
 }
@@ -392,7 +403,7 @@ function TimeField({
 /**
  * The weekday chips.
  *
- * Deliberately not ChipRow, which labels each chip for VoiceOver with its own
+ * Deliberately not ChipRail, which labels each chip for VoiceOver with its own
  * visible text: two rule lines would then both announce seven chips called
  * "Mon", "Tue"..., and a screen reader would have no way to tell which set of
  * hours it was about to change.
@@ -434,211 +445,6 @@ function WeekdayChips({
   );
 }
 
-// -- Photos --------------------------------------------------------------------
-
-function PhotoTile({
-  photo,
-  size,
-  cover,
-  onRemove,
-}: {
-  photo: PhotoRow;
-  size: number;
-  cover: boolean;
-  onRemove: () => void;
-}) {
-  const theme = useTheme();
-  const { data: url } = useBusinessPhotoUrl(photo.storage_path);
-  const rejected = photo.moderation_status === 'rejected';
-
-  return (
-    <Animated.View
-      entering={FadeIn.duration(220)}
-      exiting={FadeOut.duration(150)}
-      layout={LinearTransition.springify()}
-      style={[styles.tile, { width: size, height: size, backgroundColor: theme.surfaceSunken }]}>
-      {url ? <Image source={{ uri: url }} style={styles.fill} contentFit="cover" /> : null}
-      {photo.moderation_status !== 'approved' ? (
-        <View
-          style={[styles.tileChip, { backgroundColor: rejected ? theme.warning : theme.surface }]}>
-          <ThemedText type="caption" style={rejected ? { color: theme.onHighlight } : undefined}>
-            {rejected ? "Didn't pass" : 'In review'}
-          </ThemedText>
-        </View>
-      ) : cover ? (
-        <View style={[styles.tileChip, { backgroundColor: theme.surface }]}>
-          <ThemedText type="caption">Cover</ThemedText>
-        </View>
-      ) : null}
-      <PressableScale
-        accessibilityRole="button"
-        accessibilityLabel={cover ? 'Remove the cover photo' : `Remove photo ${photo.position + 1}`}
-        haptic="light"
-        scaleTo={0.88}
-        // 10 + 24 + 10 = 44. hitSlop is honoured by the Pressable itself, so
-        // the tile's overflow: hidden cannot clip the target.
-        hitSlop={10}
-        onPress={onRemove}
-        containerStyle={styles.removeAnchor}
-        style={[styles.removeDot, { backgroundColor: theme.surface }]}>
-        <SymbolView
-          name={{ ios: 'xmark', android: 'close', web: 'close' }}
-          size={11}
-          tintColor={theme.text}
-        />
-      </PressableScale>
-    </Animated.View>
-  );
-}
-
-function BusinessPhotos({ businessId, userId }: { businessId: string; userId: string | null }) {
-  const theme = useTheme();
-  const queryClient = useQueryClient();
-  const { data: photos = [] } = useBusinessPhotos(businessId);
-  const [width, setWidth] = useState(0);
-
-  const upload = useMutation({
-    mutationFn: (input: { localUri: string; position: number }) =>
-      uploadBusinessPhoto({ businessId, userId: userId!, ...input }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['business-photos', businessId] });
-      queryClient.invalidateQueries({ queryKey: ['business-detail', businessId] });
-    },
-  });
-  const remove = useMutation({
-    mutationFn: deleteBusinessPhoto,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['business-photos', businessId] });
-      queryClient.invalidateQueries({ queryKey: ['business-detail', businessId] });
-    },
-  });
-
-  const size =
-    width > 0 ? Math.floor((width - PHOTO_GAP * (PHOTO_COLUMNS - 1)) / PHOTO_COLUMNS) : 0;
-  const full = photos.length >= PHOTOS_MAX;
-
-  /** Lowest free slot, so a delete leaves a hole the next upload fills. */
-  const nextPosition = () => {
-    const taken = new Set(photos.map((photo) => photo.position));
-    for (let index = 0; index < PHOTOS_MAX; index += 1) {
-      if (!taken.has(index)) {
-        return index;
-      }
-    }
-    return null;
-  };
-
-  const pick = async () => {
-    if (userId == null) {
-      return;
-    }
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      // `aspect` is Android-only and the iOS editor is always square, so the
-      // grid below shows squares: what they cropped is what they get.
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 1,
-    });
-    if (picked.canceled || picked.assets.length === 0) {
-      return;
-    }
-    // Recomputed after the picker await: the list can move while it is open,
-    // and a stale slot would quietly make a second cover.
-    const position = nextPosition();
-    if (position == null) {
-      return;
-    }
-    try {
-      await upload.mutateAsync({ localUri: picked.assets[0].uri, position });
-      haptics.success();
-    } catch {
-      // Surfaced by the global mutation error alert; nothing to undo here.
-    }
-  };
-
-  // The cover is the LOWEST surviving position, not position 0.
-  //
-  // Every reader takes `order by position limit 1` — the map's cover, the
-  // place sheet, the chat list. This screen compared against 0, so once the
-  // first photo was removed no tile said Cover even though the map had
-  // already promoted the next one, and the confirm on removing the real cover
-  // called it "this photo".
-  const coverId = photos.length > 0 ? photos[0].id : null;
-
-  const confirmRemove = (photo: PhotoRow) => {
-    Alert.alert(
-      photo.id === coverId ? 'Remove your cover photo?' : 'Remove this photo?',
-      undefined,
-      [
-        { text: 'Keep it', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: () => remove.mutate(photo) },
-      ]
-    );
-  };
-
-  return (
-    <View
-      style={styles.block}
-      onLayout={(event: LayoutChangeEvent) => setWidth(Math.round(event.nativeEvent.layout.width))}>
-      <ThemedText type="footnote" themeColor="textSecondary">
-        Photos of the business, not of a person. The first one is your cover.
-      </ThemedText>
-      {size > 0 ? (
-        <View style={[styles.grid, { gap: PHOTO_GAP }]}>
-          {photos.map((photo) => (
-            <PhotoTile
-              key={photo.id}
-              photo={photo}
-              size={size}
-              cover={photo.id === coverId}
-              onRemove={() => confirmRemove(photo)}
-            />
-          ))}
-          {full ? null : (
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel={photos.length === 0 ? 'Add your cover photo' : 'Add a photo'}
-              haptic="soft"
-              scaleTo={0.97}
-              disabled={upload.isPending}
-              onPress={pick}
-              containerStyle={{ width: size, height: size }}
-              style={[
-                styles.tile,
-                styles.emptyTile,
-                // `hairline` is documented as decorative and measures 1.5:1
-                // against the canvas, so the "add a photo" tile was a bare
-                // glyph floating beside filled squares with no box around it.
-                // Same treatment the storefront screen gives its empty frame.
-                {
-                  width: size,
-                  height: size,
-                  backgroundColor: theme.surfaceSunken,
-                  borderColor: theme.border,
-                },
-              ]}>
-              {upload.isPending ? (
-                <ActivityIndicator color={theme.accent} />
-              ) : (
-                <SymbolView
-                  name={{ ios: 'plus', android: 'add', web: 'add' }}
-                  size={22}
-                  tintColor={theme.textSecondary}
-                />
-              )}
-            </PressableScale>
-          )}
-        </View>
-      ) : (
-        <View style={[styles.gridPlaceholder, { backgroundColor: theme.surfaceSunken }]} />
-      )}
-      <ThemedText type="footnote" themeColor="textSecondary">
-        {photos.length} of {PHOTOS_MAX}
-      </ThemedText>
-    </View>
-  );
-}
-
 // -- Links ---------------------------------------------------------------------
 
 function valuePlaceholder(kind: BusinessLinkKind): string {
@@ -658,7 +464,14 @@ function valuePlaceholder(kind: BusinessLinkKind): string {
   }
 }
 
-function BusinessLinks({ businessId }: { businessId: string }) {
+function BusinessLinks({
+  businessId,
+  onCommitted,
+}: {
+  businessId: string;
+  /** Fired once a link has actually been written, or actually removed. */
+  onCommitted?: () => void;
+}) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const { data: links = [] } = useBusinessLinks(businessId);
@@ -671,6 +484,7 @@ function BusinessLinks({ businessId }: { businessId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['business-links', businessId] });
       queryClient.invalidateQueries({ queryKey: ['business-detail', businessId] });
+      onCommitted?.();
     },
   });
   const remove = useMutation({
@@ -678,6 +492,7 @@ function BusinessLinks({ businessId }: { businessId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['business-links', businessId] });
       queryClient.invalidateQueries({ queryKey: ['business-detail', businessId] });
+      onCommitted?.();
     },
   });
 
@@ -791,7 +606,6 @@ function BusinessLinks({ businessId }: { businessId: string }) {
                       ? 'email-address'
                       : 'url'
                 }
-                {...keyboardDoneProps}
                 maxLength={300}
               />
               <PrimaryButton
@@ -862,26 +676,33 @@ function BusinessEditForm({
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
   const updateBusiness = useUpdateOwnBusiness(business.id);
-  const { section } = useLocalSearchParams<{ section?: Section }>();
+  // Checked against the union rather than trusted: this is a route param, so
+  // anything at all can arrive in it, and an unrecognised value under a
+  // section gate would render a form with no fields in it and a Save button.
+  // Unknown means "the whole thing", which is what it used to mean.
+  const params = useLocalSearchParams<{ section?: string }>();
+  const section: Section | null =
+    params.section != null && params.section in SECTION_TITLE ? (params.section as Section) : null;
+  /** Whether this block is on screen at all. No section means all of them. */
+  const shows = (key: Section) => section == null || section === key;
 
-  const scroller = useRef<ScrollView>(null);
-  const [targetY, setTargetY] = useState<number | null>(null);
+  /**
+   * Whether anything on this screen has ALREADY been written.
+   *
+   * Photos and links own their own mutations and commit on the tap; the name,
+   * the description, the hours and the marker are held until Save. Tracked
+   * separately from `dirty` on purpose: `dirty` is what decides whether Save
+   * has work to do, and folding a committed photo into it would make Save
+   * start saving photos, which it has never owned and must not begin owning.
+   */
+  const [committed, setCommitted] = useState(false);
+  const noteCommitted = () => setCommitted(true);
 
-  // Only the block that was asked for reports its position, and the scroll
-  // happens in an effect: a handler created during render may not touch a
-  // ref, and the scroller has its content height by the time this runs.
-  const measure = (key: Section) => (event: LayoutChangeEvent) => {
-    if (section === key) {
-      setTargetY(event.nativeEvent.layout.y);
-    }
-  };
-
-  useEffect(() => {
-    if (targetY == null) {
-      return;
-    }
-    scroller.current?.scrollTo({ y: Math.max(targetY - Space.md, 0), animated: false });
-  }, [targetY]);
+  // No measure-and-scroll any more, and deliberately none: the named block is
+  // the only thing mounted, so it is already at the top. The old version
+  // waited on an onLayout from a block that would now never mount, and a
+  // targetY that never arrives is a scroll that never happens on a screen
+  // that has quietly stopped saying why.
 
   const [name, setName] = useState(business.name);
   const [description, setDescription] = useState(business.description ?? '');
@@ -895,13 +716,10 @@ function BusinessEditForm({
   // to say so in a comment and leave the owner no way to do it at all, so a
   // business that moved premises had a listing on the wrong door forever.
   const [coords, setCoords] = useState({ lat: business.lat, lng: business.lng });
-  const [cityId, setCityId] = useState(business.city_id);
   // Same reason as signup: with the keyboard up there is one field's worth of
   // room left, and the suggestion list was landing in it.
   const [addressFocused, setAddressFocused] = useState(false);
   const moveBusiness = useUpdateBusinessLocation();
-  const { data: launchCities = [] } = useLaunchCities();
-  const city = launchCities.find((row) => row.city_id === cityId) ?? null;
 
   // A place with no hours yet still gets a line to fill in, so the block is
   // never an empty heading. No days picked means nothing is written.
@@ -923,8 +741,18 @@ function BusinessEditForm({
   });
 
   const nameChanged = name.trim() !== business.name;
-  const markerMoved =
-    coords.lat !== business.lat || coords.lng !== business.lng || cityId !== business.city_id;
+  // Any move at all is still a save — update_business_location owns lat, lng
+  // and city_id, and an owner who nudges the marker onto their real door
+  // means it. What changed is what a move COSTS: only a jump over
+  // seventy-five metres resets the check now, so that is what the warning is
+  // allowed to talk about. The city is the server's answer from the marker
+  // (20260905130000); a change of city is always a jump past that line.
+  const markerMoved = coords.lat !== business.lat || coords.lng !== business.lng;
+  const markerMovedFar = movedFar({ lat: business.lat, lng: business.lng }, coords);
+  // The literal name change is what gets written; the normalised one is what
+  // the trigger reacts to. "Cafe Janis" becoming "Café Janis" saves and costs
+  // nothing, and this screen has to be able to say both halves of that.
+  const nameResets = normalizedName(name) !== normalizedName(business.name);
   const hoursChanged = serializeRules(rules) !== serializeRules(rulesFromRows(hourRows));
   const detailsChanged =
     nameChanged ||
@@ -963,27 +791,29 @@ function BusinessEditForm({
     nameError == null && descriptionError == null && websiteError == null && brokenRule == null;
 
   /**
-   * Renaming costs the listing and the badge, so it gets asked about.
+   * A real rename still costs the listing and the badge, so it gets asked
+   * about. A spelling of an accent, and a nudge onto the door, no longer do.
    *
-   * `business_rename_resets` drops a listed place back to `unconfirmed` and
-   * clears `verified_at`, which means it comes off the map until a new email
-   * code is typed, and the check earned by standing outside with a phone is
-   * gone. A footnote under the field was carrying the whole warning, and the
-   * common reason to touch that field is fixing a typo.
+   * `business_rename_resets` drops a listed business back to `unconfirmed`
+   * and clears `verified_at`, so it comes off the map until a new email code
+   * is typed and the check earned by standing outside with a phone is gone.
+   * Since 20260902100000 that fires on a NORMALISED name change, a city
+   * change, or a move over seventy-five metres — so 'Cafe Janis' becoming
+   * 'Café Janis' saves and costs nothing, and this alert stays quiet for it.
+   * The badge itself is deliberately NOT preserved through a genuine rename:
+   * the re-confirmation mail goes to the same inbox the surf shack
+   * registered, so it would survive the exact attack the reset exists for.
    */
   const save = async () => {
     if (!valid) {
       return;
     }
-    if (!nameChanged && !markerMoved) {
+    if (!nameResets && !markerMovedFar) {
       await commit();
       return;
     }
-    // Moving the marker costs exactly what renaming costs, for the same
-    // reason, so it gets asked the same way instead of surprising somebody
-    // whose listing goes dark after they nudged a pin ten metres.
-    const what = nameChanged
-      ? markerMoved
+    const what = nameResets
+      ? markerMovedFar
         ? 'Change the name and the marker'
         : 'Change the name'
       : 'Move the marker';
@@ -991,7 +821,7 @@ function BusinessEditForm({
       `${what} and come off the map?`,
       `Travelers stop seeing ${business.name} until you type a new email code, and the check goes with it.`,
       [
-        { text: 'Leave it as it is', style: 'cancel' },
+        { text: 'Keep it as it is', style: 'cancel' },
         { text: 'Go ahead', style: 'destructive', onPress: () => void commit() },
       ]
     );
@@ -1002,10 +832,24 @@ function BusinessEditForm({
       router.back();
       return;
     }
-    Alert.alert('Drop your changes?', "You'll lose what you just typed.", [
-      { text: 'Keep editing', style: 'cancel' },
-      { text: 'Drop them', style: 'destructive', onPress: () => router.back() },
-    ]);
+    // "Discard", matching edit-profile: "drop" is the create-a-pin verb
+    // everywhere else in the product.
+    //
+    // Photos and links commit the moment they are tapped, while everything
+    // else here waits for Save. "You'll lose what you just typed" was true of
+    // the text and false of the photo already destroyed, so an owner who
+    // tidied their page, changed their mind and discarded found the photos
+    // gone and the description restored, with no way to tell which was which.
+    Alert.alert(
+      'Discard your changes?',
+      committed
+        ? 'Photos and links are already saved. The rest goes back to how it was.'
+        : 'Nothing you changed here has been saved yet.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => router.back() },
+      ]
+    );
   };
 
   const commit = async () => {
@@ -1024,11 +868,12 @@ function BusinessEditForm({
         await saveHours.mutateAsync();
       }
       // Last, and on its own: the address above is an ordinary column and
-      // this is a geofenced function. Passing the address here as well would
+      // this is the function that resolves the city from the marker (the
+      // stored city is its hint). Passing the address here as well would
       // write it twice, and the marker is deliberately allowed to disagree
       // with the words.
       if (markerMoved) {
-        await moveBusiness.mutateAsync({ lat: coords.lat, lng: coords.lng, cityId });
+        await moveBusiness.mutateAsync({ lat: coords.lat, lng: coords.lng });
       }
       haptics.success();
       router.back();
@@ -1061,8 +906,11 @@ function BusinessEditForm({
 
   return (
     <StepScreen
-      title="Edit your business"
-      continueLabel="Save"
+      title={section ? SECTION_TITLE[section] : 'Edit your business'}
+      // Photos and links commit the moment they are tapped, so on those two
+      // sections there is nothing left for Save to save and the button is a
+      // way out. Everywhere else it still writes the fields above it.
+      continueLabel={section === 'photos' || section === 'links' ? 'Done' : 'Save'}
       continueDisabled={!valid}
       note={
         brokenRule
@@ -1071,232 +919,220 @@ function BusinessEditForm({
       }
       continueLoading={updateBusiness.isPending || saveHours.isPending || moveBusiness.isPending}
       onContinue={save}
-      onClose={close}
-      scrollRef={scroller}>
-      <View onLayout={measure('details')} />
-      <FormTextField
-        label="Name"
-        value={name}
-        onChangeText={setName}
-        error={nameError}
-        maxLength={NAME_MAX + 20}
-      />
-      {/* Said here rather than in an alert afterwards, because by then the
-          place is already off the map: the rename trigger clears verified_at
-          and drops a listed place back to unconfirmed. */}
-      <ThemedText type="footnote" themeColor={nameChanged ? 'warning' : 'textSecondary'}>
-        {nameChanged
-          ? 'You changed the name. Saving takes your business off the map until you confirm your email again, and the check goes with it.'
-          : 'Change the name and your business comes off the map until you confirm your email again. The check goes with it.'}
-      </ThemedText>
+      onClose={close}>
+      {shows('details') ? (
+        <>
+          <FormTextField
+            label="Name"
+            value={name}
+            onChangeText={setName}
+            error={nameError}
+            maxLength={NAME_MAX + 20}
+          />
+          {/* Said here rather than in an alert afterwards, because by then the
+              place is already off the map: the rename trigger clears
+              verified_at and drops a listed place back to unconfirmed. */}
+          <ThemedText type="footnote" themeColor={nameResets ? 'warning' : 'textSecondary'}>
+            {nameResets
+              ? 'You changed the name. Saving takes your business off the map until you confirm your email again, and the check goes with it.'
+              : 'Accents and capitals are free to fix. A different name takes your business off the map until you confirm your email again, and the check goes with it.'}
+          </ThemedText>
 
-      <FormTextField
-        label="About the business"
-        placeholder="What it's like, who turns up, what to order."
-        multiline
-        numberOfLines={4}
-        style={styles.multiline}
-        value={description}
-        onChangeText={setDescription}
-        error={descriptionError}
-        hint={
-          description.length > DESCRIPTION_MAX - 100
-            ? `${DESCRIPTION_MAX - description.length} characters left`
-            : undefined
-        }
-        {...keyboardDoneProps}
-      />
+          <FormTextField
+            label="About the business"
+            placeholder="What it's like, who turns up, what to order."
+            multiline
+            numberOfLines={4}
+            style={styles.multiline}
+            value={description}
+            onChangeText={setDescription}
+            error={descriptionError}
+            hint={
+              description.length > DESCRIPTION_MAX - 100
+                ? `${DESCRIPTION_MAX - description.length} characters left`
+                : undefined
+            }
+          />
+          {/* Moved up out of the middle of the location block, where it sat
+              between 'Finding the door' and the hours note for no reason but
+              column order. It is one of the words a traveler reads, so it
+              belongs with the other two. */}
+          <FormTextField
+            label="Website"
+            placeholder="https://"
+            value={website}
+            onChangeText={setWebsite}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            maxLength={WEBSITE_MAX}
+            error={websiteError ?? undefined}
+          />
+        </>
+      ) : null}
       {/* The address, the marker, and the bit a map cannot tell anyone. Three
           answers to three different questions, which is why moving one leaves
           the others alone. */}
-      <View onLayout={measure('location')} />
-      {city ? (
-        <BusinessAddressField
-          value={address}
-          cityName={city.cities.name}
-          cityLat={city.cities.lat}
-          cityLng={city.cities.lng}
-          onFocusChange={setAddressFocused}
-          onChangeText={(next) => setAddress(next.slice(0, ADDRESS_MAX))}
-          // Picking a result moves both, because somebody who searched for
-          // their own address meant the door and not the words.
-          onPick={(place) => {
-            setAddress(addressFrom(place));
-            setCoords({ lat: place.latitude, lng: place.longitude });
-          }}
-        />
-      ) : (
-        <FormTextField
-          label="Address"
-          placeholder="Rua da Rosa 12"
-          value={address}
-          onChangeText={setAddress}
-          maxLength={ADDRESS_MAX}
-          hint="What a traveler pastes into a taxi app."
-        />
-      )}
-      {city && !addressFocused ? (
+      {shows('location') ? (
         <>
-          {launchCities.length > 1 ? (
-            <SelectField
-              label="City"
-              options={launchCities.map((row) => ({
-                value: String(row.city_id),
-                label: row.cities.name,
-              }))}
-              value={String(cityId)}
-              onChange={(next) => {
-                const picked = launchCities.find((row) => String(row.city_id) === next);
-                if (!picked) {
-                  return;
-                }
-                setCityId(picked.city_id);
-                // The old marker is in the old city, and the geofence would
-                // refuse it. Start at the new centre and let them place it.
-                setCoords({ lat: picked.cities.lat, lng: picked.cities.lng });
-              }}
-              hint="Where you are, not where you deliver."
-            />
-          ) : null}
-          <LocationPicker
-            // Remounted per city for the same reason signup does it: the
-            // picker reads its centre once, through initialRegion.
-            key={`edit-${cityId}`}
-            centerLat={coords.lat}
-            centerLng={coords.lng}
-            lat={coords.lat}
-            lng={coords.lng}
-            // Street level. The question is whether the marker is on the door,
-            // and a city-wide view cannot answer it.
-            delta={0.004}
-            onChange={(lat, lng) => setCoords({ lat, lng })}
+          <BusinessAddressField
+            value={address}
+            near={coords}
+            onFocusChange={setAddressFocused}
+            onChangeText={(next) => setAddress(next.slice(0, ADDRESS_MAX))}
+            // Picking a result moves both, because somebody who searched for
+            // their own address meant the door and not the words.
+            onPick={(place) => {
+              setAddress(addressFrom(place));
+              setCoords({ lat: place.latitude, lng: place.longitude });
+            }}
           />
-          <ThemedText type="footnote" themeColor={markerMoved ? 'warning' : 'textSecondary'}>
-            {markerMoved
-              ? 'You moved the marker. Saving takes your business off the map until you confirm your email again, and the check goes with it.'
-              : 'Tap the map to put the marker on your door. Moving it takes you off the map until you confirm your email again.'}
-          </ThemedText>
+          {!addressFocused ? (
+            <>
+              <LocationPicker
+                key="edit"
+                centerLat={coords.lat}
+                centerLng={coords.lng}
+                lat={coords.lat}
+                lng={coords.lng}
+                // Street level. The question is whether the marker is on the door,
+                // and a city-wide view cannot answer it.
+                delta={0.004}
+                // The chip travelers tap, not MapKit's red balloon — the one
+                // colour the palette bans outside destructive actions.
+                marker={<PlaceGlyph category={business.category} />}
+                onChange={(lat, lng) => setCoords({ lat, lng })}
+              />
+              {/* A ten-metre nudge onto the real door produces no warning at
+              all now, which is the whole point: the corrections that make the
+              map better used to be the ones that cost the most. No City
+              select any more either: since 2026-09-05 the server files the
+              listing under the city the marker is in. */}
+              <ThemedText type="footnote" themeColor={markerMovedFar ? 'warning' : 'textSecondary'}>
+                {markerMovedFar
+                  ? 'You moved the marker a long way. Saving takes your business off the map until you confirm your email again, and the check goes with it.'
+                  : 'Search your address or tap the map to put the marker on your door. Nudging it is free. Moving it to another street takes you off the map until you confirm your email again.'}
+              </ThemedText>
+            </>
+          ) : null}
+          <FormTextField
+            label="Finding the door"
+            placeholder="Two minutes from the station, blue door"
+            value={placeLabel}
+            onChangeText={setPlaceLabel}
+            maxLength={PLACE_LABEL_MAX}
+            hint="The bit the map can't tell anyone."
+          />
         </>
       ) : null}
-      <FormTextField
-        label="Finding the door"
-        placeholder="Two minutes from the station, blue door"
-        value={placeLabel}
-        onChangeText={setPlaceLabel}
-        maxLength={PLACE_LABEL_MAX}
-        hint="The bit the map can't tell anyone."
-      />
-      <FormTextField
-        label="Anything the hours miss"
-        placeholder="Kitchen shuts at 22:00. Closed on public holidays."
-        value={hoursNote}
-        onChangeText={setHoursNote}
-        maxLength={HOURS_NOTE_MAX}
-      />
-      <FormTextField
-        label="Website"
-        placeholder="https://"
-        value={website}
-        onChangeText={setWebsite}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="url"
-        maxLength={WEBSITE_MAX}
-        error={websiteError ?? undefined}
-      />
 
-      <ThemedText type="smallBold" onLayout={measure('hours')}>
-        Hours
-      </ThemedText>
-      <View style={styles.block}>
-        {rules.map((rule, index) => {
-          const ruleName = index === 0 ? 'first set of hours' : `set of hours ${index + 1}`;
-          return (
-            <Animated.View
-              key={rule.id}
-              entering={FadeIn.duration(200)}
-              exiting={FadeOut.duration(150)}
-              layout={LinearTransition.springify()}
-              style={[styles.ruleCard, { backgroundColor: theme.surfaceSunken }]}>
-              <View style={styles.ruleHeader}>
-                <ThemedText type="footnote" themeColor="textSecondary" style={styles.flex}>
-                  {daysSummary(rule.days)}
-                </ThemedText>
-                {rules.length > 1 ? (
-                  <PressableScale
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove the ${ruleName}`}
-                    haptic="light"
-                    scaleTo={0.9}
-                    hitSlop={8}
-                    onPress={() =>
-                      setRules((current) => current.filter((other) => other.id !== rule.id))
-                    }
-                    style={styles.removeHit}>
-                    <SymbolView
-                      name={{ ios: 'xmark', android: 'close', web: 'close' }}
-                      size={13}
-                      tintColor={theme.textSecondary}
+      {shows('hours') ? (
+        <>
+          {section == null ? <ThemedText type="smallBold">Hours</ThemedText> : null}
+          <View style={styles.block}>
+            {rules.map((rule, index) => {
+              const ruleName = index === 0 ? 'first set of hours' : `set of hours ${index + 1}`;
+              return (
+                <Animated.View
+                  key={rule.id}
+                  entering={FadeIn.duration(200)}
+                  exiting={FadeOut.duration(150)}
+                  layout={LinearTransition.springify()}
+                  style={[styles.ruleCard, { backgroundColor: theme.surfaceSunken }]}>
+                  <View style={styles.ruleHeader}>
+                    <ThemedText type="footnote" themeColor="textSecondary" style={styles.flex}>
+                      {daysSummary(rule.days)}
+                    </ThemedText>
+                    {rules.length > 1 ? (
+                      <PressableScale
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove the ${ruleName}`}
+                        haptic="light"
+                        scaleTo={0.9}
+                        hitSlop={8}
+                        onPress={() =>
+                          setRules((current) => current.filter((other) => other.id !== rule.id))
+                        }
+                        style={styles.removeHit}>
+                        <SymbolView
+                          name={{ ios: 'xmark', android: 'close', web: 'close' }}
+                          size={13}
+                          tintColor={theme.textSecondary}
+                        />
+                      </PressableScale>
+                    ) : null}
+                  </View>
+                  <WeekdayChips
+                    days={rule.days}
+                    ruleName={ruleName}
+                    onToggle={(weekday) => toggleDay(rule.id, weekday)}
+                  />
+                  <View style={styles.times}>
+                    <TimeField
+                      label="Opens"
+                      value={rule.opens}
+                      accessibilityLabel={`Opening time, ${ruleName}`}
+                      onChange={(time) => setRuleTime(rule.id, 'opens', time)}
                     />
-                  </PressableScale>
-                ) : null}
-              </View>
-              <WeekdayChips
-                days={rule.days}
-                ruleName={ruleName}
-                onToggle={(weekday) => toggleDay(rule.id, weekday)}
-              />
-              <View style={styles.times}>
-                <TimeField
-                  label="Opens"
-                  value={rule.opens}
-                  accessibilityLabel={`Opening time, ${ruleName}`}
-                  onChange={(time) => setRuleTime(rule.id, 'opens', time)}
-                />
-                <TimeField
-                  label="Closes"
-                  value={rule.closes}
-                  accessibilityLabel={`Closing time, ${ruleName}`}
-                  onChange={(time) => setRuleTime(rule.id, 'closes', time)}
-                />
-              </View>
-            </Animated.View>
-          );
-        })}
-        <PrimaryButton
-          label="Add different hours for some days"
-          variant="tonal"
-          accessibilityLabel="Add different hours for some days"
-          onPress={() => {
-            ruleSeq.current += 1;
-            setRules((current) => [
-              ...current,
-              {
-                id: `rule-${ruleSeq.current}`,
-                days: [],
-                opens: DEFAULT_OPENS,
-                closes: DEFAULT_CLOSES,
-              },
-            ]);
-          }}
-        />
-        <ThemedText type="footnote" themeColor="textSecondary">
-          Past midnight is fine. 20:00 to 2:00 reads as one night.
-        </ThemedText>
-        <ThemedText type="footnote" themeColor="textSecondary">
-          A day you leave out reads as closed.
-        </ThemedText>
-      </View>
+                    <TimeField
+                      label="Closes"
+                      value={rule.closes}
+                      accessibilityLabel={`Closing time, ${ruleName}`}
+                      onChange={(time) => setRuleTime(rule.id, 'closes', time)}
+                    />
+                  </View>
+                </Animated.View>
+              );
+            })}
+            <PrimaryButton
+              label="Add different hours for some days"
+              variant="tonal"
+              accessibilityLabel="Add different hours for some days"
+              onPress={() => {
+                ruleSeq.current += 1;
+                setRules((current) => [
+                  ...current,
+                  {
+                    id: `rule-${ruleSeq.current}`,
+                    days: [],
+                    opens: DEFAULT_OPENS,
+                    closes: DEFAULT_CLOSES,
+                  },
+                ]);
+              }}
+            />
+            <ThemedText type="footnote" themeColor="textSecondary">
+              Past midnight is fine. 20:00 to 2:00 reads as one night.
+            </ThemedText>
+            <ThemedText type="footnote" themeColor="textSecondary">
+              A day you leave out reads as closed.
+            </ThemedText>
+          </View>
+          {/* The note lives with the hours it is about, not four fields
+              further down between the door and the website. */}
+          <FormTextField
+            label="Anything the hours miss"
+            placeholder="Kitchen shuts at 22:00. Closed on public holidays."
+            value={hoursNote}
+            onChangeText={setHoursNote}
+            maxLength={HOURS_NOTE_MAX}
+          />
+        </>
+      ) : null}
 
-      <ThemedText type="smallBold" onLayout={measure('links')}>
-        Links and contact
-      </ThemedText>
-      <BusinessLinks businessId={business.id} />
+      {shows('links') ? (
+        <>
+          {section == null ? <ThemedText type="smallBold">Links and contact</ThemedText> : null}
+          <BusinessLinks businessId={business.id} onCommitted={noteCommitted} />
+        </>
+      ) : null}
 
-      <ThemedText type="smallBold" onLayout={measure('photos')}>
-        Photos
-      </ThemedText>
-      <BusinessPhotos businessId={business.id} userId={userId} />
+      {shows('photos') ? (
+        <>
+          {section == null ? <ThemedText type="smallBold">Photos</ThemedText> : null}
+          <BusinessPhotos businessId={business.id} userId={userId} onCommitted={noteCommitted} />
+        </>
+      ) : null}
     </StepScreen>
   );
 }
@@ -1383,48 +1219,5 @@ const styles = StyleSheet.create({
   },
   addFields: {
     gap: Space.md,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  gridPlaceholder: {
-    height: 120,
-    borderRadius: Radius.lg,
-  },
-  tile: {
-    borderRadius: Radius.lg,
-    borderCurve: 'continuous',
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyTile: {
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-  },
-  fill: {
-    width: '100%',
-    height: '100%',
-  },
-  tileChip: {
-    position: 'absolute',
-    left: Space.sm,
-    bottom: Space.sm,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Space.sm,
-    paddingVertical: 2,
-  },
-  removeAnchor: {
-    position: 'absolute',
-    right: Space.xs,
-    top: Space.xs,
-  },
-  removeDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

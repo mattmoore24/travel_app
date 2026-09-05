@@ -3,7 +3,14 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+  type ImageSourcePropType,
+} from 'react-native';
 import Animated, {
   Easing,
   Extrapolation,
@@ -13,6 +20,7 @@ import Animated, {
   useAnimatedRef,
   useAnimatedScrollHandler,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withRepeat,
   withTiming,
@@ -22,6 +30,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { SAFETY_PROMISE_BODY, SAFETY_PROMISE_TITLE } from '@/constants/policies';
 import { Fonts, Radius, Space, SplashField, Type } from '@/constants/theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
@@ -64,9 +73,26 @@ type Page = {
   icon: SymbolViewProps['name'];
   title: string;
   body: string;
+  /**
+   * A still of the screen this page is about, shown INSTEAD of the badge.
+   *
+   * The brief names a dead-looking product as one of the two killers of this
+   * category, and the most persuasive asset here is a map with fifteen warm
+   * pins on it, which this app already draws. A 104pt grey square with a
+   * map-shaped glyph in it proves nothing.
+   *
+   * Optional, and the badge is the fallback, because the stills carry a
+   * standing maintenance cost: each one has to be re-shot whenever the screen
+   * it photographs changes. Founder decision D40 accepts that for the MAP,
+   * which ages slowly. The traveler and chat stills are to be composed from
+   * PLACEHOLDER content: scripts/demo-travelers.json is AI-generated
+   * portraits that LAUNCH_RUNBOOK schedules for purge, and no real face goes
+   * into a bundled asset.
+   */
+  image?: ImageSourcePropType;
 };
 
-/** Three tabs, three sentences. Anything longer does not get read. */
+/** One sentence a page. Anything longer does not get read. */
 const PAGES: Page[] = [
   {
     icon: { ios: 'map.fill', android: 'map', web: 'map' },
@@ -89,10 +115,35 @@ const PAGES: Page[] = [
     title: 'Say hi, then make plans',
     body: 'Send a first message. If they accept, your chat opens.',
   },
+  {
+    // The differentiator, said last so it sits directly above the choice.
+    //
+    // The three pages before this one describe the tabs. None of them says
+    // the thing that actually decides an install for a woman comparing this
+    // with GAFFL, Couchsurfing or Bumble BFF: no location, pins that expire,
+    // socials that stay hidden, first messages screened. All four are
+    // enforced in Postgres and all four lived behind a button nobody opens.
+    //
+    // The words come from src/constants/policies so this page, the sign-up
+    // gate and the house rules cannot drift apart.
+    icon: { ios: 'lock.fill', android: 'lock', web: 'lock' },
+    title: SAFETY_PROMISE_TITLE,
+    body: SAFETY_PROMISE_BODY,
+  },
 ];
 
-/** Welcome + the three explainers; the last explainer carries the choice. */
-const PAGE_COUNT = PAGES.length + 1;
+/**
+ * Welcome, then the explainers, then the choice on a page of its own.
+ *
+ * The choice used to be bolted onto the last explainer, so four controls
+ * stacked under a heading about something else and the sign-in link and the
+ * business door competed at the bottom of the visual stack. Derived, never a
+ * literal: the dot row, the skip fade and `last` all read this, and a
+ * hardcoded count is exactly the bug a page split invites.
+ */
+const PAGE_COUNT = PAGES.length + 2;
+/** The index of the page that asks for an account. */
+const CHOICE_INDEX = PAGE_COUNT - 1;
 
 /**
  * One layer of a page, moving slower than the scroll for depth. Different
@@ -150,15 +201,22 @@ function TourMark({
   const rise = height / 2 - topInset - EMBLEM_CENTER;
 
   // The glow breathes on the welcome page like a fire does, then hands its
-  // light off as the mark departs.
+  // light off as the mark departs. Unless Reduce Motion is on: this is the
+  // very first screen anyone sees, and one of the app's only two infinite
+  // loops, so it holds a steady mid glow instead.
   const breath = useSharedValue(0.55);
+  const reduceMotion = useReducedMotion();
   useEffect(() => {
+    if (reduceMotion) {
+      breath.value = 0.75;
+      return;
+    }
     breath.value = withRepeat(
       withTiming(0.95, { duration: 2600, easing: Easing.inOut(Easing.quad) }),
       -1,
       true
     );
-  }, [breath]);
+  }, [breath, reduceMotion]);
 
   const glowStyle = useAnimatedStyle(() => ({
     opacity:
@@ -356,7 +414,6 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
 
         {PAGES.map((item, i) => {
           const index = i + 1;
-          const choice = index === PAGE_COUNT - 1;
           return (
             <View
               key={item.title}
@@ -364,10 +421,23 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
                 styles.page,
                 { width, paddingTop: insets.top + MARK * EMBLEM_SCALE + 8, paddingBottom: 96 },
               ]}>
+              {/* Same layer and the same 0.55 factor whichever it draws, so
+                  the parallax is unchanged by the still arriving. The image is
+                  capped at 45% of the page so the title, the body and Next
+                  stay above the fold at MAX_FONT_SCALE. */}
               <PageLayer scrollX={scrollX} index={index} width={width} factor={0.55}>
-                <View style={styles.iconBadge}>
-                  <SymbolView name={item.icon} size={44} tintColor={WHITE} />
-                </View>
+                {item.image ? (
+                  <Image
+                    source={item.image}
+                    style={[styles.still, { maxHeight: height * 0.45 }]}
+                    contentFit="contain"
+                    accessibilityIgnoresInvertColors
+                  />
+                ) : (
+                  <View style={styles.iconBadge}>
+                    <SymbolView name={item.icon} size={44} tintColor={WHITE} />
+                  </View>
+                )}
               </PageLayer>
               <PageLayer
                 scrollX={scrollX}
@@ -387,75 +457,106 @@ export function IntroTour({ onDone }: { onDone: () => void }) {
                     visible controls — with a quarter of the screen empty
                     exactly where the button had been. Somebody who tapped
                     once and expects to tap again finds nothing, and the only
-                    thing left to press is the one that leaves. */}
-                {choice ? null : (
-                  <View style={styles.choice}>
-                    <TourButton
-                      label="Next"
-                      tone="primary"
-                      onPress={() =>
-                        pagerRef.current?.scrollTo({ x: width * (index + 1), animated: true })
-                      }
-                    />
-                  </View>
-                )}
-                {choice ? (
-                  <View style={styles.choice}>
-                    <TourButton
-                      label="Make my profile"
-                      tone="primary"
-                      onPress={() => {
-                        finish('signup');
-                        router.push('/join');
-                      }}
-                    />
-                    <TourButton
-                      label="Just looking for now"
-                      tone="ghost"
-                      onPress={() => finish('browse')}
-                    />
-                    {/* The way back in. Both loud options here make a new
-                        account or none at all, so somebody reinstalling —
-                        the person most likely to be looking at this screen
-                        twice — had to guess that signing in lives one screen
-                        inside signing up. Quiet on purpose: it is the rarer
-                        door, not the wrong one. */}
-                    <Pressable
-                      accessibilityRole="button"
-                      hitSlop={12}
-                      onPress={() => {
-                        finish('signin');
-                        router.push('/email');
-                      }}>
-                      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.signInLink}>
-                        I already have an account
-                      </Text>
-                    </Pressable>
-                    {/* The door for a place. Until this, the only one in the
-                        whole app was a ghost button at the bottom of step 3
-                        of traveler signup, under the fold on a small phone —
-                        so somebody who runs a bar and downloaded the app to
-                        list it had no way of finding out that they could.
-                        Quiet, like the sign-in link: it is the rarer door,
-                        and a traveler must not read it as a fourth thing to
-                        decide about. */}
-                    <Pressable
-                      accessibilityRole="button"
-                      hitSlop={12}
-                      onPress={() => {
-                        finish('signup');
-                        router.push('/join?business=1');
-                      }}>
-                      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.signInLink}>
-                        Run a business? Put it on the map
-                      </Text>
-                    </Pressable>
-                  </View>
-                ) : null}
+                    thing left to press is the one that leaves. Every
+                    explainer keeps its own Next now that the choice is a page
+                    of its own; the last one leads onto it. */}
+                <View style={styles.choice}>
+                  <TourButton
+                    label="Next"
+                    tone="primary"
+                    onPress={() =>
+                      pagerRef.current?.scrollTo({ x: width * (index + 1), animated: true })
+                    }
+                  />
+                </View>
               </PageLayer>
             </View>
           );
         })}
+
+        {/* THE CHOICE, on a page of its own.
+            It used to be bolted onto the last explainer, so four controls
+            stacked under a heading about something else and the two quiet
+            doors competed at the bottom of the visual stack. Its own page,
+            headed with the promise rather than a feature, and no badge: the
+            thing being asked for is the whole content. */}
+        <View
+          key="choice"
+          style={[
+            styles.page,
+            { width, paddingTop: insets.top + MARK * EMBLEM_SCALE + 8, paddingBottom: 96 },
+          ]}>
+          <PageLayer
+            scrollX={scrollX}
+            index={CHOICE_INDEX}
+            width={width}
+            factor={0.25}
+            style={styles.textLayer}>
+            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.pageTitle}>
+              Ready when you are
+            </Text>
+            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.pageBody}>
+              Making a profile takes a couple of minutes. You can look around first either way.
+            </Text>
+            <View style={styles.choice}>
+              <TourButton
+                label="Make my profile"
+                tone="primary"
+                onPress={() => {
+                  finish('signup');
+                  router.push('/join');
+                }}
+              />
+              <TourButton
+                label="Just looking for now"
+                tone="ghost"
+                onPress={() => finish('browse')}
+              />
+              {/* The way back in. Both loud options here make a new
+                  account or none at all, so somebody reinstalling —
+                  the person most likely to be looking at this screen
+                  twice — had to guess that signing in lives one screen
+                  inside signing up. Quiet on purpose: it is the rarer
+                  door, not the wrong one. */}
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={12}
+                onPress={() => {
+                  finish('signin');
+                  router.push('/email');
+                }}>
+                <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.signInLink}>
+                  I already have an account
+                </Text>
+              </Pressable>
+              {/* The door for a place. Until this, the only one in the
+                  whole app was a ghost button at the bottom of step 3
+                  of traveler signup, under the fold on a small phone —
+                  so somebody who runs a bar and downloaded the app to
+                  list it had no way of finding out that they could.
+                  Quiet, like the sign-in link: it is the rarer door,
+                  and a traveler must not read it as a fourth thing to
+                  decide about.
+
+                  The hairline above it is the whole point of the pair: it
+                  says this is a different KIND of thing rather than a fourth
+                  option in the same list. */}
+              <View style={styles.businessDoor}>
+                <Pressable
+                  accessibilityRole="button"
+                  hitSlop={12}
+                  onPress={() => {
+                    finish('signup');
+                    router.push('/join?business=1');
+                  }}>
+                  <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={styles.signInLink}>
+                    Run a business? Put it on the map
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </PageLayer>
+        </View>
       </Animated.ScrollView>
 
       <TourMark scrollX={scrollX} width={width} height={height} topInset={insets.top} />
@@ -526,7 +627,7 @@ const styles = StyleSheet.create({
   welcomeCopy: {
     alignSelf: 'stretch',
     alignItems: 'center',
-    gap: Space.md,
+    gap: Space.sm,
   },
   wordmark: {
     fontFamily: Fonts.rounded,
@@ -543,7 +644,12 @@ const styles = StyleSheet.create({
   },
   welcomeAction: {
     alignSelf: 'stretch',
-    marginTop: Space.md,
+    // Closed from BELOW, never by moving the mark: welcomeTop is the splash
+    // handoff target, and rescaling it either breaks the cross-fade or
+    // leaves a raised wordmark sitting on top of a static mark at rest. The
+    // whole argument for the app was in the bottom third with the top half
+    // empty; pulling the button up under the line is the half that is free.
+    marginTop: Space.sm,
   },
   page: {
     flex: 1,
@@ -551,6 +657,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: Space.xl,
     paddingHorizontal: Space.xl,
+  },
+  still: {
+    // Cropped tall, and capped in the render at 45% of the page height so the
+    // title, the body and Next all stay above the fold at MAX_FONT_SCALE.
+    width: '78%',
+    aspectRatio: 0.62,
+    borderRadius: Radius.lg,
+    borderCurve: 'continuous',
   },
   iconBadge: {
     width: 104,
@@ -580,6 +694,14 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     gap: Space.sm,
     marginTop: Space.md,
+  },
+  businessDoor: {
+    // A different KIND of thing, not a fourth option. Without the rule the
+    // business door read as one more choice in the same list.
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: GHOST_BORDER,
+    marginTop: Space.sm,
+    paddingTop: Space.xs,
   },
   signInLink: {
     // ACCENT, not WHITE_SOFT. Everything else on this screen carries its

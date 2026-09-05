@@ -1,4 +1,4 @@
-import type { ProfileRow } from '@/lib/database.types';
+import type { Gender, ProfileRow } from '@/lib/database.types';
 
 // Client-side mirrors of the DB CHECK constraints (the DB is authoritative;
 // these exist for instant form feedback).
@@ -17,12 +17,22 @@ export const PHOTOS_MAX = 9;
  */
 export const GALLERY_TARGET = 6;
 
+/**
+ * Length the way Postgres counts it. `char_length` counts codepoints, while
+ * a JS string's `.length` counts UTF-16 units — an emoji costs 2 there and 1
+ * in the DB, so counting units cut a non-BMP writer off at as few as half
+ * the promised cap and told them the wrong number.
+ */
+export function codepointLength(value: string): number {
+  return [...value].length;
+}
+
 export function validateDisplayName(value: string): string | null {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
     return 'Add the name you go by.';
   }
-  if (trimmed.length > NAME_MAX) {
+  if (codepointLength(trimmed) > NAME_MAX) {
     return `Keep it under ${NAME_MAX} characters.`;
   }
   return null;
@@ -42,8 +52,53 @@ export function validateAge(value: string): string | null {
   return null;
 }
 
+/**
+ * Whether step 3 of signup may continue, and if not, why — in the words the
+ * step's note shows. Edit profile asks the same question of the same value.
+ *
+ * A pure function rather than an expression inside the component because of
+ * the bug that made it one: `basicsOk` checked name and age only, gender sat
+ * below the fold behind an autofocused keyboard, and the women-only audience
+ * filter — the brief's differentiator for solo travelers who are women —
+ * filled with the column default 'unspecified' from people who were never
+ * shown the question.
+ *
+ * The VALUE decides now, and 'unspecified' is refused. It used to be offered
+ * as "Rather not say" and accepted on the strength of a deliberate tap, which
+ * needed a `genderTouched` flag to tell the opt-out from the column default.
+ * Founder, 2026-09-04: "'rather not say' should not be an option for gender
+ * since it goes against our filters" — and it did, exactly: audience_admits
+ * puts an unspecified profile in none of the three gendered audiences while
+ * set_visibility let it choose one, so somebody could filter to verified
+ * women without being filterable as anything. With the option gone the value
+ * alone says whether the question was answered, and the flag goes with it.
+ */
+export function basicsProblem({
+  name,
+  age,
+  gender,
+}: {
+  name: string;
+  age: string;
+  gender: Gender;
+}): string | null {
+  const nameProblem = validateDisplayName(name);
+  if (nameProblem != null) {
+    return nameProblem;
+  }
+  const ageProblem = validateAge(age);
+  if (ageProblem != null) {
+    return ageProblem;
+  }
+  if (gender === 'unspecified') {
+    // Begins "Pick a gender": the signup e2e asserts that prefix.
+    return 'Pick a gender. The filters for who sees you go by it.';
+  }
+  return null;
+}
+
 export function validateBio(value: string): string | null {
-  if (value.length > BIO_MAX) {
+  if (codepointLength(value) > BIO_MAX) {
     return `Bios are capped at ${BIO_MAX} characters.`;
   }
   return null;

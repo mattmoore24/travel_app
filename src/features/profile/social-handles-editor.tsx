@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { StyleSheet, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
-import { keyboardDoneProps } from '@/components/form/keyboard-done-bar';
+import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Type, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
@@ -186,24 +186,28 @@ export function SocialHandlesEditor({ onFocusScroll }: SocialHandlesEditorProps 
                 @
               </ThemedText>
             ) : null}
-            <TextInput
-              autoFocus
-              value={value}
-              onChangeText={setValue}
-              placeholder={placeholderFor(adding)}
-              placeholderTextColor={theme.textSecondary}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType={adding === 'whatsapp' ? 'phone-pad' : 'default'}
-              // returnKeyType is a no-op on a phone pad: iOS draws no return
-              // key on one at all. WhatsApp numbers therefore had no exit but
-              // the Save tick, so the shared Done bar covers this field too.
-              returnKeyType="done"
-              {...keyboardDoneProps}
-              onSubmitEditing={() => save(adding)}
-              onFocus={() => onFocusScroll?.(cardY.current)}
-              style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
-            />
+            <KeyboardDone>
+              {(done) => (
+                <TextInput
+                  autoFocus
+                  value={value}
+                  onChangeText={setValue}
+                  placeholder={placeholderFor(adding)}
+                  placeholderTextColor={theme.textSecondary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType={adding === 'whatsapp' ? 'phone-pad' : 'default'}
+                  // returnKeyType is a no-op on a phone pad: iOS draws no return
+                  // key on one at all. WhatsApp numbers therefore had no exit but
+                  // the Save tick, so the shared Done bar covers this field too.
+                  returnKeyType="done"
+                  {...done}
+                  onSubmitEditing={() => save(adding)}
+                  onFocus={() => onFocusScroll?.(cardY.current)}
+                  style={[styles.input, { color: theme.text, fontFamily: Fonts?.sans }]}
+                />
+              )}
+            </KeyboardDone>
             <PressableScale
               accessibilityRole="button"
               accessibilityLabel="Save"
@@ -246,7 +250,14 @@ export function SocialHandlesEditor({ onFocusScroll }: SocialHandlesEditorProps 
             }}
             style={styles.pickerItem}>
             <SocialLogo platform={platform.value} size={44} />
-            <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1}>
+            {/* Two lines, centred: 'Something else' is the one label in the
+                grid that does not fit sixty points, and clipped to
+                'Somethi...' it was the one option nobody could read. */}
+            <ThemedText
+              type="caption"
+              themeColor="textSecondary"
+              numberOfLines={2}
+              style={styles.pickerLabel}>
               {platform.label}
             </ThemedText>
           </PressableScale>
@@ -329,5 +340,8 @@ const styles = StyleSheet.create({
     width: 60,
     alignItems: 'center',
     gap: Space.xs,
+  },
+  pickerLabel: {
+    textAlign: 'center',
   },
 });

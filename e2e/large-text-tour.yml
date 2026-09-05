@@ -1,0 +1,58 @@
+# The app at AX5 (accessibility-extra-extra-extra-large), the largest
+# Dynamic Type size. The whole bottom edge of the app used to be built on a
+# hardcoded 50pt guess at the tab bar; the real bar grows with the text, so
+# "Drop a pin" and "Say hi" — the two primary actions, on the two screens
+# the product is for — slid underneath it for exactly the users most likely
+# to have raised their text size. useTabBarInset scales the clearance now,
+# and this tour TAPS both actions to prove they are still reachable, then
+# photographs Map, Travelers and Chat as the evidence.
+#
+# This file lives OUTSIDE e2e/flows/ on purpose: the workflow's flow loop
+# globs that directory, and the ordinary passes must not inherit the AX5
+# content size. The workflow sets the size, runs this once after the signed
+# in tour (whose account and session this reuses — no state reset), and puts
+# the size back. Output is pictures more than an exit code: the run block
+# treats a failure here as evidence to look at, not a red build, because a
+# warm relaunch's map tree is not reliably addressable (see the traps skill)
+# and the screenshots are what answer "does the button still exist".
+appId: com.mattmoore.samewhere
+---
+- launchApp
+# The tab labels are native tab-bar items, addressable even when MapKit's
+# own tree is not. The signed-in tour left this account signed in, so the
+# relaunch lands on the Map tab with the dock up.
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+- takeScreenshot: zz-ax5-01-map
+# The Map's primary action, by its spoken label (a Pressable carrying its
+# own accessibilityLabel hides its printed text from Maestro on iOS).
+# Reaching place mode proves the dock sits above the grown tab bar.
+- tapOn: 'Drop a pin'
+- extendedWaitUntil:
+    visible: 'Pin here'
+    timeout: 10000
+- takeScreenshot: zz-ax5-02-place-mode
+- tapOn: 'Travelers'
+# The Travelers primary action. Supply is live, but the signed-in tour just
+# asserted this same label with the same demo roster.
+- extendedWaitUntil:
+    visible: 'Say hi'
+    timeout: 30000
+- takeScreenshot: zz-ax5-03-travelers
+# The tab's spoken label carries the unread count when hellos are waiting
+# ("Chat, 2 waiting"), and the segmented control's "Chats" tab does the same
+# with "unread" — so both patterns close over the optional suffix.
+- tapOn: 'Chat(, .*)?'
+- extendedWaitUntil:
+    visible: 'Chats(, .*)?'
+    timeout: 15000
+- takeScreenshot: zz-ax5-04-chat
+# Last, because it pushes the composer over the tabs: prove Say hi actually
+# takes the tap at this size.
+- tapOn: 'Travelers'
+- extendedWaitUntil:
+    visible: 'Say hi'
+    timeout: 15000
+- tapOn: 'Say hi'
+- takeScreenshot: zz-ax5-05-after-say-hi

@@ -71,8 +71,10 @@ Key mechanics:
   who-is-chatting-with-whom graph (caught by the Phase 1 adversarial review; regression-tested,
   including that the old two-arg signature no longer exists and anon cannot execute helpers).
 - **`verification` evidence is unreadable by clients**: column-level SELECT grants expose only
-  the boolean `verified` badge; the Phase 5 evidence jsonb (document/liveness metadata) has no
-  client grant at all, so clients always select explicit columns (`PROFILE_COLUMNS`).
+  the boolean `verified` badge; the evidence jsonb (`{method, request_id, verdict, at,
+photo_ids}` — the model's verdict and, since 20260904100000, which photos the selfie was
+  compared against) has no client grant at all, so clients always select explicit columns
+  (`PROFILE_COLUMNS`).
 - **Server-owned columns**: `profiles.verified`/`verification`, `profile_photos.moderation_status`,
   and all of `users` are stripped from client column grants — a client literally cannot
   self-verify or approve photos, regardless of RLS.
@@ -138,11 +140,15 @@ Planned next (from brief §4), unchanged:
   status incl. blocked_by_moderation — hard rule 5)
 - `chats` / `messages` (created only on accept; Realtime)
 - `reports`, `blocks`, `moderation_events` (full audit trail)
-- `seeded_pins` (admin-curated, no user attached), `launch_cities` (geofence/feature flags)
+- `seeded_pins` (admin-curated, no user attached), `launch_cities` (the seed of the map's
+  rail and a per-city override for `heat_k` and the clock; **not a fence** since 2026-09-04 -
+  a pin or a trip can be in any of the ~49,000 `cities`, and since 2026-09-05 so can a
+  business)
 
 **RLS invariants to be enforced in Postgres with tests** (brief §4): social-handle gating;
-no pin reads outside launch cities; expired pins unreadable by everyone; pending/declined
-requests reveal nothing to the sender.
+pins readable only within the map's circle around a city the reader CHOSE, never a device
+position; expired pins unreadable by everyone; pending/declined requests reveal nothing to
+the sender.
 
 Edge Functions planned: first-message moderation (regex pre-filter → Claude classification →
 verdict log), pin expiry sweep, heatmap aggregation (PostGIS → H3 cells). Scheduled jobs via
@@ -160,15 +166,22 @@ loads/month, needs token + config plugin + dev build).
 
 ### The map (Phase 3 implementation)
 
-- **`launch_cities`** — geofence/feature-flag table seeded with the brief's candidate hubs
-  (Lisbon, Mexico City, Bangkok, Denpasar), per-city `radius_km` (default 40) and `heat_k`
-  (default 3). Founder toggles `active`; nothing is hardcoded global (brief §2.6).
+- **`launch_cities`** — seeded with the brief's candidate hubs (Lisbon, Mexico City,
+  Bangkok, Denpasar), per-city `heat_k` (default 3) and a hand-set `timezone`. Since
+  2026-09-05 it is the seed of the rail and the seeded venues' home, nothing else:
+  `radius_km` has zero callers (pins stopped reading it on 2026-09-04, and a business's
+  city is resolved from its marker since 2026-09-05), and `active = false` takes a city
+  off the rail's guaranteed slot without hiding a single pin. `cities` carries every city down to 5,000 people with
+  its own `timezone` (`city_clock_zone()` reads the launch override first).
 - **`pins`** — venue-level future intent. Hard rule 3 is structural: `expires_at <=
 created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited past its
   cap), RLS that hides expired pins from _everyone including the owner_, and an
   `expire_pins()` hard-delete sweep (pg_cron every 15min on hosted; guarded no-op locally).
-  A validation trigger enforces the city geofence (haversine — no PostGIS dependency yet),
-  active-city status, sane intent dates, and a 10-active-pin cap.
+  A validation trigger RESOLVES the pin's city (the browsed one within 20 km, else
+  `nearest_city()`, distance over the fourth root of population - haversine, no PostGIS),
+  checks sane intent dates and an optional hour or window against the expiry in the city's
+  zone, and a 10-active-pin cap. The map feeds read by distance from the browsed city
+  (`map_radius_km()`, 50 km), so the city label is for the funnel and the rail.
 - **Rule 2 posture**: nothing in the schema or client ever touches device location —
   `showsUserLocation={false}`, no location permission in app.json, pin placement is manual
   (tap/drag on the map).
@@ -184,7 +197,25 @@ created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited p
 - **Client**: native map screen (city chips, emoji category markers, heat underlay, pin
   detail card with Say hi / Remove, drop-a-pin FAB), drop-pin modal (venue text + tap/drag
   placement + category + intent day + **user-set duration** ≤72h per brief §1), web fallback
-  list. §6 metrics: `map_viewed`, `heatmap_rendered`, `pin_created`, `pin_tapped`.
+  list. §6 metrics: `map_viewed`, `heatmap_viewed`, `pin_created`, `pin_tapped`.
+  (`heatmap_viewed` replaced `heatmap_rendered` 2026-08-31: a view now requires
+  drawn pixels on an uncovered map rather than heat data arriving, so the
+  series legitimately drops at the rename.)
+- **The tab bar is inside the safe-area inset on iOS** (2026-09-03): expo-router
+  wraps each native tab screen's content in its own `SafeAreaProvider`, which
+  publishes that view's insets after UIKit has grown them by the bar. So
+  `useTabDockBottom` (`src/hooks/use-tab-bar-inset.ts`) treats `BottomTabInset` as a
+  FALLBACK for the tree outside the tab host and for the pre-layout frame, never as
+  an addend on the measurement. Adding it was 50pt of dead space under every docked
+  bar in the app. `tabDockBottomOf` is the pure half, unit-tested by execution.
+- **The map's bottom card** (2026-09-03): the plan list's sheet runs to the SCREEN bottom
+  and the Drop-a-pin dock is painted over it on a plate cut from the same `theme.surface`,
+  so the peek strip, the button and the tab-bar clearance are one card rather than three
+  floating slabs. The arithmetic is `src/features/pins/bottom-stack.ts` — `dockFootingOf`
+  (the plate), `messageSlotOf` (the one message strip) and `planListHeights` (the three
+  detents), all composed from MEASURED heights, never the constants, because both the button
+  and the peek grow with Dynamic Type. `useTabDockBottom()` is still the app's only
+  tab-bar clearance formula; nothing here adds a second one.
 - **Venue search**: free-text venue name + manual map placement for v1 — same zero-key
   posture as the cities decision; a places API or curated venue seeds can layer in later
   without schema changes (flagged to founder).
@@ -235,10 +266,19 @@ moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structure
   filed while held, a sender no longer plain-active, a recipient turned invisible, or a
   chat already formed via the reverse direction all end in a silent decline — and
   `sever_on_block` also declines held requests.
-- **Strike ladder** (trigger on `moderation_events`; strike actions: `blocked`,
-  `llm_blocked`, `photo_rejected`, `admin_strike`): 3 strikes → warning (event + push),
-  5 → 7-day suspension, 7 → permanent ban. Deterministic, advisory-locked per user,
-  audit-logged. Suspensions lift via `lift_expired_suspensions()` (pg_cron, guarded).
+- **Strike ladder** (trigger on `moderation_events`; strike actions: `llm_blocked`,
+  `photo_rejected`, `admin_strike`, and the historical `blocked`): 3 strikes → warning
+  (event + push), 5 → 7-day suspension, 7 → permanent ban, counted over a **rolling
+  90 days**. Deterministic, advisory-locked per user, audit-logged. Suspensions lift via
+  `lift_expired_suspensions()` (pg_cron, guarded).
+  **A prefilter block is not a strike.** The regex prefilter writes
+  `prefilter_blocked` (20260902010000), which is deliberately absent from
+  `is_strike_action`: it is a guess nobody read, and the composer's own copy tells the
+  writer to reword and send again, so three tries at the same unlucky phrase must not be
+  a warning. Same reasoning as `blocked_failsafe` on the LLM side. The action is still
+  audited, because `admin_moderation_stats` needs it for the creep early-warning.
+  `blocked` stays on the strike list only so pre-rename history keeps its meaning;
+  nothing writes it any more.
 - **Standing gates at the DB layer**: suspended/banned callers are refused by
   `send_message_request`, `respond_to_message_request`, `submit_verification`, and
   `can_send_in_chat` (chat RLS). Shadowbanned users get the full illusion instead: their
@@ -257,11 +297,13 @@ moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structure
   auto-approve stub.
 - **Selfie verification**: selfie goes to a **write-only** private bucket
   (`verification-selfies` — clients have no SELECT policy at all); `submit_verification`
-  (caller-scoped RPC: own-folder path check, object-exists check, requires an approved
-  profile photo to compare against, one pending at a time, 3/day cap) opens a request; the
-  worker compares selfie vs up to two approved profile photos with Claude vision and
+  (caller-scoped RPC: own-folder path check, object-exists check, requires a profile photo
+  to compare against — approved or still pending, since 20260904100000 — one pending at a
+  time, 3/day cap) opens a request; the worker compares selfie vs up to two approved profile
+  photos with Claude vision (waiting a tick while the only photo is still pending) and
   applies `apply_verification_verdict` — approve sets `profiles.verified` + evidence into
-  the server-only `verification` jsonb; reject carries a user-facing reason. The selfie
+  the server-only `verification` jsonb, including `photo_ids`, the photos that were in the
+  prompt; reject carries a user-facing reason. The selfie
   object is **deleted from storage as soon as a verdict lands** (data minimization — the
   audit trail is the verdict, not the image). **Honesty note (also in the UI): this is a
   likeness plausibility check, not certified liveness/identity verification** — the vendor
@@ -272,6 +314,57 @@ moderation-worker` (scheduled ~1/min) classifies with `claude-opus-5` (structure
   or a future dashboard). `strike` feeds the ladder; direct suspend/ban bypass it. An
   action that can't apply to the account's current status (e.g. suspending a banned user)
   raises instead of resolving the report and logging a phantom audit event.
+
+### A badge follows the face (20260904100000)
+
+Until this migration a verified traveler could swap in a different person's photo and keep
+the badge: nothing ever set `profiles.verified` back to false, no trigger on `profile_photos`
+watched an UPDATE or a DELETE, and the verdict recorded nothing about which photos it had
+compared. Three things close that.
+
+- **The evidence names the photos.** `apply_verification_verdict` writes `photo_ids` into
+  the `verification` jsonb: the array the worker says it sent (what was actually in the
+  prompt, not what the database would re-derive a model call later), falling back to
+  `compared_photo_ids()` — the worker's own first-two-approved-by-position query — for a
+  verdict from an older worker. Everybody verified earlier is backfilled with the derivation
+  as of the migration, stamped `photo_ids_backfilled_at`: the best approximation available,
+  and better than exempting pre-migration badges forever, which would be the defect with a
+  date on it.
+- **`profile_photos_badge_follows_the_face`** (AFTER DELETE OR UPDATE OF `position`,
+  `moderation_status`) takes the badge away when the face it was issued for stops leading
+  the profile. A photo is _compared_ when its id is in `photo_ids`; the _lead_ is the
+  approved photo with the lowest position. Revoke when an uncompared approved photo arrives
+  at slot 0; when an uncompared photo becomes approved with nothing approved below it (the
+  delete-the-lead-then-upload path, which fires on the approval, not the upload); when a
+  compared photo stops being approved or is deleted and the lead after that is nobody or
+  somebody uncompared. **Never because a compared photo leaves slot 0.** The rule is about
+  what _this row_ did, not about the derived state, because a reorder is several PostgREST
+  round trips and on a full gallery `photoWritePlan` (`src/features/profile/photo-order.ts`)
+  has no free slot to step into, so it moves the photo in the lowest occupied slot first:
+  swapping compared A@0 with compared C@2 past an uncompared B@1 writes `A→2` (slot 0 empty,
+  B leads) and then `C→0`. A "is the lead compared?" check after the first write would take
+  the badge off somebody moving between two checked faces; the row rule sees only C arrive.
+  `75_a_badge_follows_the_face` replays both plans write for write and records, per guard,
+  which assertion fails when it is removed.
+- **A revoke is** `verified = false` with `revoked_at`/`revoked_by`/`revoked_photo_id`
+  appended to the evidence (never replaced), the approved `verification_requests` row turned
+  `rejected` with a reason the capture screen already renders as a card (no fourth enum
+  value: it behaves exactly like a rejection and a new value would have been a client change
+  on every installed build), one `verification_revoked` event with source `system` — not on
+  `is_strike_action`'s list, changing your own photo is not misconduct — and one push. Naming
+  `verified` is what fires `profiles_reset_visibility`, so the narrowed audience falls with
+  the badge. The same per-user advisory lock `submit_verification` takes is taken by the
+  verdict and, before its read, by the trigger, so a verdict and a photo write in the same
+  instant cannot leave a badge judged against a snapshot; a double revoke is prevented without
+  it by the profile row lock and the re-checked `and verified`.
+- **Verifying during signup works.** `submit_verification` accepts a pending photo, and the
+  worker leaves such a request untouched (no reject, no attempt spent, counted as `waiting`)
+  until the photo clears, which is usually the next tick since photos drain earlier in the
+  same one. Only a request with no photo at all is still refused up front.
+- **Client:** `useDeletePhoto` and `useReorderPhotos` also invalidate `['profile']` and
+  `['verification']`, since either write can take the badge off server-side; the main tile's
+  delete confirm says so while there is a badge to lose. The arrange sheet does not: a reorder
+  that costs the badge is the person choosing a new face.
 
 ## Guests can chat (Phase 12)
 
@@ -365,11 +458,15 @@ Three deliberate boundaries, all proved in `17_profile_visibility.test.sql`:
   cell and still never appears as a pin.
 
 `profiles_reset_visibility` drops the setting back to `everyone` if the badge is ever
-taken away, so the rule is not enforced only at write time.
+taken away, so the rule is not enforced only at write time — and since 20260904100000 it
+is, by `profile_photos_badge_follows_the_face`, when the face the badge was issued for
+stops leading the profile.
 
 Honest consequence, stated in the picker as well as here: the three gendered options
-match `profiles.gender`, so a traveler who has not set a gender ("Rather not say") is in
-none of them. `verified_nonbinary` was added a revision after the rest (founder,
+match `profiles.gender`, so a profile still at the column default is in none of them.
+Since 2026-09-04 that is only a guest or an account that never finished signing up:
+"Rather not say" was removed from both pickers because it let a traveler use the gendered
+filters without being subject to them, and step 3 and edit-profile now refuse the default. `verified_nonbinary` was added a revision after the rest (founder,
 2026-08-23) because without it nonbinary travelers were the only group that could be
 asked for and never ask. The three are siblings, not a hierarchy: asking for one gendered
 audience does not put you in another.
@@ -428,20 +525,20 @@ it: a bare rename produces a green deploy and a broken app. `city_rooms` and
 `join_room` keep their names, because shipped iOS builds call them over the wire
 and a binary does not update over the air.
 
-| table                          | what it holds                                                  |
-| ------------------------------ | -------------------------------------------------------------- |
-| `businesses`                   | the listing. `state` and `verified_at` are ORTHOGONAL          |
-| `business_staff`               | who moderates the room, no expiry                              |
-| `business_photos`              | private bucket `business-photos`, cover is position 0          |
-| `business_links`               | the one chokepoint a URL can enter through                     |
-| `business_hours`               | rows, not a grid: two rows is a split shift                    |
-| `business_posts`               | expiry chosen by the business, including never                 |
-| `business_email_confirmations` | the six-digit code. No client grants at all                    |
-| `business_verifications`       | the two storefront shots. Evidence, never rendered             |
-| `business_reports`             | one voice per account, enforced by a partial unique index      |
-| `business_scans`               | the impersonation queue, one scan a day per business           |
-| `business_ratings`             | Beli-style. No text anywhere                                   |
-| `outbound_mail`                | queued email; `to_address` NULL means the SUPPORT_INBOX secret |
+| table                          | what it holds                                                   |
+| ------------------------------ | --------------------------------------------------------------- |
+| `businesses`                   | the listing. `state` and `verified_at` are ORTHOGONAL           |
+| `business_staff`               | who moderates the room, no expiry                               |
+| `business_photos`              | private bucket `business-photos`, cover is position 0           |
+| `business_links`               | the one chokepoint a URL can enter through                      |
+| `business_hours`               | rows, not a grid: two rows is a split shift                     |
+| `business_posts`               | expiry chosen by the business, including never                  |
+| `business_email_confirmations` | the six-digit code. No client grants at all                     |
+| `business_verifications`       | the two storefront shots. Evidence, never rendered              |
+| `business_reports`             | one voice per account, enforced by a partial unique index       |
+| `business_scans`               | the impersonation queue, one scan a day per business            |
+| `business_ratings`             | Beli-style. No text anywhere                                    |
+| `outbound_mail`                | queued email; `to_address` NULL means the SUPPORT_INBOX address |
 
 **`state` is permission to appear; `verified_at` is a badge.** Confirming the
 email moves a listing from `unconfirmed` to `listed` and grants no check mark,
@@ -484,6 +581,25 @@ The impersonation scan is also the one branch in that worker that fails OPEN,
 because a scan that could not run is not evidence, and darkening a real business
 because the classifier was down would be the app doing the damage it exists to
 prevent.
+
+### A business goes where its door is (2026-09-05)
+
+The launch-city geofence on `register_business` and `update_business_location` (added
+2026-08-29) is retired, the day after the pin one. `resolve_business_city(p_lat, p_lng,
+p_hint)` files a listing under the city its marker is in: the hint when the marker is within
+20 km of it (`validate_pin`'s rule, so a nudge never changes `city_id`), else
+`nearest_city()`, else the nearest of the 49,025 `cities` by plain distance, because
+`businesses.city_id` is NOT NULL and a fresh business has no browsed city to fall back on.
+Both write doors keep their signatures and return types (`create or replace`, no drop-first);
+the client sends `p_city_id: null` and reads the answer through `city_for_spot(p_lat, p_lng,
+p_hint)`, a jsonb preview of the same resolver, so the "That lists you under Lisbon, Portugal."
+line, the confirm card and the stored row agree. The city readers (`city_businesses`,
+`city_whats_on`, `city_rooms`) take the label OR the 50 km circle, so every listing is on at
+least one map and a Cascais door draws for somebody browsing Lisbon. `launch_cities` is read
+by no business function after this; the map, the editor, the place sheet and the signup
+preview read the business's city by id (`useCity`). Migration before the OTA update: the old
+bundle's launch-city hint still resolves (tier 1), while the new bundle's null hint against
+the old function would have hit the retired raise.
 
 ### What the final audit changed (2026-08-27)
 
@@ -620,11 +736,48 @@ is the guard; two screens rendered "you leave Invalid Date" without it.
   for both workers and pg_cron). App-behavior metrics stay in PostHog; the
   mapping is docs/DASHBOARD.md.
 - **Account deletion** (App Review 5.1.1(v)) is `supabase/functions/
-delete-account`: verifies the caller's JWT, clears both storage buckets,
-  hard-deletes their chats for both members (unmatch semantics), then deletes
-  the auth user — the FK graph cascades the rest, while `moderation_events`
-  survive with `subject_user_id` nulled so the audit spine isn't erasable by
-  deleting an account. Proven in `09_launch_hardening.test.sql`.
+delete-account`, and the step ORDER is load-bearing: verify the caller's JWT,
+  clear both storage buckets, hard-delete their chats for both members
+  (unmatch semantics), delete a business listing if they run one, **tell Apple
+  to forget the account**, and only then delete the auth user — the FK graph
+  cascades the rest, while `moderation_events` survive with
+  `subject_user_id` nulled so the audit spine isn't erasable by deleting an
+  account. Proven in `09_launch_hardening.test.sql`.
+- **Sign in with Apple revocation** (App Review 5.1.1(v) again — an app that
+  offers both Sign in with Apple and in-app deletion and never calls
+  `appleid.apple.com/auth/revoke` is rejected). Apple hands out an
+  authorization code exactly once per sign-in, good for five minutes and one
+  exchange, so the refresh token has to be bought at sign-in and kept:
+  - `public.apple_refresh_tokens` (`user_id` primary key, referencing
+    `public.users` and cascading on delete) is **service-role only**: RLS on
+    with deliberately no policies,
+    and every grant revoked on top, because the row is a credential against
+    somebody else's identity provider. Attacked in
+    `35_apple_tokens_are_server_only.test.sql` and again from the live anon
+    key in `tests/live/live-backend.mjs`.
+  - `supabase/functions/store-apple-token` is the buyer: the app posts the
+    authorization code, the function resolves the caller from their own JWT
+    (never a user id in the body), signs the client-secret JWT with the .p8,
+    exchanges the code, and upserts the refresh token with the service role.
+    It fails soft with `stored:false` — a sign-in must not fail because a
+    founder task is outstanding.
+  - **The revoke must precede the auth delete.** `apple_refresh_tokens`
+    cascades off `public.users`, so once the auth user goes there is nothing
+    left to spend and the grant stays live under iOS Settings forever. It fails soft
+    and logs which branch it took: a right to delete an account cannot depend
+    on another company's endpoint being up.
+  - The user-visible half: Apple returns a name and an email only on the
+    FIRST authorization, so an account deleted without a revoke comes back on
+    the next sign-up with neither, and no address to recover with.
+  - **This is not the same thing as the sign-in working**, and the two get
+    conflated constantly. The revoke needs a `.p8`; the Supabase Auth provider
+    being ON with the bundle id in `external_apple_client_id` needs no key at
+    all, and is what decides whether anybody can sign in with Apple in the
+    first place. `supabase-deploy.yml` does both, from separate steps, and
+    `.github/scripts/enable-apple-provider.mjs` carries the reasoning for why
+    the client id is the bundle id (the app uses `signInWithIdToken`, and
+    GoTrue matches the identity token's `aud` against that list) and why
+    `external_apple_secret` is never sent.
 - **In-app policy surface** (App Review 1.2): bundled community guidelines at
   `/guidelines` (readable before sign-up), a consent line on the welcome
   screen, and a support contact. Text lives in `src/constants/policies.ts`;
@@ -739,9 +892,11 @@ make an older sentence in this document false:
 
 - **`people_you_know` is not audience-filtered.** The audience setting governs
   discovery — the map and Travelers — and has never governed chat ("anyone can
-  still message you", in the picker's own words). Somebody you are already in a
-  chat with is not a discovery result, so narrowing your audience does not
-  remove you from the address book of people you have already talked to.
+  say hi, and anyone in a group with you can write to you directly", in the
+  picker's own words since the group-consent copy pass). Somebody you are
+  already in a chat with is not a discovery result, so narrowing your audience
+  does not remove you from the address book of people you have already talked
+  to.
 - **Adding somebody to a group is a new privilege level, not just a new
   mechanism.** `group_invite_token` refuses a non-moderator, so before this an
   ordinary member had no way at all to bring anyone in. `add_to_group` gives
@@ -826,9 +981,10 @@ a trigger, and no select policy for anyone.
 Two delivery channels, either or both:
 
 - **Email.** A cron'd `support-mailer` Edge Function sends undelivered rows
-  through Resend. Needs `RESEND_API_KEY` and `SUPPORT_INBOX` as repo secrets;
-  without them the worker returns `{skipped: 'not configured'}` and changes
-  nothing.
+  through Resend. Needs the `RESEND_API_KEY` secret; `SUPPORT_INBOX` is pinned
+  to `hello@samewhere.io` in the deploy workflow (2026-08-31 — it is a public
+  address, not a secret). Without the key the worker returns
+  `{skipped: 'not configured'}` and changes nothing.
 - **Push, and it needs no key at all.** `app_config.support_notify_recipients`
   is a JSON array of **emails or user ids**; an `after insert` trigger queues
   a push to each of them with the sender's address as the title. Empty by
@@ -925,6 +1081,19 @@ everybody else the same way whatever the truth is — the rule
   belong there. **RLS is the security boundary, not key secrecy.**
 - Server secrets (ANTHROPIC_API_KEY, service role) exist only as Supabase Edge Function
   secrets; they never appear in this repo or the app bundle.
+- **Sign in with Apple adds four**, same rule and the same place: `APPLE_TEAM_ID`,
+  `APPLE_KEY_ID`, `APPLE_CLIENT_ID` (the **bundle id** — the Services ID is
+  for the web) and `APPLE_PRIVATE_KEY` (the .p8 contents). Read by
+  `supabase/functions/_shared/apple.ts` and by nothing else; `appleConfig()`
+  returns null when any is missing, which is what makes both Apple functions
+  degrade instead of throwing. **They are synced by the deploy, not by hand**
+  (2026-09-03): `supabase-deploy.yml`'s "Sync Sign in with Apple secrets" step
+  maps `APPLE_SIGNIN_KEY_ID` → `APPLE_KEY_ID` and `APPLE_SIGNIN_KEY_P8` →
+  `APPLE_PRIVATE_KEY` from repository secrets, takes `APPLE_TEAM_ID` from the
+  one `testflight.yml` already uses, and carries `APPLE_CLIENT_ID` as a literal.
+  The `APPLE_SIGNIN_` prefix keeps it away from `ASC_KEY_ID`, which is the App
+  Store Connect API key and a different key entirely. Recipe, and the hand
+  equivalent, in docs/APP_STORE.md.
 - `.env` is gitignored; `.env.example` is the committed template.
 
 ## The app's public-facing surface
@@ -943,6 +1112,622 @@ and the policy has to change with it.
 - **`traveler_trips(user_id)`** gates on a signed-in caller, a discoverable
   owner and no block either way — not on overlap. Upcoming trips are part of a
   profile; finished ones are private.
+
+## The URL space the app claims (2026-08-30)
+
+`ios.associatedDomains: ["applinks:link.samewhere.io"]` means iOS hands the
+app every path the association file declares, for the life of every install.
+expo-router registers `prefixes: []`, has no `getStateFromPath`, no
+`+native-intent`, and route groups compile to optional segments — so an https
+URL is reduced to a bare path and matched against `src/app` with NO host
+check. The association file is the only gate, and an unmatched path lands on
+`+not-found`.
+
+So the two lists must agree, and there is a test that says so
+(`src/app/__tests__/invite-links.test.ts`):
+
+| Declared | Route                                                        | Page               |
+| -------- | ------------------------------------------------------------ | ------------------ |
+| `/i/*`   | `src/app/i/[token].tsx` (the join-group screen, re-exported) | `web/i/index.html` |
+
+The route re-exports the join screen rather than redirecting to it: a
+`router.replace` from a focus effect is exactly the navigation the root hold
+loses when it unmounts the stack (src/features/auth/routing.ts), and a route
+that IS the destination cannot be lost that way. `src/app/i/index.tsx`
+answers the bare `/i`, which `/i/*` also matches and a dynamic segment does
+not.
+
+`/b/*`, `/c/*` and `/u/*` were declared ahead of their features and dropped
+before the first build claimed the domain. Adding one later is an AASA edit
+plus a JS route — an over-the-air update, never a new build — so nothing was
+lost. `/u/*` also stays out until the §7 rule 4 question is answered: a
+public profile page may never render social handles.
+
+`/reset*` is deliberately absent. `PASSWORD_RESET_REDIRECT` is
+`samewhere://reset-password`, so Supabase's `/auth/v1/verify` 302 hands the
+tokens straight to the app; `link.samewhere.io/reset` is not on that path at
+all. Declaring it would only fire for a forwarded URL or a link-rewriting
+mail gateway, and there it would replace a working Safari bounce with a
+burned single-use token. `parseRecoveryLink` is widened to recognise the
+hosted `/reset` spelling anyway, as the net under exactly that window — a
+stale association file on Apple's CDN, a forwarded mail — so a token that
+does arrive that way is spent on a working reset instead of on +not-found.
+
+`applinks:` is iOS only. Android needs its own two pieces before an invite
+can open the app there: `web/.well-known/assetlinks.json` naming the release
+signing certificate's SHA-256 fingerprint, and `android.intentFilters` in
+`app.json` (`{"action": "VIEW", "autoVerify": true, "data": [{"scheme":
+"https", "host": "link.samewhere.io", "pathPrefix": "/i/"}], "category":
+["BROWSABLE", "DEFAULT"]}`). Until both exist, an Android invite opens
+Chrome and the only way in is the "Open in Samewhere" anchor on
+web/i/index.html — the paste fallback does not help there either, because
+`Alert.prompt` is iOS-only and the Android branch shows an alert with no
+input.
+
+## Language and locale (2026-08-31, decision D5)
+
+**The app's strings are English, everywhere, for v1. The traveler's own dates and times
+are to follow their phone.**
+
+Two different questions were being answered by accident, and the answer to the second one
+was "whatever each formatter's author felt like":
+
+- **Strings** stay English. Four launch markets are not four translations: a v1 with no
+  users does not have the evidence to spend a translation budget, and a half-translated
+  app reads worse than an English one. The App Store LISTING is localised for pt-PT,
+  es-MX, th and id (docs/APP_STORE.md), because listing metadata is per-territory, needs
+  no build, and "travel friends" and "amigos de viagem" are different search markets.
+- **Dates, times and the week's first day are to follow the phone.** Eleven formatters are
+  pinned to `Intl.DateTimeFormat('en', …)` while six follow the device, so a Portuguese
+  phone shows "agosto 2026" as a calendar header and "Aug 30 to Sep 2" in the summary
+  directly beneath it. Chat times are locked to 12-hour AM/PM worldwide while business
+  hours in the same app are 24-hour. That is the rule this decision sets, not a description
+  of the app today.
+
+`src/lib/locale.ts` is where the phone is asked, and the only place it should be:
+`DEVICE_LOCALE`, `DEVICE_LOCALE_TAG`, `DEVICE_LANGUAGE`, `USES_24_HOUR_CLOCK`,
+`FIRST_WEEKDAY` and `DEVICE_TIME_ZONE`, read once at module load from `expo-localization`
+and frozen for the process. Anything that formats a date or a time is to take its locale
+from there rather than naming one.
+
+**"Should be" is now enforced**, by `src/lib/__tests__/one-clock.test.ts` ("the phone is
+asked from exactly one place"): any file under `src/` other than `lib/locale.ts` that
+imports `expo-localization` fails the test. It was added the day after
+`src/lib/device-locale.ts` became a second caller, carrying a near-verbatim copy of
+lib/locale's own widening rationale, with neither this section nor that file's own "this
+file is the one call site" comment updated. Nothing stops a file from READING the phone's
+language — the rule is only that it asks lib/locale for it rather than the device.
+
+`DEVICE_LOCALE_TAG` is that same answer with no fallback, and the split is deliberate. A
+formatter must have some locale, so `DEVICE_LOCALE` guesses `'en-US'` when the phone says
+nothing and nobody is harmed. The tag written to `profiles.locale` — which decides what
+language a moderation verdict about somebody's face or somebody's livelihood comes back in
+— must not guess: null there means English silently, and a guessed language is a rejection
+written in a language the reader may not have. `src/lib/device-locale.ts` is that write,
+and after 2026-09-03 it holds only the write, its once-per-launch guard and the column's
+16-character ceiling.
+
+**What is actually migrated is tracked in the test, not here.** `clocks()` and `dates()`
+have production call sites now — chat separators and business hours both take their clock
+from `lib/locale`, which is what closed the two-clock bug. The files that still name a
+locale of their own live in `ADOPTION_OUTSTANDING` in `src/lib/__tests__/one-clock.test.ts`,
+a debt a file may leave and nothing may join. That list is the live one; a list written out
+here would go stale, and the one that used to be here did. `cityClockNow`
+(`features/pins/pin-helpers.ts`) names `'en-US'` on purpose and must keep it: it reads the
+formatted parts back by name to build a Date, so it is machine parsing rather than display,
+and the guard exempts `.formatToParts` for exactly that reason.
+
+**Expiry condition.** Revisit the English-only strings decision when a non-English launch
+city is added, or when a launch market's retention lags the others by enough to suspect the
+language. Until then this is a decision, not an omission, and it does not need re-deriving.
+
+**RTL is not handled.** Every directional style in the app is physical (`marginLeft`,
+`textAlign: 'left'`) rather than logical (`marginStart`, `'start'`). That is harmless while
+no RTL locale is declared and becomes a forty-file retrofit the day one is. Adding Arabic or
+Hebrew to the listing is not a metadata change; it is that retrofit first.
+
+## Wave 2 backend: four migrations (2026-09-01)
+
+One enum, one table, one admin view, one column and five functions landed in one change.
+They are recorded here because nothing else in the tree says what they are for.
+
+### `trips.approximate` — a window that is a guess (20260902230000)
+
+A traveler who does not yet know their dates could not post a trip at all: the calendar
+wants two specific days and Post trip stays off until both land. `approximate boolean not
+null default false` marks a window as a guess. **The dates stay real dates** — the widest
+range the traveler stands behind, still under the table's 365-day check — and the flag is
+the fact that they are not a claim. `rangeForRoughDates` (client, `features/trips/dates`)
+is the single rule that turns "a month, roughly this long" into those two dates, so the
+picker, the profile and any future overlap query cannot each invent their own.
+
+Who consults it, decided one reader at a time:
+
+- `traveler_trips()` carries it as an OUT column (the function was dropped and recreated —
+  `create or replace` cannot add an OUT column to a `RETURNS TABLE`), so a profile card can
+  read "Around Sep 1 – 30" instead of printing a guess as a fact.
+- `push_trip_starts_tomorrow()` **excludes** rough trips, and excludes them from its
+  overlap population count. "Lisbon tomorrow" on the first day of a window somebody
+  described as "probably most of September" is the app inventing a travel date. The count
+  goes out under the heat-k rule (§7 rule 6) and a disclosed population must not be padded
+  with windows nobody committed to; excluding can only make the number smaller, which is
+  the safe direction for a k-threshold.
+- `get_matches()`, `overlaps_own_trip()`, the `trips_select_overlap` policy and
+  `featured_traveler()` are **untouched, and that is an open founder question rather than
+  an oversight** — whether a rough trip matches at full weight, is de-ranked, or is
+  excluded decides how wide a rough window's read access to other people's trips is
+  (`docs/UX_PACKAGES.md`, prof-rough-trip-dates "Waits on"). Until it is answered, the
+  column ships defaulted false and every existing row behaves exactly as before.
+
+Two consequences worth keeping in mind. `trips` carries column-level UPDATE grants, so the
+migration grants `update (approximate)` — without it a rough trip could be posted and never
+corrected. And the overlap sentence (`features/matching/overlap`) still states exact days,
+because get_matches has no flag to hedge from and the window it prints is an intersection
+of two trips of which either may be rough; the file records why it cannot be hedged on one
+surface alone.
+
+### `chat_meet_answers` + `meet_answer` + `admin_meet_answers` — the met-in-person rate (20260902240000)
+
+§6's most important number ("did you two end up meeting") had no source. This is it, and it
+is the most §7-sensitive thing added since social handles, because it is one keystroke away
+from being a rating of a person.
+
+The shape follows from that. One row per (chat, participant), answered once and never
+updated or deleted — no update policy, no delete policy, no grant for either verb. Selects
+are scoped to the author's own row; `meet_prompt_due()` reads nothing of the other
+participant's answer, **including whether one exists**, because a prompt that stopped being
+due once the other person answered would publish their answer perfectly in a boolean. That
+is the reciprocal-interest rule (§1) in a place it is easy to break by accident.
+
+The write publishes nothing sideways either: its own table, no trigger of any kind, foreign
+keys only, and deliberately NOT in the `supabase_realtime` publication — a broadcast on
+insert is a live tell to anyone watching the chat's channel. This is the direct lesson of
+20260902220000, where a date written to an ungranted column still leaked a presence feed by
+tripping the parent row's `updated_at` trigger.
+
+`admin_meet_answers` is months, answers and distinct people, service-role only. Never a
+chat, never a pair, never a name — the rate is the metric, the row is not. Distinct people
+sits beside answers because one traveler answering both sides of their trip is not two
+meetings.
+
+### `my_report_status()` and `my_support_messages()` — what became of what you sent (20260902250000)
+
+A reporter used to hear a thank-you and then silence, and concluded the app does not
+moderate. Both records already existed and neither was readable: `reports` grants the
+reporter every column except `status`, and `support_messages` has no select policy at all.
+So both answers are SECURITY DEFINER functions, revoked from `anon`.
+
+**The state is binary on purpose.** `reports.status` is `open` or `resolved:<action>`, where
+the action is one of dismiss, warn, strike, suspend, ban, shadowban. A three-value state
+with "action taken" in it IS a moderation outcome about another person, published to
+anybody willing to file a report to find out — which makes the queue a scoreboard and the
+reporter a spectator at somebody else's punishment. A dismissal and a ban come back byte
+identical, and pgTAP 62 asserts that rather than assuming it.
+
+A report about a BUSINESS is a report: `business_reports` is unioned in under the same
+mapping, so somebody who reported a bar for how its doorman behaved does not read "Nothing
+sent yet" on the page built to end that silence. Its five resolutions collapse to the same
+word for the same reason.
+
+Both functions only read. The `user_id is not null` half of each owner test is belt and
+braces and is documented as such — the equality already excludes a null-author row, because
+`null = null` is NULL rather than TRUE — and it is kept so that a later rewrite of the owner
+test cannot quietly turn "no match" into "matches everybody's".
+
+### `featured_traveler(int)` returns three (20260902260000)
+
+The guest Travelers tab renders a lead card plus two rows against a function that ended in
+`limit 1`. This is a **real widening** — three strangers' faces now reach a signed-out
+device where one did — so every previous guard is restated unchanged, `is_blocked_pair` is
+added, and what each row carries shrinks.
+
+Three things a count breaks that one did not: one traveler with three windows in the same
+city could fill all three slots (`distinct on (t.user_id)` in a subquery, because
+`distinct on` needs its expressions to lead the ORDER BY and the ranking is a different
+order); the order had no tiebreak, and the card and the photo are two separate calls to
+this function, so a tie meant the two calls returned different PEOPLE (`f.user_id` last
+makes the order total, and discloses nothing the client does not already receive); and the
+photos are keyed by user_id rather than by list position, which is what keeps a face off
+the wrong name when the two calls disagree anyway.
+
+### `profiles.updated_at` stamps only for an edit (20260903020000)
+
+The second presence leak through the same column in two days, and the fix is a different
+SHAPE rather than one more exception.
+
+`profiles` carries a BEFORE UPDATE trigger that stamps `updated_at = now()`, and
+`updated_at` is in the client select grant behind `profiles_select_visible`, whose only
+predicate is that the account is active. So any write the app makes for its own bookkeeping
+publishes `select user_id, display_name, updated_at from profiles order by updated_at desc`
+— every active traveler ranked by when they last opened the app, which is the presence
+signal §7 rule 2 bans. 20260902220000 closed that for `touch_last_seen()` with a WHEN clause
+naming `last_seen_on`. 20260903010000 then added `profiles.locale`, written once per launch
+from `use-auth-listener`, and the leak was back — at launch granularity rather than the
+daily one, because the locale write has no once-a-day guard.
+
+**The client cannot fix it.** `locale` is deliberately not in any select grant, so the app
+cannot read the value back to skip a redundant write.
+
+**And extending the deny-list would not have fixed it either** — measured, not reasoned.
+`and new.locale is not distinct from old.locale` reads a same-value rewrite as "locale did
+not change", so the WHEN passes and the row is stamped exactly as before; it would have
+suppressed only the rare launch after somebody changed their phone's language. So the clause
+is inverted: it names the columns that ARE an edit (the profile's own content, the
+verification state, the two audience settings) and stamps only when one of those changed.
+A column added tomorrow is not on that list, so by default it stamps nothing and publishes
+nothing. Forgetting now costs a stale timestamp nothing in the app reads; forgetting before
+cost a presence feed.
+
+`supabase/tests/database/64_only_an_edit_earns_a_stamp.test.sql` asserts the attack, the
+counter-case (a real edit still stamps, including one that travels in the same statement as
+a locale write), and a classification of **every** column on the table: each one either
+appears in the trigger's list or on the bookkeeping list in that file, so a nineteenth
+column fails a test until somebody decides which it is. It also documents the trap that made
+its predecessor useless: `now()` is the transaction timestamp and a pgTAP file is one
+transaction, so comparing a stamp against one captured a few statements earlier compares
+`now()` with `now()`. `59_bookkeeping_is_not_presence` did that and passed with its own guard
+deleted; both files now park `updated_at` in 2020 with the trigger disabled and ask whether
+it moved.
+
+**The end state, for whoever meets this a third time:** `revoke select (updated_at) on
+public.profiles from authenticated`. The trigger only has to be careful because the column is
+bulk-readable, and no screen reads its value. It cannot be done in one migration —
+`PROFILE_COLUMNS` names `updated_at` in every profile query the installed builds make, and
+Postgres refuses a select naming a column the role cannot read, so every profile screen on
+every phone in the wild would answer `permission denied` the moment it deployed. The order
+is: drop it from `PROFILE_COLUMNS`, ship that, let it reach the builds, then revoke.
+
+**And this section asked its question of one of the four triggers on the table.** The next
+one down had the same shape and a worse consequence — see 20260903030000 below, which also
+carries the inventory so a third does not have to be found the same way.
+
+### A trigger on `profiles` does nothing persistent until an edit moved (20260903030000)
+
+The same launch write, the **other** trigger on the same table, and this one is not a leak —
+it locks somebody out of their own profile.
+
+`profiles` carries four triggers and 20260903020000 asked its question of one of them.
+`profiles_screen_text` (20260817150000:210) is attached with no `when` clause, and the first
+two statements of `screen_profile_text()` ran on **every** update of the row, before it had
+looked at whether any text changed: it raised `daily profile update limit reached` once
+thirty `(entity_type='profile', action='updated')` `moderation_events` rows existed for the
+account in 24 hours, and then filed one more of exactly those rows.
+
+So the once-per-launch `locale` write and the once-a-day `touch_last_seen()` each spent a
+unit of a safety rate limit and filed a dated audit row. **After thirty cold starts in a day
+the account could not update its own profile at all** — the cap is counted before the insert
+and raises for the whole statement, so `updateOwnProfile`, the `onboarding_completed_at`
+write that is the single fact making somebody discoverable, `set_visibility()`,
+`set_group_adds()`, `set_listing_intent()`, the display-name mirror on a business rename and
+`apply_verification_verdict` all raised. Thirty launches is a bad travel day on a flaky
+connection.
+
+**Is the audit row itself a leak? No, and it was established rather than assumed.**
+`moderation_events` has RLS on with no client policy, is revoked from `anon` and from
+`authenticated` (20260816190000:252, :336, :374) and appears in no view or callable function,
+so the per-launch record was server-side only — not the bulk-readable presence feed
+20260903020000 closed, and not a §7 rule 2 breach. It was still a behavioural record the
+product never decided to keep, in the table whose purpose is moderation decisions. Both
+halves went.
+
+**The fix is inside the function, not a WHEN clause on the trigger, and the asymmetry with
+its sibling is deliberate.** `set_updated_at()` has no opinion of its own, so the WHEN clause
+_is_ the whole logic and there is nowhere else for it to live. `screen_profile_text()`
+already contains the exact condition — it is the condition that decides what gets screened —
+and a copy of it on the trigger would make two lists of screened columns that must agree.
+They would drift in the dangerous direction: adding `occupation` to the text this function
+screens means adding it to the `if` in the body, and the WHEN clause upstairs would then
+silently stop the screen running for an occupation-only edit. That is a moderation control
+failing **open**. One condition now guards all three things: screen the text, count the edit,
+file the row.
+
+The cap's meaning gets narrower and truer. Its author wrote it as text velocity
+(20260817150000:171) and `screen_profile_text` is the only writer of the rows it counts; it
+was never a general profile-write throttle, it was a text-edit throttle that happened to be
+counting launches.
+
+**Every trigger on `profiles`, because the third must not cost another round.** Two columns
+and then a second trigger each had to be discovered separately by somebody re-asking the same
+question, so the answers are written down and
+`supabase/tests/database/65_only_an_edit_spends_the_cap.test.sql` asserts the list — a fifth
+trigger fails a test until whoever adds it has classified it, the same job assertion 9 and 10
+of `64_only_an_edit_earns_a_stamp` do for a new column.
+
+- **`profiles_updated_at`** (BEFORE UPDATE, WHEN edited-columns) — nothing, since 20260903020000.
+- **`profiles_screen_text`** (BEFORE UPDATE, no WHEN) — nothing, since 20260903030000. Was a
+  unit of the cap and a dated audit row.
+- **`profiles_reset_visibility`** (BEFORE UPDATE **OF** `verified`) — nothing, twice over.
+  `update of` fires only for a statement that names that column, and `verified` is not in the
+  client update grant, so no client statement can name it. The body then no-ops unless the
+  badge actually went away, and its only effect is on the row's own `visible_to`. It does
+  fire now — from `profile_photos_badge_follows_the_face` (20260904100000), the one writer
+  of `verified = false` — and that is a real consequence of losing a badge, not bookkeeping.
+- **`profiles_guest_minimal`** (BEFORE UPDATE, no WHEN) — nothing, but for a weaker reason
+  worth knowing. It does run in full on every update, and it is harmless only because it is a
+  pure assertion: no row, no stamp, no counter, and it reads only NEW, which for a
+  bookkeeping write is unchanged from OLD. Give it a counter, a stamp or an insert and it
+  becomes 20260903030000 again.
+
+**The rule the next person needs, in one line:** a BEFORE UPDATE trigger on `profiles` must
+either be scoped to the columns it cares about, or do nothing persistent until it has
+established that one of them changed.
+
+### `user_muted_words` takes adds and removals, not edits (20260903000000)
+
+The table was granted all four verbs behind one `for all` policy while
+`src/lib/database.types.ts` declared its `Update` as `never` and the client only ever
+inserted and deleted — three sources of truth, two of them disagreeing, on a safety table.
+Resolved toward least privilege: `update` is **revoked by name** (Supabase's default
+privileges had already handed it to `authenticated`, so merely omitting it from the grant
+list would have taken nothing back), and the `for all` policy is split into select/insert/
+delete so the catalog says the same thing as the grant.
+
+The split alone would not have been enough, and the measurement is the point: with no UPDATE
+policy on the table, RLS does not refuse an update — it matches no rows, so the statement
+reports success and changes nothing. `63_words_i_would_rather_not_see` asserts the refusal
+from both a stranger and the owner, plus the privilege set itself, because a silent zero-row
+update is not a refusal anybody can see.
+
+## Three closures before the build (2026-09-02)
+
+The founder asked for the one EAS build the native changes have been waiting on, and for
+everything else to land first so the build is the last thing that moves. Three things were
+open. Each is recorded here with the entry point of every piece, because the failure this
+project keeps paying for is a capability with nothing on the other end of it.
+
+### `admin_verification_queue` and `admin_business_verification_queue` (20260903040000)
+
+`reason_en` became required on both verdict schemas on 2026-09-01 so that a rejection
+written in the subject's own language stays adjudicable. The storefront half had a reader
+(the `uncertain` mail quotes it); the selfie half was written into
+`verification_requests.verdict` and read by nothing. Two views now exist, modelled exactly on
+`admin_report_queue`: a service-role surface for the SQL editor, `reason` and `reason_en`
+side by side, `revoke all ... from anon, authenticated` on the line after each `create`.
+No RPC, no client, no `admin_resolve_verification` (re-running a verification is a separate
+decision with consequences for `profiles.verified`).
+
+**The revoke is the whole security of the file**, and the local shim mirrors Supabase's
+default privileges (`local_supabase_shim.sql:98`), which is what lets
+`66_a_verdict_the_founder_can_read` prove it: with either revoke deleted, the two refusals
+for that view come back "lives" instead of `42501`. With the `->> 'reason_en'` expression
+replaced by `null`, the "not a silent null" assertion fails on that view. All four mutations
+were run.
+
+### A group's own photo is checked before anybody but its uploader sees it (20260903050000)
+
+`src/features/groups/api.ts` recorded the gap on 2026-09-01: a photo posted INTO a chat is
+moderated through the `messages` row it creates, but a group's OWN picture is a column on
+`groups`, written by `create_group`/`update_group` with no trigger, so it reached every
+member and every invite holder unchecked. `app.json`'s camera string had promised Apple that
+every photo is checked first; it was narrowed to "profile photos and chat photos" the same
+day (cc82431) because this gap made the wider sentence untrue, and a group photo is neither.
+Closed the way business photos (20260829180000) and post photos (20260902170000) were closed,
+so the wider sentence could be restored if the founder chooses:
+
+| Piece                                                           | Entry point                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `groups.photo_status` (nullable)                                | set by the trigger; read by `my_chats`, `group_invite_preview`, `group_detail`, the `chat_photos_select_group` storage policy (through `can_view_group_photo`), and `src/features/groups/photo.ts`. Granted to no client role since 20260903130000                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `groups_moderate_photo`                                         | `BEFORE INSERT OR UPDATE OF photo_path`; early-returns when the path did not move, so a rename or the worker's counter costs nothing persistent (the profiles rule)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `groups_poke_moderation_insert`, `_update`                      | poke the worker on a pending photo, so the admin watching "Checking this photo" waits seconds, not a cron minute. Two triggers: the UPDATE one is guarded on `old.photo_path is distinct from new.photo_path`, because `update_group` names `photo_path` on every call and a rename while a photo was pending poked the worker (a `worker_pokes` write and an HTTP request: persistent). A WHEN clause on an INSERT OR UPDATE trigger cannot mention OLD, which is why it is two                                                                                                                                                                                                                                                                           |
+| `apply_group_photo_verdict(p_chat_id, p_photo_path, p_verdict)` | walked through by `moderation-worker/index.ts` queue 3d, with its own 4s slice of the 50s tick; `moderation-worker-queues.test.ts` fails if a door has no caller. Keyed on the chat AND the path the worker classified: a group is one row, so a verdict keyed on the chat alone would land on whatever photo the row wore by the time it arrived (the admin replaces the picture mid-classification, the trigger sets the new path pending, an allow approves a photo nobody looked at). Returns `false` and writes nothing when the group no longer wears that photo; the worker reports it as a note, not a failure, so the counter of the replacement is not bumped for a try it never had. The failsafe goes through the same door with the same path |
+| `note_group_photo_attempt`                                      | the counter that makes MAX_ATTEMPTS reachable; the failsafe removes the photo (engine `failsafe`) rather than leaving it pending                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `chat_photos_select_group`                                      | now approved-only; the uploader keeps reading their own upload through `chat_photos_select_own`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `update_group`                                                  | `p_clear_photo` also clears `photo_status`, so an admin told "pick another" can choose no photo and the notice goes with it. Sent by the group page's photo control: tapping the tile opens a sheet, "Change photo" / "Remove photo" while a picture is up, "Pick another photo" / "Go without a photo" after a refusal (`groupPhotoActions` in `photo.ts`; `photo.test.ts` holds that the page maps `remove` onto `clearPhoto: true`). For a day this branch was a documented escape no screen could take                                                                                                                                                                                                                                                 |
+| `my_chats`, `group_invite_preview`                              | restated (same OUT columns, `create or replace`): the path is handed out only when approved or the reader uploaded it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `src/features/groups/photo.ts`                                  | `groupPhotoView(group, ownUserId)`: the one client reading of the two columns together. `groupView(row, ownUserId)` is the row with `photo_path`, `photo_status` and `moderation_attempts` REMOVED and `photo: GroupPhotoView` in their place                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `useGroup`                                                      | hands screens `groupView(...)` through react-query's `select`, so no screen can spell `.photo_path` on a group row however it binds it: the property is not on the object, and typecheck is in the gate. `photo.test.ts` also confines `GroupRow`, `fetchGroup` and `.from('groups')` to `api.ts`, `hooks.ts` and `photo.ts` (a `Pick<GroupRow, ...>` that leaves `photo_path` out is allowed: the celebration hook reads `photo_status` off the query cache). Polls every 5s while the raw row is pending, and stops on its own; without it the page said "checking" until it was left and reopened                                                                                                                                                       |
+
+**Who sees what.** Approved: everyone in the group. Pending: the person who uploaded it and
+nobody else (their own upload is readable to them regardless, so withholding it would hide
+nothing and leave the person who chose the picture looking at an empty frame). To everybody
+else a pending photo is NO photo, not a photo being checked: the first version of the page
+told every member "A new group photo is being checked." and then, on refusal, nothing, so any
+member could infer the admin's picture was refused. A verdict is for its subject alone.
+`groupPhotoView` answers `none` for a non-uploader while a photo is pending, the tile draws
+the glyph, and the only "checking" sentence, veil and spoken label are the uploader's — and
+since 20260903130000 that answer is the server's, not the client's (below).
+Rejected: nobody; the verdict removes the path and leaves the status so the group page can
+tell the admin "That photo was not approved and has been removed. Pick another." Not a
+strike: the ledger action is `group_photo_rejected`, which `is_strike_action` does not count,
+and the test asserts the uploader's strike count stays at zero.
+
+**The setter is the path.** Every group photo is uploaded into the uploader's own folder
+(`chat_photos_insert_own` enforces it), so `split_part(photo_path, '/', 1)` is who set it,
+and that is what the RPCs compare against `auth.uid()`. The trigger now requires it. Before
+this migration `create_group` accepted any string as `p_photo_path`, which meant an admin
+could name any object in the bucket they had learned the path of and
+`chat_photos_select_group` would let every member read it. Your own upload, or nothing.
+
+**Deploy window, established rather than assumed** (for 20260903050000; 20260903130000 took
+the table-wide grant away and has its own, below). A phone on the previous bundle reads
+`groups.photo_path` through `select *` (table-wide grant, so the new columns ride in unread)
+and holds, for an unapproved photo, a path the bucket refuses to sign; `useChatPhotoUrl`
+errors and the tile falls back to the group glyph, which is what a group with no photo draws.
+The uploader still sees their own picture, with nothing said beside it. The chat list and the
+invite screen read RPCs, and both mask server-side, so the old bundle draws the glyph there
+too. Existing rows with a photo were put through the same check a new photo gets.
+
+**Worker budget.** The ninth slice was paid for by trimming four others (chat photos 9 to 8,
+messages 11 to 10, post photos 5 to 4, scans 4 to 3), not by raising the tick: 50s against a
+cron that fires every minute, and a tick that overran would have the next one classify the
+same rows twice. A slice is a floor, not a ceiling. The sum is still held at 50s by the test.
+
+**What was NOT done, and why.** The chat list row (`src/features/chat/chat-row.tsx`) shows
+the uploader their own pending photo with no "checking" beside it; saying so there would
+need a `photo_state` OUT column on `my_chats` and a reader in that file, and a column with
+no reader is the orphan pattern. The invite screen (`src/app/join-group/[token].tsx`) was
+another agent's this round and needs **nothing**: the RPC masks the path server-side, so
+its `photoUrl` is null for everyone but the uploader of an approved-or-own photo, and the
+frame already falls back to its glyph. If it ever wants to say "checking" to the uploader,
+it would need the same `photo_state` column on `group_invite_preview`, which would be an
+OUT-column change (drop, recreate, restate both grants).
+
+**Seen in passing, not fixed.** `apply_business_photo_verdict` and
+`apply_business_post_photo_verdict` record a refusal as `photo_rejected` against the
+owner's `subject_user_id`, and `is_strike_action('photo_rejected')` is true, so a business
+owner's rejected photo DOES count toward the strike ledger that suspends accounts, while the
+migration comments beside them say "explicitly NOT a strike". Out of this round's files;
+recorded in PROGRESS.md for the founder.
+
+**Every pgTAP assertion in `67_a_group_photo_is_checked` was run against the mutation that
+removes what it names**, twice. The second pass (2026-09-02) added the race written as the
+attack (the door's path guard removed: the stale allow lands on the replacement, tests 24,
+25, 27, 30, 32, 33), the poke guard (removed: 'and does not poke the worker' alone), and the
+attempts reset in the new-picture branch, which the first pass had asserted through a clear
+that zeroed the counter on the way (the null-path branch's reset), so the assertion passed
+with the line it named deleted; it now replaces a photo with three failed attempts on it and
+no clear in between, and fails 46 and 47 under that mutation. The file's header carries the
+full record, mutation by mutation, downstream failures included. `68`'s first assertion had
+the same shape of hole: "an edit stamps updated_at" compared `now()` against a row
+`register_business` had inserted with default `now()` in the same transaction, so it passed
+with the stamp line deleted; it parks the stamp in 2020 first now (2 and 11 fail with the
+stamp deleted), and its header's mutation record was rewritten to what actually happens
+with the guard removed (3, 5, 7, 8, 12 fail: the verdict UPDATE raises 23514 inside
+`lives_ok`, so the stamp assertion after it passes and the two failures the old record
+named could never happen in one run).
+
+### A verdict is for its subject alone, at the table (20260903130000)
+
+20260903050000's header says a pending group photo is "the person who uploaded it, and
+nobody else... To everybody else there is NO photo, not a photo being checked", because a
+member who could watch "being checked" become nothing would know the picture was refused.
+The PATH half was enforced — `my_chats`, `group_invite_preview` and
+`chat_photos_select_group` all mask it. The STATUS half was enforced by
+`src/features/groups/photo.ts` and by nothing else. `grant select on public.groups to
+authenticated` (20260821010000:42) is TABLE-level and `groups_select_member` admits every
+member of the room, so:
+
+```sql
+select photo_status from public.groups where name = 'Porto crew';  -- 'pending'
+-- and, seconds later
+select photo_status from public.groups where name = 'Porto crew';  -- 'rejected'
+```
+
+Those two reads are the forbidden inference, and they need an anon key and the group's name,
+not the app. `67_a_group_photo_is_checked` did not catch it because every `pg_temp.status()`
+call in it asserts the VALUE, never a refusal, so deleting the client guard failed nothing.
+Client code is UX; Postgres is the boundary.
+
+| Piece                               | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the column grant                    | `revoke select on public.groups from public, anon, authenticated`, then `grant select (chat_id, created_by, name, speaking, invites, max_stay_until, pin_id, plan_ended_at, created_at)`. The three photo columns and `photo_set_by` are granted to no client role — not even the setter, who reads their own through the function below. The idiom `profiles` (20260816190000:353) and `message_requests` (20260902210000:82) already use                                                                                                                                                                                                                                                                                             |
+| `groups.photo_set_by`               | NEW. Written by the trigger on every change of `photo_path` and KEPT when a verdict removes the path, which is the one moment the subject can no longer be read off the path's first segment. No FK: a seeded or service-role path need not begin with a uuid that exists in `public.users`                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `group_detail(p_chat_id)`           | NEW. `SECURITY DEFINER`, membership-gated exactly as `groups_select_member` is (a definer function gets no RLS of its own), masking with the rule `my_chats` already uses: approved is everybody's, pending and refused are `photo_set_by`'s. `moderation_attempts` is masked to 0 rather than dropped, so `GroupRow` keeps its shape. `fetchGroup` is its only caller                                                                                                                                                                                                                                                                                                                                                                 |
+| `can_view_group_photo(object_name)` | NEW, and load-bearing rather than tidy. **An RLS policy's expression is evaluated with the READER's privileges**, so `chat_photos_select_group`, which names `g.photo_path` and `g.photo_status` inline, would not have answered false once the grant went column-level — it would have RAISED, and a policy that raises takes the whole select with it. Measured: with the policy left inline, every authenticated read of `storage.objects` dies with `permission denied for table groups`, and three test files (`03_chats_storage_rls`, `67`, `74`) die at their first storage read. Same shape as `can_view_business_photo` (20260827110000:103) and `can_view_photo_object` (20260816190100:15), which exist for the same reason |
+| `fetchGroup`                        | `supabase.rpc('group_detail', ...)` instead of `.from('groups').select('*')`. `photo.test.ts` asserts the function body contains the RPC and does not contain `from('groups')`; `database.types.ts` types the table's `Row` as `never` so nothing can select it and typecheck                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+
+**What is enforced, and what is said instead of claimed.** Approved: path and status to every
+member. Pending: both to the setter alone — the row says `null, null` to everybody else,
+not "pending with the path withheld", which is the same tell one step removed. Rejected: the
+status to the setter alone, matched on `photo_set_by` precisely because the verdict removed
+the path it would otherwise have been read from. NOT enforced, and written into the
+migration header rather than claimed away: a photo **refused before this migration ran** has
+no setter to backfill (its path is gone), so its `rejected` row is shown to nobody and its
+admin sees no "pick another" until they choose a new picture. Fail closed. There are no
+production users.
+
+**Deploy window, and it is a real cost this time.** An OTA bundle is never applied on the
+launch that downloads it, so for one launch every phone runs the previous client, whose
+`fetchGroup` is `select('*')` — and Postgres refuses a star select unless every column is
+granted. That read is `permission denied`: the group SETTINGS page shows its `LoadError`
+with a Retry that keeps failing until the new bundle runs; the room HEADER destructures only
+`data`, so it draws the group glyph and skips the plan banner; the chat list, the invite
+screen and everything else in a room read RPCs and are untouched. Taken deliberately, in
+preference to leaving a documented privacy promise on a client guard for another release.
+`31_select_star_stays_readable` drops `groups` from its list in the same commit, which is
+what documents that the app no longer star-reads this table.
+
+**`74_a_verdict_is_for_its_subject_alone`** is written as the attack: a member who is not the
+setter reaches for the fact by the table and by the function, and the setter's own read is
+asserted beside it so a "fix" that hid the verdict from the person it is about would fail
+too. Every assertion was run against the mutation that removes what it names; the file's
+header carries the record, mutation by mutation, including the one that matters most — with
+the table-level grant put back (the leak exactly as found), seven refusals come back "lives"
+and nothing else in the suite moves, which is what proves the client guard was never the
+thing holding it. The revoke names `public`, `anon` and `authenticated` and not
+`service_role`, and test 32 is that: extend it to `service_role` and the file dies where the
+moderation worker's own queue read is, because bypassrls is not bypass-grants.
+
+### Every moderation queue is visible to the daily smoke test (20260903070000)
+
+`admin_ops_health` (20260817150000) is the one-query liveness check `docs/DASHBOARD.md` calls
+the daily smoke test and `docs/LAUNCH_RUNBOOK.md` reads before launch. It counted held first
+messages, pending PROFILE photos and selfie verifications, so a stuck business, post, chat or
+group photo queue (each holds at `pending` behind its own trigger and its own door) read as
+all zeros to the founder, and the failure `moderation-worker-queues.test.ts` exists for (a
+door with no worker behind it) would have been invisible in production. The view is
+recreated (`drop view`, so the revoke is restated) with four more columns after the existing
+seven, each counted by the predicate the worker selects with: `pending_business_photos`,
+`pending_post_photos`, `pending_chat_photos`, `pending_group_photos`. `pending_photos` keeps
+its name and its meaning (profile photos): the runbook's thresholds are written against it
+and a view's columns cannot be renamed by `create or replace`. Entry point: `select * from
+admin_ops_health;` in the SQL editor; no RPC, no client.
+`69_every_queue_the_smoke_test_can_see` puts one item in each queue with the flag on and
+asserts each column says one; a subquery's `pending` term replaced fails exactly the
+assertion that names its queue, a subquery deleted outright kills the file at the first read
+of the missing column, and the revoke deleted fails 'clients cannot read the smoke test'.
+The title of this migration overclaims by two queues — see the section directly below, which
+is the correction; the file itself is applied and untouched but for a comment saying so.
+
+### The two queues that can pause (20260903140000)
+
+20260903070000's title says "every moderation queue" and its body does not: it took the view
+from three moderation-queue counts to seven, and the worker drains NINE. The two with no
+column were storefront photos (`business_verifications` at `pending`) and impersonation scans
+(`business_scans` at `pending`) — which are the two worst ones to leave out, because they are
+the only queues in the product that PAUSE. Both worker branches are wrapped in `if (!prompt)
+{ ... queue paused }`, so a `MODERATION_PROMPTS_BUSINESS` secret missing either key switches
+that queue off while the worker keeps posting 200s. It has happened twice (`supabase/.deploy-request`,
+2026-08-27: "until then those two queues pause and everything else keeps running") and both
+times the smoke test read all zeros. This migration adds `pending_storefronts` and
+`pending_scans` — the worker's own names for them — at the END, so the eleven existing columns
+keep their names and order; drop-and-recreate, revoke restated.
+`69_every_queue_the_smoke_test_can_see` now fills the eight queues a pgTAP file can fill
+(held first messages are the ninth and 09_launch_hardening has held that column since 20260817150000) and asserts each column says one. Measured: each of the eight subqueries with
+its `pending` term flipped to `approved` fails exactly the assertion that names its queue
+(9 to 16) and nothing else; `pending_scans` deleted outright kills the file at the first read
+of the missing column (planned 17, ran 0); the revoke deleted turns 17 'clients cannot read
+the smoke test' into "lives".
+
+### `screen_business_text` runs only for an edit (20260903060000)
+
+`businesses_screen` fires `BEFORE INSERT OR UPDATE` with no `WHEN`, and the function
+screened five text columns and stamped `updated_at` on every write to the row. The
+enumeration of every write that is not an owner editing text, so it is not re-asked:
+
+| Write                                 | Columns                                                                                                 | Source                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `confirm_business_email`              | `state`, `listed_at`                                                                                    | 20260827160000:566     |
+| `apply_business_verification_verdict` | `verified_at`                                                                                           | 20260903010000:115     |
+| `admin_resolve_business_verification` | `verified_at`                                                                                           | 20260827160000:246     |
+| `apply_business_scan_verdict`         | `state`, `verified_at`                                                                                  | 20260827120000:703     |
+| `admin_resolve_business_report`       | `state`, `verified_at`, `active`                                                                        | 20260827120000:753-759 |
+| `register_business`                   | the insert itself: `city_id` (resolved from the marker), `lat`, `lng`, `address`, `state`, `claimed_at` | 20260905130000         |
+| `update_business_location`            | `lat`, `lng`, `city_id` (resolved), `address`                                                           | 20260905130000         |
+| owner toggling `public_preview`       | the RLS update grant; a switch                                                                          | 20260827100000:142-146 |
+| `businesses_rename_resets`            | amends NEW in the same statement; its body is guarded top to bottom                                     | 20260902120000         |
+| cron                                  | none writes this table                                                                                  |                        |
+| photo or post counters                | none live on it; those are rows elsewhere                                                               |                        |
+
+**What each cost.** (1) The classifier re-ran. `screen_first_message` is the regex
+blocklist, not a model call, so the CPU is small, but the blocklist is a table the founder
+grows, and a pattern added after a business wrote its description turned every write above
+into `that text breaks our house rules`. Followed through: `apply_business_scan_verdict`'s
+`state = 'flagged'` is the write that takes a plausible impersonator off the map, and it
+would have failed on the impersonator's own old bio; the verification verdict would have
+failed ten times and failsafe-refused a real business for a sentence it did not change; an
+owner flipping `public_preview` would have been told their text breaks the rules on a screen
+with no text on it. (2) `updated_at` was stamped. Unlike `profiles.updated_at` this is NOT a
+leak: the column is absent from the client select grant, no RPC returns it, no client-readable
+view carries it. It was still wrong ("last edited" meant "last touched by anything") and one
+grant away from being the profiles leak, so it goes inside the same guard.
+
+**The shape** is 20260903030000's: the condition lives in the function body beside the list
+of five columns it screens, not in a `WHEN` clause that would be a second copy of that list
+drifting in the direction that fails open. `68_only_an_edit_screens_a_business` parks
+`updated_at` in 2020 with the trigger disabled and asks whether it moved (the `now()`-equals-
+`now()` trap 59 fell into); with the guard removed, five of its assertions fail, on both
+halves.
 
 ## Technical flags (raised to founder, non-blocking)
 
@@ -1039,6 +1824,28 @@ and the policy has to change with it.
 - **2026-08-17 (Phase 5)** — Strikes are derived from `moderation_events` (the audit spine)
   rather than a separate counter table: every strike is inherently evidence-backed, and the
   ladder is re-computable.
+- **2026-09-01** — Strikes decay: the ladder counts a **rolling 90 days**, and the regex
+  prefilter's blocks are not strikes at all. This reverses "strikes never expire in v1",
+  which was written before the prefilter's false-positive rate was known: a lifetime
+  counter closes an account in month eighteen for four bad nights spread over two years,
+  and every rung of the ladder was being fed by a guess the app itself invited people to
+  retry. `admin_report_queue` uses the same window so the reviewer's count and the
+  ladder's count cannot disagree.
+- **2026-09-01** — The app sends a **fourth kind of notification**: three within-trip clocks
+  (`push_trip_starts_tomorrow`, `push_plan_is_soon`, `push_last_call`, all hourly under the
+  pg_cron guard, 20260902040000). Every one is about the reader's OWN trip or OWN plan; a
+  push reporting somebody else's activity is explicitly not covered and may not be added
+  under this decision. The primer's promise was rewritten to name the fourth kind in the
+  same bundle, before anybody was asked under it. `notification_prefs.trip_clocks`
+  (default true, RLS to `auth.uid()`) switches only these three off; a chat push or an
+  account notice must NEVER consult it, which pgTAP 49 asserts. The trip clock's body
+  states an overlap count only when it is at least that city's `launch_cities.heat_k` —
+  hard rule 6 applied to a sentence rather than to a map cell.
+- **2026-09-01** — The home-screen badge is computed **at drain time**, not at enqueue
+  time: `waiting_counts(uuid[])` (definer, revoked from every client role) is called once
+  per push-worker batch. A `badge` column on `push_queue` would freeze the number at
+  enqueue and would need populating at thirty-odd write sites. The client half is
+  `useIconBadge(waiting)` beside the tab badge, so the icon and the tab cannot disagree.
 - **2026-08-17 (Phase 5)** — Selfie verification ships as an honest Claude-vision likeness
   check (labeled as such in the UI), not fake "identity verification"; certified liveness
   is a vendor decision deferred until fraud data justifies the cost.
@@ -1081,6 +1888,39 @@ and the policy has to change with it.
   Masking alone is not enough: the client cannot draw a review state it cannot see, and the
   result was an empty bubble for the whole wait. The path stays masked for everyone but the
   sender, who could already read their own upload through `chat_photos_select_own`.
+- **2026-09-04** — **A pin or a trip can be in any city.** The founder retired "launch
+  dense, not wide" as a fence after being refused a pin in Manhattan: `pins.city_id` and
+  `heat_history.city_id` point at `cities`, `validate_pin` resolves the city instead of
+  gating on it, the map feeds and heat read a 50 km circle around the browsed city, and
+  the rail is `featured_cities()` (launch cities plus any city whose visible plans clear
+  its k). Rule 6's k is `coalesce(launch_cities.heat_k, 3)` in one place per function;
+  a city is never named on the rail below its k. `request_city()` is gone.
+- **2026-09-04** — **Travelers reaches a radius the viewer sets** (`profiles.travelers_radius_km`,
+  default 32 km). The radius lives in the `trips_select_overlap` policy's predicate
+  (`overlaps_own_trip`) and not only in `get_matches`, because a SECURITY INVOKER queue
+  cannot widen past what RLS lets it read; the hello, the inbox chip and the meet
+  question read the same number so no surface disagrees. Measured city centre to city
+  centre from a trip the person typed, never from a device (rule 2); `get_matches` takes
+  nothing but the caller's own trip ids (below) and pgTAP asserts the argument list.
+- **2026-09-05** — **A trip can be as far ahead as somebody plans, and the queue can be
+  one trip at a time.** The 180-day horizon is out of `overlaps_own_trip`, `get_matches`
+  and `send_message_request` (20260905090000): a year of trips added in January is
+  matched from the day each is added. `get_matches(p_trip_ids uuid[] default null)`
+  narrows the queue to some of the caller's trips; the ids are joined to
+  `trips where user_id = auth.uid()`, so a foreign id names nothing, and null is every
+  trip (daily_spotlight's zero-argument call is unchanged). The choice is a view
+  preference kept on the device per account (`features/matching/trip-selection`): it
+  changes nothing about who can see the person, whose profile is shown to everyone the
+  audience setting allows on every trip. The picker is the top of the Travelers tab.
+- **2026-09-04** — **Every city has a clock.** `cities.timezone` from `geo-tz` at seed
+  time (49,025 rows, threshold 5,000), read through `city_clock_zone()`; the three push
+  clocks and the pin's hour check no longer inner-join `launch_cities`, so a trip to Porto
+  gets its "tomorrow" push and a plan in Manhattan its last call.
+- **2026-09-05** — **A business can be in any city.** The founder retired the business
+  fence the day after the pin one: `resolve_business_city` (hint within 20 km, else
+  `nearest_city`, else nearest on earth) files a listing under the city its marker is in;
+  `city_businesses`/`city_whats_on`/`city_rooms` read the label or the 50 km circle like
+  `city_pins`; the client sends no city and reads the answer through `city_for_spot`.
 - **2026-08-28** — Read receipts (Delivered / Read) are **not** built, and this is a product
   decision rather than a backlog item: there is no recipient-scoped column to hang them on,
   and they create response pressure that works against the safety posture. "Sending" and

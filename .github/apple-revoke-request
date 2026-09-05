@@ -1,0 +1,30 @@
+# Touch this file (any change) to run .github/workflows/apple-revoke-log.yml on
+# the current branch, which is the only way to run it until that workflow
+# reaches the default branch — GitHub lists workflow_dispatch workflows from
+# there alone. The same device supabase/.deploy-request and
+# .github/push-key-request use.
+#
+# The run only READS, and it prints a classification of each Apple log line
+# rather than the line. The entry below is a prediction, written before the
+# run, so that a run which disagrees with it is visible as a disagreement.
+
+2026-09-04 — first run. The founder created an account with Sign in with Apple
+             and deleted it, hours after run #105 synced the four APPLE_*
+             function secrets. Expect one `apple revoke: ok (200)` from
+             delete-account and no `store-apple-token:` lines at all, since
+             that function logs nothing on success. Anything else is the
+             interesting case: `no token for this account` would mean the
+             sign-in never stored one, which is the false pass this doc has
+             been warning about since the key was still missing.
+
+             OUTCOME (run #1, 2026-09-04): the prediction held, and the window
+             also held something better than predicted. Two lines, not one:
+             a `no token for this account` from 2026-09-03 19:19 UTC — a
+             deletion from the evening before run #105 set the secrets, which
+             is the false pass caught in the wild — and today's
+             `apple revoke: ok (200)` at 12:33 UTC. Before and after, both
+             unstaged. No `store-apple-token:` lines, which is what its silent
+             success path looks like. ClickHouse answered; 10 lines total from
+             the two functions in the window, so the log pipeline is alive and
+             "only two Apple lines" means only two deletions, not a short
+             window.

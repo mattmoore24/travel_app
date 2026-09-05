@@ -17,10 +17,15 @@ import { analytics } from '@/lib/analytics';
  * and swaps stacks, which lands a brand new account on the profile steps and
  * a returning one in the app.
  */
-export function AppleSignInButton({ label = 'signin' }: { label?: 'signin' | 'signup' }) {
-  const scheme = useColorScheme();
+/**
+ * Whether the Apple button will actually render. Exported so a screen laying
+ * out chrome AROUND the button (join's "or" divider between Apple and the
+ * email field) can show that chrome only when there are two alternatives to
+ * divide — a divider over a button that rendered nothing reads as a stray
+ * line.
+ */
+export function useAppleSignInAvailable(): boolean {
   const [available, setAvailable] = useState(false);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -34,6 +39,14 @@ export function AppleSignInButton({ label = 'signin' }: { label?: 'signin' | 'si
     };
   }, []);
 
+  return available;
+}
+
+export function AppleSignInButton({ label = 'signin' }: { label?: 'signin' | 'signup' }) {
+  const scheme = useColorScheme();
+  const available = useAppleSignInAvailable();
+  const [busy, setBusy] = useState(false);
+
   if (!available) {
     return null;
   }
@@ -45,7 +58,11 @@ export function AppleSignInButton({ label = 'signin' }: { label?: 'signin' | 'si
     setBusy(true);
     try {
       await signInWithApple();
-      analytics.capture('signup_step_completed', { step: 'apple' });
+      // Its own event, not a signup_step_completed. Apple is an ALTERNATIVE
+      // to steps 1 and 2, not a step, and counting it there double-counted
+      // the funnel's first rung — and put a string on an axis the rest of
+      // the schema keeps numeric.
+      analytics.capture('signup_apple_used');
     } catch (error) {
       // A cancelled sheet is a person changing their mind, not a failure.
       if ((error as { code?: string }).code !== 'ERR_REQUEST_CANCELED') {

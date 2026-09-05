@@ -1,7 +1,8 @@
 # Making a profile, which the suite has never photographed either.
 #
 # The signed-in tour signs into an account that is already onboarded, and the
-# guest tour stops at the account-kind chooser, so the front door of the whole
+# guest tour never makes one (it browses, meets the gate, and photographs the
+# chooser and the map on the way past), so the front door of the whole
 # app — the screens that decide whether somebody ends up with a profile at all
 # — has had no picture of it. It just went from seven steps to thirteen.
 #
@@ -20,6 +21,29 @@
 # onboarding_completed_at, so what it leaves behind is an unfinished profile:
 # invisible in Travelers, invisible on the map, exactly like somebody who
 # closed the app half way through.
+#
+# THE INTENT CARRIED ACROSS THE WALL has two map origins
+# (map-carries-your-intent-through-signup), and they cannot both be proven in
+# one run: the store holds ONE pendingIntent and this flow signs up ONCE. So
+# the door into signup decides which replay the tail asserts, and the tail
+# hard-asserts exactly the one that matches:
+#
+#   PIN variant — the guest opens a traveler's pin card from the plan list
+#   (markers are MapKit's and not in the tree; the list rows are ours) and
+#   takes its gate. After finish-profile the SAME pin's card must be open on
+#   the same city ('View <venue> in Maps' is on every pin card).
+#
+#   DROP-PIN variant — the guest taps Drop a pin and takes that gate. After
+#   finish-profile the map must come back IN PLACE MODE ('Pin here').
+#
+# Which door is taken depends on live-backend supply: a pin card only gates
+# for a TRAVELER's pin — a curated pick's card has no gate by design, guests
+# may read our picks freely — and the seeder guarantees only picks. So the
+# pin door is taken whenever a traveler pin is row 0 of the plan list, and
+# the drop-pin door is the deterministic fallback. A run's screenshots say
+# which variant it proved: 75-signup-done-pin-replay or 75-signup-done. The
+# regression either tail catches is the same one: an intent recorded at a
+# gate and thrown away by signup.
 appId: com.mattmoore.samewhere
 ---
 - launchApp
@@ -30,7 +54,60 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
-- tapOn: 'Drop a pin'
+# THE PIN DOOR, attempted first. Rows are addressable by testID; the peek may
+# still be settling (the pins query), so it gets a real wait — but every step
+# stays optional: a city with no list at all falls through to the drop-pin
+# door below.
+- extendedWaitUntil:
+    visible:
+      id: 'plan-list-peek'
+    timeout: 10000
+    optional: true
+- tapOn:
+    id: 'plan-list-peek'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    id: 'plan-list-row-0'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 2000
+# Row 0 opened a traveler's pin: its gate is up. Take it — this records the
+# {kind: 'pin'} intent — and skip the drop-pin door entirely.
+- runFlow:
+    when:
+      visible: "See who's going and say hi"
+    commands:
+      - takeScreenshot: 49-pin-card-gate
+      - tapOn: 'Make a profile'
+      # Waited out HERE, not only at the shared step below: the sheet leaves
+      # first and the push lands after its exit animation, so the fallback
+      # block's notVisible check would otherwise run mid-navigation and tap
+      # 'Drop a pin' on a screen that no longer has one.
+      - extendedWaitUntil:
+          visible: 'What are you signing up as?'
+          timeout: 10000
+# Otherwise row 0 was a curated pick (no gate) or there was no list: close
+# whatever opened, toggle the list, and take the drop-pin door. The toggle is
+# belt-and-braces now, not a requirement: the dock is painted OVER the plan
+# list's sheet at every detent, so 'Drop a pin' is on screen whether this tap
+# folds the list or opens it.
+- runFlow:
+    when:
+      notVisible: 'What are you signing up as?'
+    commands:
+      - tapOn:
+          text: 'Close'
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn:
+          id: 'plan-list-peek'
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - tapOn: 'Drop a pin'
 - extendedWaitUntil:
     visible: 'Make a profile'
     timeout: 10000
@@ -57,6 +134,20 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'password-input'
 - inputText: ${E2E_THROWAWAY_PASSWORD}
+# The consent line under the create-account button is the App Review 1.2
+# surface: the agreement has to be readable at the moment it is made, so both
+# policy links must be on this screen. Wildcards on both sides because iOS
+# may expose the sentence as one element or as link fragments.
+- assertVisible: '.*house rules.*'
+- assertVisible: '.*privacy policy.*'
+# The footer no longer rides up with the keyboard (founder, 2026-09-04: "have
+# the keyboard go over them when the user is typing"), so the button is under
+# the keyboard until it is put away, and the way to put it away is the bar
+# every field now carries. Tapping the bar by its label is the assertion that
+# it exists for THIS field: under Fabric an InputAccessoryView binds to one
+# field, once, and the old one-bar-per-screen shape left every later field
+# with none. If this tap cannot land, that is the finding, not a flake.
+- tapOn: 'Hide keyboard'
 - tapOn:
     id: 'create-account'
 - tapOn:
@@ -78,6 +169,26 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'age-input'
 - inputText: '29'
+# A number pad draws no Return key at all, so the bar is this field's only
+# exit, and Continue sits under the pad until it is used.
+- tapOn: 'Hide keyboard'
+# Continue with the gender question unanswered is refused, and the shell's
+# note says which answer is outstanding. This is the finding that made the
+# change: name and age valid used to be enough, and the women-only filter's
+# data shipped as 'unspecified' from people who never saw the question.
+- tapOn: 'Continue'
+- assertVisible: 'Pick a gender.*'
+- takeScreenshot: 51b-signup-who-gender-note
+# The select opens the app's own sheet through a native Modal, dismissing the
+# number pad first (select-field.tsx), so wait for the rows to land.
+- tapOn:
+    id: 'gender-select'
+- extendedWaitUntil:
+    visible: 'Woman'
+    timeout: 10000
+- tapOn: 'Woman'
+- waitForAnimationToEnd:
+    timeout: 1500
 - tapOn: 'Continue'
 
 # STEP 4 — where you are from.
@@ -91,12 +202,12 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'country-input'
 - inputText: 'Portugal'
-# Return, not the accessory bar's Done: iOS blurs a single-line field on
-# submit, and taps on the Done bar do not reliably land because iOS hosts it
-# in the keyboard's own window. Run 80 died on the next command for exactly
-# that reason — the keyboard was still up, so Maestro's scroll swipe landed
-# on the docked footer instead of the scroller, and Languages never came into
-# view.
+# Return, which blurs a single-line field. Run 80 died here with the keyboard
+# still up and the note at the time blamed "taps on the Done bar do not
+# reliably land"; read against keyboard-done-bar.tsx that was almost certainly
+# a bar that was not there at all - the one shared bar had bound to the first
+# field on the screen and this was the second. Return is still the cheaper
+# exit for a single-line field, so it stays.
 - pressKey: Enter
 - takeScreenshot: 52-signup-home
 
@@ -160,23 +271,79 @@ appId: com.mattmoore.samewhere
     text: 'Add your profile photo'
     optional: true
 - runFlow: ../subflows/pick-a-photo.yml
+# The photo is IN the tile before it is anywhere near the server. Both
+# conditions together are exactly "a local upload is in flight": the empty
+# add tile is gone (something occupies slot 0) and the row has not landed
+# (the footer still asks for a photo). The old grid could satisfy neither -
+# it kept the empty dashed box, spun every other one with it, and held no
+# copy of the file to show or to retry. Guarded because the picker above is
+# Apple's, not ours, and may simply not have produced a photo.
+- runFlow:
+    when:
+      notVisible: 'Add your profile photo'
+      visible: 'A profile photo is the one thing we need.'
+    commands:
+      - assertVisible: 'Your profile photo, uploading'
+      - takeScreenshot: 54b-photo-uploading
+      # And WAIT IT OUT here, where the upload is known to be in flight. Run
+      # 119 judged the two "gate line not visible" blocks below ten seconds
+      # after the pick, while the upload was still working: both skipped,
+      # the flow ended green, and steps 6 to 14 were never photographed. The
+      # pipeline's own budget (image-upload.ts) is the ceiling.
+      - extendedWaitUntil:
+          notVisible: 'Your profile photo, uploading'
+          timeout: 150000
 - waitForAnimationToEnd:
     timeout: 4000
+# The pipeline's bounded stages (image-upload.ts) promise that within 150s a
+# picked photo has either landed — finish-photos appears — or "Could not save
+# … so try again" is on screen. Run 95's first attempt tapped finish-photos
+# ten seconds after the pick, while a render allowed 90s on a cold simulator
+# was still working; run 93's died with the alert covering the gate text. So:
+# wait out the budget when a pick is actually in flight (the gate line gone
+# is what says so), recover through the app's own retry if it ended in the
+# alert, then proceed.
+- runFlow:
+    when:
+      notVisible: 'A profile photo is the one thing we need.'
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: 'finish-photos'
+          timeout: 150000
+          optional: true
+- runFlow:
+    when:
+      visible: 'Could not save'
+    commands:
+      - tapOn: 'OK'
+      - tapOn:
+          text: 'Add your profile photo'
+          optional: true
+      - runFlow: ../subflows/pick-a-photo.yml
+      - waitForAnimationToEnd:
+          timeout: 4000
 - takeScreenshot: 55-signup-photo-added
 
 - runFlow:
     when:
       notVisible: 'A profile photo is the one thing we need.'
     commands:
+      - extendedWaitUntil:
+          visible:
+            id: 'finish-photos'
+          timeout: 150000
       - tapOn:
           id: 'finish-photos'
       # STEP 6 — what you do. The first step that may be skipped, so the
-      # first that carries a "Skip for now" under the button. Its absence on
-      # steps 3 to 5 is how somebody can tell those are required.
+      # first that carries a skip under the button — and the skip names its
+      # own subject now, so the person is told what they are passing over.
+      # Its absence on steps 3 to 5 is how somebody can tell those are
+      # required.
       - extendedWaitUntil:
           visible: 'What do you do?'
           timeout: 15000
-      - assertVisible: 'Skip for now'
+      - assertVisible: 'Skip what you do for now'
       - takeScreenshot: 56-signup-occupation
       - tapOn:
           id: 'occupation-input'
@@ -190,7 +357,13 @@ appId: com.mattmoore.samewhere
       - tapOn:
           id: 'bio-input'
       - inputText: 'Street food missions and long walks. Terrible at surfing, still going.'
+      # Keyboard up, bar above it, footer under it: this is the founder's
+      # 2026-09-04 screenshot with the two things they asked for, and the
+      # picture is the evidence that the bar is on a multiline field reached
+      # from another step, which is exactly the field the old shape lost.
       - takeScreenshot: 57-signup-bio
+      - tapOn: 'Hide keyboard'
+      - takeScreenshot: 57b-signup-bio-keyboard-away
       - tapOn: 'Continue'
       # STEPS 8, 9, 10 — prompts, priorities and trips. Each hands over to
       # the editor that owns it, which has its own pictures, so the flow
@@ -202,35 +375,75 @@ appId: com.mattmoore.samewhere
           visible: 'Answer a prompt'
           timeout: 15000
       - takeScreenshot: 58-signup-prompts
-      - tapOn: 'Skip for now'
+      - tapOn: 'Skip the prompts for now'
       - extendedWaitUntil:
-          visible: 'What are you after?'
+          visible: 'Add your top priorities for your trip'
           timeout: 15000
       - takeScreenshot: 59-signup-priorities
-      - tapOn: 'Skip for now'
+      - tapOn: 'Skip this for now'
       - extendedWaitUntil:
           visible: 'Where are you going?'
           timeout: 15000
-      - assertVisible: 'I have not booked anything yet'
+      # The skip and the line naming what it closes. Both exact: the note is
+      # the whole point of the step's redesign — the wall on the Travelers
+      # tab is the second half of this sentence.
+      - assertVisible: "I'll add it later"
+      - assertVisible: 'Travelers stays closed until you do. The map does not.'
       - takeScreenshot: 70-signup-trips
-      - tapOn: 'I have not booked anything yet'
+      - tapOn: "I'll add it later"
       # STEP 11 — socials, and the §7 promise about them said out loud.
       - extendedWaitUntil:
           visible: 'Your socials'
           timeout: 15000
       - assertVisible: 'Nobody sees these until you are both in a chat.*'
       - takeScreenshot: 71-signup-socials
-      - tapOn: 'Skip for now'
-      # STEP 12 — audience. No skip, because it has a default rather than
+      - tapOn: 'Skip your socials for now'
+      # STEP 12 — the badge, as a step of its own. It used to be reachable
+      # only as a door on the audience step (below, still there), and the
+      # founder walked the whole sequence without meeting it. The flow does
+      # not take the selfie: the simulator has no camera, and the point being
+      # proved is that the offer is made, with its cost under the skip.
+      - extendedWaitUntil:
+          visible: 'Get your badge'
+          timeout: 15000
+      - assertVisible: 'Take a selfie'
+      - assertVisible: 'Skip the badge for now'
+      - assertVisible: 'The verified-only options on the next screen stay locked until you do.'
+      - takeScreenshot: 71b-signup-badge
+      - tapOn: 'Skip the badge for now'
+      # STEP 13 — audience. No skip, because it has a default rather than
       # because it is compulsory, and the narrowed rows are inert until a
       # badge exists. That is the server's rule, and the step exists so
-      # nobody finishes without learning the setting is there.
+      # nobody finishes without learning the setting is there. For this
+      # unverified account it reads as a statement and the button says
+      # "Got it": nothing here asks for a decision that cannot be made.
       - extendedWaitUntil:
-          visible: 'Who you see, and who sees you'
+          visible: 'Who can see you'
           timeout: 15000
+      - assertVisible: 'Got it'
       - takeScreenshot: 72-signup-audience
-      - tapOn: 'Continue'
-      # STEP 13 — THE PROFILE ITSELF, which is the founder's "final look of
+      # A LOCKED ROW IS A DOOR, NOT A WALL. The step named the badge, said it
+      # lived somewhere else, and did nothing at all when a locked row was
+      # tapped - so a woman finishing signup was set to Everyone and never
+      # asked again. router.push('/verification') cannot work from here
+      # (that route is behind `signedIn && onboarded`, which an onboarding
+      # account is neither half of), so the capture opens in place. Tapped by
+      # its spoken label, which carries the appended reason.
+      - tapOn: 'Verified women.*'
+      - extendedWaitUntil:
+          visible: 'Get your badge'
+          timeout: 15000
+      - assertVisible: 'Take a selfie'
+      - takeScreenshot: 72b-signup-badge-door
+      # Back closes the door rather than leaving step 13: from here the
+      # capture is this step with the door open. (Step 12 is where it is a
+      # step of its own, and this account skipped it.)
+      - tapOn: 'Back'
+      - extendedWaitUntil:
+          visible: 'Who can see you'
+          timeout: 15000
+      - tapOn: 'Got it'
+      # STEP 14 — THE PROFILE ITSELF, which is the founder's "final look of
       # how your profile appears to other users", rendered by the component a
       # stranger gets. Never once photographed before this run.
       - extendedWaitUntil:
@@ -241,10 +454,81 @@ appId: com.mattmoore.samewhere
       - takeScreenshot: 73-signup-review
       - scroll
       - takeScreenshot: 74-signup-review-scrolled
+      # THE REVIEW IS A DOOR, NOT A WALL. The step used to render the
+      # stranger's copy under "step back to change anything", where back was
+      # a one-step chevron: fixing the bio from here cost six Back taps
+      # through six animated transitions. Owner mode puts an Edit on every
+      # section, each one jumps to the step that owns it, and Continue comes
+      # straight back to the review.
+      - scrollUntilVisible:
+          element:
+            text: 'Edit about'
+          direction: DOWN
+          timeout: 10000
+      - tapOn: 'Edit about'
+      - extendedWaitUntil:
+          visible: 'A bit about you'
+          timeout: 15000
+      - takeScreenshot: 74b-review-jumped-to-the-bio
+      - tapOn: 'Continue'
+      - extendedWaitUntil:
+          visible: 'Here you are'
+          timeout: 15000
+      - waitForAnimationToEnd:
+          timeout: 2000
+      - takeScreenshot: 74c-review-came-back
       - tapOn:
           id: 'finish-profile'
       # And out into the app, which is the proof the stamp landed.
       - extendedWaitUntil:
           visible: 'Travelers'
           timeout: 25000
-      - takeScreenshot: 75-signup-done
+      # THE INTENT CARRIED ACROSS THE WALL (map-carries-your-intent-through-
+      # signup): whichever gate this run entered signup through, its replay
+      # must be on screen — and the two end states are mutually exclusive, so
+      # the tail asserts exactly the one that matches the door taken above.
+      # 'Pin here' is place mode (the drop-pin variant); when it never comes,
+      # the pin variant ran and the SAME pin's card must be open — every pin
+      # card carries the maps link, spoken as 'View <venue> in Maps'. A run
+      # where NEITHER appears fails here, which is the regression this tail
+      # exists to catch: an intent recorded at a gate and dropped by signup.
+      - extendedWaitUntil:
+          visible: 'Pin here'
+          timeout: 20000
+          optional: true
+      - runFlow:
+          when:
+            visible: 'Pin here'
+          commands:
+            # THE DROP-PIN VARIANT, proven: the map came back IN PLACE MODE
+            # at the spot the guest had. 75-signup-done photographs it.
+            # NOTHING ELSE HERE: run 113 tapped Cancel in this block, which
+            # made the next block's notVisible true and ran the pin variant
+            # against a map with no card. Place mode is left below, after
+            # both checks.
+            - takeScreenshot: 75-signup-done
+      - runFlow:
+          when:
+            notVisible: 'Pin here'
+          commands:
+            # THE PIN VARIANT, proven: the card the guest was reading when
+            # the wall interrupted them is open again, on its own city. The
+            # wait is not slack — the replay holds the card until the city's
+            # pins have refetched under the new account. (A pin that burns
+            # out during the minutes signup takes degrades the replay to the
+            # city alone BY DESIGN; that rare race shows here as a red tail
+            # over a bare-map screenshot. Re-run it — never loosen this.)
+            - extendedWaitUntil:
+                visible: 'View .* in Maps'
+                timeout: 20000
+            - takeScreenshot: 75-signup-done-pin-replay
+            - tapOn: 'Close'
+            - waitForAnimationToEnd:
+                timeout: 2000
+      # Leave place mode (the drop-pin variant) so the flow ends on the
+      # ordinary map. Optional: after the pin variant there is no Cancel.
+      - tapOn:
+          text: 'Cancel'
+          optional: true
+      - waitForAnimationToEnd:
+          timeout: 2000

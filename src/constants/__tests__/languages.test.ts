@@ -83,3 +83,39 @@ describe('matchesLanguage', () => {
     expect(matchesLanguage(spanish, '   ')).toBe(true);
   });
 });
+
+/**
+ * Searching a language by its ISO code. Languages is a required onboarding
+ * field that gates finishing signup, so a search that returns nothing lands
+ * inside the funnel on a screen with no fallback but a 200-entry
+ * alphabetical-by-ENGLISH-name list.
+ */
+describe('matchesLanguage by code', () => {
+  const find = (query: string) => LANGUAGES.filter((l) => matchesLanguage(l, query));
+
+  it('finds German by code, English name and endonym alike', () => {
+    for (const query of ['de', 'German', 'Deutsch']) {
+      expect(find(query).map((l) => l.value)).toContain('de');
+    }
+  });
+
+  it('finds the launch markets by the codes on their airline sites', () => {
+    expect(find('pt').map((l) => l.value)).toContain('pt');
+    expect(find('th').map((l) => l.value)).toContain('th');
+    expect(find('id').map((l) => l.value)).toContain('id');
+  });
+
+  it('does not let a two-letter code over-match half the list', () => {
+    // 'pt' is equality on the code plus whatever the NAMES genuinely
+    // contain, which is the point of === over includes. Portuguese must not
+    // arrive because its English name has a p, a t and everything between.
+    const codes = find('pt').map((l) => l.value);
+    expect(codes).toContain('pt');
+    expect(codes.length).toBeLessThan(5);
+  });
+
+  it('is case and accent insensitive on the code too', () => {
+    expect(find('DE').map((l) => l.value)).toContain('de');
+    expect(find(' de ').map((l) => l.value)).toContain('de');
+  });
+});

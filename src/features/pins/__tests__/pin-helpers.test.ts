@@ -3,7 +3,9 @@ import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
 import {
   MAX_PIN_HOURS,
   burnOutLabel,
+  categoryForPlan,
   categoryForPoi,
+  cityClockNow,
   defaultHoursForIntent,
   expiryForDuration,
   expiryForHours,
@@ -12,7 +14,12 @@ import {
   hoursLabel,
   intentDateOptions,
   intentLabel,
+  isLaterCityDay,
+  isLaterDay,
   minHoursForIntent,
+  pinSubtitle,
+  pinTitle,
+  shouldGeocode,
   validDurations,
 } from '../pin-helpers';
 
@@ -92,6 +99,51 @@ describe('categoryForPoi', () => {
     expect(categoryForPoi('MKPOICategoryLaundry')).toBe('other');
     expect(categoryForPoi(null)).toBe('other');
     expect(categoryForPoi(undefined)).toBe('other');
+  });
+});
+
+describe('categoryForPlan', () => {
+  it('reads the activity out of a plan someone actually wrote', () => {
+    expect(categoryForPlan('Sunset drinks')).toBe('bar');
+    expect(categoryForPlan('Rooftop hello from Maestro')).toBe('bar');
+    expect(categoryForPlan('brunch by the river')).toBe('restaurant');
+    expect(categoryForPlan('going dancing after midnight')).toBe('club');
+    expect(categoryForPlan('trek to the viewpoint')).toBe('hike');
+    expect(categoryForPlan('morning surf')).toBe('beach');
+    expect(categoryForPlan('the modern art gallery')).toBe('museum');
+    expect(categoryForPlan('Wat Pho at opening')).toBe('monument');
+  });
+
+  it('ignores case, the way people type', () => {
+    expect(categoryForPlan('COCKTAIL HOUR')).toBe('bar');
+    expect(categoryForPlan('Beach day')).toBe('beach');
+  });
+
+  it('matches words, not fragments', () => {
+    // 'eat' inside 'theatre' or 'club' inside 'clubhouse' would be a guess
+    // built on letters, not on what anybody said they were doing.
+    expect(categoryForPlan('theatre tickets sorted')).toBeNull();
+    expect(categoryForPlan('meet at the clubhouse door')).toBeNull();
+  });
+
+  it('answers null when the plan names no activity, so the caller decides', () => {
+    // Null, not 'other': categoryForPoi already rules that unrecognised is a
+    // real answer, and this extends that rule rather than replacing it.
+    expect(categoryForPlan('Hello from Maestro')).toBeNull();
+    expect(categoryForPlan('meet by the fountain at 7')).toBeNull();
+    expect(categoryForPlan('')).toBeNull();
+  });
+});
+
+describe('a null POI and a keyword-free plan still land on a real category', () => {
+  it('the form-side fallback chain ends at other, never at nothing', () => {
+    // The exact expression the pin form runs for a hand-placed pin whose
+    // plan names no activity: POI 'other', plan null, and the pin still
+    // files under a chip that exists.
+    const poi = categoryForPoi(null);
+    expect(poi !== 'other' ? poi : (categoryForPlan('meet by the fountain') ?? 'other')).toBe(
+      'other'
+    );
   });
 });
 
@@ -197,5 +249,163 @@ describe('filterDates', () => {
     const midday = new Date(2026, 7, 22, 12, 0, 0);
     const dates = filterDates('today', midday);
     expect(dates).toContain('2026-08-22');
+  });
+
+  it("leads with the browsed city's day, and keeps the device day matched", () => {
+    // A device at 20:00 on the 30th browsing a city where it is already
+    // 03:00 on the 31st: "today" must show the city's tonight, and must not
+    // hide pins the device's own clock (or the seed's UTC clock) wrote.
+    const device = new Date(2026, 7, 30, 20, 0);
+    const city = new Date(2026, 7, 31, 3, 0);
+    const dates = filterDates('today', device, city);
+    expect(dates[0]).toBe('2026-08-31'); // the city leads: heatDay asks about it
+    expect(dates).toContain('2026-08-30'); // the tolerance is widened, never swapped
+    expect(new Set(dates).size).toBe(dates.length);
+  });
+
+  it('shifts every chip by the same city day', () => {
+    const device = new Date(2026, 7, 30, 20, 0);
+    const city = new Date(2026, 7, 31, 3, 0);
+    expect(filterDates('tomorrow', device, city)[0]).toBe('2026-09-01');
+    expect(filterDates('later', device, city)[0]).toBe('2026-09-02');
+  });
+});
+
+describe("cityClockNow (the browsed city's today)", () => {
+  it("reads Bangkok's small hours off a London evening", () => {
+    // 19:00 UTC on Aug 30 is 02:00 on Aug 31 in Bangkok (UTC+7).
+    const instant = new Date(Date.UTC(2026, 7, 30, 19, 0));
+    const bkk = cityClockNow('Asia/Bangkok', 100.5, instant);
+    expect(toISODate(bkk)).toBe('2026-08-31');
+    expect(bkk.getHours()).toBe(2);
+  });
+
+  it('answers the other direction for a device east of the city', () => {
+    // 03:00 UTC on Aug 31 is still 21:00 on Aug 30 in Mexico City (UTC-6).
+    const instant = new Date(Date.UTC(2026, 7, 31, 3, 0));
+    const cdmx = cityClockNow('America/Mexico_City', -99.13, instant);
+    expect(toISODate(cdmx)).toBe('2026-08-30');
+    expect(cdmx.getHours()).toBe(21);
+  });
+
+  it('falls back to the longitude approximation for a zone ICU does not know', () => {
+    // lng 105 is roughly UTC+7; the approximation lands on the same day.
+    const instant = new Date(Date.UTC(2026, 7, 30, 19, 0));
+    const approx = cityClockNow('Not/AZone', 105, instant);
+    expect(toISODate(approx)).toBe('2026-08-31');
+    expect(approx.getHours()).toBe(2);
+  });
+
+  it('labels intent dates by the city clock it is handed', () => {
+    const city = new Date(2026, 7, 31, 3, 0);
+    expect(intentLabel('2026-08-31', city)).toBe('Today');
+    expect(intentLabel('2026-09-01', city)).toBe('Tomorrow');
+    // The night the device still calls "today" is over in the city.
+    expect(intentLabel('2026-08-30', city)).not.toBe('Today');
+  });
+});
+
+describe('shouldGeocode (the place pill throttle)', () => {
+  const bkk = { lat: 13.7563, lng: 100.5018 };
+  // ~200m north of bkk: one degree of latitude is ~111km.
+  const farther = { lat: 13.7563 + 0.0018, lng: 100.5018 };
+  // ~5m north: same street, same answer.
+  const nudge = { lat: 13.7563 + 0.000045, lng: 100.5018 };
+
+  it('refuses inside the 800ms floor', () => {
+    expect(shouldGeocode({ last: bkk, next: farther, lastAtMs: 1_000, nowMs: 1_500 })).toBe(false);
+  });
+
+  it('refuses a centre within 15m of the last geocoded one', () => {
+    expect(shouldGeocode({ last: bkk, next: nudge, lastAtMs: 0, nowMs: 10_000 })).toBe(false);
+  });
+
+  it('allows a real move once the floor has passed', () => {
+    expect(shouldGeocode({ last: bkk, next: farther, lastAtMs: 1_000, nowMs: 2_000 })).toBe(true);
+  });
+
+  it('allows the very first geocode', () => {
+    expect(shouldGeocode({ last: null, next: bkk, lastAtMs: 0, nowMs: 900 })).toBe(true);
+  });
+});
+
+describe('pinTitle / pinSubtitle (one voice for a pin, everywhere)', () => {
+  it('titles a pin by its venue, never by its note', () => {
+    expect(pinTitle({ venue_name: 'Sky Bar' })).toBe('Sky Bar');
+    // The note has no say: the type does not even accept one.
+    expect(
+      pinTitle({ venue_name: 'Sky Bar', note: 'Sunset drinks' } as { venue_name: string })
+    ).toBe('Sky Bar');
+  });
+
+  it('subtitles a pin with its plan first, the note standing in', () => {
+    expect(pinSubtitle({ plan: ' Sunset drinks ', note: 'by the door at 7' })).toBe(
+      'Sunset drinks'
+    );
+    // Rows from before the split (and plans whose author wrote only a
+    // detail) still say something.
+    expect(pinSubtitle({ plan: null, note: '  Sunset drinks  ' })).toBe('Sunset drinks');
+    expect(pinSubtitle({ note: '  Sunset drinks  ' })).toBe('Sunset drinks');
+  });
+
+  it('returns null when neither the plan nor the note says anything', () => {
+    expect(pinSubtitle({ plan: null, note: null })).toBeNull();
+    expect(pinSubtitle({ plan: '', note: '' })).toBeNull();
+    expect(pinSubtitle({ plan: '   ', note: '   ' })).toBeNull();
+  });
+});
+
+describe('isLaterDay (the marker dim)', () => {
+  // Mar 4, 3pm local. Whatever the runner's timezone, both of the two clocks
+  // that write intent_date agree these are today-or-past and this is later.
+  const now = new Date(2026, 2, 4, 15, 0);
+
+  it('is false for today and for a day already under way', () => {
+    expect(isLaterDay(toISODate(now), now)).toBe(false);
+    expect(isLaterDay(toISODate(addDays(now, -1)), now)).toBe(false);
+  });
+
+  it('is true only once BOTH clocks agree the day is later', () => {
+    // Two days out is later than today on the local clock and the UTC clock
+    // alike, whichever side of the meridian the runner sits on.
+    expect(isLaterDay(toISODate(addDays(now, 2)), now)).toBe(true);
+  });
+});
+
+describe('isLaterCityDay (the dim on the city clock)', () => {
+  // THE BANGKOK-FROM-MEXICO-CITY REGRESSION. Browsing Bangkok at 20:00
+  // Bangkok time on Aug 31 from Mexico City (UTC-6): the map's clock is the
+  // SYNTHETIC Date cityClockNow builds — wall time 2026-08-31 20:00 read in
+  // the DEVICE zone. On that device the synthetic instant is 02:00Z on
+  // SEP 1, so isLaterDay's UTC leg (`intentISO > toISOString()`) refused a
+  // pin for Bangkok's tomorrow and the dim was lost. That leg is UTC-write
+  // tolerance for the device clock and means nothing on a synthetic Date.
+
+  it('keeps the dim on a pin for the city’s tomorrow, wherever the device is', () => {
+    // 13:00Z on Aug 31 IS 20:00 in Bangkok; the synthetic clock reads
+    // 2026-08-31 whatever zone this runner sits in.
+    const clock = cityClockNow('Asia/Bangkok', 100.5, new Date(Date.UTC(2026, 7, 31, 13, 0)));
+    expect(toISODate(clock)).toBe('2026-08-31');
+    expect(isLaterCityDay('2026-09-01', clock)).toBe(true); // tomorrow: dimmed
+    expect(isLaterCityDay('2026-08-31', clock)).toBe(false); // tonight: full amber
+    expect(isLaterCityDay('2026-08-30', clock)).toBe(false); // already under way
+  });
+
+  it('documents the leg that lost it: isLaterDay’s UTC read on the synthetic instant', () => {
+    // The exact instant a Mexico City device holds for "Bangkok, 20:00,
+    // Aug 31": wall 2026-08-31T20:00 at UTC-6 is 02:00Z on Sep 1. Its UTC
+    // day equals the intent date, so the ISO leg fails in EVERY runner zone
+    // — which is why the map's city-clock call sites must not use isLaterDay.
+    const syntheticOnThatDevice = new Date('2026-09-01T02:00:00Z');
+    expect(isLaterDay('2026-09-01', syntheticOnThatDevice)).toBe(false);
+  });
+});
+
+describe('avatar initials outside the BMP', () => {
+  it('Array.from yields one whole grapheme where slice would split the surrogate pair', () => {
+    const name = '😀 Sam';
+    expect(Array.from(name)[0]).toBe('😀');
+    // The bug being prevented: a UTF-16 slice cuts the pair in half.
+    expect(name.slice(0, 1)).not.toBe('😀');
   });
 });

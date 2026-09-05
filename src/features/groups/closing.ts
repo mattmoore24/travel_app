@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 
+import { dates } from '@/lib/locale';
+
 /**
  * When a group's chat closes, and how to say so.
  *
@@ -39,12 +41,17 @@ export function hasGroupClosed(maxStayUntil: string | null, now: Date = new Date
   return at != null && now.getTime() >= at.getTime();
 }
 
-/** "Sep 12" — the day it actually closed, in the reader's own timezone. */
+/**
+ * "Sep 12" — the day it actually closed, in the reader's own timezone.
+ *
+ * The ZONE is the reader's (lib/locale's formatters carry no timeZone, so
+ * they read the instant in the device's), and the WORDS are the app's: this
+ * used to pass `undefined` as the locale, which is the device's language, and
+ * was one of the four sites drawing Portuguese beside English rows.
+ */
 export function closeDayLabel(maxStayUntil: string | null): string | null {
   const at = groupClosesAt(maxStayUntil);
-  return at == null
-    ? null
-    : new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(at);
+  return at == null ? null : dates().monthDay.format(at);
 }
 
 /**

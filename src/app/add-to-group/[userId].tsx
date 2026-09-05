@@ -5,6 +5,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { EmptyState } from '@/components/ui/empty-state';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { HitTarget, MaxContentWidth, Space } from '@/constants/theme';
 import { addToGroup } from '@/features/groups/api';
@@ -64,10 +65,11 @@ export default function AddToGroupScreen() {
           </ThemedText>
         ) : null}
         {groups.length === 0 ? (
-          <ThemedText themeColor="textSecondary" style={styles.empty}>
-            You are not in any groups yet. Start one from the Chat tab, or drop a plan anyone can
-            join.
-          </ThemedText>
+          <EmptyState
+            style={styles.empty}
+            title="No groups yet"
+            body="Start one from the Chat tab, or drop a plan anyone can join."
+          />
         ) : null}
         {groups.map((group) => {
           const done = added.includes(group.chat_id);

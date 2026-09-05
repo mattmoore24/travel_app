@@ -42,6 +42,33 @@ describe('owesOnboarding', () => {
   it('still asks an ordinary new account, which is what the flag distinguishes', () => {
     expect(owesOnboarding(session(false), null, false)).toBe(true);
   });
+
+  /**
+   * The fourth branch. Somebody part way through listing a business is not a
+   * traveler who has not finished: register_business REFUSES an account
+   * carrying onboarding_completed_at, so the flow they would be walked
+   * through ends in a locked door. Steps 4 to 11 of the listing form had no
+   * exit at all, so the real abandonment was killing the app, and the
+   * in-memory flag went with it.
+   */
+  it('does not ask an account that is part way through listing a business', () => {
+    expect(owesOnboarding(session(false), null, false, true)).toBe(false);
+  });
+
+  it('asks that same account the moment the flag comes down', () => {
+    expect(owesOnboarding(session(false), null, false, false)).toBe(true);
+  });
+
+  it('a finished traveler is unaffected by the flag either way', () => {
+    expect(owesOnboarding(session(false), '2026-08-30T00:00:00Z', false, true)).toBe(false);
+    expect(owesOnboarding(session(false), '2026-08-30T00:00:00Z', false, false)).toBe(false);
+  });
+
+  it('a business that has registered is answered by the branch above it', () => {
+    // Both true is the ordinary state between register_business succeeding
+    // and the listing form putting the flag down.
+    expect(owesOnboarding(session(false), null, true, true)).toBe(false);
+  });
 });
 
 describe('rootIsReady', () => {
@@ -52,6 +79,7 @@ describe('rootIsReady', () => {
     profileSettled: true,
     standingSettled: true,
     businessSettled: true,
+    listingSettled: true,
   };
 
   it('holds until the persisted session is restored', () => {
@@ -64,6 +92,10 @@ describe('rootIsReady', () => {
     // Committing before this one lands is what would flash a business
     // through the traveler tabs on every cold start.
     expect(rootIsReady({ ...base, businessSettled: false })).toBe(false);
+    // And the fourth: committing before "is this account part way through
+    // listing a business" lands drops a bar owner into traveler onboarding,
+    // whose last step register_business refuses forever.
+    expect(rootIsReady({ ...base, listingSettled: false })).toBe(false);
     expect(rootIsReady(base)).toBe(true);
   });
 
@@ -81,6 +113,7 @@ describe('rootIsReady', () => {
         profileSettled: false,
         standingSettled: false,
         businessSettled: false,
+        listingSettled: false,
       })
     ).toBe(true);
   });

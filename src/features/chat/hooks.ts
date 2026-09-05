@@ -1,8 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
 import {
   blockUser,
+  fetchBlocks,
   fetchMessages,
   reportUser,
   sendMessage,
@@ -10,6 +11,7 @@ import {
   signedChatPhotoUrl,
   subscribeToMessages,
   subscribeToMyMessages,
+  unblockUser,
   leaveChat,
 } from '@/features/chat/api';
 import {
@@ -22,21 +24,49 @@ import {
   withOptimistic,
   type ThreadMessage,
 } from '@/features/chat/outgoing';
+import {
+  MESSAGE_PAGE,
+  mapEveryPage,
+  mapFirstPage,
+  nextBefore,
+  pagesHave,
+  type ThreadPages,
+} from '@/features/chat/paging';
+import { captureMessageSent } from '@/features/chat/analytics';
+import { invalidateDiscoverySurfaces } from '@/features/profile/discovery-cache';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
 import type { MessageRow, ReportReason } from '@/lib/database.types';
+import { haptics } from '@/lib/haptics';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
-/** Initial page + live inserts, newest first (for an inverted list). */
+/**
+ * The conversation, newest first (for an inverted list), a page at a time,
+ * plus live inserts and updates.
+ *
+ * Paged rather than capped: a chat that hit the limit simply ENDED, with no
+ * spinner and no sign that anything had been left behind — and the anchor
+ * note above it went on describing what the conversation started from while
+ * standing above message one hundred.
+ */
 export function useMessages(chatId: string | null) {
   const queryClient = useQueryClient();
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ['messages', chatId],
-    queryFn: async () =>
-      carryFailed<ThreadMessage>(
-        queryClient.getQueryData<ThreadMessage[]>(['messages', chatId]),
-        await fetchMessages(chatId!)
-      ),
+    queryFn: async ({ pageParam }) => {
+      const page = await fetchMessages(chatId!, pageParam);
+      // Failed sends survive a refetch, and only on the newest page: that is
+      // where a bubble somebody just wrote belongs, and an older page has
+      // nothing to carry.
+      return pageParam == null
+        ? carryFailed<ThreadMessage>(
+            queryClient.getQueryData<ThreadPages<ThreadMessage>>(['messages', chatId])?.pages[0],
+            page
+          )
+        : page;
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage: ThreadMessage[]) => nextBefore(lastPage, MESSAGE_PAGE),
     enabled: isSupabaseConfigured && chatId != null,
     // The subscription only covers inserts while THIS screen is mounted —
     // always refetch on mount/focus so messages that arrived while away (or
@@ -50,14 +80,18 @@ export function useMessages(chatId: string | null) {
       return;
     }
     const channel = subscribeToMessages(chatId, (message) => {
-      queryClient.setQueryData<MessageRow[]>(['messages', chatId], (current = []) =>
+      queryClient.setQueryData<ThreadPages<MessageRow>>(['messages', chatId], (current) =>
         // Replace, not skip. The same row arrives again when a verdict lands
         // on a photo — that is the event that turns the review tile into a
         // picture — and treating a known id as nothing to do meant the tile
-        // stayed up on the screen that was watching it.
-        current.some((m) => m.id === message.id)
-          ? current.map((m) => (m.id === message.id ? { ...m, ...message } : m))
-          : [message, ...current]
+        // stayed up on the screen that was watching it. Across EVERY page,
+        // because by the time a verdict lands the message may have been
+        // pushed back a page by the conversation.
+        pagesHave(current, message.id)
+          ? mapEveryPage(current, (rows) =>
+              rows.map((m) => (m.id === message.id ? { ...m, ...message } : m))
+            )
+          : mapFirstPage(current, (rows) => [message, ...rows])
       );
     });
     return () => {
@@ -119,30 +153,75 @@ const LIST_REFRESH_DEBOUNCE_MS = 600;
  * shape (room_messages joins the sender), so the placeholder has to be built
  * to match whichever thread is on screen.
  */
+export type OutgoingMessage = {
+  body: string;
+  /**
+   * The message this one answers, with enough of it to draw the quoted strip
+   * on the placeholder. Absent for an ordinary send.
+   */
+  replyTo?: { messageId: string; name: string; body: string | null } | null;
+  /**
+   * One of the sender's own live plans, attached to this message.
+   *
+   * The optimistic bubble does NOT carry the card: the venue and the day are
+   * columns room_messages joins, and optimisticMessage lives in
+   * features/chat/outgoing.ts, which is not this session's file (the report
+   * names it). So the words appear at once and the plan lands with the row a
+   * moment later, which is the same shape a reply's quoted strip already has
+   * in a room.
+   */
+  pinId?: string | null;
+};
+
 export function useSendMessage(chatId: string | null, kind: 'direct' | 'room' = 'direct') {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
   const key = kind === 'room' ? ['room-messages', chatId] : ['messages', chatId];
 
   return useMutation({
-    mutationFn: (body: string) => sendMessage(chatId!, userId!, body),
+    mutationFn: (input: OutgoingMessage) =>
+      sendMessage(
+        chatId!,
+        userId!,
+        input.body,
+        input.replyTo?.messageId ?? null,
+        input.pinId ?? null
+      ),
+    meta: { failureTitle: "Couldn't send that" },
 
-    onMutate: (body: string) => {
+    onMutate: (input: OutgoingMessage) => {
       if (chatId == null || userId == null) {
         return undefined;
       }
+      const { body, replyTo } = input;
       const optimistic =
         kind === 'room'
-          ? optimisticRoomMessage({ senderId: userId, body })
-          : optimisticMessage({ chatId, senderId: userId, body });
-      queryClient.setQueryData<{ id: string }[]>(key, (current = []) =>
-        withOptimistic(current, optimistic)
+          ? optimisticRoomMessage({
+              senderId: userId,
+              body,
+              replyToMessageId: replyTo?.messageId ?? null,
+              // The placeholder carries the quoted line itself, because the
+              // room's real rows get it from the RPC and there is no row yet.
+              replyToName: replyTo?.name ?? null,
+              replyToBody: replyTo?.body ?? null,
+            })
+          : optimisticMessage({
+              chatId,
+              senderId: userId,
+              body,
+              replyToMessageId: replyTo?.messageId ?? null,
+            });
+      // The newest page, which is where the newest message goes. mapFirstPage
+      // seeds an empty cache rather than skipping it, so the bubble appears
+      // even when the send beats the thread's first fetch.
+      queryClient.setQueryData<ThreadPages<{ id: string }>>(key, (current) =>
+        mapFirstPage(current, (rows) => withOptimistic(rows, optimistic))
       );
       return { localMessageId: optimistic.id };
     },
 
-    onSuccess: (message, _body, context) => {
-      analytics.capture('message_sent', { chat_id: message.chat_id });
+    onSuccess: (message, _input, context) => {
+      captureMessageSent(message.chat_id, 'text', kind);
       if (context?.localMessageId == null) {
         return;
       }
@@ -154,19 +233,19 @@ export function useSendMessage(chatId: string | null, kind: 'direct' | 'room' = 
         // where the message the person just sent blinks out of the thread.
         queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
       } else {
-        queryClient.setQueryData<ThreadMessage[]>(key, (current = []) =>
-          settleOptimistic(current, context.localMessageId, message)
+        queryClient.setQueryData<ThreadPages<ThreadMessage>>(key, (current) =>
+          mapFirstPage(current, (rows) => settleOptimistic(rows, context.localMessageId, message))
         );
       }
       queryClient.invalidateQueries({ queryKey: ['chats', userId] });
     },
 
-    onError: (_error, _body, context) => {
+    onError: (_error, _input, context) => {
       if (context?.localMessageId == null) {
         return;
       }
-      queryClient.setQueryData<ThreadMessage[]>(key, (current = []) =>
-        failOptimistic(current, context.localMessageId)
+      queryClient.setQueryData<ThreadPages<ThreadMessage>>(key, (current) =>
+        mapEveryPage(current, (rows) => failOptimistic(rows, context.localMessageId))
       );
     },
   });
@@ -180,8 +259,8 @@ export function useDiscardFailed(chatId: string | null, kind: 'direct' | 'room' 
   const queryClient = useQueryClient();
   const key = kind === 'room' ? ['room-messages', chatId] : ['messages', chatId];
   return (localMessageId: string) => {
-    queryClient.setQueryData<{ id: string }[]>(key, (current = []) =>
-      dropOptimistic(current, localMessageId)
+    queryClient.setQueryData<ThreadPages<{ id: string }>>(key, (current) =>
+      mapEveryPage(current, (rows) => dropOptimistic(rows, localMessageId))
     );
   };
 }
@@ -194,14 +273,22 @@ export function useDiscardFailed(chatId: string | null, kind: 'direct' | 'room' 
  * for a verdict — so "look at this" arrived first and the picture some seconds
  * later, underneath it.
  */
-export function useSendPhoto(chatId: string) {
+export function useSendPhoto(chatId: string, kind: 'direct' | 'room' = 'direct') {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ localUri, body }: { localUri: string; body?: string }) =>
-      sendPhotoMessage(chatId, userId!, localUri, body),
+    mutationFn: ({
+      localUri,
+      body,
+      replyToMessageId,
+    }: {
+      localUri: string;
+      body?: string;
+      replyToMessageId?: string | null;
+    }) => sendPhotoMessage(chatId, userId!, localUri, body, replyToMessageId),
+    meta: { failureTitle: "Couldn't send that" },
     onSuccess: () => {
-      analytics.capture('message_sent', { kind: 'photo' });
+      captureMessageSent(chatId, 'photo', kind);
       queryClient.invalidateQueries({ queryKey: ['messages', chatId] });
       queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
       queryClient.invalidateQueries({ queryKey: ['chats'] });
@@ -214,6 +301,7 @@ export function useLeaveChat() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (chatId: string) => leaveChat(chatId),
+    meta: { failureTitle: 'Could not leave' },
     onSuccess: () => {
       analytics.capture('left_chat');
       queryClient.invalidateQueries({ queryKey: ['chats', userId] });
@@ -227,10 +315,52 @@ export function useBlockUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (blockedId: string) => blockUser(userId!, blockedId),
+    meta: { failureTitle: 'Could not block them' },
     onSuccess: () => {
+      // The one moment somebody most needs to be told it worked. Blocking
+      // used to do nothing anybody could feel: no navigation, no haptic, no
+      // confirmation, and after a refetch the SAME grey line that appears
+      // when the other person walks away on their own. First in the handler,
+      // because the invalidate below refetches the whole app and the answer
+      // must not wait behind it.
+      haptics.success();
       analytics.capture('user_blocked');
       // A block reshapes everything: matches, pins, chats, requests.
       queryClient.invalidateQueries();
+    },
+  });
+}
+
+/**
+ * The inventory a block never had.
+ *
+ * Blocking cut visibility both ways with nothing anywhere to look at
+ * afterwards, so blocking the wrong person from a crowded group thread was a
+ * one-way door - and a safety feature people are afraid to use pushes
+ * travelers toward the weaker option of not replying at all.
+ */
+export function useBlocks() {
+  const userId = useOwnUserId();
+  return useQuery({
+    queryKey: ['blocks', userId],
+    queryFn: fetchBlocks,
+    enabled: isSupabaseConfigured && userId != null,
+  });
+}
+
+export function useUnblockUser() {
+  const userId = useOwnUserId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (blockedId: string) => unblockUser(blockedId),
+    meta: { failureTitle: 'Could not unblock them' },
+    onSuccess: () => {
+      analytics.capture('user_unblocked');
+      queryClient.invalidateQueries({ queryKey: ['blocks', userId] });
+      // Who the map and Travelers may show has just changed, and the list of
+      // surfaces that depend on it lives in one place because a call site got
+      // it wrong once (features/profile/discovery-cache).
+      invalidateDiscoverySurfaces(queryClient);
     },
   });
 }
@@ -239,11 +369,14 @@ export function useReportUser() {
   const userId = useOwnUserId();
   return useMutation({
     mutationFn: (input: {
-      reportedUserId: string;
+      /** Absent when the subject is a chat rather than a person. */
+      reportedUserId?: string | null;
+      reportedChatId?: string | null;
       reason: ReportReason;
       details: string | null;
       context: string | null;
     }) => reportUser({ reporterId: userId!, ...input }),
+    meta: { failureTitle: 'Could not send that report' },
     onSuccess: () => {
       analytics.capture('user_reported');
     },

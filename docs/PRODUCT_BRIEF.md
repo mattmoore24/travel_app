@@ -56,8 +56,15 @@ stated in marketing.
 
 ### Surface B — Traveler Matching
 
-- Users post trips: "I'll be in [city/area] from [date] to [date]."
+- Users post trips: "I'll be in [city/area] from [date] to [date]." A trip can start up to
+  two years ahead, and there is no matching horizon (founder, 2026-09-04: a year of trips
+  added in January is fine, "there'd be no limit"; the two-year bound on a start date is a
+  typo guard, not a plan limit, and can go on the founder's word).
 - The app surfaces other travelers with overlapping city + dates in a browsable card stack.
+- The Travelers tab lets a person choose which of their own trips the stack is built from:
+  one, several, or all (founder, 2026-09-04). That choice is a view preference and nothing
+  more. It never changes who can see them: their profile is shown, on every trip, to
+  everyone their audience setting allows.
 - **Hinge-style mechanics, not Tinder**: a user sends an initial message attached to a specific
   part of the recipient's profile; the recipient sees the message and the sender's profile and
   chooses to accept (opens chat) or decline (sender is not notified beyond no-response).
@@ -115,7 +122,12 @@ Couchsurfing, Snap Map, and Zenly. Key conclusions:
    pre-seeded map pins (curated real events/spots) so the map is never empty on day one. Build
    support for: city-level feature flags/geofencing, an admin tool for seeding curated pins,
    and a liquidity dashboard (active users with overlapping trips per city). Don't hardcode a
-   global launch.
+   global launch. _Founder decision 2026-09-04: the dense launch is a marketing plan, not a
+   fence. A traveler can put a trip or a pin in any city; the seeded hubs are the rail's
+   featured cities and where businesses can list._ _Founder decision 2026-09-05: the same
+   for businesses. A business types its address anywhere on earth, or places its pin by
+   hand; the server files it under the city its door is in. Nobody picks from a preset
+   list._
 7. **Retention between trips is a known later problem** (travelers delete apps between trips).
    Do NOT build a home-city mode in v1 — but don't architect anything that would preclude it.
 
@@ -169,13 +181,16 @@ dependency), solo-founder maintainability, fast iteration, and real-time feature
 - `reports`, `blocks`, `moderation_events` — full audit trail
 - `seeded_pins` — admin-curated pins (hostel events, walking tours) flagged as curated, no
   user attached
-- `launch_cities` — geofence/feature-flag table
+- `launch_cities` — the seeded hubs: featured on the rail, home of the seeded venues,
+  per-city k and clock overrides (a fence for pins until 2026-09-04 and for businesses
+  until 2026-09-05; not one since)
 
 ### RLS invariants to enforce in Postgres (write tests for these)
 
 1. No user can read another user's `social_handles` without an accepted chat.
-2. No user can read raw pins outside launch cities or query pins in a way that returns another
-   user's precise history.
+2. No user can read raw pins outside the map's circle around a city they CHOSE (never a device
+   position), or query pins in a way that returns another user's precise history. _(Until
+   2026-09-04 this read "outside launch cities"; the founder opened every city.)_
 3. Expired pins are unreadable by everyone.
 4. Declined/pending message requests never reveal read status or decline to the sender.
 
@@ -195,7 +210,7 @@ dependency), solo-founder maintainability, fast iteration, and real-time feature
   incoming requests with accept/decline. _Deliverable: two test accounts with overlapping
   trips can request → accept → land in a chat shell._
 - **Phase 3 — The Map (hero feature — invest the most polish here)**: Pin creation flow (venue
-  search, category, intent date, expiry ≤72h), map browse of active pins in launch cities,
+  search, category, intent date, expiry ≤72h), map browse of active pins around any city,
   pin → profile → message request flow, server-side heatmap aggregation + client heat layer
   with the k-threshold, pin auto-expiry job, admin seeded-pins path. _Deliverable: the map is
   compelling with 15 pins on it._
@@ -225,6 +240,16 @@ and ask.
   500–1,000 in-season before opening a new city)
 - Map DAU vs. matching DAU (validates map-led thesis)
 - Message request → accept rate (marketplace health; a collapsing accept rate = creep problem)
+- **Met-in-person rate** — of the travelers asked "did you two end up meeting" once a shared
+  trip window has ended, the share who answer yes. Source: `admin_meet_answers`
+  (`supabase/migrations/20260902240000_did_you_two_actually_meet.sql`), which is months,
+  answers and distinct people — never a chat, never a pair, never a name, and service-role
+  only. This is the number that decides whether the product works, and it can move in the
+  opposite direction to the accept rate above: hellos and accepts can both climb in a city
+  where nobody ever meets anybody. The answer is private to its author, is never shown to the
+  other traveler in any form (including by its absence), and is never an input to visibility
+  or ranking — the moment it becomes either, it is a rating of a person and this is a
+  different product.
 - % of first messages blocked by moderation (creep early-warning)
 - Pin creation rate and heatmap views per session
 - D1/D7 retention **within a trip window** (not calendar retention — travelers churn between
@@ -244,3 +269,19 @@ and ask.
 6. Heatmap cells below the k-threshold are **never rendered** to other users.
 7. All work is committed and pushed to GitHub; the project must always be fully recoverable
    from a fresh clone.
+8. **A business account never initiates contact with a traveler, never joins a traveler's
+   group or another business's chat, and never reads traveler discovery surfaces. Its reach
+   is its listing, its posts, its chat and its replies.**
+
+> Rule 8 was proposed in `docs/BUSINESS_ACCOUNTS.md` §2 and **signed off by the founder on
+> 2026-08-27** ("businesses can't message individuals without being messaged first"), to be
+> written into this section in phase 13. That never happened, so for a week the codebase
+> enforced and cited a rule this document did not contain: six BEFORE INSERT triggers,
+> `assert_not_business()`, `viewer_is_business()` and their pgTAP attack tests all say "§7
+> rule 8" (`docs/ARCHITECTURE.md` §"A business is not a traveler, on both sides"). This is
+> that rule, in the wording that was signed. The same sign-off also recorded how rules 3, 4
+> and 5 read for a business account; those readings narrow nothing above and live in
+> `docs/BUSINESS_ACCOUNTS.md` §2.
+>
+> A business's city is resolved from its marker by `resolve_business_city`, any city
+> (2026-09-05); rule 8 is unchanged by it.

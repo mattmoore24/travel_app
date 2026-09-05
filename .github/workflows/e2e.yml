@@ -20,7 +20,10 @@ on:
           pipefail takes the whole step down the first time the file is
           missing, which is the case the loop exists to wait out. With that
           fixed, run 43 fetched the update and drove the flows against it. A
-          build costs real EAS credit; only native changes need one.
+          build costs real EAS credit; only native changes need one - and one
+          run after any `version` bump, because runtimeVersion follows
+          appVersion and the reused binary cannot take an update from the new
+          version (run 109, 2026-09-04, was the 0.2.0 one).
         type: boolean
         default: false
 
@@ -113,9 +116,42 @@ jobs:
     runs-on: macos-15
     permissions:
       contents: write
-    timeout-minutes: 40
+    # Room for the photo waits: the flows now wait out the upload pipeline's
+    # own 150s stage budget (twice, on a retry) rather than guessing shorter,
+    # and a job killed by ITS timeout cancels the publish step — the run's
+    # screenshots die with it, which is the worst outcome a slow runner can
+    # buy. Green runs finish in ~35 minutes regardless.
+    #
+    # 75, not 55: run 105 was cancelled mid-flow with signed-in-tour still to
+    # go. The flows now get MUCH further than they did when 55 was chosen -
+    # business-tour reaches the code screen rather than dying at the photo
+    # step - and each failing flow is retried once, so the ceiling that used
+    # to be generous became the thing deciding the result. A cancelled job
+    # answers nothing and costs a full macOS hour anyway.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
+
+      # The demo venue's post, back before anybody looks for it. The guest
+      # tour taps "<venue>, something on tonight" in the plan list, and that
+      # row is a pin with a 72-hour life: seeded once at launch, it is gone
+      # within three days of any run, and runs 110 to 115 went red on it
+      # while the app was fine. seed_launch_business_content() is written to
+      # be re-run (it touches only the unowned launch venues, and only where
+      # the app's own has_live_post would say nothing is on), and it is
+      # revoked from every client role, so this goes through the Management
+      # API as the deploy's migrations do. Its one output is a count.
+      - name: Seed the demo venues' posts back
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        # --linked with the ref on the command line: db query refuses a bare
+        # --project-ref ("only applies when targeting the linked project",
+        # run 118), and with --linked it runs through the Management API on
+        # the access token alone, no database password.
+        run: |
+          npx --yes supabase@2.114.0 db query --linked --project-ref "$PROJECT_REF" \
+            "select public.seed_launch_business_content() as posts_seeded"
 
       # A real signed-in session for the signed-in flow: created fresh and
       # onboarded against the live backend, destroyed in the last step.
@@ -266,6 +302,12 @@ jobs:
           # signs the account out even though the keychain half survives.
           reset_state() {
             xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+            # The keychain too. SecureStore (the last signed-in address,
+            # lib/last-email) lives there, not in the data container, so the
+            # onboarding tour's throwaway address was prefilled into the
+            # signed-in tour's form and the typed address landed in the
+            # middle of it (runs 111-113). A first-run app has none of it.
+            xcrun simctl keychain "$UDID" reset >/dev/null 2>&1 || true
             local data
             data=$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)
             rm -rf "$data/Library/Application Support/$BUNDLE_ID" \
@@ -334,7 +376,64 @@ jobs:
           # Whatever happened above, capture the screen raw — pixels beat a
           # green flag, and simctl needs nothing from Maestro.
           xcrun simctl io "$UDID" screenshot zz-final-state.png || true
+          # One pass at AX3 (accessibility-extra-large) for the map dock and
+          # the cluster count badge: the dock is minHeight now and the badge
+          # deliberately does not scale, and only a picture proves either.
+          # The signed-in tour just ran, so a relaunch lands on the Map tab
+          # with the Drop-a-pin dock up. Raw simctl, no assertions — this is
+          # evidence, not a gate — and the size is put back afterwards so a
+          # retry of anything later starts from the default.
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl ui "$UDID" content_size accessibility-extra-large || true
+          xcrun simctl launch "$UDID" "$BUNDLE_ID" || true
+          sleep 25
+          xcrun simctl io "$UDID" screenshot zz-ax3-map-dock.png || true
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          # The large-text tour at AX5, driven by Maestro so the two primary
+          # actions are TAPPED, not only photographed: the tab bar grows with
+          # Dynamic Type and useTabBarInset now scales the docks' clearance
+          # with it. The flow lives OUTSIDE e2e/flows/ so the loop's glob
+          # cannot run the ordinary passes at this size. `|| true` like the
+          # AX3 shot above: its screenshots are the acceptance (Maestro keeps
+          # them under ~/.maestro on failure and the publish step sweeps
+          # both), and a warm relaunch's map tree is not reliably addressable
+          # (traps), so a tap miss here is evidence to look at, not a gate.
+          xcrun simctl ui "$UDID" content_size accessibility-extra-extra-extra-large || true
+          maestro --udid "$UDID" test ../e2e/large-text-tour.yml || true
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          xcrun simctl ui "$UDID" content_size medium || true
           ls -la
+
+      # DID THE APP DIE, OR DID THE SCREEN JUST NOT APPEAR?
+      #
+      # Run 105 failed guest-tour twice on a sheet that did not open, and the
+      # failure screenshot showed the app on a DIFFERENT TAB with the default
+      # city thirty seconds after the tap - which is what a crash and
+      # relaunch looks like, and is not something a Maestro assertion can
+      # tell you. A screenshot cannot distinguish "the sheet is missing" from
+      # "the process died"; iOS writes a report either way, so read it.
+      #
+      # `|| true` throughout and never a gate: this is evidence for whoever
+      # reads the run, and a missing directory (no crashes, which is the
+      # normal case) must not fail the job.
+      - name: Any crash reports the simulator wrote
+        if: always()
+        run: |
+          set +e
+          DIR="$HOME/Library/Logs/DiagnosticReports"
+          echo "Looking in $DIR"
+          ls -la "$DIR" 2>/dev/null || echo "(no DiagnosticReports directory: nothing crashed)"
+          for f in "$DIR"/*amewhere*.ips "$DIR"/*amewhere*.crash; do
+            [ -e "$f" ] || continue
+            echo "=================================================="
+            echo "CRASH REPORT: $f"
+            echo "=================================================="
+            # The first 120 lines carry the exception type, the termination
+            # reason and the crashing thread's top frames, which is what
+            # names the bug. The rest is every other thread's stack.
+            head -120 "$f"
+          done
+          exit 0
 
       # BEFORE the publish step: publishing checks out an orphan branch,
       # which deletes e2e/account.mjs from the working tree.

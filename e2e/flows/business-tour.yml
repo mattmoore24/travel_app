@@ -55,49 +55,119 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'password-input'
 - inputText: ${E2E_THROWAWAY_PASSWORD}
+# The footer sits under the keyboard now (step-shell.tsx), and every field
+# carries a Hide keyboard bar, so the button is reached by using it.
+- tapOn: 'Hide keyboard'
 - tapOn:
     id: 'create-account'
 - tapOn:
     text: 'Not Now'
     optional: true
 
-# NAME AND KIND
+# THE OFFER, which is the first thing the form says now.
+#
+# The whole value proposition a business used to get was a fourteen-word radio
+# subtitle on the email screen, and the word "free" appeared nowhere an owner
+# could read it at all. This is the screen that decides whether a bar owner
+# handed a flyer keeps going, so the picture is the evidence.
 - extendedWaitUntil:
-    visible: "What's your business called?"
+    visible: 'What a listing gets you'
     timeout: 30000
 - tapOn:
     text: 'Not Now'
     optional: true
+- waitForAnimationToEnd:
+    timeout: 2500
+- assertVisible: 'Free, always. No paid placement, no promoted listings.'
+- takeScreenshot: 40c-business-offer
+- tapOn:
+    id: 'business-offer-continue'
+
+# NAME AND KIND
+- extendedWaitUntil:
+    visible: "What's your business called?"
+    timeout: 30000
 - tapOn:
     id: 'business-name-input'
 - inputText: 'Maestro Cafe'
 - pressKey: Enter
 - tapOn: 'Cafe'
 - takeScreenshot: 41-business-name
+
+# THE WAY OUT, before going any further.
+#
+# Steps 4 to 11 of this form had no exit at all, and step 3's evaluated to
+# undefined whenever canGoBack was false - which is the normal case, because
+# this screen is reached by a replace. So abandoning a half-finished listing
+# meant killing the app, and killing the app lost the in-memory flag: the
+# account came back reading as a traveler who had not finished, and the owner
+# was asked for their first name in the one flow a business must never finish.
+# The map is what the exit lands on, and "Drop a pin" is the proof it is the
+# real tabs rather than onboarding.
+- tapOn: 'Finish this later'
+- extendedWaitUntil:
+    visible: 'Drop a pin'
+    timeout: 20000
+- takeScreenshot: 40a-business-exit-lands-on-the-map
+# ...and back in, through the row the profile now offers instead of telling a
+# half-listed account to sign out.
+- tapOn: 'Your profile'
+- scrollUntilVisible:
+    element:
+      text: 'Finish listing your business'
+    direction: DOWN
+    timeout: 12000
+- takeScreenshot: 40b-business-resume-row
+- tapOn: 'Finish listing your business'
+# Back in at the top of the form, which is the offer rather than the name.
+- extendedWaitUntil:
+    visible: 'What a listing gets you'
+    timeout: 20000
+- tapOn:
+    id: 'business-offer-continue'
+- extendedWaitUntil:
+    visible: "What's your business called?"
+    timeout: 20000
+- tapOn:
+    id: 'business-name-input'
+- inputText: 'Maestro Cafe'
+- pressKey: Enter
+- tapOn: 'Cafe'
 - tapOn:
     id: 'business-name-continue'
 
-# WHERE IS IT — the step the founder asked for. An address first, with
-# suggestions, and a marker underneath that moving does not overwrite it.
+# WHERE IS IT. One box for the address, anywhere on earth, and a quiet line
+# for placing the pin by hand. No city is chosen on this screen since
+# 2026-09-05: the server files the listing under the city its marker is in
+# (20260905130000), and says so under the map.
 - extendedWaitUntil:
     visible: 'Where is it?'
     timeout: 15000
+# The by-hand door is on screen before anything is typed. Tapped by its
+# spoken label: the row is a PressableScale carrying one, so its printed
+# words are not an element on iOS (traps).
+- assertVisible: 'Not coming up? Place the marker yourself.'
 - takeScreenshot: 42-business-where-empty
-# The city has to be CHOSEN now. It used to default to whichever launch city
-# the query returned first, so an owner who never touched the chips filed
-# their business in a city they never picked.
-- tapOn: 'Lisbon'
+# The fallback first, so the picture exists: the map at country scale (the
+# featured city on the simulator's clock zone, else the world) waiting for a
+# tap. Nothing is placed here; the address path below is the one the tour
+# registers with.
+- tapOn: 'Not coming up? Place the marker yourself.'
 - waitForAnimationToEnd:
     timeout: 2000
+- assertVisible: 'Zoom in, then tap your door.'
+- takeScreenshot: 42b-business-where-pin-yourself
+# Then the address, with the city in the words: that is what the placeholder
+# coaches, and what keeps MapKit's world ranking the same on every simulator
+# region. Suggestions arrive on a pause in typing, not on a button, and the
+# map steps aside while the field has focus.
 - tapOn:
     id: 'business-address-input'
-- inputText: 'Rua da Rosa'
-# Suggestions arrive on a pause in typing, not on a button. While the field
-# has focus the step hides its chips and its map, so the list gets the screen
-# — run 79 photographed the first suggestion sliced in half by the docked
-# button, which is the bug this flow now proves is gone.
+- inputText: 'Rua da Rosa 12, Lisboa'
 - waitForAnimationToEnd:
     timeout: 4000
+# The reviewer checks that a Lisbon row is first: this picture is the only
+# evidence of MapKit's ranking with no city chosen.
 - takeScreenshot: 43-business-address-typing
 # By index, not by words: the suggestion repeats what is in the box above it,
 # so driving this by its text matches two elements.
@@ -106,10 +176,16 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 1500
 # Picking sets BOTH the address text and the marker, which is the whole
-# contract of this step. The map is back now that the field has let go.
+# contract of this step. The map is back now that the field has let go, and
+# the by-hand line leaves once a marker exists.
 - takeScreenshot: 44-business-address-and-marker
 - assertVisible: 'Move the marker as much as you like.*'
-
+- assertNotVisible: 'Not coming up? Place the marker yourself.'
+# The server says which city the marker is in; nothing on this screen chose
+# it. Rua da Rosa is a kilometre from Lisbon's centre.
+- extendedWaitUntil:
+    visible: 'That lists you under Lisbon, Portugal.'
+    timeout: 10000
 - takeScreenshot: 45-business-where-final
 
 # THE CONFIRM STEP, which is the founder's "the business will have the option
@@ -120,6 +196,8 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Is this right?'
     timeout: 15000
+# The card's category line carries the city the server chose.
+- assertVisible: 'Cafe · Lisbon, Portugal'
 - takeScreenshot: 46-business-confirm
 
 # REGISTERING, which the suite could not do until the workflow learned to
@@ -163,105 +241,162 @@ appId: com.mattmoore.samewhere
 - assertVisible:
     id: 'business-whatsapp-input'
 - takeScreenshot: 47-business-contact
+# A phone pad has no Return to leave with, and the button is under it.
+- tapOn: 'Hide keyboard'
 - tapOn:
     id: 'business-contact-continue'
 
-# STEP 7 — photos, and the wall. A listing cannot go on without one.
+# STEP 8 — photos, and the wall. A listing cannot go on without one.
+#
+# The grid is ON this step now (features/business/business-photos.tsx). It
+# used to be a headline, three lines of subtitle and roughly a thousand points
+# of black, with a button that routed into the middle of a 1,430-line settings
+# form, and the wall gated on business_detail - which is approved-only, so an
+# owner with a cover on screen was told they had none.
 - extendedWaitUntil:
     visible: 'Show your business'
     timeout: 20000
 - assertVisible: 'One photo is the only thing we need here.'
+# Dashed tiles, not void, which is half of what the audit was about and what
+# the picture is evidence of. The tile is a Pressable carrying its own
+# accessibilityLabel, so its spoken label is what Maestro can see (skills/
+# traps); '0 of 10' is the grid's own footer and proves the read-back ran.
+- assertVisible: 'Add your cover photo'
+- assertVisible: '0 of 10'
 - takeScreenshot: 48-business-photos
 # The docked button, which is the only one on this step when there are no
-# photos yet. The ghost duplicate above it was removed after run 87
+# photos yet, and which now drives the grid's own picker rather than opening
+# the editor. The ghost duplicate above it was removed after run 87
 # photographed two identical "Add photos" on one screen.
 - tapOn:
     id: 'business-photos-continue'
 - waitForAnimationToEnd:
     timeout: 3000
-- tapOn:
-    text: 'Add your cover photo'
-    optional: true
 - runFlow: ../subflows/pick-a-photo.yml
 - waitForAnimationToEnd:
     timeout: 3000
-- takeScreenshot: 49-business-photo-added
-# Save, not the header's Close. The editor is a long form and by this point it
-# is scrolled to the photo grid, so the X at the top is off screen and cannot
-# be tapped — run 86 sat in the editor for the rest of the flow. Save is
-# docked at the bottom, always reachable, and is what a person would press.
-- tapOn:
-    text: 'Save'
-    optional: true
+# The photo has to COME BACK: '1 of 10' is the grid's own read-back of the
+# row, not a local echo of the picker (runs 90 to 92 watched uploads land
+# while this counter sat at zero, an ungranted column having turned the grid's
+# `select *` into `permission denied` -
+# 20260831120000_an_ungranted_column_hid_the_photos.sql).
+#
+# The patience here matches the pipeline's own contract, not a guess: each
+# stage is bounded (image-upload.ts), so within 150s the photo has either
+# come back or "Could not save ... so try again" is on screen. Run 95 failed
+# with a 60s wait and an alert check made ten seconds after the pick - the
+# render alone is allowed 90s on a cold simulator, so the check ran before
+# the alert could exist and the wait gave up while the pipeline was still
+# working. Wait out the budget once, recover through the app's own retry if
+# it ended in the alert, then gate hard.
 - extendedWaitUntil:
-    visible: 'Show your business'
-    timeout: 20000
-
-# The count has to catch up before Continue will move. On the live project
-# require_photo_moderation is ON, so a fresh photo holds at 'pending' until
-# the worker's next tick — and until 20260829180000 there was no worker branch
-# and no trigger at all, so this number sat at zero forever and the step could
-# never be passed. Waiting for the label to change is the end-to-end proof
-# that the pipeline exists.
-- extendedWaitUntil:
-    visible: '1 added. Add more'
-    timeout: 120000
+    visible: '1 of 10'
+    timeout: 150000
     optional: true
-- takeScreenshot: 50-business-photo-counted
-
-# Everything below runs only if a photo actually landed. Driving Apple's
-# picker is the one part of this suite that depends on somebody else's UI, so
-# it is allowed to fail without taking the run with it — the four screenshots
-# above are the founder's two asks either way, and the pictures say plainly
-# whether the wall was climbed.
 - runFlow:
     when:
-      visible: '1 added. Add more'
+      visible: 'Could not save'
     commands:
+      - tapOn: 'OK'
       - tapOn:
-          id: 'business-photos-continue'
-      - extendedWaitUntil:
-          visible: 'What is it like?'
-          timeout: 15000
-      # Description and hours both open the business editor rather than
-      # taking text inline, and that editor has its own pictures elsewhere.
-      # What matters here is that a skippable step SAYS it is skippable, in
-      # the founder's words, and that skipping works.
-      - takeScreenshot: 60-business-description
-      - tapOn:
-          text: 'Skip for now'
-      - extendedWaitUntil:
-          visible: 'When are you open?'
-          timeout: 15000
-      - takeScreenshot: 61-business-hours
-      - tapOn:
-          text: 'Skip for now'
-      - extendedWaitUntil:
-          visible: 'Anywhere else to send people?'
-          timeout: 15000
-      - takeScreenshot: 62-business-links
-      - tapOn:
-          text: 'Skip for now'
-      # THE LISTING AS A TRAVELER MEETS IT. The founder's "final look of how
-      # your profile appears to other users": the cover photo at the top, the
-      # name, whether you are open, the address. Not a count of what you
-      # filled in.
-      - extendedWaitUntil:
-          visible: 'Here it is'
-          timeout: 15000
+          text: 'Add your cover photo'
+          optional: true
+      - runFlow: ../subflows/pick-a-photo.yml
       - waitForAnimationToEnd:
-          timeout: 2500
-      - takeScreenshot: 63-business-review
-      - tapOn:
-          id: 'business-review-continue'
-      # THE LAST STEP, showing the address the code is going to. Stops before
-      # sending: the mail cannot leave Resend until a domain is verified
-      # (docs/LAUNCH_RUNBOOK.md step 2), and a code sent to a .test address
-      # nobody reads proves nothing.
-      - extendedWaitUntil:
-          visible: 'One last thing'
-          timeout: 15000
-      - takeScreenshot: 64-business-code-step
+          timeout: 3000
+- extendedWaitUntil:
+    visible: '1 of 10'
+    timeout: 150000
+- takeScreenshot: 49-business-photo-added
+
+# THE CHIP, not a count that waits on a worker.
+#
+# On the live project require_photo_moderation is ON, so a fresh photo holds
+# at 'pending' until the worker's next tick. This step used to wait up to two
+# minutes for a label that only changes when the photo CLEARS, and it waited
+# `optional: true`, so a photo that never cleared read as a pass and the eight
+# screens after it were never photographed at all. What the owner sees the
+# moment the upload lands is the tile chipped "In review", and Continue is
+# enabled on it, because a pending photo is a photo.
+- extendedWaitUntil:
+    visible: 'In review'
+    timeout: 30000
+- assertVisible: 'Nobody sees a cover until one of these clears.'
+- takeScreenshot: 50-business-photo-counted
+
+# AND THE CODE BOX, on the same screen.
+#
+# The code is emailed at the contact step now, so it usually lands while
+# somebody is still cropping photos. Confirming happens inline: pushing
+# /business-email from here would end in router.replace('/(tabs)') and drop a
+# mid-signup owner out of the flow with an unfinished listing.
+# The SPOKEN label, not the printed one. The button prints "Confirm your
+# email" and carries accessibilityLabel="Confirm your email with this code",
+# and the traps skill's rule is that a Pressable with its own label hides its
+# text from Maestro - so the printed string is unassertable even though
+# 50-business-photo-counted.png shows it plainly on screen. This assertion has
+# been failing since c1e481d added the label and the string in one commit.
+- assertVisible: 'Confirm your email with this code'
+- takeScreenshot: 50a-business-inline-code
+
+- tapOn:
+    id: 'business-photos-continue'
+- extendedWaitUntil:
+    visible: 'What is it like?'
+    timeout: 15000
+# Description and hours both open the business editor rather than
+# taking text inline, and that editor has its own pictures elsewhere.
+# What matters here is that a skippable step SAYS it is skippable, in
+# the founder's words, and that skipping works.
+- takeScreenshot: 60-business-description
+# The description field autofocuses and "Skip for now" is the last thing in
+# the footer, under the keyboard: run 111 tapped its coordinates through the
+# keys and stayed on the step. Put the keyboard away first; optional, so a
+# step that raised no keyboard is not a failure.
+- tapOn:
+    text: 'Hide keyboard'
+    optional: true
+- tapOn:
+    text: 'Skip for now'
+- extendedWaitUntil:
+    visible: 'When are you open?'
+    timeout: 15000
+- takeScreenshot: 61-business-hours
+- tapOn:
+    text: 'Hide keyboard'
+    optional: true
+- tapOn:
+    text: 'Skip for now'
+- extendedWaitUntil:
+    visible: 'Anywhere else to send people?'
+    timeout: 15000
+- takeScreenshot: 62-business-links
+- tapOn:
+    text: 'Skip for now'
+# THE LISTING AS A TRAVELER MEETS IT, and the send, which used to be two
+# screens. The founder's "final look of how your profile appears to other
+# users": the cover photo at the top, the name, whether you are open, the
+# address. Not a count of what you filled in. It is badged with the one thing
+# the heading cannot promise yet.
+- extendedWaitUntil:
+    visible: 'Here it is'
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 2500
+- assertVisible: 'Not on the map yet'
+- takeScreenshot: 63-business-review
+- tapOn:
+    id: 'business-review-continue'
+# THE CODE SCREEN, wearing the same shell and the same bar as every step
+# before it. It used to draw no bar at all, one screen after the form had
+# already filled one to 12 of 12 - so the sequence promised it was over
+# before the screen that turns the lights on.
+- extendedWaitUntil:
+    visible: '13 of 13'
+    timeout: 20000
+- assertVisible:
+    id: 'business-code-input'
+- takeScreenshot: 64-business-code-step
 
 # ---------------------------------------------------------------------------
 # THE APP AS A BUSINESS ACTUALLY LIVES IN IT
@@ -290,24 +425,35 @@ appId: com.mattmoore.samewhere
 # than merely useless, so it cannot be reached by deep link either.
 - assertNotVisible: 'Travelers'
 
-# THE MAP FIRST, because that is where the app opens. The founder's words:
-# "the map page as a business isn't used for that purpose". No faces on it,
-# no drop-a-pin dock, no audience chip.
-- waitForAnimationToEnd:
-    timeout: 3000
-- takeScreenshot: 71-business-map
-
-# THE TAB ITSELF. Run 88 named the map 70-business-my-business, because
-# "My business" is the TAB LABEL and is on screen whichever tab is selected:
-# waiting for the words proved the tab bar exists, not that the tab is open.
-- tapOn: 'My business'
+# THE LANDING IS MY BUSINESS NOW (founder decision D8): the app itself
+# switches a business off the Map tab the moment the account kind resolves,
+# so the first screen an owner reads is their own listing and its next step.
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 70-business-my-business
 
+# THE MAP, reached by a tap rather than being the landing. The founder's
+# words: "the map page as a business isn't used for that purpose". No faces,
+# no drop-a-pin dock, no audience chip - and no city rail: the map opens on
+# the listing's own city (Lisbon here, read by id through useCity, since a
+# listing can be in any city now), so the chips for other cities are gone.
+- tapOn: 'Map'
+- waitForAnimationToEnd:
+    timeout: 3000
+- assertNotVisible: 'Mexico City'
+# This listing never confirmed its email, so the strip explains the missing
+# chip in the state's own words. Optional: after a mid-flow launchApp the map
+# screen is not reliably addressable (see the traps skill) - the screenshot
+# is the evidence either way, and it must differ from 70 this time.
+- extendedWaitUntil:
+    visible: 'Your business is not on the map yet.*'
+    timeout: 10000
+    optional: true
+- takeScreenshot: 71-business-map
+
 # THE CHAT TAB. A business's own room and the travelers who wrote in, and
 # nothing shaped like a traveler's hello queue.
-- tapOn: 'Chat'
+- tapOn: 'Chat(, .*)?'
 - waitForAnimationToEnd:
     timeout: 2500
 - takeScreenshot: 72-business-chat
@@ -332,7 +478,8 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'My business'
     timeout: 40000
-- tapOn: 'My business'
+# No tab tap: the D8 landing has already selected My business, and tapping
+# the phrase again risks hitting the page's own subtitle (run 88's bug).
 - waitForAnimationToEnd:
     timeout: 3000
 - takeScreenshot: 74-business-my-business-again

@@ -4,7 +4,6 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { Springs } from '@/constants/theme';
-import { haptics } from '@/lib/haptics';
 
 // Same warm pair as the markers it is about to become; see pin-marker.tsx.
 const PIN_AMBER = '#FF9A5A';
@@ -22,7 +21,19 @@ const LIFT = 16;
  * behind; when the map settles it drops back with a bounce and a thud.
  * `pointerEvents="none"` throughout — the map below owns every gesture.
  */
-export function PlacePinOverlay({ lifted }: { lifted: boolean }) {
+export function PlacePinOverlay({
+  lifted,
+  onDrop,
+}: {
+  lifted: boolean;
+  /**
+   * The pin settled back onto the map. The HAPTIC lives with the caller,
+   * behind the programmatic-move gate (features/pins/place-mode): the drop
+   * motion is informative whoever moved the camera, but the thud means "you
+   * placed it here" and must stay silent for the app's own flights.
+   */
+  onDrop?: () => void;
+}) {
   const lift = useSharedValue(0);
   const mounted = useRef(false);
 
@@ -37,9 +48,9 @@ export function PlacePinOverlay({ lifted }: { lifted: boolean }) {
       lift.value = withSpring(1, Springs.snap);
     } else {
       lift.value = withSpring(0, Springs.drop);
-      haptics.medium();
+      onDrop?.();
     }
-  }, [lifted, lift]);
+  }, [lifted, lift, onDrop]);
 
   const pinStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: -lift.value * LIFT }],

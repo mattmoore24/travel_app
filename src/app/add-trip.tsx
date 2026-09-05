@@ -6,8 +6,16 @@ import { FormTextField } from '@/components/form/form-text-field';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Radius, Spacing } from '@/constants/theme';
-import { addDays, formatDateRange, toISODate, validateTripRange } from '@/features/trips/dates';
+import { Segmented } from '@/components/ui/segmented';
+import { HitTarget, Radius, Spacing } from '@/constants/theme';
+import {
+  addDays,
+  formatDateRange,
+  rangeForRoughDates,
+  toISODate,
+  validateTripRange,
+} from '@/features/trips/dates';
+import { RoughDatesPicker, defaultRoughDates, type RoughDates } from '@/features/trips/rough-dates';
 import { TripCalendar, defaultEndFor } from '@/features/trips/trip-calendar';
 import { useCitySearch, useCreateTrip } from '@/features/trips/hooks';
 import type { CityRow } from '@/lib/database.types';
@@ -17,24 +25,41 @@ export default function AddTripScreen() {
   const [city, setCity] = useState<CityRow | null>(null);
   const [start, setStart] = useState(toISODate(addDays(new Date(), 7)));
   const [end, setEnd] = useState<string | null>(defaultEndFor(toISODate(addDays(new Date(), 7))));
+  // "Bangkok, probably most of September" is how open-ended travel is planned,
+  // and it was not expressible: the calendar wanted two taps on two specific
+  // days and Post trip stayed off until both landed, so a traveler who did
+  // not know either posted nothing or posted a guess and never corrected it.
+  const [mode, setMode] = useState<'exact' | 'rough'>('exact');
+  const [rough, setRough] = useState<RoughDates>(() => defaultRoughDates());
 
   const { data: suggestions = [] } = useCitySearch(city ? '' : query);
   const createTrip = useCreateTrip();
 
+  // What actually gets written. A rough window is still a real start and a
+  // real end - the widest range the traveler stands behind, under the rule in
+  // rangeForRoughDates - and `approximate` is the fact that they are not a
+  // claim, so everything downstream that does arithmetic on the dates is
+  // unchanged.
+  const approximate = mode === 'rough';
+  const roughRange = rangeForRoughDates(rough.monthISO, rough.lengthDays);
+  const startDate = approximate ? roughRange.start : start;
   // A half-picked range is not an error, it is a range you are still
-  // picking. Continue simply stays off until the second tap lands.
-  const rangeError = end ? validateTripRange(start, end) : null;
+  // picking. Continue simply stays off until the second tap lands. The rough
+  // tab has no half state at all, which is the point of it.
+  const endDate = approximate ? roughRange.end : end;
+  const rangeError = endDate ? validateTripRange(startDate, endDate) : null;
 
   const submit = async () => {
-    if (!city || !end || rangeError) {
+    if (!city || !endDate || rangeError) {
       return;
     }
     try {
       await createTrip.mutateAsync({
         cityId: city.id,
         cityName: city.name,
-        startDate: start,
-        endDate: end!,
+        startDate,
+        endDate,
+        approximate,
       });
       router.back();
     } catch {
@@ -47,7 +72,7 @@ export default function AddTripScreen() {
       title="Where are you off to?"
       subtitle="City and dates only. We never track where you are."
       continueLabel="Post trip"
-      continueDisabled={!city || !end || rangeError != null}
+      continueDisabled={!city || !endDate || rangeError != null}
       continueLoading={createTrip.isPending}
       onContinue={submit}>
       {city ? (
@@ -85,6 +110,15 @@ export default function AddTripScreen() {
             return (
               <Pressable
                 key={suggestion.id}
+                // Spoken the way the home-city rows in
+                // components/form/city-field are. This list cannot BE that
+                // component - it answers with a whole CityRow, and that file's
+                // header says why the two share an RPC and not a component -
+                // but a suggestion carrying no role and no label is a line of
+                // text to VoiceOver, and while the field is being typed in
+                // these rows are the only controls on the screen.
+                accessibilityRole="button"
+                accessibilityLabel={`${suggestion.name}, ${suggestion.country_name}`}
                 onPress={() => {
                   setCity(suggestion);
                   setQuery('');
@@ -106,20 +140,42 @@ export default function AddTripScreen() {
 
       {city ? (
         <View style={styles.datesBlock}>
-          <ThemedText type="smallBold">
-            {end ? formatDateRange(start, end) : 'Pick the day you leave'}
-          </ThemedText>
-          <ThemedText type="footnote" themeColor="textSecondary">
-            {end ? 'Tap any day to start again.' : 'Now tap the day you come back.'}
-          </ThemedText>
-          <TripCalendar
-            start={start}
-            end={end}
-            onChange={(nextStart, nextEnd) => {
-              setStart(nextStart);
-              setEnd(nextEnd);
-            }}
+          <Segmented
+            accessibilityLabel="How well do you know your dates?"
+            options={[
+              { value: 'exact', label: 'Exact dates' },
+              { value: 'rough', label: 'Rough dates' },
+            ]}
+            value={mode}
+            onChange={setMode}
           />
+          {approximate ? (
+            <RoughDatesPicker value={rough} onChange={setRough} />
+          ) : (
+            <>
+              <ThemedText type="smallBold">
+                {end ? formatDateRange(start, end) : 'Pick the day you arrive'}
+              </ThemedText>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                {/* "Arrive" and "leave", the same pair the TripEditor sheet
+                    uses. This screen said "leave" for the START date and the
+                    sheet says it for the END one, so one word named both ends
+                    of a trip depending on which screen you were on. Arriving
+                    and leaving are about the city, which is what a trip is
+                    about; coming back is about home, which the app never
+                    asks. */}
+                {end ? 'Tap any day to start again.' : 'Now tap the day you leave.'}
+              </ThemedText>
+              <TripCalendar
+                start={start}
+                end={end}
+                onChange={(nextStart, nextEnd) => {
+                  setStart(nextStart);
+                  setEnd(nextEnd);
+                }}
+              />
+            </>
+          )}
           {rangeError ? (
             <ThemedText type="footnote" themeColor="danger">
               {rangeError}
@@ -140,7 +196,14 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     borderRadius: Radius.lg,
   },
+  /* One city from search_cities. The floor is the point: 8pt of padding over
+     a default body line is about 37pt. This is the THIRD of the app's city
+     lists - the one components/form/city-field's header names as the list
+     signup's hand-rolled copy claimed to match - and it was under 44 itself,
+     so the claim was wrong in the other direction too. */
   suggestion: {
+    minHeight: HitTarget,
+    justifyContent: 'center',
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderRadius: Radius.sm,

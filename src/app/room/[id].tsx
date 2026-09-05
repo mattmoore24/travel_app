@@ -5,7 +5,6 @@ import { useMemo, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { KeyboardDoneBar } from '@/components/form/keyboard-done-bar';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -13,17 +12,31 @@ import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
+import { Sheet, SHEET_SETTLE_MS, leavingSheet } from '@/components/ui/sheet';
 import { MaxContentWidth, NativeAppearance, Radius, Space } from '@/constants/theme';
-import { useDiscardFailed, useSendMessage, useSendPhoto } from '@/features/chat/hooks';
-import { useIsGuest, useIsGuestAccount } from '@/features/guest/hooks';
+import {
+  useChatPhotoUrl,
+  useDiscardFailed,
+  useSendMessage,
+  useSendPhoto,
+} from '@/features/chat/hooks';
+import { useIsGuest, useIsGuestAccount, useIsSignedOut } from '@/features/guest/hooks';
 import { useOwnUserId } from '@/features/profile/hooks';
 import { useGroup } from '@/features/groups/hooks';
+import { NO_GROUP_PHOTO } from '@/features/groups/photo';
+import { useAddedNoteSeen } from '@/features/groups/added-note';
+import { useWhoAddedMe } from '@/features/groups/adds';
 import { useMyChats } from '@/features/matching/hooks';
 import { useMarkReadWhileOpen } from '@/features/chat/use-mark-read';
+import { firstUnreadId, useReachUnreadBoundary, useUnreadAtOpen } from '@/features/chat/unread';
 import { MessageThread } from '@/features/chat/message-thread';
+import { ThreadHeader } from '@/features/chat/thread-header';
+import { flattenPages } from '@/features/chat/paging';
+import { quoteFromRow, type Quote } from '@/features/chat/reply';
 import {
   useJoinRoom,
   useLeaveRoom,
+  usePinForGroup,
   useReactions,
   useRemoveRoomMessage,
   usePinMessage,
@@ -34,11 +47,21 @@ import {
   useToggleReaction,
   useUnsendMessage,
 } from '@/features/rooms/hooks';
+import { PinGlyph } from '@/features/pins/pin-marker';
+import { burnOutLabel, cityClockNow, intentLabel } from '@/features/pins/pin-helpers';
+import { openInMaps } from '@/features/pins/open-in-maps';
 import { addDays, formatDateRange, toISODate } from '@/features/trips/dates';
-import { useBusinessForChat, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
+import {
+  useBusinessDetail,
+  useBusinessForChat,
+  useIsBusiness,
+  useOwnBusiness,
+} from '@/features/business/hooks';
+import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { Composer } from '@/features/chat/composer';
 import { closeDayLabel, finiteDate, useHasGroupClosed } from '@/features/groups/closing';
 import { useTheme } from '@/hooks/use-theme';
+import { dates } from '@/lib/locale';
 import { countOf } from '@/lib/plural';
 
 export default function RoomScreen() {
@@ -46,9 +69,17 @@ export default function RoomScreen() {
   const theme = useTheme();
   const isGuest = useIsGuest();
   const isGuestAccount = useIsGuestAccount();
+  // No session at all, as opposed to a guest account that has one. /report
+  // sits behind Stack.Protected guard={signedIn}, so for a signed-out
+  // visitor the push would do nothing at all; a guest ACCOUNT can report
+  // and keeps the real route.
+  const isSignedOut = useIsSignedOut();
+  const [reportGate, setReportGate] = useState(false);
   const ownId = useOwnUserId();
   const messagesQuery = useRoomMessages(id ?? null);
-  const messages = useMemo(() => messagesQuery.data ?? [], [messagesQuery.data]);
+  // Every page loaded so far, newest first. A room used to stop at sixty
+  // messages with nothing on screen to say a limit had been applied.
+  const messages = useMemo(() => flattenPages(messagesQuery.data), [messagesQuery.data]);
   const chatsQuery = useMyChats();
   const join = useJoinRoom(id!);
   const { data: allReactions = [] } = useReactions(id ?? null);
@@ -57,11 +88,14 @@ export default function RoomScreen() {
   const leave = useLeaveRoom(id!);
   const send = useSendMessage(id!, 'room');
   const discardFailed = useDiscardFailed(id!, 'room');
-  const sendPhoto = useSendPhoto(id!);
+  const sendPhoto = useSendPhoto(id!, 'room');
   const toggle = useToggleReaction(id!);
   const unsend = useUnsendMessage(id!);
   const removeMessage = useRemoveRoomMessage(id!);
   const { data: pins = [] } = useRoomPins(id ?? null);
+  // What the next message answers. Held by the screen rather than the
+  // composer, whose contract is a draft and nothing else.
+  const [replyTo, setReplyTo] = useState<(Quote & { messageId: string }) | null>(null);
   const pin = usePinMessage(id!);
   const unpin = useUnpinMessage(id!);
 
@@ -76,6 +110,8 @@ export default function RoomScreen() {
     [chatsQuery.data, archivedQuery.data, id]
   );
   const isMember = membership != null;
+  // What was waiting when the room opened, held for as long as it is open.
+  const unreadAtOpen = useUnreadAtOpen(membership?.unread_count ?? null);
   // A business never joins a room — not another business's, and not its own.
   // The founder's rule, and since 20260829190000 the database's too. This is
   // what stops the button being offered in the first place.
@@ -87,6 +123,21 @@ export default function RoomScreen() {
   // which is exactly what tells the two apart on this screen.
   const { data: group } = useGroup(membership?.kind === 'room' ? (id ?? null) : null);
   const isGroup = group != null;
+  // The plan a pin-born group came from, asked only while the group row says
+  // there is one. The answer feeds the card under the header; the countdown
+  // in it comes from expires_at through burnOutLabel — the same helper the
+  // map uses — so the room and the pin card can never disagree.
+  const planQuery = usePinForGroup(group?.pin_id != null ? (id ?? null) : null);
+  const plan = planQuery.data ?? null;
+  // The ask settled and there was no pin behind the id: it expired (hard
+  // rule 3 makes it unreadable even before the sweep deletes it) or was
+  // taken down. Said out loud rather than silently dropping the card, so
+  // the room does not lose its origin mid-evening. plan_ended_at is the
+  // durable half: the sweep deletes the pin and nulls pin_id within fifteen
+  // minutes, and without the stamp the line would vanish with them.
+  const planEnded =
+    (group?.pin_id != null && planQuery.isSuccess && plan == null) ||
+    (isGroup && group?.pin_id == null && group?.plan_ended_at != null);
   // The database refuses the insert anyway; this is so the person is told
   // why instead of watching Send do nothing.
   const muted = isGroup && group.speaking === 'granted' && membership?.my_role === 'member';
@@ -115,6 +166,26 @@ export default function RoomScreen() {
   // is_room_moderator has answered true for them server-side since
   // 20260827160000.
   const isModerator = membership?.my_role === 'admin' || isOwnRoom;
+  // The two faces this header can wear. The group's own photo is asked for
+  // when the group is made and was then never shown to the person who chose
+  // it; chat_photos_select_group lets a member read it once it is approved
+  // (and its uploader read their own before that), which is why the group
+  // page can draw it too. The business cover comes from the same detail
+  // query the place page runs, so it is usually already cached.
+  //
+  // As useGroup hands it out, through the one client rule for who may see a
+  // group's photo (features/groups/photo.ts): approved for everybody, pending
+  // for the person who uploaded it alone (to everybody else there is no
+  // photo yet), refused for nobody. The raw column is not on the row this
+  // screen holds; the bucket enforces the same rule on the URL anyway.
+  const groupPhoto = group?.photo ?? NO_GROUP_PHOTO;
+  const { data: groupPhotoUrl } = useChatPhotoUrl(groupPhoto.path);
+  // Who put you in here, for the line above the composer. Asked only for a
+  // group you are actually in: a venue room is joined, never handed out.
+  const { data: addedBy } = useWhoAddedMe(isGroup && isMember ? (id ?? null) : null);
+  const { dismissed: addedNoteSeen, dismiss: dismissAddedNote } = useAddedNoteSeen(id ?? null);
+  const { data: business } = useBusinessDetail(isGroup ? null : placeId);
+  const { data: coverUrl } = useBusinessPhotoUrl(business?.photos?.[0]?.storage_path ?? null);
   // A member has something to mark, and so does the owner of the room:
   // mark_chat_read admits is_room_moderator, which answers true for them.
   // Gated on `isMember` alone, opening the room the business RUNS marked
@@ -141,6 +212,10 @@ export default function RoomScreen() {
         image_path: m.image_path,
         unsent_at: m.unsent_at,
         created_at: m.created_at,
+        // The id only. The NAME and the line come from the RPC's own joined
+        // columns (looked up by id, like the sender's name), so nothing here
+        // has to resolve a profile the room thread cannot read.
+        reply_to_message_id: m.reply_to_message_id,
         // The RPC masks image_path until a verdict lands and answers the
         // state separately; the thread asks one question, so map it onto the
         // column a direct chat reads straight off the table.
@@ -156,6 +231,19 @@ export default function RoomScreen() {
       })),
     [messages, id]
   );
+
+  // Where reading stopped, against the loaded pages. Null while the count is
+  // larger than what is loaded: the next page makes the same walk succeed.
+  const unreadFrom = firstUnreadId(thread, ownId, unreadAtOpen);
+  // ...and if it could not be placed yet, reach for it rather than waiting for
+  // the reader to scroll back far enough to trigger onEndReached themselves.
+  useReachUnreadBoundary({
+    unreadAtOpen,
+    loadedCount: messages.length,
+    hasNextPage: messagesQuery.hasNextPage,
+    isFetchingNextPage: messagesQuery.isFetchingNextPage,
+    fetchNextPage: messagesQuery.fetchNextPage,
+  });
 
   const submitJoin = (departure: Date) => {
     join.mutate(toISODate(departure), {
@@ -176,23 +264,79 @@ export default function RoomScreen() {
       },
     ]);
 
+  // The line under the room's name. While the chat list is still loading —
+  // which it is for a beat right after a group is created, since creating one
+  // invalidates it — say nothing rather than "anyone can read this chat",
+  // which is both wrong and alarming for a private group.
+  const headerLine = chatsQuery.isPending ? null : isOwnRoom ? (
+    // The owner has no room_members row — the database refuses one — so
+    // without this branch the person who runs the place was told to "join in
+    // to post" in their own chat. The count comes off my_chats, which already
+    // carries it for a member; room_info is only fetched for people who are
+    // not in the room.
+    <ThemedText type="footnote" themeColor="textSecondary">
+      {/* One template literal, so the sentence a person reads stays one
+          sentence in the source too. */}
+      {`${countOf(membership?.member_count ?? info?.member_count ?? 0, 'person', 'people')} in this chat · you run it`}
+    </ThemedText>
+  ) : isMember && membership?.expires_at ? (
+    <ThemedText type="footnote" themeColor="textSecondary">
+      {countOf(membership.member_count ?? 0, 'person', 'people')} in this chat
+      {/* A private group is not readable by passers-by, and saying it is would
+          be worse than saying nothing. */}
+      {isGroup ? '' : ' · anyone can read'}
+      {/* `expires_at` is NOT NULL, so the admin of a chat with no end date
+          holds an infinite seat, and PostgREST sends that as the string
+          "infinity" — truthy, and `new Date` of it is Invalid Date. */}
+      {/* lib/locale's date, not the device's: this line sat under an English
+          header and read "you leave 12 set." on a Portuguese phone. */}
+      {finiteDate(membership.expires_at)
+        ? ` · you leave ${dates().monthDay.format(finiteDate(membership.expires_at)!)}`
+        : ''}
+    </ThemedText>
+  ) : (
+    <ThemedText type="footnote" themeColor="textSecondary">
+      {info ? `${countOf(info.member_count, 'person', 'people')} in this chat. ` : ''}
+      {/* "Join in to post" is an instruction a business can never follow, so
+          in somebody else's room the sentence stops at what it can do. */}
+      {viewerIsBusiness
+        ? 'Anyone can read this chat.'
+        : 'Anyone can read this chat. Join in to post.'}
+    </ThemedText>
+  );
+
   return (
     <ThemedView style={styles.root}>
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      {/* One storey of chrome, not two. Declared by the screen that draws its
+          own header rather than in the root layout. */}
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <KeyboardFloor>
-          <View style={styles.header}>
-            <View style={styles.headerRow}>
-              {/* my_chats() carries the name, but only for members — which
-                  is exactly the people who did not need it. A visitor
-                  reading a hostel's public preview used to get the literal
-                  words "Guest room" on the screen whose whole job is to make
-                  the place feel like somewhere you might walk into. */}
-              <ThemedText type="headline" style={styles.headerTitle} numberOfLines={1}>
-                {membership?.title ?? info?.name ?? 'Guest room'}
-              </ThemedText>
-              {/* Leaving lives up here, not under the composer — a destructive
-                  action one thumb-width from Send is an accident waiting. */}
-              {isGroup ? (
+          <ThreadHeader
+            // The group photo somebody uploaded when they made the group, or
+            // the business's own cover. It was asked for, uploaded, and then
+            // never shown to the person who chose it.
+            photoUrl={isGroup ? (groupPhotoUrl ?? null) : (coverUrl ?? null)}
+            glyph={
+              isGroup
+                ? { ios: 'person.3.fill', android: 'groups', web: 'groups' }
+                : { ios: 'storefront.fill', android: 'storefront', web: 'storefront' }
+            }
+            // my_chats() carries the name, but only for members — which is
+            // exactly the people who did not need it. A visitor reading a
+            // hostel's public preview used to get the literal words "Guest
+            // room" on the screen whose whole job is to make the place feel
+            // like somewhere you might walk into.
+            title={membership?.title ?? info?.name ?? 'Guest room'}
+            // The person who just chose the picture is told it is being
+            // checked, here as well as on the group page, rather than shown
+            // it with nothing said. 'checking' is only ever the uploader's
+            // own state; everybody else keeps the member line, because to
+            // them there is no photo yet.
+            subtitle={groupPhoto.state === 'checking' ? 'Checking your group photo' : headerLine}
+            trailing={
+              /* Leaving lives up here, not under the composer — a destructive
+                 action one thumb-width from Send is an accident waiting. */
+              isGroup ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Group details"
@@ -209,7 +353,7 @@ export default function RoomScreen() {
                 // than at group settings. The owner gets ONLY this: offering
                 // "Leave" for a chat you run is nonsense, and the database
                 // will not let them join it in the first place.
-                <View style={styles.roomActions}>
+                <>
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="About this business"
@@ -230,7 +374,7 @@ export default function RoomScreen() {
                       </ThemedText>
                     </Pressable>
                   ) : null}
-                </View>
+                </>
               ) : /* A business never joins a room, so it can never have one
                      to leave. The owner of this one reads it above; anybody
                      else holding a business account reaching this branch
@@ -241,54 +385,60 @@ export default function RoomScreen() {
                     Leave
                   </ThemedText>
                 </Pressable>
-              ) : null}
+              ) : null
+            }
+          />
+
+          {/* The plan this group opened from — the rooftop, the night, and
+              the clock the previous screen had and the room used to lose.
+              Non-scrolling, under the header, while the group row points
+              at a pin or remembers one ending. Once the pin is gone
+              (expired or taken down) one quiet line says so, surviving the
+              sweep through plan_ended_at; a group that never had a pin
+              never grows the card. */}
+          {isGroup && (plan != null || planEnded) ? (
+            <View style={[styles.planCard, { backgroundColor: theme.surfaceSunken }]}>
+              {plan != null ? (
+                <>
+                  <PinGlyph category={plan.category} />
+                  <View style={styles.planText}>
+                    <ThemedText type="callout" numberOfLines={2}>
+                      {plan.venue_name}
+                    </ThemedText>
+                    <ThemedText type="footnote" themeColor="textSecondary">
+                      {intentLabel(plan.intent_date, cityClockNow(null, plan.lng))} ·{' '}
+                      {burnOutLabel(plan.expires_at)}
+                    </ThemedText>
+                  </View>
+                  <Pressable
+                    accessibilityRole="link"
+                    accessibilityLabel={`View ${plan.venue_name} in Maps`}
+                    hitSlop={8}
+                    onPress={() =>
+                      openInMaps({
+                        lat: plan.lat,
+                        lng: plan.lng,
+                        label: plan.place_label ?? plan.venue_name,
+                      })
+                    }
+                    style={styles.mapsLink}>
+                    <SymbolView
+                      name={{ ios: 'map', android: 'map', web: 'map' }}
+                      size={15}
+                      tintColor={theme.accent}
+                    />
+                    <ThemedText type="footnote" themeColor="accent">
+                      View in Maps
+                    </ThemedText>
+                  </Pressable>
+                </>
+              ) : (
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  The plan has burned out. The group stays.
+                </ThemedText>
+              )}
             </View>
-            {/* While the list is still loading — which it is for a beat right
-                after a group is created, since creating one invalidates it —
-                say nothing rather than "anyone can read this chat", which is
-                both wrong and alarming for a private group. */}
-            {chatsQuery.isPending ? null : isOwnRoom ? (
-              // The owner has no room_members row — the database refuses one
-              // — so without this branch the person who runs the place was
-              // told to "join in to post" in their own chat. The count comes
-              // off my_chats, which already carries it for a member; room_info
-              // is only fetched for people who are not in the room.
-              <ThemedText type="footnote" themeColor="textSecondary">
-                {countOf(membership?.member_count ?? info?.member_count ?? 0, 'person', 'people')}{' '}
-                here · you run this chat
-              </ThemedText>
-            ) : isMember && membership?.expires_at ? (
-              <ThemedText type="footnote" themeColor="textSecondary">
-                {countOf(membership.member_count ?? 0, 'person', 'people')} here
-                {/* A private group is not readable by passers-by, and saying
-                    it is would be worse than saying nothing. */}
-                {isGroup ? '' : ' · anyone can read'}
-                {/* `expires_at` is NOT NULL, so the admin of a chat with no
-                    end date holds an infinite seat, and PostgREST sends that
-                    as the string "infinity" — truthy, and `new Date` of it is
-                    Invalid Date. */}
-                {finiteDate(membership.expires_at)
-                  ? ` · you leave ${finiteDate(membership.expires_at)!.toLocaleDateString(
-                      undefined,
-                      {
-                        day: 'numeric',
-                        month: 'short',
-                      }
-                    )}`
-                  : ''}
-              </ThemedText>
-            ) : (
-              <ThemedText type="footnote" themeColor="textSecondary">
-                {info ? `${countOf(info.member_count, 'guest')} here. ` : ''}
-                {/* "Join in to post" is an instruction a business can never
-                    follow, so in somebody else's room the sentence stops at
-                    what it can do. */}
-                {viewerIsBusiness
-                  ? 'Anyone can read this chat.'
-                  : 'Anyone can read this chat. Join in to post.'}
-              </ThemedText>
-            )}
-          </View>
+          ) : null}
 
           {/* What the host has kept at the top. A hostel room is a river:
               the address of tonight's dinner scrolls out of reach in twenty
@@ -338,13 +488,48 @@ export default function RoomScreen() {
             ownUserId={ownId}
             reactions={allReactions}
             canReact={isMember && !closed}
-            onRetry={(message) => {
-              const body = message.body ?? '';
-              discardFailed(message.id);
-              if (body.length > 0) {
-                send.mutate(body);
+            onEndReached={() => {
+              if (messagesQuery.hasNextPage && !messagesQuery.isFetchingNextPage) {
+                messagesQuery.fetchNextPage();
               }
             }}
+            loadingMore={messagesQuery.isFetchingNextPage}
+            unreadFrom={unreadFrom}
+            onRetry={(message) => {
+              const body = message.body ?? '';
+              // The retry answers whatever the failed message answered.
+              const quote = quoteFromRow(byId.get(message.id));
+              const parentId = message.reply_to_message_id;
+              discardFailed(message.id);
+              if (body.length > 0) {
+                send.mutate({
+                  body,
+                  replyTo: quote && parentId ? { ...quote, messageId: parentId } : null,
+                });
+              }
+            }}
+            quoteFor={(m) => quoteFromRow(byId.get(m.id))}
+            // Not for a guest reading a room they have not joined: they have
+            // no composer for the answer to land in.
+            onReply={
+              isMember && !closed && !muted
+                ? (messageId) => {
+                    const row = byId.get(messageId);
+                    if (!row) {
+                      return;
+                    }
+                    const gone = row.unsent_at != null || row.removed;
+                    setReplyTo({
+                      messageId,
+                      name: row.display_name ?? 'Someone',
+                      body: gone ? null : row.body,
+                      // Replying from the thread means the row is on screen,
+                      // so it is never the off-page case.
+                      state: gone ? 'gone' : 'known',
+                    });
+                  }
+                : undefined
+            }
             authorFor={(m) => byId.get(m.id)?.display_name ?? 'Someone'}
             // A group is where you meet strangers, so knowing WHO said a
             // thing matters more here than anywhere else in the app.
@@ -371,6 +556,21 @@ export default function RoomScreen() {
                     })
             }
             noteFor={(m) => (byId.get(m.id)?.removed ? 'Message removed by the host' : null)}
+            // "Ana is in" - the room recording its own churn, centred, no
+            // bubble. The kind lives on the RPC row, so it is looked up the
+            // same way the sender's name is.
+            //
+            // ANY kind but 'said', not a list of the ones that existed when
+            // this was written. The membership log (20260902200000) added
+            // 'left', 'removed' and 'ends', and a check against 'joined'
+            // alone would have drawn "Ana left" as an ordinary BUBBLE
+            // attributed to Ana - a line the room wrote, wearing the face of
+            // the person it is about. message-thread's own systemLine helper
+            // already tests it this way; this was the copy that did not.
+            systemFor={(m) => {
+              const kind = byId.get(m.id)?.kind;
+              return kind != null && kind !== 'said' ? m.body : null;
+            }}
             onToggleReaction={(messageId, emoji, on) => toggle.mutate({ messageId, emoji, on })}
             onUnsend={(messageId) =>
               Alert.alert('Unsend this message?', 'It disappears for everyone.', [
@@ -382,50 +582,43 @@ export default function RoomScreen() {
                 },
               ])
             }
-            // A moderator takes a message down; everybody else reports it.
-            // Both used to arrive here, so a moderator's button said "Report"
-            // and opened a confirmation headed "Remove this message?" — and,
-            // worse, an ordinary member got no second action at all. A group
-            // is where you meet strangers, so it is exactly where reporting
-            // has to work. From a profile still works too; this is the one
-            // that carries the message with it.
             // Hosts only, and the menu simply does not carry the action for
             // anybody else — an action you can see and cannot perform is
             // worse than one that was never offered.
-            onPin={
-              isModerator
-                ? (messageId) => {
-                    pin.mutate(
-                      { messageId },
-                      {
-                        onError: (error) =>
-                          Alert.alert(
-                            'Could not pin that',
-                            /three pins/i.test((error as Error).message ?? '')
-                              ? 'Three is the limit. Unpin one first.'
-                              : 'Try that again in a moment.'
-                          ),
-                      }
-                    );
-                  }
-                : undefined
-            }
-            reportLabel={isModerator ? 'Remove' : 'Report'}
-            onReport={
+            // No local onError: the global mutation handler answers with the
+            // shared vocabulary ('three pins is the limit' has a written
+            // sentence in src/lib/failure-message.ts), so there is one place
+            // to look for failure copy.
+            onPin={isModerator ? (messageId) => pin.mutate({ messageId }) : undefined}
+            // Remove and Report side by side, never one instead of the
+            // other. The moderator's menu used to swap Report OUT for
+            // Remove, which left the person best placed to spot abuse early
+            // with no way to escalate a message they had to delete.
+            onRemove={
               isModerator
                 ? (messageId) =>
-                    Alert.alert(
-                      'Remove this message?',
-                      'It disappears for everyone in the group.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Remove',
-                          style: 'destructive',
-                          onPress: () => removeMessage.mutate(messageId),
-                        },
-                      ]
-                    )
+                    Alert.alert('Remove this message?', 'It disappears for everyone.', [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'Remove',
+                        style: 'destructive',
+                        onPress: () => removeMessage.mutate(messageId),
+                      },
+                    ])
+                : undefined
+            }
+            // For every reader, moderator included — a group is where you
+            // meet strangers, so it is exactly where reporting has to work.
+            // A signed-out visitor gets the account gate instead of a push
+            // at a route that is not mounted for them and would do nothing.
+            onReport={
+              isSignedOut
+                ? () => {
+                    // The menu's modal is still dismissing when this runs,
+                    // and iOS silently drops a presentation started during a
+                    // dismissal (see traps) — wait the settle window.
+                    setTimeout(() => setReportGate(true), SHEET_SETTLE_MS);
+                  }
                 : (messageId) => {
                     const sender = byId.get(messageId)?.sender_id;
                     if (!sender) {
@@ -445,7 +638,52 @@ export default function RoomScreen() {
                   error={messagesQuery.error}
                   onRetry={() => messagesQuery.refetch()}
                 />
-              ) : messagesQuery.isPending ? null : (
+              ) : messagesQuery.isPending ? null : isGroup &&
+                !muted &&
+                (membership?.member_count ?? 0) < 2 ? (
+                // The screen straight after the most effortful thing in the
+                // Chat tab: a named group, a photo, a posting rule — and one
+                // person in it. The one thing they need next is getting
+                // anybody else in, so the empty state answers THAT question.
+                // "Go first" belongs to a room that has people to hear it.
+                <View style={styles.emptyThread}>
+                  <ThemedText type="callout" themeColor="textSecondary">
+                    Your group is ready.
+                  </ThemedText>
+                  <PrimaryButton
+                    label="Invite people"
+                    onPress={() => router.push(`/group/${id}`)}
+                  />
+                </View>
+              ) : isOwnRoom ? (
+                // The owner of a room is not a guest in it, and "Go first. One
+                // line is plenty." is advice to talk to yourself. What they
+                // actually need to know is what fills this room and where it
+                // comes from.
+                <View style={styles.emptyThread}>
+                  <ThemedText type="callout" themeColor="textSecondary">
+                    Nobody has written in yet.
+                  </ThemedText>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    Travelers find you from the map, and a place with something on tonight is drawn
+                    brighter than one without.
+                  </ThemedText>
+                  {/* An action, not advice. The empty room used to end on a
+                      sentence telling the owner that travelers would find
+                      them, which is a thing to wait for rather than a thing
+                      to do. Posting is the one lever they actually hold: it
+                      is what earns the brighter marker (city_businesses'
+                      has_live_post), so it is the honest next step from here.
+                      A share link would be the other one and cannot ship yet
+                      - there is no hosted page for a listing to point at, and
+                      a custom-scheme link is dead for anybody who does not
+                      already have the app. Recorded in PROGRESS. */}
+                  <PrimaryButton
+                    label="Say what's on tonight"
+                    onPress={() => router.push('/business-post')}
+                  />
+                </View>
+              ) : (
                 <View style={styles.emptyThread}>
                   <ThemedText type="callout" themeColor="textSecondary">
                     {isGroup ? 'Nobody has said anything yet.' : 'Nothing here yet.'}
@@ -478,12 +716,7 @@ export default function RoomScreen() {
                   front door, and a free-to-mint identity posting through it
                   is a different risk. Reading stays open to everyone, which
                   is what the room is for. */}
-              <SignUpGate
-                reason="Join this room to post"
-                where="room"
-                cta="Create an account"
-                compact
-              />
+              <SignUpGate reason="Join this room to post" where="room" compact />
             </View>
           ) : chatsQuery.isPending ? null : closed ? (
             // Ahead of `muted`, deliberately. In a restricted group both are
@@ -493,8 +726,8 @@ export default function RoomScreen() {
               <ThemedView type="backgroundElement" style={styles.mutedNotice}>
                 <ThemedText type="small" themeColor="textSecondary">
                   {closeDayLabel(group?.max_stay_until ?? null)
-                    ? `This chat closed on ${closeDayLabel(group?.max_stay_until ?? null)}. Everything in it is still here to read.`
-                    : 'This chat has closed. Everything in it is still here to read.'}
+                    ? `This group closed on ${closeDayLabel(group?.max_stay_until ?? null)}. Everything in it is still here to read.`
+                    : 'This group has closed. Everything in it is still here to read.'}
                 </ThemedText>
               </ThemedView>
             </View>
@@ -508,30 +741,77 @@ export default function RoomScreen() {
             </View>
           ) : isMember ? (
             <View style={styles.composerWrap}>
+              {/* Being added to a group used to be silent: no notification, no
+                  system line, and no way to know it had happened until the tab
+                  was opened. Deliberately not a `messages` row — that would
+                  have to skip the first-message moderation trigger, which is
+                  the one path hard rule 5 protects. */}
+              {addedBy && !addedNoteSeen ? (
+                <View style={[styles.addedNote, { backgroundColor: theme.surfaceSunken }]}>
+                  <ThemedText type="footnote" themeColor="textSecondary" style={styles.addedText}>
+                    {`${addedBy} added you to this group.`}
+                  </ThemedText>
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="Leave this group"
+                    haptic="light"
+                    scaleTo={0.96}
+                    hitSlop={8}
+                    onPress={confirmLeave}>
+                    <ThemedText type="footnote" themeColor="danger">
+                      Leave
+                    </ThemedText>
+                  </PressableScale>
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="Hide this note"
+                    haptic="light"
+                    scaleTo={0.9}
+                    hitSlop={8}
+                    onPress={dismissAddedNote}>
+                    <SymbolView
+                      name={{ ios: 'xmark', android: 'close', web: 'close' }}
+                      size={13}
+                      tintColor={theme.textSecondary}
+                    />
+                  </PressableScale>
+                </View>
+              ) : null}
               <Composer
                 inputTestID="room-composer"
-                placeholder="Message the room…"
+                // One word per thing: a traveler-made one is a group, a
+                // business-run one is a room, and the composer is the last
+                // word the person reads before speaking into it.
+                placeholder={isGroup ? 'Message the group…' : 'Message the room…'}
                 // Not for a guest: messages_guest_limits refuses an
                 // image_path outright, so the button could only ever fail.
                 // Photos cost storage and a vision call apiece and a free
                 // identity is the wrong thing to spend them on.
                 allowPhotos={!isGuestAccount}
                 photoBusy={sendPhoto.isPending}
+                replyingTo={replyTo}
+                onCancelReply={() => setReplyTo(null)}
                 onSend={async ({ text, photoUri }) => {
                   // One message, photo and caption together — see chat/[id].
                   // A photo failure throws so the composer keeps the picture
                   // staged; text has a failed bubble of its own to live in.
                   if (photoUri) {
                     try {
-                      await sendPhoto.mutateAsync({ localUri: photoUri, body: text });
+                      await sendPhoto.mutateAsync({
+                        localUri: photoUri,
+                        body: text,
+                        replyToMessageId: replyTo?.messageId ?? null,
+                      });
                     } catch (error) {
                       Alert.alert('Could not send', 'Check your connection and try again.');
                       throw error;
                     }
+                    setReplyTo(null);
                     return;
                   }
                   if (text.length > 0) {
-                    send.mutate(text);
+                    send.mutate({ body: text, replyTo });
+                    setReplyTo(null);
                   }
                 }}
               />
@@ -564,8 +844,10 @@ export default function RoomScreen() {
                 scaleTo={0.98}
                 onPress={() => setPickingDeparture((open) => !open)}
                 style={[styles.dateField, { backgroundColor: theme.surfaceSunken }]}>
+                {/* Title case, matching the app-wide retirement of all-caps
+                    labels (DESIGN.md). */}
                 <ThemedText type="caption" themeColor="textSecondary">
-                  CHECKING OUT
+                  Checking out
                 </ThemedText>
                 <ThemedText type="callout">
                   {formatDateRange(toISODate(departure), toISODate(departure))}
@@ -597,20 +879,29 @@ export default function RoomScreen() {
             </View>
           )}
         </KeyboardFloor>
-        {/* Outside the scroller: iOS hosts it in the keyboard's own window,
-            so where it sits only decides which fields can reach it. */}
-        <KeyboardDoneBar />
+        {/* The account gate for a signed-out visitor who tried to report.
+            /report is behind the signed-in guard, so the alternative was a
+            tap allowed to do nothing on the one control that must never be
+            dead. Navigation out of a presented sheet goes through
+            leavingSheet, or its scrim outlives the push (see traps). */}
+        {reportGate ? (
+          <Sheet onClose={() => setReportGate(false)}>
+            <SignUpGate
+              reason="Send your report"
+              where="room-report"
+              // Inside a Sheet, so flat: the sheet is the frame. The footer
+              // gate further up this file is on a PAGE and keeps its card.
+              flat
+              onNavigate={leavingSheet(() => setReportGate(false))}
+            />
+          </Sheet>
+        ) : null}
       </SafeAreaView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  roomActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Space.md,
-  },
   dateField: {
     gap: 2,
     paddingHorizontal: Space.lg,
@@ -630,10 +921,24 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  header: {
+  planCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    marginHorizontal: Space.lg,
+    marginBottom: Space.sm,
+    padding: Space.md,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
+  planText: {
+    flex: 1,
+    gap: 2,
+  },
+  mapsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Space.xs,
-    paddingHorizontal: Space.lg,
-    paddingBottom: Space.md,
   },
   pinStrip: {
     gap: Space.xs,
@@ -649,14 +954,6 @@ const styles = StyleSheet.create({
   pinText: {
     flex: 1,
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Space.md,
-  },
-  headerTitle: {
-    flex: 1,
-  },
   messageBody: {
     flexShrink: 1,
     gap: Space.xs,
@@ -666,10 +963,6 @@ const styles = StyleSheet.create({
     height: 165,
     borderRadius: Radius.sm,
     marginBottom: Space.xs,
-  },
-  fill: {
-    width: '100%',
-    height: '100%',
   },
   reactionRow: {
     flexDirection: 'row',
@@ -691,6 +984,19 @@ const styles = StyleSheet.create({
     paddingVertical: Space.xxl,
     // The list is inverted, so its own children come out mirrored.
     transform: [{ scaleY: -1 }],
+  },
+  addedNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    marginBottom: Space.sm,
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.sm,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
+  addedText: {
+    flex: 1,
   },
   composerWrap: {
     paddingHorizontal: Space.lg,

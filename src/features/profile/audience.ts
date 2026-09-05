@@ -63,15 +63,27 @@ export const AUDIENCE_OPTIONS: { value: ProfileAudience; detail: string }[] = [
  * The one sentence that has to appear wherever this setting is offered.
  *
  * Three things surprise people who are not told: it cuts both ways, it does
- * nothing to chat, and the gendered options go by the gender on a profile so
- * anyone who has not set one is in none of them. Said once, in one place, so
+ * nothing to chat, and the gendered options go by the gender on a profile.
+ * (The note used to add "so anyone who has not set one is in none of them";
+ * every traveler sets one now that "Rather not say" is gone, and the only
+ * profiles left at the default are guests and accounts that never finished
+ * signing up, neither of which is in Travelers.) Said once, in one place, so
  * the picker and the signup step cannot drift apart.
+ *
+ * The last clause is exact, and it used to be wrong in the one direction that
+ * matters. "Anyone can still message you" implied the say-hi gate applies to
+ * everybody; open_direct_chat checks standing, guest/business, the blocked
+ * pair and SHARED GROUP MEMBERSHIP, and nothing else - so joining an open plan
+ * with eleven strangers lets all eleven open a one-to-one thread that was
+ * never accepted. That is the founder's decision and it stays (messaging a
+ * groupmate should be one tap); what had to go was the app saying otherwise.
  */
 export const AUDIENCE_BOTH_WAYS =
-  'One setting, both ways. Only the people you pick can see you, and they are the only people you see on the map and in Travelers. Chat is separate: anyone can still message you.';
+  'One setting, both ways. Only the people you pick can see you, and they are the only people you see on the map and in Travelers. Chat is separate: anyone can say hi, and anyone in a group with you can write to you directly.';
 
 export const AUDIENCE_GENDER_NOTE =
-  'Verified means they passed the selfie check. The three gendered options go by the gender on a profile, so anyone who has not set one is in none of them.';
+  'Verified means they passed the selfie check. The three gendered options go by the gender on each profile.';
 
 /** Why the narrowed options are inert until the badge exists. */
-export const AUDIENCE_NEEDS_BADGE = 'You need the badge before you can ask other people for one.';
+export const AUDIENCE_NEEDS_BADGE =
+  'These are for verified travelers. Get your badge and they turn on.';

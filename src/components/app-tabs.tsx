@@ -3,7 +3,9 @@ import { useColorScheme } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useOwnBusiness } from '@/features/business/hooks';
-import { useWaitingCount } from '@/features/matching/hooks';
+import { useWantsBusiness } from '@/features/guest/hooks';
+import { useSettledWaitingCount, useWaitingCount } from '@/features/matching/hooks';
+import { useIconBadge } from '@/features/notifications/badge';
 
 // Three tabs, in the order people use them (docs/DESIGN.md). Profile lives
 // behind the avatar in the Map/Travelers headers, which buys the third slot
@@ -26,7 +28,20 @@ export default function AppTabs() {
   // nothing the app wants. A red dot that has cried wolf once is a red dot
   // people learn to ignore, and then real messages go unanswered.
   const waiting = useWaitingCount();
+  const settledWaiting = useSettledWaitingCount();
+  // The same number on the home-screen icon. One source of truth, so the icon
+  // and the tab badge cannot disagree - and useWaitingCount already refetches
+  // on focus and on every invalidation useMarkChatRead fires, so reading a
+  // thread clears the icon without anybody doing anything else.
+  // The SETTLED count: see useIconBadge on why null is not zero here.
+  useIconBadge(settledWaiting);
   const isBusiness = useOwnBusiness().data != null;
+  // An account part way through listing is not a business YET, but Travelers
+  // is the wrong room for it either way: the tab's empty state asks a bar
+  // owner to add a trip, which is a step towards the traveler stamp that
+  // register_business refuses forever. The map feed was already closed to
+  // them; this is the other half the same package meant to close.
+  const wantsBusiness = useWantsBusiness();
 
   // Untinted system glass — HIG: never paint the tab bar's background; the
   // accent lives only on the selected item.
@@ -47,7 +62,7 @@ export default function AppTabs() {
           `hidden` also means the route cannot be navigated to at all, which is
           the stronger guarantee here: a business must not reach Travelers by
           any route, deep link included. */}
-      <NativeTabs.Trigger name="travelers" hidden={isBusiness}>
+      <NativeTabs.Trigger name="travelers" hidden={isBusiness || wantsBusiness}>
         <NativeTabs.Trigger.Label>Travelers</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'person.2', selected: 'person.2.fill' }} />
       </NativeTabs.Trigger>
@@ -57,7 +72,16 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Icon sf={{ default: 'storefront', selected: 'storefront.fill' }} />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="chat">
+      <NativeTabs.Trigger
+        name="chat"
+        // The badge is the app's only unread signal, and iOS 26's Liquid
+        // Glass tab bar no longer derives an accessibilityValue from
+        // badgeValue — so VoiceOver said "Chat, tab" whether five people
+        // were waiting or nobody. The label carries the count instead
+        // (SDK 57's NativeTabs forwards this to the UITabBarItem as
+        // tabBarItemAccessibilityLabel). "Waiting" is the word the chat
+        // code already uses; never "request".
+        accessibilityLabel={waiting > 0 ? `Chat, ${waiting} waiting` : 'Chat'}>
         <NativeTabs.Trigger.Label>Chat</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
           sf={{
