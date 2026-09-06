@@ -156,7 +156,7 @@ begin
   -- founder's number; the server allows thirty-one so that a client offering
   -- exactly thirty cannot be refused by clock skew or a daylight-saving
   -- shift between the two.
-  if new.expires_at > v_plan_end + interval '3100 days' then
+  if new.expires_at > v_plan_end + interval '31 days' then
     raise exception 'a pin may be held at most thirty days past its plan'
       using errcode = 'check_violation', hint = 'pin_hold_ceiling';
   end if;
