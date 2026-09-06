@@ -13,7 +13,7 @@
 --     asserted column by column so a later migration adding a user reference
 --     fails here rather than in production.
 begin;
-select plan(39);
+select plan(41);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -99,12 +99,15 @@ select lives_ok(
   'and a plan with no hour is still a plan'
 );
 
--- THE RULE 3 ATTACK. The date check has a deliberately generous +2 day
--- window to absorb client-vs-UTC drift, so an 11pm plan on the last day it
--- admits sails through it while sitting hours past the pin's own expiry. The
--- hour is compared in the CITY's zone against expires_at exactly, so it does
--- not.
-select throws_ok(
+-- THE RULE THAT REPLACED THE RULE 3 ATTACK. This used to assert a REFUSAL:
+-- an 11pm plan two days out, with a pin expiring in thirty hours, was a plan
+-- that outlived its own pin and the trigger threw. Since 20260905200000 the
+-- founder's rule is "gone when your plan is over", so the same insert is
+-- accepted and the EXPIRY IS MOVED to cover the plan instead. The assertion
+-- flips with the rule rather than being deleted, because the underlying
+-- question -- can a plan outlive its pin? -- still has to have an answer, and
+-- the answer is now "no, because the pin is extended".
+select lives_ok(
   format($$
     insert into public.pins
       (user_id, city_id, venue_name, plan, category, lat, lng,
@@ -113,10 +116,21 @@ select throws_ok(
             'Late one', 'club', 38.7069, -9.1454,
             current_date + 2, time '23:00', now() + interval '30 hours')
   $$, pg_temp.lisbon()),
-  '23514',
-  null,
-  'an hour that falls after the pin disappears is refused, however the date check reads'
+  'a plan past the requested expiry is taken, not refused'
 );
+select ok(
+  (select expires_at >= plan_ends_at
+     from public.pins where venue_name = 'Musicbox Lisboa'),
+  'and the pin is extended to outlast it: gone when the plan is over'
+);
+-- Removed again so the counts further down still describe this traveller's
+-- own three plans rather than four. As the OWNER: a client has no delete on
+-- pins any more than it has an update (the immutability assertion in 06 is
+-- the same rule from the other side), so this has to step out of the
+-- authenticated role and step back into it.
+reset role;
+delete from public.pins where venue_name = 'Musicbox Lisboa';
+select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 
 select is(
   (select intent_time from public.city_pins(pg_temp.lisbon())
@@ -504,18 +518,23 @@ select is(
   'and it carries its hour too'
 );
 
--- The same rule 3 refusal, through the other door. A validation that only
--- guards one of two write paths is not a validation.
-select throws_ok(
+-- The same rule, through the other door. A behaviour that only holds on one
+-- of two write paths is not a behaviour, so the definer gets the same
+-- assertion the plain insert got above: the plan is taken and the pin is
+-- stretched to cover it.
+select lives_ok(
   format($$
     select public.post_joinable_pin(
       %s, 'Musicbox Lisboa', null, null, 'club',
       38.7069, -9.1454, current_date + 2, now() + interval '30 hours',
       'Late one', time '23:00', true)
   $$, pg_temp.lisbon()),
-  '23514',
-  null,
-  'an hour past the pin''s own expiry is refused here as well'
+  'the definer takes it too'
+);
+select ok(
+  (select expires_at >= plan_ends_at
+     from public.pins where venue_name = 'Musicbox Lisboa'),
+  'and extends it the same way'
 );
 
 -- An over-the-air bundle lags a deploy, so the previous signature has to keep

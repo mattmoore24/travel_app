@@ -67,16 +67,24 @@ reset role;
 delete from public.pins where venue_name = 'Somewhere in Porto';
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 
--- HARD RULE 3: the 72h ceiling is a CHECK, not a convention.
+-- HARD RULE 3, IN ITS 2026-09-05 FORM: a pin lives at least until its own
+-- plan is over, however far ahead that is, and at most thirty days longer.
+-- The flat 72-hour CHECK it replaced is gone, so an 80-hour pin is now
+-- ordinary and this assertion had to move to the bound that still exists.
+--
+-- The message is named, not just the SQLSTATE. Its predecessor passed for the
+-- wrong reason for a whole migration: throws_ok with a null message asserts
+-- only 23514, and an unrelated check_violation raised earlier in the trigger
+-- satisfied it while the ceiling it was named after had already been dropped.
 select throws_ok(
   $$ insert into public.pins
        (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
      values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(),
              'Forever pin', 'bar', 38.71, -9.14, current_date,
-             now() + interval '80 hours') $$,
+             now() + interval '40 days') $$,
   '23514',
-  null,
-  'pins cannot live past 72 hours'
+  'a pin may be held at most thirty days past its plan',
+  'a pin cannot be held forever past its plan'
 );
 
 -- Pins are immutable for clients.

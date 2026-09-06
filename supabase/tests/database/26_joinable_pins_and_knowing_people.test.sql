@@ -100,26 +100,34 @@ select is(
   'the pinner runs the group they opened'
 );
 
--- Every guard the ordinary pin path has still fires, because they are
--- CHECKs and triggers on the table and a SECURITY DEFINER insert is still an
--- insert. (The geofence this used to prove went with 20260904120000; the
--- 72-hour ceiling, hard rule 3, is the guard that stays.)
+-- Every guard the ordinary pin path has still fires, because they are CHECKs
+-- and triggers on the table and a SECURITY DEFINER insert is still an insert.
+-- (The geofence this used to prove went with 20260904120000. The 72-hour
+-- ceiling went with 20260905200000, and an 80-hour pin is now perfectly legal
+-- -- so the two assertions that named it are re-pointed at the guards that
+-- replaced it rather than deleted, which would have left this path unwatched.)
+--
+-- BOTH ASSERT THE MESSAGE, NOT JUST THE SQLSTATE. The pair they replace passed
+-- a whole migration for the wrong reason: throws_ok with a null message checks
+-- only 23514, and a different check_violation raised earlier in the trigger
+-- satisfied them while the ceiling they were named after had already been
+-- dropped. Naming the message is what makes them notice.
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select throws_ok(
   $$ select public.post_joinable_pin(
        pg_temp.lisbon(), 'Forever pin', null, null, 'bar',
-       38.7112, -9.1442, current_date, now() + interval '80 hours') $$,
+       38.7112, -9.1442, current_date, now() + interval '40 days') $$,
   '23514',
-  null,
-  'the 72-hour ceiling still refuses a pin through the definer'
+  'a pin may be held at most thirty days past its plan',
+  'the hold ceiling refuses a pin through the definer'
 );
 select throws_ok(
   $$ select public.post_joinable_pin(
        pg_temp.lisbon(), 'Forever plan', null, null, 'bar',
-       38.71, -9.14, current_date, now() + interval '80 hours') $$,
+       38.71, -9.14, current_date - 5, now() + interval '2 days') $$,
   '23514',
-  null,
-  'and the 72-hour ceiling is still a ceiling (hard rule 3)'
+  'that day has already gone',
+  'and a day that has gone is refused through it too'
 );
 
 -- JOINING ----------------------------------------------------------------------

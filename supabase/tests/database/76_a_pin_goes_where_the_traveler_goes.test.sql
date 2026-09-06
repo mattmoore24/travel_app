@@ -11,7 +11,7 @@
 -- Rule 2 is asserted directly: get_matches() takes no argument at all, so no
 -- device coordinate can ever reach it.
 begin;
-select plan(64);
+select plan(65);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -268,7 +268,9 @@ select throws_ok(
 -- midnight in New York included (an end past midnight reads as tomorrow).
 create function pg_temp.start_ts() returns timestamptz language sql as
   $$ select date_trunc('hour', now()) + interval '2 hours' $$;
-select throws_ok(
+-- Was a refusal until 20260905200000; the founder's rule extends the pin to
+-- cover the window instead of throwing it out.
+select lives_ok(
   format($$
     select public.post_joinable_pin(
       p_city_id => %s, p_venue_name => 'Overrun', p_note => null, p_place_label => null,
@@ -282,8 +284,11 @@ select throws_ok(
     pg_temp.start_ts() + interval '1 hour',
     (pg_temp.start_ts() at time zone 'America/New_York')::time,
     ((pg_temp.start_ts() + interval '3 hours') at time zone 'America/New_York')::time),
-  '23514', null,
-  'a window that runs past the pin''s expiry is refused like a single hour is'
+  'a window that runs past the requested expiry is taken, and the pin extended'
+);
+select ok(
+  (select expires_at >= plan_ends_at from public.pins where venue_name = 'Overrun'),
+  'and the stored expiry covers the window''s end, in New York''s own clock'
 );
 select lives_ok(
   format($$

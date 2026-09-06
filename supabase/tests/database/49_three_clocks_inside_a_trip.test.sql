@@ -265,7 +265,7 @@ select is(
 delete from public.push_queue;
 select is(
   public.push_last_call(
-    (select expires_at from public.pins where venue_name = 'Park Bar')
+    (select plan_ends_at from public.pins where venue_name = 'Park Bar')
       - interval '3 hours 30 minutes'),
   2,
   'four hours out, last call reaches everybody in the plan'
@@ -279,16 +279,21 @@ select is(
   'and never for a plan nobody joined: a push whose content is that you failed'
 );
 
--- Inside the 72 hour ceiling BY CONSTRUCTION, asserted rather than assumed:
--- the clock reads pins.expires_at, which carries the hard-rule-3 CHECK, so
--- there is no instant at which it can ping about a pin that has outlived it.
+-- IT SPEAKS THE PLAN, NOT THE PIN. It used to read pins.expires_at, and this
+-- comment used to argue that the 72-hour CHECK made "Closing at 23:00" true by
+-- construction. That ceiling is gone (20260905200000): a pin may now be held
+-- deliberately for weeks after its plan, and a clock keyed on expires_at would
+-- have announced a closing time on a night when nothing was happening. Keyed
+-- on plan_ends_at the sentence is true again, and it is true because the
+-- trigger computes that column in the city's own clock rather than because a
+-- ceiling kept the two close together.
 delete from public.push_queue;
 select is(
   public.push_last_call(
-    (select expires_at from public.pins where venue_name = 'Park Bar')
+    (select plan_ends_at from public.pins where venue_name = 'Park Bar')
       + interval '1 hour'),
   0,
-  'and nothing at all once the pin it is about has expired'
+  'and nothing at all once the plan it is about is over'
 );
 
 select * from finish();
