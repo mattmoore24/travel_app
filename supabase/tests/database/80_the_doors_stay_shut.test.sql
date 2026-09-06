@@ -93,9 +93,20 @@ select is(
 
 -- 3. pg_net ----------------------------------------------------------------
 --
--- Written to be vacuously true where the extension is absent, because the
--- local shim has no pg_net and a `skip` would hide a real regression the day
--- somebody runs this against a database that does.
+-- READ THE NEXT PARAGRAPH BEFORE TREATING THIS AS COVERAGE.
+--
+-- This assertion CANNOT FIRE IN CI. The local shim has no pg_net, so the
+-- subquery finds no `net` schema and the count is zero for the boring reason,
+-- not the good one. Run against production it would FAIL - anon does hold
+-- USAGE on schema net there, and full read/write on both its tables, and no
+-- migration can take that away because the objects belong to supabase_admin
+-- (SEC-002). Nothing in this repository runs pgTAP against production.
+--
+-- It is kept, written this way rather than as a `skip`, because the day the
+-- ownership changes or the suite is pointed at a database with pg_net, it
+-- starts telling the truth. But it is a tripwire for later, not evidence now,
+-- and the real control is the PostgREST exposed-schema setting in
+-- docs/security/MANUAL_CHECKLIST.md.
 select is(
   (select count(*)::int from pg_namespace n
     where n.nspname = 'net'
