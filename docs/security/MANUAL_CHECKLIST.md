@@ -184,6 +184,26 @@ identical, which is exactly why this is a checklist item.
 
 ---
 
+## 3b. At the next Expo SDK bump
+
+- [ ] **Re-check the dependency audit on a machine with network.**
+
+`npm audit` reports 5 high, all transitive, all in the Metro build toolchain
+(`metro`, `metro-config`, `metro-transform-worker`, `@expo/metro`,
+`image-size`). None of them ships inside the app binary.
+
+I deliberately did **not** run `npm audit fix`: Expo SDK 57 pins Metro, and
+moving off those pins is the documented way to break a build. The Expo-blessed
+check could not run from the audit sandbox at all — the proxy denies
+`cdp.expo.dev` — so I could not verify what the fix would produce.
+
+```bash
+npx expo install --check   # let Expo decide the versions
+npm audit                  # then see what is genuinely left
+```
+
+---
+
 ## 4. Apple
 
 - [ ] **Rotate nothing yet — but know what exists.** No secret has ever been

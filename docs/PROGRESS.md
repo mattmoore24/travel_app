@@ -3,6 +3,60 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **Security and cost hardening** (2026-09-06)
+
+Branch `security-hardening`, off `main`, unmerged and undeployed. Full write-up
+in `docs/security/`: `SECURITY_AUDIT.md` (SEC-001..017), `COST_CONTROLS.md`,
+`INVENTORY.md`, `MANUAL_CHECKLIST.md`, plus a root `SECURITY.md`.
+
+**Most of this app was already right**, and the audit says so first and at
+length, because a long findings table reads like an emergency and this is not
+one. Every table has RLS. No write policy is unrestricted. All 205 `SECURITY
+DEFINER` functions pin `search_path`. All seven Edge Functions carry
+`verify_jwt: true`, resolve their caller from a JWT rather than a body field,
+and have no open relay or IDOR between them. All five storage buckets are
+private. Sessions are ciphertext under a keychain key. Analytics carries seven
+structural property names and no PII. No secret has ever been committed - 204
+commits, 7 branches, 15 patterns.
+
+What was actually wrong, in severity order:
+
+- **The founder's personal email is public, as pixels.** `TEST_EMAIL_BASE` is a
+  secret so a person's inbox is not in the source; the app then _draws_ the
+  address, and the screenshots go to the public `e2e-results` branch.
+  `::add-mask::` cannot mask a pixel. Verified by eye on the live branch.
+- **Eight test accounts are live on production**, seven opened with a password
+  that was written out in a public workflow file. Teardown is best-effort and
+  has not always run. Not deleted - that is the founder's call.
+- **The moderation pipeline was bounded in throughput and not in spend**:
+  67,680 model calls a day was reachable, roughly $1,400-$4,700 of it, with
+  nothing refusing the next one.
+- **No storage bucket had a size or type limit**, so the standing object caps
+  bounded the count and nothing bounded the bytes.
+- **The 18+ rule was half in the client** - the age CHECK was real, but nothing
+  stopped an API caller finishing onboarding with no age at all.
+- **The site that receives password-recovery tokens served no security
+  headers.**
+- `pg_net` and twelve trigger functions were executable by `anon` and
+  `authenticated`, by extension and Postgres defaults that no migration wrote.
+
+Four migrations (`20260906090000`, `100000`, `110000`, `120000`), three new
+pgTAP files (78, 79, 80), and two new jest files. Every new assertion was
+mutation-checked; two of them were passing for the wrong reason first time
+round and were rewritten, one because `42501` is what a missing grant and a
+runtime guard both raise.
+
+**Nothing here is deployed.** The four migrations are committed and tested
+locally and have not touched production - the brief said to ask first, and this
+is the ask. `MANUAL_CHECKLIST.md` holds what only the founder can do, ordered
+by what matters, starting with the email and the eight accounts.
+
+Two things are deliberately not fixed, with reasons: `npm audit`'s five highs
+(transitive, build-time only, and Expo pins Metro - the next SDK bump is the
+right moment) and the deploy workflow's lack of a branch filter (it is the flow
+this project actually ships with; the proportionate fix is a GitHub Environment
+with a required reviewer, which is the founder's to set).
+
 ## **The owner never saw their own address** (2026-09-05)
 
 Run 124's My business frame said "No address yet" under "Where you are" on a
@@ -33,13 +87,25 @@ outlast it, and the wait pinned to it then burned the 4 s strip underneath
 too (run 123 had caught both). The tour waits for whichever beat is on
 screen, then the strip on its own.
 
-Run 125 (6360dc4) is the record: the My business frame reads "Rua da Rosa 12"
-under "Where you are", and the signed-in tour went green end to end for the
-first time since the trip rail landed, 10 through 35, both composer beats and
-the settings tail included. Its one red was the onboarding tour's profile
-photo, which sat at "Not sent": no upload reached storage in that window
-(the edge logs hold only the seed photos' signed reads), so the request died
-on the simulator's side; runs 122 to 124 passed the same step. Not changed.
+Run 125 (6360dc4) confirms the fix: the My business frame reads "Rua da Rosa
+12" under "Where you are".
+
+**What I said about the rest of run 125 was wrong, and this is the
+correction.** I reported the signed-in tour as having "gone green end to end
+for the first time". It did not. `e2e.yml` retries each flow once, silently,
+and the gallery is assembled from whatever PNGs exist at the end - so it
+blends the two attempts into one strip that reads like a single clean pass.
+The first attempt died on a step that was not optional.
+
+The onboarding tour was worse than the "one red" I described. Its profile
+photo sat at "Not sent" - true, and no upload reached storage in that window -
+but the consequence was not one red frame. `onboarding-tour.yml:328` wraps
+lines 332 to 534 in a single `runFlow when: notVisible: 'A profile photo is
+the one thing we need.'`, which is the app's own gate sentence. "The upload
+failed" and "skip steps 6 through 14" are therefore the same predicate: the
+tour photographed nine steps' worth of nothing and reported success. Neither
+the fix to that wrapper nor the upload's own no-reject path is done yet;
+both are still owed.
 
 ## **A business goes where its door is** (2026-09-05)
 
