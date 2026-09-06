@@ -22,6 +22,9 @@
 #
 # Two ways to run it:
 #   * Commit any change to supabase/.deploy-request (works from any branch).
+#     NOTE: that path applies EVERY unapplied migration on the branch. Use the
+#     skip_migrations input from the Actions tab when a function is ready and a
+#     migration on the same branch is not.
 #   * Actions → Supabase deploy → Run workflow (needs this file on the default
 #     branch; GitHub only lists workflow_dispatch workflows from there).
 name: Supabase deploy
@@ -31,6 +34,15 @@ on:
     inputs:
       dry_run:
         description: 'Only list migrations that would be applied'
+        type: boolean
+        default: false
+      skip_migrations:
+        description: >-
+          Deploy Edge Functions only, applying no migrations. For when a
+          function change is ready and a pending migration is NOT - `db push`
+          applies every unapplied migration on the branch, not the one you had
+          in mind, so without this the only way to ship a worker fix is to ship
+          whatever else is sitting in supabase/migrations/ as well.
         type: boolean
         default: false
   push:
@@ -107,7 +119,7 @@ jobs:
         run: npx --yes "$SUPABASE_CLI" migration list --project-ref "$PROJECT_REF" -p "$DB_PASSWORD"
 
       - name: Apply migrations
-        if: ${{ inputs.dry_run != true }}
+        if: ${{ inputs.dry_run != true && inputs.skip_migrations != true }}
         run: npx --yes "$SUPABASE_CLI" db push --project-ref "$PROJECT_REF" -p "$DB_PASSWORD"
 
       - name: Deploy Edge Functions
