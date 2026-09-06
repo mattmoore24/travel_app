@@ -1,5 +1,13 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   FadeIn,
@@ -10,9 +18,11 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { KEYBOARD_BAR_HEIGHT } from '@/components/ui/keyboard-floor';
 import { Elevation, MaxContentWidth, Motion, Radius, Space, Springs } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -196,6 +206,7 @@ export function Sheet({
   onCloseRequest,
   dimmed = true,
   avoidKeyboard = false,
+  keyboardAllowance,
   inline = false,
   scrolls = false,
   footer,
@@ -215,6 +226,24 @@ export function Sheet({
   dimmed?: boolean;
   /** Lift the sheet above the keyboard — for sheets that contain inputs. */
   avoidKeyboard?: boolean;
+  /**
+   * The height of whatever the caller pins BELOW its scroller that the
+   * keyboard is welcome to cover — a submit button, a readout, a footnote.
+   *
+   * Founder, 2026-09-05: "Buttons and text above keyboard are unneeded and
+   * should not rise with the keyboard. Instead they should be covered by the
+   * keyboard when typing." Without this the whole sheet lifts, so a pinned
+   * button rides up on top of the keyboard and the scroller above it is
+   * starved to pay for the trip; the pin form ends up about two rows tall.
+   * With it the sheet lifts by only the part of the keyboard that reaches
+   * past the pinned zone, so the button is covered and the form keeps its
+   * scroll range.
+   *
+   * A shared value, measured by the caller with onLayout, because the pinned
+   * zone's height moves (a note appears, Dynamic Type) and this style runs on
+   * the UI thread. Same contract, same reason, as KeyboardFloor's allowance.
+   */
+  keyboardAllowance?: SharedValue<number>;
   /**
    * Give the children a scroller of their own. The sheet caps its height at
    * the screen, but flexShrink defaults to 0, so a sheet whose children do
@@ -344,7 +373,17 @@ export function Sheet({
   // pushes the content up by exactly the keyboard's height, and the cap
   // below lets a long form's scroll area shrink instead of overflowing.
   const keyboardStyle = useAnimatedStyle(() => {
-    const lift = avoidKeyboard ? keyboard.height.value : 0;
+    // THE BAR IS NOT IN THE KEYBOARD'S NUMBER. Reanimated reports the
+    // keyboard's own frame, and on iOS the input accessory view rides above
+    // that frame — so a sheet lifted by the keyboard alone has its bottom
+    // 36pt covered by our own Hide keyboard bar. Run 109 caught exactly this
+    // on the signup footer, where it lay across the bottom third of the
+    // Continue pill; KeyboardFloor has accounted for it since and this had
+    // not, so every sheet with an input in it has been wearing that overlap.
+    const bar = Platform.OS === 'ios' && keyboard.height.value > 0 ? KEYBOARD_BAR_HEIGHT : 0;
+    const lift = avoidKeyboard
+      ? Math.max(0, keyboard.height.value + bar - (keyboardAllowance?.value ?? 0))
+      : 0;
     return {
       // max, not a sum. The keyboard is measured from the bottom of the
       // SCREEN, so its height already spans the home indicator — adding the

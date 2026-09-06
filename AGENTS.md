@@ -17,6 +17,10 @@ unreachable.
   work unpushed at session end. Never commit secrets — `.env` is gitignored,
   `.env.example` is the template.
 - Before pushing: `npm run typecheck && npx expo lint && npm run format:check && npm test`.
+  Run it plain. Piping a step to `tail` to shorten the output silently breaks
+  the gate: a pipeline exits with its LAST command's status, `tail` always
+  succeeds, so the `&&` chain never short-circuits and the whole thing reports
+  success however loudly a step failed. Use `set -o pipefail` if you must pipe.
 - **Migrations that change a function's OUT columns must `drop function` first** —
   Postgres refuses to add columns to an existing `RETURNS TABLE` signature via
   `create or replace`, and the deploy fails after the migration's earlier

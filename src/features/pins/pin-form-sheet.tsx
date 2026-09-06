@@ -3,6 +3,7 @@ import * as Location from 'expo-location';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
 
 import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ChipRail } from '@/components/form/chip-rail';
@@ -411,8 +412,18 @@ export function PinFormSheet({
     }
   };
 
+  // The height of the pinned zone below the scroller: the readout, the button
+  // and the note. The sheet lifts by only the part of the keyboard that
+  // reaches PAST it, so the button is covered rather than carried up and the
+  // scroller keeps its range. Founder ask 6, 2026-09-05.
+  const pinnedHeight = useSharedValue(0);
+
   return (
-    <Sheet onClose={onClose} onCloseRequest={requestClose} avoidKeyboard>
+    <Sheet
+      onClose={onClose}
+      onCloseRequest={requestClose}
+      avoidKeyboard
+      keyboardAllowance={pinnedHeight}>
       {/* The fades live HERE, not in the Sheet: every other Sheet caller has
           static children, and a generic top fade would wash out their first
           row for no reason. They say "there is more" where the scroll edge
@@ -685,36 +696,41 @@ export function PinFormSheet({
       {/* PINNED, outside the scroller, so the day and the lifetime stay
           readable with the keyboard up. One row of chrome, not a second
           slider: tapping it scrolls the real control into view. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${when}, gone in ${hoursLabel(effectiveHours)}. Shows the expiry control.`}
-        hitSlop={4}
-        onPress={() => {
-          scrollRef.current?.scrollTo({
-            y: Math.max(0, (fieldY.current.expiry ?? 0) - Space.sm),
-            animated: true,
-          });
+      <View
+        onLayout={(event) => {
+          pinnedHeight.value = event.nativeEvent.layout.height;
         }}>
-        <ThemedText
-          type="footnote"
-          themeColor="textSecondary"
-          numberOfLines={1}
-          style={styles.expiryReadout}>
-          {when} · gone in {hoursLabel(effectiveHours)}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${when}, gone in ${hoursLabel(effectiveHours)}. Shows the expiry control.`}
+          hitSlop={4}
+          onPress={() => {
+            scrollRef.current?.scrollTo({
+              y: Math.max(0, (fieldY.current.expiry ?? 0) - Space.sm),
+              animated: true,
+            });
+          }}>
+          <ThemedText
+            type="footnote"
+            themeColor="textSecondary"
+            numberOfLines={1}
+            style={styles.expiryReadout}>
+            {when} · gone in {hoursLabel(effectiveHours)}
+          </ThemedText>
+        </Pressable>
+        <PrimaryButton
+          label="Put it on the map"
+          loading={createPin.isPending}
+          disabled={needsPlan}
+          // The disabled state is a colour swap (primary-button.tsx), and a
+          // colour change is not announced — so the reason has to be spoken.
+          accessibilityHint={footnote}
+          onPress={submit}
+        />
+        <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
+          {footnote}
         </ThemedText>
-      </Pressable>
-      <PrimaryButton
-        label="Put it on the map"
-        loading={createPin.isPending}
-        disabled={needsPlan}
-        // The disabled state is a colour swap (primary-button.tsx), and a
-        // colour change is not announced — so the reason has to be spoken.
-        accessibilityHint={footnote}
-        onPress={submit}
-      />
-      <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
-        {footnote}
-      </ThemedText>
+      </View>
     </Sheet>
   );
 }

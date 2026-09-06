@@ -63,6 +63,31 @@ describe('the keyboard covers the footer rather than lifting it', () => {
     expect(floor).not.toContain('styles.footer');
   });
 
+  it('a sheet lifts by the keyboard MINUS what the caller pins under it', () => {
+    // The other half of ask 6. A sheet with avoidKeyboard lifted by the whole
+    // keyboard, so its pinned button rode up on top of it and the scroller
+    // above was starved to pay for the trip: the pin form ends up about two
+    // rows tall with a keyboard up, which is recorded in its own source.
+    const code = source('src/components/ui/sheet.tsx');
+    expect(code).toContain('keyboardAllowance?: SharedValue<number>');
+    const lift = between(code, 'const keyboardStyle = useAnimatedStyle', 'transform:');
+    expect(lift).toContain('keyboardAllowance?.value ?? 0');
+    // ...and the bar is added, because the keyboard's reported frame does not
+    // include the input accessory view riding above it. Every sheet with an
+    // input has been wearing that 36pt overlap; KeyboardFloor has accounted
+    // for it since run 109 and this had not.
+    expect(lift).toContain('KEYBOARD_BAR_HEIGHT');
+    // Math.max at zero, or a pinned zone taller than the keyboard would push
+    // the sheet DOWN off the bottom of the screen.
+    expect(lift).toContain('Math.max(0,');
+  });
+
+  it('the pin form measures the zone it pins, or the allowance is always zero', () => {
+    const code = source('src/features/pins/pin-form-sheet.tsx');
+    expect(code).toContain('keyboardAllowance={pinnedHeight}');
+    expect(code).toContain('pinnedHeight.value = event.nativeEvent.layout.height');
+  });
+
   it('no screen autofocuses a field into the zone the keyboard covers', () => {
     // business-email put an `autoFocus` address field in StepShell's `footer`
     // prop, so tapping "Use a different address" focused a field that was
