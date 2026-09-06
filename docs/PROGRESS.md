@@ -46,10 +46,38 @@ mutation-checked; two of them were passing for the wrong reason first time
 round and were rewritten, one because `42501` is what a missing grant and a
 runtime guard both raise.
 
-**Nothing here is deployed.** The four migrations are committed and tested
-locally and have not touched production - the brief said to ask first, and this
-is the ask. `MANUAL_CHECKLIST.md` holds what only the founder can do, ordered
-by what matters, starting with the email and the eight accounts.
+**Deployed 2026-09-06**, after an adversarial pre-deploy review that found four
+defects in my own work - three of them in the very migration meant to be the
+headline fix. The pg_net revoke was a verified no-op (postgres owns none of
+schema net) and would have stopped every cron worker where it DID work, because
+postgres reaches net.http_post through the same PUBLIC grant it would have
+removed. The budget claim could hand out unlimited budget on a midnight race,
+because Postgres's least() ignores nulls. The flat 47-per-tick claim meant a
+crashing worker could spend the whole day's ceiling in forty minutes. And the
+bucket allowlist was jpeg-only while the demo seeder uploads png - silently, in
+a catch that logs a warning.
+
+`20260905200000` (pin lifetime) was deliberately NOT applied and is now the only
+pending migration: `db push` takes every unapplied file on the branch, so the
+usual path would have removed the 72-hour rule from the database while the
+privacy policy, the live site and an App Store screenshot caption all still say
+72 hours. `supabase-deploy.yml` gained `skip_migrations` for this.
+
+Live after the deploy: 0 of 53 trigger functions reachable by an API role, 0 of
+5 buckets unbounded, and `worker_status()` reporting `0 / 2000 claimed` - the
+designed steady state, since empty queues now claim nothing at all.
+
+The eight leftover E2E accounts were rotated rather than deleted, as the founder
+asked: same bcrypt cost, plaintext recorded nowhere, and every refresh token
+revoked and session expired - because all eight held a live session, and a token
+holder never needs the password again, so changing it alone would have meant
+nothing.
+
+`MANUAL_CHECKLIST.md` holds what only the founder can do, ordered by what
+matters, and the first item now has an ORDER: purge the demo accounts while the
+old `TEST_EMAIL_BASE` still works, because 12 of them are addressed from that
+secret and changing it first would strand them behind a launch gate that then
+passes vacuously.
 
 Two things are deliberately not fixed, with reasons: `npm audit`'s five highs
 (transitive, build-time only, and Expo pins Metro - the next SDK bump is the
