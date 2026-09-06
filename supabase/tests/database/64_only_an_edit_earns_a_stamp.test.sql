@@ -63,8 +63,10 @@ create function pg_temp.parked() returns timestamptz language sql immutable as
 -- Noor fills in a profile like anybody else, so the row under test is a real
 -- one rather than the empty row the signup trigger made.
 select pg_temp.login('00000000-0000-0000-0000-0000000000e1');
+-- `age` is part of filling in a profile like anybody else: 20260906120000
+-- refuses the stamp without one.
 update public.profiles
-   set display_name = 'Noor', bio = 'hiking + street food',
+   set display_name = 'Noor', bio = 'hiking + street food', age = 27,
        onboarding_completed_at = now()
  where user_id = '00000000-0000-0000-0000-0000000000e1';
 reset role;

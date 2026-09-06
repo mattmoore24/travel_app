@@ -237,14 +237,20 @@ select pg_temp.admin();
 -- 64_only_an_edit_earns_a_stamp does for a new COLUMN. The answers as of
 -- 20260903030000 are in that migration's header; the two unlisted here are
 -- safe for reasons written down there, not by luck.
+--
+-- profiles_finished_has_an_age (20260906120000) answers it here: a write that
+-- is not an edit costs NOTHING. The trigger reads two columns of NEW, raises
+-- or returns, and writes no row anywhere - so a cold-start touch passes
+-- through it untouched and it can never spend the cap this file is about.
 
 select is(
   (select array_agg(t.tgname::text order by t.tgname::text collate "C")
      from pg_trigger t
     where t.tgrelid = 'public.profiles'::regclass
       and not t.tgisinternal),
-  array['profiles_guest_minimal', 'profiles_reset_visibility',
-        'profiles_screen_text', 'profiles_updated_at']::text[],
+  array['profiles_finished_has_an_age', 'profiles_guest_minimal',
+        'profiles_reset_visibility', 'profiles_screen_text',
+        'profiles_updated_at']::text[],
   'these are all the triggers on profiles, and a new one has to be classified'
 );
 

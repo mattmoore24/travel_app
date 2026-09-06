@@ -56,8 +56,12 @@ create function pg_temp.parked() returns timestamptz language sql immutable as
 
 select pg_temp.park();
 
+-- The age rides along because 20260906120000 refuses to stamp a profile
+-- finished without one, which is the point of that trigger and not an
+-- inconvenience of this fixture: a finished profile with no age was reachable
+-- through the API and is not any more.
 update public.profiles
-   set display_name = 'Ana', onboarding_completed_at = now()
+   set display_name = 'Ana', age = 31, onboarding_completed_at = now()
  where user_id = '00000000-0000-0000-0000-0000000000d1';
 
 -- A real edit still stamps. If this ever fails the fix has gone too far and
