@@ -33,32 +33,60 @@ alert at half is honest for TestFlight; raise it with the call cap at launch.
 
 ---
 
-## 1a. The one that is already public — do this next
-
-- [ ] **Change `TEST_EMAIL_BASE` to a role address on a domain you control.**
+## 1a. The one that is already public — do this next, IN THIS ORDER
 
 Your personal Gmail is currently rendered, in full, in screenshots on the
 public `e2e-results` branch — `results/19e-change-your-email.png` draws
 "You sign in with &lt;your address&gt; today". The secret kept it out of the
 source and the app photographed it instead; `::add-mask::` cannot mask a pixel.
 
-Something like `e2e@samewhere.io` works: `e2e/account.mjs` plus-addresses it,
-so it needs to be an inbox you can actually read, but it does not need to be a
-personal one. Hosted Supabase rejects RFC-2606 test domains, which is why this
-cannot simply be `example.com`.
+**The order matters. Changing the secret first orphans 14 live accounts.**
+
+- [ ] **STEP 1 — purge the demo accounts while the OLD secret still works.**
+
+`scripts/seed-demo-travelers.mjs` derives every demo address from the current
+secret (`${user}+sw-demo-${slug}@${domain}`), and so do `purge` and `check`.
+Production holds **12** `…+sw-demo-…@gmail.com` accounts right now, plus one
+`+sw-live-` and one `+sw-e2e-`.
+
+Change the secret first and those addresses become uncomputable: `purge` looks
+for accounts that were never created and reports them absent, and `check` —
+which is _the launch gate, red while any demo account can still sign in_ — gets
+an invalid-credentials error for each address, reads that as "deleted", and
+**passes while all 12 are still signed-in-able with `DEMO_PASSWORD`**. A green
+gate over 12 live accounts is worse than no gate.
+
+So: **Actions → Demo travelers → `purge`**, then run it again with `check` and
+see it green. Only then continue.
+
+- [ ] **STEP 2 — set `TEST_EMAIL_BASE` to `e2e@samewhere.io`.**
+
+**Not `hello@wagvive.com`.** It would work mechanically — nothing ever reads the
+inbox (email confirmations are off on this project: 22 of 24 users were
+confirmed instantly and one confirmation mail has ever been sent), the `+` tag
+is just a string, and my new guard would let it publish. The problem is what it
+_says_. The address is drawn into screenshots that go to a **public** branch for
+ever, and `wagvive` appears nowhere in this repository — so publishing it
+creates a permanent public link between samewhere and an unrelated business,
+and puts that address in front of every scraper that reads GitHub.
+
+`samewhere.io` costs you nothing to disclose: it is already in this repo, in the
+App Store listing and in the privacy policy. Prefer `e2e@` over `hello@` so that
+if confirmations are ever switched on, auth mail does not land in your live
+support queue. The mailbox does not need to exist — nothing delivers to it.
 
 **Where:** GitHub → **Settings** → **Secrets and variables** → **Actions** →
 `TEST_EMAIL_BASE`.
 
-Until you do, `e2e.yml` will refuse to publish screenshots to the public branch
-and will attach them as a workflow artifact instead, with an error saying why.
+Until you change it, `e2e.yml` refuses to publish screenshots to the public
+branch and attaches them as a workflow artifact instead, with an error saying
+why.
 
-- [ ] **Then replace what is already on the branch.** Re-run the E2E workflow
-      once the secret is changed; it force-pushes an orphan commit, so a fresh
-      run replaces the whole tree. If you would rather not wait, delete the
-      `e2e-results` branch and let the next run recreate it. Note that neither
-      undoes anything already cloned or indexed — treat the address as public
-      and consider whether it is worth changing anywhere it matters.
+- [ ] **STEP 3 — replace what is already on the branch.** Re-run E2E; it
+      force-pushes an orphan commit, so a fresh run replaces the whole tree.
+      Or delete the `e2e-results` branch and let the next run recreate it.
+      Neither undoes anything already cloned or indexed — treat the address as
+      public and change it anywhere that matters.
 
 ---
 
@@ -82,23 +110,36 @@ the change and anyone who read the workflow can sign into the seven.
 They hold no data. An account is still an account: it can send, pin, report and
 spend the moderation budget.
 
-**I have not deleted them** — removing rows is your call, not mine. The repo's
-own tool is the clean way:
+**Changing the password is necessary but not sufficient on its own.** All eight
+carry a live session and an unrevoked refresh token, and a refresh token holder
+keeps access without ever needing the password. Any rotation has to revoke
+those too — which is what I did (see PROGRESS.md); this box stays here for the
+part that is still yours.
 
-```bash
-E2E_BIZ_EMAIL='<address>' node e2e/account.mjs teardown-extras
-```
+What they own, checked live: the seven `maestro-*` accounts own **nothing** —
+no completed profile, no business, no pin, no trip, no message, no photo. The
+`…+sw-e2e-…@gmail.com` one has a completed profile and one active trip, so it
+is a fake traveler that real users can see in the app.
 
-or delete them from the dashboard: **Authentication** → **Users**, filter on
-`maestro`, delete. The FK graph cascades the rest.
+If you would rather they were gone than merely inert, that is now a dashboard
+job — `e2e/account.mjs teardown-extras` signs in with a password it is given,
+so it can only remove accounts from its own run:
+
+**Authentication** → **Users**, filter on `maestro`, delete. The FK graph
+cascades the rest. The `sw-e2e` one is the only one holding any data.
 
 ---
 
 ## 2. Supabase — the database and API
 
-- [ ] **Exposed schemas = `public` only.**
+- [ ] **Exposed schemas = `public` only.** ← **this is the whole of SEC-002**
 
-This is the setting that makes SEC-002 theoretical rather than live. `pg_net`
+Not a belt-and-braces check: it is the ONLY thing protecting `pg_net`. I wrote a
+migration to revoke those grants and then measured it on the live database
+inside a rolled-back transaction - it changes nothing. `net` and all twelve of
+its functions belong to `supabase_admin`; migrations run as `postgres`, which is
+not a superuser and not the owner, so the revoke is a silent no-op. Nothing in
+this repository can close that door. `pg_net`
 puts `net.http_post` and friends in schema `net` and grants them to `PUBLIC`;
 `20260906090000` revokes `anon` and `authenticated` from all of it, but the
 reason it was never exploitable is that schema `net` is not exposed through

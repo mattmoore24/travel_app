@@ -91,15 +91,22 @@ insert into public.app_config (key, value) values
   ('moderation_paused', 'false')
 on conflict (key) do nothing;
 
--- 4. Claim. Returns how many calls the caller may make, which is zero when the
---    day is spent or the pipeline is paused.
+-- 4. Claim. Returns {granted, day}: how many calls the caller may make, and
+--    the day it was charged to.
+--
+--    RETURNS JSONB RATHER THAN INT, and the day is the reason. A tick starts at
+--    23:59:58 and finishes after midnight; a release that targeted
+--    current_date at RELEASE time would credit the unspent remainder to
+--    tomorrow, which both loses today's refund and hands tomorrow up to a
+--    tick's worth of budget it never claimed. The caller hands the day back.
 create or replace function public.claim_moderation_budget(p_want int)
-returns int
+returns jsonb
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
+  v_day   date := current_date;
   v_cap   int;
   v_used  int;
   v_grant int;
@@ -107,39 +114,53 @@ begin
   perform public.assert_service_caller();
 
   if p_want is null or p_want <= 0 then
-    return 0;
+    return jsonb_build_object('granted', 0, 'day', v_day);
   end if;
 
   -- The kill switch, checked first so that flipping it stops spend on the very
   -- next tick without waiting for a counter to catch up.
   if public.config_flag('moderation_paused') then
-    return 0;
+    return jsonb_build_object('granted', 0, 'day', v_day);
   end if;
 
   v_cap := public.config_int('moderation_daily_call_cap', 2000);
 
+  -- ON CONFLICT DO UPDATE, not DO NOTHING, and this is not a style choice.
+  --
+  -- With DO NOTHING followed by a separate SELECT ... FOR UPDATE, two ticks
+  -- racing on the first claim of a new day deadlock into a hole: the loser's
+  -- insert is skipped, and the winner's row is not yet COMMITTED, so the
+  -- loser's select sees nothing and v_used comes back NULL. Postgres's
+  -- least() IGNORES nulls - least(47, null) is 47, not null - so the guard
+  -- evaluated to greatest(0, least(p_want, null)) = p_want, the caller was
+  -- granted everything it asked for, and the UPDATE beneath it matched zero
+  -- rows and recorded none of it. A cap that hands out unlimited budget on
+  -- exactly the transition it is most likely to be raced on.
+  --
+  -- DO UPDATE takes the row lock and RETURNING hands back the committed value,
+  -- so the loser blocks until the winner commits and then reads the truth.
+  -- The SET is a deliberate no-op: it exists to make this an UPDATE.
   insert into public.moderation_spend (day, calls)
-  values (current_date, 0)
-  on conflict (day) do nothing;
+  values (v_day, 0)
+  on conflict (day) do update set updated_at = public.moderation_spend.updated_at
+  returning calls into v_used;
 
-  -- FOR UPDATE, because two ticks can overlap: the cron fires every minute and
-  -- TICK_BUDGET_MS is 50 seconds, so a tick that overruns leaves two isolates
-  -- claiming at once. Without the lock they would both read the same `calls`
-  -- and both be granted it.
-  select calls into v_used
-  from public.moderation_spend
-  where day = current_date
-  for update;
+  -- Belt and braces. If v_used is ever null again, refuse rather than grant:
+  -- this function's whole job is to be able to say no.
+  if v_used is null then
+    raise exception 'moderation_spend has no row for %', v_day
+      using errcode = 'internal_error';
+  end if;
 
   v_grant := greatest(0, least(p_want, v_cap - v_used));
 
   if v_grant > 0 then
     update public.moderation_spend
     set calls = calls + v_grant, updated_at = now()
-    where day = current_date;
+    where day = v_day;
   end if;
 
-  return v_grant;
+  return jsonb_build_object('granted', v_grant, 'day', v_day);
 end
 $$;
 
@@ -147,17 +168,20 @@ revoke execute on function public.claim_moderation_budget(int)
   from public, anon, authenticated;
 
 comment on function public.claim_moderation_budget(int) is
-  'Reserve up to p_want model calls against today''s ceiling; returns the '
-  'number actually granted (0 when spent or paused). Claim BEFORE the call, '
-  'release what you did not use.';
+  'Reserve up to p_want model calls against a day''s ceiling. Returns '
+  '{"granted": n, "day": "YYYY-MM-DD"} - hand BOTH back to '
+  'release_moderation_budget so an unspent claim is refunded to the day it '
+  'was charged to. Claim BEFORE the call.';
 
--- 5. Release. Hands back an unspent claim.
-create or replace function public.release_moderation_budget(p_unused int)
+-- 5. Release. Hands back an unspent claim, to the day it was charged to.
+create or replace function public.release_moderation_budget(p_unused int, p_day date default null)
 returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_day date := coalesce(p_day, current_date);
 begin
   perform public.assert_service_caller();
 
@@ -169,11 +193,11 @@ begin
   -- hand out budget that was already spent.
   update public.moderation_spend
   set calls = greatest(0, calls - p_unused), updated_at = now()
-  where day = current_date;
+  where day = v_day;
 end
 $$;
 
-revoke execute on function public.release_moderation_budget(int)
+revoke execute on function public.release_moderation_budget(int, date)
   from public, anon, authenticated;
 
 -- 6. CHAT PHOTOS GET THE VELOCITY CAP PROFILE PHOTOS ALREADY HAVE.

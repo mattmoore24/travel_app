@@ -500,11 +500,20 @@ jobs:
           TEST_EMAIL_BASE: ${{ secrets.TEST_EMAIL_BASE }}
         run: |
           consumer='gmail.com googlemail.com outlook.com hotmail.com live.com msn.com yahoo.com ymail.com icloud.com me.com mac.com aol.com proton.me protonmail.com pm.me gmx.com gmx.net yandex.com zoho.com'
-          domain="$(printf '%s' "${TEST_EMAIL_BASE##*@}" | tr 'A-Z' 'a-z')"
+          # Trimmed, and checked for an '@' FIRST. `${x##*@}` on a value with no
+          # '@' returns the whole string, which is non-empty - so without this
+          # the -z branch below could never fire and a malformed secret would
+          # publish. A pasted trailing newline does the same to the exact-match
+          # below, defeating even the gmail case.
+          base="$(printf '%s' "$TEST_EMAIL_BASE" | tr -d '[:space:]')"
+          case "$base" in
+            *@*) domain="$(printf '%s' "${base##*@}" | tr 'A-Z' 'a-z')" ;;
+            *)   domain='' ;;
+          esac
           publish=true
           if [ -z "$domain" ]; then
             publish=false
-            echo "::error::TEST_EMAIL_BASE is unset; not publishing screenshots."
+            echo "::error::TEST_EMAIL_BASE is unset or is not an email address; not publishing screenshots."
           else
             for known in $consumer; do
               if [ "$domain" = "$known" ]; then

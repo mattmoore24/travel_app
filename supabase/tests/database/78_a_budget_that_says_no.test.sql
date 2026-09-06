@@ -33,7 +33,7 @@
 -- the daily cap deleted. Two hours back puts them outside the minute window
 -- and inside the day, so the only rule that can raise is the one under test.
 begin;
-select plan(20);
+select plan(24);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -76,11 +76,11 @@ select ok(
   'authenticated cannot claim moderation budget'
 );
 select ok(
-  not has_function_privilege('anon', 'public.release_moderation_budget(int)', 'EXECUTE'),
+  not has_function_privilege('anon', 'public.release_moderation_budget(int, date)', 'EXECUTE'),
   'anon cannot release moderation budget'
 );
 select ok(
-  not has_function_privilege('authenticated', 'public.release_moderation_budget(int)', 'EXECUTE'),
+  not has_function_privilege('authenticated', 'public.release_moderation_budget(int, date)', 'EXECUTE'),
   'authenticated cannot release moderation budget'
 );
 select ok(
@@ -127,16 +127,28 @@ revoke execute on function public.claim_moderation_budget(int) from authenticate
 
 update public.app_config set value = '25' where key = 'moderation_daily_call_cap';
 
-select is(public.claim_moderation_budget(10), 10, 'a claim inside the ceiling is granted in full');
-select is(public.claim_moderation_budget(10), 10, 'and again, while there is room');
+select is((public.claim_moderation_budget(10) ->> 'granted')::int, 10,
+  'a claim inside the ceiling is granted in full');
+select is((public.claim_moderation_budget(10) ->> 'granted')::int, 10,
+  'and again, while there is room');
 select is(
-  public.claim_moderation_budget(10), 5,
+  (public.claim_moderation_budget(10) ->> 'granted')::int, 5,
   'a claim that would cross the ceiling is trimmed to what is left'
 );
-select is(public.claim_moderation_budget(10), 0, 'and the next one is refused outright');
+select is((public.claim_moderation_budget(10) ->> 'granted')::int, 0,
+  'and the next one is refused outright');
 select is(
   (select calls from public.moderation_spend where day = current_date), 25,
   'the day is charged for exactly the ceiling, never past it'
+);
+
+-- The day it charged to, which is the half `release` needs. A tick that starts
+-- before midnight and finishes after it must refund the day it BORROWED from;
+-- a release reading current_date at release time would lose today's refund and
+-- hand tomorrow a tick's worth of budget it never claimed.
+select is(
+  (public.claim_moderation_budget(1) ->> 'day')::date, current_date,
+  'and the claim names the day it charged, so the refund can find it'
 );
 
 -- 3. RELEASE GIVES BACK, AND CANNOT MINT -----------------------------------
@@ -146,7 +158,7 @@ select lives_ok(
   'an unspent claim is handed back'
 );
 select is(
-  public.claim_moderation_budget(10), 5,
+  (public.claim_moderation_budget(10) ->> 'granted')::int, 5,
   'and the handed-back budget is claimable again'
 );
 
@@ -159,11 +171,50 @@ select is(
   'a release can empty the day but never drive it negative'
 );
 
+-- 3b. THE REFUND GOES TO THE DAY IT BORROWED FROM --------------------------
+--
+-- Directly testable, unlike the two assertions below it.
+select public.claim_moderation_budget(5);
+insert into public.moderation_spend (day, calls) values (current_date - 1, 20)
+on conflict (day) do update set calls = 20;
+select public.release_moderation_budget(5, current_date - 1);
+select is(
+  (select calls from public.moderation_spend where day = current_date - 1), 15,
+  'a refund names its day and lands on that day'
+);
+
+-- 3c. THE RACE THIS FUNCTION SURVIVES, ASSERTED BY SHAPE -------------------
+--
+-- HONESTLY LABELLED: these two read the function's own definition out of the
+-- catalog instead of exercising it, because the defect they guard needs TWO
+-- CONCURRENT TRANSACTIONS and a pgTAP file is one. Mutation testing confirmed
+-- the gap rather than assumed it - reintroducing the bug leaves every
+-- behavioural assertion in this file green.
+--
+-- The bug: with `on conflict do nothing` followed by a separate
+-- `select ... for update`, two ticks racing the first claim of a new day leave
+-- the loser's insert skipped and the winner's row uncommitted, so the select
+-- finds nothing and v_used is NULL. Postgres's least() IGNORES nulls -
+-- least(47, null) is 47 - so the ceiling check evaluates to p_want, the caller
+-- is granted everything it asked for, and the UPDATE under it matches no rows
+-- and records none of it. A spend cap that hands out unlimited budget on
+-- exactly the transition it is most likely to be raced on.
+select matches(
+  pg_get_functiondef('public.claim_moderation_budget(int)'::regprocedure),
+  'on conflict \(day\) do update',
+  'the claim takes the row lock through DO UPDATE, not DO NOTHING plus a select'
+);
+select matches(
+  pg_get_functiondef('public.claim_moderation_budget(int)'::regprocedure),
+  'if v_used is null then',
+  'and refuses outright if the count is somehow still null, rather than granting'
+);
+
 -- 4. THE KILL SWITCH -------------------------------------------------------
 
 update public.app_config set value = 'true' where key = 'moderation_paused';
 select is(
-  public.claim_moderation_budget(10), 0,
+  (public.claim_moderation_budget(10) ->> 'granted')::int, 0,
   'moderation_paused refuses every claim regardless of the ceiling'
 );
 update public.app_config set value = 'false' where key = 'moderation_paused';

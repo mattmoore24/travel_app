@@ -200,39 +200,35 @@ describe('the edge functions pin what they import', () => {
  * gives back what it did not spend.
  */
 describe('no tick can eat the budget', () => {
-  /** `NAME` or `NAME * 4`, expanded to one entry per call it stands for. */
-  const expand = (expression: string): string[] => {
-    const out: string[] = [];
-    for (const term of expression.split('+')) {
-      const m = /(\w+_PER_TICK)(?:\s*\*\s*(\d+))?/.exec(term);
-      if (!m) continue;
-      for (let i = 0; i < Number(m[2] ?? 1); i += 1) out.push(m[1]);
-    }
-    return out.sort();
-  };
-
-  it('asks for exactly what the nine queues can consume', () => {
-    // The failure this catches is the cheap one to make: add a tenth queue
-    // with its own `.limit()`, forget WANTED_PER_TICK, and the tick quietly
-    // spends more than it claimed for ever after. Compared as a multiset of
-    // constant NAMES rather than a total, so changing a limit's value cannot
-    // hide a missing term behind arithmetic that still adds up.
-    const wanted = /const WANTED_PER_TICK =\s*([^;]+);/.exec(worker)?.[1] ?? '';
-    expect(wanted).not.toEqual('');
-
-    const limits = [...worker.matchAll(/\.limit\((\w+_PER_TICK)\)/g)].map((m) => m[1]).sort();
-    expect(limits).toHaveLength(9);
-    expect(expand(wanted)).toEqual(limits);
+  it('tops the allowance up per queue, for exactly what that queue fetched', () => {
+    // The first cut claimed a flat 47 at the top of every tick and refunded
+    // the remainder on the way out. Correct on paper, fragile in production:
+    // this project's queues are usually EMPTY, so a healthy minute claimed 47
+    // and refunded 47, sixty times an hour, and every one of those refund legs
+    // is a chance not to happen. At 47 a tick against a 2000/day cap, about
+    // forty-three lost refunds spend the whole day on work never done - an
+    // idle worker could starve moderation by crashing.
+    //
+    // Claiming what a queue actually holds fixes it at the root: an empty
+    // queue claims nothing and makes no call at all.
+    const tops = [...worker.matchAll(/await ensure\(\((\w+) \?\? \[\]\)\.length\)/g)].map(
+      (m) => m[1]
+    );
+    expect(tops).toHaveLength(9);
+    // Nine DISTINCT arrays, or two queues are topping up for the same rows.
+    expect(new Set(tops).size).toBe(9);
   });
 
-  it('claims before it reads a single row', () => {
-    // Claiming after the first select would mean a tick over the ceiling
-    // still classifies its first item, every minute, for ever.
-    const claim = worker.indexOf("supabase.rpc('claim_moderation_budget'");
-    const firstSelect = worker.indexOf('await supabase\n    .from(');
-    expect(claim).toBeGreaterThan(-1);
-    expect(firstSelect).toBeGreaterThan(-1);
-    expect(claim).toBeLessThan(firstSelect);
+  it('asks for budget before every queue walks, in every one of them', () => {
+    // The equivalent of the old "WANTED_PER_TICK tracks the limits" check, and
+    // strictly better: a tenth queue added without an ensure() fails here,
+    // where before it only failed if somebody also forgot a constant.
+    const gates = [
+      ...worker.matchAll(/(await ensure\([^\n]*\);\n\s*\n?\s*)?const hasTime\w+ = budgetFor\(/g),
+    ];
+    expect(gates).toHaveLength(9);
+    const unclaimed = gates.filter((m) => !m[1]).length;
+    expect(unclaimed).toBe(0);
   });
 
   it('spends the allowance through the same gate that spends the clock', () => {
@@ -248,33 +244,39 @@ describe('no tick can eat the budget', () => {
     // Not being able to reach the budget is not permission to spend it, and
     // running out is a LATENCY event: the queues go unread, so held content
     // stays held. There is no branch here that approves anything.
-    const claimBlock = between(
-      worker,
-      "supabase.rpc('claim_moderation_budget'",
-      'const signedUrl ='
-    );
-    expect(claimBlock).toContain('if (claimError)');
-    expect(claimBlock).toContain('status: 503');
-    expect(claimBlock).toContain('if (allowance === 0)');
+    const claimBlock = between(worker, 'const ensure = async', 'const respond = async');
+    expect(claimBlock).toContain('claimFailed = true');
+    // One failure stops the tick rather than being retried nine times.
+    expect(claimBlock).toContain('if (claimFailed ||');
     // Asserted against CALLS, not against words: the refusal note says
     // "nothing approved" in prose, and a test that reads prose as code is a
     // test that passes on its own comment.
     expect(claimBlock).not.toMatch(/\.rpc\('apply_/);
   });
 
+  it('refunds to the day it borrowed from, not the day it finished', () => {
+    // A tick starting at 23:59:58 finishes after midnight. Releasing against
+    // current_date at release time would lose today's refund AND hand tomorrow
+    // a tick's worth of budget it never claimed.
+    expect(worker).toContain('let claimDay: string | null = null');
+    const release = between(worker, "supabase.rpc('release_moderation_budget'", '});');
+    expect(release).toContain('p_day: claimDay');
+  });
+
   it('hands the unspent claim back on every exit', () => {
     // Eleven exits, nine of them the same auth-error block. A raw
     // `Response.json` after the helper is defined is a path that keeps the
-    // day charged for calls it never made — which is the safe direction, but
+    // day charged for calls it never made - which is the safe direction, but
     // an outage would burn the whole ceiling in under an hour of ticks.
+    //
     // `after`, not `slice(indexOf(...))`: a slice whose anchor has stopped
     // matching starts at -1 and quietly answers the last character, which is
     // a test that cannot fail. `after` throws instead.
     //
-    // Anchored on the refusal branch rather than on the helper's own closing
-    // line, because `after` KEEPS its anchor, and the helper's last statement
-    // is the one legitimate raw `Response.json` in the file.
-    const afterHelper = after(worker, 'if (allowance === 0) {');
+    // Anchored on the line AFTER the helper, because `after` KEEPS its anchor
+    // and the helper's own last statement is the one legitimate raw
+    // `Response.json` in the file.
+    const afterHelper = after(worker, 'const signedUrl = async');
     expect(afterHelper).not.toContain('return Response.json(');
     expect(afterHelper.match(/return respond\(/g)?.length).toBeGreaterThanOrEqual(11);
   });

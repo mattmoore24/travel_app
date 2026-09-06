@@ -7,9 +7,11 @@
 --
 -- Nothing here changes behaviour for the app. Every revoke below was checked
 -- against the client first: `grep -rn "rpc('<name>'" src/ supabase/functions/`
--- returns zero for all twelve trigger functions, and the two privileged
--- callers of pg_net are SECURITY DEFINER functions owned by postgres, which
--- keep their access whatever anon and authenticated lose.
+-- returns zero for all twelve trigger functions.
+--
+-- THIS FILE DOES ONE THING, NOT TWO. It closes the trigger functions. It does
+-- NOT close pg_net - that cannot be done from a migration, and attempting it
+-- would have broken every background worker. Section 1 is the record of why.
 --
 -- WHAT WAS ALREADY RIGHT, recorded so a later reader does not "fix" it again:
 --   * every table in public has RLS enabled — no exceptions;
@@ -25,40 +27,52 @@
 --     authenticated already;
 --   * no SECURITY DEFINER function in public has a mutable search_path.
 
--- 1. pg_net: THE ONE REAL HOLE.
+-- 1. pg_net: THE HOLE THIS MIGRATION CANNOT CLOSE, AND MUST NOT TRY TO.
 --
--- `create extension pg_net` grants EXECUTE on net.http_get, net.http_post,
--- net.http_delete and net.http_collect_response to PUBLIC, and grants USAGE on
--- schema net broadly. Verified live before writing this:
+-- `create extension pg_net` leaves net.http_get, net.http_post, net.http_delete
+-- and net.http_collect_response executable by PUBLIC, and schema net usable
+-- broadly. Verified live:
 --   has_function_privilege('anon','net.http_post(...)','EXECUTE') = true
 --   has_schema_privilege('anon','net','USAGE')                    = true
--- ...and the same for authenticated.
+-- Worth to an attacker who could reach it: the database issues arbitrary HTTP
+-- requests from Supabase's network. SSRF, an outbound amplifier, and a row in
+-- net._http_response per call.
 --
--- What that is worth to an attacker: the database will issue arbitrary HTTP
--- requests on their behalf, from Supabase's network. That is server-side
--- request forgery against anything the database can reach, an outbound-request
--- amplifier pointed at any third party, and an unbounded cost and storage vector
--- (every call queues a row in net._http_response).
+-- THIS FILE ORIGINALLY REVOKED ALL OF THAT. The revokes have been REMOVED, for
+-- two measured reasons, and the removal is the fix rather than a retreat.
 --
--- TODAY the only thing preventing it is that schema `net` is not in PostgREST's
--- exposed-schema list, which is a DASHBOARD setting one careless change away
--- from being wrong, and which this repository cannot assert. Defence in depth
--- costs nothing here: the app never calls these as anon or authenticated, so
--- revoking removes the hole rather than mitigating it.
+-- FIRST, THEY DO NOTHING HERE. Migrations run as `postgres`, and on Supabase:
+--   current_user = postgres, rolsuper = FALSE
+--   schema net and all 12 net.* functions are owned by supabase_admin
+-- A role that is neither owner nor superuser cannot revoke a privilege it did
+-- not grant; Postgres warns and changes nothing. Running all three statements
+-- against the live database inside a rolled-back transaction left
+-- has_schema_privilege('anon','net','USAGE') and
+-- has_function_privilege('anon','net.http_post(...)','EXECUTE') both still TRUE.
 --
--- Guarded because the local test shim (scripts/db-test.sh) has no pg_net.
-do $$
-begin
-  if exists (select 1 from pg_namespace where nspname = 'net') then
-    execute 'revoke all on schema net from anon, authenticated';
-    execute 'revoke all on all functions in schema net from public, anon, authenticated';
-    execute 'revoke all on all tables in schema net from public, anon, authenticated';
-    -- Future objects too, or the next pg_net upgrade re-opens it.
-    execute 'alter default privileges in schema net revoke all on functions from public, anon, authenticated';
-    execute 'alter default privileges in schema net revoke all on tables from public, anon, authenticated';
-  end if;
-end
-$$;
+-- SECOND, AND WORSE: WHERE THEY WOULD WORK, THEY WOULD BREAK THE PRODUCT.
+-- net.http_post carries a NULL ACL - the default, which is EXECUTE to PUBLIC
+-- and nothing else. `postgres` therefore reaches it through the PUBLIC grant
+-- and through no other route:
+--   proacl = null, has_function_privilege('postgres', 'net.http_post', 'EXECUTE') = true
+-- So `revoke all on all functions in schema net from public` takes the
+-- privilege away from postgres too - and public.invoke_edge_worker is SECURITY
+-- DEFINER owned by postgres. Every cron worker (moderation, push, and the rest)
+-- would stop dead. An earlier draft of this file asserted the opposite in a
+-- comment: "the workers keep their access whatever anon and authenticated
+-- lose". That was wrong, and it was wrong in the dangerous direction.
+--
+-- There is no correct version of the revoke. anon and authenticated hold no
+-- direct grant to take away - their access IS the PUBLIC grant - so the only
+-- statement that would help is the one that breaks the workers, and repairing
+-- that needs an explicit grant back, which needs ownership, which this role
+-- does not have.
+--
+-- WHAT ACTUALLY PROTECTS THIS, and always has: schema `net` is not in
+-- PostgREST's exposed-schema list, so nothing routes from the API to these
+-- functions. That is a dashboard setting this repository can neither read nor
+-- change, which makes it a checklist item and not a migration - see
+-- docs/security/MANUAL_CHECKLIST.md, section 2, first entry.
 
 -- 2. TRIGGER FUNCTIONS ARE NOT AN API.
 --
@@ -137,7 +151,9 @@ $$;
 comment on schema public is
   'Samewhere. Trigger functions carry no EXECUTE for anon or authenticated: '
   'they are reachable only as triggers, and a grant on one is an API surface '
-  'nobody asked for. pg_net is revoked from both roles as well - the workers '
-  'reach it through SECURITY DEFINER functions owned by postgres.';
+  'nobody asked for. pg_net is deliberately NOT touched here: its objects '
+  'belong to supabase_admin, and revoking PUBLIC from them would cut off '
+  'postgres and stop every cron worker. Schema net not being an exposed '
+  'PostgREST schema is what protects it.';
 
 notify pgrst, 'reload schema';

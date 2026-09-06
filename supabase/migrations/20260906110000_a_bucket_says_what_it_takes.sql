@@ -19,18 +19,37 @@
 -- the product is at risk today; a signed URL opened in a browser is a
 -- different story, and it is a link somebody can be sent.
 --
--- WHAT THE CLIENT ACTUALLY UPLOADS, which is why the allowlist can be this
--- narrow without breaking a feature: every upload in the app goes through
--- processAndUploadImage (src/lib/image-upload.ts). It resizes to 1440px wide,
--- re-encodes with saveAsync({ compress: 0.8, format: SaveFormat.JPEG }), and
--- uploads with contentType: 'image/jpeg' -- one code path, one type, no
--- exceptions, and no edge function uploads at all (they list, sign and
--- delete). A file in these buckets that is not a JPEG did not come from this
--- app.
+-- WHAT ACTUALLY UPLOADS, which is what decides how narrow the allowlist can be.
 --
--- 5 MB against a 1440px JPEG at quality 0.8, which lands between 200 KB and
--- 2 MB in practice: room for the worst photograph anyone will take, and an
--- order of magnitude off the project ceiling.
+-- Every upload from the APP goes through processAndUploadImage
+-- (src/lib/image-upload.ts:217). It resizes to 1440px wide, re-encodes with
+-- saveAsync({ compress: 0.8, format: SaveFormat.JPEG }) and uploads with
+-- contentType: 'image/jpeg' -- one code path, one type, no exceptions. No edge
+-- function uploads at all; they list, sign and delete.
+--
+-- THE FIRST DRAFT OF THIS MIGRATION ALLOWED ONLY image/jpeg ON THAT BASIS, AND
+-- IT WAS WRONG. scripts/seed-demo-travelers.mjs:200 fetches a generated
+-- portrait and PUTs it with 'Content-Type': 'image/png', through the same
+-- storage path the app uses so it goes through the real moderation queue. The
+-- live bucket agrees: of the sixteen objects in profile-photos, TWELVE are
+-- image/png -- the seeded demo travelers, who are most of what is in there.
+--
+-- And it would have failed SILENTLY. That upload sits in a try/catch whose
+-- handler is `console.log('::warning::photo for ... skipped')`, so a rejected
+-- content type does not fail the seed: it produces demo travelers with no
+-- photo, and a map with no avatar markers, while the script reports success.
+--
+-- So: jpeg and png. That gives up nothing the allowlist was for. The exposure
+-- being closed is "any content type at all", including text/html and
+-- application/javascript on a signed URL somebody can be sent -- not "any image
+-- format". Neither jpeg nor png can carry script. image/svg+xml can, and is
+-- deliberately NOT here.
+--
+-- 5 MB: the largest object in any bucket today is 2.0 MB, and a 1440px JPEG at
+-- quality 0.8 lands between 200 KB and 2 MB. Room for the worst photograph
+-- anyone will take, and an order of magnitude off the project ceiling.
+-- Existing objects are unaffected either way; a bucket's limits apply to new
+-- uploads, not to reads of what is already stored.
 --
 -- Guarded on the column existing, because the local shim (scripts/db-test.sh)
 -- stands up a storage.buckets with only the columns the RLS tests need.
@@ -43,7 +62,7 @@ begin
   ) then
     update storage.buckets
     set file_size_limit = 5 * 1024 * 1024,
-        allowed_mime_types = array['image/jpeg']
+        allowed_mime_types = array['image/jpeg', 'image/png']
     where id in (
       'profile-photos',
       'chat-photos',

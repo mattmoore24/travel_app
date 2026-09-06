@@ -55,17 +55,6 @@ const STOREFRONTS_PER_TICK = 3;
 const SCANS_PER_TICK = 3;
 const SIGNED_URL_TTL_SECONDS = 600;
 
-// What one tick would spend if every queue ran full. Claimed from the daily
-// ceiling up front and handed back unspent, so the sum has to track the
-// `.limit()` calls below rather than be written down twice; a test holds it.
-const WANTED_PER_TICK =
-  CHAT_PHOTOS_PER_TICK +
-  MESSAGES_PER_TICK +
-  PHOTOS_PER_TICK * 4 + // profile, business, post, group
-  VERIFICATIONS_PER_TICK +
-  STOREFRONTS_PER_TICK +
-  SCANS_PER_TICK;
-
 // THE TICK HAS A CLOCK, because before it had one a slow queue could starve
 // every queue behind it for ever.
 //
@@ -440,29 +429,67 @@ Deno.serve(async (req) => {
 
   // THE DAILY CEILING (20260906100000).
   //
-  // Claimed for the whole tick before a single row is selected, and handed
-  // back unspent on the way out. Claiming first is what makes the failure
-  // direction right: if this isolate is killed mid-tick — the failure
-  // TICK_BUDGET_MS exists for — the release never runs and the day is charged
-  // for calls that were never made. A killed worker under-spends the cap
-  // instead of slipping past it.
+  // CLAIMED PER QUEUE, FOR WHAT THAT QUEUE ACTUALLY FETCHED - not a flat
+  // forty-seven up front. The first cut claimed all 47 at the top of every
+  // tick and released the remainder on the way out, which is correct on paper
+  // and fragile in production: this project's queues are usually EMPTY, so a
+  // healthy minute claimed 47 and refunded 47, sixty times an hour, for ever.
+  // Every one of those round trips is a chance for the refund leg not to
+  // happen - a killed isolate, a failed rpc - and at 47 a tick against a
+  // 2000/day cap it takes about forty-three lost refunds to spend the whole
+  // day on work that was never done. An idle worker could starve moderation by
+  // crashing.
   //
-  // Nought granted is NOT an error and NOT an approval: the queues are simply
-  // not read, so everything in them stays 'pending', held and unshown, until
-  // tomorrow or until the cap is raised. Running out of money looks like a
-  // slow queue here, never like an open door.
-  const { data: granted, error: claimError } = await supabase.rpc('claim_moderation_budget', {
-    p_want: WANTED_PER_TICK,
-  });
-  if (claimError) {
-    // Fail closed. Not being able to ASK about the budget is not permission
-    // to spend it.
-    return Response.json(
-      { error: `claim_moderation_budget: ${claimError.message}`, report },
-      { status: 503 }
-    );
-  }
-  let allowance = typeof granted === 'number' ? granted : 0;
+  // Claiming what a queue actually holds fixes it at the root: an empty queue
+  // claims nothing and makes no call at all, so the steady state is zero
+  // traffic and zero exposure, and the most a crash can strand is one queue's
+  // worth.
+  //
+  // Claim BEFORE the calls, still. If this isolate is killed mid-queue the
+  // release never runs and the day is charged for calls that were not made -
+  // which is the correct direction to be wrong in: a killed worker under-spends
+  // the cap instead of slipping past it.
+  //
+  // Nought granted is NOT an error and NOT an approval: the queue is simply not
+  // walked, so everything in it stays 'pending', held and unshown, until
+  // tomorrow or until the cap is raised. Running out of money looks like a slow
+  // queue here, never like an open door.
+  let allowance = 0;
+  // The day the budget was charged to, captured from the claim rather than
+  // read at release time: a tick that straddles UTC midnight must refund the
+  // day it borrowed from.
+  let claimDay: string | null = null;
+  let claimFailed = false;
+
+  /** Top the allowance up to `want`, if the day's ceiling still has room. */
+  const ensure = async (want: number): Promise<void> => {
+    if (claimFailed || want <= allowance) {
+      return;
+    }
+    const { data, error } = await supabase.rpc('claim_moderation_budget', {
+      p_want: want - allowance,
+    });
+    if (error) {
+      // Fail closed. Not being able to ASK about the budget is not permission
+      // to spend it, and one failure stops the whole tick rather than being
+      // retried nine times.
+      claimFailed = true;
+      report.notes.push(`claim_moderation_budget: ${error.message}`);
+      return;
+    }
+    const granted = typeof data?.granted === 'number' ? data.granted : 0;
+    if (data?.day) {
+      claimDay = data.day as string;
+    }
+    allowance += granted;
+    if (granted === 0 && !report.notes.some((n) => n.startsWith('daily moderation ceiling'))) {
+      report.notes.push(
+        'daily moderation ceiling reached (or moderation_paused is on) - queues ' +
+          'left unread, nothing approved. Raise app_config.moderation_daily_call_cap ' +
+          "to resume; worker_status() reports the day's count."
+      );
+    }
+  };
 
   // Every exit from here on goes through `respond`, which hands the unspent
   // claim back first. There are eleven of them and nine are the same
@@ -473,7 +500,10 @@ Deno.serve(async (req) => {
     if (!released) {
       released = true;
       if (allowance > 0) {
-        const { error } = await supabase.rpc('release_moderation_budget', { p_unused: allowance });
+        const { error } = await supabase.rpc('release_moderation_budget', {
+          p_unused: allowance,
+          p_day: claimDay,
+        });
         if (error) {
           // Nothing to do about it beyond saying so: the claim stays spent,
           // which costs this tick's headroom and nothing else.
@@ -483,15 +513,6 @@ Deno.serve(async (req) => {
     }
     return Response.json(body, init);
   };
-
-  if (allowance === 0) {
-    report.notes.push(
-      'daily moderation ceiling reached (or moderation_paused is on) — every queue ' +
-        'left untouched, nothing approved. Raise app_config.moderation_daily_call_cap ' +
-        "to resume; worker_status() reports the day's count."
-    );
-    return respond(report);
-  }
 
   const signedUrl = async (bucket: string, path: string): Promise<string> => {
     const { data, error } = await supabase.storage
@@ -511,10 +532,15 @@ Deno.serve(async (req) => {
   // their own report instead of both looking like a tick with nothing to do.
   //
   // The allowance is decremented on PERMISSION, not on the call, so a queue
-  // that is waved through and then does nothing has still spent the unit. That
-  // over-counts within the tick by at most one item per queue and every unit
-  // of it is handed back by `respond`; counting after the call instead would
-  // let a crash between the call and the count spend money the day never sees.
+  // that is waved through and then does nothing has still spent the unit.
+  //
+  // That unit is NOT recovered. `respond` hands back what is LEFT of the
+  // allowance, not what was consumed without being used - so an over-count
+  // inside the tick is permanent for the day. It is bounded at one item per
+  // queue per tick, and it errs in the safe direction: the day under-spends
+  // its ceiling rather than slipping past it. Counting after the call instead
+  // would let a crash between the call and the count spend money the day never
+  // sees, which is the failure that actually matters.
   const startedAt = Date.now();
   const tickEndsAt = startedAt + TICK_BUDGET_MS;
   const budgetFor = (queue: keyof typeof QUEUE_BUDGET_MS) => {
@@ -558,6 +584,8 @@ Deno.serve(async (req) => {
     .not('image_path', 'is', null)
     .order('created_at')
     .limit(CHAT_PHOTOS_PER_TICK);
+
+  await ensure((chatPhotos ?? []).length);
 
   const hasTimeChatPhotos = budgetFor('chatPhotos');
   for (const photo of chatPhotos ?? []) {
@@ -621,6 +649,8 @@ Deno.serve(async (req) => {
   if (heldError) {
     return respond({ error: heldError.message }, { status: 500 });
   }
+
+  await ensure((held ?? []).length);
 
   const hasTimeMessages = budgetFor('messages');
   for (const request of held ?? []) {
@@ -710,6 +740,8 @@ Deno.serve(async (req) => {
     .lt('moderation_attempts', MAX_ATTEMPTS)
     .order('created_at')
     .limit(PHOTOS_PER_TICK);
+
+  await ensure((photos ?? []).length);
 
   const hasTimePhotos = budgetFor('photos');
   for (const photo of photos ?? []) {
@@ -807,6 +839,8 @@ Deno.serve(async (req) => {
     .lt('moderation_attempts', MAX_ATTEMPTS)
     .order('created_at')
     .limit(PHOTOS_PER_TICK);
+
+  await ensure((businessPhotos ?? []).length);
 
   const hasTimeBusinessPhotos = budgetFor('businessPhotos');
   for (const photo of businessPhotos ?? []) {
@@ -914,6 +948,8 @@ Deno.serve(async (req) => {
     .lt('moderation_attempts', MAX_ATTEMPTS)
     .order('created_at')
     .limit(PHOTOS_PER_TICK);
+
+  await ensure((postPhotos ?? []).length);
 
   const hasTimePostPhotos = budgetFor('postPhotos');
   for (const post of postPhotos ?? []) {
@@ -1026,6 +1062,8 @@ Deno.serve(async (req) => {
     .lt('moderation_attempts', MAX_ATTEMPTS)
     .order('created_at')
     .limit(PHOTOS_PER_TICK);
+
+  await ensure((groupPhotos ?? []).length);
 
   const hasTimeGroupPhotos = budgetFor('groupPhotos');
   for (const group of groupPhotos ?? []) {
@@ -1173,6 +1211,8 @@ Deno.serve(async (req) => {
     }
   };
 
+  await ensure((verifications ?? []).length);
+
   const hasTimeVerifications = budgetFor('verifications');
   for (const verification of verifications ?? []) {
     if (!hasTimeVerifications()) {
@@ -1319,6 +1359,8 @@ Deno.serve(async (req) => {
       }
     };
 
+    await ensure((storefronts ?? []).length);
+
     const hasTimeStorefronts = budgetFor('storefronts');
     for (const check of storefronts ?? []) {
       if (!hasTimeStorefronts()) {
@@ -1439,6 +1481,8 @@ Deno.serve(async (req) => {
       .eq('status', 'pending')
       .order('created_at')
       .limit(SCANS_PER_TICK);
+
+    await ensure((scans ?? []).length);
 
     const hasTimeScans = budgetFor('scans');
     for (const scan of scans ?? []) {
