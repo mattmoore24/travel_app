@@ -1,5 +1,47 @@
 # Cloudflare Pages headers.
+
+# EVERY PAGE, and the reason it matters more than a static brochure suggests.
 #
+# /reset is not a brochure. Supabase puts a password-recovery token in the URL
+# and that page reads `window.location.hash` (and, when Supabase uses the query
+# string instead, `window.location.search`) to hand it to the app through a
+# `samewhere://` deep link. /i does the same job for invite links. So this
+# origin handles credentials in URLs, on pages that also run inline script,
+# and it was serving them with no security headers at all.
+#
+# The policy is written to be strict by DEFAULT and to open only what the pages
+# actually use, which is very little: across the whole site there is exactly one
+# external reference (an apps.apple.com App Store LINK, not a subresource),
+# no fonts, no analytics, no third-party anything.
+/*
+  # default-src 'none' is the whole policy; everything below is an exception.
+  # connect-src is deliberately absent, so it inherits 'none': a script on this
+  # origin cannot fetch, XHR or WebSocket a recovery token anywhere. That is the
+  # exfiltration path this header exists to close.
+  #
+  # 'unsafe-inline' on script-src is honest rather than lazy: three pages carry
+  # an inline <script> and there is no build step here to hash them, so a hash
+  # would silently stop the reset page working the first time somebody edited a
+  # comment in it. It costs little here because these files are STATIC - no user
+  # input is reflected into any of them, so there is no injection point for
+  # 'unsafe-inline' to widen. An attacker who can add script to these pages has
+  # already replaced the files.
+  Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  # No page here is ever meant to be framed, and /reset in a frame is a
+  # clickjacking target. frame-ancestors above is the modern spelling; this is
+  # the one older browsers obey.
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  # The recovery token rides in the fragment, which is never sent in a Referer -
+  # but Supabase sometimes uses the QUERY STRING instead, and that is. no-referrer
+  # is the only setting that cannot leak it.
+  Referrer-Policy: no-referrer
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  # Nothing on this site needs a sensor, and hard rule 7 says the app never
+  # asks for live location. Saying so in a header costs nothing and means a
+  # future page cannot quietly start.
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=(), usb=(), interest-cohort=()
+
 # The association file has no extension, so nothing infers its type. iOS
 # refuses to parse it unless it arrives as application/json, and the failure is
 # silent: links simply open Safari and nobody is told why.
