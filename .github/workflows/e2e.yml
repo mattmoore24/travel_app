@@ -331,7 +331,21 @@ jobs:
           # with it — so it goes through GITHUB_ENV rather than staying a
           # local. Masked because that file's contents are echoed into every
           # later step's env dump, and these are public logs.
-          E2E_THROWAWAY_PASSWORD='MaestroBiz!2026'
+          #
+          # GENERATED, not a constant, and the reason is teardown. This used to
+          # be one fixed string written out in this file, in a public
+          # repository, unchanged across every run. The accounts it opens are throwaways and the
+          # teardown below deletes them - but that teardown is best-effort by
+          # design (`if: always()`, `|| continue`), and run 39 is on record for
+          # leaving one alive. A leftover account on the PRODUCTION project
+          # whose password anybody can read is an account anybody can sign into:
+          # it can send, pin, and spend the moderation budget.
+          #
+          # e2e/account.mjs:82 already generates and masks the main password
+          # this way; this line was the one that did not. Same shape, so the
+          # same password rules pass.
+          E2E_THROWAWAY_PASSWORD="E2e-throwaway-$(openssl rand -hex 8)"
+
           echo "::add-mask::$E2E_THROWAWAY_PASSWORD"
           echo "E2E_THROWAWAY_PASSWORD=$E2E_THROWAWAY_PASSWORD" >> "$GITHUB_ENV"
           # Both tours sign up, so they cannot share an address, and NEITHER
@@ -462,10 +476,63 @@ jobs:
               node e2e/account.mjs teardown-extras
           done
 
+      # THE SHOTS GO TO A PUBLIC BRANCH, AND THE APP DRAWS THE ADDRESS.
+      #
+      # TEST_EMAIL_BASE is a secret so that a person's own inbox is not
+      # hard-coded in a public repository (e2e/account.mjs says so in its own
+      # header). That control works on TEXT: `::add-mask::` redacts a log line,
+      # and nothing here ever echoes the address.
+      #
+      # It does not work on PIXELS. The tour photographs "Change your email",
+      # which renders "You sign in with <address> today" in full, and the sign-in
+      # and signup screens photograph what was typed into them. Those PNGs are
+      # then force-pushed to `e2e-results`, in a public repo, where the masking
+      # never reaches them. The secret kept the address out of the source and
+      # published it as a picture instead.
+      #
+      # So: publish to the public branch only when the address is not a personal
+      # mailbox. The shots still upload as an artifact either way, so a run is
+      # never wasted, and the fix is one secret away rather than a workflow
+      # rewrite. See docs/security/MANUAL_CHECKLIST.md.
+      - name: Is the test inbox safe to photograph
+        if: always()
+        env:
+          TEST_EMAIL_BASE: ${{ secrets.TEST_EMAIL_BASE }}
+        run: |
+          consumer='gmail.com googlemail.com outlook.com hotmail.com live.com msn.com yahoo.com ymail.com icloud.com me.com mac.com aol.com proton.me protonmail.com pm.me gmx.com gmx.net yandex.com zoho.com'
+          domain="$(printf '%s' "${TEST_EMAIL_BASE##*@}" | tr 'A-Z' 'a-z')"
+          publish=true
+          if [ -z "$domain" ]; then
+            publish=false
+            echo "::error::TEST_EMAIL_BASE is unset; not publishing screenshots."
+          else
+            for known in $consumer; do
+              if [ "$domain" = "$known" ]; then
+                publish=false
+                echo "::error::TEST_EMAIL_BASE is at $domain, a personal mail provider, and the app draws that address on screen (Change your email renders it in full). Publishing these shots would put it on the public e2e-results branch, where ::add-mask:: cannot reach a pixel. Not publishing. Point TEST_EMAIL_BASE at a role address on a domain you control and re-run. This run's shots are attached as an artifact. See docs/security/MANUAL_CHECKLIST.md."
+                break
+              fi
+            done
+          fi
+          echo "PUBLISH_SHOTS=$publish" >> "$GITHUB_ENV"
+
+      # Always, and regardless of the check above: a run that cannot publish
+      # publicly must still hand its pictures to whoever asked for them.
+      - name: Upload screenshots as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: |
+            shots/**/*.png
+            ~/.maestro/**/*.png
+          if-no-files-found: ignore
+          retention-days: 14
+
       # Even a failed flow usually produced screenshots — publish whatever
       # exists, then fail the job afterwards so red still means broken.
       - name: Publish screenshots to the e2e-results branch
-        if: always()
+        if: always() && env.PUBLISH_SHOTS == 'true'
         run: |
           git checkout --orphan e2e-results
           git rm -rfq . || true
