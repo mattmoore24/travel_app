@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { between } from '@/lib/__tests__/source';
+import { after, between } from '@/lib/__tests__/source';
 
 /**
  * Every queue a migration opens has to have a worker branch that drains it.
@@ -179,5 +179,103 @@ describe('the edge functions pin what they import', () => {
       .filter(({ specifier }) => specifier.startsWith('npm:'))
       .filter(({ specifier }) => !/@\d+\.\d+\.\d+(\/|$)/.test(specifier));
     expect(floating).toEqual([]);
+  });
+});
+
+/**
+ * And the tick has to be bounded in MONEY as well as in time.
+ *
+ * The two are not the same bound and reading one as the other is the mistake
+ * this suite is here to stop. TICK_BUDGET_MS is a latency device: it exists so
+ * a slow queue cannot starve the one behind it. What it does NOT do is refuse
+ * the sixty-eight-thousandth model call of the day, and at nine queues against
+ * a cron that fires every minute that is the number the old arrangement was
+ * willing to reach.
+ *
+ * 20260906100000 added the ceiling. The worker claims a tick's worth up front,
+ * spends against it through the same gate that spends the clock, and hands the
+ * remainder back on the way out. These tests hold the three things that make
+ * the claim honest: that it is asked for before any row is read, that what it
+ * asks for tracks what the queues can actually consume, and that every exit
+ * gives back what it did not spend.
+ */
+describe('no tick can eat the budget', () => {
+  /** `NAME` or `NAME * 4`, expanded to one entry per call it stands for. */
+  const expand = (expression: string): string[] => {
+    const out: string[] = [];
+    for (const term of expression.split('+')) {
+      const m = /(\w+_PER_TICK)(?:\s*\*\s*(\d+))?/.exec(term);
+      if (!m) continue;
+      for (let i = 0; i < Number(m[2] ?? 1); i += 1) out.push(m[1]);
+    }
+    return out.sort();
+  };
+
+  it('asks for exactly what the nine queues can consume', () => {
+    // The failure this catches is the cheap one to make: add a tenth queue
+    // with its own `.limit()`, forget WANTED_PER_TICK, and the tick quietly
+    // spends more than it claimed for ever after. Compared as a multiset of
+    // constant NAMES rather than a total, so changing a limit's value cannot
+    // hide a missing term behind arithmetic that still adds up.
+    const wanted = /const WANTED_PER_TICK =\s*([^;]+);/.exec(worker)?.[1] ?? '';
+    expect(wanted).not.toEqual('');
+
+    const limits = [...worker.matchAll(/\.limit\((\w+_PER_TICK)\)/g)].map((m) => m[1]).sort();
+    expect(limits).toHaveLength(9);
+    expect(expand(wanted)).toEqual(limits);
+  });
+
+  it('claims before it reads a single row', () => {
+    // Claiming after the first select would mean a tick over the ceiling
+    // still classifies its first item, every minute, for ever.
+    const claim = worker.indexOf("supabase.rpc('claim_moderation_budget'");
+    const firstSelect = worker.indexOf('await supabase\n    .from(');
+    expect(claim).toBeGreaterThan(-1);
+    expect(firstSelect).toBeGreaterThan(-1);
+    expect(claim).toBeLessThan(firstSelect);
+  });
+
+  it('spends the allowance through the same gate that spends the clock', () => {
+    // Which is what makes the existing "asks for time before every item" test
+    // above cover the money too: one gate, nine queues, no second list to keep
+    // in step.
+    const gate = between(worker, 'const budgetFor = (queue', '  };\n');
+    expect(gate).toContain('if (allowance <= 0)');
+    expect(gate).toContain('allowance -= 1;');
+  });
+
+  it('fails closed when it cannot ask, and holds rather than approves when refused', () => {
+    // Not being able to reach the budget is not permission to spend it, and
+    // running out is a LATENCY event: the queues go unread, so held content
+    // stays held. There is no branch here that approves anything.
+    const claimBlock = between(
+      worker,
+      "supabase.rpc('claim_moderation_budget'",
+      'const signedUrl ='
+    );
+    expect(claimBlock).toContain('if (claimError)');
+    expect(claimBlock).toContain('status: 503');
+    expect(claimBlock).toContain('if (allowance === 0)');
+    // Asserted against CALLS, not against words: the refusal note says
+    // "nothing approved" in prose, and a test that reads prose as code is a
+    // test that passes on its own comment.
+    expect(claimBlock).not.toMatch(/\.rpc\('apply_/);
+  });
+
+  it('hands the unspent claim back on every exit', () => {
+    // Eleven exits, nine of them the same auth-error block. A raw
+    // `Response.json` after the helper is defined is a path that keeps the
+    // day charged for calls it never made — which is the safe direction, but
+    // an outage would burn the whole ceiling in under an hour of ticks.
+    // `after`, not `slice(indexOf(...))`: a slice whose anchor has stopped
+    // matching starts at -1 and quietly answers the last character, which is
+    // a test that cannot fail. `after` throws instead.
+    //
+    // Anchored on the refusal branch rather than on the helper's own closing
+    // line, because `after` KEEPS its anchor, and the helper's last statement
+    // is the one legitimate raw `Response.json` in the file.
+    const afterHelper = after(worker, 'if (allowance === 0) {');
+    expect(afterHelper).not.toContain('return Response.json(');
+    expect(afterHelper.match(/return respond\(/g)?.length).toBeGreaterThanOrEqual(11);
   });
 });

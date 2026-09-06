@@ -55,6 +55,17 @@ const STOREFRONTS_PER_TICK = 3;
 const SCANS_PER_TICK = 3;
 const SIGNED_URL_TTL_SECONDS = 600;
 
+// What one tick would spend if every queue ran full. Claimed from the daily
+// ceiling up front and handed back unspent, so the sum has to track the
+// `.limit()` calls below rather than be written down twice; a test holds it.
+const WANTED_PER_TICK =
+  CHAT_PHOTOS_PER_TICK +
+  MESSAGES_PER_TICK +
+  PHOTOS_PER_TICK * 4 + // profile, business, post, group
+  VERIFICATIONS_PER_TICK +
+  STOREFRONTS_PER_TICK +
+  SCANS_PER_TICK;
+
 // THE TICK HAS A CLOCK, because before it had one a slow queue could starve
 // every queue behind it for ever.
 //
@@ -427,6 +438,61 @@ Deno.serve(async (req) => {
     notes: [],
   };
 
+  // THE DAILY CEILING (20260906100000).
+  //
+  // Claimed for the whole tick before a single row is selected, and handed
+  // back unspent on the way out. Claiming first is what makes the failure
+  // direction right: if this isolate is killed mid-tick — the failure
+  // TICK_BUDGET_MS exists for — the release never runs and the day is charged
+  // for calls that were never made. A killed worker under-spends the cap
+  // instead of slipping past it.
+  //
+  // Nought granted is NOT an error and NOT an approval: the queues are simply
+  // not read, so everything in them stays 'pending', held and unshown, until
+  // tomorrow or until the cap is raised. Running out of money looks like a
+  // slow queue here, never like an open door.
+  const { data: granted, error: claimError } = await supabase.rpc('claim_moderation_budget', {
+    p_want: WANTED_PER_TICK,
+  });
+  if (claimError) {
+    // Fail closed. Not being able to ASK about the budget is not permission
+    // to spend it.
+    return Response.json(
+      { error: `claim_moderation_budget: ${claimError.message}`, report },
+      { status: 503 }
+    );
+  }
+  let allowance = typeof granted === 'number' ? granted : 0;
+
+  // Every exit from here on goes through `respond`, which hands the unspent
+  // claim back first. There are eleven of them and nine are the same
+  // three-line auth-error block, so a helper is the only way this stays true
+  // the twelfth time somebody adds one.
+  let released = false;
+  const respond = async (body: unknown, init?: ResponseInit): Promise<Response> => {
+    if (!released) {
+      released = true;
+      if (allowance > 0) {
+        const { error } = await supabase.rpc('release_moderation_budget', { p_unused: allowance });
+        if (error) {
+          // Nothing to do about it beyond saying so: the claim stays spent,
+          // which costs this tick's headroom and nothing else.
+          report.notes.push(`release_moderation_budget: ${error.message}`);
+        }
+      }
+    }
+    return Response.json(body, init);
+  };
+
+  if (allowance === 0) {
+    report.notes.push(
+      'daily moderation ceiling reached (or moderation_paused is on) — every queue ' +
+        'left untouched, nothing approved. Raise app_config.moderation_daily_call_cap ' +
+        "to resume; worker_status() reports the day's count."
+    );
+    return respond(report);
+  }
+
   const signedUrl = async (bucket: string, path: string): Promise<string> => {
     const { data, error } = await supabase.storage
       .from(bucket)
@@ -437,25 +503,41 @@ Deno.serve(async (req) => {
     return data.signedUrl;
   };
 
-  // A queue's permission to start one more item. Called once per queue, just
-  // before its loop, and asked before each item — never in the middle of one,
-  // so nothing is ever abandoned half classified. The first refusal writes a
-  // note, so a tick that ran out of time says so in its own report instead of
-  // looking identical to a tick with nothing to do.
+  // A queue's permission to start one more item, against BOTH budgets: the
+  // tick's clock and the day's money. Called once per queue, just before its
+  // loop, and asked before each item — never in the middle of one, so nothing
+  // is ever abandoned half classified. Each refusal writes its note once, so a
+  // tick that ran out of time and a tick that ran out of budget say which in
+  // their own report instead of both looking like a tick with nothing to do.
+  //
+  // The allowance is decremented on PERMISSION, not on the call, so a queue
+  // that is waved through and then does nothing has still spent the unit. That
+  // over-counts within the tick by at most one item per queue and every unit
+  // of it is handed back by `respond`; counting after the call instead would
+  // let a crash between the call and the count spend money the day never sees.
   const startedAt = Date.now();
   const tickEndsAt = startedAt + TICK_BUDGET_MS;
   const budgetFor = (queue: keyof typeof QUEUE_BUDGET_MS) => {
     const endsAt = Math.min(Date.now() + QUEUE_BUDGET_MS[queue], tickEndsAt);
-    let noted = false;
+    let notedTime = false;
+    let notedSpend = false;
     return () => {
-      if (Date.now() < endsAt) {
-        return true;
+      if (allowance <= 0) {
+        if (!notedSpend) {
+          notedSpend = true;
+          report.notes.push(`${queue}: this tick's moderation budget is spent`);
+        }
+        return false;
       }
-      if (!noted) {
-        noted = true;
-        report.notes.push(`${queue}: out of time this tick, the rest waits for the next one`);
+      if (Date.now() >= endsAt) {
+        if (!notedTime) {
+          notedTime = true;
+          report.notes.push(`${queue}: out of time this tick, the rest waits for the next one`);
+        }
+        return false;
       }
-      return false;
+      allowance -= 1;
+      return true;
     };
   };
 
@@ -517,7 +599,7 @@ Deno.serve(async (req) => {
       }
     } catch (error) {
       if (isAuthError(error)) {
-        return Response.json(
+        return respond(
           { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
           { status: 503 }
         );
@@ -537,7 +619,7 @@ Deno.serve(async (req) => {
     .order('created_at')
     .limit(MESSAGES_PER_TICK);
   if (heldError) {
-    return Response.json({ error: heldError.message }, { status: 500 });
+    return respond({ error: heldError.message }, { status: 500 });
   }
 
   const hasTimeMessages = budgetFor('messages');
@@ -584,7 +666,7 @@ Deno.serve(async (req) => {
       }
     } catch (error) {
       if (isAuthError(error)) {
-        return Response.json(
+        return respond(
           { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
           { status: 503 }
         );
@@ -668,7 +750,7 @@ Deno.serve(async (req) => {
       }
     } catch (error) {
       if (isAuthError(error)) {
-        return Response.json(
+        return respond(
           { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
           { status: 503 }
         );
@@ -770,7 +852,7 @@ Deno.serve(async (req) => {
       }
     } catch (error) {
       if (isAuthError(error)) {
-        return Response.json(
+        return respond(
           { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
           { status: 503 }
         );
@@ -878,7 +960,7 @@ Deno.serve(async (req) => {
       }
     } catch (error) {
       if (isAuthError(error)) {
-        return Response.json(
+        return respond(
           { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
           { status: 503 }
         );
@@ -998,7 +1080,7 @@ Deno.serve(async (req) => {
       }
     } catch (error) {
       if (isAuthError(error)) {
-        return Response.json(
+        return respond(
           { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
           { status: 503 }
         );
@@ -1191,7 +1273,7 @@ Deno.serve(async (req) => {
       }
     } catch (error) {
       if (isAuthError(error)) {
-        return Response.json(
+        return respond(
           { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
           { status: 503 }
         );
@@ -1323,7 +1405,7 @@ Deno.serve(async (req) => {
         }
       } catch (error) {
         if (isAuthError(error)) {
-          return Response.json(
+          return respond(
             { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
             { status: 503 }
           );
@@ -1464,7 +1546,7 @@ Deno.serve(async (req) => {
         }
       } catch (error) {
         if (isAuthError(error)) {
-          return Response.json(
+          return respond(
             { error: 'anthropic auth failed — check ANTHROPIC_API_KEY', report },
             { status: 503 }
           );
@@ -1482,5 +1564,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return Response.json(report);
+  return respond(report);
 });
