@@ -4,9 +4,15 @@
     "These are NOT real people: the portraits are AI-generated, so no real",
     "person's likeness is used. Every bio ends with a visible [demo] marker and",
     "the runbook requires purging them before real users arrive.",
-    "photoUrl values are time-limited generation links. They only matter at",
-    "seed time: once uploaded the photos live in Supabase Storage. If a link",
-    "has expired, ask Claude to regenerate the portraits before re-seeding.",
+    "photoUrl values are time-limited generation links, and the window is SHORT:",
+    "the 2026-09-08 batch was signed for roughly 24 to 48 hours. They only matter",
+    "at seed time - once uploaded the photos live in Supabase Storage and the link",
+    "expiring costs nothing. But it means you cannot regenerate today and seed next",
+    "week: the links WILL be dead, the seed's photo upload catches the failure and",
+    "logs ::warning::photo for <slug> skipped, and the run still reports success",
+    "with twelve faceless travelers. Regenerate and seed in the same sitting, then",
+    "check storage.objects for profile-photos went up by twelve. If a link has",
+    "expired, ask Claude to regenerate the portraits before re-seeding.",
     "",
     "ORDER MATTERS. The seed script derives each trip schedule from the index:",
     "rotation = index % 4 picks which launch city they are in TODAY (Lisbon,",
@@ -47,7 +53,7 @@
         }
       ],
       "cities": ["Lisbon", "Bangkok", "Mexico City", "Denpasar"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/4cf0e11c-7342-4b64-bda7-3f760d7be3b8/Candid_travel_photo_of_a_woman_in_her_late_twenties_with_cur.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiN2Q2NTQ2ZTg3NWQ4NmIyZSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzMwNjA4OH0.X4pfxqW5V4-_x1M_-H43bPh49WIYO5X5vP6tBnENCZs",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/51547540-ec5e-40d9-ab34-13b60f58c4fe/ff6f60e3-c3b1-4fff-8c44-0a147b869529/Candid_travel_photograph_of_a_fictional_woman_in_her_late_tw.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiZjMzYzBlN2IzNDQ0YjNhMiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4OTAzOTM1NX0.DeV1UXIIUNdWpwE8tj24hiETJ5dQNHO1NVpS4J2sQGs",
       "pin": {
         "venue": "Pastelaria near the miradouro",
         "category": "restaurant",
@@ -81,7 +87,7 @@
         }
       ],
       "cities": ["Bangkok", "Mexico City", "Denpasar", "Lisbon"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/f41649e7-07c0-4987-b0d5-69c3df99200c/Candid_travel_photo_of_a_man_in_his_early_thirties_with_shor.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiOGVjMmM1MzUxNTM0YmJlOCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzMwNTE0MX0.jB4Ly8fOgPokF_PLDLpumZKZZfKhVyovDvI3PbF1saE",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/861427fc-70fe-460c-8180-aab9745e841f/d6672e0d-2d28-4450-90a1-12289df56937/Candid_travel_photograph_of_a_fictional_man_in_his_early_thi.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNThkYTcxNDk5MWJhZjUwZiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4OTA1MDA1N30.ZPeoQKfTNy_XD5R67Zcw1JBPBaISPutxAeyftAAMl3c",
       "pin": {
         "venue": "Rooftop for sunset drinks",
         "category": "bar",
@@ -115,7 +121,7 @@
         }
       ],
       "cities": ["Mexico City", "Denpasar", "Lisbon", "Bangkok"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/8a07de82-6fc9-4936-bc68-ab937550cce9/Candid_travel_photo_of_a_woman_in_her_late_twenties_with_str.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiOWEyOTU2OGIwNmI2ZjkwYyIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzYzMjM5NX0.k8rJdF8pAW6eobKsj5ZOxXY6Xe0iTWO9qWRPYq4XG3I",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/c37e145a-e8c0-4707-a953-b57305f4e0fd/46667e7a-09f0-44f8-acbf-3288f93c7441/Candid_travel_photograph_of_a_fictional_woman_in_her_late_tw.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiYzk1MDU3NTFhMjIwMzhkNSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4OTAyMTY0OX0.3H0QSx2A_GtNdHD4FqtfP3CshzKfMNqs-r_weRy_5xM",
       "pin": {
         "venue": "Taqueria in Roma Norte",
         "category": "restaurant",
@@ -149,7 +155,7 @@
         }
       ],
       "cities": ["Denpasar", "Lisbon", "Bangkok", "Mexico City"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/90f2f424-69e4-4673-ab87-4a7ddb2dfb1d/Candid_travel_photo_of_a_woman_around_thirty_with_long_dark_.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNmY4NWJhOTlhMWYzOGZlNiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzU3MjYzM30.6NNQdsun6cYzct_SGKJgtTFUJSK_IA626fIvJinJNeE",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/3dea60e3-b893-49ee-8485-c1ed696121b3/c7564190-c3a1-486e-a39f-e6795cab291b/Candid_travel_photograph_of_a_fictional_woman_around_thirty_.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiZmE4YTExY2FkYzllNmI2NyIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4ODk5MDkyMn0.MSCmSom9T03jwGFh5S3IIufCWXxHUgqiYCxoFKNm5eg",
       "pin": {
         "venue": "Morning surf at Batu Bolong",
         "category": "beach",
@@ -183,7 +189,7 @@
         }
       ],
       "cities": ["Lisbon", "Bangkok", "Mexico City", "Denpasar"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/3dda46f2-2ba7-4515-b269-12a74e073db9/Candid_travel_photo_of_a_woman_in_her_early_thirties_with_sh.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiM2E5YWUwYmY3ZWY4ZjRkZCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzI2NzAwN30.tMoqmE0MsApBRwhDxTHGqwkMnGxICUIzpnGiJ1aOgtE",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/58c4e5e6-5913-40c5-bb31-541e5e783094/b6f59ae8-5bad-4017-a616-8015e835ca20/Candid_travel_photograph_of_a_fictional_woman_in_her_early_t.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiMDkzYzJkMWY3Y2JiZmFiMSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4OTAyMTg1NX0.21lim91iN4sQQt24IwQzcS4SAKtiQ_KdopKU5id_JBI",
       "pin": {
         "venue": "Tile museum, then lunch",
         "category": "museum",
@@ -217,7 +223,7 @@
         }
       ],
       "cities": ["Bangkok", "Mexico City", "Denpasar", "Lisbon"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/9ac93791-7d76-44a2-a2e7-b5acb8dfa596/Candid_travel_photo_of_a_man_in_his_late_twenties_with_glass.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiY2YyNjhjMWFhNWQwOGU0NSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzI0MDM0Nn0.NNNmgUrggCMp4QhWIYk3EexMBkf9OLVK3vRlHe9QaKE",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/1b5c0b14-3484-416d-bbd7-2ca45e062a4c/faeb01d5-32a5-4f9f-b984-795679be4063/Candid_travel_photograph_of_a_fictional_man_in_his_late_twen.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiOTVhMzU1ZGVhZDZlYzg3OCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4OTA2OTUzNH0.lQt3YZ9f05A536O5qWkocVJszIe_vxBko9ofefAASsU",
       "pin": {
         "venue": "Night market crawl",
         "category": "other",
@@ -251,7 +257,7 @@
         }
       ],
       "cities": ["Mexico City", "Denpasar", "Lisbon", "Bangkok"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/b484fcd1-c11e-4489-b87c-033f971d18aa/Candid_travel_photo_of_a_man_in_his_early_thirties_with_a_sh.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiYzgyYTk2OGIyYjdkNWU1NiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzU2ODY1MX0.nFPO6MEBrQEFsC3Uf5QIDB51YcDy7BrVkpLcMhU_o_0",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/e5a0b99e-54d7-4a24-b179-c0460fd78e8b/e710cc61-b9d0-49e3-878c-bf3102b2f0f3/Candid_travel_photograph_of_a_fictional_man_in_his_early_thi.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiMzRhNjYzZWQzZDgzZDlkMiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4OTA1MDk4OX0.WM2_PlwEzmwMzd2Evf4u-uxGYbaljJdMZ2fW35PKt0E",
       "pin": {
         "venue": "Lucha libre at Arena Mexico",
         "category": "other",
@@ -285,7 +291,7 @@
         }
       ],
       "cities": ["Denpasar", "Lisbon", "Bangkok", "Mexico City"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/a58f0642-59b6-4178-925b-0f201ec577b2/Candid_travel_photo_of_a_man_in_his_late_twenties_with_sun_b.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiMzU4N2RmMGE1MTIzZTEyNiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzU4NDkwNn0.y7724li5B1sxz369B5YkM5-nTHaJsyfgD6DFhORJEJ4",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/3860d57d-2d4c-48e4-9e26-fa9419002d18/2169a1b0-f10e-4021-a9cb-ebb0fd08c83d/Candid_travel_photograph_of_a_fictional_man_in_his_late_twen.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiYTU4ODgxNjIyMGFlNDU5MCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4OTAyOTg1OH0.07IBEqkm2f-FkE2Z4mP7jrVjcqKqxocwmXQl2X4xbpI",
       "pin": {
         "venue": "Sanur sunrise ride",
         "category": "beach",
@@ -319,7 +325,7 @@
         }
       ],
       "cities": ["Lisbon", "Bangkok", "Mexico City", "Denpasar"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/ef6cf790-62e4-4c12-9248-c3b787946e2c/Candid_travel_photo_of_a_woman_in_her_early_thirties_with_sh.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiY2Q1Mzg0NGNiYmVkODY1ZCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzY1MDYzNn0.R8kH83zsbXnZwoZ1NGrrInJVNEOX--jzUjK0jAantbI",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/d46eb823-5dcf-44c7-bc14-04293bc7304f/45d580b0-1cbf-4fa4-8cd7-265f3bddd0e1/Candid_travel_photograph_of_a_fictional_person_in_their_earl.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiMjM0YTVmMWRjN2FmMWQ0YiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4OTA2MjE3M30._q5z8t4f5AqGWLcnCIyilNWkI6g-oX7NmZJkXUMMlkA",
       "pin": {
         "venue": "Late film at the little cinema",
         "category": "other",
@@ -353,7 +359,7 @@
         }
       ],
       "cities": ["Bangkok", "Mexico City", "Denpasar", "Lisbon"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/7ddd6590-d983-4b8b-81f6-4533de39edcd/Candid_travel_photo_of_a_young_man_in_his_mid_twenties_with_.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNmEwN2Y4OGVhZmY3OWE5ZCIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzYzMzY3OH0.Jwr2bPWyuuV--HlxzLdrq086aHSZ-V4tfhG3iP7ujt8",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/1b540e36-a5c9-4533-8025-40bb3b4d3399/5efe9537-ce76-431c-b7f9-26f4bbd6ba38/Candid_travel_photograph_of_a_fictional_person_in_their_mid_.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNjlmMmZmM2EyNDdhNjE4YyIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4OTAyMzkzMH0.D1N1tw73A3rdyeg-O2whMUeBJ-1jTW0sC5_TRzGBfKU",
       "pin": {
         "venue": "Night market by the river",
         "category": "restaurant",
@@ -387,7 +393,7 @@
         }
       ],
       "cities": ["Mexico City", "Denpasar", "Lisbon", "Bangkok"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/0032238c-cab5-4f45-8120-cf02c83a4620/Candid_travel_photo_of_a_young_woman_with_blonde_hair_in_a_p.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNGRmNzUxYWY4ODhhNGQ5MyIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzMxNDczNX0.7Z2TFADwdLMDkBy3TakxP7xlM_Zu4jCwlWVzeo9hTE0",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/9c953a1e-4372-4a5d-9595-7a8cb42473ef/549d6eb3-8724-42d1-a454-aee089b24b2a/Candid_travel_photograph_of_a_fictional_young_woman_in_her_m.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiYzE5N2FhZjU0ZGE3OWQxZSIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4ODk5MTk4OX0.i9FjcqIFLx2yGds0pWYelWzefpfUIarcJvpysuI-V24",
       "pin": {
         "venue": "Chapultepec walk, then tacos",
         "category": "hike",
@@ -421,7 +427,7 @@
         }
       ],
       "cities": ["Denpasar", "Lisbon", "Bangkok", "Mexico City"],
-      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/bcd5356f-4471-4b81-a07a-0c8a8fdc3dae/Candid_travel_photo_of_a_man_in_his_mid_twenties_with_tousle.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiNzFlZWQ0MWE5MTE0NTU2MiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4NzMyMDQ3NH0.5P0BnTfoQtACmi8z5lUkM7J6s77VQGFzCNqjhmJYsm0",
+      "photoUrl": "https://dnznrvs05pmza.cloudfront.net/gemini/gemini-3-pro-image/images/ebf73fc0-44c0-468c-9dd8-c7e2acff8066/28c5043e-0c5c-490f-b7cd-aed1a6276ade/Candid_travel_photograph_of_a_fictional_person_in_their_mid_.png?_jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJrZXlIYXNoIjoiMDRkNjYwNWQ1NTFkOGMwMiIsImJ1Y2tldCI6InJ1bndheS10YXNrLWFydGlmYWN0cyIsInN0YWdlIjoicHJvZCIsImV4cCI6MTc4OTAyNzAzN30.XJhuMEXxgGI9FCWLen09PHOdIPzNdjk_Ozvd7pVBhoA",
       "pin": {
         "venue": "Beach bar with an actual band",
         "category": "bar",
