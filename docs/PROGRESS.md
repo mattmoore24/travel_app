@@ -3,6 +3,39 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **A pin you can take down** (2026-09-08)
+
+Deleting your own pin returned 403 from 2026-08-31 until today, in production,
+on a button a person presses. Found by a demo re-seed. Not by a test: nothing in
+eighty pgTAP files or five Maestro tours had ever deleted a pin as its owner.
+
+20260831180000's BEFORE DELETE trigger on pins was SECURITY INVOKER and runs
+`update public.groups`, and `authenticated` has never held UPDATE on that table.
+It fired for everyone, not only people with a group, because Postgres checks the
+privilege when it plans the statement rather than after matching rows.
+expire_pins never noticed: pg_cron runs as postgres, so pins did keep vanishing
+on schedule and only the pressed path was broken. Fixed to SECURITY DEFINER with
+a pinned search_path (20260908120000, deployed); pgTAP 81 asserts the ROW COUNT
+as well as the absence of an error, because the first probe I wrote reported
+"DELETE SUCCEEDED" against a row RLS had filtered out and proved nothing.
+
+Also today, for the founder's checklist: the twelve demo accounts were purged
+while the old TEST_EMAIL_BASE still resolved (the launch gate would otherwise
+have gone vacuously green), the secret moved to e2e@samewhere.io, and twelve new
+portraits were generated and seeded - the previous links had expired on 20 to 25
+August, which the seed swallows as a warning and reports success through. All
+twelve photos are moderated and approved; profile-photos holds both image/jpeg
+and image/png, which is what the corrected bucket allowlist exists for.
+
+E2E 126 replaced the public results branch: the guard read the new domain,
+PUBLISH_SHOTS was true, and the sign-in frame now draws
+e2e+sw-e2e-...@samewhere.io. One flow failed, on the composer's
+"(Sent to ._|Said hi to ._)" beat - and the honest reading is that I caused it:
+both demo seeds ran INSIDE the Maestro window (20:48 and 20:57 against flows
+running 20:32 to 21:25), so every demo traveler's trips were deleted and
+recreated underneath a tour whose job is to say hi to them. Re-running against
+stable data rather than filing it as flake.
+
 ## **Security and cost hardening** (2026-09-06)
 
 Branch `security-hardening`, off `main`, unmerged and undeployed. Full write-up
