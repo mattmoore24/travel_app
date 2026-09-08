@@ -42,7 +42,7 @@ source and the app photographed it instead; `::add-mask::` cannot mask a pixel.
 
 **The order matters. Changing the secret first orphans 14 live accounts.**
 
-- [ ] **STEP 1 — purge the demo accounts while the OLD secret still works.**
+- [x] **STEP 1 — purge the demo accounts while the OLD secret still works.** **Done 2026-09-08** (runs 6 and 7 of Demo travelers, both green). Verified independently in the database, not just by the gate: 0 demo accounts, 0 demo profiles, 0 demo trips, 0 demo photos, and `profile-photos` fell from 16 objects to 4 — the twelve that went were the PNGs, which is the same twelve that forced the bucket allowlist to admit `image/png`. `auth.users` is 24 -> 12.
 
 `scripts/seed-demo-travelers.mjs` derives every demo address from the current
 secret (`${user}+sw-demo-${slug}@${domain}`), and so do `purge` and `check`.
@@ -58,6 +58,10 @@ gate over 12 live accounts is worse than no gate.
 
 So: **Actions → Demo travelers → `purge`**, then run it again with `check` and
 see it green. Only then continue.
+
+Note for afterwards: `seed` derives its addresses from the same secret, so once
+STEP 2 lands you can re-seed twelve fresh demo travelers at the new address if
+you want the map populated for TestFlight. The purge is not a one-way door.
 
 - [ ] **STEP 2 — set `TEST_EMAIL_BASE` to `e2e@samewhere.io`.**
 
