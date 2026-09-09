@@ -82,24 +82,59 @@ function stripComments(src: string): string {
 
 type Finding = { key: string; message: string };
 
-function lintFile(filePath: string): Finding[] {
-  const base = path.basename(filePath);
-  const src = stripComments(fs.readFileSync(filePath, 'utf8'));
+/**
+ * The linter itself, over text rather than a path, so the cases below can
+ * hand it SQL nobody has to commit.
+ *
+ * Split out when the prefix scan was made linear: the rewrite is only safe if
+ * something proves the answers did not move, and the answers that matter are
+ * the ones on statements this repository does not contain (a `comment on`
+ * carrying a banned word, a push payload token, a raise in the middle of a
+ * function). Those are `the linter's own cases` at the bottom of this file.
+ */
+export function lintSql(base: string, raw: string): Finding[] {
+  const src = stripComments(raw);
   const findings: Finding[] = [];
   const literal = /'((?:[^']|'')*)'/g;
+
+  /**
+   * The line a literal is on, counted forward from wherever this last
+   * stopped.
+   *
+   * The obvious `src.slice(0, m.index).split('\n').length` re-reads the whole
+   * prefix for every literal. On `20260904110100_seed_cities_with_clocks.sql`
+   * — 4.2 MB, 245,296 literals — that is quadratic, and it is why one jest
+   * worker sat at 100% for nine minutes while the other 221 suites finished
+   * in three. The regex hands literals back in increasing order, so counting
+   * forward from the last one totals O(file) for the whole scan.
+   */
+  let read = 0;
+  let readLine = 1;
+  const lineAt = (index: number): number => {
+    for (; read < index; read += 1) if (src[read] === '\n') readLine += 1;
+    return readLine;
+  };
+
   let m: RegExpExecArray | null;
   while ((m = literal.exec(src)) !== null) {
     const content = m[1];
-    const line = src.slice(0, m.index).split('\n').length;
-    const key = `${base}:${line}`;
+    // The two cheap questions first, on the literal alone. A literal carrying
+    // neither an em dash nor a banned word cannot produce a finding whatever
+    // statement it sits in — so the statement it sits in does not need cutting
+    // out of the file to find out. Same answers, a hundred thousand fewer
+    // multi-megabyte slices.
+    const hasEmDash = content.includes(EM_DASH);
+    const banned = BANNED.exec(content);
+    if (!hasEmDash && !banned) continue;
+
+    const key = `${base}:${lineAt(m.index)}`;
     const stmt = src.slice(src.lastIndexOf(';', m.index) + 1, m.index);
     if (/^\s*comment\s+on/i.test(stmt)) continue;
 
-    if (content.includes(EM_DASH)) {
+    if (hasEmDash) {
       findings.push({ key, message: `${key}: em dash in literal ${JSON.stringify(content)}` });
     }
 
-    const banned = BANNED.exec(content);
     if (!banned) continue;
     const inPush = /push_queue/i.test(stmt);
     const inRaise = /raise\s+exception\s*$/i.test(src.slice(Math.max(0, m.index - 60), m.index));
@@ -113,6 +148,9 @@ function lintFile(filePath: string): Finding[] {
   }
   return findings;
 }
+
+const lintFile = (filePath: string): Finding[] =>
+  lintSql(path.basename(filePath), fs.readFileSync(filePath, 'utf8'));
 
 const allowlist = (): Set<string> => {
   const file = path.join(MIGRATIONS, '.copy-lint-allow');
@@ -267,5 +305,69 @@ describe('the App Store listing copy', () => {
     // A keyword field with a space after a comma spends a character on
     // nothing: Apple splits on the comma either way.
     expect(keywords).not.toMatch(/, /);
+  });
+});
+
+/**
+ * The linter's own cases.
+ *
+ * The scan above answers "does the repository violate the rules", and today
+ * the answer is no — which is exactly the shape of assertion that goes on
+ * passing after the linter stops working. These are the rules themselves,
+ * asserted on SQL written to exercise each one, including the three
+ * exemptions that only ever fire on statements this repository does not
+ * contain. They are what makes the prefix scan safe to change: when it was
+ * made linear, this block is what said the answers had not moved.
+ */
+describe("the linter's own cases", () => {
+  const messages = (sql: string) => lintSql('t.sql', sql).map((f) => f.message);
+
+  it('catches a banned word in push copy and an em dash anywhere', () => {
+    expect(
+      messages("insert into push_queue (title) values ('You have a new request from Kai');")
+    ).toEqual(['t.sql:1: banned word "request" in push literal "You have a new request from Kai"']);
+    expect(messages("select 'a line — with an em dash';")).toEqual([
+      't.sql:1: em dash in literal "a line — with an em dash"',
+    ]);
+  });
+
+  it('catches a banned word in a raised exception, even mid-function', () => {
+    expect(
+      messages(
+        'create function f() returns void as $$\nbegin\n' +
+          "  raise exception 'cannot unmatch a closed conversation';\nend $$;"
+      )
+    ).toEqual([
+      't.sql:3: banned word "unmatch" in raise literal "cannot unmatch a closed conversation"',
+    ]);
+  });
+
+  it('exempts a comment on, a payload token, and a banned word in ordinary SQL', () => {
+    // A `comment on` is documentation, not copy.
+    expect(messages("comment on table x is 'a request — nobody reads on a lock screen';")).toEqual(
+      []
+    );
+    // A machine token in a push payload is a key, not a sentence.
+    expect(
+      messages("insert into push_queue (payload) values (jsonb_build_object('type', 'request'));")
+    ).toEqual([]);
+    // Banned words are only banned where a person reads them.
+    expect(messages("select 'this request never reaches anybody';")).toEqual([]);
+  });
+
+  it('numbers the line it found the literal on, not the one it started from', () => {
+    // The line counter walks forward from the last literal rather than
+    // re-reading the file, so a file with several findings is where it would
+    // go wrong.
+    expect(
+      messages(
+        "select 'one — here';\n\n\nselect 'two — here';\n" +
+          "insert into push_queue (b) values ('a deck of them');"
+      )
+    ).toEqual([
+      't.sql:1: em dash in literal "one — here"',
+      't.sql:4: em dash in literal "two — here"',
+      't.sql:5: banned word "deck" in push literal "a deck of them"',
+    ]);
   });
 });
