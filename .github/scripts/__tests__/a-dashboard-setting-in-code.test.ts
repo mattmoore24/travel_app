@@ -232,6 +232,22 @@ describe('the settings script, run end to end against a fake project', () => {
     expect(out).toContain('already 1048576. Nothing to change.');
   });
 
+  it('records a refused write and keeps going, instead of ending the run', () => {
+    // THE ONE THE FIRST APPLY RUN TAUGHT. `password_hibp_enabled` came back 402
+    // ("available on Pro Plans and up"), the API helper called fail(), node
+    // exited, and the storage ceiling behind it was never attempted - which is
+    // precisely the failure the results table exists to prevent. A refusal is a
+    // result now.
+    const { code, out } = run('freeplan');
+    expect(code).toBe(1);
+    expect(out).toContain('the write was refused: 402');
+    expect(out).toContain('a decision about the plan, not a setting to retry');
+    // Everything either side of the refusal still ran.
+    expect(out).toContain('ENDED db_schema=public, graphql_public');
+    expect(out).toContain('ENDED fileSizeLimit=5242880');
+    expect(out).toContain('ENDED hibp=false');
+  });
+
   it('catches a PATCH that replaces the document instead of merging', () => {
     const { code, out } = run('replace');
     expect(code).toBe(1);

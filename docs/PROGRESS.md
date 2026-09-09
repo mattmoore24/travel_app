@@ -77,8 +77,22 @@ in code now: `.github/scripts/harden-project-settings.mjs`, run by
 
 The first live `check` run also settled SEC-002 itself: exposed schemas were
 already `public, graphql_public`, so the `pg_net` door has never actually been
-open. Leaked-password protection was off, the storage ceiling was 50 MB, and
-those two are what `apply` has to change.
+open. Leaked-password protection was off and the storage ceiling was 50 MB.
+
+`apply` then found the other thing worth knowing: **leaked-password protection
+needs the Pro plan.** `402 Configuring leaked password protection via
+HaveIBeenPwned.org is available on Pro Plans and up`. So the storage ceiling is
+down to 5 MB, the schemas were a no-op, and SEC-004 is a decision about the plan
+rather than a setting to turn on.
+
+That refusal also found a bug in my own script. The API helper called `fail` on
+any non-OK response, so the 402 exited the process and the storage section
+behind it never ran — which is exactly the failure the results table was written
+to prevent: one setting that cannot be written hiding the state of the others. A
+refusal is a recorded result now, with the plan case named in the message, and
+only a 401/403 or a missing token ends the run. The fixture has a `freeplan`
+scenario that refuses every auth PATCH with a 402, and the test asserts the
+sections either side of it still ran.
 
 Every field name came off the published OpenAPI spec rather than memory. Each
 section reads, decides, patches only if the desired state does not already

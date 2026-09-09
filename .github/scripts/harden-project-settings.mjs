@@ -89,7 +89,17 @@ if (!PROJECT_REF) fail('PROJECT_REF is not set.');
 /**
  * One call to the Management API.
  *
- * On failure this prints the status and the API's own `message`, and nothing
+ * A REFUSAL IS A RESULT, NOT THE END OF THE RUN. The first apply run learned
+ * this the way these things get learned: `password_hibp_enabled` came back 402
+ * ("available on Pro Plans and up"), the helper called `fail`, node exited, and
+ * the storage ceiling behind it was never attempted. That is exactly the
+ * failure the results table further down was written to avoid — one setting
+ * that cannot be written hiding the state of the others. So a per-call refusal
+ * is handed back for the section to record, and only a problem with the whole
+ * run ends it: a missing token, or a 401/403, which means nothing after this
+ * will work either.
+ *
+ * On failure this reports the status and the API's own `message`, and nothing
  * else from the body — an error body is not a place to relax the rule above.
  */
 async function api(method, path, body) {
@@ -119,13 +129,23 @@ async function api(method, path, body) {
           'https://supabase.com/dashboard/account/tokens'
       );
     }
-    fail(`Supabase Management API ${method} ${path}: ${response.status} ${detail}`);
+    return { refused: `${response.status} ${detail}`, status: response.status };
   }
   if (!parsed || typeof parsed !== 'object') {
-    fail(`Supabase Management API ${method} ${path} answered ${response.status} but not JSON.`);
+    return {
+      refused: `${response.status}, and the body was not JSON`,
+      status: response.status,
+    };
   }
   return parsed;
 }
+
+/** What to tell the founder about a refusal, in their own terms. */
+const refusalAdvice = (status) =>
+  status === 402
+    ? ' This is a paid-plan feature on this project. It is a decision about the ' +
+      'plan, not a setting to retry: Dashboard -> Organization -> Billing.'
+    : ' Set it in the dashboard, or re-run once the cause is cleared.';
 
 /**
  * A hash over every key of a config document EXCEPT the ones this run owns,
@@ -182,6 +202,10 @@ const record = (name, ok, detail) => {
  */
 async function harden({ name, path, owned, read, desired, patch }) {
   const before = await api('GET', path);
+  if (before.refused) {
+    record(name, false, `could not be read: ${before.refused}${refusalAdvice(before.status)}`);
+    return;
+  }
   const beforePrint = fingerprint(before, owned);
   const current = read(before);
   const want = desired(current, before);
@@ -195,7 +219,16 @@ async function harden({ name, path, owned, read, desired, patch }) {
     return;
   }
 
-  await api('PATCH', path, patch(want));
+  const written = await api('PATCH', path, patch(want));
+  if (written.refused) {
+    record(
+      name,
+      false,
+      `still ${JSON.stringify(current)}; the write was refused: ${written.refused}` +
+        refusalAdvice(written.status)
+    );
+    return;
+  }
 
   // The read-back gets three goes, four seconds apart. Changing `db_schema`
   // restarts PostgREST and changing the auth config restarts GoTrue; a GET
@@ -205,11 +238,20 @@ async function harden({ name, path, owned, read, desired, patch }) {
   // and it never turns a real failure into a pass - it only spends eight
   // seconds before reporting one.
   let after = await api('GET', path);
-  let now = read(after);
+  let now = after.refused ? undefined : read(after);
   for (let attempt = 0; attempt < 2 && JSON.stringify(now) !== JSON.stringify(want); attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 4000));
     after = await api('GET', path);
-    now = read(after);
+    now = after.refused ? undefined : read(after);
+  }
+  if (after.refused) {
+    record(
+      name,
+      false,
+      `written, but the read-back was refused: ${after.refused}${refusalAdvice(after.status)} ` +
+        'Whether it took is unconfirmed.'
+    );
+    return;
   }
 
   if (JSON.stringify(now) !== JSON.stringify(want)) {
@@ -314,16 +356,20 @@ await harden({
 {
   const name = 'SEC-008 anonymous sign-ins (guest mode depends on them)';
   const config = await api('GET', '/config/auth');
-  const enabled = config.external_anonymous_users_enabled === true;
-  record(
-    name,
-    enabled,
-    enabled
-      ? 'ON, which is correct - signInAsGuest is signInAnonymously. Not changed.'
-      : 'OFF. Guest mode is built on this: every "look around first" session is ' +
-          'an anonymous auth user, so the guest door is broken until it is turned ' +
-          'back on at Authentication -> Sign In / Providers.'
-  );
+  const enabled = config.refused ? null : config.external_anonymous_users_enabled === true;
+  if (config.refused) {
+    record(name, false, `could not be read: ${config.refused}${refusalAdvice(config.status)}`);
+  } else {
+    record(
+      name,
+      enabled,
+      enabled
+        ? 'ON, which is correct - signInAsGuest is signInAnonymously. Not changed.'
+        : 'OFF. Guest mode is built on this: every "look around first" session is ' +
+            'an anonymous auth user, so the guest door is broken until it is turned ' +
+            'back on at Authentication -> Sign In / Providers.'
+    );
+  }
 }
 
 // --- Storage upload ceiling -------------------------------------------------

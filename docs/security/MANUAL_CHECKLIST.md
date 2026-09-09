@@ -182,10 +182,19 @@ What it sets, and what each one is for:
   `db_schema` is a PostgREST that serves nothing and that is every screen in
   the app at once.
 
-- **Leaked password protection ON.** (SEC-004)
+- **Leaked password protection ON.** (SEC-004) — **needs the Pro plan, so this
+  one is a decision, not a setting.**
 
-  Checks new passwords against HaveIBeenPwned. Was **disabled** — read from the
-  live advisor, not guessed.
+  Checks new passwords against HaveIBeenPwned. The apply run got
+  `402 Configuring leaked password protection via HaveIBeenPwned.org is
+available on Pro Plans and up`, so on the current plan it cannot be turned on
+  at all. The workflow reports it and moves on rather than stopping.
+
+  Worth knowing before launch: it is the only control here that stops somebody
+  reusing a password already in a breach corpus, and password reuse is how most
+  account takeovers actually happen. `password_min_length` and
+  `password_required_characters` are free and are a weaker substitute — say the
+  word and I will set them.
 
 - **Anonymous sign-ins: LEAVE THEM ON.** (SEC-008, withdrawn)
 
@@ -213,10 +222,12 @@ check at **Authentication** → **Attack Protection**; anonymous sign-ins at
 **Authentication** → **Sign In / Providers**; the storage ceiling at Project
 Settings → **Storage** → _Upload file size limit_.
 
-**What the first `check` run found on the live project (2026-09-09):** exposed
+**What the runs found on the live project (2026-09-09).** `check`: exposed
 schemas were already `public, graphql_public`, so the `pg_net` door has never
-been open; leaked-password protection was off; the storage ceiling was 50 MB;
-and anonymous sign-ins were ON, which is what exposed the mistake above.
+been open; leaked-password protection off; storage ceiling 50 MB; anonymous
+sign-ins ON, which is what exposed the mistake above. `apply`: the schemas were
+a no-op, the storage ceiling came down to 5 MB, and leaked-password protection
+was refused with a 402 — it needs the Pro plan.
 
 ### Still yours, because there is no API for them
 

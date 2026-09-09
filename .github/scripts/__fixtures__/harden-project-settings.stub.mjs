@@ -23,6 +23,9 @@
 //             ceiling, which it must leave alone rather than raise
 //   noguests  anonymous sign-ins OFF, which breaks guest mode - the script
 //             must report it and must not "fix" it by writing anything
+//   freeplan  the auth config refuses every PATCH with 402, the way the live
+//             project did on 2026-09-09 (leaked-password protection is a Pro
+//             feature). The sections AFTER it must still run.
 // MODE picks apply (default) or check, exactly as the workflow's env does.
 
 const scenario = process.argv[2] ?? 'dirty';
@@ -34,6 +37,7 @@ const postgrest = {
   replace: 'public, net',
   tight: 'public, graphql_public',
   noguests: 'public, graphql_public',
+  freeplan: 'public, graphql_public, net',
 }[scenario];
 
 if (postgrest === undefined) {
@@ -72,6 +76,15 @@ globalThis.fetch = async (url, init = {}) => {
   const path = String(url).replace('https://api.supabase.com/v1/projects/testref', '');
   if (!(path in state)) {
     return new Response(JSON.stringify({ message: `no such path ${path}` }), { status: 404 });
+  }
+  if (scenario === 'freeplan' && path === '/config/auth' && (init.method ?? 'GET') === 'PATCH') {
+    return new Response(
+      JSON.stringify({
+        message:
+          'Configuring leaked password protection via HaveIBeenPwned.org is available on Pro Plans and up.',
+      }),
+      { status: 402, headers: { 'content-type': 'application/json' } }
+    );
   }
   if ((init.method ?? 'GET') === 'PATCH') {
     const body = JSON.parse(init.body);
