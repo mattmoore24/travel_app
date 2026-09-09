@@ -209,7 +209,17 @@ const dockedScreens = (): { file: string; ids: string[]; labels: string[] }[] =>
       file,
       source,
       shell: /<Step(Screen|Shell)\b/.test(source),
-      sheet: /keyboardAllowance/.test(source),
+      // A sheet docks its buttons under the keyboard EITHER by passing an
+      // explicit keyboardAllowance (the pin form, which owns its own scroll
+      // frame) OR by handing Sheet a `footer` alongside avoidKeyboard, which
+      // Sheet now measures for itself. Without the second arm, trip-editor
+      // and profile-me — whose docked buttons are "Save changes" and "Delete
+      // forever" — drop out of this guard the moment Sheet stops needing an
+      // allowance from them, and every flow tapping through their keyboard
+      // goes unwatched.
+      sheet:
+        /keyboardAllowance/.test(source) ||
+        (/avoidKeyboard/.test(source) && /footer=\{/.test(source)),
     }))
     .filter(({ shell, sheet }) => shell || sheet)
     .map(({ file, source, shell }) => ({
@@ -218,7 +228,10 @@ const dockedScreens = (): { file: string; ids: string[]; labels: string[] }[] =>
       labels: [
         ...[...source.matchAll(/\bcontinueLabel="([^"]+)"/g)].map((m) => m[1]),
         // A sheet pins its own PrimaryButton rather than passing a label down.
-        ...[...source.matchAll(/<PrimaryButton\s+label="([^"]+)"/g)].map((m) => m[1]),
+        // `\b[^>]*?` rather than `\s+`, because a pinned button often carries
+        // `variant` or `testID` before its label and the tighter pattern read
+        // straight past those — profile-me's "Delete forever" is one.
+        ...[...source.matchAll(/<PrimaryButton\b[^>]*?\slabel="([^"]+)"/g)].map((m) => m[1]),
         // The prop's own default, for a shell that does not pass one.
         ...(shell ? ['Continue'] : []),
       ],
@@ -238,7 +251,17 @@ describe('a flow puts the keyboard away before it taps a docked button', () => {
 
   it('found the screens whose footer the keyboard covers', () => {
     expect(screens.length).toBeGreaterThan(5);
-    expect(screens.map((s) => s.file)).toContain('app/compose-request.tsx');
+    const files = screens.map((s) => s.file);
+    expect(files).toContain('app/compose-request.tsx');
+    // The two that carry no allowance of their own and are only found by the
+    // avoidKeyboard + footer arm. Their docked buttons are "Save changes" and
+    // "Delete forever", so losing them from this set is the expensive kind of
+    // silent narrowing.
+    expect(files).toContain('features/trips/trip-editor.tsx');
+    expect(files).toContain('app/profile-me.tsx');
+    expect(screens.find((s) => s.file === 'app/profile-me.tsx')?.labels).toContain(
+      'Delete forever'
+    );
   });
 
   it.each(flowFiles().map((f) => [path.basename(f), f] as const))('%s', (_name, file) => {

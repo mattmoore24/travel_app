@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { after } from '@/lib/__tests__/source';
+import { after, between } from '@/lib/__tests__/source';
 
 /**
  * The saved replies have to be writable AND usable.
@@ -56,10 +56,40 @@ describe('an owner can use one', () => {
     // sentence into a message nobody re-read, which is how a saved reply
     // answers the wrong question confidently.
     const composer = read('src', 'features', 'chat', 'composer.tsx');
-    const chip = after(composer, 'savedReplies && savedReplies.length');
-    const body = chip.slice(0, chip.indexOf('</ScrollView>'));
+    // `between` rather than slice(indexOf(...)): a missing anchor throws here
+    // instead of cutting an empty string that every negative assertion below
+    // would pass against (source-anchors.test).
+    const body = between(composer, 'savedReplies && savedReplies.length', '</ScrollView>');
     expect(body).toContain('setDraft(reply.body)');
     expect(body).not.toContain('onSend');
+  });
+
+  it('says where they sit, and says it truthfully', () => {
+    // The screen described the old layout. A revert of the layout without a
+    // revert of the words would leave the app lying about itself, so the
+    // sentence is pinned here next to the assertion about the layout.
+    const screen = read('src', 'app', 'saved-replies.tsx');
+    expect(screen).toContain('They sit under the typing box in a chat,');
+    expect(screen).not.toContain('above the keyboard');
+  });
+
+  it('sits UNDER the typing box, so the keyboard covers it', () => {
+    // The founder's rule: nothing above the keyboard except Hide keyboard. The
+    // strip is chrome, so it is docked below the composer row and the keyboard
+    // covers it; the box, the reply banner and the attachment preview stay
+    // above it and stay visible, because they are the message. Restoring the
+    // old above-the-field layout fails here.
+    const composer = read('src', 'features', 'chat', 'composer.tsx');
+    const row = composer.indexOf('<View style={styles.composer}>');
+    const strip = composer.indexOf('savedReplies && savedReplies.length');
+    expect(row).toBeGreaterThan(-1);
+    expect(strip).toBeGreaterThan(row);
+    // And its height reaches the floor, or the keyboard would push it up
+    // instead of covering it.
+    expect(composer).toContain('quickRepliesHeight');
+    const chat = read('src', 'app', 'chat', '[id].tsx');
+    expect(between(chat, '<KeyboardFloor', '</KeyboardFloor>')).toContain('<Composer');
+    expect(chat).toContain('allowance={quickRepliesHeight}');
   });
 
   it('gets out of the way once there is anything to send', () => {

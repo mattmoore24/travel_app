@@ -78,8 +78,18 @@ describe('the keyboard covers the footer rather than lifting it', () => {
     // for it since run 109 and this had not.
     expect(lift).toContain('KEYBOARD_BAR_HEIGHT');
     // Math.max at zero, or a pinned zone taller than the keyboard would push
-    // the sheet DOWN off the bottom of the screen.
-    expect(lift).toContain('Math.max(0,');
+    // the sheet DOWN off the bottom of the screen. Whitespace-insensitive:
+    // prettier wraps this expression once it grows, and a literal
+    // `Math.max(0,` broke on the wrap while the clamp was still there.
+    expect(lift.replace(/\s+/g, '')).toContain('Math.max(0,');
+    // And the sheet takes the LARGER of the caller's explicit allowance and
+    // its own measured footer, so a `scrolls` sheet covers its pinned buttons
+    // without every caller having to wire a shared value, and a caller that
+    // does both is not counted twice.
+    expect(lift.replace(/\s+/g, '')).toContain(
+      'Math.max(keyboardAllowance?.value??0,footerHeight.value)'
+    );
+    expect(code).toContain('footerHeight.value = event.nativeEvent.layout.height');
   });
 
   it('the pin form measures the zone it pins, or the allowance is always zero', () => {

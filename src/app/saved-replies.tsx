@@ -62,7 +62,7 @@ export default function SavedRepliesScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.column}>
           <ThemedText type="footnote" themeColor="textSecondary">
-            Three answers you write once. They show above the keyboard in a chat, and tapping one
+            Three answers you write once. They sit under the typing box in a chat, and tapping one
             puts it in the box so you can change it before it goes.
           </ThemedText>
           {SLOTS.map((slot) => (

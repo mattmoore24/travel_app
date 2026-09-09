@@ -10,6 +10,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
+import type { SharedValue } from 'react-native-reanimated';
+
 import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoButton } from '@/components/ui/photo-button';
@@ -43,6 +45,7 @@ export function Composer({
   replyingTo,
   onCancelReply,
   savedReplies,
+  quickRepliesHeight,
   onSend,
 }: {
   placeholder?: string;
@@ -57,6 +60,15 @@ export function Composer({
    */
   replyingTo?: { name: string; body: string | null } | null;
   onCancelReply?: () => void;
+  /**
+   * Reports the docked saved-reply strip's height to the screen's
+   * KeyboardFloor, so the floor grows by only the part of the keyboard that
+   * reaches PAST the strip and the keyboard covers it instead of pushing it
+   * up. Same contract as StepScreen's footer allowance. Omitted where no
+   * replies are passed: the strip never mounts and the floor keeps no
+   * allowance.
+   */
+  quickRepliesHeight?: SharedValue<number>;
   /**
    * A business owner's three saved replies, or empty.
    *
@@ -127,32 +139,6 @@ export function Composer({
 
   return (
     <View>
-      {/* Above the field and below the reply banner, so the row a thumb
-          reaches first is the one nearest the keyboard. Hidden once there is
-          anything in the field: they are a way to START an answer, and a strip
-          of chips over a half-typed sentence is chrome in the way. */}
-      {savedReplies && savedReplies.length > 0 && draft.length === 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.chipRow}>
-          {savedReplies.map((reply) => (
-            <PressableScale
-              key={reply.id}
-              accessibilityRole="button"
-              accessibilityLabel={`Use saved reply: ${reply.body}`}
-              haptic="light"
-              scaleTo={0.97}
-              onPress={() => setDraft(reply.body)}
-              style={[styles.chip, { backgroundColor: theme.surfaceSunken }]}>
-              <ThemedText type="footnote" numberOfLines={1} style={styles.chipText}>
-                {reply.body}
-              </ThemedText>
-            </PressableScale>
-          ))}
-        </ScrollView>
-      ) : null}
       {replyingTo ? (
         <View style={[styles.replyBanner, { borderLeftColor: theme.accent }]}>
           <View style={styles.replyText}>
@@ -260,6 +246,56 @@ export function Composer({
             tintColor={canSend ? theme.onAccentDeep : theme.textSecondary}
           />
         </PressableScale>
+      </View>
+      {/* DOCKED UNDER THE BOX, not above it, and that is the founder's rule
+          rather than a layout preference: "nothing above the keyboard except
+          Hide keyboard". This strip is chrome, so the keyboard covers it. The
+          typing box, the reply banner and the attachment preview stay above
+          and stay visible — they are the message, and covering the box is a
+          bug this project has already had reported once.
+
+          It used to sit above the field on the reasoning that "the row a
+          thumb reaches first is the one nearest the keyboard". That is still
+          true and is no longer the deciding argument: with the strip docked,
+          the row nearest the thumb while typing is the box itself, which is
+          the right answer. iMessage docks its app row the same way.
+
+          The wrapper is unconditional so onLayout fires when the strip goes
+          away as well as when it arrives. Making the VIEW conditional would
+          leave the shared value holding a phantom allowance after the last
+          chip disappears, and the composer row would slide up by that much. */}
+      <View
+        onLayout={(event) => {
+          if (quickRepliesHeight) {
+            // eslint-disable-next-line react-hooks/immutability -- Reanimated shared values are mutable by contract
+            quickRepliesHeight.value = event.nativeEvent.layout.height;
+          }
+        }}>
+        {/* Hidden once there is anything in the field: they are a way to START
+            an answer, and a strip of chips under a half-typed sentence is
+            chrome in the way. */}
+        {savedReplies && savedReplies.length > 0 && draft.length === 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.chipRow}>
+            {savedReplies.map((reply) => (
+              <PressableScale
+                key={reply.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Use saved reply: ${reply.body}`}
+                haptic="light"
+                scaleTo={0.97}
+                onPress={() => setDraft(reply.body)}
+                style={[styles.chip, { backgroundColor: theme.surfaceSunken }]}>
+                <ThemedText type="footnote" numberOfLines={1} style={styles.chipText}>
+                  {reply.body}
+                </ThemedText>
+              </PressableScale>
+            ))}
+          </ScrollView>
+        ) : null}
       </View>
     </View>
   );

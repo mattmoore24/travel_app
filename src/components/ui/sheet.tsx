@@ -280,6 +280,10 @@ export function Sheet({
   const sheetWidth = Math.min(width, MaxContentWidth);
   const keyboard = useAnimatedKeyboard();
   const drag = useSharedValue(0);
+  // The pinned footer's measured height, so the keyboard covers it instead of
+  // pushing it up. Stays 0 when there is no footer, which makes every
+  // non-footer sheet behave exactly as before.
+  const footerHeight = useSharedValue(0);
 
   // The entrance is a TRANSFORM, not Reanimated's slide-in preset.
   //
@@ -381,8 +385,19 @@ export function Sheet({
     // Continue pill; KeyboardFloor has accounted for it since and this had
     // not, so every sheet with an input in it has been wearing that overlap.
     const bar = Platform.OS === 'ios' && keyboard.height.value > 0 ? KEYBOARD_BAR_HEIGHT : 0;
+    // A PINNED FOOTER IS CHROME AND THE KEYBOARD MAY COVER IT. Founder rule:
+    // nothing above the keyboard except Hide keyboard. `scrolls` sheets pin
+    // their footer BELOW the scroller, so the allowance is that footer's own
+    // measured height and the sheet lifts by only the part of the keyboard
+    // reaching past it — the focused field stays visible, the buttons go
+    // under. A caller with a scroll frame of its own (the pin form) passes an
+    // explicit keyboardAllowance instead; whichever is larger wins, so a
+    // caller that does both is not double-counted.
     const lift = avoidKeyboard
-      ? Math.max(0, keyboard.height.value + bar - (keyboardAllowance?.value ?? 0))
+      ? Math.max(
+          0,
+          keyboard.height.value + bar - Math.max(keyboardAllowance?.value ?? 0, footerHeight.value)
+        )
       : 0;
     return {
       // max, not a sum. The keyboard is measured from the bottom of the
@@ -469,7 +484,15 @@ export function Sheet({
                 keyboardDismissMode="interactive">
                 {children}
               </ScrollView>
-              {footer}
+              {/* Unconditional wrapper: onLayout has to fire when the footer
+                  goes away as well as when it arrives, or the shared value
+                  keeps a phantom allowance and the sheet under-lifts. */}
+              <View
+                onLayout={(event) => {
+                  footerHeight.value = event.nativeEvent.layout.height;
+                }}>
+                {footer}
+              </View>
             </>
           ) : (
             children

@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Composer } from '@/features/chat/composer';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { useSharedValue } from 'react-native-reanimated';
+
 import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { LoadError } from '@/components/ui/load-error';
@@ -336,6 +338,10 @@ export default function ChatScreen() {
   // What the next message answers, held here rather than in the composer: the
   // composer's contract is a draft, and both screens attach the reply at send.
   const [replyTo, setReplyTo] = useState<(Quote & { messageId: string }) | null>(null);
+  // The docked saved-reply strip's measured height. Zero whenever the strip is
+  // not on screen, which is most of the time: it only mounts for a business
+  // viewer with replies saved and an empty draft.
+  const quickRepliesHeight = useSharedValue(0);
   // How much was waiting when this screen opened, held for as long as it is.
   const unreadAtOpen = useUnreadAtOpen(chat?.unread_count ?? null);
   // Opening a conversation is what "reading" means; so is being in it
@@ -460,7 +466,11 @@ export default function ChatScreen() {
           the screen that draws its own header is the screen that turns the
           native one off. */}
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <KeyboardFloor>
+        {/* The saved-reply strip is docked under the typing box and reports
+            its height, so the floor grows by only the part of the keyboard
+            that reaches past it: the keyboard covers the chips, the box stays
+            visible. Same allowance contract as StepScreen's footer. */}
+        <KeyboardFloor allowance={quickRepliesHeight}>
           <ChatHeader chat={chat} />
           {chat.other_user_id && !viewerIsBusiness ? (
             <SocialsCard userId={chat.other_user_id} />
@@ -568,6 +578,7 @@ export default function ChatScreen() {
             </ThemedView>
           ) : (
             <Composer
+              quickRepliesHeight={quickRepliesHeight}
               inputTestID="chat-composer"
               savedReplies={savedReplies}
               disabled={busy}
