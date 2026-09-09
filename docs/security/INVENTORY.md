@@ -112,7 +112,7 @@ live). No unauthenticated entry point.
 | `store-apple-token` | Sign in with Apple refresh-token exchange.        |
 
 **Storage buckets** — five, and **all five are private** (`public = false`).
-Since `20260906110000`: 5 MB and `image/jpeg` on every one.
+Since `20260906110000`: 5 MB and `image/jpeg` + `image/png` on every one.
 
 | Bucket                  | Standing per-user cap |
 | ----------------------- | --------------------- |

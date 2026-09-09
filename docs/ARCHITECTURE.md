@@ -1921,6 +1921,19 @@ halves.
   `nearest_city`, else nearest on earth) files a listing under the city its marker is in;
   `city_businesses`/`city_whats_on`/`city_rooms` read the label or the 50 km circle like
   `city_pins`; the client sends no city and reads the answer through `city_for_spot`.
+- **2026-09-09** — **Project settings that are not database objects go through the Supabase
+  Management API, not a migration.** Exposed schemas, leaked-password protection,
+  anonymous sign-ins and the storage upload ceiling are project configuration; `db push`
+  cannot reach any of them, and the one that matters most was proved unreachable by
+  measuring the attempted revoke on the live database inside a rolled-back transaction.
+  `.github/scripts/harden-project-settings.mjs` PATCHes each field, reads it back from a
+  fresh GET rather than trusting the writer, and fingerprints every key it does not own so
+  a document-replacing PATCH fails loudly instead of silently resetting SMTP or a session
+  timeout. It prints no config value: the same GET carries twenty provider secrets and the
+  repository is public. The organisation spend cap has no endpoint at all (the spec's whole
+  billing surface is `/v1/organizations…` reads plus `/v1/projects/{ref}/billing/addons`)
+  and stays in `MANUAL_CHECKLIST.md`; auth rate limits are settable and deliberately left
+  alone until there is signup volume to size them against.
 - **2026-08-28** — Read receipts (Delivered / Read) are **not** built, and this is a product
   decision rather than a backlog item: there is no recipient-scoped column to hang them on,
   and they create response pressure that works against the safety posture. "Sending" and

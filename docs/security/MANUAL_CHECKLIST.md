@@ -136,65 +136,99 @@ cascades the rest. The `sw-e2e` one is the only one holding any data.
 
 ## 2. Supabase — the database and API
 
-- [ ] **Exposed schemas = `public` only.** ← **this is the whole of SEC-002**
+**Four of the six boxes below are no longer yours.** A workflow sets them
+through the Supabase Management API and reads them back from the live project
+to prove they took.
 
-Not a belt-and-braces check: it is the ONLY thing protecting `pg_net`. I wrote a
-migration to revoke those grants and then measured it on the live database
-inside a rolled-back transaction - it changes nothing. `net` and all twelve of
-its functions belong to `supabase_admin`; migrations run as `postgres`, which is
-not a superuser and not the owner, so the revoke is a silent no-op. Nothing in
-this repository can close that door. `pg_net`
-puts `net.http_post` and friends in schema `net` and grants them to `PUBLIC`;
-`20260906090000` revokes `anon` and `authenticated` from all of it, but the
-reason it was never exploitable is that schema `net` is not exposed through
-PostgREST. That is this setting, and this repository cannot see it.
+**How to run it.** Put the single word `check` in `.github/harden-request` and
+commit it. That reads and reports and writes nothing; the four lines it prints
+are in the run's summary. Then change the word to `apply` and commit again.
+Anything other than the literal word `apply` — a typo, an empty file — reads as
+`check`, so the failure mode of this door is a read.
 
-**Where:** Dashboard → **Project Settings** → **Data API** → **Exposed
-schemas**. It should list `public` (and `graphql_public` if present). If `net`,
-`storage`, `vault`, `extensions` or `auth` appear there, remove them.
+The `Actions` → **Harden project settings** → _Run workflow_ button does the
+same thing and is easier, but it will not appear until this branch reaches the
+repository's default branch: GitHub resolves a dispatch on the default branch
+only, and that branch is currently 169 commits behind. The request file works
+from any branch.
 
-- [ ] **Leaked password protection ON.** (SEC-004)
+The workflow is `.github/workflows/harden-project-settings.yml`; what it does
+and why each field is the field it is, is in
+`.github/scripts/harden-project-settings.mjs`. It runs on nothing but that
+request file and that button — never on an ordinary code push — because it
+changes the shape of the project's API surface and that should be a thing
+somebody decides to do, not a side effect of a deploy.
 
-Checks new passwords against HaveIBeenPwned. Currently **disabled** — read from
-the live advisor, not guessed.
+- [ ] **Commit `check`, read the four lines, then commit `apply`.**
 
-**Where:** Dashboard → **Authentication** → **Attack Protection** (older
-consoles: **Authentication** → **Policies** / **Providers** → the Email
-provider's password settings). Search the Authentication section for "leaked"
-if the heading has moved.
+What it sets, and what each one is for:
 
-- [ ] **Anonymous sign-ins OFF.** (SEC-008)
+- **Exposed schemas = `public` only.** ← **this is the whole of SEC-002**
 
-The app has a deliberate guest mode built on real accounts and RLS; it does
-**not** use Supabase's anonymous-sign-in auth feature. Anything that feature
-allows is therefore pure attack surface, and an account that costs nothing to
-create is the input to every per-account cap in `COST_CONTROLS.md`.
+  Not a belt-and-braces check: it is the ONLY thing protecting `pg_net`. I
+  wrote a migration to revoke those grants and then measured it on the live
+  database inside a rolled-back transaction - it changes nothing. `net` and all
+  twelve of its functions belong to `supabase_admin`; migrations run as
+  `postgres`, which is not a superuser and not the owner, so the revoke is a
+  silent no-op. `pg_net` puts `net.http_post` and friends in schema `net` and
+  grants them to `PUBLIC`; `20260906090000` revokes `anon` and `authenticated`
+  from all of it, but the reason it was never exploitable is that schema `net`
+  is not exposed through PostgREST.
 
-**Where:** Dashboard → **Authentication** → **Sign In / Providers** → _Allow
-anonymous sign-ins_.
+  The script only ever NARROWS this list: it keeps whichever of `public` and
+  `graphql_public` are already there and drops everything else, and it refuses
+  to write at all if `public` has somehow gone missing, because an empty
+  `db_schema` is a PostgREST that serves nothing and that is every screen in
+  the app at once.
 
-- [ ] **Auth rate limits reviewed.**
+- **Leaked password protection ON.** (SEC-004)
 
-Signup, OTP and email-send rates are the throttle on account creation, and
-account creation is what converts a per-account cap into an N-account cap.
+  Checks new passwords against HaveIBeenPwned. Was **disabled** — read from the
+  live advisor, not guessed.
 
-**Where:** Dashboard → **Authentication** → **Rate Limits**.
+- **Anonymous sign-ins OFF.** (SEC-008)
+
+  The app has a deliberate guest mode built on real accounts and RLS; it does
+  **not** use Supabase's anonymous-sign-in auth feature. Anything that feature
+  allows is therefore pure attack surface, and an account that costs nothing to
+  create is the input to every per-account cap in `COST_CONTROLS.md`.
+
+- **Storage upload ceiling = 5 MB.**
+
+  `20260906110000` sets 5 MB and `image/jpeg` + `image/png` on each of the five
+  buckets, which is the tighter of the two. The project ceiling is what a
+  bucket added later without limits inherits. Lowered only, never raised.
+
+**Where these live if you ever want to see them in the dashboard:** exposed
+schemas at Project Settings → **Data API** → _Exposed schemas_; the password
+check at **Authentication** → **Attack Protection**; anonymous sign-ins at
+**Authentication** → **Sign In / Providers**; the storage ceiling at Project
+Settings → **Storage** → _Upload file size limit_.
+
+### Still yours, because there is no API for them
 
 - [ ] **Project spend cap ON.**
+
+The Management API publishes no billing endpoint that can set this — the whole
+billing surface of the spec is `/v1/organizations…` reads plus
+`/v1/projects/{ref}/billing/addons`. Checked against the spec, not guessed at
+after a failed call.
 
 **Where:** Dashboard → **Organization** → **Billing** → _Spend cap_. With it
 on, the project is throttled rather than billed past the plan. This is the
 Supabase-side equivalent of §1 and it covers the egress and row-read spend that
 `COST_CONTROLS.md` §3 deliberately leaves unbounded in code.
 
-- [ ] **Storage upload file size limit.**
+- [ ] **Auth rate limits reviewed.**
 
-`20260906110000` sets 5 MB and `image/jpeg` per bucket, which is the tighter of
-the two. Set the project ceiling at or below a sane number as well, so a bucket
-added later without limits inherits something.
+Signup, OTP and email-send rates are the throttle on account creation, and
+account creation is what converts a per-account cap into an N-account cap.
+These ARE settable through the API (`rate_limit_email_sent` and friends) and
+the workflow deliberately does not touch them: the right numbers depend on real
+signup volume nobody has yet, and a throttle guessed from zero traffic is a
+support ticket waiting to be filed. It is a review, not a value.
 
-**Where:** Dashboard → **Project Settings** → **Storage** → _Upload file size
-limit_.
+**Where:** Dashboard → **Authentication** → **Rate Limits**.
 
 ---
 

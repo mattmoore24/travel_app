@@ -15,7 +15,7 @@ is the largest number that could appear on an invoice, and what refuses it?**
 | -------------------------------------------------------------------- | ------------------------------ | ---------------------------------------- |
 | Moderation model calls                                               | Throughput yes, **spend no**   | 2,000 calls/day, claimed before spending |
 | Chat photos per account                                              | 200 standing objects only      | 120/day                                  |
-| Upload size                                                          | **No** (bucket limit was null) | 5 MB, `image/jpeg` only                  |
+| Upload size                                                          | **No** (bucket limit was null) | 5 MB, `image/jpeg` + `image/png`         |
 | Pins, trips, messages, reports, blocks, profile edits, verifications | Yes                            | unchanged                                |
 | Push sends                                                           | Per-account token cap (5)      | unchanged                                |
 | Database egress                                                      | Not directly bounded           | still not; see "Left open"               |
@@ -179,12 +179,19 @@ in the product is at risk; a signed URL opened in a browser is another matter,
 and it is a link somebody can be sent.
 
 `20260906110000_a_bucket_says_what_it_takes.sql` sets **5 MB** and
-**`image/jpeg`** on all five. That allowlist can be this narrow because every
-upload in the app goes through one function — `processAndUploadImage`
-(`src/lib/image-upload.ts:217`) — which resizes to 1440px, re-encodes JPEG at
-quality 0.8 and uploads with `contentType: 'image/jpeg'`. No edge function
-uploads at all. **A file in these buckets that is not a JPEG did not come from
-this app.**
+**`image/jpeg` + `image/png`** on all five. The allowlist can be this narrow
+because every upload from the app goes through one function —
+`processAndUploadImage` (`src/lib/image-upload.ts:217`) — which resizes to
+1440px, re-encodes JPEG at quality 0.8 and uploads with
+`contentType: 'image/jpeg'`. No edge function uploads at all. PNG is on the
+list for the one other writer: `scripts/seed-demo-travelers.mjs:200` PUTs
+`image/png`, and 12 of the 16 live objects in `profile-photos` are PNGs — a
+jpeg-only list would have broken the demo seeder silently, because its upload
+sits in a `try/catch` that logs a warning and lets the script exit 0. What is
+being closed here is _any_ content type on a signed URL (`text/html`,
+`application/javascript`), not any image format; `image/svg+xml` can carry
+script and is deliberately not on the list. **A file in these buckets that is
+neither a JPEG nor a PNG did not come from this app.**
 
 ---
 
