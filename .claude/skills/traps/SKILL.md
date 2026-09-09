@@ -472,6 +472,32 @@ What works: the sheet to its full detent (a drag on the strip; the strip's
 tap only toggles peek and half), the list to its end (the last row's
 padding clears the dock), then the row by id.
 
+## Maestro taps a button through the keyboard and calls it a success
+
+Since 326837d a StepScreen or StepShell footer is a sibling BELOW the keyboard
+floor, and since 43886b4 a Sheet with a `keyboardAllowance` leaves its pinned
+button covered too. That is the founder's ask - the button does not rise, the
+keyboard covers it, `Hide keyboard` is the way back down - and it changes what
+`tapOn` means. The button is still in the accessibility tree with a frame, so
+Maestro taps its coordinates, the tap lands on the keyboard, and the STEP
+PASSES. The run then dies several steps later on an assertion about something
+the button never did, naming a screen and a beat rather than the tap.
+
+Runs 126 and 127 both burned on this at the say-hi composer, 25 seconds each
+waiting for a confirmation, and I misattributed 126 to my own re-seeding of the
+demo data before 127 reproduced it on untouched rows. The artifact that settles
+it is always there and easy to miss: Maestro writes
+`results/step-N-assertCondition-(...).png` at the moment an assertion fails.
+Look at that picture before theorising.
+
+So: type, then `tapOn: 'Hide keyboard'` (or `pressKey: Enter` on a
+single-line field, which iOS honours by blurring - `hideKeyboard` is BANNED
+here, it took run 82 down in both tours), and only then tap the button.
+`e2e-flows.test.ts` derives the covered screens from the source and fails the
+gate on a flow that skips it, so this is a caught mistake rather than a
+twenty-minute one. The chat room's Composer is the exception the guard is
+scoped to allow: its Send is inline in the bar and is SUPPOSED to ride up.
+
 ## Apple Maps props: two that silently do nothing, and one ordering hazard
 
 `showsPointsOfInterests` is the plural. The singular spelling is not a prop in

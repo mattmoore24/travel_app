@@ -247,8 +247,11 @@ appId: com.mattmoore.samewhere
 # rather than only the eye.
 - assertVisible: 'How long this pin stays up'
 - takeScreenshot: 15b-pin-join-mode
-# 'Put it on the map' sits outside the form's scroll area and the sheet lifts
-# with the keyboard, so it is reachable with the keyboard still up.
+# Reachable because the keyboard went away above, NOT because the sheet lifts
+# it: 43886b4 gave Sheet a keyboardAllowance so a pinned button is covered
+# rather than riding up, which is founder ask 6 from 2026-09-05. The
+# conditional Hide keyboard forty lines up is what makes this tap land, and
+# e2e-flows.test.ts fails the gate if it is ever removed.
 - tapOn: 'Put it on the map'
 # Exact, deliberately: a loose match here passed a run in which the details
 # had been appended to the name.
@@ -476,6 +479,16 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'first-message-input'
 - inputText: 'Both in town the same week. Any market worth the walk?'
+# THE SEND IS UNDER THE KEYBOARD, ON PURPOSE. Since 326837d the StepScreen
+# footer is a sibling below the keyboard floor, not inside it, because the
+# founder asked for exactly that: the button does not rise, the keyboard
+# covers it. Maestro still SEES the button - it is in the tree with a frame -
+# so `tapOn: 'Send'` reported success while the tap landed on the keyboard,
+# and runs 126 and 127 both died on the assertion below with the composer
+# still open and the typed line still in the box (run 127's
+# step-136 screenshot is the proof). Every field carries a Hide keyboard bar
+# and that bar is the way back to the footer, same as business-tour's signup.
+- tapOn: 'Hide keyboard'
 - tapOn: 'Send'
 # EITHER beat. The composer's confirmation holds 1.1 s (CONFIRM_MS) and the
 # strip under it 4 s; Maestro's settle after a tap can outlast the first, and

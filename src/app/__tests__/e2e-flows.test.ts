@@ -153,3 +153,134 @@ describe('the Maestro flows use selectors Maestro has', () => {
     expect(unknown).toEqual([]);
   });
 });
+
+/**
+ * A docked button is not reachable while the keyboard is up.
+ *
+ * Since 326837d the StepScreen/StepShell footer is a sibling BELOW the
+ * keyboard floor, not inside it — the founder asked for exactly that: the
+ * button does not rise, the keyboard covers it. Maestro does not know that.
+ * The button is still in the accessibility tree with a frame, so `tapOn`
+ * reports SUCCESS and puts the tap through the keyboard, and the flow dies
+ * several steps later on an assertion about something the button never did.
+ * That is runs 126 and 127: `tapOn: 'Send'` in the say-hi composer, then
+ * twenty-five seconds waiting for a confirmation, with the composer still
+ * open and the typed line still in the box in Maestro's own screenshot.
+ *
+ * So: if a flow types into a field on one of these screens, it must put the
+ * keyboard away before it taps that same screen's footer button. Every field
+ * carries a Hide keyboard bar and that bar is the way back down.
+ *
+ * Scoped per screen, which is what makes it safe: the chat room's Composer
+ * has a 'Send' too, inline in the bar, and it is SUPPOSED to ride up with the
+ * keyboard. Its screen carries neither marker below, so its ids and its label
+ * are not in this map and its taps are never matched.
+ *
+ * WHAT IT DOES NOT COVER, said out loud rather than left to be discovered. A
+ * label that is computed (`{editing ? 'Save it' : 'Put it up'}`) is not
+ * collected, only literal `continueLabel="…"` and `<PrimaryButton label="…"`.
+ * A `runFlow` clears the state, because this scan does not follow a subflow
+ * and guessing what is inside one would be worse than admitting it. Both are
+ * gaps that let a real offence through; neither invents one. It catches the
+ * shape that has actually cost runs.
+ */
+const SRC = path.join(__dirname, '..', '..');
+
+const tsxFiles = (dir: string): string[] =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) return entry.name === '__tests__' ? [] : tsxFiles(full);
+    return entry.isFile() && entry.name.endsWith('.tsx') ? [full] : [];
+  });
+
+/**
+ * Screens whose primary button is docked under the keyboard: ids → labels.
+ *
+ * Two shapes, both from the same founder ask on 2026-09-05. A StepScreen or
+ * StepShell puts its footer BELOW the keyboard floor. A Sheet passed a
+ * `keyboardAllowance` lifts by only the part of the keyboard that reaches past
+ * whatever is pinned under its scroller, which leaves that pinned thing
+ * covered too — the pin form is the one that has it.
+ */
+const dockedScreens = (): { file: string; ids: string[]; labels: string[] }[] =>
+  tsxFiles(SRC)
+    .map((file) => ({ file, source: fs.readFileSync(file, 'utf8') }))
+    .map(({ file, source }) => ({
+      file,
+      source,
+      shell: /<Step(Screen|Shell)\b/.test(source),
+      sheet: /keyboardAllowance/.test(source),
+    }))
+    .filter(({ shell, sheet }) => shell || sheet)
+    .map(({ file, source, shell }) => ({
+      file: path.relative(SRC, file),
+      ids: [...source.matchAll(/\b(?:input)?[Tt]estID="([^"]+)"/g)].map((m) => m[1]),
+      labels: [
+        ...[...source.matchAll(/\bcontinueLabel="([^"]+)"/g)].map((m) => m[1]),
+        // A sheet pins its own PrimaryButton rather than passing a label down.
+        ...[...source.matchAll(/<PrimaryButton\s+label="([^"]+)"/g)].map((m) => m[1]),
+        // The prop's own default, for a shell that does not pass one.
+        ...(shell ? ['Continue'] : []),
+      ],
+    }))
+    .filter(({ ids, labels }) => ids.length > 0 && labels.length > 0);
+
+/** What a `- tapOn: 'X'` or a `text: 'X'` line is aiming at. */
+const tapTarget = (line: string): string | null => {
+  const inline = /^\s*-\s+tapOn:\s*['"]?(.+?)['"]?\s*$/.exec(line);
+  if (inline) return inline[1];
+  const nested = /^\s*text:\s*['"]?(.+?)['"]?\s*$/.exec(line);
+  return nested ? nested[1] : null;
+};
+
+describe('a flow puts the keyboard away before it taps a docked button', () => {
+  const screens = dockedScreens();
+
+  it('found the screens whose footer the keyboard covers', () => {
+    expect(screens.length).toBeGreaterThan(5);
+    expect(screens.map((s) => s.file)).toContain('app/compose-request.tsx');
+  });
+
+  it.each(flowFiles().map((f) => [path.basename(f), f] as const))('%s', (_name, file) => {
+    const lines = fs.readFileSync(file, 'utf8').split('\n');
+    const offenders: string[] = [];
+    // The screen whose field was last typed into, i.e. whose keyboard is up.
+    let typing: { file: string; labels: string[]; at: number } | null = null;
+
+    lines.forEach((line, i) => {
+      const target = tapTarget(line);
+      // The offence is checked BEFORE the ways out, because two of those
+      // words ('Done', 'Back') are themselves docked labels on some screen:
+      // tapping one under a raised keyboard is the same bug by another name.
+      if (typing && target !== null && typing.labels.includes(target)) {
+        offenders.push(
+          `${path.basename(file)}:${i + 1} taps '${target}', docked under the keyboard raised at ` +
+            `line ${typing.at} (${typing.file}). Tap 'Hide keyboard' first.`
+        );
+        typing = null;
+        return;
+      }
+      // Anything that blurs the field, or leaves the screen entirely.
+      // `pressKey: Enter` is a list item, not a nested key — iOS blurs a
+      // single-line field on Return, which is the dismissal these flows used
+      // before there was a bar to tap.
+      if (
+        (target !== null && ['Hide keyboard', 'Close', 'Cancel', 'Discard'].includes(target)) ||
+        /^\s*-\s+pressKey:\s*Enter\s*$/.test(line) ||
+        /^\s*-\s+(back|launchApp|runFlow)\b/.test(line)
+      ) {
+        typing = null;
+        return;
+      }
+      // A field is focused, then typed into: from here the keyboard is up.
+      const id = /^\s*id:\s*['"]?([^'"\s]+)['"]?\s*$/.exec(line);
+      if (id) {
+        const screen = screens.find((s) => s.ids.includes(id[1]));
+        const typed = lines.slice(i + 1, i + 4).some((next) => /^\s*-\s+inputText\b/.test(next));
+        if (screen && typed) typing = { file: screen.file, labels: screen.labels, at: i + 1 };
+      }
+    });
+
+    expect(offenders).toEqual([]);
+  });
+});
