@@ -29,33 +29,42 @@ function read(file: string): string {
   return fs.readFileSync(path.join(FEATURE, file), 'utf8');
 }
 
-describe('the city rail', () => {
+describe('the city control', () => {
   const map = read('map-screen.tsx');
 
-  it('draws the rail the server ranks, and prints each count inside its chip', () => {
+  it('lists the cities the server ranks, and prints each count beside its name', () => {
     // featured_cities(): the launch cities plus any city whose visible plans
     // clear its k, most plans first, each row carrying its own count - one
-    // query, so the chip and its number cannot arrive in different orders.
+    // query, so the name and its number cannot arrive in different orders.
+    // They were a rail across the top of the map until 2026-09-09 and are
+    // rows inside the search sheet now; what the server owes is unchanged.
     expect(map).toContain('useFeaturedCities()');
-    expect(map).toContain('{railCities.map((city) => {');
+    expect(map).toContain('railCities.map((city) => {');
     expect(map).toContain('const count = city.pin_count;');
-    expect(map).toMatch(/type="caption"[\s\S]{0,160}\{count\}/);
+    expect(map).toMatch(/type="footnote"[\s\S]{0,200}\{countOf\(count, 'plan'\)\}/);
   });
 
   it('never draws a count the server withheld', () => {
     // null is the answer below a city's own k, and it has to stay an
-    // absence rather than becoming a zero on the chip.
+    // absence rather than becoming a zero on the row.
     expect(map).toContain('{count != null ? (');
   });
 
-  it('puts the browsed city on the rail when it is not one of the featured', () => {
+  it('offers the browsed city when it is not one of the featured', () => {
     // A city reached by search, or by a pin that landed a continent away,
-    // still needs a lit chip.
+    // still needs a row of its own.
     expect(map).toContain('[activeCity, ...featured]');
   });
 
-  it('carries a search chip, and nobody has to ask for a city', () => {
-    expect(map).toContain('accessibilityLabel="Search for a city"');
+  it('the top row is one search bar, and nothing else', () => {
+    // Founder, 2026-09-09. The bar names the city it is showing, so the
+    // selection is readable without a filled chip to infer it from, and the
+    // rail's own styles are gone rather than orphaned.
+    expect(map).toContain('testID="city-search-bar"');
+    expect(map).toContain('accessibilityRole="search"');
+    expect(map).toMatch(/Search a city\. Showing \$\{activeCity\.cities\.name\}/);
+    expect(map).not.toContain('styles.cityChip');
+    expect(map).not.toContain('styles.cityScroll');
     expect(map).toContain('setCitySearchOpen(true)');
     expect(map).toContain('city-search-input');
     expect(map).toContain("useCitySearch(citySearchOpen ? cityQuery : '')");
@@ -63,6 +72,14 @@ describe('the city rail', () => {
     expect(map).not.toContain('Somewhere else?');
     expect(map).not.toContain('useRequestCity');
     expect(read('hooks.ts')).not.toContain('request_city');
+  });
+
+  it('the featured rows are only there while the box is empty', () => {
+    // A fixed list of four under somebody's search results is furniture.
+    // Whitespace-insensitive: prettier owns the line breaks in a ternary
+    // this deep, and an assertion that encodes them is an assertion about
+    // prettier.
+    expect(map).toMatch(/cityQuery\.trim\(\)\.length === 0\s*\?\s*railCities\.map/);
   });
 
   it('a search pick browses that city through the same door a chip does', () => {

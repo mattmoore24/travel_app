@@ -203,10 +203,13 @@ describe('the map is tailored to a business rather than trimmed', () => {
     guards(code, 'const applyCity = (city: BrowseCity) => {', 'chooseCity(city);', 300);
   });
 
-  it('the city rail is not drawn for a business', () => {
-    // One city, seeded from the listing. Four chips including two continents
-    // away is a navigation task where a fact should be.
-    guards(src(MAP), '{isBusiness ? null : (', 'style={styles.cityScroll}', 700);
+  it('the city control is not drawn for a business', () => {
+    // One city, seeded from the listing. A bar offering to change it is a
+    // navigation task where a fact should be. It was a rail of four chips
+    // until 2026-09-09 and is one search bar now; the guard in front of it
+    // is the same branch either way, which is the whole point of reading the
+    // NEAREST guard rather than searching the file.
+    guards(src(MAP), '{isBusiness ? null : (', 'testID="city-search-bar"', 2000);
   });
 
   it("the dock button is a business action, gated on 'listed', never the pin path", () => {

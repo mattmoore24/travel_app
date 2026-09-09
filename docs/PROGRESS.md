@@ -3,6 +3,41 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **One thing on the top of the map** (2026-09-09)
+
+Founder, round 4: "the search bar should be the only thing on the top, but
+filters should still exist below the search bar, or next to it if that fits
+better on the screen and looks cleaner."
+
+The top row was a horizontal rail of featured-city chips carrying their plan
+counts. It was four objects competing for the widest strip of a map screen, it
+scrolled sideways (so the fourth city was a gesture rather than a tap), and it
+put a navigation task where the eye lands first. It is one search bar now,
+full width, naming the city it is showing.
+
+The cities did not go anywhere. They are the first thing inside the sheet the
+bar opens, counts and all, with the current one marked, and they disappear the
+moment somebody starts typing because a fixed list of four under a set of
+search results is furniture. Two things changed with them:
+
+- **The sheet lost its `autoFocus`.** It stopped being a search box the moment
+  it became the only way to change city: the common answer is one of the four
+  rows, and a keyboard that arrives before the question does covers them.
+  Apple's own Maps sheet behaves the same way. The field is still the first
+  thing under the heading, so typing costs one tap.
+- **The bar is the read-back.** The rail carried the selection as
+  `accessibilityState` on a filled chip, which a person had to infer and a
+  test had to assert separately. The bar says "Showing Denpasar" in its own
+  label, so the guest tour's kill-and-relaunch persistence check is now one
+  assertion instead of two.
+
+Filters and the audience chip stay exactly where they were, on the row below,
+which is what the founder asked for.
+
+Row 2 is untouched, `business-map.test.ts` still proves a business is offered
+no city control at all (one city, seeded from its listing), and the rail's
+orphaned styles are deleted rather than left behind.
+
 ## **E2E 129: four failures, one of them the app's** (2026-09-09)
 
 Run 129 (`a933b2d`) failed three flows. All four failures are now diagnosed off

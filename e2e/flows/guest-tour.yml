@@ -370,16 +370,24 @@ appId: com.mattmoore.samewhere
 
 # THE MAP REMEMBERS THE CITY (map-remembers-your-city): choose a city, kill
 # the app, and the choice survives the relaunch — this is the whole point and
-# only an E2E step proves it. Chips are PressableScales carrying their own
-# labels, the same addressing 'Filters' already trusts. Denpasar because it
-# is the second chip and needs no rail scroll.
+# only an E2E step proves it.
+#
+# The city control is ONE SEARCH BAR since 2026-09-09, and the four featured
+# cities moved inside the sheet it opens. Denpasar because its name is unique
+# in the seed and it is not the city the tour starts in.
 - launchApp
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
-# 'Denpasar.*', not 'Denpasar': since 2026-09-04 the chip is the featured
-# rail's row and carries its plan count ("Denpasar 10"), and Maestro's text
-# match is the whole string. Run 114 failed here on the bare name.
+- tapOn:
+    id: 'city-search-bar'
+- extendedWaitUntil:
+    visible: 'Which city?'
+    timeout: 10000
+- takeScreenshot: 08b-city-search
+# 'Denpasar.*', not 'Denpasar': the row carries its plan count in its own
+# label ("Denpasar, 13 plans") and Maestro's text match is the whole string.
+# Run 114 failed on the bare name back when this was a chip.
 - tapOn: 'Denpasar.*'
 - waitForAnimationToEnd:
     timeout: 2500
@@ -387,12 +395,12 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
+# THE BAR IS THE READ-BACK. The rail used to carry the selection as
+# accessibilityState on a chip; the bar names the city it is showing, in its
+# own label, so one assertion covers both the persistence and the display.
 - extendedWaitUntil:
-    visible: 'Denpasar.*'
+    visible: 'Search a city. Showing Denpasar'
     timeout: 15000
-- assertVisible:
-    text: 'Denpasar.*'
-    selected: true
 - takeScreenshot: 09-city-remembered
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -455,6 +463,11 @@ appId: com.mattmoore.samewhere
 # map and nowhere else, so a run that started on the wrong tab fails here
 # and not three steps later with a message about a link.
 - assertVisible: 'Drop a pin'
+- tapOn:
+    id: 'city-search-bar'
+- extendedWaitUntil:
+    visible: 'Which city?'
+    timeout: 10000
 - tapOn: 'Lisbon.*'
 - waitForAnimationToEnd:
     timeout: 3000

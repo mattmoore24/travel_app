@@ -2427,111 +2427,68 @@ export default function MapScreen() {
           reach for these controls. */}
       {mode === 'browse' ? (
         <View style={[styles.cityBar, { top: insets.top + Spacing.two }]} pointerEvents="box-none">
-          {/* No city rail for a business. It operates in exactly one city —
-              seeded above from its own listing — and four chips including two
-              continents away turned a fact into a navigation task. */}
+          {/* No city control at all for a business. It operates in exactly
+              one city — seeded above from its own listing — so a bar offering
+              to change it would turn a fact into a navigation task. */}
           {isBusiness ? null : (
             <View style={styles.headerRow} pointerEvents="box-none">
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={styles.cityChips}
-                style={styles.cityScroll}>
-                {railCities.map((city) => {
-                  const selected = city.city_id === activeCityId;
-                  // Null below that city's own k, and null is a real answer:
-                  // the chip says nothing rather than "1". Never a badge —
-                  // a badge turns the chip into a card and the rail into two
-                  // rows on a 375pt screen.
-                  const count = city.pin_count;
-                  return (
-                    <PressableScale
-                      key={city.city_id}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        count != null
-                          ? `${city.cities.name}, ${countOf(count, 'plan')}`
-                          : city.cities.name
-                      }
-                      accessibilityState={{ selected }}
-                      hitSlop={4}
-                      haptic="selection"
-                      scaleTo={0.94}
-                      onPress={() => selectCity(city)}>
-                      <View
-                        style={[
-                          styles.cityChip,
-                          {
-                            backgroundColor: selected ? theme.accent : theme.surface,
-                            borderColor: selected ? 'transparent' : theme.hairline,
-                          },
-                        ]}>
-                        {/* One size, whichever is selected. 'smallBold' is a
-                          bigger role (15pt) as well as a heavier one, so
-                          tapping a chip used to reflow the whole rail and
-                          shove its neighbours sideways under your thumb. */}
-                        <ThemedText
-                          type="small"
-                          style={
-                            selected ? { color: theme.onAccent, fontWeight: '700' } : undefined
-                          }>
-                          {city.cities.name}
-                        </ThemedText>
-                        {/* Caption-size in both states, so the count never
-                          changes the chip's height and the rail never
-                          reflows — the same lesson as the line above. The
-                          COLOUR follows the chip, because textSecondary on
-                          the accent fill is the one pairing in this palette
-                          that does not carry. */}
-                        {count != null ? (
-                          <ThemedText
-                            type="caption"
-                            style={{ color: selected ? theme.onAccent : theme.textSecondary }}>
-                            {count}
-                          </ThemedText>
-                        ) : null}
-                      </View>
-                    </PressableScale>
-                  );
-                })}
-                {/* THE SEARCH CHIP. The rail is where the plans are, not the
-                    only places a person may go: any city in the reference
-                    table can be browsed, and the one they pick joins the
-                    rail in front. Outlined rather than filled so it reads as
-                    a different kind of thing from the cities, and last so it
-                    never sits between two of them. */}
-                <PressableScale
-                  accessibilityRole="button"
-                  accessibilityLabel="Search for a city"
-                  hitSlop={4}
-                  haptic="selection"
-                  scaleTo={0.94}
-                  onPress={() => {
-                    // The same clears the filter button makes: three sheets
-                    // at the bottom of one map is a pile.
-                    setSelectedPinId(null);
-                    setSelectedPlaceId(null);
-                    setVenueKey(null);
-                    setCityQuery('');
-                    setCitySearchOpen(true);
-                  }}>
-                  <View
-                    style={[
-                      styles.cityChip,
-                      { backgroundColor: theme.surface, borderColor: theme.border },
-                    ]}>
-                    <SymbolView
-                      name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
-                      size={13}
-                      tintColor={theme.textSecondary}
-                    />
-                    <ThemedText type="small" themeColor="textSecondary">
-                      Anywhere
-                    </ThemedText>
-                  </View>
-                </PressableScale>
-              </ScrollView>
+              {/* ONE THING ON THE TOP ROW, and it is a search bar. Founder,
+                  2026-09-09: "the search bar should be the only thing on the
+                  top, but filters should still exist below the search bar".
+
+                  What it replaces is a horizontal rail of featured-city chips
+                  with their plan counts. The rail was four objects competing
+                  for the widest strip of a map screen, it scrolled sideways
+                  (so its fourth city was a gesture away rather than a tap),
+                  and it put a navigation task where a person's eye lands
+                  first. The cities did not go anywhere: they are the first
+                  thing in the sheet this opens, counts and all, and the one
+                  you are looking at is named right here rather than inferred
+                  from which chip is filled.
+
+                  It reads as a field rather than a button on purpose - a
+                  magnifier, the city, and the rest of the width - because
+                  that is the affordance somebody looks for when they want a
+                  city this app has never heard of, which is the whole point
+                  of the sheet behind it. */}
+              <PressableScale
+                testID="city-search-bar"
+                accessibilityRole="search"
+                accessibilityLabel={
+                  activeCity ? `Search a city. Showing ${activeCity.cities.name}` : 'Search a city'
+                }
+                hitSlop={4}
+                haptic="selection"
+                scaleTo={0.98}
+                containerStyle={styles.citySearchPress}
+                onPress={() => {
+                  // The same clears the filter button makes: three sheets at
+                  // the bottom of one map is a pile.
+                  setSelectedPinId(null);
+                  setSelectedPlaceId(null);
+                  setVenueKey(null);
+                  setCityQuery('');
+                  setCitySearchOpen(true);
+                }}>
+                <View
+                  style={[
+                    styles.citySearchBar,
+                    { backgroundColor: theme.surface, borderColor: theme.hairline },
+                  ]}>
+                  <SymbolView
+                    name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
+                    size={15}
+                    tintColor={theme.textSecondary}
+                  />
+                  <ThemedText
+                    type="callout"
+                    numberOfLines={1}
+                    themeColor={activeCity ? 'text' : 'textSecondary'}
+                    style={styles.citySearchText}>
+                    {activeCity ? activeCity.cities.name : 'Search a city'}
+                  </ThemedText>
+                </View>
+              </PressableScale>
             </View>
           )}
           <View style={styles.dateRow}>
@@ -3560,21 +3517,74 @@ export default function MapScreen() {
             setCityQuery('');
           }}
           avoidKeyboard>
-          <ThemedText type="headline">Anywhere</ThemedText>
-          <ThemedText type="body" themeColor="textSecondary">
-            Any city. Plans and travelers there show up the moment somebody adds one.
-          </ThemedText>
+          <ThemedText type="headline">Which city?</ThemedText>
           <FormTextField
             label="City"
             testID="city-search-input"
             placeholder="Start typing: Nice, Manhattan, Chiang Mai"
             value={cityQuery}
             onChangeText={setCityQuery}
-            autoFocus
+            // NO autoFocus, and it used to have one. This sheet stopped being
+            // a search box the moment it became the only way to change city:
+            // the common answer is one of the four rows below it, and a
+            // keyboard that arrives before the question does covers them.
+            // Apple's own Maps sheet does the same thing, for the same
+            // reason. The field is still the first thing under the heading,
+            // so typing is one tap away.
             autoCorrect={false}
             autoComplete="off"
             returnKeyType="search"
           />
+          {/* WHERE THE CITY CHIPS WENT. They were the map's top row until
+              2026-09-09; here they keep their plan counts and stop competing
+              with the map for the widest strip of the screen. Only while the
+              box is empty: once somebody is typing, a fixed list of four
+              under their results is furniture. */}
+          {cityQuery.trim().length === 0
+            ? railCities.map((city) => {
+                const selected = city.city_id === activeCityId;
+                const count = city.pin_count;
+                return (
+                  <Pressable
+                    key={city.city_id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={
+                      count != null
+                        ? `${city.cities.name}, ${countOf(count, 'plan')}`
+                        : city.cities.name
+                    }
+                    style={[
+                      styles.citySuggestion,
+                      styles.cityFeaturedRow,
+                      {
+                        backgroundColor: selected ? theme.accentSoft : theme.backgroundElement,
+                      },
+                    ]}
+                    onPress={() => {
+                      setCitySearchOpen(false);
+                      setCityQuery('');
+                      selectCity(city);
+                    }}>
+                    <ThemedText style={styles.cityFeaturedName} numberOfLines={1}>
+                      {city.cities.name}
+                    </ThemedText>
+                    {/* Null below that city's own k, and null is a real
+                        answer: the row says nothing rather than "1". */}
+                    {count != null ? (
+                      <ThemedText type="footnote" themeColor="textSecondary">
+                        {countOf(count, 'plan')}
+                      </ThemedText>
+                    ) : null}
+                  </Pressable>
+                );
+              })
+            : null}
+          {cityQuery.trim().length === 0 ? (
+            <ThemedText type="footnote" themeColor="textSecondary">
+              Any other city works too. Plans and travelers show up the moment somebody adds one.
+            </ThemedText>
+          ) : null}
           {(citySearch.data ?? []).map((row) => {
             // Five US Springfields exist: show the admin region when a name
             // repeats within the result set. The same rule add-trip uses.
@@ -3625,9 +3635,31 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  cityChips: {
-    gap: Spacing.two,
+  // The press fills the row; the bar inside it carries the inset, so the
+  // touch target runs the full width rather than stopping at the border.
+  citySearchPress: {
+    flex: 1,
     paddingHorizontal: Spacing.three,
+  },
+  citySearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    minHeight: HitTarget,
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.pill,
+    borderCurve: 'continuous',
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  // Takes the rest of the width so a long city name truncates instead of
+  // pushing the magnifier off the left edge.
+  citySearchText: {
+    flex: 1,
   },
   legend: {
     position: 'absolute',
@@ -3693,22 +3725,15 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     borderCurve: 'continuous',
   },
-  cityChip: {
-    // A row now that a count rides beside the name. Centre-aligned rather
-    // than baseline: two different type roles on one baseline pull the
-    // smaller one down and the chip grows to fit it.
+  // The featured cities inside the search sheet: name on the left, its plan
+  // count on the right, laid over citySuggestion's own box.
+  cityFeaturedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Space.xs,
-    paddingHorizontal: Space.lg,
-    paddingVertical: Space.sm,
-    borderRadius: Radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    gap: Space.sm,
+  },
+  cityFeaturedName: {
+    flex: 1,
   },
   dateRow: {
     flexDirection: 'row',
@@ -3840,9 +3865,6 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingHorizontal: Spacing.three,
     alignItems: 'center',
-  },
-  cityScroll: {
-    flex: 1,
   },
   emptyBanner: {
     position: 'absolute',
