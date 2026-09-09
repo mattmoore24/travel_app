@@ -186,6 +186,8 @@ describe('the settings script, run end to end against a fake project', () => {
   });
 
   it('fails loudly when anonymous sign-ins are off, and still writes nothing', () => {
+    // A real failure, unlike the plan-blocked one above: somebody turned this
+    // off and the guest door is broken until it goes back on.
     const { code, out } = run('noguests');
     expect(code).toBe(1);
     expect(out).toContain('Guest mode is built on this');
@@ -239,13 +241,19 @@ describe('the settings script, run end to end against a fake project', () => {
     // precisely the failure the results table exists to prevent. A refusal is a
     // result now.
     const { code, out } = run('freeplan');
-    expect(code).toBe(1);
     expect(out).toContain('the write was refused: 402');
     expect(out).toContain('a decision about the plan, not a setting to retry');
     // Everything either side of the refusal still ran.
     expect(out).toContain('ENDED db_schema=public, graphql_public');
     expect(out).toContain('ENDED fileSizeLimit=5242880');
     expect(out).toContain('ENDED hibp=false');
+    // And it is a WARNING, not a failure. supabase-deploy.yml's Apple step
+    // wrote this rule down first: "a deploy that goes red for an outstanding
+    // founder errand teaches people to read red as weather." A 402 cannot be
+    // fixed by re-running, so a permanently red run would train exactly that.
+    expect(code).toBe(0);
+    expect(out).toContain('::warning::SEC-004');
+    expect(out).toContain('NOT a failure of this run');
   });
 
   it('treats a 200 with an empty body as a write, and lets the read-back settle it', () => {

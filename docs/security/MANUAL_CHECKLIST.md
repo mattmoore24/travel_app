@@ -227,7 +227,9 @@ schemas were already `public, graphql_public`, so the `pg_net` door has never
 been open; leaked-password protection off; storage ceiling 50 MB; anonymous
 sign-ins ON, which is what exposed the mistake above. `apply`: the schemas were
 a no-op, the storage ceiling came down to 5 MB, and leaked-password protection
-was refused with a 402 — it needs the Pro plan.
+was refused with a 402 — it needs the Pro plan. That 402 is reported as a
+warning rather than a failure, so the workflow is green with one warning until
+the plan changes.
 
 ### Still yours, because there is no API for them
 

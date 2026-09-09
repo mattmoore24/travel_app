@@ -1,4 +1,4 @@
 apply
 
-# Re-run 2026-09-09: PATCH /config/storage answers 200 with an empty body, and
-# the previous run read that as a refusal. Only the first line is read.
+# Re-run 2026-09-09: a plan-blocked setting is a warning now, not a failure.
+# Only the first line is read.

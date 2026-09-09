@@ -150,6 +150,9 @@ async function api(method, path, body) {
   return parsed;
 }
 
+/** A refusal the plan forbids is blocked, not failed. See `record` below. */
+const stateFor = (status) => (status === 402 ? 'blocked' : 'failed');
+
 /** What to tell the founder about a refusal, in their own terms. */
 const refusalAdvice = (status) =>
   status === 402
@@ -199,9 +202,25 @@ function changedKeys(before, after, owned) {
  * question.
  */
 const results = [];
-const record = (name, ok, detail) => {
-  results.push({ name, ok, detail });
-  console.log(`${ok ? 'OK  ' : 'FAIL'}  ${name}: ${detail}`);
+
+/**
+ * `state` is 'ok', 'blocked' or 'failed'.
+ *
+ * BLOCKED IS NOT RED, and that is this repository's own rule rather than a
+ * softening of it. supabase-deploy.yml's Apple step: "a deploy that goes red
+ * for an outstanding founder errand teaches people to read red as weather."
+ * A 402 is exactly that - leaked-password protection needs the Pro plan, so
+ * the run cannot fix it and neither can re-running it. It is printed as a
+ * warning that GitHub surfaces on the run, named in the summary, and it does
+ * not fail the job. Anything else that did not take still does.
+ */
+const record = (name, state, detail) => {
+  results.push({ name, state, detail });
+  if (state === 'blocked') {
+    console.log(`::warning::${name}: ${detail}`);
+    return;
+  }
+  console.log(`${state === 'ok' ? 'OK  ' : 'FAIL'}  ${name}: ${detail}`);
 };
 
 /**
@@ -213,7 +232,11 @@ const record = (name, ok, detail) => {
 async function harden({ name, path, owned, read, desired, patch }) {
   const before = await api('GET', path);
   if (before.refused) {
-    record(name, false, `could not be read: ${before.refused}${refusalAdvice(before.status)}`);
+    record(
+      name,
+      stateFor(before.status),
+      `could not be read: ${before.refused}${refusalAdvice(before.status)}`
+    );
     return;
   }
   const beforePrint = fingerprint(before, owned);
@@ -221,11 +244,11 @@ async function harden({ name, path, owned, read, desired, patch }) {
   const want = desired(current, before);
 
   if (want === null) {
-    record(name, true, `already ${JSON.stringify(current)}. Nothing to change.`);
+    record(name, 'ok', `already ${JSON.stringify(current)}. Nothing to change.`);
     return;
   }
   if (!APPLY) {
-    record(name, true, `would change ${JSON.stringify(current)} -> ${JSON.stringify(want)}`);
+    record(name, 'ok', `would change ${JSON.stringify(current)} -> ${JSON.stringify(want)}`);
     return;
   }
 
@@ -233,7 +256,7 @@ async function harden({ name, path, owned, read, desired, patch }) {
   if (written.refused) {
     record(
       name,
-      false,
+      stateFor(written.status),
       `still ${JSON.stringify(current)}; the write was refused: ${written.refused}` +
         refusalAdvice(written.status)
     );
@@ -257,7 +280,7 @@ async function harden({ name, path, owned, read, desired, patch }) {
   if (after.refused) {
     record(
       name,
-      false,
+      stateFor(after.status),
       `written, but the read-back was refused: ${after.refused}${refusalAdvice(after.status)} ` +
         'Whether it took is unconfirmed.'
     );
@@ -267,7 +290,7 @@ async function harden({ name, path, owned, read, desired, patch }) {
   if (JSON.stringify(now) !== JSON.stringify(want)) {
     record(
       name,
-      false,
+      'failed',
       `patched to ${JSON.stringify(want)} but a fresh read says ${JSON.stringify(now)}. ` +
         'The setting did NOT take; set it in the dashboard.'
     );
@@ -278,7 +301,7 @@ async function harden({ name, path, owned, read, desired, patch }) {
   if (afterPrint.hash !== beforePrint.hash) {
     record(
       name,
-      false,
+      'failed',
       `set to ${JSON.stringify(now)}, but ${path} changed OUTSIDE the keys this step owns, ` +
         'which means PATCH is not the partial update it assumes. Keys that moved (names ' +
         `only, values are never printed): ${changedKeys(before, after, owned).join(', ') || '(a key was added or removed)'}. ` +
@@ -289,7 +312,7 @@ async function harden({ name, path, owned, read, desired, patch }) {
 
   record(
     name,
-    true,
+    'ok',
     `${JSON.stringify(current)} -> ${JSON.stringify(now)} ` +
       `(${afterPrint.keys.length} other keys unchanged, ${afterPrint.hash})`
   );
@@ -368,11 +391,15 @@ await harden({
   const config = await api('GET', '/config/auth');
   const enabled = config.refused ? null : config.external_anonymous_users_enabled === true;
   if (config.refused) {
-    record(name, false, `could not be read: ${config.refused}${refusalAdvice(config.status)}`);
+    record(
+      name,
+      stateFor(config.status),
+      `could not be read: ${config.refused}${refusalAdvice(config.status)}`
+    );
   } else {
     record(
       name,
-      enabled,
+      enabled ? 'ok' : 'failed',
       enabled
         ? 'ON, which is correct - signInAsGuest is signInAnonymously. Not changed.'
         : 'OFF. Guest mode is built on this: every "look around first" session is ' +
@@ -394,14 +421,17 @@ await harden({
 });
 
 // --- What the founder still has to do themselves ---------------------------
-const failed = results.filter((r) => !r.ok);
+const failed = results.filter((r) => r.state === 'failed');
+const blocked = results.filter((r) => r.state === 'blocked');
 const pending = results.filter((r) => r.detail.startsWith('would change'));
 const headline = !APPLY
   ? pending.length === 0
     ? 'Project settings: nothing to change'
     : `Project settings: ${pending.length} would change (nothing was written)`
   : failed.length === 0
-    ? 'Project settings: hardened'
+    ? blocked.length === 0
+      ? 'Project settings: hardened'
+      : `Project settings: hardened, ${blocked.length} blocked by the plan`
     : `Project settings: ${failed.length} could not be set`;
 const summary = [
   `## ${headline}`,
@@ -409,7 +439,9 @@ const summary = [
   `- Project: \`${PROJECT_REF}\``,
   `- Mode: \`${APPLY ? 'apply' : 'check'}\``,
   '',
-  ...results.map((r) => `- ${r.ok ? '✅' : '❌'} **${r.name}** — ${r.detail}`),
+  ...results.map(
+    (r) => `- ${{ ok: '✅', blocked: '⚠️', failed: '❌' }[r.state]} **${r.name}** — ${r.detail}`
+  ),
   '',
   'Still a dashboard errand, because the Management API publishes no endpoint',
   'for it: the **organisation spend cap** (Dashboard → Organization → Billing →',
@@ -443,7 +475,14 @@ if (!APPLY) {
   );
 } else {
   console.log(
-    `All ${results.length} settings verified against a fresh read of the live project. ` +
-      'The organisation spend cap and the Anthropic spend limit have no API and are still manual.'
+    `${results.length - blocked.length} of ${results.length} settings verified against a fresh ` +
+      'read of the live project. The organisation spend cap and the Anthropic spend limit have ' +
+      'no API and are still manual.'
   );
+  if (blocked.length > 0) {
+    console.log(
+      `Blocked by the project's plan, and NOT a failure of this run: ` +
+        `${blocked.map((r) => r.name).join(', ')}.`
+    );
+  }
 }

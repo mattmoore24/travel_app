@@ -100,7 +100,21 @@ refusal — so the corrected run reported the ceiling unchanged without having
 looked. A write's response body is never used here; the read-back GET is the
 authority on whether it took. Only an unparseable GET is a refusal now, because
 that is the case where the state is genuinely unknown. Fixture scenario
-`quietok`, mutation-checked.
+`quietok`, mutation-checked. The ceiling had in fact applied; the run had simply
+reported otherwise without looking.
+
+And one judgement call. A 402 is now a WARNING rather than a failure, which is
+this repository's own rule and not a softening of it — supabase-deploy.yml's
+Apple step: "a deploy that goes red for an outstanding founder errand teaches
+people to read red as weather." Leaked-password protection cannot be turned on
+by re-running, so a permanently red workflow would train exactly that. It is
+printed as a `::warning::`, named in the run summary, and excluded from the exit
+code; everything else that did not take still fails.
+
+**Where the live project ended up:** exposed schemas `public, graphql_public`
+(already correct — the `pg_net` door has never been open), storage ceiling
+**5 MB** (down from 50), anonymous sign-ins ON and now guarded, leaked-password
+protection blocked by the plan.
 
 Every field name came off the published OpenAPI spec rather than memory. Each
 section reads, decides, patches only if the desired state does not already
