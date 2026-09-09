@@ -194,6 +194,13 @@ export function Composer({
           {(done) => (
             <TextInput
               testID={inputTestID}
+              // Apple's predictive bar draws between the keyboard and our Hide
+              // keyboard bar, so an autocorrect field puts two rows above the
+              // keyboard. Off, per the founder. spellCheck set explicitly
+              // because RN inherits it from autoCorrect, and a message to a
+              // stranger is exactly where the red underline earns its keep.
+              autoCorrect={false}
+              spellCheck
               style={[
                 styles.input,
                 {

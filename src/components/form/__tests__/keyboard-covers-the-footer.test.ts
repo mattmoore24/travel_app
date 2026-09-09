@@ -154,3 +154,62 @@ describe('the keyboard covers the footer rather than lifting it', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * Apple's predictive bar is the second row above the keyboard, and we do not
+ * own it.
+ *
+ * Founder, 2026-09-09: autocorrect off everywhere. The reason is layout rather
+ * than spelling — on iOS the QuickType bar draws BETWEEN the keyboard and our
+ * Hide keyboard bar, so an autocorrect field puts two rows above the keyboard
+ * and the app controls only the top one. `autoCorrect={false}` is the one trait
+ * that removes Apple's row.
+ *
+ * Scanned across every `<TextInput` in the app rather than pinned to the shared
+ * field, because the ones that bite are the bare inputs somebody adds later.
+ */
+describe("Apple's predictive bar is off on every field", () => {
+  const inputFiles = (dir: string): string[] =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return entry.name === '__tests__' ? [] : inputFiles(full);
+      return entry.isFile() && entry.name.endsWith('.tsx') ? [full] : [];
+    });
+
+  it('every TextInput in the app turns it off', () => {
+    const SRC = path.join(__dirname, '..', '..', '..');
+    const offenders: string[] = [];
+    for (const file of inputFiles(SRC)) {
+      const code = fs.readFileSync(file, 'utf8');
+      // ELEMENTS ONLY. Two things look like a field and are not:
+      // `useRef<TextInput>(null)` is a type parameter, and the usage example
+      // in keyboard-done-bar's own docstring is a comment. The first is
+      // excluded by requiring whitespace or a slash after the name (a generic
+      // closes immediately with `>`); the second by skipping comment lines.
+      // Written this way after the first draft reported all five as offences.
+      for (const m of code.matchAll(/<TextInput(?=[\s/])/g)) {
+        const before = code.slice(0, m.index);
+        const line = before.split('\n').length;
+        const lineText = code.split('\n')[line - 1].trim();
+        if (lineText.startsWith('*') || lineText.startsWith('//')) continue;
+        // The props of this element, up to its self-closing slash.
+        const props = code.slice(m.index, code.indexOf('/>', m.index));
+        if (!/autoCorrect=\{false\}/.test(props) && !/\{\.\.\.rest\}/.test(props)) {
+          offenders.push(`${path.relative(SRC, file)}:${line}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('keeps the red underline where people write sentences', () => {
+    // spellCheck is a SEPARATE trait that React Native inherits from
+    // autoCorrect — "The default value is inherited from autoCorrect", per the
+    // installed TextInput types. So turning the predictive bar off would have
+    // silently taken spell-check with it, on the bio and the first message to
+    // a stranger. Multiline is this app's prose marker.
+    const field = source('src/components/form/form-text-field.tsx');
+    expect(field).toContain('spellCheck={rest.multiline === true}');
+    expect(source('src/features/chat/composer.tsx')).toContain('spellCheck');
+  });
+});

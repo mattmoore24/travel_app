@@ -466,6 +466,11 @@ export function PinFormSheet({
                   <TextInput
                     testID="venue-name-input"
                     {...done}
+                    // Off, per the founder: Apple's predictive bar would sit
+                    // between the keyboard and our own. spellCheck follows it
+                    // to false here on purpose - a venue name is a proper noun
+                    // and would wear a red underline every time.
+                    autoCorrect={false}
                     accessibilityLabel="Name of the spot"
                     value={venue}
                     onChangeText={(text) => {

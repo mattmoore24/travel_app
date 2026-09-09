@@ -58,6 +58,29 @@ export function FormTextField({
           {(done) => (
             <TextInput
               ref={inputRef}
+              // NOTHING ABOVE THE KEYBOARD BUT OUR OWN BAR. Founder, 2026-09-09,
+              // asked for autocorrect off everywhere. The reason is layout, not
+              // spelling: on iOS the QuickType predictive bar draws BETWEEN the
+              // keyboard and our Hide keyboard bar, so an autocorrect field puts
+              // two rows above the keyboard and the app owns only the top one.
+              // `autoCorrect={false}` is the single trait that removes Apple's
+              // row (UITextInputTraits.autocorrectionType = .no).
+              //
+              // spellCheck is set EXPLICITLY rather than left to follow. React
+              // Native's own contract: "spellCheck ... The default value is
+              // inherited from autoCorrect" - so switching autocorrect off would
+              // silently take the red underlines with it, on the bio and the
+              // first message to a stranger, which nobody asked for. The
+              // predictive bar is autocorrection; the underline is spell check.
+              // They are separate traits and only one of them was the ask.
+              //
+              // Underlines on PROSE only. Every multiline field here is one
+              // somebody writes sentences into (bio, first message, plan
+              // details, business description, contact form); the single-line
+              // ones are names, cities, emails and handles, where a red
+              // underline under every proper noun is noise rather than help.
+              autoCorrect={false}
+              spellCheck={rest.multiline === true}
               placeholderTextColor={theme.textSecondary}
               style={[
                 styles.input,
