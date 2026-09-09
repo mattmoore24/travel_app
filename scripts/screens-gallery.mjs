@@ -46,6 +46,18 @@ const CAPTIONS = {
   '03-travelers-guest': ['Travelers, as a guest', 'One real person, then the gate.'],
   '04-chat-guest': ['Chat, as a guest', 'Rooms are readable before signing up.'],
   '05-back-to-map': ['Back to the map', 'Tab state survives the round trip.'],
+  '05e-plan-list': [
+    'The plan list',
+    'The strip above the dock is the only place the count is stated. It opens to this.',
+  ],
+  '05f-plan-list-gate': [
+    'A guest taps a plan',
+    'The one moment the app asks for an account, and it says what you get for it.',
+  ],
+  '05g-panned-away': [
+    'Panned off the city',
+    'Drift far enough and the way back names the city you came from.',
+  ],
   '10-auth-gate': ['The gate', 'Asked at the moment of action, not at the door.'],
   '11-signed-in-map': ['Map, signed in', 'Faces on the pins, and one docked action.'],
   '12-place-mode': ['Placing a pin', 'The map moves under a fixed pin.'],

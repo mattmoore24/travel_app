@@ -195,8 +195,14 @@ appId: com.mattmoore.samewhere
     optional: true
 - waitForAnimationToEnd:
     timeout: 2000
-# A seeded row opens the curated pin card; the assertion inside the sheet is
-# the point — the list and the marker share one selection model.
+# TAPPING A PLAN AS A GUEST HAS TWO DOORS, and which one row 0 opens is the
+# live seed's business, not this flow's. A CURATED pick opens its card, which
+# guests may read. Anything a real traveler posted opens the sign-up gate
+# instead — the app's highest-stakes screen, and a frame this tour had never
+# taken. Run 129 assumed only the first door existed: it tapped a 'Close' that
+# the gate branch did not have (WARNED, silently), and drove the next twenty
+# steps with the sheet still open. Photograph whichever door opens, and leave
+# by it.
 - runFlow:
     when:
       visible: 'One of our picks. Show up.'
@@ -205,20 +211,44 @@ appId: com.mattmoore.samewhere
       - tapOn: 'Close'
       - waitForAnimationToEnd:
           timeout: 2000
-# On live-backend state a non-seeded pin can be row 0, and the gated flow
-# above is the only place a card gets closed — so close whatever the row
-# opened (no-op when the seeded branch already did), then collapse the list
-# back to its peek so the pan segment starts on a bare map.
+- runFlow:
+    when:
+      visible: "See who's going and say hi"
+    commands:
+      - takeScreenshot: 05f-plan-list-gate
+      - tapOn: 'Close'
+      - waitForAnimationToEnd:
+          timeout: 2000
+# Belt and braces for a row that opened something neither branch named.
 - tapOn:
     text: 'Close'
     optional: true
 - waitForAnimationToEnd:
     timeout: 2000
-- tapOn:
-    id: 'plan-list-peek'
-    optional: true
-- waitForAnimationToEnd:
-    timeout: 2000
+
+# COLLAPSE THE LIST, AND PROVE IT COLLAPSED. plan-list-peek is a TOGGLE
+# (snapTo(expanded ? 'peek' : 'half')) and it is `disabled` while any sheet
+# covers the map, so a blind tap is as likely to open the list as to close it,
+# and a tap that lands on the disabled header reports COMPLETED having done
+# nothing. Run 129 panned three screen-widths off Bangkok with the list still
+# at half, and a list past its peek is `mapCovered`: every banner in the slot
+# is suppressed, the way-home pill included. The map was in the right place
+# and the pill could not exist.
+#
+# The rows are the state probe. plan-list.tsx marks the scroller
+# accessibilityElementsHidden at the peek, so row 0 is in the hierarchy when
+# the list is up and absent when it is down — no reading of detents required.
+- runFlow:
+    when:
+      visible:
+        id: 'plan-list-row-0'
+    commands:
+      - tapOn:
+          id: 'plan-list-peek'
+      - waitForAnimationToEnd:
+          timeout: 2000
+- assertNotVisible:
+    id: 'plan-list-row-0'
 
 # Pan away from the city. A blank frame with no pins used to be the whole
 # answer; now the way home is a pill above the dock, asserted by its spoken
@@ -228,10 +258,10 @@ appId: com.mattmoore.samewhere
 # list's own top edge: planListHeights makes `half` = footing + 55% of the
 # content range, so the sheet's half detent starts at roughly 45% down and a
 # swipe there lands ON the sheet and scrolls its rows instead of panning the
-# map. The collapse above is `optional`, so when it does not take there is
-# nothing to say so. Run 128 died here with the map still over Bangkok Noi,
-# markers in frame and the list sitting at half in the failure screenshot.
-# 25% is map at both the peek and half detents.
+# map. Run 128 died here with the map still over Bangkok Noi, markers in frame
+# and the list sitting at half in the failure screenshot. 25% is map at both
+# the peek and half detents — and the assertion above now proves which of the
+# two the list is at before a single swipe is thrown.
 #
 # THREE SWIPES, because the distance is what the assertion is about:
 # FAR_FROM_CITY_M is 4 km from `home`, and how far one 70%-width swipe carries

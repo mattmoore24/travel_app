@@ -427,7 +427,16 @@ appId: com.mattmoore.samewhere
 # and the undo restoring Kai were all in the photographs). Who exactly comes
 # back on top is pinned by jest (passed.test.ts hoist cases); this flow
 # proves the interaction: pass, named bar, undo, bar gone.
-- assertVisible: 'Moved past (Maya|Dev|Sofia|Priya|Nora|Theo|Marcus|Tomas|Ines|Kai|Freja|Luca)'
+#
+# A WAIT, NOT A BARE ASSERT. This was `assertVisible` and it fired the
+# instant the tap returned, which is before the state write, the bar's
+# entrance and the next card's photo have all landed. Run 129 lost the whole
+# tour here on its second attempt with no bar in the failure frame. The bar
+# lives 5s, so the budget is deliberately close to it: a bar that never
+# arrives still fails, and fails fast.
+- extendedWaitUntil:
+    visible: 'Moved past (Maya|Dev|Sofia|Priya|Nora|Theo|Marcus|Tomas|Ines|Kai|Freja|Luca)'
+    timeout: 8000
 - takeScreenshot: 17a-passed-undo
 - tapOn: 'Undo'
 - waitForAnimationToEnd:
@@ -500,10 +509,29 @@ appId: com.mattmoore.samewhere
     timeout: 25000
 # The composer pops itself after its confirmation; the strip is underneath,
 # floating over whoever the queue handed up next.
+#
+# OPTIONAL, BECAUSE A FOUR-SECOND BEAT IS NOT A GATE. SAID_HI_MS is 4000, and
+# a Maestro hierarchy fetch on iOS can take a second or more on its own - so
+# the strip's window is inside this driver's sampling error, and pinning the
+# tour to it makes the suite report on Maestro's timing rather than on the
+# app. Run 129 proved both halves of that in one run: the shared wait above
+# matched the STRIP near the end of its window, and this assert failed a
+# fraction of a second later against a bar that had cleared itself exactly
+# when it should. The mirror image cost run 124 the same tour.
+#
+# The sentence is not on trial here either way: travelers-said-hi.test.ts
+# pins it character for character against travelers.tsx, and it can do that
+# on every commit rather than once a run. What this flow owes is the
+# interaction, and the assertion under the screenshot is the durable half of
+# it - a hello that did not go leaves the composer open.
 - extendedWaitUntil:
     visible: 'Said hi to .* It.s in Chat under .You said hi..'
     timeout: 20000
+    optional: true
 - takeScreenshot: 17b-said-hi
+- extendedWaitUntil:
+    notVisible: 'Your first message'
+    timeout: 20000
 # A beat, not a wall. Four seconds of screen time and it clears itself.
 - extendedWaitUntil:
     notVisible: 'Said hi to .*'

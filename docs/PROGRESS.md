@@ -3,6 +3,72 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **E2E 129: four failures, one of them the app's** (2026-09-09)
+
+Run 129 (`a933b2d`) failed three flows. All four failures are now diagnosed off
+the run's own `step-N-assertCondition-*.png` frames and its Maestro log rather
+than from re-runs, and only one of them is a defect in the product.
+
+**The confirmed fix first.** The three-swipe pan from 128 worked: the failure
+frame shows the map three screen-widths west of Bangkok with no markers in
+sight. The way-home pill still did not appear, and the reason is in the same
+picture — the plan list was sitting at its half detent. A list past its peek is
+`planListExpanded`, which is `mapCovered`, which makes `slot` null and
+suppresses every banner including the pill. The map was in exactly the right
+place and the thing it was waiting for could not exist.
+
+**Why the list was open: a sheet a guest could not close.** The tour taps plan
+row 0. As a guest, on a pin a real traveler posted, that does not open the pin
+card — `map-screen.tsx` swaps the entire card body for a `SignUpGate`. The card
+draws its own header with an ✕; the gate arm drew no header at all, and the
+sheet is `inline dimmed={false}`, so there is no scrim to tap either. The only
+way out was a pull-down gesture nothing on screen mentions, at the single
+highest-stakes moment in the app for the person we most want to keep.
+
+Nobody reported it; the tour found it from the other side, tapping a `Close`
+that was not there and reporting `WARNED` because the step was optional. With
+the sheet still up, `plan-list-peek` was `disabled` (it is `disabled` whenever a
+sheet covers the map) and the collapse tap landed on a dead control — reported
+COMPLETED, because a disabled `Pressable` is still an element with a frame. It
+is also a toggle, not a collapse.
+
+So: the gate branch gets the card's close, `sign-up-gate-detail.test.tsx` reads
+that branch out of the source and fails if it leaves again, and the tour now
+photographs the gate (`05f-plan-list-gate` — a frame this suite had never
+taken), leaves by the close, collapses the list only when a row is actually in
+the accessibility tree, and **asserts the collapse**. The rows are the probe:
+`plan-list.tsx` sets `accessibilityElementsHidden={!expanded}`, so row 0's
+absence is the peek detent, with no reading of detents required.
+
+**Two beats that are not gates.** The signed-in tour died differently on each
+attempt, both on a timed confirmation. `SAID_HI_MS` is 4000 and a Maestro
+hierarchy fetch on iOS can take a second on its own, so the strip's window is
+inside the driver's own sampling error: attempt 1's shared
+`(Sent to|Said hi to)` wait matched the strip near the end of its life and the
+exact-sentence assert under it failed a fraction of a second later, against a
+bar that had cleared itself exactly on time. Run 124 lost the same tour to the
+mirror image. The sentence is pinned character-for-character by
+`travelers-said-hi.test.ts` on every commit, so the flow's copy of it is now
+`optional: true` and the hard assertion moved to something durable — the
+composer closing itself, which is the same fact and does not expire. Attempt 2
+died on a bare `assertVisible` fired the instant a `tapOn` returned, before the
+state write and the entrance animation had landed; that is an
+`extendedWaitUntil` now, budgeted close to the bar's own 5 s so a bar that
+never arrives still fails fast.
+
+**One that is not ours, and is not fixed.** The business tour hung twice in
+`ImageManipulator.renderAsync()` past its 90 s bound and died on the app's own
+honest "It got stuck while preparing it" — on a pipeline the signed-in tour
+drove successfully in the same run. The one anomaly in the frames is
+`91-photo-crop`: a progress ring still turning in the corner of
+UIImagePickerController's crop editor, with `Choose` tapped in the same second.
+The subflow now lets the editor settle before confirming, and takes that
+screenshot _after_ the settle so it is evidence of what `Choose` was tapped on.
+The 90 s bound was NOT raised again — it has gone 20 → 45 → 90 across three
+runs, and raising a bound has never yet fixed a hang. If 130 hangs there again
+with a fully-loaded crop frame, it is expo-image-manipulator and the next move
+is a different code path, not a bigger number.
+
 ## **The catch-up push that would have deployed to production** (2026-09-09)
 
 The founder asked for the repository to be synced so the default branch stopped

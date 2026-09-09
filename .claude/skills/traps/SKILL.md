@@ -480,11 +480,11 @@ swipe at `y: 45%` is therefore on the sheet: it scrolls the rows and the map
 does not move at all. Run 128's guest tour died on `Back to Bangkok` with the
 map still over Bangkok Noi and the list plainly at half in the failure frame.
 
-The collapse before it is `optional: true` — as it has to be, because
-`plan-list-peek` is `disabled` at the peek detent and a hard tap would fail
-there — so when the collapse does not take, nothing says so. Swipe at **25%**,
-which is map at both peek and half. There is no safe y at the full detent:
-`full = windowHeight - RAIL_RESERVE`, so the sheet covers everything.
+Swipe at **25%**, which is map at both peek and half. There is no safe y at the
+full detent: `full = windowHeight - RAIL_RESERVE`, so the sheet covers
+everything. And collapse the list first — see the entry below for why that is
+harder than it looks, and how run 129 lost the same assertion with the map in
+exactly the right place.
 
 And swipe THREE times, not two. The assertion is about distance —
 `FAR_FROM_CITY_M` is 4 km from `home` — while a swipe carries a fraction of the
@@ -522,6 +522,85 @@ here, it took run 82 down in both tours), and only then tap the button.
 gate on a flow that skips it, so this is a caught mistake rather than a
 twenty-minute one. The chat room's Composer is the exception the guard is
 scoped to allow: its Send is inline in the bar and is SUPPOSED to ride up.
+
+## `plan-list-peek` is a TOGGLE, and it is `disabled` under any sheet
+
+`onPress={() => snapTo(expanded ? 'peek' : 'half')}`. Tapping it does not
+collapse the list; it flips whichever way the list currently is. And
+`disabled={collapsed}` where `collapsed` is `sheetCovered`, so while a pin
+card, a venue stack, the filter sheet or a sign-up gate is up, the header is
+disabled — Maestro still finds it, still taps it, and still reports
+**COMPLETED**, because a disabled `Pressable` is an element with a frame.
+
+Run 129 is what that costs. The guest tour tapped a row (which opened the
+guest sign-up gate), failed to close it, tapped the peek header into a dead
+control, panned three screen-widths off Bangkok, and asserted the way-home
+pill. The map was in exactly the right place. But a list past its peek is
+`planListExpanded`, `planListExpanded` is `mapCovered`, and `mapCovered` makes
+`slot` null — so every banner is suppressed and the pill it was waiting for
+could not exist. Two green steps and a red one, none of them where the
+mistake was.
+
+**The rows are the state probe.** `plan-list.tsx` sets
+`accessibilityElementsHidden={!expanded}` on the scroller, so `plan-list-row-0`
+is in the hierarchy when the list is up and absent when it is down. Gate the
+collapse on it and assert it afterwards:
+
+```yaml
+- runFlow:
+    when:
+      visible:
+        id: 'plan-list-row-0'
+    commands:
+      - tapOn:
+          id: 'plan-list-peek'
+      - waitForAnimationToEnd:
+          timeout: 2000
+- assertNotVisible:
+    id: 'plan-list-row-0'
+```
+
+## A branch that replaces a card replaces the card's close
+
+`{isGuest && !selectedPin.seeded ? <SignUpGate .../> : <PinCard .../>}` inside
+one `<Sheet inline dimmed={false}>`. `PinCard` draws its own header with an ✕;
+the gate arm drew no header at all. And `dimmed={false}` means no scrim to tap.
+So for a guest — the person most likely to open it — the highest-stakes sheet
+in the app had no visible way out, only a pull-down gesture nothing on screen
+mentions.
+
+Nobody reported it. E2E 129 found it from the other side: the tour tapped the
+`Close` the card has, Maestro reported `WARNED` because the element did not
+exist, and because the step was `optional: true` the run carried on for twenty
+more steps with the sheet still open.
+
+Whenever a ternary swaps out a whole sheet body, ask what came off with it.
+`sign-up-gate-detail.test.tsx` now reads that branch out of the source and
+fails if the close leaves again.
+
+## A four-second confirmation is not an assertion target
+
+`SAID_HI_MS` is 4000; `CONFIRM_MS` is 1100. A Maestro hierarchy fetch on iOS
+can take a second or more on its own, so a four-second window sits inside the
+driver's own sampling error. Pinning a flow to it makes the suite report on
+Maestro's timing rather than on the app, and it fails in both directions:
+run 124 burned 25 s waiting for the composer beat while the strip came and
+went underneath it, and run 129 did the mirror image — the shared
+`(Sent to|Said hi to)` wait matched the STRIP near the end of its window and
+the exact-sentence assert under it failed a fraction of a second later against
+a bar that had cleared itself exactly on time.
+
+Wait for whichever beat is up (that is what proves the action), take the
+picture, and make the beat-specific assertion `optional: true`. Then assert
+something DURABLE and fail on that instead — the composer closing itself is
+the same fact and it does not expire. Copy belongs in jest, which can check it
+character for character on every commit rather than once a run
+(`travelers-said-hi.test.ts`).
+
+The same applies to a bare `assertVisible` straight after a `tapOn`: it fires
+before the state write, the entrance animation and the next card's photo have
+landed. Use `extendedWaitUntil` with a budget close to the beat's own life, so
+a bar that never arrives still fails, and fails fast.
 
 ## Apple Maps props: two that silently do nothing, and one ordering hazard
 

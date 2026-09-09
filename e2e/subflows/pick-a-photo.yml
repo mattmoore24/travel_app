@@ -57,7 +57,6 @@ appId: com.mattmoore.samewhere
     optional: true
 - waitForAnimationToEnd:
     timeout: 2500
-- takeScreenshot: 91-photo-crop
 # PHPicker (the profile-photo path; no crop, no permission sheet) hosts its
 # grid in another process, and a tap that lands while that process is still
 # waking is swallowed with the tap step reporting success — run 94
@@ -75,6 +74,22 @@ appId: com.mattmoore.samewhere
           optional: true
       - waitForAnimationToEnd:
           timeout: 2500
+
+# LET THE EDITOR FINISH LOADING THE ASSET BEFORE CONFIRMING IT.
+# UIImagePickerController's crop editor (the allowsEditing path, which is the
+# business cover photo) opens on a placeholder and fills it in, and run 129's
+# 91-photo-crop caught it mid-load: a progress ring still turning over the
+# bottom-right corner of the frame, with 'Choose' tapped in the same second.
+# Both attempts of that tour then hung in `renderAsync` past its 90s bound and
+# died on the app's own honest "It got stuck while preparing it" — twice, on a
+# pipeline the signed-in tour drove successfully in the same run.
+#
+# The screenshot now comes AFTER this settle rather than before it, on
+# purpose: it is meant to be evidence of what 'Choose' was tapped on, and
+# taken any earlier it cannot be.
+- waitForAnimationToEnd:
+    timeout: 8000
+- takeScreenshot: 91-photo-crop
 
 # The crop editor's confirm, whichever word it uses.
 - tapOn:

@@ -60,6 +60,29 @@ describe('SignUpGate', () => {
     expect(map).toContain(`reason="See who's going and say hi"`);
   });
 
+  /**
+   * A sheet a guest can open must be a sheet a guest can close. The pin
+   * card's gate branch replaces the ENTIRE card — the header with the close
+   * in it included — and the sheet it sits in is `inline dimmed={false}`, so
+   * there is no scrim to tap either. For a while the only way out was a
+   * pull-down gesture nothing on screen mentions. Read out of the source
+   * rather than rendered because map-screen is a three-thousand-line screen
+   * with a live MapView in it; the branch's text is what regressed, and the
+   * branch's text is what this reads.
+   */
+  it('the guest gate inside the pin card can be closed', () => {
+    const map = read('features/pins/map-screen.tsx');
+    const opens = map.indexOf('{isGuest && !selectedPin.seeded ? (');
+    expect(opens).toBeGreaterThan(-1);
+    // To the other arm of the same ternary: `<PinCard`, which is the first
+    // thing the non-guest branch renders.
+    const closes = map.indexOf('<PinCard', opens);
+    expect(closes).toBeGreaterThan(opens);
+    const branch = map.slice(opens, closes);
+    expect(branch).toContain('accessibilityLabel="Close"');
+    expect(branch).toContain('onPress={() => setSelectedPinId(null)}');
+  });
+
   it('the contract is written where the next writer will look', () => {
     const gate = read('components/ui/sign-up-gate.tsx');
     expect(gate).toContain('"what do I get"');

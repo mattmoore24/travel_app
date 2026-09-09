@@ -3464,29 +3464,55 @@ export default function MapScreen() {
       {mode === 'browse' && selectedPin && activeCityId != null ? (
         <Sheet inline dimmed={false} onClose={() => setSelectedPinId(null)}>
           {isGuest && !selectedPin.seeded ? (
-            // Same trap as the card below it: this gate pushes to sign-up, and
-            // pushing from inside the sheet left the map dead to touch when
-            // the guest came back.
-            <SignUpGate
-              reason="See who's going and say hi"
-              where="pin-card"
-              // Same card-in-card as the gate sheet above: the pin card is a
-              // `<Sheet inline>`, which draws the same surface, so the gate's
-              // frame bought a second edge and nothing else.
-              flat
-              onNavigate={(go) => {
-                // The pin they were reading, replayed after signup - and
-                // degraded silently to the city if it burns out first.
-                if (activeCityId != null) {
-                  intentRemembered({
-                    kind: 'pin',
-                    cityId: activeCityId,
-                    pinId: selectedPin.id,
-                  });
-                }
-                leavingSheet(() => setSelectedPinId(null))(go);
-              }}
-            />
+            <>
+              {/* THE WAY OUT. This branch replaces the whole card, header
+                  included, so until now the one sheet in the app a browsing
+                  guest is most likely to open was also the only one with no
+                  visible dismissal: no scrim to tap (the card is
+                  `dimmed={false}` so the map stays live under it) and no
+                  close of its own, leaving a pull-down nobody advertises.
+                  A guest who taps a plan to look at it should be able to put
+                  it down the same way they put the card down. E2E 129 met
+                  this from the other end: the tour tapped the card's Close,
+                  found none, and drove the next twenty steps with a sheet
+                  still open. */}
+              <View style={styles.gateHeader}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                  onPress={() => setSelectedPinId(null)}
+                  hitSlop={8}>
+                  <SymbolView
+                    name={{ ios: 'xmark.circle.fill', android: 'close', web: 'close' }}
+                    size={22}
+                    tintColor={theme.textSecondary}
+                  />
+                </Pressable>
+              </View>
+              {/* Same trap as the card below it: this gate pushes to sign-up,
+                  and pushing from inside the sheet left the map dead to touch
+                  when the guest came back. */}
+              <SignUpGate
+                reason="See who's going and say hi"
+                where="pin-card"
+                // Same card-in-card as the gate sheet above: the pin card is
+                // a `<Sheet inline>`, which draws the same surface, so the
+                // gate's frame bought a second edge and nothing else.
+                flat
+                onNavigate={(go) => {
+                  // The pin they were reading, replayed after signup - and
+                  // degraded silently to the city if it burns out first.
+                  if (activeCityId != null) {
+                    intentRemembered({
+                      kind: 'pin',
+                      cityId: activeCityId,
+                      pinId: selectedPin.id,
+                    });
+                  }
+                  leavingSheet(() => setSelectedPinId(null))(go);
+                }}
+              />
+            </>
           ) : (
             <PinCard
               pin={selectedPin}
@@ -3923,6 +3949,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
+  },
+  // The close sits on its own row above the gate, right-aligned where the
+  // card's own close sits, so the two branches of this sheet dismiss from
+  // the same corner.
+  gateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
   },
   mapsLink: {
     flexDirection: 'row',
