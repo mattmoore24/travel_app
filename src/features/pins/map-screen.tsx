@@ -136,6 +136,7 @@ import { helloExpired, helloWithdrawn, saidHiAlready } from '@/features/matching
 import { useMyChats, useSentRequests, useFirstMessageBudget } from '@/features/matching/hooks';
 import { chooseSlot } from '@/features/pins/message-slot';
 import { usePushPrimer } from '@/features/notifications/primer-store';
+import { justOnboarded } from '@/features/profile/just-onboarded';
 import {
   useOwnProfile,
   useOwnUserId,
@@ -949,10 +950,6 @@ function CountBubbleMarker({
 
 type MapMode = 'browse' | 'place' | 'detail';
 
-/** When this JS session started, for the first-session strip. */
-const SESSION_START_MS = Date.now();
-/** Clock slack between the server stamping onboarding and this device. */
-const SESSION_GRACE_MS = 10 * 60_000;
 /**
  * The dock button's height at the default text size — the seed for the
  * measured height, and the style's minHeight. The button grows with Dynamic
@@ -1788,18 +1785,11 @@ export default function MapScreen() {
   // every banner and chip below reads `slot` instead of its own gates. The
   // strip clears entirely while any sheet covers the map.
   const hasOwnPin = ownUserId != null && allPins.some((pin) => pin.user_id === ownUserId);
-  const onboardedAtMs = ownProfile?.onboarding_completed_at
-    ? Date.parse(ownProfile.onboarding_completed_at)
-    : null;
   // "Just finished signup", NOT "has finished signup" — the latter is true
-  // forever. Inside this app session, with a little grace for the gap
-  // between the server stamping the row and this device's clock.
+  // forever. One definition, in features/profile/just-onboarded, because the
+  // notification primer now turns on the same moment.
   const firstSession =
-    !isBusiness &&
-    !isGuest &&
-    !hasOwnPin &&
-    onboardedAtMs != null &&
-    onboardedAtMs >= SESSION_START_MS - SESSION_GRACE_MS;
+    !isBusiness && !isGuest && !hasOwnPin && justOnboarded(ownProfile?.onboarding_completed_at);
   // The person who took "Be the first" up on it, alone with their pin. From
   // allPins, never the filtered array: a filter that leaves only my pin
   // visible must not assert "You're first" over a non-empty city. Seeded

@@ -3,6 +3,49 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **The notification ask moves to the calmest moment there is** (2026-09-09)
+
+Founder, round 4, deferring the design to me: ask on first run, primed rather
+than cold.
+
+Three moments could raise the primer before this, and two of them were
+outbound: you sent a hello, you posted a pin. So the window between finishing a
+profile and the first hello arriving was silent by construction, and the first
+hello, the one notification this product exists to deliver, could never reach a
+phone, because nobody had been asked before it.
+
+**Primed is the whole point.** iOS shows its permission alert once per install,
+and once it has been declined only Settings can change the answer. Nothing in
+this change touches it: the new reason raises OUR sheet, where "Not now" costs
+the account one of its two asks and leaves the system dialog unspent. The
+expensive permission is only ever put to somebody who has already said yes to
+the cheap one.
+
+**What it costs the two it replaces, and why the cap does not move.** Left
+armed alongside a first-run ask, `hello-sent` and `pin-posted` would spend the
+second ask within minutes of the first: sign up, decline, post a pin, be asked
+again. Two sheets in five minutes is exactly the nagging the cap exists to
+prevent. Both of them were always proxies for "engaged enough to be worth
+asking", and a first-run primer is a better version of the same guess, made
+before anything is at stake. So they stand down once the calm ask has been
+made, and the remaining slot is reserved for `hello-received` (and
+`listing-live` for a business) - the only asks in the app that argue from
+something that already happened TO the person. D26 is annotated in UX_PLAN with
+that amendment; the cap of two is unchanged.
+
+Never for a guest: a signed-out visitor has no account for anything to arrive
+at, so asking would spend the install's one alert on nothing.
+
+The moment itself is `justOnboarded`, lifted out of map-screen into
+`features/profile/just-onboarded` so the primer and the map's first-session
+strip turn on one definition rather than two copies of a rule about clock skew.
+
+No screenshot: `pushPossible()` is false wherever `Device.isDevice` is false,
+so the sheet never presents on a simulator and the E2E suite cannot photograph
+it. The evidence is jest, including the copy guard - which now counts the
+reasons off the `PrimerReason` union instead of a hardcoded 3, because adding
+the fourth is what showed that number was a hand edit waiting to be forgotten.
+
 ## **One thing on the top of the map** (2026-09-09)
 
 Founder, round 4: "the search bar should be the only thing on the top, but

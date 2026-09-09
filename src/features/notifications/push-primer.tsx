@@ -14,11 +14,11 @@ import { useTheme } from '@/hooks/use-theme';
  * The ask, at the first moment there is something worth being told about.
  *
  * Two rules, both load-bearing. It only appears after something has happened
- * that a notification would follow — a hello sent, a pin posted, somebody
- * writing to you — so the question has an obvious answer instead of being an
- * ambush at signup. And the promise is specific and small, because the first
- * notification that falls outside it is the one that sends somebody to
- * Settings to switch the whole channel off.
+ * that a notification would follow — a profile going live, a hello sent, a pin
+ * posted, somebody writing to you — so the question has an obvious answer
+ * instead of being an ambush. And the promise is specific and small, because
+ * the first notification that falls outside it is the one that sends somebody
+ * to Settings to switch the whole channel off.
  *
  * THE PROMISE NAMES FOUR KINDS NOW, and the fourth arrived with the copy
  * rather than after it. It used to read "Replies, hellos, and anything about
@@ -33,6 +33,20 @@ import { useTheme } from '@/hooks/use-theme';
  * and may not be added under it.
  */
 const COPY: Record<PrimerReason, { title: string; body: string }> = {
+  // THE CALM ONE, and the reason the sentence above about "only after
+  // something has happened" now has an exception. Founder, 2026-09-09: ask on
+  // first run, primed rather than cold.
+  //
+  // It is not an ambush at signup, and the copy is what stops it being one:
+  // something HAS just happened, the profile went live, and the body says so
+  // before it asks for anything. Nothing here touches iOS. A "Not now" spends
+  // our sheet and leaves the one system dialog an install ever gets unspent,
+  // which is the whole argument for priming: the expensive permission is only
+  // ever put to somebody who has already said yes to the cheap one.
+  'first-session': {
+    title: 'Want to know when somebody says hi?',
+    body: 'Your profile is live, so people can write to you from today. Replies, first messages, your own trips and plans, and anything about your account. Nothing else, ever.',
+  },
   'hello-sent': {
     title: 'Want to know when they answer?',
     body: 'Replies, first messages, your own trips and plans, and anything about your account. Nothing else, ever.',

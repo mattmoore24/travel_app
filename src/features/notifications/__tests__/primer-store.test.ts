@@ -124,3 +124,61 @@ describe('the push primer', () => {
     expect(usePushPrimer.getState().reason).toBe('hello-sent');
   });
 });
+
+/**
+ * THE CALM ASK, and what it costs the two it replaces.
+ *
+ * Founder, 2026-09-09: ask on first run, primed rather than cold. The whole
+ * design turns on one fact about iOS - the system alert is shown once per
+ * install and only Settings can undo a no - so the ask that matters is the
+ * cheap one, and a "Not now" here must leave the expensive one unspent.
+ */
+describe('the first-session ask', () => {
+  it('offers at the end of signup, before anything has been done to earn it', async () => {
+    await usePushPrimer.getState().ask('first-session');
+    expect(usePushPrimer.getState().reason).toBe('first-session');
+  });
+
+  it('stands the two outbound moments down once it has been made', async () => {
+    // Both of them are proxies for "engaged enough to be worth asking", and
+    // the first-run primer is a better version of the same guess. Left armed
+    // they would spend the account's SECOND ask within minutes of the first:
+    // sign up, decline, post a pin, and be asked again.
+    await usePushPrimer.getState().ask('first-session');
+    await usePushPrimer.getState().decline();
+
+    await usePushPrimer.getState().ask('hello-sent');
+    expect(usePushPrimer.getState().reason).toBeNull();
+    await usePushPrimer.getState().ask('pin-posted');
+    expect(usePushPrimer.getState().reason).toBeNull();
+  });
+
+  it('keeps the second ask for the moment that argues from something inbound', async () => {
+    // 'hello-received' is the only ask in the app that argues from something
+    // that already happened TO the person, and no outbound moment can stand
+    // in for it. This is why the cap does not need raising.
+    await usePushPrimer.getState().ask('first-session');
+    await usePushPrimer.getState().decline();
+
+    await usePushPrimer.getState().ask('hello-received');
+    expect(usePushPrimer.getState().reason).toBe('hello-received');
+  });
+
+  it("leaves a business's own moment armed too", async () => {
+    // A business never reaches either outbound reason, and listing-live is
+    // its inbound equivalent.
+    await usePushPrimer.getState().ask('first-session');
+    await usePushPrimer.getState().decline();
+
+    expect(await usePushPrimer.getState().askBusiness('listing-live')).toBe(true);
+  });
+
+  it('still spends one of the two, so three sheets are impossible', async () => {
+    await usePushPrimer.getState().ask('first-session');
+    await usePushPrimer.getState().decline();
+    await usePushPrimer.getState().ask('hello-received');
+    await usePushPrimer.getState().decline();
+
+    expect(await usePushPrimer.getState().canAsk('listing-live')).toBe(false);
+  });
+});

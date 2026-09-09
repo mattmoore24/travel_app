@@ -33,6 +33,7 @@ const MIGRATION = fs.readFileSync(
 );
 
 const PRIMER = fs.readFileSync(path.join(__dirname, '..', 'push-primer.tsx'), 'utf8');
+const STORE = fs.readFileSync(path.join(__dirname, '..', 'primer-store.ts'), 'utf8');
 
 const BANNED = /\b(swipe|deck|match|unmatch(?:ed)?|request|hello|here now|near you|nearby)\b/i;
 
@@ -102,7 +103,15 @@ describe('what the three clocks say', () => {
 describe('the promise the primer makes', () => {
   it('names the fourth kind in every reason it can ask under', () => {
     const bodies = [...PRIMER.matchAll(/body: '([^']*(?:\\'[^']*)*)'/g)].map((m) => m[1]);
-    expect(bodies).toHaveLength(3);
+    // Counted off the union rather than hardcoded, so a fifth reason still
+    // has to carry the sentence and nobody has to remember to bump a 3. It
+    // was a 3, and adding the first-session ask is what showed why that was
+    // a hand edit waiting to happen.
+    const union = STORE.match(/export type PrimerReason =([^;]+);/);
+    expect(union).not.toBeNull();
+    const reasons = [...(union as RegExpMatchArray)[1].matchAll(/'[^']+'/g)];
+    expect(reasons.length).toBeGreaterThanOrEqual(3);
+    expect(bodies).toHaveLength(reasons.length);
     for (const body of bodies) {
       expect(body).toMatch(/your own trips and plans/);
       expect(body).toContain('Nothing else, ever.');

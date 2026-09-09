@@ -326,12 +326,20 @@ describe('the notification primer', () => {
     // push-primer.tsx keys its copy on PrimerReason and speaks to travelers
     // ("Want to know when they answer?"). A business is asked on its own
     // screen instead, so the sheet's slot stays a traveler's. PrimerReason
-    // grew a third traveler moment when the primer learned to ask twice;
-    // what must never happen is 'listing-live' joining it.
-    expect(store).toContain(
-      "export type PrimerReason = 'hello-sent' | 'pin-posted' | 'hello-received';"
-    );
-    expect(store.slice(0, store.indexOf('BusinessPrimerReason'))).not.toContain('listing-live');
+    // has grown twice - a third moment when the primer learned to ask twice,
+    // a fourth when the ask moved to the end of signup - so this reads the
+    // union rather than spelling it out: what must never happen is
+    // 'listing-live' joining it, and that is the assertion.
+    const union = store.match(/export type PrimerReason =([^;]+);/);
+    expect(union).not.toBeNull();
+    const reasons = [...(union as RegExpMatchArray)[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect(reasons.length).toBeGreaterThanOrEqual(3);
+    expect(reasons).not.toContain('listing-live');
+    // The union itself, parsed, rather than "the word does not appear above
+    // BusinessPrimerReason" - which is what this was, and which started
+    // failing on a COMMENT explaining why listing-live is the reason the
+    // second ask is reserved. An assertion a correct explanation can break is
+    // an assertion about prose.
     const askBusiness = after(store, 'askBusiness: async');
     expect(askBusiness.slice(0, 400)).toContain('set({ asking: reason });');
   });

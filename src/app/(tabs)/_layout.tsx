@@ -8,6 +8,7 @@ import { useIsGuest, useWantsBusiness } from '@/features/guest/hooks';
 import { ConnectedNotice } from '@/features/matching/connected-notice';
 import { useAcceptedCelebration } from '@/features/matching/use-accepted-celebration';
 import { PushPrimer } from '@/features/notifications/push-primer';
+import { useFirstSessionPrimer } from '@/features/notifications/use-first-session-primer';
 import { useHelloReceivedPrimer } from '@/features/notifications/use-hello-received-primer';
 import { useNotificationRouting } from '@/features/notifications/use-notification-routing';
 
@@ -224,6 +225,10 @@ function NotificationRouting() {
   // presents. A second presentation path for a data-driven modal is exactly
   // what the traps skill says never to add.
   useHelloReceivedPrimer();
+  // And the calm one, at the end of signup, before anything has happened that
+  // a notification would follow. Same component for the same reason: one
+  // presentation path, and PushPrimer below is it.
+  useFirstSessionPrimer();
   return null;
 }
 

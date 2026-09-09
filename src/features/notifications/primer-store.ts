@@ -15,10 +15,15 @@ import { analytics } from '@/lib/analytics';
  * v1 was a single key: asked once, ever, whichever moment spent it. That
  * rule was written down in this file in the founder's own words, and it was
  * wrong for a reason nobody could see until the moments existed. Both of the
- * moments are OUTBOUND - you sent a hello, you posted a pin - so somebody who
- * finishes signup and then just browses for a week is never asked at all, and
+ * moments were OUTBOUND - you sent a hello, you posted a pin - so somebody who
+ * finished signup and then just browsed for a week was never asked at all, and
  * the highest-value notification this product has, somebody said hi to YOU,
- * is discoverable only by opening the app and looking.
+ * was discoverable only by opening the app and looking.
+ *
+ * There are four reasons now, and the first of them is the calm one: the app
+ * asks once at the end of signup, in its own sheet, where "not now" costs
+ * nothing because iOS has not been shown anything yet. See OUTBOUND_REASONS
+ * for what that changed about the other two.
  *
  * So: per reason, with a lifetime cap of two asks. Two is not nagging, the
  * settings row is the always-available third path, and the same reason is
@@ -43,7 +48,27 @@ export const ASK_CAP = 2;
  * single-ask rule it could never be reached, because the outbound moments
  * always came first or never came at all.
  */
-export type PrimerReason = 'hello-sent' | 'pin-posted' | 'hello-received';
+export type PrimerReason = 'first-session' | 'hello-sent' | 'pin-posted' | 'hello-received';
+
+/**
+ * The two moments that existed ONLY because there was no first-run ask, and
+ * that stand down once there is one.
+ *
+ * Founder, 2026-09-09: ask on first run, primed rather than cold. That
+ * changes what these are for. 'hello-sent' and 'pin-posted' are proxies for
+ * "this person is engaged enough to be worth asking" — a first-run primer is
+ * a better version of the same guess, made before anything is at stake and at
+ * a moment nobody has to be interrupted in. Left armed alongside it they would
+ * spend the account's SECOND ask within minutes of the first: sign up, see the
+ * primer, decline, post a pin, see it again. Two sheets in five minutes is the
+ * nagging the cap exists to prevent.
+ *
+ * What no outbound moment can ever substitute for is 'hello-received' (and
+ * 'listing-live' for a business): the only ask in the app that argues from
+ * something that already happened TO you. That is what the second slot is now
+ * reserved for, and it is why the cap does not need raising.
+ */
+const OUTBOUND_REASONS: readonly PrimerReason[] = ['hello-sent', 'pin-posted'];
 
 /**
  * The same question, for the account that can do neither of those things.
@@ -162,6 +187,11 @@ async function worthAsking(
     return false;
   }
   if (open != null || (await offeredFor(reason)) || (await asksSpent()) >= ASK_CAP) {
+    return false;
+  }
+  // See OUTBOUND_REASONS: once the calm moment has been used, the remaining
+  // ask belongs to the inbound one.
+  if (OUTBOUND_REASONS.includes(reason as PrimerReason) && (await offeredFor('first-session'))) {
     return false;
   }
   if (await pushPermissionGranted()) {
