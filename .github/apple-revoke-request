@@ -28,3 +28,5 @@
              the two functions in the window, so the log pipeline is alive and
              "only two Apple lines" means only two deletions, not a short
              window.
+
+# Guard probe A (positive control), 2026-09-09. Delete this branch after.
