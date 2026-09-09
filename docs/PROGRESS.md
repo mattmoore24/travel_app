@@ -3,6 +3,120 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **Two doors nobody could open** (2026-09-09)
+
+### The Send button was under the keyboard, and the flow tapped through it
+
+Runs 126 and 127 both died on the say-hi composer's confirmation beat. I told
+the founder run 126 was my own fault - I had re-seeded demo travelers inside
+the Maestro window - and run 127, against untouched data, disproved that. The
+evidence was in the run's own artifacts all along:
+`results/step-136-assertCondition-(Sent_to_.Said_hi_to_.).png` is the frame
+Maestro captures at the failing assertion, and it shows the composer still
+open, the keyboard still up, and "Both in town the same week. Any market worth
+the walk?" still sitting in the box.
+
+326837d moved the StepScreen footer out of the keyboard floor - the founder's
+2026-09-05 ask, "buttons and text above keyboard are unneeded and should not
+rise with the keyboard" - and 43886b4 did the same for a Sheet's pinned button.
+Maestro does not know that. The button stays in the accessibility tree with a
+frame, so `tapOn: 'Send'` reports SUCCESS and puts the tap through the
+keyboard. The failure then surfaces twenty-five seconds later on an assertion
+about something the button never did, naming a screen and a beat rather than
+the tap.
+
+The fix in the flow is one line - `tapOn: 'Hide keyboard'` before the Send,
+which is exactly what 326837d added to the business tour's signup and did not
+add here. The fix that matters is the guard: `e2e-flows.test.ts` now derives,
+from the source, every screen whose primary button the keyboard covers - a
+StepScreen or StepShell footer, or a Sheet passed a `keyboardAllowance` - with
+its field ids and its button labels, and fails the gate if a flow types into
+one of those fields and then taps that same screen's button with nothing in
+between that puts the keyboard away. Scoped per screen, which is what makes it
+safe: the chat room's Composer has a Send too, inline in the bar, and it is
+supposed to ride up.
+
+It found a second one immediately. `signed-in-tour.yml:853` taps 'Create
+group' - already correct, via `pressKey: Enter` - but the pin form's 'Put it on
+the map' carried a comment saying the sheet lifts it with the keyboard, which
+stopped being true at 43886b4; the tap only lands because of a conditional Hide
+keyboard forty lines earlier. That comment is now the opposite of what it said.
+
+### The four dashboard settings this repository can now set for itself
+
+The founder asked me to do steps 4 to 6 of the security checklist. Two of them
+have no API and are still theirs; four of the fields underneath them turned out
+to be one PATCH each on an endpoint the Management API publishes, so they are
+in code now: `.github/scripts/harden-project-settings.mjs`, run by
+`.github/workflows/harden-project-settings.yml`.
+
+- **SEC-002, exposed schemas.** The only control that has ever protected
+  `pg_net`; the migration that tried to revoke those grants was measured, on
+  the live database, to be a no-op. `db_schema` on `/v1/projects/{ref}/postgrest`.
+  The script only ever NARROWS the list, and refuses to write one that has lost
+  `public`.
+- **SEC-004, leaked password protection.** `password_hibp_enabled`.
+- **SEC-008, anonymous sign-ins.** `external_anonymous_users_enabled`, written
+  as a literal `false` rather than left at the null the field defaults to.
+- **The storage upload ceiling**, 5 MB, the same number the bucket migration
+  sets. Lowered only, never raised.
+
+Every field name came off the published OpenAPI spec rather than memory. Each
+section reads, decides, patches only if the desired state does not already
+hold, then reads BACK from the server and fingerprints every key it does not
+own - which is how it proves PATCH is a partial update rather than a document
+replace, the question the spec cannot answer. Nothing from a config document is
+ever printed: the same GET carries `security_captcha_secret` and twenty other
+provider secrets, and this repository is public. A new jest suite,
+`a-dashboard-setting-in-code.test.ts`, asserts all three of those properties in
+the text, because none of them is observable at runtime.
+
+**Still the founder's, because there is no endpoint:** the Anthropic monthly
+spend limit (a different vendor entirely) and the Supabase organisation spend
+cap - the whole billing surface of the spec is `/v1/organizations…` reads plus
+`/v1/projects/{ref}/billing/addons`. Auth rate limits are settable and
+deliberately left alone: the right numbers depend on signup volume nobody has
+yet.
+
+**And the door is a file, not a button.** This repository's default branch is
+169 commits behind the work, and GitHub resolves a `workflow_dispatch` on the
+default branch only - so the Run workflow button will not exist until this
+branch is merged. Committing the word `check` or `apply` to
+`.github/harden-request` runs it from any branch, the same idiom
+`supabase/.deploy-request` uses. Anything that is not the literal word `apply`
+reads as `check`, so a stray commit to that path cannot write to the project.
+
+### The gate had not finished a run since 2026-09-04
+
+Three times today I read a "green" gate that had not got to the end, and the
+third time I looked at the process instead of the log: one jest worker at 100%
+for ten minutes while the other 221 suites finished in three.
+
+`copy-lint.test.ts` cuts every single-quoted literal out of every migration and,
+for each one, asked which line it was on with
+`src.slice(0, index).split('\n').length` — the whole prefix, re-read, per
+literal. That was fine until `20260904110100_seed_cities_with_clocks.sql`
+landed: 4.2 MB and 245,296 literals, which is quadratic and about nine minutes
+in one worker. Nothing was broken and nothing failed; the required pre-push gate
+simply took a quarter of an hour, which is the kind of cost that gets a gate
+skipped.
+
+Two changes, both behaviour-preserving. The cheap questions come first — a
+literal with neither an em dash nor a banned word cannot produce a finding
+whatever statement it sits in, so the statement does not need cutting out to
+find that out — and the line counter walks forward from the last literal rather
+than re-reading from the top. **The whole suite is now 23 seconds** (222 suites,
+2,320 tests) against roughly fifteen minutes.
+
+A rewrite of a gate is only safe if something says the answers did not move, so
+the linter now has its own cases: a banned word in push copy, one in a raise
+inside a function body, an em dash, and the three exemptions that only fire on
+statements this repository does not contain (`comment on`, a payload token, an
+ordinary select). Each was mutation-checked. The pre-existing allowlist test is
+the other half of the proof: its 118 entries are exact `file:line` keys that
+must still match real findings, so the line numbers are pinned across the real
+corpus and not just the synthetic one.
+
 ## **A pin you can take down** (2026-09-08)
 
 Deleting your own pin returned 403 from 2026-08-31 until today, in production,
@@ -30,11 +144,11 @@ and image/png, which is what the corrected bucket allowlist exists for.
 E2E 126 replaced the public results branch: the guard read the new domain,
 PUBLISH_SHOTS was true, and the sign-in frame now draws
 e2e+sw-e2e-...@samewhere.io. One flow failed, on the composer's
-"(Sent to ._|Said hi to ._)" beat - and the honest reading is that I caused it:
-both demo seeds ran INSIDE the Maestro window (20:48 and 20:57 against flows
-running 20:32 to 21:25), so every demo traveler's trips were deleted and
-recreated underneath a tour whose job is to say hi to them. Re-running against
-stable data rather than filing it as flake.
+"(Sent to ._|Said hi to ._)" beat, and I wrote here that I had caused it by
+seeding demo data inside the Maestro window. **That was wrong - see the
+2026-09-09 entry above.** Run 127 reproduced the same failure against
+untouched data, and the screenshot Maestro takes at the moment of an assertion
+failure shows what it actually was.
 
 ## **Security and cost hardening** (2026-09-06)
 
