@@ -7,7 +7,7 @@ to a stranger. Reports about it are welcome and taken seriously.
 
 ## Reporting a vulnerability
 
-Email **security@samewhere.app** with:
+Email **hello@samewhere.io** with:
 
 - what you found and where,
 - the steps to reproduce it,

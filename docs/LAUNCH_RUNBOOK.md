@@ -107,9 +107,11 @@ To fix, closer to go-live:
 
 1. Resend → Domains → add the domain, publish the three DNS records it gives
    you (SPF, DKIM, and the return-path CNAME), wait for all three to go green.
-2. Set the GitHub secret `SUPPORT_FROM` to an address on that domain, e.g.
-   `Samewhere <hello@samewhere.app>`, and redeploy the functions (Actions →
-   **Supabase deploy**).
+2. Set the GitHub secret `SUPPORT_FROM` to an address on that domain:
+   `Samewhere <hello@samewhere.io>`, and redeploy the functions (Actions →
+   **Supabase deploy**). It said `samewhere.app` until 2026-09-09; the founder
+   confirmed that domain is not owned, so step 1 could never have gone green
+   for it and outbound mail would have stayed on Resend's sandbox sender.
 3. Prove it: sign up a business on an address that is **not** the Resend
    account's own, and confirm the code arrives. Then
    `select * from outbound_mail order by created_at desc limit 5;` — every row
