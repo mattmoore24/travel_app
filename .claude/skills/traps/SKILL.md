@@ -472,6 +472,31 @@ What works: the sheet to its full detent (a drag on the strip; the strip's
 tap only toggles peek and half), the list to its end (the last row's
 padding clears the dock), then the row by id.
 
+## A map swipe at 45% lands on the plan list, not the map
+
+`planListHeights` puts the half detent at `footing + 55%` of the content range,
+so the plan list's top edge sits at roughly **45% of the window**. A Maestro
+swipe at `y: 45%` is therefore on the sheet: it scrolls the rows and the map
+does not move at all. Run 128's guest tour died on `Back to Bangkok` with the
+map still over Bangkok Noi and the list plainly at half in the failure frame.
+
+The collapse before it is `optional: true` — as it has to be, because
+`plan-list-peek` is `disabled` at the peek detent and a hard tap would fail
+there — so when the collapse does not take, nothing says so. Swipe at **25%**,
+which is map at both peek and half. There is no safe y at the full detent:
+`full = windowHeight - RAIL_RESERVE`, so the sheet covers everything.
+
+And swipe THREE times, not two. The assertion is about distance —
+`FAR_FROM_CITY_M` is 4 km from `home` — while a swipe carries a fraction of the
+current viewport, and the zoom is whatever `fitRegion` chose to frame this
+city's pins. Re-seeding the demo data changes it. Two spans were tuned against
+one seed and are not a constant.
+
+No jest guard for this one, deliberately: the rule is "a swipe meant for the
+MAP must clear the sheet", and several legitimate swipes cross that band
+(vertical scrolls, the tour carousel at y 50%). A blanket band check would be
+mostly false positives.
+
 ## Maestro taps a button through the keyboard and calls it a success
 
 Since 326837d a StepScreen or StepShell footer is a sibling BELOW the keyboard

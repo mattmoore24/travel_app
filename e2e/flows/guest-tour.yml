@@ -222,14 +222,30 @@ appId: com.mattmoore.samewhere
 
 # Pan away from the city. A blank frame with no pins used to be the whole
 # answer; now the way home is a pill above the dock, asserted by its spoken
-# label (a PressableScale with its own label is one element on iOS). Two
-# swipes: one span is roughly the pill's distance threshold, two clear it.
+# label (a PressableScale with its own label is one element on iOS).
+#
+# SWIPE HIGH, NOT AT 45%. This used to swipe at y=45%, which is the plan
+# list's own top edge: planListHeights makes `half` = footing + 55% of the
+# content range, so the sheet's half detent starts at roughly 45% down and a
+# swipe there lands ON the sheet and scrolls its rows instead of panning the
+# map. The collapse above is `optional`, so when it does not take there is
+# nothing to say so. Run 128 died here with the map still over Bangkok Noi,
+# markers in frame and the list sitting at half in the failure screenshot.
+# 25% is map at both the peek and half detents.
+#
+# THREE SWIPES, because the distance is what the assertion is about:
+# FAR_FROM_CITY_M is 4 km from `home`, and how far one 70%-width swipe carries
+# depends on the zoom the app chose to frame this city's pins - which the demo
+# seed changes. Three spans clear 4 km at any framing this map produces.
 - swipe:
-    start: 15%, 45%
-    end: 85%, 45%
+    start: 15%, 25%
+    end: 85%, 25%
 - swipe:
-    start: 15%, 45%
-    end: 85%, 45%
+    start: 15%, 25%
+    end: 85%, 25%
+- swipe:
+    start: 15%, 25%
+    end: 85%, 25%
 - extendedWaitUntil:
     visible: 'Back to Bangkok'
     timeout: 10000
