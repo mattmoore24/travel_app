@@ -40,6 +40,7 @@ on:
     # is on), and ignoring the trunk alone leaves that flow untouched.
     branches-ignore:
       - 'claude/travel-app-initial-setup-ephphz'
+      - 'guard-probe'
     paths:
       - '.github/apple-revoke-request'
   workflow_dispatch:
