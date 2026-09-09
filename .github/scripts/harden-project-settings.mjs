@@ -132,6 +132,16 @@ async function api(method, path, body) {
     return { refused: `${response.status} ${detail}`, status: response.status };
   }
   if (!parsed || typeof parsed !== 'object') {
+    // A WRITE THAT ANSWERS WITH NOTHING IS STILL A WRITE. PATCH /config/storage
+    // returns 200 with an empty body, and the first corrected apply run read
+    // that as a refusal and reported the ceiling unchanged when it had not
+    // tried to look. Nothing here ever uses a PATCH's response body: the
+    // read-back GET is the authority on whether it took. So only a GET that
+    // cannot be parsed is a refusal - for that one, an unreadable body means
+    // the state is genuinely unknown.
+    if (method !== 'GET') {
+      return {};
+    }
     return {
       refused: `${response.status}, and the body was not JSON`,
       status: response.status,

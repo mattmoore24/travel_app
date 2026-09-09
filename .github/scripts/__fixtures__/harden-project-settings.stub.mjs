@@ -26,6 +26,9 @@
 //   freeplan  the auth config refuses every PATCH with 402, the way the live
 //             project did on 2026-09-09 (leaked-password protection is a Pro
 //             feature). The sections AFTER it must still run.
+//   quietok   every PATCH answers 200 with an EMPTY body, which is what
+//             /config/storage actually does. That is a write, not a refusal,
+//             and the read-back is what settles it.
 // MODE picks apply (default) or check, exactly as the workflow's env does.
 
 const scenario = process.argv[2] ?? 'dirty';
@@ -38,6 +41,7 @@ const postgrest = {
   tight: 'public, graphql_public',
   noguests: 'public, graphql_public',
   freeplan: 'public, graphql_public, net',
+  quietok: 'public, graphql_public, net',
 }[scenario];
 
 if (postgrest === undefined) {
@@ -92,6 +96,10 @@ globalThis.fetch = async (url, init = {}) => {
       state[path] = body;
     } else {
       Object.assign(state[path], body);
+    }
+    if (scenario === 'quietok') {
+      // 200, no body at all - what PATCH /config/storage really answers.
+      return new Response('', { status: 200 });
     }
   }
   return new Response(JSON.stringify(state[path]), {

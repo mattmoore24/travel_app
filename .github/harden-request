@@ -1,5 +1,4 @@
 apply
 
-# Re-run 2026-09-09: the first apply exited on the 402 from
-# password_hibp_enabled and never reached the storage ceiling. Only the first
-# line is read, so anything below this is a note.
+# Re-run 2026-09-09: PATCH /config/storage answers 200 with an empty body, and
+# the previous run read that as a refusal. Only the first line is read.

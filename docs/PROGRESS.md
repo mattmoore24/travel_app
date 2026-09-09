@@ -94,6 +94,14 @@ only a 401/403 or a missing token ends the run. The fixture has a `freeplan`
 scenario that refuses every auth PATCH with a 402, and the test asserts the
 sections either side of it still ran.
 
+Which then found the next one, in the same place. `PATCH /config/storage`
+answers **200 with an empty body**, and the helper was reading "not JSON" as a
+refusal — so the corrected run reported the ceiling unchanged without having
+looked. A write's response body is never used here; the read-back GET is the
+authority on whether it took. Only an unparseable GET is a refusal now, because
+that is the case where the state is genuinely unknown. Fixture scenario
+`quietok`, mutation-checked.
+
 Every field name came off the published OpenAPI spec rather than memory. Each
 section reads, decides, patches only if the desired state does not already
 hold, then reads BACK from the server and fingerprints every key it does not

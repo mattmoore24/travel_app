@@ -248,6 +248,18 @@ describe('the settings script, run end to end against a fake project', () => {
     expect(out).toContain('ENDED hibp=false');
   });
 
+  it('treats a 200 with an empty body as a write, and lets the read-back settle it', () => {
+    // PATCH /config/storage really does answer 200 with nothing in it. The
+    // first corrected apply run read that as a refusal and reported the ceiling
+    // unchanged without looking. Nothing here uses a PATCH's response body; the
+    // read-back GET is the authority.
+    const { code, out } = run('quietok');
+    expect(code).toBe(0);
+    expect(out).toContain('ENDED fileSizeLimit=5242880');
+    expect(out).toContain('ENDED db_schema=public, graphql_public');
+    expect(out).not.toContain('the body was not JSON');
+  });
+
   it('catches a PATCH that replaces the document instead of merging', () => {
     const { code, out } = run('replace');
     expect(code).toBe(1);
