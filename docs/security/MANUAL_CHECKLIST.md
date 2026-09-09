@@ -63,7 +63,10 @@ Note for afterwards: `seed` derives its addresses from the same secret, so once
 STEP 2 lands you can re-seed twelve fresh demo travelers at the new address if
 you want the map populated for TestFlight. The purge is not a one-way door.
 
-- [ ] **STEP 2 — set `TEST_EMAIL_BASE` to `e2e@samewhere.io`.**
+- [x] **STEP 2 — set `TEST_EMAIL_BASE` to `e2e@samewhere.io`.** **Done
+      2026-09-08** by the founder. Verified in the runs rather than assumed: E2E
+      127 and 128 both drove `e2e+sw-e2e-…@samewhere.io`, and the guard let the
+      screenshots publish, which it refuses to do for a consumer-mail domain.
 
 **Not `hello@wagvive.com`.** It would work mechanically — nothing ever reads the
 inbox (email confirmations are off on this project: 22 of 24 users were
@@ -86,7 +89,9 @@ Until you change it, `e2e.yml` refuses to publish screenshots to the public
 branch and attaches them as a workflow artifact instead, with an error saying
 why.
 
-- [ ] **STEP 3 — replace what is already on the branch.** Re-run E2E; it
+- [x] **STEP 3 — replace what is already on the branch.** **Done** — runs 126,
+      127 and 128 each force-pushed a fresh orphan commit, so nothing on
+      `e2e-results` predates the secret change. Re-run E2E; it
       force-pushes an orphan commit, so a fresh run replaces the whole tree.
       Or delete the `e2e-results` branch and let the next run recreate it.
       Neither undoes anything already cloned or indexed — treat the address as
@@ -94,9 +99,19 @@ why.
 
 ---
 
-## 1b. Eight test accounts are live on production
+## 1b. Seven dead test accounts are live on production
 
-- [ ] **Delete the leftover E2E accounts.**
+- [ ] **Delete the leftover `maestro` accounts.**
+
+Re-counted 2026-09-09: **seven**, not eight. All were created 2026-08-29, none
+has signed in since, and all seven are empty — 0 onboarded, 0 trips, 0 pins — so
+deleting them destroys no content and orphans nothing. They predate the tours'
+own teardown step, which now runs green (`Destroy the tours' own throwaways`,
+E2E 128).
+
+**Do not touch the twelve `e2e+…@samewhere.io` accounts.** Those are the demo
+travelers: all twelve onboarded, with trips and with pins. They are what puts
+faces on the map, and the same secret seeds them.
 
 Teardown is best-effort and has not always run. These are live right now:
 
@@ -106,10 +121,11 @@ where email like '%sw-e2e%' or email like '%maestro%'
 order by created_at desc;
 ```
 
-Seven of them are `maestro-*@samewhere.test`, opened with the password that was
-written out in `e2e.yml` in this public repository until today. That password is
-generated per run now, so no _new_ account is exposed — but these eight predate
-the change and anyone who read the workflow can sign into the seven.
+All seven are `maestro-*@samewhere.test` (confirmed against `auth.users`
+2026-09-09), opened with the password that was written out in `e2e.yml` in this
+public repository until 2026-09-08. That password is generated per run now, so
+no _new_ account is exposed — but these seven predate the change, and anyone who
+read the workflow can still sign into them.
 
 They hold no data. An account is still an account: it can send, pin, report and
 spend the moderation budget.
@@ -162,7 +178,9 @@ request file and that button — never on an ordinary code push — because it
 changes the shape of the project's API surface and that should be a thing
 somebody decides to do, not a side effect of a deploy.
 
-- [ ] **Commit `check`, read the four lines, then commit `apply`.**
+- [x] **Commit `check`, read the four lines, then commit `apply`.** **Done
+      2026-09-09**, runs 1 and 5 of Harden project settings. Since the default
+      branch was caught up, the Actions button is the easier route from now on.
 
 What it sets, and what each one is for:
 
