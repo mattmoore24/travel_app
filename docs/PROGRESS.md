@@ -3,6 +3,96 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **The catch-up push that would have deployed to production** (2026-09-09)
+
+The founder asked for the repository to be synced so the default branch stopped
+reading "169 commits behind". Doing that naively would have applied an unapplied
+migration to the production database.
+
+### What a fast-forward would have started
+
+Four workflows carry `push: paths:` with no branch filter, and a catch-up push
+puts ALL FOUR of their request files into one diff: `.github/harden-request`,
+`.github/push-key-request` and `.github/apple-revoke-request` as adds,
+`supabase/.deploy-request` as a modify across fourteen commits. GitHub evaluates
+`paths` over the whole `before..after` range rather than the tip commit, and
+reads the `on:` block from the NEW head — which is why this bites: none of those
+workflow files exists on the old default branch, yet the push that puts them
+there is the same event that runs them.
+
+So the ref move alone would have started five runs nobody chose. A production
+Supabase deploy. `push-key` writing to Expo. `harden-project-settings` in
+**apply** mode, because a push carries no inputs and the mode then comes off the
+request file, whose first line is literally `apply` — the content sentinel I
+wrote yesterday arms it rather than disarming it. And `ci.yml`.
+
+The deploy is the one that mattered. A push supplies no inputs, so `dry_run` and
+`skip_migrations` both default to false — **the flag added specifically to
+withhold a migration cannot be passed on the one path that fires unattended** —
+and `supabase db push` would have reached
+`20260905200000_gone_when_your_plan_is_over.sql`, which drops the live
+`expires_at <= created_at + 72 hours` CHECK marked HARD RULE 3. That migration
+is deliberately unapplied, task #48 is still open, and the privacy page, the
+live site and an App Store caption all still promise 72 hours.
+
+**What is holding it back today is not a control.** Production records the
+pin-take-down migration under version `20260908205714` while the repo carries it
+as `20260908120000`, so `db push` fails `missing-local` before it reaches
+anything. An accident is not a guard, and repairing that drift — the obvious fix
+for deploys being red — would remove the only thing standing in front of a §7
+rule change. Those two decisions have to be taken together, in that order, and
+they are the founder's.
+
+### The guard, and proving it rather than asserting it
+
+`branches-ignore` on the default branch alone, on all four workflows. This is
+SEC-017 narrowed to the case that bites: the audit declined a `branches:`
+allowlist because it would break the way this project ships — a request file
+committed on whatever branch the work is on — and ignoring the trunk leaves that
+flow untouched, because the trunk is the one branch nobody develops on and the
+only one a catch-up push moves.
+
+The guard was then the only thing between a ref move and a production deploy, so
+it was tested rather than trusted, on a throwaway branch, using
+`apple-revoke-log` — the one of the four that is read-only by construction:
+
+- **Positive control.** Touch `.github/apple-revoke-request` on `guard-probe`,
+  push: the workflow **fired** (run 3). The path filter matches, and the
+  working-branch idiom is not broken by the guard.
+- **Negative control.** Same file, same path, same branch, with `guard-probe`
+  added to `branches-ignore`: **zero runs.**
+
+One variable, opposite outcomes. Then the fast-forward itself: exactly one run
+at the new head, `ci.yml`, which is also the positive control proving GitHub
+processed the push at all. Zero runs for the deploy, harden, push-key and
+apple-revoke workflows. All three CI jobs green — including the pgTAP and Deno
+jobs the local gate does not cover, on their first run across all 178 commits.
+
+### A published security policy pointing at a domain nobody owns
+
+Fast-forwarding also publishes `SECURITY.md` as the repository's official
+Security policy for the first time — GitHub resolves it from the default branch
+alone, and this repository is public. It said to email
+`security@samewhere.app`, and `docs/UX_PACKAGES.md` carried an open question
+reading "Do we own samewhere.app".
+
+Asked before pushing. The answer was no: the founder owns samewhere.io, and
+`hello@samewhere.io` is the one live mailbox — so `security@samewhere.io` would
+have bounced too. Two other places named that domain and were wrong for the same
+reason, including LAUNCH_RUNBOOK's go-live step telling the founder to set
+`SUPPORT_FROM` to an address on it after verifying it in Resend, which begins
+with publishing DNS records for a domain they do not control.
+
+### What was deliberately NOT synced
+
+`claude/samewhere-ux-audit-hpyg3c` and `claude/popup-menu-layout-nrqpsc` are
+strict ancestors too, but they are not in `branches-ignore` — fast-forwarding
+them would fire the very workflows the guard exists to stop (all four, including
+the production deploy, for the second one). They are fully merged and should be
+deleted rather than caught up. `guard-probe` likewise: this session's proxy
+refuses ref deletions (403 / hangup), so all three need one click in the GitHub
+branches view.
+
 ## **Two doors nobody could open** (2026-09-09)
 
 ### The Send button was under the keyboard, and the flow tapped through it

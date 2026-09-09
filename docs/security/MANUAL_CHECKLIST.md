@@ -147,11 +147,13 @@ are in the run's summary. Then change the word to `apply` and commit again.
 Anything other than the literal word `apply` — a typo, an empty file — reads as
 `check`, so the failure mode of this door is a read.
 
-The `Actions` → **Harden project settings** → _Run workflow_ button does the
-same thing and is easier, but it will not appear until this branch reaches the
-repository's default branch: GitHub resolves a dispatch on the default branch
-only, and that branch is currently 169 commits behind. The request file works
-from any branch.
+**Easier, and live since 2026-09-09:** `Actions` → **Harden project settings** →
+_Run workflow_, then pick `check` or `apply` from the dropdown. That button
+exists now because the default branch was caught up; GitHub resolves a dispatch
+on the default branch only. The request file is still the way to run it from a
+working branch that has not been merged yet — but note it no longer works on the
+default branch itself, deliberately: a catch-up push would otherwise have opened
+a write session against the live project with nobody choosing it.
 
 The workflow is `.github/workflows/harden-project-settings.yml`; what it does
 and why each field is the field it is, is in

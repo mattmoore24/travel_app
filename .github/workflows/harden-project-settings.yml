@@ -18,12 +18,14 @@
 # reason, which is the same idiom supabase/.deploy-request and
 # .github/apple-revoke-request use.
 #
-# THAT REQUEST FILE IS THE ONLY WAY TO RUN THIS UNTIL IT REACHES THE DEFAULT
-# BRANCH. GitHub resolves a dispatch's workflow id on the default branch, so a
-# workflow_dispatch on a file that only exists on a feature branch answers 404;
-# a `push:` trigger runs the version on the branch that was pushed. This
-# repository's default branch is 169 commits behind the work, so for now the
-# file is the door and the button is not.
+# THE BUTTON EXISTS NOW. This file reached the default branch on 2026-09-09, so
+# Actions -> Harden project settings -> Run workflow is live and is the easier
+# door. The request file remains the way to run it from a working branch before
+# that branch is merged: GitHub resolves a dispatch's workflow id on the default
+# branch, so a workflow_dispatch on a file that exists only on a feature branch
+# answers 404, while a `push:` trigger runs the version on the branch pushed.
+# On the default branch itself the file no longer works - see branches-ignore
+# below, and use the button there.
 #
 # WHAT THE FILE SAYS IS THE MODE. Its first word: `check` reads and reports and
 # writes nothing, `apply` writes. Anything else, including an empty file, is
