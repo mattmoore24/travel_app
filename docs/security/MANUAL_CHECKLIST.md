@@ -136,7 +136,8 @@ cascades the rest. The `sw-e2e` one is the only one holding any data.
 
 ## 2. Supabase — the database and API
 
-**Four of the six boxes below are no longer yours.** A workflow sets them
+**Three of the six boxes below are no longer yours, and a fourth turned out to
+be a mistake.** A workflow sets them
 through the Supabase Management API and reads them back from the live project
 to prove they took.
 
@@ -186,12 +187,19 @@ What it sets, and what each one is for:
   Checks new passwords against HaveIBeenPwned. Was **disabled** — read from the
   live advisor, not guessed.
 
-- **Anonymous sign-ins OFF.** (SEC-008)
+- **Anonymous sign-ins: LEAVE THEM ON.** (SEC-008, withdrawn)
 
-  The app has a deliberate guest mode built on real accounts and RLS; it does
-  **not** use Supabase's anonymous-sign-in auth feature. Anything that feature
-  allows is therefore pure attack surface, and an account that costs nothing to
-  create is the input to every per-account cap in `COST_CONTROLS.md`.
+  This box used to say "off", on the belief that the app's guest mode was built
+  on real accounts and did not use the feature. **It is the feature.**
+  `signInAsGuest` is `supabase.auth.signInAnonymously()`, and `is_anonymous` is
+  what routing, the tab layout and the guest hooks read to tell a guest from a
+  member. Turning it off would have taken down "look around first" on
+  production. The workflow now reads this setting and fails if it is ever off,
+  which is the opposite of what the audit asked for and the right way round.
+
+  The free-account-creation risk is real and the control for it is elsewhere:
+  the per-account caps in `COST_CONTROLS.md`, plus `rate_limit_anonymous_users`
+  under **Authentication** → **Rate Limits** below.
 
 - **Storage upload ceiling = 5 MB.**
 
@@ -204,6 +212,11 @@ schemas at Project Settings → **Data API** → _Exposed schemas_; the password
 check at **Authentication** → **Attack Protection**; anonymous sign-ins at
 **Authentication** → **Sign In / Providers**; the storage ceiling at Project
 Settings → **Storage** → _Upload file size limit_.
+
+**What the first `check` run found on the live project (2026-09-09):** exposed
+schemas were already `public, graphql_public`, so the `pg_net` door has never
+been open; leaked-password protection was off; the storage ceiling was 50 MB;
+and anonymous sign-ins were ON, which is what exposed the mistake above.
 
 ### Still yours, because there is no API for them
 

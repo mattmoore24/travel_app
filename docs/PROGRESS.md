@@ -56,10 +56,29 @@ in code now: `.github/scripts/harden-project-settings.mjs`, run by
   The script only ever NARROWS the list, and refuses to write one that has lost
   `public`.
 - **SEC-004, leaked password protection.** `password_hibp_enabled`.
-- **SEC-008, anonymous sign-ins.** `external_anonymous_users_enabled`, written
-  as a literal `false` rather than left at the null the field defaults to.
+- **SEC-008, anonymous sign-ins — WITHDRAWN, and this is the one worth reading.**
+  The audit recorded that the app "does not use Supabase's anonymous-sign-in
+  auth feature". It **is** the feature: `signInAsGuest`
+  (`src/features/auth/api.ts:84`) is `supabase.auth.signInAnonymously()`, and
+  `is_anonymous` is what routing, the tab layout, the guest hooks and the
+  business gating all read to tell a guest from a member. Writing `false` here
+  would have taken down "look around first" on production — the app's front
+  door — under the heading of hardening it. The script now READS this setting
+  and fails if it is ever off, which is the opposite of what the audit asked
+  for and the right way round.
+
+  It was caught by running the script in `check` mode against the live project
+  before applying anything: the read said the setting was ON, which contradicted
+  the audit's premise and sent me to the code. That is the entire argument for
+  check-first, and it paid for itself on the first run.
+
 - **The storage upload ceiling**, 5 MB, the same number the bucket migration
   sets. Lowered only, never raised.
+
+The first live `check` run also settled SEC-002 itself: exposed schemas were
+already `public, graphql_public`, so the `pg_net` door has never actually been
+open. Leaked-password protection was off, the storage ceiling was 50 MB, and
+those two are what `apply` has to change.
 
 Every field name came off the published OpenAPI spec rather than memory. Each
 section reads, decides, patches only if the desired state does not already

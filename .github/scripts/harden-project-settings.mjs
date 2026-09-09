@@ -1,20 +1,21 @@
-// Sets the four hosted-project settings that no migration in this repository
+// Sets the three hosted-project settings that no migration in this repository
 // can reach, through the Supabase Management API, because they live in a
 // dashboard the founder cannot comfortably open and because a security setting
 // nobody can assert is a security setting nobody can trust.
 //
-// WHY THESE FOUR AND NOT THE OTHERS. docs/security/MANUAL_CHECKLIST.md §2
-// lists six boxes. Four of them are one field each on an endpoint the
+// WHY THESE THREE AND NOT THE OTHERS. docs/security/MANUAL_CHECKLIST.md §2
+// lists six boxes. Three of them are one field each on an endpoint the
 // Management API publishes, so they belong in code:
 //
 //   SEC-002  Exposed schemas          PATCH /v1/projects/{ref}/postgrest
 //                                     db_schema
 //   SEC-004  Leaked password check    PATCH /v1/projects/{ref}/config/auth
 //                                     password_hibp_enabled
-//   SEC-008  Anonymous sign-ins off   PATCH /v1/projects/{ref}/config/auth
-//                                     external_anonymous_users_enabled
 //   (§2)     Storage upload ceiling   PATCH /v1/projects/{ref}/config/storage
 //                                     fileSizeLimit
+//
+// SEC-008 (anonymous sign-ins) is READ ONLY here and stays that way: the audit
+// asked for it off, and off would break guest mode. See the section itself.
 //
 // The two that stay in the checklist stay there for a reason, not an oversight:
 //   * ORGANISATION SPEND CAP. There is no endpoint. The whole billing surface
@@ -33,7 +34,7 @@
 // .UpdateStorageConfigBody) rather than recalled.
 //
 // NOTHING IS PRINTED FROM THE AUTH CONFIG except the two boolean flags this
-// file owns. The same GET returns security_captcha_secret, sms_twilio_auth_token
+// file reads. The same GET returns security_captcha_secret, sms_twilio_auth_token
 // and twenty other provider secrets, and a workflow log on a PUBLIC repository
 // is not the place for any of them. Where this file has to talk about the rest
 // of a config it names KEYS, never values. Same rule as enable-apple-provider.
@@ -162,10 +163,10 @@ function changedKeys(before, after, owned) {
  * Every section reports into this, and the exit code is decided at the end
  * rather than at the first failure.
  *
- * One setting that cannot be written must not hide the state of the other
- * three: the founder reads this output to know what is still theirs to do, and
- * a run that stopped at the first problem tells them about one box when four
- * were in question.
+ * One setting that cannot be written must not hide the state of the others:
+ * the founder reads this output to know what is still theirs to do, and a run
+ * that stopped at the first problem tells them about one box when four were in
+ * question.
  */
 const results = [];
 const record = (name, ok, detail) => {
@@ -292,24 +293,38 @@ await harden({
   patch: () => ({ password_hibp_enabled: true }),
 });
 
-// --- SEC-008. Anonymous sign-ins -------------------------------------------
-// The app's guest mode is real accounts and RLS (features/auth, guest-name.tsx)
-// and never calls signInAnonymously. So this feature is pure attack surface:
-// an account that costs nothing to create is the input to every per-account
-// cap in COST_CONTROLS.md.
-await harden({
-  name: 'SEC-008 anonymous sign-ins (external_anonymous_users_enabled)',
-  path: '/config/auth',
-  owned: ['external_anonymous_users_enabled'],
-  // The RAW value, not a coerced boolean: this field is nullable, and null
-  // means "never set" rather than "off". GoTrue's default is off, so null is
-  // not a vulnerability — but a setting nobody has ever written is a setting
-  // a later dashboard visit can flip without noticing, and the point of this
-  // file is to make the state explicit. So null is patched to a literal false.
-  read: (config) => config.external_anonymous_users_enabled ?? null,
-  desired: (current) => (current === false ? null : false),
-  patch: () => ({ external_anonymous_users_enabled: false }),
-});
+// --- SEC-008. Anonymous sign-ins: A GUARD, NOT A CHANGE ---------------------
+//
+// THIS SETTING MUST STAY ON, and the audit that asked for it off was wrong.
+// SECURITY_AUDIT.md recorded that the app has a guest mode built on real
+// accounts and RLS and does not use Supabase's anonymous-sign-in feature. It
+// does use it. `signInAsGuest` in src/features/auth/api.ts:84 IS
+// `supabase.auth.signInAnonymously()`, and `is_anonymous` is what routing.ts,
+// the tab layout, the guest hooks and the business gating all read to tell a
+// guest from a member. Turning this off does not harden anything: it takes down
+// "look around first", which is the app's front door (docs/DESIGN.md).
+//
+// It was caught by running this script in `check` mode against the live project
+// before applying anything - the run said the setting was ON, which contradicted
+// the audit's premise and sent somebody to read the code.
+//
+// So this section reads and refuses to write. It exists to fail loudly if the
+// setting is ever turned off, because the symptom on a phone is a guest button
+// that errors and nothing else.
+{
+  const name = 'SEC-008 anonymous sign-ins (guest mode depends on them)';
+  const config = await api('GET', '/config/auth');
+  const enabled = config.external_anonymous_users_enabled === true;
+  record(
+    name,
+    enabled,
+    enabled
+      ? 'ON, which is correct - signInAsGuest is signInAnonymously. Not changed.'
+      : 'OFF. Guest mode is built on this: every "look around first" session is ' +
+          'an anonymous auth user, so the guest door is broken until it is turned ' +
+          'back on at Authentication -> Sign In / Providers.'
+  );
+}
 
 // --- Storage upload ceiling -------------------------------------------------
 await harden({
@@ -356,9 +371,9 @@ if (process.env.GITHUB_STEP_SUMMARY) {
 console.log('');
 if (failed.length > 0) {
   fail(
-    `${failed.length} of ${results.length} settings did not take: ` +
-      `${failed.map((r) => r.name).join(', ')}. The others above are done; these are still ` +
-      'yours in the dashboard.'
+    `${failed.length} of ${results.length} settings are not where they should be: ` +
+      `${failed.map((r) => r.name).join(', ')}. Each line above says what it found and what ` +
+      'to do about it; the rest are done.'
   );
 }
 if (!APPLY) {

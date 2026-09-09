@@ -21,6 +21,8 @@
 //   replace   a PATCH that REPLACES the document instead of merging
 //   tight     already stricter than this script would set: a 1 MB storage
 //             ceiling, which it must leave alone rather than raise
+//   noguests  anonymous sign-ins OFF, which breaks guest mode - the script
+//             must report it and must not "fix" it by writing anything
 // MODE picks apply (default) or check, exactly as the workflow's env does.
 
 const scenario = process.argv[2] ?? 'dirty';
@@ -31,6 +33,7 @@ const postgrest = {
   nopublic: 'net, storage',
   replace: 'public, net',
   tight: 'public, graphql_public',
+  noguests: 'public, graphql_public',
 }[scenario];
 
 if (postgrest === undefined) {
@@ -38,7 +41,8 @@ if (postgrest === undefined) {
   process.exit(2);
 }
 
-const settled = scenario === 'clean' || scenario === 'replace' || scenario === 'tight';
+const settled =
+  scenario === 'clean' || scenario === 'replace' || scenario === 'tight' || scenario === 'noguests';
 
 const state = {
   '/postgrest': {
@@ -50,7 +54,9 @@ const state = {
   },
   '/config/auth': {
     password_hibp_enabled: settled ? true : false,
-    external_anonymous_users_enabled: settled ? false : null,
+    // ON everywhere but the `noguests` scenario, because the app's guest mode
+    // is signInAnonymously and this setting being on is the correct state.
+    external_anonymous_users_enabled: scenario !== 'noguests',
     // Two of the twenty-odd secrets the real GET carries. The test asserts
     // these strings never reach stdout.
     sms_twilio_auth_token: 'twilio-secret-must-not-print',

@@ -166,16 +166,41 @@ describe('the settings script, run end to end against a fake project', () => {
     expect(code).toBe(0);
     expect(out).toContain('ENDED db_schema=public, graphql_public');
     expect(out).toContain('ENDED hibp=true');
-    // A literal false, not the null it started as.
-    expect(out).toContain('ENDED anonymous=false');
     expect(out).toContain('ENDED fileSizeLimit=5242880');
     expect(out).toContain('ENDED max_rows=1000');
+  });
+
+  it('never turns anonymous sign-ins off, because guest mode is built on them', () => {
+    // THE ONE THE AUDIT GOT WRONG. SECURITY_AUDIT.md recorded that the app
+    // does not use Supabase's anonymous-sign-in feature; `signInAsGuest` in
+    // src/features/auth/api.ts IS `supabase.auth.signInAnonymously()`, and
+    // `is_anonymous` is what routing, the tab layout and the guest hooks read
+    // to tell a guest from a member. Writing `false` here would have taken
+    // down the app's front door, so the section is a read and this is what
+    // holds it that way.
+    for (const scenario of ['dirty', 'clean', 'tight']) {
+      const { out } = run(scenario);
+      expect(out).toContain('ENDED anonymous=true');
+      expect(out).toContain('ON, which is correct');
+    }
+  });
+
+  it('fails loudly when anonymous sign-ins are off, and still writes nothing', () => {
+    const { code, out } = run('noguests');
+    expect(code).toBe(1);
+    expect(out).toContain('Guest mode is built on this');
+    // Reported, not "repaired": a script that flipped it back would be writing
+    // to auth on the strength of its own opinion.
+    expect(out).toContain('ENDED anonymous=false');
   });
 
   it('changes nothing when the project is already right', () => {
     const { code, out } = run('clean');
     expect(code).toBe(0);
-    expect(out.match(/Nothing to change\./g)).toHaveLength(4);
+    // Three writable settings say so; the fourth is the anonymous sign-ins
+    // guard, which reports rather than changes and never says this.
+    expect(out.match(/Nothing to change\./g)).toHaveLength(3);
+    expect(out).toContain('Not changed.');
   });
 
   it('writes nothing in check mode', () => {
