@@ -102,7 +102,37 @@ describe('the settings workflow is something somebody decides to run', () => {
     expect(yaml).toContain('workflow_dispatch:');
     const push = between(yaml, '  push:', '  workflow_dispatch:');
     expect(push).toContain('paths:');
-    expect(push.match(/^\s+- '.*'$/gm)).toEqual(["      - '.github/harden-request'"]);
+    // Anchored to a leading dot so it still means "exactly one request path",
+    // now that the block also carries a branch under `branches-ignore`. A bare
+    // `- '.*'` would have been satisfied by the branch entry too, and leaving
+    // the branch name UNQUOTED would have slipped past the old pattern with no
+    // test change at all — passing by a quoting accident is the thing this
+    // suite exists to catch.
+    expect(push.match(/^\s+- '\..*'$/gm)).toEqual(["      - '.github/harden-request'"]);
+  });
+
+  it('cannot be started by a ref move onto the default branch', () => {
+    // The guard this test exists for. Fast-forwarding the default branch puts
+    // .github/harden-request into the push diff — GitHub evaluates `paths`
+    // over the whole before..after range — so without `branches-ignore` a
+    // catch-up push would open a WRITE session against the live project with
+    // nobody having chosen it (the request file's first line is `apply`).
+    // Asserted on all four workflows that carry an unattended push trigger,
+    // because the deploy one reaches the production database.
+    for (const file of [
+      '.github/workflows/harden-project-settings.yml',
+      '.github/workflows/push-key.yml',
+      '.github/workflows/apple-revoke-log.yml',
+      '.github/workflows/supabase-deploy.yml',
+    ]) {
+      // Cut from `push:` to its own `paths:` — supabase-deploy.yml declares
+      // workflow_dispatch FIRST, so that cannot be the closing anchor. The
+      // guard has to sit inside the push block and above the path list, which
+      // is exactly this slice.
+      const push = between(source(file), '  push:', '    paths:');
+      expect(push).toContain('branches-ignore:');
+      expect(push).toContain("- 'claude/travel-app-initial-setup-ephphz'");
+    }
   });
 
   it('defaults to reading rather than writing', () => {

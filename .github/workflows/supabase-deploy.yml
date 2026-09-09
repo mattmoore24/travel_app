@@ -46,6 +46,16 @@ on:
         type: boolean
         default: false
   push:
+    # A REF MOVE MUST NEVER START THIS. The default branch is far behind this
+    # one, and a fast-forward puts every request file ever touched into a
+    # single push diff - GitHub evaluates `paths` over the whole before..after
+    # range, so the catch-up push alone would start this workflow with nobody
+    # having chosen it. This is SEC-017 narrowed to the case that bites: the
+    # audit declined a `branches:` allowlist because it would break the way
+    # this project ships (a request file committed on whatever branch the work
+    # is on), and ignoring the trunk alone leaves that flow untouched.
+    branches-ignore:
+      - 'claude/travel-app-initial-setup-ephphz'
     paths:
       - 'supabase/.deploy-request'
 
