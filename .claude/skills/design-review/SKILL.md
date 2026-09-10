@@ -69,6 +69,30 @@ same brand blue at 7.9:1. `#2A4C9B` survives only as a fill under white.
 collision that pushed the brand off green originally, inverted. Heat reads as
 one light source intensifying, amber to ember, never as a hue swap.
 
+**The map has exactly four marks, and they separate on SHAPE, not hue.**
+
+| Mark       | Drawing                                                |
+| ---------- | ------------------------------------------------------ |
+| Plans      | solid amber teardrop, white ring, category glyph       |
+| Picks      | the same teardrop inverted: ink body, amber ring, star |
+| Businesses | hollow ink chip, no tail, neutral 2pt ring             |
+| Busy areas | the one edgeless mark: an amber-to-ember field         |
+
+Gold is RETIRED from the map. `PIN_GOLD` measured 1.31:1 against the amber it
+was meant to be told apart from, and the white ring meant to carve them apart
+was 1.61:1 against gold, so the two families were separating on hue and a 15pt
+glyph and nothing else. The separations that survive a green park, arm's
+length and colour blindness are fill versus void, tail versus no tail, and
+edge versus no edge. Never reach for a cool hue to separate a marker family;
+`src/features/pins/marker-colors.ts` is the only place a marker colour is
+named.
+
+**A quiet mark still needs an edge.** `theme.border` is the app's own "edge a
+user must see" at 3.4:1 on `canvas` — and only 2.80:1 on Apple's washed dark
+land, which is lighter. A business chip drawn in it was not quiet, it was
+missing. `theme.textSecondary` is 6.77:1 there. Measure against the BASEMAP
+for anything that sits on it.
+
 Other scales, all Nocturne's: seven type roles (`display` 32 → `caption` 11),
 a **4pt** space grid, radii `sm 8 / md 12 / lg 16 / xl 20`, `bubble 18`
 (iMessage's corner), `pill`. Three elevation levels,
@@ -93,9 +117,14 @@ a **4pt** space grid, radii `sm 8 / md 12 / lg 16 / xl 20`, `bubble 18`
 
 ## Per-screen intent
 
-- **Map** — the hero. Faces on pins once signed in, plain glyphs for guests.
-  Pins are venue-level _future intent_; never anything that reads as "where
-  this person is now".
+- **Map** — the hero. The pin BODY always carries the category, so a guest's
+  map, a business's map and a signed-in traveler's map share one silhouette; a
+  signed-in viewer gets the poster's face as a small corner badge on a single
+  plan, never as the marker itself. (It used to BE the marker, which meant the
+  same object had three different shapes depending on whether a photo
+  resolved, and no key could be true about it. Faces still lead the card that
+  opens on tap.) Pins are venue-level _future intent_; never anything that
+  reads as "where this person is now".
 - **Travelers** — one person, full page, say hi or move on. Shared date
   windows are marked. Never framed as a deck.
 - **Chat** — follow WhatsApp/Telegram/iMessage conventions exactly: bubble

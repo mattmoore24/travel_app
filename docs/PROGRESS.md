@@ -3,6 +3,56 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **The map's four marks, and a key that stays** (2026-09-10)
+
+Item #49, from the design workflow's spec (25 edits, 20 tests), shipped whole.
+
+**Gold has left the map.** `PIN_AMBER` against `PIN_GOLD` measured 1.31:1, and
+the white ring meant to carve them apart was 1.61:1 against gold, so a
+traveler's plan and one of our picks were separating on hue and a 15pt glyph.
+A pick is now the same amber teardrop INVERTED: ink body, amber ring, amber
+star. Fill versus void survives a green park, arm's length and colour
+blindness, where hue cannot.
+
+**A business is on the map rather than hunted for.** Its idle ring was
+`theme.border` — the app's own "edge a user must see" at 3.4:1 on `canvas`,
+and 2.80:1 on Apple's washed dark land, which is under the floor. It is
+`theme.textSecondary` at 6.77:1 now, on a 30pt hollow ink chip that still
+holds 44pt exactly (30 + 7 + 7, as 26 + 9 + 9 was).
+
+**One silhouette per family.** A venue stack used to draw one disc, two faces
+or three depending on which photos resolved. It is now the same teardrop
+every plan is, carrying its count in a body that becomes a stadium so digits
+and a 1.3x text scale widen it instead of clipping.
+
+**The key is permanent, and it is not in the message slot.** Four words under
+the search bar, drawn only for the families currently ticked, opening the
+filters sheet where each mark is explained. Both one-shot legend chips are
+deleted, with `heat-legend.ts` and its sixty-day dismissals: after one read
+the map used to have no key on it at all. It is deliberately outside
+`SLOT_ORDER` — that strip is single-occupant, so a permanent tenant would
+silence every error and empty-state banner, and opening Filters wipes the
+strip anyway.
+
+**One thing the spec got wrong, found by its own test.** It set
+`HISTORY_ALPHA` to 0.12 AND asserted it stays under the per-ring alpha of the
+quietest live cell. Those are incompatible: that ring is 0.1163. The value is
+0.11, so the remembered layer is dimmer than the live one at every ring rather
+than only at the centre. Its old ramp typically drew 0.075, about 1.08:1 — a
+layer the code drew, the tests covered and nobody could see.
+
+Gate green: 224 suites, 2392 tests. Five mutation checks per new assertion
+file, all caught. **Not yet photographed** — the pictures are the evidence
+that matters here and E2E has not run since. The two frames to look at first
+are heat at 0.31 over a dense street grid (a light, or a stain) and a hollow
+pick over water, where an ink body is about 1.2:1 against the ground and the
+mark is carried by its amber ring alone.
+
+**Three calls the founder flagged and I proceeded on**, all reversible:
+gold leaving the map entirely; a permanently visible key adding one object
+below the search bar (#50 was about clearing the top of the map); and the face
+shrinking from the marker body to a corner badge.
+
 ## **E2E 130 green, and on the phone** (2026-09-10)
 
 Run 130 (`e441fe7`) passed every flow, and each of the four fixes from 129 is
@@ -3544,8 +3594,13 @@ visible to real users.
       trips so Travelers/matching/requests are testable on a phone; `[demo]`
       bios, `DEMO_PASSWORD`-gated sign-in; purge is a runbook step 4 gate
 - [x] **Pins wear their poster's face** — signed-in users see the poster's
-      photo in the marker (guests get plain glyphs, enforced server-side);
-      the pin sheet links to profile and message request
+      photo on the marker (guests get none at all, enforced server-side); the
+      pin sheet links to profile and to the first message. **Amended
+      2026-09-10 (#49):** the face is a 14pt CORNER BADGE on a single plan
+      rather than the marker body, and a venue stack carries none. The body
+      always carries the category or the count, so a guest, a business viewer
+      and a signed-in traveler read one silhouette — the precondition for the
+      map's key being true. Faces still lead the card that opens on tap.
 - [x] **One clear signup** — email/password page says it's step one of two,
       then a single profile builder (photos, basics, bio) ends in "Create
       account"; everything editable later

@@ -790,3 +790,36 @@ itself with the invite, so the invite the person wanted — with both of its
 options still on it — was two dismissals down, behind a stack the app had
 built by hand. Going back is almost always what was meant; keep `next` as the
 fallback for the cold-start case where there is nothing to go back to.
+
+**`tracksViewChanges` does nothing on the map this app actually ships.** It is
+implemented for iOS **Google** Maps and for Android only — present in
+`ios/AirGoogleMaps/AIRGoogleMapMarker.m` and the Android sources, absent from
+every file under `ios/AirMaps`, and documented `@platform iOS: Google Maps
+only` at `node_modules/react-native-maps/src/MapMarker.tsx:308-316`. This app
+is `PROVIDER_DEFAULT`, and the Apple path mounts a marker's React child as a
+LIVE subview (`ios/AirMaps/RNMapsMarkerView.mm:286-296`,
+`ios/AirMaps/AIRMapMarker.m:75-79`) and never snapshots it. So springs and
+entrances paint unconditionally, there is no pan-time freeze being bought, and
+the hook costs a timer plus one extra render per marker.
+
+Keep `useMarkerTracking` anyway — Android is the platform it is for — and keep
+its KEYS complete. The key is the project's checklist of everything a marker
+draws: anything missing from it is something that would be missing from the
+bitmap on the provider that does freeze. Do not "optimise" a marker by
+reasoning about rasterisation on iOS; there isn't any.
+
+Two z-order facts a marker change needs at the same time:
+
+- `AIRMapMarker.m:401-405`'s `setZIndex` updates `layer.zPosition` only and
+  does NOT re-assign `zPriority`, so a selected marker's collision priority is
+  whatever it was at mount. Raising `zIndex` on selection changes what draws on
+  top and nothing about what MapKit declutters.
+- `displayPriority` is the DECLUTTER control, not the layer control. Never
+  `'low'` on anything that has to stay tappable: a decluttered annotation
+  leaves the accessibility tree with it, so the simulator suite cannot reach it
+  either (`business-marker.tsx:165-178` records the outage this caused).
+
+**A marker's tappable area IS its wrapper view, padding included.** There is no
+hit slop on a `Marker` child. `26 + 4 + 4` is 34 and under the floor; the
+padding is not decoration, it is the hit target, so a body-size change has to
+be paid for in the padding at the same time (`30 + 7 + 7 = 44`).

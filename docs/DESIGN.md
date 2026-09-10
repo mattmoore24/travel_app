@@ -406,3 +406,92 @@ Worth building when the moment is right, in rough order of value:
 6. **Time-of-day map chrome tint** (Lumy's window-to-the-world; "Dusk" as a
    felt behavior), **minimize-on-scroll tab bar** on list tabs, and
    **morphing-tray** unification of the map's sheets.
+
+## The map's four marks (2026-09-10)
+
+Item #49. The map had four things on it and no honest way to tell them apart.
+
+### The colour problem, measured
+
+`PIN_AMBER #FF9A5A` against `PIN_GOLD #FFC168` is **1.31:1**. The white ring
+meant to carve them apart is **1.61:1 against gold**. So a traveler's plan and
+one of our picks were separating on hue and a 15pt glyph — and hue is the
+first channel a green park, arm's length or colour blindness takes away. Gold
+was also silently the same value as `theme.warning`, so a marker family and an
+alert state shared a colour with nothing connecting them.
+
+The business chip was worse. Its idle ring was `theme.border`, which is the
+app's own "an edge a user must see" token at 3.4:1 **on `canvas`**. Apple's
+washed dark land is lighter than canvas, and the same ring measures **2.80:1**
+there — under the 3:1 floor for a UI edge. A business was not quiet on this
+map, it was missing. `theme.textSecondary` is **6.77:1** on the same land.
+
+### The four marks
+
+Separation is now **fill versus void, tail versus no tail, edge versus no
+edge** — three shape axes, none of them a hue.
+
+| Mark           | Drawing                                                      |
+| -------------- | ------------------------------------------------------------ |
+| **Plans**      | solid amber teardrop, 36pt, 2pt white ring, category glyph   |
+| **Picks**      | the same teardrop inverted: ink body, 2.5pt amber ring, star |
+| **Businesses** | hollow ink chip, 30pt, no tail, 2pt neutral ring             |
+| **Busy areas** | the only edgeless mark: an amber-to-ember field, no ring     |
+
+Gold is retired from the map. `src/features/pins/marker-colors.ts` is the one
+place a marker colour is named, and it reads the palette rather than retyping
+it, so a change to `theme.highlight` reaches the map instead of leaving it
+behind. `MARK_RING` is white and deliberately has **no token**: a named white
+in `theme.ts` is a licence for a white FILL somewhere else, and white on this
+ground is about 18:1.
+
+### One silhouette per family
+
+A venue stack used to draw one disc, or a row of two faces, or three,
+depending on which photos happened to resolve. The same object had three
+shapes, so no key could be true about it — and a photograph pinned to a bar
+reads as "this person is at this bar", which is the one thing §7 rule 2 says
+the map may never imply. A stack is now the same teardrop every plan is,
+carrying its count in a body that becomes a stadium so three digits and a 1.3×
+text scale widen it instead of clipping it. The poster's face is a 14pt corner
+badge on a **single** plan, never on a count, and it still leads the card that
+opens on tap, which is where "who is going" is actually answerable.
+
+### Why the key is not in the message slot
+
+The map's key is permanent chrome: the third row of the browse city bar,
+directly under the search bar and the Filters row. Four words, drawn only for
+the families currently ticked, opening the filters sheet where each mark is
+explained.
+
+It is **not** an entry in `SLOT_ORDER`, and that is a load-bearing decision.
+That strip is single-occupant by construction (`message-slot.ts`), so a
+permanent tenant would silence `pins-error`, `heat-error`, `own-listing`, both
+empty states and both arrival banners — every sentence that explains why a map
+looks wrong. And `mapCovered` includes `filtersOpen`, so a key living in the
+strip could never be on screen at the moment its own explanation opened. The
+header stays live under the inline Filters sheet, so the mark and its meaning
+are visible together.
+
+The two chips it replaces each stored a sixty-day dismissal. After one read
+the map had no key on it at all, which is the failure mode a one-shot legend
+always has.
+
+### The numbers this turns on
+
+- `theme.border` **2.80:1** vs `theme.textSecondary` **6.77:1** on Apple's
+  washed dark land. Measure against the BASEMAP for anything that sits on it.
+- `launch_cities.heat_k` is CHECKed `>= 3`
+  (`20260816210000_map_pins.sql:24`), so the lowest heat count that ever
+  renders is 3 and `heatPeakAlpha`'s real floor is **0.31**, not 0.15. The
+  ramp is the second channel and must never be flattened to a constant: hue
+  alone is the axis a protanope cannot resolve.
+- `HISTORY_ALPHA` is **0.11**, pinned from ABOVE by the live layer — one ring
+  of the quietest renderable live cell is 0.1163, and the remembered layer has
+  to stay dimmer at every ring, not only at the centre where three have
+  stacked. Its old ramp topped out at 0.09 and typically drew 0.075, which
+  measured about 1.08:1: a layer the code drew, the tests covered and nobody
+  could see.
+- A pin over its own heat glow is carved out by its **2pt white ring at
+  roughly 10:1**, not by its fill. That is why the later-day dim survives the
+  objection that 2.89:1 is too little: the fill is not what separates them.
