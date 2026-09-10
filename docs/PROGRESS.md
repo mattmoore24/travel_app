@@ -3,6 +3,41 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **E2E 130 green, and on the phone** (2026-09-10)
+
+Run 130 (`e441fe7`) passed every flow, and each of the four fixes from 129 is
+confirmed in its own log line rather than inferred from the run being green:
+
+- `Assert that "Back to Bangkok" is visible... COMPLETED`. The way-home pill,
+  which 128 and 129 both died on.
+- `Assert that "Which city?" is visible... COMPLETED`, twice, and
+  `Assert that "Search a city. Showing Denpasar" is visible... COMPLETED` after
+  a kill and relaunch. The new top bar works and remembers.
+- `Said hi to .* It's in Chat under "You said hi."... COMPLETED` — as the now
+  optional assertion, which means the strip was actually caught this time, and
+  the hard assertion under it (the composer closing itself) passed too.
+- `05f-plan-list-gate.png` exists: the guest sign-up gate, photographed for the
+  first time, with the close it did not have last week.
+
+**Three flows needed their retry, and that is worth saying plainly.** The
+business tour's first attempt died mid-assertion with no verdict printed at all
+(a driver death, not the app), and its second attempt hit "Could not save" on
+the FIRST photo pick before recovering through the app's own retry — so the
+crop-editor settle did not prevent the `renderAsync` hang, it only ran ahead of
+a path that was already there. The onboarding tour's first attempt failed on
+`"Your profile photo, uploading"`, a transient upload state, and passed on its
+second. None of the three is a product defect; all three are the same class of
+thing — a beat asserted as if it were a state.
+
+**Shipped over the air**: TestFlight run 90, `eas update --branch production`,
+runtime 0.2.0, from `a5723c2`. iOS update `01a088e6-6242-7510-ad63-f588de3569d8`
+(group `fb05535c-a684-4c30-8a7c-666d416b96dc`). Force-quit and reopen to take
+it.
+
+The gallery could not be republished from this session: the artifact publish was
+refused by the harness. The screenshots are on the `e2e-results` branch as
+always, and the four that matter went to the founder directly.
+
 ## **The notification ask moves to the calmest moment there is** (2026-09-09)
 
 Founder, round 4, deferring the design to me: ask on first run, primed rather
