@@ -3,6 +3,78 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **The traveler picks the day a pin comes down** (2026-09-10)
+
+§7 rule 3 changed on the founder's word, and it is shipped end to end:
+database, client, published text, and the deploy. This supersedes the
+2026-09-08 entry below that recorded task #48 as open and the 72-hour
+promise as still standing.
+
+**What the founder decided, in order.** No 72-hour ceiling. The traveler
+picks the date the pin is active until, a year at most, regardless of trips.
+The plan's date is the real indicator. A pin may come down BEFORE its plan
+(somebody planning ahead may not want to be messaged about it all the way
+up to the event), with one small reminder and nothing blocked. The map
+starts on anytime for density, narrowed by next 7 days, next 30 days or a
+range. A chat born from a plan outlives the pin and the event, which was
+already true and is now written down.
+
+**Database (`20260910120000`).** `pins.take_down_on` is the only lifetime a
+client states; `validate_pin` derives `expires_at` as midnight at the end of
+that day in the city's clock, floors the day at the city's today, refuses
+past today + 366, and never floors it at the plan's day. `plan_ends_at` is
+the server's own field for the last-call push and nothing else. `revoke
+insert (expires_at)` closes the direct-insert path, so the two client
+writers that used it are deleted. The feeds take a window (`p_from`,
+`p_to`) and the client leaves the arguments off entirely under anytime, so
+an older function still resolves. The never-applied 20260905200000, which
+encoded the plan-day floor the founder rejected, is deleted rather than
+repaired, which is also what let `db push` run in order again.
+
+**Client.** The hours slider and the three day chips are gone; When and
+Comes down are two rows opening the shared calendar in a sheet of its own.
+The map's When filter is back as four chips, and one window feeds the
+marker predicate, the pin feed and the heat feed, widened by the measured
+skew between the city's, the device's and UTC's calendar days. Every
+countdown reads the pin's own `take_down_on`. Every string that promised
+three days or 72 hours says the day you picked; the privacy policy, its
+web copy, the App Store text, the brief, AGENTS.md and the change-review
+skill say the same, and the source-scan test that held the policy to "72
+hours" now holds it to the take-down promise.
+
+**The same day, the founder's second round.** Text is refused for slurs
+and nothing else (`20260910150000`): the blocklist is seventeen slurs, the
+LLM worker's block on flirtation or sexual is turned into an allow with
+the model's verdict kept in the audit payload, and a group's name is
+screened by the same list. A pin's plan and note pass the prefilter
+(`20260910140000`). And under every message of your own the ladder is one
+word: Sending while it is in flight or a photo of yours is still being
+checked, Sent once it has landed, Retry when it failed; a photo is
+optimistic now and retries from the same file.
+
+**E2E 131, named.** The business tour's cover photo, twice. Attempt 1: the
+picker sheet drew late, the cell tap landed on the app underneath, and the
+grid sat open for 150s. Attempt 2: both picks died in the app's own 90s
+"preparing it" bound, no upload ever reached storage (the edge logs show
+none between the contact step and the failure), and the same pipeline
+carried the signed-in tour's photo fifteen minutes later in the same run.
+The subflow now waits for the sheet before tapping the cell; the render
+stall is the first-flow-after-boot signature run 129 recorded, not this
+branch's (130 was green on the same code), and it stays on the record.
+
+**Paid for.** A subagent's worktree lives INSIDE the repo. `tsc` failed on
+its half-finished edits and `jest` ran every file twice, printing a test's
+old name after the real one had been rewritten. The four scanners now
+exclude `.claude/` (traps has the entry).
+
+**Runs.** Supabase deploy 115 (three migrations and the worker), TestFlight
+update 91, E2E 132.
+
+**Raised, not decided.** The ten-live-pins cap used to recycle every three
+days and now recycles a year at a time. Featured-city and liquidity counts
+change meaning when pins live for months. Curated seed pins need a
+take-down day.
+
 ## **The map's four marks, and a key that stays** (2026-09-10)
 
 Item #49, from the design workflow's spec (25 edits, 20 tests), shipped whole.
