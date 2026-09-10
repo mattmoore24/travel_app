@@ -13,9 +13,12 @@ import { Radius, Springs } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { PinCategory } from '@/lib/database.types';
 
+import { MARK_AMBER, MARK_AMBER_LATER, MARK_INK, MARK_RING } from './marker-colors';
+
 /**
- * One glyph per category, drawn white on the pin body. Emoji markers read as
- * stickers on a basemap; template glyphs read as cartography (docs/DESIGN.md).
+ * One glyph per category, drawn ink-on-amber on the pin body. Emoji markers
+ * read as stickers on a basemap; template glyphs read as cartography
+ * (docs/DESIGN.md).
  */
 const CATEGORY_GLYPHS: Record<PinCategory, SymbolViewProps['name']> = {
   bar: { ios: 'wineglass.fill', android: 'wine_bar', web: 'wine_bar' },
@@ -28,13 +31,19 @@ const CATEGORY_GLYPHS: Record<PinCategory, SymbolViewProps['name']> = {
   other: { ios: 'mappin', android: 'place', web: 'place' },
 };
 
+/** What every one of our own picks wears, and nothing else does. */
 const SEEDED_GLYPH: SymbolViewProps['name'] = { ios: 'star.fill', android: 'star', web: 'star' };
 
 /**
- * What a stacked marker wears when its plans disagree about category: a
+ * What a marker wears when the plans behind it disagree about category: a
  * neutral pin from the same mappin family the dock's Drop-a-pin control
  * draws, rather than borrowing the first pin's category and lying about the
- * rest of the stack.
+ * rest.
+ *
+ * Currently unreachable on the map — every stacked marker carries a COUNT
+ * now, and a count pin draws no glyph at all — but glyphFor stays total so
+ * the type has no hole and a stack drawn without a count cannot render an
+ * undefined symbol.
  */
 const MIXED_GLYPH: SymbolViewProps['name'] = {
   ios: 'mappin.and.ellipse',
@@ -48,36 +57,8 @@ export type StackCategory = PinCategory | 'mixed';
 const glyphFor = (category: StackCategory): SymbolViewProps['name'] =>
   category === 'mixed' ? MIXED_GLYPH : CATEGORY_GLYPHS[category];
 
-/**
- * Two colours only, both warm: travelers pin in the campfire amber, curated
- * spots in gold. The glyph carries the category, so the map stays two
- * colours instead of a carnival of category hues.
- *
- * Warm, not the brand blue, and that is deliberate. The app is dark now and
- * the basemap follows it, so an indigo marker would sit on a dark navy map
- * and a heat circle in the same indigo would effectively disappear. Warm
- * light on an unlit city is the whole idea of the palette.
- *
- * Fixed values rather than theme tokens: markers sit on the basemap, which
- * does not follow the app's own surfaces. The glyph is the app's ink because
- * white on amber is 2.1:1 and unreadable; ink on amber is 9.0:1.
- */
-const PIN_AMBER = '#FF9A5A';
-const PIN_GOLD = '#FFC168';
-const PIN_GLYPH = '#0E1020';
-const PIN_RING = '#FFFFFF';
-/**
- * A plan for a later day burns one step dimmer: PIN_AMBER blended toward the
- * basemap ground, never drawn at alpha (a translucent disc would show the
- * map through it). Two steps only — a 45% amber on this basemap drops the
- * marker under the legibility floor, so the ramp is full or this, nothing
- * lower. Glyph ink on this value still reads at 5.7:1.
- */
-const PIN_AMBER_LATER = '#CA784C';
-
-// 36, not 34. On a muted basemap the face is the only thing worth looking
-// at, and at 34 with a badge on its corner there was more chrome than
-// person.
+// 36, not 34. The body carries the category glyph or the count, and at 34
+// with a badge on each corner there was more chrome than mark.
 const BODY = 36;
 /**
  * 16, was 11, and squeezed on the screen's X axis (see styles.tail): Apple's
@@ -87,12 +68,12 @@ const BODY = 36;
 const TAIL = 16;
 /** How much of the tail's layout box tucks up behind the body. */
 const TAIL_TUCK = TAIL / 2 + 4;
-/** Room for the spring overshoot so nothing clips at the bitmap edge. */
-const WRAP_PAD = 4;
-/** How many faces a stack shows before the count takes over. */
-const STACK_FACES = 3;
-const STACK_FACE = 28;
-const STACK_OVERLAP = 10;
+/**
+ * Room for the spring overshoot and for the own-pin ring, so nothing clips at
+ * the bitmap edge. 6, was 4: the ring now has to clear a body that can also
+ * be a stadium, and the selected spring reaches 1.12.
+ */
+const WRAP_PAD = 6;
 
 /**
  * Marker anchoring is split by provider (verified in react-native-maps
@@ -118,155 +99,221 @@ function centerOffsetFor(bodyHeight: number): { x: number; y: number } {
 }
 
 export const MARKER_CENTER_OFFSET = centerOffsetFor(BODY);
-/**
- * A stack's faces are 28pt, so its tip sits nearer its centre than a 36pt
- * body's does. The city pill is within a couple of points of the same height
- * and shares this at a zoom where the difference is invisible.
- */
-export const STACK_CENTER_OFFSET = centerOffsetFor(STACK_FACE);
 
-type PinMarkerViewProps = {
-  category: PinCategory;
-  seeded: boolean;
+/**
+ * The city pill is a label, not a teardrop, and it is shorter than a pin
+ * body: 13pt text at lineHeight 16 with 6+6 padding and 2+2 of border is 32.
+ *
+ * Derived from that number rather than from a marker's, because it is the
+ * only thing that uses it. At maxFontSizeMultiplier 1.3 the pill grows and
+ * the tip drifts about 2.5pt, which at a zoom spanning tens of kilometres is
+ * a fraction of a pixel of map.
+ */
+export const CITY_PILL_CENTER_OFFSET = centerOffsetFor(32);
+
+/** The two families that wear a teardrop. */
+export type MarkKind = 'plan' | 'pick';
+
+type PinMarkProps = {
+  kind: MarkKind;
+  /** Body diameter. 36 on the map; 16 in the key, 22 in the filters sheet. */
+  size?: number;
+  /**
+   * The category glyph on the body. Omitted for key and sheet art, where the
+   * mark stands for the whole FAMILY and a category would be a lie about it,
+   * and ignored entirely when `count` is set.
+   */
+  category?: StackCategory;
+  /** Several plans behind one mark. Replaces the glyph and never the face. */
+  count?: number | null;
+  /** The plan is open to join. A badge, not a third marker colour. */
+  open?: boolean;
+  /** The viewer's own plan: a concentric accent ring, a shape not a hue. */
+  own?: boolean;
+  /** A later day than the browsed city's today: one step dimmer. */
+  later?: boolean;
   selected?: boolean;
   /**
-   * The poster's profile photo. Present only for signed-in viewers: the
-   * server strips identity from a guest's pin feed, so a guest simply never
-   * has a URL to render here.
+   * The poster's profile photo, as a corner badge. Present only for signed-in
+   * viewers: the server strips identity from a guest's pin feed. Ignored on a
+   * count pin, where one face for three people would be a lie.
    */
   photoUri?: string | null;
-  /**
-   * The plan is open to join. Drawn as a badge rather than a second marker
-   * colour: the map is deliberately two colours (travelers, our picks) and a
-   * third would turn it into a legend nobody read.
-   */
-  open?: boolean;
-  /**
-   * This is the viewer's own pin. A concentric accent ring, the same shape
-   * business-marker.tsx draws for an owner's listing: a SHAPE rather than a
-   * hue swap, drawn inside the wrap padding so nothing moves off its
-   * coordinate.
-   */
-  own?: boolean;
-  /**
-   * The plan is for a LATER day than the browsed city's today; it burns one
-   * step dimmer (see PIN_AMBER_LATER). Computed by the map screen, which
-   * owns the one clock authority (cityClockNow) — the marker must not read a
-   * clock of its own, or the dim and the labels drift apart. Secondary
-   * channel only — the plan list carries the date in words.
-   */
-  later?: boolean;
 };
 
 /**
- * The marker artwork: a ringed dot with a tail, tip at the exact coordinate.
- * Rasterized by react-native-maps after each settle — `useMarkerTracking`
- * below tells the Marker when it must keep re-rendering (during the
- * selected-state spring), because with `tracksViewChanges={false}` the view
- * is a bitmap and animation frames would never paint.
+ * The mark itself, with no animation and no map in it.
+ *
+ * Both families share one silhouette and separate on FILL versus VOID: a plan
+ * is a solid amber teardrop with a white ring, one of our picks is the same
+ * teardrop inverted — ink body, amber ring, amber star. That is what retired
+ * gold from the map. Amber against gold measured 1.31:1 and the white ring
+ * meant to carve them apart was 1.61:1 against gold, so the two families were
+ * separating on hue and a 15pt glyph and nothing else. Fill versus void
+ * survives a green park, arm's length and colour blindness, where hue cannot.
+ *
+ * Every dimension scales from `size`, so the key, the filters sheet and the
+ * map draw the same artwork and cannot drift apart.
  */
-export function PinMarkerView({
+export function PinMark({
+  kind,
+  size = BODY,
   category,
-  seeded,
-  selected = false,
-  photoUri = null,
+  count = null,
   open = false,
   own = false,
   later = false,
-}: PinMarkerViewProps) {
+  selected = false,
+  photoUri = null,
+}: PinMarkProps) {
   const theme = useTheme();
-  const scale = useSharedValue(1);
+  const s = size / BODY;
 
-  useEffect(() => {
-    scale.value = withSpring(selected ? 1.12 : 1, Springs.snap);
-  }, [selected, scale]);
+  const pick = kind === 'pick';
+  // The later-day dim is the amber's alone. One of our picks is never "later"
+  // — it has no day of its own to be later than.
+  const fill = pick ? MARK_INK : later ? MARK_AMBER_LATER : MARK_AMBER;
+  const ink = pick ? MARK_AMBER : MARK_INK;
+  // The pick's amber ring IS its edge, so it carries no white one; a plan's
+  // white ring is what carves it out of its own heat glow at roughly 10:1.
+  const ringColor = pick ? MARK_AMBER : MARK_RING;
+  const ringWidth = (pick ? 2.5 : 2) * s + (selected ? 1 : 0);
+  const glyphSize = Math.round(15 * s);
+  const tail = TAIL * s;
+  const tailTuck = TAIL_TUCK * s;
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
+  const counted = count != null;
+  const glyph = pick ? SEEDED_GLYPH : category != null ? glyphFor(category) : null;
+  // A face is never drawn on a count pin: three people and one photograph is
+  // a marker that names the wrong person.
+  const face = !pick && !counted && photoUri != null ? photoUri : null;
 
-  // The later-day dim applies to the amber only: gold is already the scarce
-  // colour, and dimming it would collapse it into amber.
-  const fill = seeded ? PIN_GOLD : later ? PIN_AMBER_LATER : PIN_AMBER;
-  const glyph = seeded ? SEEDED_GLYPH : CATEGORY_GLYPHS[category];
-  // A face beats an icon: knowing WHO is going is the reason to tap.
-  const showFace = !seeded && photoUri != null;
+  const badge = Math.round(13 * s);
+  const faceSize = Math.round(14 * s);
 
   return (
-    <Animated.View
-      // Apple's classic drop-in when a pin appears (new pins and map load
-      // alike). Live views on Apple Maps, so the spring actually paints.
-      entering={FadeInDown.springify().mass(1).damping(14).stiffness(260)}
-      style={[styles.wrap, animatedStyle]}>
+    <View style={[styles.wrap, { padding: WRAP_PAD * s }]}>
       {own ? (
         // Under the tail (zIndex), so the neck reads as passing behind the
         // ring rather than being cut by it.
-        <View pointerEvents="none" style={[styles.ownRing, { borderColor: theme.accent }]} />
+        <View
+          pointerEvents="none"
+          style={[
+            styles.ownRing,
+            {
+              width: size + WRAP_PAD * s * 2,
+              height: size + WRAP_PAD * s * 2,
+              borderRadius: (size + WRAP_PAD * s * 2) / 2,
+              borderWidth: 2 * s,
+              borderColor: theme.accent,
+            },
+          ]}
+        />
       ) : null}
-      <View style={[styles.body, { backgroundColor: fill }, selected && styles.bodySelected]}>
-        {showFace ? (
-          <>
-            {/* Own clipping layer: the body keeps visible overflow so the
-                category badge can sit proud of the ring. */}
-            <View style={styles.faceClip}>
-              <Image source={{ uri: photoUri }} style={styles.face} contentFit="cover" />
-            </View>
-            {/* Category still readable at a glance, tucked in the corner. */}
-            <View style={[styles.categoryDot, { backgroundColor: fill }]}>
-              <SymbolView name={glyph} size={8} tintColor={PIN_GLYPH} />
-            </View>
-          </>
-        ) : (
-          <SymbolView name={glyph} size={15} tintColor={PIN_GLYPH} />
-        )}
+      <View
+        style={[
+          styles.body,
+          {
+            // A stadium when it carries a count, so three digits and a 1.3x
+            // text scale widen the body instead of clipping inside it.
+            minWidth: size,
+            height: size,
+            borderRadius: size / 2,
+            paddingHorizontal: counted ? 8 * s : 0,
+            backgroundColor: fill,
+            borderWidth: ringWidth,
+            borderColor: ringColor,
+          },
+          selected && styles.bodySelected,
+        ]}>
+        {counted ? (
+          <Text
+            // Marker artwork is cartography, but a number a person has to
+            // READ is not exempt from Dynamic Type. Capped rather than
+            // refused: the body is a stadium, so it grows with the digits.
+            maxFontSizeMultiplier={1.3}
+            style={[styles.countText, { color: ink, fontSize: Math.round(15 * s) }]}>
+            {count > 99 ? '99+' : count}
+          </Text>
+        ) : glyph != null ? (
+          <SymbolView name={glyph} size={glyphSize} tintColor={ink} />
+        ) : null}
+        {face != null ? (
+          // Sitting proud of the body's corner rather than filling it. The
+          // body always carries the category or the count, so a guest, a
+          // business viewer and a signed-in traveler finally read one
+          // silhouette — which is the precondition for a four-mark key being
+          // true at all. Faces still lead the card that opens on tap.
+          <View
+            style={[
+              styles.faceBadge,
+              {
+                right: -3 * s,
+                bottom: -3 * s,
+                width: faceSize,
+                height: faceSize,
+                borderRadius: faceSize / 2,
+                borderWidth: 1.5 * s,
+                borderColor: MARK_RING,
+              },
+            ]}>
+            <Image source={{ uri: face }} style={styles.faceImage} contentFit="cover" />
+          </View>
+        ) : null}
         {open ? (
-          <View style={[styles.openDot, { backgroundColor: fill }]}>
+          <View
+            style={[
+              styles.openDot,
+              {
+                left: -3 * s,
+                top: -3 * s,
+                width: badge,
+                height: badge,
+                borderRadius: badge / 2,
+                borderWidth: 1 * s,
+                borderColor: MARK_RING,
+                backgroundColor: fill,
+              },
+            ]}>
             <SymbolView
               name={{ ios: 'person.2.fill', android: 'group', web: 'group' }}
-              size={8}
-              tintColor={PIN_GLYPH}
+              size={Math.round(8 * s)}
+              tintColor={ink}
             />
           </View>
         ) : null}
       </View>
-      <View style={[styles.tail, { backgroundColor: fill }]} />
-    </Animated.View>
+      <View
+        style={[
+          styles.tail,
+          {
+            width: tail,
+            height: tail,
+            marginTop: -tailTuck,
+            // SOLID amber on a pick too: a 16pt hollow neck vanishes at
+            // marker size, and the teardrop is the silhouette that separates
+            // our marks from Apple's flat POI discs.
+            backgroundColor: pick ? MARK_AMBER : fill,
+          },
+        ]}
+      />
+    </View>
   );
 }
 
+type PinMarkerViewProps = Omit<PinMarkProps, 'kind' | 'category'> & {
+  category?: StackCategory;
+  /** One of our own picks rather than a traveler's plan. */
+  seeded: boolean;
+};
+
 /**
- * Several plans at one venue, as one marker.
+ * The mark on the map: PinMark plus the entrance and the selected spring.
  *
- * Up to three overlapping faces and a count, because "who is going" is the
- * reason to tap and a number alone answers none of it. Three separate
- * markers on the same building put two of them permanently under the third,
- * where nobody could reach them.
+ * Live views on the Apple path (see useMarkerTracking), so the springs
+ * genuinely paint rather than being frozen into a bitmap.
  */
-export function PinStackView({
-  faces,
-  count,
-  category,
-  selected = false,
-  later = false,
-}: {
-  /**
-   * Photo URLs, already resolved. Entries that resolved to nothing are
-   * DROPPED, not drawn: at launch density nobody has a photo, and a row of
-   * identical glyph discs plus a badge was three circles for two plans. When
-   * nothing resolves at all, the stack collapses to one glyph disc plus the
-   * count, matching the single-marker silhouette.
-   */
-  faces: (string | null)[];
-  count: number;
-  /** The cluster's dominant category, or 'mixed' when its plans disagree. */
-  category: StackCategory;
-  selected?: boolean;
-  /**
-   * Soonest plan day in the stack is later than the browsed city's today, so
-   * the stack burns dimmer. Computed by the map screen's one clock.
-   */
-  later?: boolean;
-}) {
+export function PinMarkerView({ seeded, selected = false, ...mark }: PinMarkerViewProps) {
   const scale = useSharedValue(1);
 
   useEffect(() => {
@@ -277,43 +324,13 @@ export function PinStackView({
     transform: [{ scale: scale.value }],
   }));
 
-  const shown = faces.slice(0, STACK_FACES);
-  const resolved = shown.filter((uri): uri is string => uri != null);
-  const fill = later ? PIN_AMBER_LATER : PIN_AMBER;
-
   return (
     <Animated.View
+      // Apple's classic drop-in when a pin appears (new pins and map load
+      // alike).
       entering={FadeInDown.springify().mass(1).damping(14).stiffness(260)}
-      style={[styles.wrap, animatedStyle]}>
-      <View style={styles.stackRow}>
-        {resolved.length === 0 ? (
-          <View style={[styles.body, { backgroundColor: fill }]}>
-            <SymbolView name={glyphFor(category)} size={15} tintColor={PIN_GLYPH} />
-          </View>
-        ) : (
-          resolved.map((uri, index) => (
-            <View
-              key={index}
-              style={[
-                styles.stackFace,
-                { backgroundColor: fill, marginLeft: index === 0 ? 0 : -STACK_OVERLAP },
-                // Later faces paint over earlier ones, which is what makes
-                // the overlap read as a stack rather than as a smudge.
-                { zIndex: STACK_FACES - index },
-              ]}>
-              <Image source={{ uri }} style={styles.face} contentFit="cover" />
-            </View>
-          ))
-        )}
-        <View style={[styles.stackCount, { backgroundColor: fill }]}>
-          {/* Marker artwork is cartography, not body text: the badge cannot
-              grow with Dynamic Type on a view frozen as a bitmap. */}
-          <Text allowFontScaling={false} style={styles.stackCountText}>
-            {count > 99 ? '99+' : count}
-          </Text>
-        </View>
-      </View>
-      <View style={[styles.tail, { backgroundColor: fill }]} />
+      style={animatedStyle}>
+      <PinMark kind={seeded ? 'pick' : 'plan'} selected={selected} {...mark} />
     </Animated.View>
   );
 }
@@ -321,37 +338,38 @@ export function PinStackView({
 /**
  * The whole city as one marker, once the map is zoomed past street scale.
  *
- * It used to borrow PinStackView with a single anonymous silhouette, which
- * said "somebody, and a number" - and the number was the only true part. The
- * research asked for the city NAMED with its count ("Bangkok · 12 plans"),
- * because at that zoom the question is which city has anything going on, not
- * who is in this one. A pill rather than a teardrop for the same reason: it
- * is a label, not a place.
+ * It used to borrow the stacked marker with a single anonymous silhouette,
+ * which said "somebody, and a number" - and the number was the only true
+ * part. The research asked for the city NAMED with its count ("Bangkok · 12
+ * plans"), because at that zoom the question is which city has anything going
+ * on, not who is in this one. A pill rather than a teardrop for the same
+ * reason: it is a label, not a place.
  */
 export function CityCountView({ name, count }: { name: string; count: number }) {
   return (
     <Animated.View
       entering={FadeInDown.springify().mass(1).damping(14).stiffness(260)}
-      style={styles.wrap}>
+      style={styles.wrapDefault}>
       <View style={styles.cityPill}>
-        {/* Marker artwork is cartography: MapKit's own labels do not scale
-            with Dynamic Type either, and this view is frozen as a bitmap. */}
-        <Text allowFontScaling={false} style={styles.cityName}>
+        {/* Capped, not refused: a pill is a label a person reads, and
+            CITY_PILL_CENTER_OFFSET's comment carries what the growth costs
+            at this zoom. */}
+        <Text maxFontSizeMultiplier={1.3} style={styles.cityName}>
           {name}
         </Text>
         <View style={styles.cityDot} />
-        <Text allowFontScaling={false} style={styles.cityCount}>
+        <Text maxFontSizeMultiplier={1.3} style={styles.cityCount}>
           {count}
         </Text>
       </View>
-      <View style={[styles.tail, { backgroundColor: PIN_AMBER }]} />
+      <View style={[styles.tail, styles.cityTail]} />
     </Animated.View>
   );
 }
 
 /**
- * The marker's face, off the map: the same amber disc and the same category
- * glyph, at a size a card can carry.
+ * The marker's face, off the map: the same disc and the same glyph, at a size
+ * a card can carry.
  *
  * Cards and forms used to label a plan with the category EMOJI, which broke
  * the line from marker to card twice over — a sticker where the map has
@@ -367,6 +385,7 @@ export function PinGlyph({
   seeded?: boolean;
   size?: number;
 }) {
+  const theme = useTheme();
   return (
     <View
       style={[
@@ -375,22 +394,40 @@ export function PinGlyph({
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: seeded ? PIN_GOLD : PIN_AMBER,
+          // Hollow for a pick, the same inversion the map draws. Its body is
+          // surfaceSunken rather than the map's canvas, because a card sits
+          // on a surface and canvas-on-surface measures 1.24:1; the amber
+          // ring and star carry it at 9:1 either way.
+          backgroundColor: seeded ? theme.surfaceSunken : MARK_AMBER,
+          borderWidth: seeded ? Math.max(2, (size * 2.5) / 36) : 0,
+          borderColor: MARK_AMBER,
         },
       ]}>
       <SymbolView
         name={seeded ? SEEDED_GLYPH : CATEGORY_GLYPHS[category]}
         size={Math.round(size * 0.46)}
-        tintColor={PIN_GLYPH}
+        tintColor={seeded ? MARK_AMBER : MARK_INK}
       />
     </View>
   );
 }
 
 /**
- * Marker rasterization control: track view changes briefly on mount (so the
- * glyph is in the bitmap) and around every selected-state change (so the
- * spring actually paints), then freeze for map-pan performance.
+ * Marker re-render control.
+ *
+ * NOT rasterization, on the platform this app ships: `tracksViewChanges` is
+ * implemented for iOS GOOGLE Maps and for Android only in
+ * react-native-maps 1.27.2 — it is absent from every file under ios/AirMaps
+ * and documented '@platform iOS: Google Maps only' at
+ * node_modules/react-native-maps/src/MapMarker.tsx:308-316. This app is
+ * PROVIDER_DEFAULT, so the Apple path mounts the marker's React child as a
+ * live subview and never snapshots it: springs and entrances paint
+ * unconditionally and there is no pan-time freeze being bought here.
+ *
+ * The hook stays for Android correctness, and its KEYS stay as the project's
+ * own checklist of everything a marker draws — anything missing from a key is
+ * something that would be missing from the bitmap on the provider that does
+ * freeze.
  */
 export function useMarkerTracking(key: string): boolean {
   const [tracking, setTracking] = useState(true);
@@ -415,45 +452,6 @@ export function useMarkerTracking(key: string): boolean {
 }
 
 const styles = StyleSheet.create({
-  stackRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingRight: 2,
-  },
-  stackFace: {
-    width: STACK_FACE,
-    height: STACK_FACE,
-    borderRadius: STACK_FACE / 2,
-    overflow: 'hidden',
-    // Thinner again: three of these overlap, so a heavy ring on each turns a
-    // stack of people into a stack of rings.
-    borderWidth: 1.5,
-    borderColor: PIN_RING,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  stackCount: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: 5,
-    marginLeft: -6,
-    borderWidth: 1.5,
-    borderColor: PIN_RING,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stackCountText: {
-    color: PIN_GLYPH,
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: '800',
-  },
   cityPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -461,9 +459,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 6,
     borderRadius: Radius.pill,
-    backgroundColor: PIN_AMBER,
+    backgroundColor: MARK_AMBER,
     borderWidth: 2,
-    borderColor: PIN_RING,
+    borderColor: MARK_RING,
     shadowColor: '#000',
     shadowOpacity: 0.25,
     shadowRadius: 4,
@@ -471,7 +469,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   cityName: {
-    color: PIN_GLYPH,
+    color: MARK_INK,
     fontSize: 13,
     lineHeight: 16,
     fontWeight: '700',
@@ -480,14 +478,20 @@ const styles = StyleSheet.create({
     width: 3,
     height: 3,
     borderRadius: 1.5,
-    backgroundColor: PIN_GLYPH,
+    backgroundColor: MARK_INK,
     opacity: 0.5,
   },
   cityCount: {
-    color: PIN_GLYPH,
+    color: MARK_INK,
     fontSize: 13,
     lineHeight: 16,
     fontWeight: '700',
+  },
+  cityTail: {
+    width: TAIL,
+    height: TAIL,
+    marginTop: -TAIL_TUCK,
+    backgroundColor: MARK_AMBER,
   },
   glyphDisc: {
     alignItems: 'center',
@@ -495,34 +499,25 @@ const styles = StyleSheet.create({
   },
   wrap: {
     alignItems: 'center',
-    // Room for the spring overshoot so nothing clips at the bitmap edge.
+  },
+  wrapDefault: {
+    alignItems: 'center',
     padding: WRAP_PAD,
   },
   /**
-   * The viewer's own pin: a 2pt concentric accent ring living INSIDE the
-   * wrap padding, absolutely positioned so the marker's layout — and with it
-   * the derived centre offset — does not move a point. Same argument as
+   * The viewer's own pin: a concentric accent ring living INSIDE the wrap
+   * padding, absolutely positioned so the marker's layout — and with it the
+   * derived centre offset — does not move a point. Same argument as
    * business-marker.tsx's own-ring: a shape, not a hue swap.
    */
   ownRing: {
     position: 'absolute',
     top: 0,
     left: 0,
-    width: BODY + WRAP_PAD * 2,
-    height: BODY + WRAP_PAD * 2,
-    borderRadius: (BODY + WRAP_PAD * 2) / 2,
-    borderWidth: 2,
     zIndex: -2,
   },
   body: {
-    width: BODY,
-    height: BODY,
-    borderRadius: BODY / 2,
     overflow: 'visible',
-    // 2, not 2.5. A thick white ring on a dark ground reads as a sticker
-    // stuck onto the map; a thin one reads as the edge of a photograph.
-    borderWidth: 2,
-    borderColor: PIN_RING,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -531,57 +526,31 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 4,
   },
+  /** Deeper but TIGHTER, so the lift fits inside the 6pt wrap padding. */
   bodySelected: {
     shadowOpacity: 0.35,
-    shadowRadius: 7,
-    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
   },
-  faceClip: {
-    ...StyleSheet.absoluteFill,
-    borderRadius: BODY / 2,
-    overflow: 'hidden',
+  countText: {
+    fontWeight: '800',
   },
-  face: {
-    width: '100%',
-    height: '100%',
-  },
-  /*
-   * Small, and sitting OUTSIDE the face rather than on it.
-   *
-   * At 16pt with its own 1.5pt ring this was 47% of the marker's diameter and
-   * landed across the chin of every photo — two rings and two discs where the
-   * eye wanted one person. The plan still has to be readable at a glance
-   * (the person is attached to the plan, not the reverse), so the badge
-   * stays; it just stops competing with the face for the same pixels.
-   */
-  categoryDot: {
+  faceBadge: {
     position: 'absolute',
-    right: -3,
-    bottom: -3,
-    width: 13,
-    height: 13,
-    borderRadius: 6.5,
-    borderWidth: 1,
-    borderColor: PIN_RING,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  faceImage: {
+    width: '100%',
+    height: '100%',
+  },
   openDot: {
     position: 'absolute',
-    left: -3,
-    top: -3,
-    width: 13,
-    height: 13,
-    borderRadius: 6.5,
-    borderWidth: 1,
-    borderColor: PIN_RING,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tail: {
-    width: TAIL,
-    height: TAIL,
-    marginTop: -TAIL_TUCK,
     borderRadius: 2,
     // A rotated square squeezed on the screen's X axis: the diamond becomes
     // a teardrop neck. The scale is OUTSIDE the rotate (first in the array,

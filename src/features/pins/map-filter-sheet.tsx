@@ -11,7 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { Radius, Space } from '@/constants/theme';
 import { PlaceGlyph } from '@/features/business/business-marker';
-import { useIsBusiness } from '@/features/business/hooks';
+import { useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
 import {
   DEFAULT_FILTERS,
   activeFilterCount,
@@ -22,7 +22,8 @@ import {
   type MarkerKind,
 } from '@/features/pins/filters';
 import { PIN_CATEGORIES } from '@/features/pins/pin-helpers';
-import { PinGlyph } from '@/features/pins/pin-marker';
+import { HeatSwatch } from '@/features/pins/heat-swatch';
+import { PinGlyph, PinMark } from '@/features/pins/pin-marker';
 import { addDays } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { dates } from '@/lib/locale';
@@ -38,7 +39,9 @@ import { countOf } from '@/lib/plural';
  * directory that is not there.
  */
 const TRAVELER_KINDS: [MarkerKind, string, string][] = [
-  ['travelers', 'Travelers', 'Plans other people have pinned.'],
+  // 'Plans', the same word the map's key uses for the same family: the sheet
+  // is where that key sends people, so the two must not be different words.
+  ['travelers', 'Plans', 'Plans other people have pinned.'],
   ['businesses', 'Businesses', 'Bars, hostels and cafes with a page here.'],
   ['picks', 'Samewhere picks', 'Spots we put on the map ourselves.'],
   // Visible even when the layer is empty — which is exactly when somebody
@@ -91,6 +94,7 @@ export function MapFilterSheet({
   resultCount,
   totalCount,
   clock,
+  ownChipOnMap = false,
   onChange,
   onClose,
 }: {
@@ -109,6 +113,12 @@ export function MapFilterSheet({
   resultCount: number;
   /** Everything the city has before the filters, for '3 of 11 plans'. */
   totalCount: number;
+  /**
+   * The owner's own chip is actually drawn right now, which is not the same
+   * as being a business: a listing waiting on its email code is not in
+   * city_businesses yet. The halo sentence below is only true when it is.
+   */
+  ownChipOnMap?: boolean;
   onChange: (next: MapFilters) => void;
   onClose: () => void;
 }) {
@@ -199,7 +209,9 @@ export function MapFilterSheet({
           {/* The one-stays rule is enforced rather than explained: unticking
             the last box simply does not take, which is how every filter list
             people already use behaves. */}
-          <Group title="What to show">
+          <Group
+            title="What to show"
+            note={viewerIsBusiness ? BUSINESS_MARKS_NOTE : TRAVELER_MARKS_NOTE}>
             {(viewerIsBusiness ? BUSINESS_KINDS : TRAVELER_KINDS).map(([value, title, detail]) => (
               <CheckRow
                 key={value}
@@ -210,6 +222,7 @@ export function MapFilterSheet({
                 onPress={() => onChange({ ...filters, kinds: toggle(filters.kinds, value, true) })}
               />
             ))}
+            <MarkNotes viewerIsBusiness={viewerIsBusiness} ownChipOnMap={ownChipOnMap} />
           </Group>
 
           {viewerIsBusiness ? null : (
@@ -322,31 +335,121 @@ function Group({
 }
 
 /**
- * The artwork the map actually draws, so these rows double as the map's
- * permanent legend — the one-shot chips can be dismissed forever, and this
- * sheet is where a person can always come back to be told what the marker
- * families are. Generic SF symbols said nothing the map ever showed.
+ * The one sentence over the four rows, and it names the AXIS the marks
+ * separate on rather than their colours: filled against hollow, a chip
+ * against a pin, an edge against no edge at all. Somebody who cannot tell
+ * amber from gold gets nothing from a sentence about hue, and this map no
+ * longer asks them to.
+ */
+const TRAVELER_MARKS_NOTE =
+  "Four kinds of mark. A filled pin is somebody's plan, a hollow one is a spot we picked, a small ringed chip is a business, and a warm glow is where plans are clustering.";
+
+const BUSINESS_MARKS_NOTE =
+  "Four kinds of mark. A filled pin is a traveler's plan, a hollow one is a spot we picked, a small ringed chip is a business, and a warm glow is where plans are clustering.";
+
+/**
+ * What a four-word key cannot hold: the badges, the dim, and the ring around
+ * your own.
+ *
+ * These are the sentences the two dismissible chips used to carry, and this
+ * is where they live now that those are gone. Nothing shipped is lost — an
+ * owner is still told what their halo is, in the one place that never
+ * dismisses itself.
+ */
+function MarkNote({ art, children }: { art: React.ReactNode; children: string }) {
+  return (
+    <View style={styles.markNote} accessibilityRole="text" accessibilityLabel={children}>
+      <View
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={styles.markNoteArt}>
+        {art}
+      </View>
+      <ThemedText type="footnote" themeColor="textSecondary" style={styles.markNoteText}>
+        {children}
+      </ThemedText>
+    </View>
+  );
+}
+
+function MarkNotes({
+  viewerIsBusiness,
+  ownChipOnMap,
+}: {
+  viewerIsBusiness: boolean;
+  ownChipOnMap: boolean;
+}) {
+  const { data: ownBusiness } = useOwnBusiness();
+  return (
+    <>
+      <MarkNote art={<PinMark kind="plan" count={3} size={20} />}>
+        A number means more than one plan at the same spot.
+      </MarkNote>
+      <MarkNote art={<PinMark kind="plan" open size={20} />}>
+        The little pair of people means the plan is open to join.
+      </MarkNote>
+      <MarkNote art={<PinMark kind="plan" later size={20} />}>
+        A dimmer pin is a plan for a later day. The plan list says which.
+      </MarkNote>
+      {viewerIsBusiness ? (
+        // Only when the chip is really drawn. A sentence about a ring that is
+        // not on the map is the contradiction the old chip already paid for.
+        ownChipOnMap ? (
+          <MarkNote
+            art={
+              <PlaceGlyph
+                own
+                onSurface
+                size={20}
+                live={false}
+                category={ownBusiness?.category ?? 'bar'}
+              />
+            }>
+            A blue ring means that one is your business.
+          </MarkNote>
+        ) : null
+      ) : (
+        <MarkNote art={<PinMark kind="plan" own size={20} />}>
+          A blue ring means that one is yours.
+        </MarkNote>
+      )}
+    </>
+  );
+}
+
+/**
+ * The artwork the map actually draws, borrowed rather than redrawn, so the
+ * row and the marker cannot drift apart. Generic SF symbols said nothing the
+ * map ever showed.
+ *
+ * The map's permanent key (map-key.tsx) sends people here, so this sheet is
+ * where every mark is EXPLAINED: the key carries four words, and the four
+ * sentences under MarkNotes carry the things a word cannot hold.
  */
 function KindArt({ kind }: { kind: MarkerKind }) {
   switch (kind) {
     case 'travelers':
-      return <PinGlyph category="other" size={22} />;
+      // No category glyph: the row is about the FAMILY, and a glyph here
+      // would be one category standing in for all eight.
+      return <PinMark kind="plan" size={22} />;
     case 'businesses':
-      return <PlaceGlyph category="bar" live={false} size={22} onSurface />;
+      // A neutral shopfront, not a wineglass: a wineglass is the glyph a bar
+      // PLAN wears one row above this.
+      return (
+        <PlaceGlyph
+          category="other"
+          live={false}
+          size={22}
+          onSurface
+          glyph={{ ios: 'storefront', android: 'storefront', web: 'storefront' }}
+        />
+      );
     case 'picks':
-      return <PinGlyph category="other" seeded size={22} />;
+      // The star KEEPS its place: the star is what every pick shares.
+      return <PinMark kind="pick" size={22} />;
     case 'heat':
-      return <HeatSwatch />;
+      return <HeatSwatch size={22} />;
   }
-}
-
-/** The glow, as a chip-sized swatch — the heat layer has no marker to borrow. */
-function HeatSwatch() {
-  return (
-    <View style={styles.heatSwatchWrap}>
-      <View style={[styles.heatSwatch, { backgroundColor: 'rgba(255, 154, 90, 0.85)' }]} />
-    </View>
-  );
 }
 
 function CheckRow({
@@ -502,17 +605,18 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  // The same 22pt box the marker glyphs occupy, so the four rows line up.
-  heatSwatchWrap: {
-    width: 22,
-    height: 22,
+  markNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+  },
+  markNoteArt: {
+    width: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  heatSwatch: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+  markNoteText: {
+    flex: 1,
   },
   filterButton: {
     // A floor, not a height: at the accessibility text sizes the word grows

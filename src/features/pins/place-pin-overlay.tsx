@@ -5,10 +5,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 
 import { Springs } from '@/constants/theme';
 
-// Same warm pair as the markers it is about to become; see pin-marker.tsx.
-const PIN_AMBER = '#FF9A5A';
-const PIN_GLYPH = '#0E1020';
-const PIN_RING = '#FFFFFF';
+import { MARK_AMBER, MARK_INK, MARK_RING } from './marker-colors';
 
 const BODY = 44;
 const TAIL = 13;
@@ -67,10 +64,15 @@ export function PlacePinOverlay({
         <Animated.View style={[styles.groundDot, dotStyle]} />
         <Animated.View style={[styles.pin, pinStyle]}>
           <View style={styles.body}>
+            {/* A viewfinder, not a mappin. `mappin` is byte-identical to the
+                `other` category's glyph, so a 44pt amber cursor and a 36pt
+                amber Other plan were the same mark eight points apart — at
+                the exact moment somebody is deciding where a plan goes. A
+                crosshair can never be read as a plan. */}
             <SymbolView
-              name={{ ios: 'mappin', android: 'place', web: 'place' }}
+              name={{ ios: 'scope', android: 'center_focus_strong', web: 'center_focus_strong' }}
               size={20}
-              tintColor={PIN_GLYPH}
+              tintColor={MARK_INK}
             />
           </View>
           <View style={styles.tail} />
@@ -103,8 +105,8 @@ const styles = StyleSheet.create({
     height: BODY,
     borderRadius: BODY / 2,
     borderWidth: 3,
-    borderColor: PIN_RING,
-    backgroundColor: PIN_AMBER,
+    borderColor: MARK_RING,
+    backgroundColor: MARK_AMBER,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -118,8 +120,12 @@ const styles = StyleSheet.create({
     height: TAIL,
     marginTop: -(TAIL / 2 + 5),
     borderRadius: 2.5,
-    backgroundColor: PIN_AMBER,
-    transform: [{ rotate: '45deg' }],
+    backgroundColor: MARK_AMBER,
+    // Squeezed on the screen's X axis, exactly as every browse marker's tail
+    // is: the teardrop neck is the silhouette that separates our marks from
+    // Apple's flat POI discs, and it was missing from the one moment a
+    // person is looking hardest at a pin.
+    transform: [{ scaleX: 0.62 }, { rotate: '45deg' }],
     zIndex: -1,
   },
   groundDot: {
@@ -128,6 +134,12 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: 'rgba(20,23,26,0.35)',
+    // Ink at a little over half, with a light edge. The old near-black at
+    // 0.35 measured 1.06:1 against the basemap: the ground target that says
+    // "the pin is in the air and this is where it will land" was invisible
+    // for the whole of the gesture that needs it.
+    backgroundColor: 'rgba(14,16,32,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.45)',
   },
 });

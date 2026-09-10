@@ -80,6 +80,23 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
+# The map's permanent key, and the door it opens. HARD, not optional: this
+# flow's own established finding is that the map screen IS addressable on a
+# cold start and only a MID-FLOW relaunch is not (signed-in-tour.yml), and
+# the key is a plain React Native view sitting outside the MapView, so
+# nothing here depends on MapKit surfacing an annotation label.
+#
+# This is the one assertion that proves the whole design: four words on the
+# map, and a tap that lands on the sheet where each mark is explained.
+- assertVisible: 'Map key\..*'
+- tapOn: 'Map key\..*'
+- extendedWaitUntil:
+    visible: 'What to show'
+    timeout: 10000
+- takeScreenshot: 02a-map-key-opens-filters
+- tapOn: 'Done'
+- waitForAnimationToEnd:
+    timeout: 1500
 - takeScreenshot: 02-map-tab
 - tapOn: 'Travelers'
 - takeScreenshot: 03-travelers-guest
@@ -151,11 +168,14 @@ appId: com.mattmoore.samewhere
 # frame and not what is drawn over it: at 100% "visible" the chip's lower
 # half was still under the footer (run 113, 05b), and the tap on its centre
 # landed on the footer. Scrolled to the middle of the screen it is clear.
+# 12000, was 8000. The sheet grew by a note and four explained-mark rows
+# above the chips, which is exactly the condition the comment above says
+# this scroll exists for.
 - scrollUntilVisible:
     element:
       id: 'filter-category-bar'
     direction: DOWN
-    timeout: 8000
+    timeout: 12000
     centerElement: true
 - tapOn:
     id: 'filter-category-bar'

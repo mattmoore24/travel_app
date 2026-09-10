@@ -24,6 +24,14 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Travelers'
     timeout: 30000
+# The map key is the one NEW object on this screen that Maestro can read, and
+# the screenshot below is what actually answers the question this file asks:
+# does a four-pair key wrap into chrome or a slab at AX5. Optional, because
+# this file's output is pictures more than an exit code, and it is reached by
+# a relaunch rather than a cold start.
+- assertVisible:
+    text: 'Map key\..*'
+    optional: true
 - takeScreenshot: zz-ax5-01-map
 # The Map's primary action, by its spoken label (a Pressable carrying its
 # own accessibilityLabel hides its printed text from Maestro on iOS).

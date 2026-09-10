@@ -44,7 +44,7 @@ import {
   usePinCrew,
 } from '@/features/pins/hooks';
 import { browseCityFromCityRow, type BrowseCity } from '@/features/pins/api';
-import { BusinessMarker, PlaceGlyph } from '@/features/business/business-marker';
+import { BusinessMarker } from '@/features/business/business-marker';
 import { useCityBusinesses, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
 import { listingNotice } from '@/features/business/listing-notice';
 import { PlaceSheet } from '@/features/business/place-sheet';
@@ -77,19 +77,20 @@ import {
   HEAT_CELL_RADIUS_M,
   heatFill,
   heatRings,
+  HISTORY_ALPHA,
   heatViewReady,
   heatWithFallback,
   mergeHeatCells,
 } from '@/features/pins/heat';
-import { useHeatLegend, usePlacesLegend } from '@/features/pins/heat-legend';
+import { HeatSwatch } from '@/features/pins/heat-swatch';
+import { MapKey } from '@/features/pins/map-key';
 import {
+  CITY_PILL_CENTER_OFFSET,
   CityCountView,
   MARKER_ANCHOR,
   MARKER_CENTER_OFFSET,
   PinGlyph,
   PinMarkerView,
-  PinStackView,
-  STACK_CENTER_OFFSET,
   useMarkerTracking,
 } from '@/features/pins/pin-marker';
 import { openInMaps } from '@/features/pins/open-in-maps';
@@ -150,7 +151,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 import { countOf } from '@/lib/plural';
-import type { CityPinRow, PinCategory, PinCrewRow } from '@/lib/database.types';
+import type { CityPinRow, PinCrewRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 function PinCard({
@@ -691,18 +692,6 @@ function CrewFace({ person, first }: { person: PinCrewRow; first: boolean }) {
   );
 }
 
-/**
- * How dim the remembered layer is.
- *
- * Well under heatPeakAlpha's 0.1-to-0.3 (features/pins/heat.ts), because the
- * two layers say different things and the eye has to be able to tell which
- * one it is looking at: today is a light on, and this is the shape it usually
- * makes. Capped so a street stays readable through both at once.
- */
-function historyAlpha(count: number): number {
-  return Math.min(0.03 + count * 0.015, 0.09);
-}
-
 const SEEDED_LABEL = 'One of our picks. Show up.';
 /** The same fact, without the invitation: nobody is asking a bar to show up. */
 const BUSINESS_SEEDED_LABEL = 'One of our picks in this city.';
@@ -739,14 +728,12 @@ function CityScaleMarker({
   lng,
   name,
   count,
-  category,
   onPress,
 }: {
   lat: number;
   lng: number;
   name: string;
   count: number;
-  category: PinCategory;
   onPress: () => void;
 }) {
   const tracking = useMarkerTracking(`${count}:${name}`);
@@ -754,9 +741,9 @@ function CityScaleMarker({
     <Marker
       coordinate={{ latitude: lat, longitude: lng }}
       anchor={MARKER_ANCHOR}
-      // The pill is stack-height, not body-height; at city zoom the couple
+      // The pill is its own height, not a pin body's; at city zoom the couple
       // of points this could still be off are invisible.
-      centerOffset={STACK_CENTER_OFFSET}
+      centerOffset={CITY_PILL_CENTER_OFFSET}
       tracksViewChanges={tracking}
       accessibilityRole="button"
       accessibilityLabel={`${countOf(count, 'plan')} in ${name}`}
@@ -837,11 +824,14 @@ function CityPinMarker({
 }
 
 /**
- * Several plans at one venue, as one marker. Three faces at most, then a
- * count — the faces are the reason to tap, and a bare number is not.
+ * Several plans at one venue, as ONE marker: the same amber teardrop every
+ * plan wears, carrying the count.
  *
- * Exactly three photo lookups every render, whatever the cluster holds, so
- * the hook count cannot change under React.
+ * It used to draw up to three overlapping faces, which meant the same object
+ * had three different silhouettes depending on whether photos resolved — one
+ * disc, a row of two, a row of three — so no key could be true about it. The
+ * faces have not gone anywhere: they lead the card this opens on tap, which
+ * is where "who is going" is actually answerable.
  */
 function ClusterMarker({
   cluster,
@@ -855,32 +845,30 @@ function ClusterMarker({
   clock: Date;
   onPress: () => void;
 }) {
-  const first = usePhotoUrl(cluster.pins[0]?.photo_path ?? null);
-  const second = usePhotoUrl(cluster.pins[1]?.photo_path ?? null);
-  const third = usePhotoUrl(cluster.pins[2]?.photo_path ?? null);
-  const faces = [first.data ?? null, second.data ?? null, third.data ?? null].slice(
-    0,
-    Math.min(3, cluster.pins.length)
-  );
   // The dominant category, not pins[0]'s: a stack must not dress every plan
-  // as the first one. Where the plans disagree, PinStackView draws neutral.
+  // as the first one. A count pin draws no glyph, so this reaches only the
+  // tracking key today — it stays because the key is the checklist of
+  // everything the marker's drawing depends on.
   const category = clusterCategory(cluster);
   const soonest = clusterIntentDate(cluster);
-  // With no photo at all the stack collapses to a single 36pt disc, whose
-  // tip sits where a single marker's does; a face row is 28pt.
-  const hasFaces = faces.some((uri) => uri != null);
-  // Everything the marker draws is in the key, or it never paints — the view
-  // is a frozen bitmap outside the tracking window. City variant: `clock` is
-  // the synthetic city Date, whose UTC read the plain ISO leg misreads.
+  const ownUserId = useOwnUserId();
+  // Your own plan must not be swallowed by the venue stack it landed in: the
+  // accent ring is the only thing that finds it in a crowd.
+  const own = cluster.pins.some((pin) => pin.user_id != null && pin.user_id === ownUserId);
+  // Everything the marker draws is in the key, or it never paints on the
+  // provider that freezes. City variant: `clock` is the synthetic city Date,
+  // whose UTC read the plain ISO leg misreads.
   const later = isLaterCityDay(soonest, clock);
   const tracking = useMarkerTracking(
-    `${selected}:${faces.join('|')}:${cluster.pins.length}:${category}:${later}`
+    `${selected}:${cluster.pins.length}:${category}:${later}:${own}`
   );
   return (
     <Marker
       coordinate={{ latitude: cluster.lat, longitude: cluster.lng }}
       anchor={MARKER_ANCHOR}
-      centerOffset={hasFaces ? STACK_CENTER_OFFSET : MARKER_CENTER_OFFSET}
+      // One silhouette now, so one offset: no branch on whether a photo
+      // happened to resolve.
+      centerOffset={MARKER_CENTER_OFFSET}
       displayPriority="required"
       zIndex={selected ? 10 : 2}
       tracksViewChanges={tracking}
@@ -890,12 +878,13 @@ function ClusterMarker({
         event.stopPropagation();
         onPress();
       }}>
-      <PinStackView
-        faces={faces}
-        count={cluster.pins.length}
+      <PinMarkerView
+        seeded={false}
         category={category}
+        count={cluster.pins.length}
         selected={selected}
         later={later}
+        own={own}
       />
     </Marker>
   );
@@ -904,9 +893,9 @@ function ClusterMarker({
 /**
  * Several VENUES merged because the current zoom draws them under one
  * fingertip: a plain count bubble that splits on tap by zooming toward it.
- * The venue-level stack (ClusterMarker) keeps the faces; this one is
- * deliberately faceless — at a zoom where venues collide, who is going is
- * not answerable on the map.
+ * Faceless, like the venue-level cluster: at a zoom where whole venues
+ * collide, who is going is not answerable on the map at all. Its label and
+ * hint are the only things separating it from a cluster, so they stay.
  */
 function CountBubbleMarker({
   screen,
@@ -943,7 +932,10 @@ function CountBubbleMarker({
         event.stopPropagation();
         onPress();
       }}>
-      <PinStackView faces={[]} count={pins.length} category={category} later={later} />
+      {/* No own ring: this merges VENUES, not plans, and a ring on a bubble
+          that may hold a dozen other people's plans would point at nothing
+          you could reach without zooming first. */}
+      <PinMarkerView seeded={false} category={category} count={pins.length} later={later} />
     </Marker>
   );
 }
@@ -1088,7 +1080,10 @@ export default function MapScreen() {
     heatQuery.data ?? [],
     allDaysHeatQuery.data ?? []
   );
-  const heatCells = useMemo(() => mergeHeatCells(heatRows), [heatRows]);
+  // Not useMemo: heatRows is whichever of the two query arrays heatWithFallback
+  // picked, and the React Compiler will not preserve a manual memo keyed on it.
+  // The compiler memoises this itself, on the same input.
+  const heatCells = mergeHeatCells(heatRows);
   // WHERE THIS CITY IS USUALLY BUSY, under the live layer. Live heat only
   // knows about pins that exist right now and pins burn out within 72 hours,
   // so a quiet Tuesday in Lisbon drew nothing at all — the layer failing the
@@ -1099,13 +1094,6 @@ export default function MapScreen() {
   // for it to pass. It is not day-filtered: "usually" is a habit, not a date.
   const historyQuery = useHeatHistory(activeCityId);
   const historyCells = useMemo(() => mergeHeatCells(historyQuery.data ?? []), [historyQuery.data]);
-  // The glow explanation, only when a glow is actually drawn and drawn
-  // unlabelled — the fallback branch carries its own footnote. The
-  // remembered layer counts as a glow: it is dimmer, but it is exactly as
-  // unlabelled, and its sentence is a different one (below).
-  const legend = useHeatLegend(
-    heatShown && (heatCells.length > 0 || historyCells.length > 0) && !heatFallback
-  );
   const isGuest = useIsGuest();
   // A guest has no setting of their own, and the hook is disabled without a
   // user id, so this falls back to 'everyone' for them.
@@ -1153,22 +1141,10 @@ export default function MapScreen() {
   // the region ref because it has to repaint — but it only ever changes when
   // the threshold is crossed, not on every frame of a pinch.
   const [cityScale, setCityScale] = useState(false);
-  // `!cityScale` matters as much as the count: place markers are only drawn
-  // past city scale, so without it the chip invited somebody to "tap a business"
-  // on a map showing none — the app contradicting itself, which is the whole
-  // reason the legend exists.
-  // `showsBusinesses(filters)` is the second way that happens, and the one a
-  // business owner reaches first: their filter sheet offers "Businesses" as a
-  // checkbox, and unticking it empties the map of chips while this legend went
-  // on pointing at them.
-  const placesLegend = usePlacesLegend(
-    !cityScale && showsBusinesses(filters) && places.length > 0 && !legend.visible
-  );
   // Whether the owner's own chip is actually drawn, which is not the same as
   // being a business: a listing waiting on its email code is not in
-  // city_businesses yet. The legend below teaches the ring, and a sentence
-  // about a ring that is not on the map is the same contradiction the legend
-  // exists to avoid.
+  // city_businesses yet. The filters sheet explains the owner's ring, and a
+  // sentence about a ring that is not on the map is a contradiction.
   const ownChipOnMap = ownBusinessId != null && places.some((p) => p.id === ownBusinessId);
   // The owner's own row of city_businesses, for the dock button's label:
   // has_live_post is what separates "say what's happening tonight" from
@@ -1852,8 +1828,6 @@ export default function MapScreen() {
           'first-session': firstSession,
           'first-pin': ownPinIsOnlyPin,
           'heat-fallback': heatShown && heatFallback && heatCells.length > 0,
-          'heat-legend': legend.visible,
-          'places-legend': placesLegend.visible,
         })
       : null;
   // The all-days fallback may never appear unlabelled (rule 6 in spirit: an
@@ -1880,15 +1854,6 @@ export default function MapScreen() {
     const live = new Set(drawnHeatCells.map((cell) => cell.key));
     return historyCells.filter((cell) => !live.has(cell.key));
   }, [heatShown, drawnHeatCells, historyCells]);
-  // Which sentence the one-shot legend carries. Today leads when both layers
-  // are drawn; on a quiet Tuesday the only glow on the map is the remembered
-  // one and it must not be described as plans that exist. Never "nearby" and
-  // never "busy now" in either: the map is scoped to a city chip that may be
-  // a continent away, and this app does not say where anybody is.
-  const heatLegendLine =
-    drawnHeatCells.length > 0
-      ? 'Glowing spots are where the plans are'
-      : 'Dimmer spots are where this city is usually busy';
   useEffect(() => {
     if (
       activeCityId == null ||
@@ -2244,7 +2209,7 @@ export default function MapScreen() {
               center={{ latitude: cell.lat, longitude: cell.lng }}
               radius={HEAT_CELL_RADIUS_M}
               strokeColor="transparent"
-              fillColor={heatFill(cell.count, historyAlpha(cell.count))}
+              fillColor={heatFill(cell.count, HISTORY_ALPHA)}
             />
           ))}
           {drawnHeatCells.map((cell) =>
@@ -2264,7 +2229,6 @@ export default function MapScreen() {
               lng={activeCity.cities.lng}
               name={activeCity.cities.name}
               count={pins.length}
-              category={pins[0].category}
               onPress={() => {
                 haptics.light();
                 // The same city-wide flight the chip triggers, so the same
@@ -2538,6 +2502,31 @@ export default function MapScreen() {
               <AvatarButton />
             </View>
           </View>
+          {/* The map's key: four words and the four marks they name.
+              PERMANENT chrome, and that is the point — the two one-shot chips
+              it replaces each stored a sixty-day dismissal, so after one read
+              the map had no key on it at all.
+
+              NOT in the message slot, and NOT gated on mapCovered. The strip
+              is single-occupant by construction (message-slot.ts), so a
+              permanent tenant there would silence pins-error, heat-error,
+              own-listing, both empty states and both arrival banners. And the
+              Filters sheet is inline with dimmed={false} and leaves this
+              header live underneath it, so the marks and their explanation
+              are on screen together — which no chip in that strip could ever
+              manage, because opening Filters wipes it. */}
+          {activeCity != null && !cityScale ? (
+            <MapKey
+              kinds={filters.kinds}
+              viewerIsBusiness={isBusiness}
+              onPress={() => {
+                setSelectedPinId(null);
+                setSelectedPlaceId(null);
+                setVenueKey(null);
+                setFiltersOpen(true);
+              }}
+            />
+          ) : null}
         </View>
       ) : null}
 
@@ -3175,98 +3164,11 @@ export default function MapScreen() {
               styles.legendChip,
               { backgroundColor: theme.surface, borderColor: theme.hairline },
             ]}>
-            <View style={[styles.legendDot, { backgroundColor: 'rgba(255, 154, 90, 0.85)' }]} />
+            {/* The layer's own artwork, built from heatRings(), so this
+                footnote cannot show an intensity the map never paints. */}
+            <HeatSwatch size={14} />
             <ThemedText type="footnote">Busy areas shown across the next three days</ThemedText>
           </View>
-        </Animated.View>
-      ) : null}
-
-      {/* The heat layer is the only thing on this map with no label, no
-          marker and nothing to tap, so the first time somebody sees it they
-          have to guess. One sentence, once. */}
-      {slot === 'heat-legend' ? (
-        <Animated.View
-          entering={FadeInUp.duration(Motion.standard)}
-          exiting={FadeOut.duration(Motion.quick)}
-          style={[styles.legend, { bottom: messageSlot }]}
-          pointerEvents="box-none">
-          <PressableScale
-            accessibilityRole="button"
-            // Never "nearby": the map is scoped to a city chip that may be a
-            // continent away, and the app never knows where anybody is.
-            accessibilityLabel={heatLegendLine}
-            containerStyle={styles.legendPress}
-            accessibilityHint="Dismisses this"
-            scaleTo={0.96}
-            haptic="light"
-            onPress={legend.dismiss}>
-            <View
-              style={[
-                styles.legendChip,
-                { backgroundColor: theme.surface, borderColor: theme.hairline },
-              ]}>
-              <View style={[styles.legendDot, { backgroundColor: 'rgba(255, 154, 90, 0.85)' }]} />
-              <ThemedText type="footnote" style={styles.legendText}>
-                {heatLegendLine}
-              </ThemedText>
-              <SymbolView
-                name={{ ios: 'xmark', android: 'close', web: 'close' }}
-                size={11}
-                tintColor={theme.textSecondary}
-              />
-            </View>
-          </PressableScale>
-        </Animated.View>
-      ) : null}
-
-      {slot === 'places-legend' ? (
-        <Animated.View
-          entering={FadeInUp.duration(Motion.standard)}
-          exiting={FadeOut.duration(Motion.quick)}
-          style={[styles.legend, { bottom: messageSlot }]}
-          pointerEvents="box-none">
-          <PressableScale
-            accessibilityRole="button"
-            containerStyle={styles.legendPress}
-            // An owner already knows what the chips are; what they cannot see
-            // is which one is theirs, so the one sentence they get teaches the
-            // ring instead.
-            accessibilityLabel={
-              ownChipOnMap
-                ? 'The ringed chip is your business.'
-                : "The small chips are businesses. Tap one to see what's happening."
-            }
-            accessibilityHint="Dismisses this"
-            scaleTo={0.96}
-            haptic="light"
-            onPress={placesLegend.dismiss}>
-            <View
-              style={[
-                styles.legendChip,
-                { backgroundColor: theme.surface, borderColor: theme.hairline },
-              ]}>
-              {/* Their own category when the sentence is about their own
-                  chip. It was hardcoded to a bar, so a cafe was shown a
-                  ringed cocktail glass and told to go and find it. */}
-              <PlaceGlyph
-                category={ownChipOnMap ? (ownBusiness?.category ?? 'bar') : 'bar'}
-                live={false}
-                size={18}
-                onSurface
-                own={ownChipOnMap}
-              />
-              <ThemedText type="footnote">
-                {ownChipOnMap
-                  ? 'The ringed chip is your business'
-                  : "Tap a business to see what's happening"}
-              </ThemedText>
-              <SymbolView
-                name={{ ios: 'xmark', android: 'close', web: 'close' }}
-                size={11}
-                tintColor={theme.textSecondary}
-              />
-            </View>
-          </PressableScale>
         </Animated.View>
       ) : null}
 
@@ -3322,6 +3224,9 @@ export default function MapScreen() {
           // the dots the moment Businesses is unticked.
           resultCount={mapResultCount(pins.length, places.length, filters)}
           totalCount={allPins.length + places.length}
+          // Whether the owner's halo is actually on the map right now, so the
+          // sheet's sentence about it is only offered when it is true.
+          ownChipOnMap={ownChipOnMap}
           onChange={setFilters}
           onClose={() => setFiltersOpen(false)}
         />
@@ -3898,6 +3803,9 @@ const styles = StyleSheet.create({
   dockButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    // Measures to its own label rather than to the screen, so the primary
+    // action is a button on a map instead of a bar across it.
+    alignSelf: 'center',
     gap: Space.sm,
     // min, not fixed: the label scales with Dynamic Type, and a frozen box
     // around scaling text is the clipping bug the audit named. The grown
@@ -3906,11 +3814,14 @@ const styles = StyleSheet.create({
     paddingVertical: Space.sm,
     paddingHorizontal: Space.xl,
     borderRadius: Radius.pill,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    // theme.accent with theme.onAccent on it, 7.9:1, and it stays. The
+    // darker accentDeep is a fill-under-WHITE token and measures 2.34:1
+    // against this ground: on a button with no border that is a WCAG 1.4.11
+    // failure on the one control this screen exists to offer.
+    //
+    // A tighter shadow than the old 0.25/r10/y4, which had spread far enough
+    // to read as a glow around the button rather than a lift under it.
+    ...Elevation.raised,
   },
   // Size comes from the ThemedText role; only the weight is local.
   dockLabel: {

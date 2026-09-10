@@ -10,25 +10,29 @@ import { useTheme } from '@/hooks/use-theme';
 import type { BusinessCategory, CityBusinessRow } from '@/lib/database.types';
 
 /**
- * A place on the map, and the whole point of it is that it reads quieter than
- * a traveler.
+ * A business on the map, and the whole point of it is that it reads quieter
+ * than a traveler.
  *
- * People stack on top of places: the bar is the ground, the plan is the news.
- * So this is 26pt against the traveler pin's 36, a flat chip rather than a
- * teardrop with a tail, the app's own surface navy rather than the warm amber
- * that means "somebody", and it yields both its z-order and Apple's collision
- * pass to the pins above it.
+ * People stack on top of businesses: the bar is the ground, the plan is the
+ * news. So this is 30pt against the traveler pin's 36, a flat chip rather
+ * than a teardrop with a tail, HOLLOW where a plan is solid amber, and it
+ * yields both its z-order and Apple's collision pass to the pins above it.
  *
- * Colours come from the theme where the traveler pin hardcodes them, and that
- * is not a drift. The pin is warm light that has to hold against any basemap;
- * a place is deliberately the same navy as the app's own cards, and Nocturne
- * is dark-only, so the token is one value in either scheme.
+ * Fill versus void is the separation, not hue — the same axis that separates
+ * a plan from one of our picks. Quiet is a fill and an outline, never an
+ * invisible edge: the old 1.5pt theme.border ring measured 2.80:1 on Apple's
+ * washed land, so "quieter than a traveler" had turned into "not on the map".
  */
 
-/** 26pt, from docs/BUSINESS_ACCOUNTS.md §4. */
-const CHIP = 26;
-const GLYPH = 13;
-const RING = 1.5;
+/**
+ * 30pt, was 26 (docs/BUSINESS_ACCOUNTS.md §4). A business is still quieter
+ * than a plan — hollow where a plan is solid, a flat chip where a plan has a
+ * teardrop neck — but at 26 with a 1.5pt border in theme.border it was not
+ * quiet, it was missing. See the ring colour below for the measurement.
+ */
+const CHIP = 30;
+const GLYPH = 15;
+const RING = 2;
 /** How much wider the owner's halo is than the chip inside it. */
 const OWN_RING = 10;
 
@@ -49,6 +53,7 @@ export function PlaceGlyph({
   size = CHIP,
   onSurface = false,
   own = false,
+  glyph,
 }: {
   category: BusinessCategory;
   /** Something posted. It brightens the RING, and nothing else. */
@@ -56,8 +61,8 @@ export function PlaceGlyph({
   size?: number;
   /**
    * Drawn on one of the app's own surfaces rather than on the basemap. The
-   * chip is surface navy, and a sheet IS surface navy, so without this it
-   * would be a ring around nothing.
+   * chip's body is the map's ground, and a sheet is not, so without this it
+   * would be canvas on surface at 1.24:1 — a ring around nothing.
    */
   onSurface?: boolean;
   /**
@@ -67,6 +72,12 @@ export function PlaceGlyph({
    * hunt for.
    */
   own?: boolean;
+  /**
+   * Override the category glyph. Used by the map key and the filters sheet
+   * ONLY, where the chip stands for the whole family: the key used to show a
+   * wineglass, which is the glyph a bar PLAN wears one row above it.
+   */
+  glyph?: SymbolViewProps['name'];
 }) {
   const theme = useTheme();
 
@@ -78,11 +89,21 @@ export function PlaceGlyph({
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: onSurface ? theme.surfaceSunken : theme.surface,
+          // HOLLOW: the map's ground rather than a card's, so the chip reads
+          // as a hole cut in the basemap next to a plan's solid amber. On one
+          // of the app's own surfaces it keeps surfaceSunken, because canvas
+          // on surface measures 1.24:1 and would be a ring around nothing.
+          backgroundColor: onSurface ? theme.surfaceSunken : theme.canvas,
           // The only difference a live post makes. A bigger marker would let
-          // a place shout over the people standing on it, and a gold star
-          // already means "one of our picks" on this map.
-          borderColor: live ? theme.highlight : theme.border,
+          // a business shout over the people standing on it.
+          //
+          // textSecondary, NOT theme.border, and that is measured: border is
+          // the app's own "edge a user must see" at 3.4:1 on the app's ground,
+          // but Apple's washed dark land is lighter than canvas and it lands
+          // at 2.80:1 there — under the 3:1 floor for a UI edge, which is why
+          // a business was something you hunted for. textSecondary is 6.77:1
+          // on the same land.
+          borderColor: live ? theme.highlight : theme.textSecondary,
         },
         live && { shadowColor: theme.highlight, shadowOpacity: 0.5, shadowRadius: 6 },
       ]}>
@@ -96,7 +117,9 @@ export function PlaceGlyph({
             styles.liveDot,
             {
               backgroundColor: theme.highlight,
-              borderColor: onSurface ? theme.surfaceSunken : theme.surface,
+              // Its border is whatever ground the chip sits in, so the dot
+              // reads as punched out of the chip rather than stuck onto it.
+              borderColor: onSurface ? theme.surfaceSunken : theme.canvas,
             },
           ]}
         />
@@ -105,7 +128,7 @@ export function PlaceGlyph({
         // vocabulary.ts types the glyph map as plain strings so it can be
         // imported by code that never renders one; SymbolView wants the SF
         // Symbols union. The names themselves are checked there.
-        name={CATEGORY_ICON[category] as SymbolViewProps['name']}
+        name={glyph ?? (CATEGORY_ICON[category] as SymbolViewProps['name'])}
         size={Math.round(size * (GLYPH / CHIP))}
         tintColor={theme.textSecondary}
       />
@@ -119,7 +142,7 @@ export function PlaceGlyph({
   // rather than a different colour of chip: hue alone is what the live dot
   // exists to avoid repeating, and the halo is still legible when the ring
   // underneath it has gone warm because there is something on tonight. It
-  // sits inside the marker's own 9pt padding, so nothing moves off its
+  // sits inside the marker's own 7pt padding, so nothing moves off its
   // coordinate.
   return (
     <View
@@ -209,19 +232,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     // Room for the ring's glow inside the bitmap, and symmetric so the chip
-    // stays centred on its coordinate. Nine rather than four, because a
-    // marker's tappable area IS this view: 26 + 9 + 9 is 44, and 26 + 4 + 4
-    // was 34 — under the floor, on a map where the thing next to it is a
-    // 36pt pin with a tail.
-    padding: 9,
+    // stays centred on its coordinate. A marker's tappable area IS this view,
+    // so the padding is whatever holds the 44pt floor: 30 + 7 + 7 is 44, as
+    // 26 + 9 + 9 was before the chip grew.
+    padding: 7,
   },
   liveDot: {
     position: 'absolute',
     top: -1,
     right: -1,
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     borderWidth: 1,
   },
   chip: {

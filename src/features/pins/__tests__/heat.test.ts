@@ -1,5 +1,6 @@
 import {
   compositeAlpha,
+  HISTORY_ALPHA,
   heatPeakAlpha,
   heatRings,
   heatViewReady,
@@ -79,7 +80,24 @@ describe('heatRings', () => {
   });
 
   it('never gets opaque enough to hide the street underneath', () => {
-    expect(compositeAlpha(alphaOf(rings(50)[0]), 3)).toBeLessThanOrEqual(0.3);
+    expect(compositeAlpha(alphaOf(rings(50)[0]), 3)).toBeLessThanOrEqual(0.38);
+  });
+
+  it('carries intensity in the ALPHA as well as the hue, and never flattens it', () => {
+    // Hue is the axis a protanope cannot resolve, so alpha is the second
+    // channel and a constant here would delete it. Counts 1 and 2 are
+    // unreachable: launch_cities.heat_k is CHECKed >= 3, so 3 is the floor.
+    expect(heatPeakAlpha(3)).toBeLessThan(heatPeakAlpha(4));
+    expect(heatPeakAlpha(4)).toBeLessThan(heatPeakAlpha(5));
+    // And then it caps, so a packed square still shows its streets.
+    expect(heatPeakAlpha(5)).toBe(heatPeakAlpha(50));
+  });
+
+  it('keeps the remembered layer dimmer than the quietest live cell', () => {
+    // Two layers saying different things: today is a light on, and the
+    // remembered one is the shape this city usually makes. If they met, the
+    // brighter number would be a count of two different things.
+    expect(HISTORY_ALPHA).toBeLessThan(alphaOf(rings(3)[0]));
   });
 });
 

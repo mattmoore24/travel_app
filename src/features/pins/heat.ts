@@ -1,5 +1,7 @@
 import type { HeatCellRow } from '@/lib/database.types';
 
+import { MARK_AMBER, MARK_EMBER, channelsOf } from './marker-colors';
+
 /** How wide one heat cell reads on the map, in metres. */
 export const HEAT_CELL_RADIUS_M = 275;
 
@@ -54,28 +56,68 @@ export function mergeHeatCells(cells: HeatCellRow[]): MergedHeatCell[] {
  */
 export type HeatRing = { key: string; radius: number; fill: string };
 
+/**
+ * THREE, and it stays three. heat.test.ts:67-72 and :81-83 assert the
+ * composite of a three-layer stack by hand; a fourth ring fails both, and the
+ * falloff a fourth would buy is smaller than the alpha step it costs.
+ */
 const RING_SCALES = [1, 0.7, 0.4] as const;
+
+const [, AMBER_G, AMBER_B] = channelsOf(MARK_AMBER);
+const [EMBER_R, EMBER_G, EMBER_B] = channelsOf(MARK_EMBER);
 
 /**
  * Amber at one pin, ember by five, and never opaque enough to hide a street.
  *
  * One light source intensifying rather than a hue swap: a scale that runs
  * through green or blue stops reading as heat on a dark basemap, and red is
- * the one hue this app does not use.
+ * the one hue this app does not use. Both ends are READ from the palette
+ * rather than typed out as channels, so the ramp and the markers cannot drift
+ * apart: the rim of a glow is literally the colour of a pin.
  */
 export function heatFill(count: number, alpha: number): string {
   const t = Math.min(Math.max((count - 1) / 4, 0), 1);
-  const g = Math.round(154 + (107 - 154) * t);
-  const b = Math.round(90 + (84 - 90) * t);
-  return `rgba(255, ${g}, ${b}, ${alpha})`;
+  const g = Math.round(AMBER_G + (EMBER_G - AMBER_G) * t);
+  const b = Math.round(AMBER_B + (EMBER_B - AMBER_B) * t);
+  return `rgba(${EMBER_R}, ${g}, ${b}, ${alpha})`;
 }
+
+/**
+ * The remembered layer: cells that were busy over the browsed days but have
+ * no live pin in them now.
+ *
+ * FLAT, and one value. The old ramp was 0.03 + 0.015 * count capped at 0.09,
+ * so a typical remembered cell drew at 0.075 and measured about 1.08:1
+ * against the bare basemap — a layer the code drew, the tests covered and
+ * nobody could see. It lives here beside heatFill because the two are one
+ * decision: this is the same light, banked.
+ *
+ * 0.11 and not a point higher, because the number is pinned from ABOVE by
+ * the live layer: one ring of the quietest live cell that can render (count
+ * 3, the k floor) is 0.1163, and the remembered layer has to stay dimmer
+ * than the live one at EVERY ring, not just at the centre where three of
+ * them have stacked. The two never overlap — a remembered cell is dropped
+ * wherever a live one exists — but they sit side by side, and which is which
+ * has to be readable. Flat against graduated is the other half of that.
+ */
+export const HISTORY_ALPHA = 0.11;
 
 /**
  * How dark the CENTRE of a cell gets once all three rings have stacked.
  * Capped well short of opaque so a busy corner still shows its streets.
+ *
+ * Counts 1 and 2 never reach here: launch_cities.heat_k is CHECKed >= 3
+ * (supabase/migrations/20260816210000_map_pins.sql:24) and enforced once at
+ * write and twice at read, so the lowest count that ever renders is 3 and the
+ * real floor is 0.31, not 0.15.
+ *
+ * The RAMP is load-bearing and must never be flattened to a constant. Hue is
+ * the axis a protanope cannot resolve; alpha is the second channel that
+ * carries intensity when the first one is gone. A flat alpha would leave a
+ * quiet cell and a packed one telling apart by an amber-to-ember shift alone.
  */
 export function heatPeakAlpha(count: number): number {
-  return Math.min(0.1 + count * 0.05, 0.3);
+  return Math.min(0.16 + count * 0.05, 0.38);
 }
 
 export function heatRings(cell: MergedHeatCell): HeatRing[] {

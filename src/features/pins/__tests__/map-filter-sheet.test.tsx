@@ -8,7 +8,11 @@ import { PIN_CATEGORIES } from '@/features/pins/pin-helpers';
 // The emoji labels contradicted the map twice (Museum, Sights) and put a red
 // pushpin on screen in a palette that bans red outside destructive actions.
 
-jest.mock('@/features/business/hooks', () => ({ useIsBusiness: () => false }));
+const mockIsBusiness = jest.fn(() => false);
+jest.mock('@/features/business/hooks', () => ({
+  useIsBusiness: () => mockIsBusiness(),
+  useOwnBusiness: () => ({ data: { category: 'hostel' } }),
+}));
 // The Sheet is chrome this test does not exercise; render straight through it.
 jest.mock('@/components/ui/sheet', () => ({
   Sheet: ({ children }: { children: unknown }) => children,
@@ -100,5 +104,122 @@ describe('the survivor count', () => {
     expect(screen.getByText('Done')).toBeTruthy();
     expect(screen.queryByText(/Show \d/)).toBeNull();
     expect(screen.queryByText('Apply')).toBeNull();
+  });
+});
+
+/**
+ * The sheet is where every mark is EXPLAINED. The map's permanent key
+ * carries four words and sends people here; these are the sentences a word
+ * cannot hold, and they include the one the dismissible places chip used to
+ * carry, so nothing shipped is silently lost.
+ */
+describe('what the marks mean', () => {
+  afterEach(() => mockIsBusiness.mockReturnValue(false));
+
+  it('names the axis the marks separate on, not their colours', () => {
+    renderSheet();
+    // Somebody who cannot tell amber from gold gets nothing from a sentence
+    // about hue, and this map no longer asks them to.
+    expect(screen.getByText(/^Four kinds of mark\./)).toBeTruthy();
+    expect(screen.getByText(/A filled pin is somebody's plan/)).toBeTruthy();
+  });
+
+  it('says whose plans, to a business', () => {
+    mockIsBusiness.mockReturnValue(true);
+    renderSheet();
+    expect(screen.getByText(/A filled pin is a traveler's plan/)).toBeTruthy();
+    expect(screen.queryByText(/A filled pin is somebody's plan/)).toBeNull();
+  });
+
+  it('uses the same word for a family that the map key does', () => {
+    renderSheet();
+    expect(screen.getByText('Plans')).toBeTruthy();
+    expect(screen.queryByText('Travelers')).toBeNull();
+  });
+
+  it('calls it "Traveler plans" on a business account, in both places', () => {
+    mockIsBusiness.mockReturnValue(true);
+    renderSheet();
+    expect(screen.getByText('Traveler plans')).toBeTruthy();
+  });
+
+  it('explains the badges, the dim and the ring', () => {
+    renderSheet();
+    expect(screen.getByText('A number means more than one plan at the same spot.')).toBeTruthy();
+    expect(
+      screen.getByText('The little pair of people means the plan is open to join.')
+    ).toBeTruthy();
+    expect(
+      screen.getByText('A dimmer pin is a plan for a later day. The plan list says which.')
+    ).toBeTruthy();
+    expect(screen.getByText('A blue ring means that one is yours.')).toBeTruthy();
+  });
+
+  it('tells an owner what their own halo is, but only when it is on the map', () => {
+    mockIsBusiness.mockReturnValue(true);
+    const { unmount } = renderSheet({ ownChipOnMap: true });
+    expect(screen.getByText('A blue ring means that one is your business.')).toBeTruthy();
+    unmount();
+
+    // A listing waiting on its email code is not in city_businesses yet, and
+    // a sentence about a ring that is not drawn is the contradiction the old
+    // chip already paid for.
+    mockIsBusiness.mockReturnValue(true);
+    renderSheet({ ownChipOnMap: false });
+    expect(screen.queryByText('A blue ring means that one is your business.')).toBeNull();
+  });
+
+  it('keeps the rule 6 promise on the busy-areas row, word for word', () => {
+    renderSheet();
+    expect(
+      screen.getByText(
+        "Where plans are clustering. Never shown unless enough people are in on it, and never anyone's name."
+      )
+    ).toBeTruthy();
+  });
+});
+
+describe('the words in this sheet', () => {
+  /** Every string the sheet renders, both viewers. */
+  function everyString(): string[] {
+    const out: string[] = [];
+    for (const business of [false, true]) {
+      mockIsBusiness.mockReturnValue(business);
+      const view = renderSheet({ ownChipOnMap: true });
+      view.UNSAFE_root.findAll((node) => typeof node.type === 'string').forEach((node) => {
+        const children = Array.isArray(node.props.children)
+          ? node.props.children
+          : [node.props.children];
+        for (const child of children) {
+          if (typeof child === 'string') {
+            out.push(child);
+          }
+        }
+        if (typeof node.props.accessibilityLabel === 'string') {
+          out.push(node.props.accessibilityLabel);
+        }
+      });
+      view.unmount();
+    }
+    mockIsBusiness.mockReturnValue(false);
+    return out;
+  }
+
+  it('carries no emoji and no em dash', () => {
+    for (const line of everyString()) {
+      // Emoji are stickers where this app draws cartography, and an em dash
+      // is the tell that a sentence was not read aloud.
+      expect(line).not.toMatch(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
+      expect(line).not.toContain('\u2014');
+    }
+  });
+
+  it('makes no presence claim and imports no dating vocabulary', () => {
+    const banned = [/\bnearby\b/i, /\bnear you\b/i, /\bhere now\b/i, /\bswipe/i, /\bdeck\b/i];
+    for (const line of everyString()) {
+      for (const pattern of banned) {
+        expect(line).not.toMatch(pattern);
+      }
+    }
   });
 });

@@ -1162,8 +1162,14 @@ appId: com.mattmoore.samewhere
 # surface its accessibilityLabel to XCUITest, so `tapOn: 'Once Again
 # Hostel.*'` can never match — not for a place, and not for a traveler pin.
 # Do not put the tap back.
+#
+# The matcher is the map's permanent KEY now. What it replaced ('The small
+# chips are businesses') was a one-shot legend chip this change deletes, so
+# left alone it would have become a silently passing no-op forever — the
+# worst kind of green. The HARD version of this assertion lives in
+# guest-tour.yml, on a cold start, where the map really is addressable.
 - extendedWaitUntil:
-    visible: 'The small chips are businesses'
+    visible: 'Map key\..*'
     timeout: 15000
     optional: true
 

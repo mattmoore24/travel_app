@@ -7,8 +7,12 @@
  * places legend, the heat legend, and the empty or error banner. On a quiet
  * map that strip carries the only sentence explaining why the city looks
  * bare — and the least important occupant, a hint about a marker family, won
- * it in every screenshot of the last run. One selector, one explicit
- * priority, exactly one thing rendered.
+ * it in every screenshot of that run. One selector, one explicit priority,
+ * exactly one thing rendered.
+ *
+ * The two marker hints have since left the strip entirely, for the map's own
+ * permanent key. What is left here is failures, absences and arrivals: nine
+ * things that are all, in their way, news.
  */
 
 /** Highest first. The array IS the priority; nothing else encodes it. */
@@ -30,13 +34,17 @@ export const SLOT_ORDER = [
   // arrival after signup, and the follow-up for the person who went first.
   'first-session',
   'first-pin',
-  // The all-days heat fallback may NEVER draw unlabelled, so its footnote
-  // outranks the teaching chips; the layer itself is gated on this slot.
+  // The all-days heat fallback may NEVER draw unlabelled, so this footnote is
+  // up for exactly as long as the layer is; the layer itself is gated on this
+  // slot. It is the LOWEST rank and the only persistent occupant — persistent
+  // for as long as its layer is drawn, which is not the same as permanent.
+  //
+  // The two teaching chips that used to sit below it are gone. Each stored a
+  // sixty-day dismissal, so the marker families they explained went
+  // unexplained on any map somebody had already looked at once; the map now
+  // carries a permanent key of its own (map-key.tsx), outside this strip
+  // precisely because a permanent tenant here would silence everything above.
   'heat-fallback',
-  // Teaching chips last — a dismissible hint must not be the last thing
-  // between a person and the primary action.
-  'heat-legend',
-  'places-legend',
 ] as const;
 
 export type SlotKind = (typeof SLOT_ORDER)[number];

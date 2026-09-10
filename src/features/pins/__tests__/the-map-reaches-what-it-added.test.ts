@@ -120,11 +120,31 @@ describe('the remembered heat layer', () => {
   });
 
   it('never says "the plans are" over a layer that is a memory', () => {
-    expect(map).toContain('Dimmer spots are where this city is usually busy');
+    // The sentence that used to carry this rule lived in a DISMISSIBLE chip
+    // ('Dimmer spots are where this city is usually busy'), so after one
+    // read it said nothing at all. The rule now rides on the drawing: the
+    // remembered layer is one FLAT circle at a constant alpha, where the
+    // live layer is three rings whose alpha climbs with the count. Flat
+    // against graduated is the difference a reader can see without a
+    // sentence, and it cannot be dismissed.
+    expect(map).toContain('heatFill(cell.count, HISTORY_ALPHA)');
+    expect(map).not.toContain('historyAlpha(');
+    // And it is never stacked under the live one, so the two glows can never
+    // add up into a brightness that counts two different things.
+    expect(map).toMatch(/const live = new Set\(drawnHeatCells\.map\(\(cell\) => cell\.key\)\);/);
+    expect(map).toContain('historyCells.filter((cell) => !live.has(cell.key))');
     // The "not busy enough to show yet" chip that used to carry the second
     // half of this rule is gone (founder, 2026-09-03): a quiet city says so
     // through the empty-city card, and the map no longer narrates an absence.
     expect(map).not.toContain('Not busy enough to show yet');
+  });
+
+  it('stays dimmer than the quietest live cell at every ring, not just at the centre', () => {
+    // The two layers never overlap, but they sit side by side, and which is
+    // which has to be readable. The number is pinned from above by the live
+    // layer's own floor; heat.test.ts holds the arithmetic.
+    const heat = read('heat.ts');
+    expect(heat).toContain('export const HISTORY_ALPHA');
   });
 
   it('asks the server for nothing it could get wrong', () => {
