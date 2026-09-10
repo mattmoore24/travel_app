@@ -50,6 +50,19 @@ appId: com.mattmoore.samewhere
     timeout: 2000
 - takeScreenshot: 90-photo-library
 
+# THE SHEET HAS TO BE THERE BEFORE THE CELL IS TAPPED. The picker is hosted
+# out of process and the first presentation after a simulator boot spawns
+# that process cold: run 131's business tour (always the first flow, always
+# the cold one) tapped the cell, checked for the sheet 2.5s later, found
+# nothing, and then sat for 150s photographing the grid that had drawn
+# AFTER both - the tap had landed on the app underneath. 'Collections' is
+# the sheet's own header; optional, because older pickers open on an album
+# list with no such word and fall through to the cell tap as before.
+- extendedWaitUntil:
+    visible: 'Collections'
+    timeout: 30000
+    optional: true
+
 # The first cell. Photo grids carry no text, so this is a point rather than a
 # match: top-left of the grid, below the navigation bar.
 - tapOn:
