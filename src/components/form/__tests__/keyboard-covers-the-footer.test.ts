@@ -29,6 +29,49 @@ import { between, source } from '@/lib/__tests__/source';
 const REPO = path.join(__dirname, '..', '..', '..', '..');
 const SRC = path.join(REPO, 'src');
 
+/**
+ * Every `<Sheet` in the app, as its opening tag and the body up to its close.
+ *
+ * The opening tag ends at the first `>` at BRACE DEPTH ZERO, which is what
+ * stops a `>` inside an arrow function, a comparison, or a nested element in
+ * a `footer={...}` prop from closing the tag early. The `footer` prop is part
+ * of the TAG, not the body, and several assertions turn on that.
+ */
+function everySheet(): { file: string; tag: string; body: string }[] {
+  const out: { file: string; tag: string; body: string }[] = [];
+  const walk = (dir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== '__tests__') walk(full);
+        continue;
+      }
+      // sheet.tsx is the component itself, not a caller of it.
+      if (!entry.name.endsWith('.tsx') || entry.name === 'sheet.tsx') continue;
+      const code = fs.readFileSync(full, 'utf8');
+      let at = code.indexOf('<Sheet');
+      while (at >= 0) {
+        let depth = 0;
+        let i = at + '<Sheet'.length;
+        for (; i < code.length; i += 1) {
+          if (code[i] === '{') depth += 1;
+          else if (code[i] === '}') depth -= 1;
+          else if (code[i] === '>' && depth === 0) break;
+        }
+        const close = code.indexOf('</Sheet>', i);
+        out.push({
+          file: path.relative(REPO, full),
+          tag: code.slice(at, i + 1),
+          body: close < 0 ? '' : code.slice(i + 1, close),
+        });
+        at = code.indexOf('<Sheet', i);
+      }
+    }
+  };
+  walk(SRC);
+  return out;
+}
+
 describe('the keyboard covers the footer rather than lifting it', () => {
   it('StepScreen closes its floor before the footer, and pays the footer an allowance', () => {
     const code = source('src/components/form/step-screen.tsx');
@@ -153,9 +196,62 @@ describe('the keyboard covers the footer rather than lifting it', () => {
     walk(SRC);
     expect(offenders).toEqual([]);
   });
-});
 
-/**
+  /**
+   * The same rule one level up, for sheets, and the trap underneath it.
+   *
+   * A bare `avoidKeyboard` lifts the WHOLE sheet by the whole keyboard, so
+   * every button in it rises and parks in the strip the founder reserved for
+   * Hide keyboard. The Sheet already knows two ways not to do that: `scrolls`
+   * with the buttons in `footer` (the footer is measured and becomes the
+   * allowance, so the sheet lifts by only the part of the keyboard reaching
+   * past it), or an explicit `keyboardAllowance` from a caller with a scroll
+   * frame of its own.
+   *
+   * And the second rule, which is not about keyboards at all: sheet.tsx
+   * renders `{footer}` ONLY inside its `scrolls` branch, so a `footer` passed
+   * without `scrolls` is not laid out badly, it is DROPPED. The buttons simply
+   * do not exist, on a sheet that has no other way out. That is the failure
+   * this pair was written after: the first version of this guard read only the
+   * sheet's BODY for a button, so a sheet whose buttons had been correctly
+   * moved into `footer` and then lost their `scrolls` looked clean to it while
+   * rendering nothing at all.
+   *
+   * Scanned rather than pinned to a list, because the sheet that bites is the
+   * one somebody adds next. invite-code-sheet.tsx was the last offender on the
+   * first rule and had been wrong since the day it replaced an Alert.prompt:
+   * autoFocus on its field meant it opened in the broken state every time.
+   */
+  it('a sheet that avoids the keyboard never lifts its own buttons', () => {
+    const lifted: string[] = [];
+    const dropped: string[] = [];
+    for (const { file, tag, body } of everySheet()) {
+      if (/\bfooter=/.test(tag) && !/\bscrolls\b/.test(tag)) dropped.push(file);
+      if (!/\bavoidKeyboard\b/.test(tag)) continue;
+      // Only sheets that actually have a button to lift, wherever it is
+      // written: in the body, or in the footer prop inside the tag.
+      if (!/<PrimaryButton\b/.test(tag + body)) continue;
+      const guarded =
+        (/\bscrolls\b/.test(tag) && /\bfooter=/.test(tag)) || /\bkeyboardAllowance=/.test(tag);
+      if (!guarded) lifted.push(file);
+    }
+    expect(lifted).toEqual([]);
+    expect(dropped).toEqual([]);
+  });
+
+  it('the scan finds the sheets it is meant to be scanning', () => {
+    // A walker that silently matches nothing passes every assertion above it.
+    // These are the sheets that carry a keyboard today; the count is not
+    // pinned, but their presence is.
+    const files = everySheet()
+      .filter((s) => /\bavoidKeyboard\b/.test(s.tag))
+      .map((s) => s.file);
+    expect(files).toContain('src/features/chat/invite-code-sheet.tsx');
+    expect(files).toContain('src/features/pins/pin-form-sheet.tsx');
+    expect(files).toContain('src/features/trips/trip-editor.tsx');
+    expect(files).toContain('src/features/pins/map-screen.tsx');
+  });
+}); /**
  * Apple's predictive bar is the second row above the keyboard, and we do not
  * own it.
  *

@@ -3499,14 +3499,23 @@ export default function MapScreen() {
           it wants the keyboard handling: `avoidKeyboard` grows the floor
           instead of lifting the sheet. Opened only from a tap, never from a
           data event, so it is not the presentation iOS drops (see the traps
-          skill). */}
+          skill).
+
+          `scrolls` since the featured cities moved in here. The sheet now
+          carries a heading, a field, four rows and a footnote, and a search
+          can add ten results under them - at the accessibility text sizes
+          that is past the cap (`height - insets.top`), and a sheet without a
+          scroller does not clip gracefully, it simply puts its bottom
+          somewhere nothing can reach. No footer: everything here is a target,
+          so there is nothing to pin below the scroller. */}
       {mode === 'browse' && citySearchOpen ? (
         <Sheet
           onClose={() => {
             setCitySearchOpen(false);
             setCityQuery('');
           }}
-          avoidKeyboard>
+          avoidKeyboard
+          scrolls>
           <ThemedText type="headline">Which city?</ThemedText>
           <FormTextField
             label="City"

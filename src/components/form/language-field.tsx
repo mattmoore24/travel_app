@@ -44,7 +44,15 @@ export function LanguageField({
   const [query, setQuery] = useState('');
   const search = useRef<TextInput>(null);
 
-  const listHeight = Math.min(420, Math.max(240, height * 0.45));
+  // A CEILING, NOT A HEIGHT. This was `height: listHeight`, which is a fixed
+  // box that cannot give way. The sheet is capped at the window minus the top
+  // inset, and `avoidKeyboard` grows its floor by the whole keyboard, so with
+  // the search focused at the accessibility text sizes the header, the search
+  // row and the count line all grow while a rigid 420pt list refuses to - and
+  // the bottom of the list goes past the cap, where nothing can scroll it back
+  // into view. Paired with flexShrink on the list below, this is a maximum the
+  // list is allowed to reach and a size it will give up under pressure.
+  const listMaxHeight = Math.min(420, Math.max(240, height * 0.45));
 
   const rows = useMemo(() => {
     const matching = LANGUAGES.filter((l) => matchesLanguage(l, query));
@@ -163,7 +171,7 @@ export function LanguageField({
           </ThemedText>
 
           <FlatList
-            style={{ height: listHeight }}
+            style={[styles.list, { maxHeight: listMaxHeight }]}
             data={rows}
             keyExtractor={(item) => item.value}
             keyboardShouldPersistTaps="always"
@@ -220,6 +228,12 @@ export function LanguageField({
 }
 
 const styles = StyleSheet.create({
+  // Shrinks rather than overflows. The sheet is a column with a maxHeight; a
+  // child that will not give way pushes its own bottom past the cap, and a
+  // clipped list is one nothing can scroll back.
+  list: {
+    flexShrink: 1,
+  },
   field: {
     flexDirection: 'row',
     alignItems: 'center',
