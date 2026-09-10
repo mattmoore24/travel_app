@@ -93,7 +93,6 @@ export default function NewGroupScreen() {
   return (
     <StepScreen
       title="Start a group"
-      subtitle="For people you've met, or are about to."
       continueLabel="Create group"
       continueDisabled={!ready}
       continueLoading={busy || createGroup.isPending}

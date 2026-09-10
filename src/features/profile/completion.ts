@@ -70,7 +70,7 @@ export function profileGaps({ profile, prompts, priorities, trips, handles }: Ga
     gaps.push({
       key: 'priorities',
       title: 'Top priorities for your trip',
-      body: 'What you are hoping to do, so the right people say hi.',
+      body: 'So the right people say hi.',
       route: '/edit-priorities',
     });
   }
@@ -87,7 +87,7 @@ export function profileGaps({ profile, prompts, priorities, trips, handles }: Ga
     gaps.push({
       key: 'occupation',
       title: 'Say what you do',
-      body: 'Two words is plenty. It gives somebody an easy thing to ask about.',
+      body: 'Two words is plenty.',
       route: '/edit-profile',
       section: 'about',
     });

@@ -662,8 +662,8 @@ that list too, and this reverses the earlier decision 18 to redact travel dates
 from moderators. Recommended and accepted, but it is a real change and it is
 recorded as one.
 
-**Messaging a place** — "Message {name}", "Goes to the people who run it. You'll
-find the chat in Chats." It opens instantly. Businesses can never message
+**Messaging a place** — "Message {name}", "Goes to the people who run it."
+It opens instantly. Businesses can never message
 first.
 
 **Elsewhere.** The Chat tab's room list becomes "Chats to join in {city}"

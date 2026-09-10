@@ -204,7 +204,6 @@ export default function RatePlaceScreen() {
                 <ThemedText type="title" accessibilityRole="header">
                   How was it?
                 </ThemedText>
-                <ThemedText themeColor="textSecondary">Go with your gut.</ThemedText>
                 <View style={styles.stack}>
                   {BUCKET_ORDER.map((option) => {
                     const picked = bucket === option;

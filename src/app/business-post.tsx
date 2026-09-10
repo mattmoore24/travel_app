@@ -61,7 +61,7 @@ const SHAPES: { value: Shape; title: string; detail: string }[] = [
   {
     value: 'open',
     title: 'Keep it up until I take it down',
-    detail: 'No end date. It sits on your page until you take it off.',
+    detail: 'No end date.',
   },
 ];
 

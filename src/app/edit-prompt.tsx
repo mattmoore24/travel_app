@@ -84,11 +84,7 @@ export default function EditPromptScreen() {
   return (
     <StepScreen
       title={existing ? promptLabel(existing.prompt_key) : 'Answer a prompt'}
-      subtitle={
-        existing
-          ? 'Change your answer, or pick a different question.'
-          : 'Pick a question people can actually reply to.'
-      }
+      subtitle={existing ? undefined : 'Pick a question people can actually reply to.'}
       continueLabel="Save"
       continueDisabled={!canSave}
       continueLoading={save.isPending}

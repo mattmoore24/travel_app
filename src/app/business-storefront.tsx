@@ -195,9 +195,6 @@ export default function BusinessStorefrontScreen() {
               You&apos;re verified
             </ThemedText>
           </View>
-          <ThemedText type="small" themeColor="textSecondary">
-            The check sits beside your name on your page.
-          </ThemedText>
         </ThemedView>
       ) : pending ? (
         <ThemedView type="backgroundElement" style={styles.card}>

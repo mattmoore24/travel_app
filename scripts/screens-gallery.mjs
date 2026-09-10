@@ -179,8 +179,11 @@ const CAPTIONS = {
     'A bit about you, keyboard away',
     'The bar was tapped, so the footer is back and Continue is reachable.',
   ],
-  '58-signup-prompts': ['Answer a prompt', 'The bit people actually read.'],
-  '59-signup-priorities': ['Top priorities for your trip', 'So the right people say hi.'],
+  '58-signup-prompts': ['Answer a prompt', 'The step that hands over to the prompt editor.'],
+  '59-signup-priorities': [
+    'Top priorities for your trip',
+    'Places, food, a night out, the one thing you would hate to miss.',
+  ],
   '70-signup-trips': ['Where are you going?', 'The one step the whole matching engine runs on.'],
   '71-signup-socials': ['Your socials', 'Nobody sees these until you are both in a chat.'],
   '71b-signup-badge': [
@@ -188,7 +191,7 @@ const CAPTIONS = {
     'The selfie check as a step of its own, skippable, with the cost of skipping under it.',
   ],
   '72-signup-audience': ['Who sees you', 'A default rather than a decision you must make now.'],
-  '73-signup-review': ['Here you are', 'Exactly what a stranger sees.'],
+  '73-signup-review': ['Here you are', 'Tap any part of your profile to change it.'],
   '74-signup-review-scrolled': ['The rest of it', 'Same page, further down.'],
   '75-signup-done': ['In', 'The stamp landed and the tabs are there.'],
   '90-photo-library': ['The photo picker', "Apple's, driven by the suite to get past the wall."],

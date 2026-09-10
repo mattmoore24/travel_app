@@ -708,7 +708,7 @@ export default function BusinessSignupScreen() {
         total={BUSINESS_TOTAL_STEPS}
         footer={leaveFooter}
         title="What's your business called?"
-        subtitle="The name over the door, and what kind of business it is."
+        subtitle="The name over the door."
         note={category == null ? 'Pick what kind of business it is.' : null}
         onBack={() => go(3)}
         continueTestID="business-name-continue"
@@ -1037,12 +1037,6 @@ export default function BusinessSignupScreen() {
         total={BUSINESS_TOTAL_STEPS}
         footer={listingFooter}
         title="Show your business"
-        // The grid below owns the sentence about the cover now, and it is a
-        // true one wherever the list ends up: "the first one that clears"
-        // meant "the lowest surviving position" after any delete, which is
-        // not something a bar owner can reason about. Repeating it here would
-        // also have printed it twice, one line apart.
-        subtitle="The first thing a traveler sees when they tap you on the map."
         // The docked button drives the SAME picker as the dashed tile while
         // there is nothing to continue past, and turns into Continue the
         // moment a photo lands. Never a greyed Continue: opacity cannot
@@ -1170,8 +1164,7 @@ export default function BusinessSignupScreen() {
           </ExampleBlock>
         )}
         <ThemedText type="footnote" themeColor="textSecondary">
-          No hours is better than wrong hours. Somebody standing outside a closed door because your
-          page said otherwise is worse than not knowing.
+          No hours is better than wrong hours.
         </ThemedText>
       </StepShell>
     );
@@ -1185,7 +1178,7 @@ export default function BusinessSignupScreen() {
         total={BUSINESS_TOTAL_STEPS}
         footer={listingFooter}
         title="Anywhere else to send people?"
-        subtitle="A menu, a booking page, your Instagram. One list for links, socials and contact."
+        subtitle="A menu, a booking page, your Instagram."
         continueTestID="business-links-continue"
         // Continue and Skip for now both went to the review step, so the
         // docked button and the quiet one under it were the same control

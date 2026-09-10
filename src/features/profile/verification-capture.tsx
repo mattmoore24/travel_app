@@ -141,9 +141,6 @@ export function VerificationCaptureBody({ capture }: { capture: VerificationCapt
         <ThemedText type="smallBold" style={{ color: theme.tint }}>
           You&apos;re verified
         </ThemedText>
-        <ThemedText type="small" themeColor="textSecondary">
-          Your profile shows the verified badge.
-        </ThemedText>
       </ThemedView>
     );
   }

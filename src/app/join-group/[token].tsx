@@ -103,8 +103,7 @@ export default function JoinGroupScreen() {
         <View style={styles.centered}>
           <ThemedText type="headline">Groups are for travelers</ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
-            You are signed in as a business, so there is no group here for you to join. Travelers
-            write to you first, and everything they send lands in your chat.
+            You are signed in as a business, so there is no group here for you to join.
           </ThemedText>
           <PrimaryButton label="Open My business" onPress={() => router.replace('/my-business')} />
           <PrimaryButton variant="ghost" label="Close" onPress={leave} />
@@ -186,7 +185,6 @@ export default function JoinGroupScreen() {
           <ThemedText type="headline">You are invited to {group.name}</ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centerText}>
             {countOf(group.member_count, 'person', 'people')} {isAre(group.member_count)} in it.
-            Type a name and you are in.
           </ThemedText>
           <PrimaryButton
             label="Join with a name"

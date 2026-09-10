@@ -722,7 +722,7 @@ export function PhotoGrid({
           <View style={styles.orderBody}>
             <ThemedText type="title">Move this photo</ThemedText>
             <ThemedText type="body" themeColor="textSecondary">
-              People see your photos in this order, and the first one is the one they see first.
+              People see your photos in this order.
             </ThemedText>
           </View>
           <View style={styles.orderActions}>

@@ -1336,7 +1336,7 @@ export default function TravelersScreen() {
         : `You're only looking at ${tripsInView.length} of your ${trips.length} trips.`;
     const body = filtered
       ? `You are set to ${audienceInSentence(audience)}. It works both ways, so this hides you from everyone else too.`
-      : (narrowedNote ?? 'More show up every day.');
+      : (narrowedNote ?? undefined);
     // A chip tap from this wall fetches a new queue, and until it lands the
     // wall is the old one: "That's everyone in Lisbon" over a Lisbon queue
     // that has not been asked for yet is the one claim this screen must

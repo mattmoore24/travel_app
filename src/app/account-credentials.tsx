@@ -114,11 +114,7 @@ export default function AccountCredentialsScreen() {
 
   if (view === 'password-done') {
     return (
-      <StepScreen
-        title="Password changed"
-        subtitle="Use the new one next time you sign in."
-        continueLabel="Done"
-        onContinue={close}>
+      <StepScreen title="Password changed" continueLabel="Done" onContinue={close}>
         <ThemedText type="footnote" themeColor="textSecondary">
           {othersSignedOut
             ? 'Every other device signed in on this account has been signed out. This one stays signed in.'
@@ -290,8 +286,7 @@ export default function AccountCredentialsScreen() {
             }
           />
           <ThemedText type="footnote" themeColor="textSecondary" style={styles.note}>
-            Saving signs you out on every other device, which is the point of doing it after a phone
-            goes missing.
+            Saving signs you out on every other device.
           </ThemedText>
         </>
       )}

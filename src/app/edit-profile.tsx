@@ -237,9 +237,6 @@ function EditProfileForm({ profile }: { profile: ProfileRow }) {
         <View style={[styles.linkRow, { backgroundColor: theme.backgroundElement }]}>
           <View style={styles.linkText}>
             <ThemedText type="smallBold">Top priorities</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              What you want to do out there.
-            </ThemedText>
           </View>
           <ThemedText type="small" themeColor="textSecondary">
             {priorities.length} of {MAX_PRIORITIES}

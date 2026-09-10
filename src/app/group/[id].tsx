@@ -810,7 +810,7 @@ export default function GroupScreen() {
               <View style={styles.memberText}>
                 <ThemedText type="callout">Add someone</ThemedText>
                 <ThemedText type="footnote" themeColor="textSecondary">
-                  Anyone you have chatted with. No link, no phone number.
+                  Anyone you have chatted with.
                 </ThemedText>
               </View>
               <SymbolView

@@ -105,11 +105,7 @@ export default function AddPeopleScreen() {
                 body="Only people you have chatted with show up here."
               />
             ) : (
-              <EmptyState
-                style={styles.empty}
-                title="Nobody yet"
-                body="People you chat with, one to one or in a group, show up here."
-              />
+              <EmptyState style={styles.empty} title="Nobody yet" />
             )
           }
           renderItem={({ item }) => (

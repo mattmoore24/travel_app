@@ -102,9 +102,7 @@ describe('the Notifications row', () => {
   it('offers the OS dialog, never Settings, when iOS was never asked', async () => {
     mockState.mockResolvedValue('undetermined');
     render(<NotificationsRow />);
-    expect(
-      await screen.findByText('Off. Turn them on and hear when someone answers.')
-    ).toBeTruthy();
+    expect(await screen.findByText('Off.')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Turn on notifications'));
     await waitFor(() => expect(mockEnable).toHaveBeenCalledTimes(1));

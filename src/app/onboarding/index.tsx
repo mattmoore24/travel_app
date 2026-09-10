@@ -485,7 +485,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         step={5}
         total={SIGNUP_TOTAL_STEPS}
         title="Add a photo"
-        subtitle="One face, so people know who they are meeting. Add more if you like."
+        subtitle="One face. Add more if you like."
         continueTestID="finish-photos"
         // The slot the copy actually names. Adding one through the small "+"
         // under "More photos, all optional" used to satisfy this, leaving the
@@ -510,7 +510,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         step={6}
         total={SIGNUP_TOTAL_STEPS}
         title="What do you do?"
-        subtitle="Two words is plenty. It gives somebody an easy thing to ask about."
+        subtitle="Two words is plenty."
         continueLoading={updateProfile.isPending}
         note={CHANGE_LATER}
         footer={signOutFooter}
@@ -566,7 +566,6 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         step={8}
         total={SIGNUP_TOTAL_STEPS}
         title="Answer a prompt"
-        subtitle="The bit people actually read. One answer puts you ahead of most profiles."
         continueLabel={prompts.length > 0 ? 'Continue' : 'Pick a prompt'}
         note={CHANGE_LATER}
         footer={signOutFooter}
@@ -612,7 +611,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         step={9}
         total={SIGNUP_TOTAL_STEPS}
         title="Top priorities for your trip"
-        subtitle="Places, food, a night out, the one thing you would hate to miss. So the right people say hi."
+        subtitle="Places, food, a night out, the one thing you would hate to miss."
         continueLabel={priorities.length > 0 ? 'Continue' : 'Add one'}
         note={CHANGE_LATER}
         footer={signOutFooter}
@@ -673,18 +672,12 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         skipNote="Travelers stays closed until you do. The map does not."
         onContinue={() => (trips.length > 0 ? go(11) : router.push('/add-trip'))}>
         {trips.length === 0 ? (
-          <>
-            <PrimaryButton
-              variant="ghost"
-              label="Add a trip"
-              testID="onboarding-add-trip"
-              onPress={() => router.push('/add-trip')}
-            />
-            <ThemedText type="footnote" themeColor="textSecondary">
-              No trip yet is fine. You can still drop a pin and read the map, and you can add one
-              the moment you book.
-            </ThemedText>
-          </>
+          <PrimaryButton
+            variant="ghost"
+            label="Add a trip"
+            testID="onboarding-add-trip"
+            onPress={() => router.push('/add-trip')}
+          />
         ) : (
           <>
             {trips.map((trip) => (
@@ -913,7 +906,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
       step={14}
       total={SIGNUP_TOTAL_STEPS}
       title="Here you are"
-      subtitle="Your profile. Tap any part of it to change it."
+      subtitle="Tap any part of your profile to change it."
       continueLabel="Looks right, finish"
       continueTestID="finish-profile"
       continueLoading={updateProfile.isPending}

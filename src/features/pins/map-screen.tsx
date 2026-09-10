@@ -557,8 +557,8 @@ function PinCard({
                   business account, and "say hi" is the traveler-to-traveler
                   verb: what a traveler does to a business is message it, and
                   it lands in the Chat tab. */}
-              This is how travelers meet each other. When one wants to reach you, they message your
-              business and it arrives in your Chat tab.
+              When a traveler wants to reach you, they message your business and it arrives in your
+              Chat tab.
             </ThemedText>
           ) : alreadySaidHi ? (
             // The same not-now rendering the Travelers bar uses: a colour
@@ -2344,7 +2344,7 @@ export default function MapScreen() {
             <PlaceholderScreen
               icon={{ ios: 'map.fill', android: 'map', web: 'map' }}
               title="No cities yet"
-              description="We're opening more soon. Check back."
+              description="We're opening more soon."
             />
           ) : null}
         </ThemedView>
@@ -3489,7 +3489,7 @@ export default function MapScreen() {
             : null}
           {cityQuery.trim().length === 0 ? (
             <ThemedText type="footnote" themeColor="textSecondary">
-              Any other city works too. Plans and travelers show up the moment somebody adds one.
+              Any other city works too.
             </ThemedText>
           ) : null}
           {(citySearch.data ?? []).map((row) => {

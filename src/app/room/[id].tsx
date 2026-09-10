@@ -656,8 +656,8 @@ export default function RoomScreen() {
                   />
                 </View>
               ) : isOwnRoom ? (
-                // The owner of a room is not a guest in it, and "Go first. One
-                // line is plenty." is advice to talk to yourself. What they
+                // The owner of a room is not a guest in it, and "Go first."
+                // is advice to talk to yourself. What they
                 // actually need to know is what fills this room and where it
                 // comes from.
                 <View style={styles.emptyThread}>
@@ -689,7 +689,7 @@ export default function RoomScreen() {
                     {isGroup ? 'Nobody has said anything yet.' : 'Nothing here yet.'}
                   </ThemedText>
                   <ThemedText type="footnote" themeColor="textSecondary">
-                    {muted ? 'You will see it here when they do.' : 'Go first. One line is plenty.'}
+                    {muted ? 'You will see it here when they do.' : 'Go first.'}
                   </ThemedText>
                 </View>
               )

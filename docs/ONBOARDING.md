@@ -75,16 +75,16 @@ bar, exactly as the two stacks already share `SIGNUP_TOTAL_STEPS`.
 | 2   | Password             | password                       | no                 | —                                                                                                         |
 | 3   | Who are you          | name, age, gender              | no                 | "The name people see, and your age. Your birthday stays yours."                                           |
 | 4   | Where you are from   | home city, country, languages  | no                 | "Home base, not where you happen to be today."                                                            |
-| 5   | Your photo           | photo at position 0, then more | **no**             | "One face, so people know who they are meeting. Add more if you like."                                    |
-| 6   | What you do          | occupation                     | yes                | "Two words is plenty. It gives people something to ask about."                                            |
+| 5   | Your photo           | photo at position 0, then more | **no**             | "One face. Add more if you like."                                                                         |
+| 6   | What you do          | occupation                     | yes                | "Two words is plenty."                                                                                    |
 | 7   | About you            | bio                            | yes                | "What should somebody message you about?"                                                                 |
-| 8   | Prompts              | up to 3 answered prompts       | yes                | "The bit people actually read. Answer one and you are ahead of most."                                     |
-| 9   | Top priorities       | top priorities                 | yes                | "What you are hoping to do, so the right people say hi."                                                  |
+| 8   | Prompts              | up to 3 answered prompts       | yes                | —                                                                                                         |
+| 9   | Top priorities       | top priorities                 | yes                | "Places, food, a night out, the one thing you would hate to miss."                                        |
 | 10  | Your trips           | one trip                       | yes                | "Dates in a city. This is the whole matching engine, so one trip is worth more than everything above it." |
 | 11  | Socials              | handles                        | yes                | "Nobody sees these until you are both in a chat."                                                         |
 | 12  | Get your badge       | one live selfie                | yes, cost stated   | `VERIFICATION_SUBTITLE`: proves your photos are you, unlocks who can see you                              |
 | 13  | Who sees you         | audience                       | no (has a default) | the existing `AUDIENCE_BOTH_WAYS` copy                                                                    |
-| 14  | Here is your profile | review                         | —                  | "Your profile. Tap any part of it to change it."                                                          |
+| 14  | Here is your profile | review                         | —                  | "Tap any part of your profile to change it."                                                              |
 
 Step 10 is the one that earns the extra length: the app's core loop cannot run
 for a profile with no trip, and today nothing asks.

@@ -247,7 +247,7 @@ export default function ComposeRequestScreen() {
             That is your {budget.data.allowed} for today
           </ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.centred}>
-            More tomorrow. A few good ones beat a pile of forgettable ones.
+            More tomorrow.
           </ThemedText>
         </View>
         <PrimaryButton label="Fair enough" onPress={() => router.back()} />
@@ -442,8 +442,7 @@ export default function ComposeRequestScreen() {
               That is your {capped} for today
             </ThemedText>
             <ThemedText themeColor="textSecondary" style={styles.centred}>
-              More tomorrow. A few good ones beat a pile of forgettable ones. Yours is kept right
-              here.
+              More tomorrow. Your message is kept right here.
             </ThemedText>
           </View>
           <View style={styles.capActions}>

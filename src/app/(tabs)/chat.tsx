@@ -977,14 +977,14 @@ export default function ChatScreen() {
       // second; this is where somebody comes looking a day later, wondering
       // whether silence means no. It never does, and saying so here is what
       // keeps the app from having to say anything about the other person.
-      // Only when something IS waiting. This section now also holds hellos
-      // the classifier stopped after sending, whose row reads 'Not delivered'
-      // — and a heading saying "waiting on an answer" directly above one of
-      // those tells somebody their message is with a person who has not
-      // replied, when in fact it never left. Scoped rather than reworded: the
-      // sentence is the right one for the rows it is true of.
+      // Only when something IS waiting. This section also holds hellos the
+      // classifier stopped after sending, whose row reads 'Not delivered' —
+      // and telling somebody they will hear back when a person replies, over
+      // a message that never left, is the app describing a wait that is not
+      // happening. Scoped rather than reworded: the sentence is the right one
+      // for the rows it is true of.
       note: waitingOnThem.some((request) => !request.blocked_after_send)
-        ? 'Waiting on an answer. You only hear back when somebody replies.'
+        ? 'You only hear back when somebody replies.'
         : undefined,
       data: waitingOnThem.map((request, i) => ({
         kind: 'sent' as const,

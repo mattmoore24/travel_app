@@ -33,7 +33,7 @@ export function ConsentNote() {
         onPress={() => router.push('/privacy')}>
         privacy policy
       </ThemedText>
-      . Keep it casual and friendly.
+      .
     </ThemedText>
   );
 }

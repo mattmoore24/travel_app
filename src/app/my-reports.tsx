@@ -144,7 +144,6 @@ export default function MyReportsScreen() {
   return (
     <StepScreen
       title="Your reports and messages"
-      subtitle="Everything you have sent us, and where each one got to."
       continueLabel="Done"
       onContinue={() => (router.canGoBack() ? router.back() : router.replace('/profile-me'))}>
       {pending ? (

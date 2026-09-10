@@ -104,7 +104,7 @@ export function NotificationsRow() {
       {state === 'undetermined' ? (
         <>
           <ThemedText type="small" themeColor="textSecondary">
-            Off. Turn them on and hear when someone answers.
+            Off.
           </ThemedText>
           <PrimaryButton
             variant="ghost"

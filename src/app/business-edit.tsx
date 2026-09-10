@@ -525,7 +525,7 @@ function BusinessLinks({
   return (
     <View style={styles.block}>
       <ThemedText type="footnote" themeColor="textSecondary">
-        Your site, your menu, your socials, the number people ring. All in one list.
+        Your site, your menu, your socials, the number people ring.
       </ThemedText>
 
       {links.length > 0 ? (
