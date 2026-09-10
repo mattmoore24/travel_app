@@ -573,14 +573,11 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         onSkip={prompts.length > 0 ? undefined : () => go(9, { skipped: true })}
         skipLabel="Skip the prompts for now"
         onContinue={() => (prompts.length > 0 ? go(9) : router.push('/edit-prompt'))}>
-        {prompts.length === 0 ? (
-          <PrimaryButton
-            variant="ghost"
-            label="Pick a prompt"
-            testID="onboarding-add-prompt"
-            onPress={() => router.push('/edit-prompt')}
-          />
-        ) : (
+        {/* Nothing in the body while the list is empty, deliberately. The
+            docked button IS "Pick a prompt" and it opens the same editor, so
+            a ghost button here was the same control twice on one screen,
+            eight points apart. Same on steps 9 and 10. */}
+        {prompts.length === 0 ? null : (
           <>
             {prompts.map((prompt) => (
               <View
@@ -619,14 +616,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         onSkip={priorities.length > 0 ? undefined : () => go(10, { skipped: true })}
         skipLabel="Skip this for now"
         onContinue={() => (priorities.length > 0 ? go(10) : router.push('/edit-priorities'))}>
-        {priorities.length === 0 ? (
-          <PrimaryButton
-            variant="ghost"
-            label="Add one"
-            testID="onboarding-add-priority"
-            onPress={() => router.push('/edit-priorities')}
-          />
-        ) : (
+        {priorities.length === 0 ? null : (
           <>
             {priorities.map((priority) => (
               <View
@@ -671,14 +661,7 @@ function ProfileSteps({ profile }: { profile: ProfileRow }) {
         // memory that skipping was a choice this person made.
         skipNote="Travelers stays closed until you do. The map does not."
         onContinue={() => (trips.length > 0 ? go(11) : router.push('/add-trip'))}>
-        {trips.length === 0 ? (
-          <PrimaryButton
-            variant="ghost"
-            label="Add a trip"
-            testID="onboarding-add-trip"
-            onPress={() => router.push('/add-trip')}
-          />
-        ) : (
+        {trips.length === 0 ? null : (
           <>
             {trips.map((trip) => (
               <View key={trip.id} style={[styles.card, { backgroundColor: theme.surfaceSunken }]}>

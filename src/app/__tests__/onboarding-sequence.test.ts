@@ -209,3 +209,47 @@ describe('the last step is the profile, not a summary of it', () => {
     expect((code.match(/note=\{CHANGE_LATER\}/g) ?? []).length).toBeGreaterThanOrEqual(5);
   });
 });
+
+/**
+ * No step offers the same control twice.
+ *
+ * Steps 8, 9 and 10 each rendered a ghost PrimaryButton in the body whose
+ * label was byte-identical to the docked button's own empty-state label, and
+ * whose onPress pushed the same route — "Pick a prompt" over "Pick a prompt",
+ * eight points apart, both opening /edit-prompt. A screen that offers one
+ * action twice makes a reader stop and look for the difference, and there is
+ * none.
+ *
+ * A source scan because the defect is a RELATION between two props of the
+ * same element, which a render test sees as two working buttons.
+ */
+describe('a step never offers the same control twice', () => {
+  /** Every string literal matched by `pattern`'s first group, in `block`. */
+  const labelsIn = (block: string, pattern: RegExp): string[] =>
+    [...block.matchAll(pattern)].map((match) => match[1]);
+
+  it('has no body button wearing the docked button’s own label', () => {
+    const code = stripped('onboarding', 'index.tsx');
+    // Each StepShell's own text, up to the next one.
+    const shells = code.split('<StepShell').slice(1);
+    expect(shells.length).toBeGreaterThan(10);
+
+    const offenders: string[] = [];
+    for (const shell of shells) {
+      // Both arms of `continueLabel={n > 0 ? 'Continue' : 'Add a trip'}`, and
+      // the plain `continueLabel="…"` form.
+      const docked = new Set([
+        ...labelsIn(shell, /continueLabel=\{[^}]*?'([^']+)'\s*\}/g),
+        ...labelsIn(shell, /continueLabel=\{[^}]*?'([^']+)'\s*:\s*'[^']+'\s*\}/g),
+        ...labelsIn(shell, /continueLabel=\{[^}]*?:\s*'([^']+)'\s*\}/g),
+        ...labelsIn(shell, /continueLabel="([^"]+)"/g),
+      ]);
+      for (const label of labelsIn(shell, /<PrimaryButton[\s\S]*?label="([^"]+)"/g)) {
+        if (docked.has(label)) {
+          offenders.push(label);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
