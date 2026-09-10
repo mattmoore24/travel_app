@@ -222,6 +222,47 @@ device does something else.
   reaction menu from ever opening, through two wrong fixes, because component
   tests call the handler directly and never enter the responder system.
 
+## A `Sheet` drops its `footer` unless you also pass `scrolls`
+
+`sheet.tsx` renders `{footer}` inside the `scrolls ? (...) : children` ternary,
+in the scrolling arm only. So `<Sheet footer={<PrimaryButton .../>}>` without
+`scrolls` is not a layout mistake with a visible symptom - the buttons **do not
+render at all**, on a sheet whose only other way out may be a pull-down. TypeScript
+is happy, the prop is real, and nothing in the tree says the footer went missing.
+
+The pair of them is one rule with two halves, and `keyboard-covers-the-footer`
+now scans every `<Sheet` in the app for both:
+
+1. a sheet with `avoidKeyboard` that renders a `PrimaryButton` **anywhere,
+   body or footer prop**, must have `scrolls` WITH `footer`, or an explicit
+   `keyboardAllowance`. A bare `avoidKeyboard` lifts the whole sheet by the
+   whole keyboard and parks every button in it in the strip reserved for Hide
+   keyboard;
+2. a sheet with a `footer` must have `scrolls` at all, per the above.
+
+Rule 2 exists because the first version of that guard read only the sheet's
+BODY for a button. Removing `scrolls` while leaving the buttons in `footer` -
+the obvious mutation to check it with - passed, against a sheet that rendered
+no buttons whatsoever. **A source-scan guard that reads the wrong half of a JSX
+element is worse than none**, because it certifies the thing it cannot see. If
+a guard parses an opening tag, remember that props like `footer={...}` are part
+of the TAG and not the children, and mutation-check it in both directions.
+
+## A fixed height inside a sheet cannot give way, and the sheet is capped
+
+`Sheet` sets `maxHeight: height - insets.top - Space.lg`, and `avoidKeyboard`
+grows its floor by the keyboard's full height. Any child with a rigid `height`
+therefore pushes the sheet's own bottom past that cap the moment the content
+above it grows - which is exactly what Dynamic Type does to a header, a search
+row and a count line. Nothing scrolls it back: the overflow is simply off the
+end of a box that will not move.
+
+The languages picker was `height: listHeight` on its FlatList and had this bug
+at the accessibility sizes with the search focused. `maxHeight` plus
+`flexShrink: 1` is the shape: a ceiling the list may reach and a size it gives
+up under pressure. The same reasoning is why `scrolls` exists at all, and why a
+sheet that has grown past three or four children usually wants it.
+
 ## Effects that consume what they act on
 
 - **A store write inside an effect re-renders the component BEFORE the event
