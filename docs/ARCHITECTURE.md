@@ -132,8 +132,9 @@ Planned next (from brief §4), unchanged:
 - `profile_photos` (position 0 = avatar, 1–6 gallery, moderation_status)
 - `social_handles` — **RLS: readable only with an accepted chat with the owner** (hard rule 4)
 - `trips` (normalized city ref, date range, status)
-- `pins` (venue-level lat/lng, category, intent_date, `expires_at ≤ now() + 72h` as a DB CHECK
-  constraint; hard-delete/anonymize on expiry — hard rules 2–3)
+- `pins` (venue-level lat/lng, category, intent_date, `take_down_on` chosen by the author and
+  `expires_at` derived from it in the city's clock, at most a year out, both as DB CHECKs;
+  hard-delete/anonymize on expiry — hard rules 2–3)
 - `heat_cells` (H3/geohash cell, date, category, pin_count; only cells with
   `pin_count ≥ k` are ever served — hard rule 6; k configurable, initial default 3)
 - `message_requests` (source: trip_match | pin, first_message_text, moderation_verdict,
@@ -173,14 +174,17 @@ loads/month, needs token + config plugin + dev build).
   city is resolved from its marker since 2026-09-05), and `active = false` takes a city
   off the rail's guaranteed slot without hiding a single pin. `cities` carries every city down to 5,000 people with
   its own `timezone` (`city_clock_zone()` reads the launch override first).
-- **`pins`** — venue-level future intent. Hard rule 3 is structural: `expires_at <=
-created_at + 72h` CHECK, **no UPDATE grant at all** (a pin can never be edited past its
-  cap), RLS that hides expired pins from _everyone including the owner_, and an
+- **`pins`** — venue-level future intent. Hard rule 3 is structural: `take_down_on` is the
+  only lifetime a client can state, `expires_at` is derived from it by `validate_pin` in the
+  city's clock and cannot be inserted directly (`revoke insert (expires_at)`), two CHECKs hold
+  it within 369 days of creation, **no UPDATE grant at all** (a pin can never be edited past
+  its cap), RLS that hides expired pins from _everyone including the owner_, and an
   `expire_pins()` hard-delete sweep (pg_cron every 15min on hosted; guarded no-op locally).
   A validation trigger RESOLVES the pin's city (the browsed one within 20 km, else
   `nearest_city()`, distance over the fourth root of population - haversine, no PostGIS),
-  checks sane intent dates and an optional hour or window against the expiry in the city's
-  zone, and a 10-active-pin cap. The map feeds read by distance from the browsed city
+  checks sane intent dates (not past, not beyond a year) and an optional hour or window,
+  records `plan_ends_at` for the last-call push, and a 10-active-pin cap. The take-down day
+  is NOT floored at the plan's day: a pin may come down before its plan (founder, 2026-09-10). The map feeds read by distance from the browsed city
   (`map_radius_km()`, 50 km), so the city label is for the funnel and the rail.
 - **Rule 2 posture**: nothing in the schema or client ever touches device location —
   `showsUserLocation={false}`, no location permission in app.json, pin placement is manual
@@ -824,7 +828,7 @@ same messages, reactions, admin tools, invite link and moderation.
 **The link points from the group AT the pin**: `groups.pin_id uuid references
 public.pins (id) on delete set null`, with a partial unique index. It has to
 be this direction. Pins are hard deleted — by `expire_pins` on its 15-minute
-cron, by the poster taking one down, and at 72 hours because §7 rule 3 says so
+cron, by the poster taking one down, and on its take-down day because §7 rule 3 says so
 — and a `chat_id` column on `pins` would take the conversation with it. On
 `groups`, the pin burns out and the chat is still there, with `pin_id` null:
 an ordinary group with no end date, reachable from the Chat tab and by invite
@@ -1728,6 +1732,47 @@ drifting in the direction that fails open. `68_only_an_edit_screens_a_business` 
 `updated_at` in 2020 with the trigger disabled and asks whether it moved (the `now()`-equals-
 `now()` trap 59 fell into); with the guard removed, five of its assertions fail, on both
 halves.
+
+## The traveler picks the day a pin comes down (2026-09-10)
+
+Founder decisions, in order: no 72-hour ceiling; the traveler picks the date
+the pin is active until, at most a year, regardless of trips; the plan's date
+is the real indicator; readers get a date-range filter, **anytime** by default
+for density, with next 7 days, next 30 days and custom dates; a pin may come
+down before its plan, with a small reminder under the date and nothing
+blocked; a chat born from a plan outlives the pin and the event.
+
+**Schema (`20260910120000`).** `pins.take_down_on date not null` is the only
+lifetime a client states. `validate_pin` derives `expires_at` as the start of
+the following day in the city's clock (`city_clock_zone(city_id)`), assigns
+the city's today when the day is behind, refuses anything past today + 366
+(hint `pin_ceiling`), and never floors the day at `intent_date`.
+`plan_ends_at` is server-owned (the end time, else the end of the intent day)
+and drives `push_last_call` alone; it is not a floor. Two CHECKs stand behind
+the trigger: `pins_take_down_within_a_year` (369 days from creation) and
+`pins_expiry_is_after_creation`. `revoke insert (expires_at) on public.pins
+from authenticated` closes the direct-insert path, so the two client writers
+that used it (`createPin`, `postJoinablePin`) are deleted rather than kept as
+dead exports. A caller that still passes `p_expires_at` has its day read out
+of it, which is what keeps old bundles and the seeders working.
+
+**Feeds.** `city_pins(p_city_id, p_from, p_to)` and `public_city_pins` return
+`take_down_on` and `plan_ends_at`; `heat_cells(p_city_id, p_date, p_from,
+p_to)` and `public_heat_cells` take the same window. A null window is
+anytime. The client omits the window arguments when it has none, so an older
+signature still resolves (PGRST202 falls back the same way), and
+`post_joinable_pin` took `p_take_down_on date default null` at the end of its
+list for the same reason.
+
+**What was deleted.** `20260905200000_gone_when_your_plan_is_over.sql` was
+never applied in production and encoded the plan-day floor the founder
+rejected; the suite is green without it, and its removal is what lets
+`db push` run in order again.
+
+**Raised, not decided.** The ten-live-pins cap used to recycle every three
+days and now recycles a year at a time: a traveler with ten long pins posts
+nothing new until one comes down. Featured-city and liquidity counts change
+meaning when pins live for months. Curated seed pins need a take-down day.
 
 ## Technical flags (raised to founder, non-blocking)
 

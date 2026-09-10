@@ -19,7 +19,8 @@ reads.
    "see who liked you" mechanics.
 2. **No real-time user location** is ever collected, stored, or displayed.
    Pins are venue-level _future intent_ only.
-3. Pins **hard-expire at ≤72 hours** and are unreadable afterwards.
+3. Pins **hard-expire on the day their author set, at most a year out**, and
+   are unreadable afterwards.
 4. Social handles are **never visible pre-accept**, enforced at the DB layer.
 5. **Every first message passes moderation** before delivery.
 6. Heatmap cells below the k-threshold are **never rendered**.

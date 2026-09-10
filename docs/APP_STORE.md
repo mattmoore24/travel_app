@@ -679,7 +679,8 @@ converted.
 >    is enforced by row-level security in Postgres, not by the client.
 > 4. The app requests NO location permission and holds none. The map shows only
 >    venue-level pins people typed in for future plans, and every pin is
->    permanently deleted within 72 hours. If a location framework appears in the
+>    permanently deleted on the take-down date its author set, at most a year out.
+>    If a location framework appears in the
 >    binary, it is used only to turn a typed address into a coordinate for a
 >    business listing, never to read the device.
 > 5. Account deletion is in Profile, then Delete account, and it removes both
@@ -772,13 +773,13 @@ down and never up.
 Shoot five, ordered as claims rather than as a tour of the tabs. The first two
 are the ones that appear in search results:
 
-| #   | Filename             | The claim it makes                                                                             |
-| --- | -------------------- | ---------------------------------------------------------------------------------------------- |
-| 1   | `01-map-plans.png`   | The map with pins and one pin card open. Nobody else in this category has this screen.         |
-| 2   | `02-overlap.png`     | A traveler whose dates overlap yours, with the shared window marked.                           |
-| 3   | `03-first-hello.png` | A first message being written against a specific line of somebody's profile.                   |
-| 4   | `04-socials.png`     | A chat with the socials row unlocked, captioned that it is hidden until you both chat.         |
-| 5   | `05-promises.png`    | The map again, captioned with the two promises: no location, ever; every pin gone in 72 hours. |
+| #   | Filename             | The claim it makes                                                                                        |
+| --- | -------------------- | --------------------------------------------------------------------------------------------------------- |
+| 1   | `01-map-plans.png`   | The map with pins and one pin card open. Nobody else in this category has this screen.                    |
+| 2   | `02-overlap.png`     | A traveler whose dates overlap yours, with the shared window marked.                                      |
+| 3   | `03-first-hello.png` | A first message being written against a specific line of somebody's profile.                              |
+| 4   | `04-socials.png`     | A chat with the socials row unlocked, captioned that it is hidden until you both chat.                    |
+| 5   | `05-promises.png`    | The map again, captioned with the two promises: no location, ever; every pin comes down on a day you set. |
 
 Two rules that come out of past mistakes: **do not gate shot 1 on the heat
 layer** (it needs seeded density and it is not what makes the screen
@@ -915,7 +916,7 @@ Your social handles stay hidden until you are both in a chat together. The datab
 
 WHAT WE NEVER DO
 We never collect your location. Not once, not in the background, not ever. The map shows plans, not people.
-Every pin disappears within 72 hours. A plan is a plan, not a public diary.
+Every pin comes down on the day you set, a year out at most. A plan is a plan, not a public diary.
 Finding people, the map and messaging are free forever. No paywall, no premium tier, nothing held back to sell you later.
 
 FOR HOSTELS, BARS AND CAFES

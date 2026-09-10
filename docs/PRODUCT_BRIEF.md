@@ -42,8 +42,10 @@ stated in marketing.
 
 - Users drop an **intent pin**: "I want to go to [place] on [day]" — a bar, restaurant, club,
   museum, monument, beach, hike, etc.
-- Pins are **future-dated intent, not live location**. A pin persists for a user-set duration,
-  **maximum 72 hours**, then auto-expires and is deleted.
+- Pins are **future-dated intent, not live location**. A pin stays up until a day its author
+  picks, **at most a year out**, then auto-expires and is deleted. _(Until 2026-09-10 the ceiling
+  was 72 hours; the founder replaced it with the author's own take-down day, with the plan's date
+  as the real signal and a date-range filter for readers.)_
 - Other users browse the map, tap a pin, view the pinner's profile, and can send a **message
   request**. The pinner must accept before any chat opens.
 - All pins also feed an **anonymized heatmap** visible to everyone: which places/areas are
@@ -170,9 +172,9 @@ dependency), solo-founder maintainability, fast iteration, and real-time feature
   accepted chat with the owner. Enforced at the database layer, not just the UI.**
 - `trips` — user_id, city (normalized place ref), area/region, start_date, end_date, status
 - `pins` — user_id, venue_name, venue_place_id, lat/lng (venue-level), category
-  (bar/restaurant/club/museum/monument/beach/hike/other), intent_date, expires_at
-  (≤ now + 72h, enforced by DB constraint), status. Hard-delete or fully anonymize on expiry
-  (privacy promise).
+  (bar/restaurant/club/museum/monument/beach/hike/other), intent_date, take_down_on (the
+  author's day), expires_at (derived from it in the city's clock, ≤ a year out, enforced by DB
+  constraint), status. Hard-delete or fully anonymize on expiry (privacy promise).
 - `heat_cells` — materialized aggregation: geohash/H3 cell, date, category, pin_count. Only
   cells with pin_count ≥ threshold are served to clients.
 - `message_requests` — sender_id, recipient_id, source (trip_match | pin), first_message_text,
@@ -210,7 +212,7 @@ dependency), solo-founder maintainability, fast iteration, and real-time feature
   incoming requests with accept/decline. _Deliverable: two test accounts with overlapping
   trips can request → accept → land in a chat shell._
 - **Phase 3 — The Map (hero feature — invest the most polish here)**: Pin creation flow (venue
-  search, category, intent date, expiry ≤72h), map browse of active pins around any city,
+  search, category, intent date, a take-down day), map browse of active pins around any city,
   pin → profile → message request flow, server-side heatmap aggregation + client heat layer
   with the k-threshold, pin auto-expiry job, admin seeded-pins path. _Deliverable: the map is
   compelling with 15 pins on it._
@@ -263,7 +265,9 @@ and ask.
    you" mechanics.
 2. **No real-time user location** is ever collected, stored, or displayed. Pins are
    venue-level future intent only.
-3. Pins **hard-expire at ≤72 hours** and are then unreadable.
+3. Pins **hard-expire on the day their author set, at most a year out**, and are then
+   unreadable. _(≤72 hours until 2026-09-10. The founder's call: the traveler picks the day,
+   the plan's date is the real indicator, and a pin may come down before its plan.)_
 4. Social handles are **never visible pre-accept** — enforced at the DB layer.
 5. **Every first message passes moderation** before delivery.
 6. Heatmap cells below the k-threshold are **never rendered** to other users.

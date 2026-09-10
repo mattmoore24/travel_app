@@ -98,7 +98,11 @@ describe('the bundled policy text', () => {
   it('still carries the promises the policy is judged on', () => {
     const policy = fs.readFileSync(path.join(ROOT, 'docs', 'legal', 'PRIVACY_POLICY.md'), 'utf8');
     expect(policy).toContain('Your device location. Never.');
-    expect(policy).toContain('72 hours');
+    // The pin promise. It said "72 hours" until 2026-09-10, when the founder
+    // made the take-down day the author's own (§7 rule 3); the policy has to
+    // say the new thing and must not still say the old one anywhere.
+    expect(policy).toContain('take-down date their author set');
+    expect(policy).not.toContain('72 hours');
     expect(policy).toContain('biometric');
     expect(policy).toContain('Anthropic');
   });
