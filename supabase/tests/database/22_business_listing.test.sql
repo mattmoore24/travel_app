@@ -6,6 +6,12 @@
 begin;
 select plan(54);
 
+-- A canary pattern for THIS run only: the shipped blocklist is slurs, and a
+-- test that typed one would spread it across the suite. Rolled back with
+-- everything else.
+insert into public.moderation_blocklist (pattern, category)
+values ('\ykanaryslurxq\y', 'slur');
+
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a2', 'ana@example.com'),
   ('00000000-0000-0000-0000-0000000000b2', 'hostel@example.com'),
@@ -240,7 +246,7 @@ select throws_ok(
 );
 select throws_ok(
   $$ insert into public.business_links (business_id, kind, label, value)
-     select id, 'website', 'you are so sexy', 'https://casaazul.example' from public.businesses
+     select id, 'website', 'you are so kanaryslurxq', 'https://casaazul.example' from public.businesses
       where name = 'Casa Azul' $$,
   'that text breaks our house rules',
   'and a link label is screened like any other broadcast text'
@@ -275,7 +281,7 @@ select throws_ok(
 -- review here once.
 select throws_ok(
   $$ insert into public.business_posts (business_id, title, body)
-     select id, 'Tonight', 'you are so sexy' from public.businesses
+     select id, 'Tonight', 'you are so kanaryslurxq' from public.businesses
       where name = 'Casa Azul' $$,
   'that text breaks our house rules',
   'and a post is screened like every other broadcast text'

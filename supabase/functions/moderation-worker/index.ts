@@ -123,6 +123,14 @@ const MessageVerdict = z.object({
   reason: z.string(),
 });
 
+/**
+ * The two categories a first message is no longer refused for. Founder,
+ * 2026-09-10: text is refused for slurs and nothing else; everything else is
+ * for the report and block buttons. Kept as a set so the override below is
+ * one membership test and the audit payload names the reason.
+ */
+const SPEECH_NOT_POLICED: ReadonlySet<string> = new Set(['flirtation', 'sexual']);
+
 const PhotoVerdict = z.object({
   action: z.enum(['allow', 'block']),
   category: z.enum(['ok', 'explicit', 'suggestive', 'violent', 'other_violation']),
@@ -673,8 +681,27 @@ Deno.serve(async (req) => {
         MessageVerdict,
         FAST
       );
-      const payload = verdict
-        ? { ...verdict, engine: 'claude-moderator', model: MODEL }
+      // FLIRTATION AND SEX ARE NOT BLOCKED, since 2026-09-10. Founder: "I
+      // don't think we should be trying to police speech rather than a few
+      // explicit curse words that are almost always used in a derogatory
+      // fashion ... and can rely on users to report/block each other." The
+      // prompt still classifies (it is a secret this code cannot edit and the
+      // category is useful in the audit row), but a block on either of those
+      // two categories is turned into an allow HERE, with the original
+      // verdict kept in the payload so moderation_events shows what the
+      // model said and that this code overrode it. Harassment, spam, scams
+      // and the model's own refusals still block; slurs are the database's
+      // prefilter, which runs before a message is ever held.
+      const spoken =
+        verdict && verdict.action === 'block' && SPEECH_NOT_POLICED.has(verdict.category)
+          ? {
+              ...verdict,
+              action: 'allow' as const,
+              overridden: { action: 'block', why: 'speech-not-policed' },
+            }
+          : verdict;
+      const payload = spoken
+        ? { ...spoken, engine: 'claude-moderator', model: MODEL }
         : {
             action: 'block',
             category: 'refusal',

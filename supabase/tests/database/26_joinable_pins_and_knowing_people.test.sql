@@ -11,6 +11,12 @@
 begin;
 select plan(51);
 
+-- A canary pattern for THIS run only: the shipped blocklist is slurs, and a
+-- test that typed one would spread it across the suite. Rolled back with
+-- everything else.
+insert into public.moderation_blocklist (pattern, category)
+values ('\ykanaryslurxq\y', 'slur');
+
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
   ('00000000-0000-0000-0000-00000000000b', 'bob@example.com'),
@@ -427,7 +433,7 @@ select throws_ok(
 select pg_temp.login('00000000-0000-0000-0000-00000000000d');
 select is(
   (select public.open_direct_chat(
-     '00000000-0000-0000-0000-00000000000b', 'wanna fuck') ->> 'blocked'),
+     '00000000-0000-0000-0000-00000000000b', 'kanaryslurxq') ->> 'blocked'),
   'true',
   'a first message that fails moderation opens nothing at all (hard rule 5)'
 );

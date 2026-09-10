@@ -7,6 +7,12 @@
 begin;
 select plan(15);
 
+-- A canary pattern for THIS run only: the shipped blocklist is slurs, and a
+-- test that typed one would spread it across the suite. Rolled back with
+-- everything else.
+insert into public.moderation_blocklist (pattern, category)
+values ('\ykanaryslurxq\y', 'slur');
+
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
   ('00000000-0000-0000-0000-00000000000b', 'bob@example.com'),
@@ -145,7 +151,7 @@ select is(
   'an ordinary hello previews clean'
 );
 select is(
-  (select would_block from public.preview_first_message('you are so sexy')),
+  (select would_block from public.preview_first_message('you are so kanaryslurxq')),
   true,
   'and one the filter would stop says so before it is sent'
 );
@@ -163,8 +169,8 @@ select hasnt_column('public', 'preview_first_message', 'pattern',
 select is(
   (public.send_message_request(
      '00000000-0000-0000-0000-00000000000c', 'trip_match',
-     'you look so sexy in that photo', 'photo:0')) ->> 'category',
-  'flirtation',
+     'kanaryslurxq in that photo', 'photo:0')) ->> 'category',
+  'slur',
   'a blocked hello names the kind of wrong the filter actually saw'
 );
 select ok(

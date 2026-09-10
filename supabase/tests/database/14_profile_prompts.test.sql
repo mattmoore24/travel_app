@@ -3,6 +3,12 @@
 begin;
 select plan(9);
 
+-- A canary pattern for THIS run only: the shipped blocklist is slurs, and a
+-- test that typed one would spread it across the suite. Rolled back with
+-- everything else.
+insert into public.moderation_blocklist (pattern, category)
+values ('\ykanaryslurxq\y', 'slur');
+
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
   ('00000000-0000-0000-0000-00000000000b', 'bob@example.com');
@@ -59,7 +65,7 @@ select throws_ok(
 select throws_ok(
   $$ insert into public.profile_prompts (user_id, slot, prompt_key, answer)
      values ('00000000-0000-0000-0000-00000000000a', 1, 'perfect_day',
-             'you are so sexy') $$,
+             'you are so kanaryslurxq') $$,
   'that text breaks our house rules',
   'a prompt is not a hole around profile screening'
 );

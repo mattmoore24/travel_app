@@ -11,6 +11,12 @@
 begin;
 select plan(12);
 
+-- A canary pattern for THIS run only: the shipped blocklist is slurs, and a
+-- test that typed one would spread it across the suite. Rolled back with
+-- everything else.
+insert into public.moderation_blocklist (pattern, category)
+values ('\ykanaryslurxq\y', 'slur');
+
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000082a1', 'screened@example.com');
 
@@ -50,7 +56,7 @@ select throws_ok(
   $$ insert into public.pins
        (user_id, city_id, venue_name, plan, category, lat, lng, intent_date)
      values ('00000000-0000-0000-0000-0000000082a1', pg_temp.lisbon(),
-             'Pensão Amor', 'sexting later?', 'bar', 38.7072, -9.1459, current_date) $$,
+             'Pensão Amor', 'kanaryslurxq later?', 'bar', 38.7072, -9.1459, current_date) $$,
   'that text breaks our house rules',
   'the plan box is screened'
 );
@@ -59,7 +65,7 @@ select throws_ok(
   $$ insert into public.pins
        (user_id, city_id, venue_name, plan, note, category, lat, lng, intent_date)
      values ('00000000-0000-0000-0000-0000000082a1', pg_temp.lisbon(),
-             'Pensão Amor', 'Coffee then the market', 'dtf, hit me up',
+             'Pensão Amor', 'Coffee then the market', 'kanaryslurxq, hit me up',
              'bar', 38.7073, -9.1460, current_date) $$,
   'that text breaks our house rules',
   'the details box is screened too'
@@ -125,7 +131,7 @@ begin
     insert into public.pins
       (user_id, city_id, venue_name, plan, category, lat, lng, intent_date)
     values ('00000000-0000-0000-0000-0000000082a1', pg_temp.lisbon(),
-            'Pensão Amor', 'sexting later?', 'bar', 38.7077, -9.1464, current_date);
+            'Pensão Amor', 'kanaryslurxq later?', 'bar', 38.7077, -9.1464, current_date);
   exception when others then
     null;
   end;

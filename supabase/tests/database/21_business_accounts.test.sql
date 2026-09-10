@@ -9,6 +9,12 @@
 begin;
 select plan(47);
 
+-- A canary pattern for THIS run only: the shipped blocklist is slurs, and a
+-- test that typed one would spread it across the suite. Rolled back with
+-- everything else.
+insert into public.moderation_blocklist (pattern, category)
+values ('\ykanaryslurxq\y', 'slur');
+
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a1', 'traveler@example.com'),
   ('00000000-0000-0000-0000-0000000000b1', 'hostel@example.com'),
@@ -315,7 +321,7 @@ select throws_ok(
   'and cannot award itself the badge'
 );
 select throws_ok(
-  $$ update public.businesses set description = 'you are so sexy'
+  $$ update public.businesses set description = 'you are so kanaryslurxq'
       where name = 'Home Lisbon Hostel' $$,
   'that text breaks our house rules',
   'business text is screened like a bio'

@@ -7,6 +7,12 @@
 begin;
 select plan(37);
 
+-- A canary pattern for THIS run only: the shipped blocklist is slurs, and a
+-- test that typed one would spread it across the suite. Rolled back with
+-- everything else.
+insert into public.moderation_blocklist (pattern, category)
+values ('\ykanaryslurxq\y', 'slur');
+
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-0000000000a3', 'ana@example.com'),
   ('00000000-0000-0000-0000-0000000000b3', 'bar@example.com'),
@@ -91,7 +97,7 @@ select is(
 
 select pg_temp.login('00000000-0000-0000-0000-0000000000c3');
 select is(
-  (public.message_business(pg_temp.biz(), 'you are so sexy')) ->> 'blocked',
+  (public.message_business(pg_temp.biz(), 'you are so kanaryslurxq')) ->> 'blocked',
   'true',
   'and a message the prefilter blocks is refused'
 );

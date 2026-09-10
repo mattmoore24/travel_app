@@ -4,6 +4,12 @@
 begin;
 select plan(27);
 
+-- A canary pattern for THIS run only: the shipped blocklist is slurs, and a
+-- test that typed one would spread it across the suite. Rolled back with
+-- everything else.
+insert into public.moderation_blocklist (pattern, category)
+values ('\ykanaryslurxq\y', 'slur');
+
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
   ('00000000-0000-0000-0000-00000000000b', 'bob@example.com');
@@ -217,7 +223,7 @@ select lives_ok(
   'clean bio saves normally'
 );
 select throws_ok(
-  $$ update public.profiles set bio = 'DTF, hit me up'
+  $$ update public.profiles set bio = 'kanaryslurxq, hit me up'
      where user_id = '00000000-0000-0000-0000-00000000000a' $$,
   'that text breaks our house rules',
   'flirtatious bio text is refused at write time'
