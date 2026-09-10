@@ -95,7 +95,7 @@ export default function MessagePlaceScreen() {
         multiline
         numberOfLines={4}
         style={styles.messageInput}
-        placeholder="Ask them anything. Beds, tables, what's on tonight."
+        placeholder="Ask them anything. Beds, tables, what's happening tonight."
         value={message}
         onChangeText={setMessage}
       />

@@ -225,7 +225,9 @@ describe('the map is tailored to a business rather than trimmed', () => {
     // Explicitly routed, never enterPlaceMode (which silently no-ops for a
     // business) and never the traveler's label.
     expect(block).toContain("router.push('/business-post')");
-    expect(block).toContain('"Post what\'s on"');
+    // Founder, 2026-09-10: "what's on" becomes "what's happening" wherever it
+    // means a business. A British idiom, and the reader is not necessarily.
+    expect(block).toContain('"Post what\'s happening"');
     expect(block).toContain("'Update tonight'");
     expect(block).not.toContain('Drop a pin');
     expect(block).not.toContain('enterPlaceMode');

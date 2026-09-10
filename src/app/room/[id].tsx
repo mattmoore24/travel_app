@@ -679,7 +679,7 @@ export default function RoomScreen() {
                       a custom-scheme link is dead for anybody who does not
                       already have the app. Recorded in PROGRESS. */}
                   <PrimaryButton
-                    label="Say what's on tonight"
+                    label="Say what's happening tonight"
                     onPress={() => router.push('/business-post')}
                   />
                 </View>

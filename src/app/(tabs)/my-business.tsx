@@ -692,7 +692,7 @@ export default function MyBusinessScreen() {
             ) : (
               <>
                 <Section
-                  title="What's on"
+                  title="What's happening"
                   icon={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}>
                   {posts.length > 0 ? (
                     <>

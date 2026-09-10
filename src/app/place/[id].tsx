@@ -608,7 +608,7 @@ export default function PlaceScreen() {
 
             {place.posts.length > 0 ? (
               <Section
-                title="What's on"
+                title="What's happening"
                 icon={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}>
                 {place.posts.map((post) => (
                   <PostCard key={post.id} post={post} />

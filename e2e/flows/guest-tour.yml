@@ -452,11 +452,11 @@ appId: com.mattmoore.samewhere
 # photographed the TRAVELERS TAB showing Bangkok, and runs 120 and 121 did
 # it again with the row addressed by its label and then by its id. Not a
 # transform: plan-list-row-0 is tapped by id at the half detent every run
-# (05f). A What's on row is the list's LAST section, and scrollUntilVisible
-# judged it visible the moment its frame entered the list's, which is under
-# the dock's opaque plate, so the tap landed on the tab bar. Run 122 tried
-# the venue's map annotation by its label and Maestro found nothing, as the
-# traps skill already said it would. So: the list to its full detent (a
+# (05f). A What's happening row is the list's LAST section, and
+# scrollUntilVisible judged it visible the moment its frame entered the
+# list's, which is under the dock's opaque plate, so the tap landed on the
+# tab bar. Run 122 tried the venue's map annotation by its label and Maestro
+# found nothing, as the traps skill already said it would. So: the list to its full detent (a
 # drag on the strip; its tap only toggles peek and half), the list to its
 # END (the last row's padding clears the dock), then the row by id. Lisbon,
 # whose seeded venue sits among its plans. 'Drop a pin' first: it is on the

@@ -489,7 +489,7 @@ function currentPost(posts: BusinessPostJson[], now: Date): BusinessPostJson | n
  */
 function whenLabel(post: BusinessPostJson, now: Date): string {
   if (post.happens_at == null) {
-    return "What's on";
+    return "What's happening";
   }
   const at = new Date(post.happens_at);
   if (at <= now) {

@@ -1171,7 +1171,8 @@ export default function MapScreen() {
   // exists to avoid.
   const ownChipOnMap = ownBusinessId != null && places.some((p) => p.id === ownBusinessId);
   // The owner's own row of city_businesses, for the dock button's label:
-  // has_live_post is what separates "say what's on tonight" from "update it".
+  // has_live_post is what separates "say what's happening tonight" from
+  // "update it".
   const ownPlace = ownBusinessId != null ? places.find((p) => p.id === ownBusinessId) : undefined;
   // The one thing a hostel owner wants from a map of their city — see who is
   // around, then say what is on tonight — gets a dock only once the listing
@@ -2093,7 +2094,7 @@ export default function MapScreen() {
   // and the constant left the card over the button's top edge at the AX
   // sizes) and the step that used to be a strip of bare map between the
   // button and the slab above it. A traveler always has the Drop-a-pin dock;
-  // a business has one only once its listing is live ("Post what's on"), and
+  // a business has one only once its listing is live ("Post what's happening"),
   // until then the card stands on the tab bar clearance itself.
   // (planListShown / planListCollapsed live up beside mapCovered: the slot
   // and the heatmap-view gate read the expanded list as cover.)
@@ -3135,7 +3136,9 @@ export default function MapScreen() {
           pointerEvents="box-none">
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel={ownPlace?.has_live_post ? 'Update tonight' : "Post what's on"}
+            accessibilityLabel={
+              ownPlace?.has_live_post ? 'Update tonight' : "Post what's happening"
+            }
             scaleTo={0.95}
             haptic="light"
             onPress={() => router.push('/business-post')}
@@ -3151,7 +3154,7 @@ export default function MapScreen() {
               tintColor={theme.onAccent}
             />
             <ThemedText type="callout" style={[styles.dockLabel, { color: theme.onAccent }]}>
-              {ownPlace?.has_live_post ? 'Update tonight' : "Post what's on"}
+              {ownPlace?.has_live_post ? 'Update tonight' : "Post what's happening"}
             </ThemedText>
           </PressableScale>
         </Animated.View>
@@ -3231,7 +3234,7 @@ export default function MapScreen() {
             accessibilityLabel={
               ownChipOnMap
                 ? 'The ringed chip is your business.'
-                : "The small chips are businesses. Tap one to see what's on."
+                : "The small chips are businesses. Tap one to see what's happening."
             }
             accessibilityHint="Dismisses this"
             scaleTo={0.96}
@@ -3255,7 +3258,7 @@ export default function MapScreen() {
               <ThemedText type="footnote">
                 {ownChipOnMap
                   ? 'The ringed chip is your business'
-                  : "Tap a business to see what's on"}
+                  : "Tap a business to see what's happening"}
               </ThemedText>
               <SymbolView
                 name={{ ios: 'xmark', android: 'close', web: 'close' }}

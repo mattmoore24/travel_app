@@ -230,7 +230,7 @@ describe('the photo a post can carry', () => {
  * function itself has is pinned by the pgTAP suite (54), and what these guard
  * is that the words actually reach the row a person reads.
  */
-describe('what is on, said out loud', () => {
+describe('what is happening, said out loud', () => {
   const list = src(LIST);
   const api = src(API);
 
@@ -257,7 +257,11 @@ describe('what is on, said out loud', () => {
     // The rows carry a day now. A heading that says tonight over a row that
     // says Friday is the heading contradicting the row underneath it.
     expect(list).not.toContain('ON TONIGHT');
-    expect(list).toContain('WHAT&apos;S ON');
+    // Founder, 2026-09-10: "what's on" becomes "what's happening" everywhere
+    // it means a business. It is a British idiom, and the reader this app is
+    // written for is not necessarily British.
+    expect(list).toContain('WHAT&apos;S HAPPENING');
+    expect(list).not.toContain('WHAT&apos;S ON');
   });
 
   it('says the time on the venue clock rather than the reader one', () => {

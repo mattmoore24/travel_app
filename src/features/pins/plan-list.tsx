@@ -412,7 +412,7 @@ export function PlanList({
                   night sitting under a heading that says tonight is a heading
                   telling a traveler something the row beneath it denies. */}
               <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionTitle}>
-                WHAT&apos;S ON
+                WHAT&apos;S HAPPENING
               </ThemedText>
               {businesses.map((place, index) => (
                 <Pressable
