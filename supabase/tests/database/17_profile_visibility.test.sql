@@ -209,10 +209,10 @@ select ok(
 
 -- A curated pin has no owner and belongs to nobody's audience.
 select pg_temp.admin();
-insert into public.pins (city_id, venue_name, category, lat, lng, intent_date,
-                         seeded, seed_note, expires_at)
-values (pg_temp.lisbon(), 'free walking tour', 'other', 38.71, -9.13,
-        current_date, true, 'meet at the arch', now() + interval '20 hours');
+insert into public.pins
+       (city_id, venue_name, category, lat, lng, intent_date, seeded, seed_note)
+     values (pg_temp.lisbon(), 'free walking tour', 'other', 38.71, -9.13,
+        current_date, true, 'meet at the arch');
 select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
 select ok(
   exists (select 1 from public.city_pins(pg_temp.lisbon()) where seeded),

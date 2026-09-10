@@ -48,11 +48,10 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select lives_ok(
   format($$
     insert into public.pins
-      (user_id, city_id, venue_name, plan, note, category, lat, lng,
-       intent_date, expires_at)
-    values ('00000000-0000-0000-0000-00000000000a', %s, 'Time Out Market',
+       (user_id, city_id, venue_name, plan, note, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000a', %s, 'Time Out Market',
             'Sunset drinks', 'by the door at 7', 'bar', 38.7067, -9.1459,
-            current_date, now() + interval '20 hours')
+            current_date)
   $$, pg_temp.lisbon()),
   'the app can insert a pin with both the place and the plan'
 );
@@ -60,11 +59,10 @@ select lives_ok(
 select throws_ok(
   format($$
     insert into public.pins
-      (user_id, city_id, venue_name, plan, category, lat, lng,
-       intent_date, expires_at)
-    values ('00000000-0000-0000-0000-00000000000a', %s, 'Time Out Market',
+       (user_id, city_id, venue_name, plan, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000a', %s, 'Time Out Market',
             repeat('x', 81), 'bar', 38.7067, -9.1459,
-            current_date, now() + interval '20 hours')
+            current_date)
   $$, pg_temp.lisbon()),
   '23514',
   null,

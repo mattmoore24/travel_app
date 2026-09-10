@@ -81,16 +81,16 @@ rollback to savepoint hello_far_ahead;
 
 -- GUEST MODE: THE MAP ------------------------------------------------------------
 select pg_temp.admin();
-insert into public.pins (user_id, city_id, venue_name, category, lat, lng,
-                         intent_date, expires_at, seeded, seed_note)
-values (null, pg_temp.lisbon(), 'LX Factory market', 'other', 38.7025, -9.1782,
-        current_date, now() + interval '48 hours', true, 'Meet at the main gate');
+insert into public.pins
+       (user_id, city_id, venue_name, category, lat, lng, intent_date, seeded, seed_note)
+     values (null, pg_temp.lisbon(), 'LX Factory market', 'other', 38.7025, -9.1782,
+        current_date, true, 'Meet at the main gate');
 select pg_temp.login('00000000-0000-0000-0000-00000000000b');
-insert into public.pins (user_id, city_id, venue_name, category, lat, lng,
-                         intent_date, expires_at)
-values ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(),
+insert into public.pins
+       (user_id, city_id, venue_name, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(),
         'Miradouro Santa Catarina', 'monument', 38.7089, -9.1487,
-        current_date, now() + interval '30 hours');
+        current_date);
 
 select pg_temp.guest();
 select is(

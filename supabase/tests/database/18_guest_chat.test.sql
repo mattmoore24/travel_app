@@ -113,9 +113,8 @@ insert into public.launch_cities (city_id, active, timezone)
 select pg_temp.login(pg_temp.gus());
 select throws_ok(
   format($$ insert into public.pins
-              (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
-            values (%L, %s, 'a bar', 'bar', 38.72, -9.14, current_date,
-                    now() + interval '20 hours') $$,
+       (user_id, city_id, venue_name, category, lat, lng, intent_date)
+     values (%L, %s, 'a bar', 'bar', 38.72, -9.14, current_date) $$,
          pg_temp.gus(), pg_temp.lisbon()),
   '23514', null,
   'and drops no pins');

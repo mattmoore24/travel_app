@@ -13,7 +13,7 @@
 --     asserted column by column so a later migration adding a user reference
 --     fails here rather than in production.
 begin;
-select plan(41);
+select plan(42);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -78,11 +78,10 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select lives_ok(
   format($$
     insert into public.pins
-      (user_id, city_id, venue_name, plan, category, lat, lng,
-       intent_date, intent_time, expires_at)
-    values ('00000000-0000-0000-0000-00000000000a', %s, 'Time Out Market',
+       (user_id, city_id, venue_name, plan, category, lat, lng, intent_date, intent_time)
+     values ('00000000-0000-0000-0000-00000000000a', %s, 'Time Out Market',
             'Sunset drinks', 'bar', 38.7067, -9.1459,
-            current_date + 1, time '09:00', now() + interval '48 hours')
+            current_date + 1, time '09:00')
   $$, pg_temp.lisbon()),
   'a plan can carry an hour'
 );
@@ -90,11 +89,10 @@ select lives_ok(
 select lives_ok(
   format($$
     insert into public.pins
-      (user_id, city_id, venue_name, plan, category, lat, lng,
-       intent_date, expires_at)
-    values ('00000000-0000-0000-0000-00000000000a', %s, 'Pensão Amor',
+       (user_id, city_id, venue_name, plan, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000a', %s, 'Pensão Amor',
             'Fado, sometime', 'bar', 38.7071, -9.1458,
-            current_date, now() + interval '20 hours')
+            current_date)
   $$, pg_temp.lisbon()),
   'and a plan with no hour is still a plan'
 );
@@ -110,11 +108,10 @@ select lives_ok(
 select lives_ok(
   format($$
     insert into public.pins
-      (user_id, city_id, venue_name, plan, category, lat, lng,
-       intent_date, intent_time, expires_at)
-    values ('00000000-0000-0000-0000-00000000000a', %s, 'Musicbox Lisboa',
+       (user_id, city_id, venue_name, plan, category, lat, lng, intent_date, intent_time)
+     values ('00000000-0000-0000-0000-00000000000a', %s, 'Musicbox Lisboa',
             'Late one', 'club', 38.7069, -9.1454,
-            current_date + 2, time '23:00', now() + interval '30 hours')
+            current_date + 2, time '23:00')
   $$, pg_temp.lisbon()),
   'a plan past the requested expiry is taken, not refused'
 );
@@ -174,11 +171,10 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 select lives_ok(
   format($$
     insert into public.pins
-      (user_id, city_id, venue_name, plan, category, lat, lng,
-       intent_date, expires_at)
-    values ('00000000-0000-0000-0000-00000000000b', %s, 'Park Rooftop Bar',
+       (user_id, city_id, venue_name, plan, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000b', %s, 'Park Rooftop Bar',
             'Sunset', 'bar', 38.7112, -9.1442,
-            current_date, now() + interval '20 hours')
+            current_date)
   $$, pg_temp.lisbon()),
   'a plan can be dropped on a listed business'
 );
@@ -193,11 +189,10 @@ select is(
 select lives_ok(
   format($$
     insert into public.pins
-      (user_id, city_id, venue_name, plan, category, lat, lng,
-       intent_date, expires_at)
-    values ('00000000-0000-0000-0000-00000000000b', %s, 'The bench outside',
+       (user_id, city_id, venue_name, plan, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000b', %s, 'The bench outside',
             'Waiting there', 'other', 38.7112, -9.1442,
-            current_date, now() + interval '20 hours')
+            current_date)
   $$, pg_temp.lisbon()),
   'a plan at the same corner under another name is still a plan'
 );
@@ -212,12 +207,11 @@ select is(
 select throws_ok(
   format($$
     insert into public.pins
-      (user_id, city_id, venue_name, plan, business_id, category, lat, lng,
-       intent_date, expires_at)
-    values ('00000000-0000-0000-0000-00000000000b', %s, 'Somewhere',
+       (user_id, city_id, venue_name, plan, business_id, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000b', %s, 'Somewhere',
             'Nope', (select id from public.businesses where name = 'Brick Bar'),
             'bar', 38.7067, -9.1459,
-            current_date, now() + interval '20 hours')
+            current_date)
   $$, pg_temp.lisbon()),
   '23514',
   null,
@@ -268,12 +262,11 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 -- discovery_pair_ok. And one lonely plan in Bangkok, so the k floor has a 1
 -- to refuse rather than a 0.
 insert into public.pins
-  (user_id, city_id, venue_name, plan, category, lat, lng, intent_date, expires_at)
-values
-  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Mercado da Ribeira',
-   'Lunch', 'restaurant', 38.7067, -9.1455, current_date, now() + interval '20 hours'),
+       (user_id, city_id, venue_name, plan, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Mercado da Ribeira',
+   'Lunch', 'restaurant', 38.7067, -9.1455, current_date),
   ('00000000-0000-0000-0000-00000000000a', pg_temp.bangkok(), 'Yaowarat walk',
-   'Street food', 'restaurant', 13.7398, 100.5091, current_date, now() + interval '20 hours');
+   'Street food', 'restaurant', 13.7398, 100.5091, current_date);
 
 select is(
   (select pin_count from public.featured_cities() where city_id = pg_temp.lisbon()),
@@ -332,24 +325,23 @@ update public.profiles set visible_to = 'everyone'
 
 select pg_temp.admin();
 insert into public.pins
-  (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at, seeded)
-values
-  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Cell A one', 'bar',
-   38.7367, -9.1459, pg_temp.city_today(), now() + interval '1 hour', false),
+       (user_id, city_id, venue_name, category, lat, lng, intent_date, seeded)
+     values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Cell A one', 'bar',
+   38.7367, -9.1459, pg_temp.city_today(), false),
   ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), 'Cell A two', 'bar',
-   38.7368, -9.1458, pg_temp.city_today(), now() + interval '1 hour', false),
+   38.7368, -9.1458, pg_temp.city_today(), false),
   ('00000000-0000-0000-0000-00000000000c', pg_temp.lisbon(), 'Cell A three', 'bar',
-   38.7369, -9.1457, pg_temp.city_today(), now() + interval '1 hour', false),
+   38.7369, -9.1457, pg_temp.city_today(), false),
   ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Cell B one', 'bar',
-   38.7467, -9.1459, pg_temp.city_today(), now() + interval '1 hour', false),
+   38.7467, -9.1459, pg_temp.city_today(), false),
   ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), 'Cell B two', 'bar',
-   38.7468, -9.1458, pg_temp.city_today(), now() + interval '1 hour', false),
+   38.7468, -9.1458, pg_temp.city_today(), false),
   (null, pg_temp.lisbon(), 'Cell C one', 'bar',
-   38.7567, -9.1459, pg_temp.city_today(), now() + interval '1 hour', true),
+   38.7567, -9.1459, pg_temp.city_today(), true),
   (null, pg_temp.lisbon(), 'Cell C two', 'bar',
-   38.7568, -9.1458, pg_temp.city_today(), now() + interval '1 hour', true),
+   38.7568, -9.1458, pg_temp.city_today(), true),
   (null, pg_temp.lisbon(), 'Cell C three', 'bar',
-   38.7569, -9.1457, pg_temp.city_today(), now() + interval '1 hour', true);
+   38.7569, -9.1457, pg_temp.city_today(), true);
 
 -- Pins are immutable to the app on purpose, so only the suite can age one.
 update public.pins set expires_at = now() - interval '1 minute'
@@ -520,8 +512,16 @@ select is(
 
 -- The same rule, through the other door. A behaviour that only holds on one
 -- of two write paths is not a behaviour, so the definer gets the same
--- assertion the plain insert got above: the plan is taken and the pin is
--- stretched to cover it.
+-- assertion the plain insert got above: the plan's hour is taken.
+--
+-- AND THE PIN IS NOT STRETCHED TO COVER IT. Its predecessor asserted
+-- `expires_at >= plan_ends_at` - the floor from the 2026-09-05 model, which
+-- the founder overruled five days later: "I think people should be able to
+-- have a pin active until a date before the actual plans as sometimes people
+-- may be trying to plan something in advance and not want people to be able
+-- to message about it all the way up until the event." So a pin that comes
+-- down BEFORE its own plan is now the ordinary case this asserts, rather
+-- than the one the trigger used to refuse.
 select lives_ok(
   format($$
     select public.post_joinable_pin(
@@ -532,9 +532,14 @@ select lives_ok(
   'the definer takes it too'
 );
 select ok(
-  (select expires_at >= plan_ends_at
+  (select expires_at < plan_ends_at
      from public.pins where venue_name = 'Musicbox Lisboa'),
-  'and extends it the same way'
+  'and lets the pin come down before the plan it advertises'
+);
+select ok(
+  (select take_down_on < intent_date
+     from public.pins where venue_name = 'Musicbox Lisboa'),
+  'the day says the same thing the instant does'
 );
 
 -- An over-the-air bundle lags a deploy, so the previous signature has to keep

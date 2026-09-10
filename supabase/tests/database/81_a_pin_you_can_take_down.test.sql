@@ -63,9 +63,9 @@ values ('00000000-0000-0000-0000-0000000000f1',
 
 select pg_temp.login('00000000-0000-0000-0000-0000000000f1');
 
-insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
+insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date)
 select '00000000-0000-0000-0000-0000000000f1', c.id, 'A bar with a door',
-       'bar', c.lat + 0.001, c.lng + 0.001, current_date, now() + interval '20 hours'
+       'bar', c.lat + 0.001, c.lng + 0.001, current_date
 from public.cities c
 join public.launch_cities lc on lc.city_id = c.id
 limit 1;

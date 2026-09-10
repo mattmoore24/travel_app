@@ -1,7 +1,7 @@
 -- Pins: 72h hard expiry (rule 3), a pin in any city (20260904120000), immutability,
 -- k-anonymous heatmap (rule 6), seeded pins, pin-source requests.
 begin;
-select plan(34);
+select plan(35);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'alice@example.com'),
@@ -39,10 +39,9 @@ select is(
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select lives_ok(
   $$ insert into public.pins
-       (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
+       (user_id, city_id, venue_name, category, lat, lng, intent_date)
      values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(),
-             'Pensão Amor', 'bar', 38.7071, -9.1458, current_date,
-             now() + interval '24 hours') $$,
+             'Pensão Amor', 'bar', 38.7071, -9.1458, current_date) $$,
   'pin creation works inside the geofence'
 );
 
@@ -50,10 +49,9 @@ select lives_ok(
 -- pin dropped there while browsing Lisbon is saved and becomes Porto's.
 select lives_ok(
   $$ insert into public.pins
-       (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
+       (user_id, city_id, venue_name, category, lat, lng, intent_date)
      values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(),
-             'Somewhere in Porto', 'bar', 41.1496, -8.6109, current_date,
-             now() + interval '24 hours') $$,
+             'Somewhere in Porto', 'bar', 41.1496, -8.6109, current_date) $$,
   'a pin far outside the browsed city is saved'
 );
 select is(
@@ -67,24 +65,39 @@ reset role;
 delete from public.pins where venue_name = 'Somewhere in Porto';
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 
--- HARD RULE 3, IN ITS 2026-09-05 FORM: a pin lives at least until its own
--- plan is over, however far ahead that is, and at most thirty days longer.
--- The flat 72-hour CHECK it replaced is gone, so an 80-hour pin is now
--- ordinary and this assertion had to move to the bound that still exists.
+-- HARD RULE 3, IN ITS 2026-09-10 FORM: the traveler picks the DAY a pin
+-- comes down, up to a year, and the instant is derived from it by
+-- validate_pin. The +31-day hold ceiling this assertion used to name was
+-- part of the 2026-09-05 model the founder overruled five days later, and
+-- the flat 72-hour CHECK before that is long gone.
 --
--- The message is named, not just the SQLSTATE. Its predecessor passed for the
--- wrong reason for a whole migration: throws_ok with a null message asserts
--- only 23514, and an unrelated check_violation raised earlier in the trigger
--- satisfied it while the ceiling it was named after had already been dropped.
+-- So the bound that exists is no longer a number a client can bump into by
+-- naming a timestamp: a client CANNOT NAME ONE AT ALL. That is a stronger
+-- statement than the one it replaces, and it is the one worth asserting,
+-- because it is what makes the ceiling in the trigger unbypassable rather
+-- than merely enforced on the paths that happen to go through the RPC.
 select throws_ok(
   $$ insert into public.pins
        (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
      values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(),
              'Forever pin', 'bar', 38.71, -9.14, current_date,
              now() + interval '40 days') $$,
+  '42501',
+  null,
+  'a client cannot state a pin''s expiry at all'
+);
+
+-- And the day itself is bounded, through the door a client does have. A year
+-- and a bit out is refused by the trigger's own ceiling rather than by the
+-- CHECK underneath it, so the error names something a person could act on.
+select throws_ok(
+  $$ select public.post_joinable_pin(
+       pg_temp.lisbon(), 'A year and a half away', null, null, 'bar',
+       38.71, -9.14, current_date + 1, null, null, null, false, null, null,
+       false, current_date + 500) $$,
   '23514',
-  'a pin may be held at most thirty days past its plan',
-  'a pin cannot be held forever past its plan'
+  'a pin can stay up for a year at most',
+  'the take-down day is capped at a year'
 );
 
 -- Pins are immutable for clients.
@@ -136,12 +149,12 @@ select is((select count(*)::int from public.pins), 0, 'no residue after sweep');
 
 -- Heatmap k-threshold (k=3 default): 2 distinct pinners -> nothing.
 reset role;
-insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
-values
-  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Spot A', 'bar',
-   38.7101, -9.1401, current_date, now() + interval '24 hours'),
+insert into public.pins
+       (user_id, city_id, venue_name, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Spot A', 'bar',
+   38.7101, -9.1401, current_date),
   ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), 'Spot B', 'bar',
-   38.7102, -9.1402, current_date, now() + interval '24 hours');
+   38.7102, -9.1402, current_date);
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select is(
@@ -152,10 +165,10 @@ select is(
 
 -- Third distinct pinner in the same ~550m cell -> heat appears.
 reset role;
-insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
-values
-  ('00000000-0000-0000-0000-00000000000c', pg_temp.lisbon(), 'Spot C', 'bar',
-   38.7103, -9.1403, current_date, now() + interval '24 hours');
+insert into public.pins
+       (user_id, city_id, venue_name, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000c', pg_temp.lisbon(), 'Spot C', 'bar',
+   38.7103, -9.1403, current_date);
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select results_eq(
@@ -184,13 +197,12 @@ select is(
 -- decision D7: a heat cell says "people are planning here", and admin rows
 -- say nothing of the kind), client can't create.
 reset role;
-insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date,
-                         expires_at, seeded, seed_note)
-values
-  (null, pg_temp.lisbon(), 'Hostel pub crawl', 'bar', 38.7104, -9.1404,
-   current_date, now() + interval '24 hours', true, 'Meets 9pm at the LX hostel'),
+insert into public.pins
+       (user_id, city_id, venue_name, category, lat, lng, intent_date, seeded, seed_note)
+     values (null, pg_temp.lisbon(), 'Hostel pub crawl', 'bar', 38.7104, -9.1404,
+   current_date, true, 'Meets 9pm at the LX hostel'),
   (null, pg_temp.lisbon(), 'Free walking tour', 'monument', 38.7105, -9.1405,
-   current_date, now() + interval '24 hours', true, null);
+   current_date, true, null);
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select is(
@@ -207,10 +219,10 @@ select is(
   'seeded pins are on the map but never inflate the heat count (D7)'
 );
 select throws_ok(
-  $$ insert into public.pins (user_id, city_id, venue_name, category, lat, lng,
-                              intent_date, expires_at, seeded)
+  $$ insert into public.pins
+       (user_id, city_id, venue_name, category, lat, lng, intent_date, seeded)
      values (null, pg_temp.lisbon(), 'Fake event', 'bar', 38.71, -9.14,
-             current_date, now() + interval '24 hours', true) $$,
+             current_date, true) $$,
   '42501',
   null,
   'clients cannot create seeded pins'
@@ -253,14 +265,14 @@ delete from public.pins where venue_name like 'Seed only %';
 -- photographed heat. This assertion fails against the pre-20260823010000
 -- functions.
 reset role;
-insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
-values
-  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Mixed A', 'bar',
-   38.7601, -9.1601, current_date, now() + interval '24 hours'),
+insert into public.pins
+       (user_id, city_id, venue_name, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Mixed A', 'bar',
+   38.7601, -9.1601, current_date),
   ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), 'Mixed B', 'museum',
-   38.7602, -9.1602, current_date, now() + interval '24 hours'),
+   38.7602, -9.1602, current_date),
   ('00000000-0000-0000-0000-00000000000d', pg_temp.lisbon(), 'Mixed C', 'hike',
-   38.7603, -9.1603, current_date, now() + interval '24 hours');
+   38.7603, -9.1603, current_date);
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select is(
@@ -293,14 +305,14 @@ select is(
 
 -- A 3-pinner cell renders only for viewers who can see all three.
 reset role;
-insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
-values
-  ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Cell2 A', 'restaurant',
-   38.7501, -9.1701, current_date, now() + interval '24 hours'),
+insert into public.pins
+       (user_id, city_id, venue_name, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000a', pg_temp.lisbon(), 'Cell2 A', 'restaurant',
+   38.7501, -9.1701, current_date),
   ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(), 'Cell2 B', 'restaurant',
-   38.7502, -9.1702, current_date, now() + interval '24 hours'),
+   38.7502, -9.1702, current_date),
   ('00000000-0000-0000-0000-00000000000d', pg_temp.lisbon(), 'Cell2 D', 'restaurant',
-   38.7503, -9.1703, current_date, now() + interval '24 hours');
+   38.7503, -9.1703, current_date);
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select is(
@@ -324,10 +336,9 @@ delete from public.blocks;
 select pg_temp.login('00000000-0000-0000-0000-00000000000d');
 select throws_ok(
   $$ insert into public.pins (user_id, city_id, venue_name, category, lat, lng,
-                              intent_date, expires_at)
+                              intent_date)
      select '00000000-0000-0000-0000-00000000000d', pg_temp.lisbon(),
-            'Cap ' || i, 'bar', 38.7401, -9.1601, current_date,
-            now() + interval '24 hours'
+            'Cap ' || i, 'bar', 38.7401, -9.1601, current_date
      from generate_series(1, 8) i $$,
   '23514',
   null,
@@ -393,10 +404,10 @@ select throws_ok(
 -- still on screen.
 reset role;
 delete from public.pins;
-insert into public.pins (user_id, city_id, venue_name, category, lat, lng, intent_date,
-                         expires_at, seeded, seed_note)
-values (null, pg_temp.lisbon(), 'Time Out Market', 'restaurant', 38.7067, -9.1459,
-        current_date - 1, now() + interval '40 hours', true, 'yesterday');
+insert into public.pins
+       (user_id, city_id, venue_name, category, lat, lng, intent_date, seeded, seed_note)
+     values (null, pg_temp.lisbon(), 'Time Out Market', 'restaurant', 38.7067, -9.1459,
+        current_date - 1, true, 'yesterday');
 
 select ok(
   public.seed_launch_pins() > 0,
@@ -427,11 +438,9 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000d');
 select throws_ok(
   format($$
     insert into public.pins
-      (user_id, city_id, venue_name, category, lat, lng, intent_date,
-       created_at, expires_at)
-    values ('00000000-0000-0000-0000-00000000000d', %s, 'Forever bar', 'bar',
-            38.72, -9.14, current_date, now() + interval '30 days',
-            now() + interval '31 days')
+       (user_id, city_id, venue_name, category, lat, lng, intent_date, created_at)
+     values ('00000000-0000-0000-0000-00000000000d', %s, 'Forever bar', 'bar',
+            38.72, -9.14, current_date, now() + interval '30 days')
   $$, pg_temp.lisbon()),
   '42501',
   'permission denied for table pins',
@@ -442,9 +451,9 @@ select throws_ok(
 select lives_ok(
   format($$
     insert into public.pins
-      (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
-    values ('00000000-0000-0000-0000-00000000000d', %s, 'Ordinary bar', 'bar',
-            38.72, -9.14, current_date, now() + interval '20 hours')
+       (user_id, city_id, venue_name, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000d', %s, 'Ordinary bar', 'bar',
+            38.72, -9.14, current_date)
   $$, pg_temp.lisbon()),
   'while an ordinary pin is unaffected'
 );

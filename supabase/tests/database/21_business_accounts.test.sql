@@ -388,10 +388,11 @@ select throws_ok(
   'a business posts no trips'
 );
 select throws_ok(
-  $$ insert into public.pins (user_id, city_id, lat, lng, category, note, intent_date, expires_at)
+  $$ insert into public.pins
+       (user_id, city_id, lat, lng, category, note, intent_date)
      values ('00000000-0000-0000-0000-0000000000b1',
              (select id from public.cities where name = 'Lisbon' and country_code = 'PT'),
-             38.71, -9.14, 'bar', 'come to us', current_date + 1, now() + interval '2 days') $$,
+             38.71, -9.14, 'bar', 'come to us', current_date + 1) $$,
   '42501',
   null,
   'and drops no pins, so it never counts toward the heatmap'

@@ -116,10 +116,11 @@ select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 select throws_ok(
   $$ select public.post_joinable_pin(
        pg_temp.lisbon(), 'Forever pin', null, null, 'bar',
-       38.7112, -9.1442, current_date, now() + interval '40 days') $$,
+       38.7112, -9.1442, current_date, null, null, null, false, null, null,
+       false, current_date + 500) $$,
   '23514',
-  'a pin may be held at most thirty days past its plan',
-  'the hold ceiling refuses a pin through the definer'
+  'a pin can stay up for a year at most',
+  'the year ceiling refuses a pin through the definer'
 );
 select throws_ok(
   $$ select public.post_joinable_pin(
@@ -182,10 +183,9 @@ select is(
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
 select pg_temp.admin();
 insert into public.pins
-  (user_id, city_id, venue_name, category, lat, lng, intent_date, expires_at)
-values ('00000000-0000-0000-0000-00000000000c', pg_temp.lisbon(),
-        'Quiet pin', 'bar', 38.71, -9.14, current_date,
-        now() + interval '24 hours');
+       (user_id, city_id, venue_name, category, lat, lng, intent_date)
+     values ('00000000-0000-0000-0000-00000000000c', pg_temp.lisbon(),
+        'Quiet pin', 'bar', 38.71, -9.14, current_date);
 select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 select throws_ok(
   $$ select public.join_pin_chat(pg_temp.pin_named('Quiet pin')) $$,

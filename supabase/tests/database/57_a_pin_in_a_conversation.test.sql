@@ -103,10 +103,10 @@ select lives_ok(
 );
 select lives_ok(
   $$ insert into public.pins
-       (user_id, city_id, venue_name, plan, category, lat, lng, intent_date, expires_at)
+       (user_id, city_id, venue_name, plan, category, lat, lng, intent_date)
      values ('00000000-0000-0000-0000-0000000057a1', pg_temp.lisbon(),
              'Park Bar', 'Sunset drinks', 'bar', 38.7160, -9.1450,
-             current_date, now() + interval '20 hours') $$,
+             current_date) $$,
   'and drops a pin of their own'
 );
 

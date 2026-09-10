@@ -112,9 +112,10 @@ select throws_ok(
 -- Straight at the table, with the anon key, which is what makes the client's
 -- hidden button not a rule.
 select throws_ok(
-  $$ insert into public.pins (user_id, city_id, lat, lng, note, expires_at)
+  $$ insert into public.pins
+       (user_id, city_id, lat, lng, note)
      values ('00000000-0000-0000-0000-0000000000a8', pg_temp.lisbon(),
-             38.7108, -9.1400, 'Sneaking one in', now() + interval '1 hour') $$,
+             38.7108, -9.1400, 'Sneaking one in') $$,
   '42501',
   'a business account cannot drop a pin',
   'and cannot reach around the RPC to the pins table'

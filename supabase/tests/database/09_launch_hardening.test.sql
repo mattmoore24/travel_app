@@ -130,10 +130,9 @@ create function pg_temp.pin_batch(n int) returns void language plpgsql as $$
 begin
   perform pg_temp.login('00000000-0000-0000-0000-00000000000b');
   insert into public.pins (user_id, city_id, venue_name, category, lat, lng,
-                           intent_date, expires_at)
+                           intent_date)
   select '00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(),
-         'venue ' || i, 'bar', 38.72, -9.14, current_date,
-         now() + interval '1 hour'
+         'venue ' || i, 'bar', 38.72, -9.14, current_date
   from generate_series(1, n) i;
   perform pg_temp.admin();
   update public.pins set expires_at = now() - interval '1 second'
@@ -145,11 +144,10 @@ select pg_temp.pin_batch(10);
 select pg_temp.pin_batch(10);
 select pg_temp.login('00000000-0000-0000-0000-00000000000b');
 select throws_ok(
-  $$ insert into public.pins (user_id, city_id, venue_name, category, lat, lng,
-                              intent_date, expires_at)
+  $$ insert into public.pins
+       (user_id, city_id, venue_name, category, lat, lng, intent_date)
      values ('00000000-0000-0000-0000-00000000000b', pg_temp.lisbon(),
-             'venue 31', 'bar', 38.72, -9.14, current_date,
-             now() + interval '1 hour') $$,
+             'venue 31', 'bar', 38.72, -9.14, current_date) $$,
   'daily pin limit reached',
   'pin insert churn is capped per day even across expiry cycles'
 );
