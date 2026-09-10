@@ -112,6 +112,14 @@ const CAPTIONS = {
     'How people come along',
     'Anyone can join, or message me first. Above the fields, where it is read.',
   ],
+  '15c-pin-when-calendar': [
+    'When is the plan',
+    'A day from the calendar, in a sheet of its own. Today to a year out.',
+  ],
+  '15d-pin-comes-down-before-plan': [
+    'Comes down before the plan',
+    'Legal, and said once under the row. Nothing turns red and nothing is blocked.',
+  ],
   '18b-who-can-see-you': ['Who sees you', 'Both directions at once, and what a badge unlocks.'],
   '33-priorities-empty': ['Top priorities, empty', 'The section, before anything is in it.'],
   '34-priorities-editor': ['Adding a priority', 'The editor the onboarding step hands over to.'],
