@@ -255,7 +255,9 @@ appId: com.mattmoore.samewhere
 # Cells are addressed by INDEX in the calendar's own order, because a cell's
 # spoken label is the run's date and a flow cannot type one: the grid starts
 # at the first of the city's current month, so cell 40 is at least nine days
-# past any today and cell 35 is five days before it. Both sit inside the
+# past any today and cell 35 is five days before it. The label is lib/locale's
+# spokenDate under LOCALE 'en', which is "Friday, September 18" (month before
+# day): run 132 lost the tour twice to a pattern written day-first. Both sit inside the
 # first two months, which the sheet shows without scrolling. The plan goes
 # on the later day, the take-down on the earlier one.
 - tapOn:
@@ -265,7 +267,7 @@ appId: com.mattmoore.samewhere
     timeout: 10000
 - takeScreenshot: 15c-pin-when-calendar
 - tapOn:
-    text: '[A-Z][a-z]+day, [0-9]+ [A-Z][a-z]+'
+    text: '[A-Z][a-z]+day, [A-Z][a-z]+ [0-9]+'
     index: 40
 - waitForAnimationToEnd:
     timeout: 2000
@@ -275,7 +277,7 @@ appId: com.mattmoore.samewhere
     visible: 'When does it come down?'
     timeout: 10000
 - tapOn:
-    text: '[A-Z][a-z]+day, [0-9]+ [A-Z][a-z]+'
+    text: '[A-Z][a-z]+day, [A-Z][a-z]+ [0-9]+'
     index: 35
 - waitForAnimationToEnd:
     timeout: 2000
