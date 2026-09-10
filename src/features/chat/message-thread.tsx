@@ -591,7 +591,12 @@ function BubbleBody({
           until a verdict lands — so keying off the path drew nothing at all
           for everybody but the sender, which is the empty bubble people were
           looking at. */}
-      {checking ? (
+      {message.localUri ? (
+        // Still on this phone. The same square the real photo will occupy,
+        // drawn from the file that was picked, so the thread does not sit
+        // empty for the length of the upload. Nothing to open yet.
+        <ChatPhoto uri={message.localUri} testID={`photo-${message.id}`} />
+      ) : checking ? (
         <PhotoCheck url={imageUrl ?? null} style={styles.photo} />
       ) : message.image_path ? (
         imageUrl ? (
@@ -691,13 +696,12 @@ function Bubble({
   /** Tapping that face. Absent in a one-to-one chat, where it is your own. */
   onOpenSender?: () => void;
   /**
-   * Say "Sent" under this one.
-   *
-   * True for the NEWEST of your own messages that has actually landed, and
-   * nothing else — which is the rule every messaging app follows, and the
-   * reason it works: a column of "Sent" down the side of a thread carries no
-   * information, while one under the last thing you wrote answers the only
-   * question you were asking.
+   * Say "Sent" under this one: any message of your own that the server has
+   * acknowledged. It used to be only the newest, on the iMessage argument
+   * that a column of "Sent" carries no information; the founder asked for
+   * the WhatsApp reading on 2026-09-10 ("every message says ... 'Sent'"),
+   * and a photo still being checked is not acknowledged yet, so it says
+   * Sending instead (see `status` in the body).
    */
   delivered?: boolean;
   /**
@@ -720,6 +724,19 @@ function Bubble({
   // the bubble carries an accessibilityLabel and iOS therefore collapses
   // everything inside it into a single accessibility element.
   const { data: photoUrl } = useChatPhotoUrl(message.image_path);
+  // The ladder's one word, decided once. A photo the server is still checking
+  // says Sending: from where the sender sits that is exactly what it is doing
+  // (founder, 2026-09-10: "this would include while a photo is being reviewed
+  // for explicit content"). Only your own rows: the other person's pending
+  // photo shows its checking tile and no ladder, as before.
+  const status: 'failed' | 'sending' | 'sent' | null =
+    message.local === 'failed'
+      ? 'failed'
+      : message.local === 'sending' || (mine && message.moderation_status === 'pending')
+        ? 'sending'
+        : delivered
+          ? 'sent'
+          : null;
   // Not while the photo is still being checked: nothing is drawn then but a
   // review tile, and an action that opens a photo nobody can see yet is an
   // action that lies about what it does.
@@ -863,44 +880,45 @@ function Bubble({
           onToggle={onToggleReaction}
           onOpenReactors={onOpenReactors}
         />
-        {/* The delivery ladder, in full: Sending, then Sent, or Not sent with
-            the way out. "Sending" is honest about the pause the first-message
-            moderation check creates; "Sent" is the confirmation the founder
-            asked for, and it is worth having precisely because this app makes
-            people wait more than most. A failure keeps the words and offers
-            the retry rather than deleting the sentence.
-
-            A photo still being checked gets neither: it has not been
-            delivered to anybody yet, and its own tile is already saying so. */}
-        {message.local || (delivered && message.moderation_status !== 'pending') ? (
+        {/* The delivery ladder, in full, under EVERY message of your own:
+            Sending, then Sent, or Not sent with the way out. Founder,
+            2026-09-10: "every message says 'Sending' while it is sending
+            (this would include while a photo is being reviewed for explicit
+            content) and then 'Sent' when it has been sent in the chat." So a
+            photo still being checked says Sending too, and Sent stands under
+            each landed message rather than only the newest, which is the
+            WhatsApp reading of this ladder rather than the iMessage one. A
+            failure keeps the words and offers the retry rather than deleting
+            the sentence. */}
+        {status ? (
           <PressableScale
-            accessibilityRole={message.local === 'failed' ? 'button' : 'text'}
+            accessibilityRole={status === 'failed' ? 'button' : 'text'}
             accessibilityLabel={
-              message.local === 'failed'
+              status === 'failed'
                 ? 'Not sent. Tap to try again.'
-                : message.local === 'sending'
+                : status === 'sending'
                   ? 'Sending'
                   : 'Sent'
             }
             haptic="none"
-            scaleTo={message.local === 'failed' ? 0.96 : 1}
+            scaleTo={status === 'failed' ? 0.96 : 1}
             // The only route back from a failed send, and it was a 16pt
             // strip of caption wedged between the bubble and the reaction
             // row: a miss landed on the bubble and opened the long-press
             // menu instead. The line stays small because it is a status, not
             // a button — the target around it does not.
-            hitSlop={message.local === 'failed' ? { top: 8, bottom: 14, left: 16, right: 8 } : 0}
-            onPress={message.local === 'failed' ? onRetry : undefined}
+            hitSlop={status === 'failed' ? { top: 8, bottom: 14, left: 16, right: 8 } : 0}
+            onPress={status === 'failed' ? onRetry : undefined}
             style={styles.statusRow}>
             {/* footnote, not caption: 13/400 reads as a quiet status, where
                 caption's 11pt-semibold-letterspaced voice is a section
                 heading and shouted louder than the message above it. */}
             <ThemedText
               type="footnote"
-              themeColor={message.local === 'failed' ? 'danger' : 'textSecondary'}>
-              {message.local === 'failed'
+              themeColor={status === 'failed' ? 'danger' : 'textSecondary'}>
+              {status === 'failed'
                 ? 'Not sent. Tap to try again.'
-                : message.local === 'sending'
+                : status === 'sending'
                   ? 'Sending…'
                   : 'Sent'}
             </ThemedText>
@@ -1442,10 +1460,6 @@ export function MessageThread({
   }
 
   const mineFor = (m: MessageRow) => m.sender_id === ownUserId;
-  // The newest of your own messages that actually landed. `messages` is
-  // newest-first (the list is inverted), so the first match is it.
-  const deliveredId =
-    messages.find((m) => m.sender_id === ownUserId && m.local == null)?.id ?? null;
   const myEmojiOn = (messageId: string) =>
     (byMessage.get(messageId) ?? []).find((r) => r.reacted_by_me)?.emoji ?? null;
   /**
@@ -1662,7 +1676,11 @@ export function MessageThread({
                       : undefined
                   }
                   onRetry={item.local === 'failed' && onRetry ? () => onRetry(item) : undefined}
-                  delivered={item.id === deliveredId}
+                  // Under EVERY landed message of your own, not only the
+                  // newest (founder, 2026-09-10). A row the server has not
+                  // acknowledged says Sending instead, and a photo it is
+                  // still checking counts as not acknowledged.
+                  delivered={mine && item.local == null}
                   lifted={menu?.message.id === item.id}
                   onOpenPhoto={(uri) => setViewingPhoto({ uri, label: photoLabelFor(item) })}
                   onOpenMenu={

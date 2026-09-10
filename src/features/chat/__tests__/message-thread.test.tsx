@@ -522,3 +522,31 @@ describe('who reacted', () => {
     expect(screen.queryByText('Who reacted')).toBeNull();
   });
 });
+
+describe('the ladder stands under every message of your own', () => {
+  it('says Sent twice for two landed messages', () => {
+    renderThread({
+      messages: [
+        message({ id: 'm2', sender_id: 'me', body: 'And again' }),
+        message({ id: 'm1', sender_id: 'me', body: 'On my way' }),
+      ],
+    });
+    expect(screen.getAllByText('Sent')).toHaveLength(2);
+  });
+
+  it('says Sending while your photo is still being checked', () => {
+    renderThread({
+      messages: [
+        message({
+          id: 'p1',
+          sender_id: 'me',
+          body: null,
+          image_path: 'me/photo.jpg',
+          moderation_status: 'pending',
+        }),
+      ],
+    });
+    expect(screen.getByText('Sending…')).toBeTruthy();
+    expect(screen.queryByText('Sent')).toBeNull();
+  });
+});

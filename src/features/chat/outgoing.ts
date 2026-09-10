@@ -9,8 +9,16 @@ import type { MessageRow, RoomMessageRow } from '@/lib/database.types';
  * first message between two people goes through moderation, so "nothing
  * happened yet" is the NORMAL case here rather than the rare one.
  */
-export type ThreadMessage = MessageRow & { local?: 'sending' | 'failed' };
-export type RoomThreadMessage = RoomMessageRow & { local?: 'sending' | 'failed' };
+export type ThreadMessage = MessageRow & {
+  local?: 'sending' | 'failed';
+  /** A photo still on this phone: drawn from here until the upload lands. */
+  localUri?: string;
+};
+export type RoomThreadMessage = RoomMessageRow & {
+  local?: 'sending' | 'failed';
+  /** A photo still on this phone: drawn from here until the upload lands. */
+  localUri?: string;
+};
 
 /**
  * The prefix that marks a row the server has never seen. Real ids are uuids,
@@ -83,6 +91,59 @@ export function optimisticRoomMessage(input: {
     // A person typed this; 'joined' lines are only ever written server-side.
     kind: 'said',
     local: 'sending',
+  };
+}
+
+/**
+ * A photo, the moment it is picked, before the upload has even started.
+ *
+ * It used to take no optimistic path at all ("it has an upload to finish
+ * before there is anything to show"), so for the seconds of the upload the
+ * thread had nothing in it and then a checking tile appeared from nowhere.
+ * Founder, 2026-09-10: every message says Sending while it is sending, a
+ * photo included. So the picked file is drawn from the phone under a
+ * Sending line, the server row replaces it, and the checking tile and the
+ * same Sending line carry it the rest of the way to a verdict.
+ */
+export function optimisticPhotoMessage(input: {
+  chatId: string;
+  senderId: string;
+  localUri: string;
+  body?: string;
+  replyToMessageId?: string | null;
+  at?: Date;
+}): ThreadMessage {
+  return {
+    ...optimisticMessage({
+      chatId: input.chatId,
+      senderId: input.senderId,
+      body: (input.body ?? '').trim(),
+      replyToMessageId: input.replyToMessageId ?? null,
+      at: input.at,
+    }),
+    localUri: input.localUri,
+  };
+}
+
+export function optimisticRoomPhotoMessage(input: {
+  senderId: string;
+  localUri: string;
+  body?: string;
+  replyToMessageId?: string | null;
+  replyToName?: string | null;
+  replyToBody?: string | null;
+  at?: Date;
+}): RoomThreadMessage {
+  return {
+    ...optimisticRoomMessage({
+      senderId: input.senderId,
+      body: (input.body ?? '').trim(),
+      replyToMessageId: input.replyToMessageId ?? null,
+      replyToName: input.replyToName ?? null,
+      replyToBody: input.replyToBody ?? null,
+      at: input.at,
+    }),
+    localUri: input.localUri,
   };
 }
 

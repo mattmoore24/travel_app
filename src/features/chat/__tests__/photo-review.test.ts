@@ -91,7 +91,9 @@ describe('the wait is drawn, not hidden', () => {
     // of the group — which is the empty bubble people were looking at.
     const code = source('message-thread.tsx');
     expect(code).toContain("const checking = message.moderation_status === 'pending'");
-    expect(code).toMatch(/\{checking \? \(\s*<PhotoCheck/);
+    // The picked-file branch comes first now (it is still on this phone),
+    // then the state, never the path.
+    expect(code).toMatch(/checking \? \(\s*<PhotoCheck/);
   });
 
   it('listens for the update that clears it, not only for inserts', () => {
@@ -107,15 +109,26 @@ describe('the wait is drawn, not hidden', () => {
 describe('the delivery ladder is complete', () => {
   const code = source('message-thread.tsx');
 
-  it('says Sent under the newest of your own messages that landed', () => {
-    expect(code).toContain(
-      'messages.find((m) => m.sender_id === ownUserId && m.local == null)?.id ?? null'
-    );
+  it('says Sent under every landed message of your own, not only the newest', () => {
+    // Founder, 2026-09-10: "every message says 'Sending' while it is sending
+    // ... and then 'Sent' when it has been sent." The iMessage rule (newest
+    // only) is gone with the lookup that implemented it.
+    expect(code).toContain('delivered={mine && item.local == null}');
+    expect(code).not.toContain('deliveredId');
     expect(code).toContain("? 'Sending…'");
     expect(code).toContain(": 'Sent'}");
   });
 
-  it('never calls a photo Sent while it is still being checked', () => {
-    expect(code).toContain("delivered && message.moderation_status !== 'pending'");
+  it('says Sending, not nothing, while your photo is still being checked', () => {
+    // "(this would include while a photo is being reviewed for explicit
+    // content)". A pending photo used to get no ladder at all.
+    expect(code).toContain("(mine && message.moderation_status === 'pending')");
+    expect(code).not.toContain("delivered && message.moderation_status !== 'pending'");
+  });
+
+  it('draws the picked file under a Sending line before the upload lands', () => {
+    expect(code).toContain('message.localUri ? (');
+    expect(source('hooks.ts')).toContain('optimisticPhotoMessage({');
+    expect(source('hooks.ts')).toContain('optimisticRoomPhotoMessage({');
   });
 });

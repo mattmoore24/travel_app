@@ -501,6 +501,15 @@ export default function RoomScreen() {
               const quote = quoteFromRow(byId.get(message.id));
               const parentId = message.reply_to_message_id;
               discardFailed(message.id);
+              // A photo that never uploaded is re-sent from this phone.
+              if (message.localUri) {
+                sendPhoto.mutate({
+                  localUri: message.localUri,
+                  body: body.length > 0 ? body : undefined,
+                  replyToMessageId: parentId ?? null,
+                });
+                return;
+              }
               if (body.length > 0) {
                 send.mutate({
                   body,

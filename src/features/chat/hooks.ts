@@ -19,7 +19,9 @@ import {
   dropOptimistic,
   failOptimistic,
   optimisticMessage,
+  optimisticPhotoMessage,
   optimisticRoomMessage,
+  optimisticRoomPhotoMessage,
   settleOptimistic,
   withOptimistic,
   type ThreadMessage,
@@ -273,25 +275,71 @@ export function useDiscardFailed(chatId: string | null, kind: 'direct' | 'room' 
  * for a verdict — so "look at this" arrived first and the picture some seconds
  * later, underneath it.
  */
+export type OutgoingPhoto = {
+  localUri: string;
+  body?: string;
+  replyToMessageId?: string | null;
+};
+
 export function useSendPhoto(chatId: string, kind: 'direct' | 'room' = 'direct') {
   const userId = useOwnUserId();
   const queryClient = useQueryClient();
+  const key = kind === 'room' ? ['room-messages', chatId] : ['messages', chatId];
   return useMutation({
-    mutationFn: ({
-      localUri,
-      body,
-      replyToMessageId,
-    }: {
-      localUri: string;
-      body?: string;
-      replyToMessageId?: string | null;
-    }) => sendPhotoMessage(chatId, userId!, localUri, body, replyToMessageId),
+    mutationFn: ({ localUri, body, replyToMessageId }: OutgoingPhoto) =>
+      sendPhotoMessage(chatId, userId!, localUri, body, replyToMessageId),
     meta: { failureTitle: "Couldn't send that" },
-    onSuccess: () => {
+
+    // The same optimistic shape a text message has had all along, so the
+    // photo is in the thread under a Sending line from the tap, not from the
+    // end of the upload (founder, 2026-09-10).
+    onMutate: (input: OutgoingPhoto) => {
+      if (userId == null) {
+        return undefined;
+      }
+      const optimistic =
+        kind === 'room'
+          ? optimisticRoomPhotoMessage({
+              senderId: userId,
+              localUri: input.localUri,
+              body: input.body,
+              replyToMessageId: input.replyToMessageId ?? null,
+            })
+          : optimisticPhotoMessage({
+              chatId,
+              senderId: userId,
+              localUri: input.localUri,
+              body: input.body,
+              replyToMessageId: input.replyToMessageId ?? null,
+            });
+      queryClient.setQueryData<ThreadPages<{ id: string }>>(key, (current) =>
+        mapFirstPage(current, (rows) => withOptimistic(rows, optimistic))
+      );
+      return { localMessageId: optimistic.id };
+    },
+
+    onSuccess: (message, _input, context) => {
       captureMessageSent(chatId, 'photo', kind);
+      if (context?.localMessageId != null && kind !== 'room') {
+        // The server row is still 'pending', so the tile turns into the
+        // checking one and the ladder keeps saying Sending until the verdict
+        // lands over realtime. A room refetches instead (see useSendMessage).
+        queryClient.setQueryData<ThreadPages<ThreadMessage>>(key, (current) =>
+          mapFirstPage(current, (rows) => settleOptimistic(rows, context.localMessageId, message))
+        );
+      }
       queryClient.invalidateQueries({ queryKey: ['messages', chatId] });
       queryClient.invalidateQueries({ queryKey: ['room-messages', chatId] });
       queryClient.invalidateQueries({ queryKey: ['chats'] });
+    },
+
+    onError: (_error, _input, context) => {
+      if (context?.localMessageId == null) {
+        return;
+      }
+      queryClient.setQueryData<ThreadPages<ThreadMessage>>(key, (current) =>
+        mapEveryPage(current, (rows) => failOptimistic(rows, context.localMessageId))
+      );
     },
   });
 }

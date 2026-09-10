@@ -445,6 +445,17 @@ export default function ChatScreen() {
     const quote = quoteOf(message.reply_to_message_id);
     const parentId = message.reply_to_message_id;
     discardFailed(message.id);
+    // A photo that never uploaded is still on this phone, so it is re-sent
+    // from there, caption and all. A photo the server already has cannot
+    // fail past this point: its verdict arrives over realtime.
+    if (message.localUri) {
+      sendPhoto.mutate({
+        localUri: message.localUri,
+        body: body.length > 0 ? body : undefined,
+        replyToMessageId: parentId ?? null,
+      });
+      return;
+    }
     if (body.length > 0) {
       sendMessage.mutate({
         body,
