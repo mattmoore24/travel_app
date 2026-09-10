@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { MapFilterSheet } from '@/features/pins/map-filter-sheet';
 import { DEFAULT_FILTERS } from '@/features/pins/filters';
@@ -80,7 +80,7 @@ describe('the survivor count', () => {
 
   it('says no plans fit these filters, with a Clear all, when the FILTERS emptied the map', () => {
     renderSheet({
-      filters: { ...DEFAULT_FILTERS, day: 'today' },
+      filters: { ...DEFAULT_FILTERS, when: 'next7' },
       resultCount: 0,
       totalCount: 11,
     });
@@ -104,6 +104,83 @@ describe('the survivor count', () => {
     expect(screen.getByText('Done')).toBeTruthy();
     expect(screen.queryByText(/Show \d/)).toBeNull();
     expect(screen.queryByText('Apply')).toBeNull();
+  });
+});
+
+/**
+ * The When rail. Founder, 2026-09-10: "Let's start with anytime ... filters
+ * where the user can quickly pick options within the next 7 days, next 30
+ * days, or custom dates." Four chips, and under the fourth one row.
+ */
+describe('the When rail', () => {
+  const custom = {
+    ...DEFAULT_FILTERS,
+    when: 'custom' as const,
+    from: '2026-09-01',
+    to: '2026-09-14',
+  };
+
+  it('offers anytime, the next week, the next month and a pick of dates, and nothing older', () => {
+    renderSheet();
+    for (const label of ['Anytime', 'Next 7 days', 'Next 30 days', 'Pick dates']) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+    // The three-day chips are gone with the three-day pin.
+    expect(screen.queryByText('Any day')).toBeNull();
+    expect(screen.queryByText('Today')).toBeNull();
+    expect(screen.queryByText('Tomorrow')).toBeNull();
+    expect(screen.queryByTestId('filter-pick-dates')).toBeNull();
+  });
+
+  it('shows the dates row only under Pick dates, printing the range', () => {
+    const { unmount } = renderSheet({ filters: { ...DEFAULT_FILTERS, when: 'next7' } });
+    expect(screen.queryByTestId('filter-pick-dates')).toBeNull();
+    unmount();
+
+    renderSheet({ filters: custom });
+    // The row speaks the range it holds; the result line above Done prints
+    // the same words, so the row is read through its own label.
+    expect(screen.getByTestId('filter-pick-dates').props.accessibilityLabel).toMatch(
+      /^Change the dates\. Currently Sep 1 – 14/
+    );
+    expect(screen.getAllByText(/Sep 1 – 14/).length).toBeGreaterThan(0);
+  });
+
+  it('counts inside the range rather than against the whole year, and names the range above Done', () => {
+    renderSheet({ filters: custom, resultCount: 3, totalCount: 11 });
+    expect(screen.getByText('3 plans in this range')).toBeTruthy();
+    expect(screen.queryByText(/3 of 11 plans/)).toBeNull();
+    expect(screen.getByText(/^3 plans, Sep 1 – 14/)).toBeTruthy();
+    expect(screen.queryByText('3 plans on the map')).toBeNull();
+  });
+
+  it("names the city's week above Done under Next 7 days", () => {
+    renderSheet({
+      filters: { ...DEFAULT_FILTERS, when: 'next7' },
+      clock: new Date(2026, 8, 10, 12, 0),
+      resultCount: 3,
+      totalCount: 11,
+    });
+    expect(screen.getByText(/^3 plans, Sep 10 – 16/)).toBeTruthy();
+  });
+
+  it('tapping Pick dates lights a real range and opens the calendar', () => {
+    const onChange = jest.fn();
+    renderSheet({ onChange, clock: new Date(2026, 8, 10, 12, 0) });
+    fireEvent.press(screen.getByText('Pick dates'));
+    // Seeded with the city's week rather than an empty row, so the map keeps
+    // showing a range while the calendar is up.
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ when: 'custom', from: '2026-09-10', to: '2026-09-16' })
+    );
+    expect(screen.getByText('Which days?')).toBeTruthy();
+  });
+
+  it('a business is not asked when', () => {
+    mockIsBusiness.mockReturnValue(true);
+    renderSheet();
+    expect(screen.queryByText('Pick dates')).toBeNull();
+    mockIsBusiness.mockReturnValue(false);
   });
 });
 

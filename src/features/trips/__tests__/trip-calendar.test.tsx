@@ -116,6 +116,74 @@ describe('picking a trip', () => {
   });
 });
 
+describe('a ceiling', () => {
+  // The pin form and the map's date filter pass the last day a pin can be
+  // up, so neither can ask for a day the server would refuse.
+  const september = (n: number) =>
+    new Date(2026, 8, n).toLocaleDateString(undefined, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    });
+
+  it('refuses a day after the maximum', () => {
+    const onChange = jest.fn();
+    render(
+      <TripCalendar
+        start={null}
+        end={null}
+        minISO="2026-08-01"
+        maxISO="2026-08-20"
+        months={3}
+        onChange={onChange}
+      />
+    );
+    fireEvent.press(screen.getByLabelText(day(25)));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.press(screen.getByLabelText(day(20)));
+    expect(onChange).toHaveBeenLastCalledWith('2026-08-20', null);
+  });
+
+  it('draws no month entirely past it, and every month up to it', () => {
+    render(
+      <TripCalendar
+        start={null}
+        end={null}
+        minISO="2026-08-01"
+        maxISO="2026-09-03"
+        months={3}
+        onChange={jest.fn()}
+      />
+    );
+    // September holds the ceiling, so it is drawn; October holds nothing.
+    expect(screen.getByLabelText(september(1))).toBeTruthy();
+    expect(
+      screen.queryByLabelText(
+        new Date(2026, 9, 1).toLocaleDateString(undefined, {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        })
+      )
+    ).toBeNull();
+  });
+
+  it('changes nothing for a caller that sets none', () => {
+    render(
+      <TripCalendar start={null} end={null} minISO="2026-08-01" months={3} onChange={jest.fn()} />
+    );
+    expect(
+      screen.getByLabelText(
+        new Date(2026, 9, 1).toLocaleDateString(undefined, {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        })
+      )
+    ).toBeTruthy();
+  });
+});
+
 // The tests above hand the calendar a fixed range and check what it reports
 // back. This one is the founder's actual gesture: tap, then tap again, with
 // the component wired to its own state the way both screens wire it. It is

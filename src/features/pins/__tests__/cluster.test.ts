@@ -30,6 +30,8 @@ function pin(over: Partial<CityPinRow> = {}): CityPinRow {
     intent_date: '2026-08-22',
     seeded: false,
     seed_note: null,
+    take_down_on: '2026-08-23',
+    plan_ends_at: '2026-08-23T00:00:00Z',
     expires_at: '2026-08-24T00:00:00Z',
     intent_time: null,
     intent_time_end: null,

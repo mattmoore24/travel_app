@@ -1,4 +1,5 @@
-import { filterDates, PIN_CATEGORIES } from '@/features/pins/pin-helpers';
+import { PIN_CATEGORIES } from '@/features/pins/pin-helpers';
+import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
 import type { CityPinRow, PinCategory } from '@/lib/database.types';
 
 /**
@@ -13,13 +14,27 @@ import type { CityPinRow, PinCategory } from '@/lib/database.types';
  * WHO is on the map (other travelers, businesses, our own picks) and WHAT
  * they are doing, and neither was reachable at all.
  *
+ * The WHEN came back on 2026-09-10, once a pin could stay up for a year:
+ * with three days as the whole universe a day chip was decoration, and with
+ * a year it is the difference between tonight and next spring. Founder:
+ * "Let's start with anytime ... filters where the user can quickly pick
+ * options within the next 7 days, next 30 days, or custom dates."
+ *
  * Everything here is derived from data the map already has: a pin carries its
- * category, whether it is one of ours, and whether the person is verified.
- * Nothing below asks the server for anything new.
+ * category, its day, whether it is one of ours, and whether the person is
+ * verified. The only thing the server is asked for is the same date range
+ * the markers are filtered by, so the counts and the payload agree.
  */
 
-/** Which day's plans to show. A pin can never target more than two days out. */
-export type DayFilter = 'any' | 'today' | 'tomorrow' | 'later';
+/**
+ * Which days' plans to show. 'anytime' is the default and is expressed as an
+ * ABSENCE everywhere (windowFor answers null, pinPasses skips the date test,
+ * the range arguments are left off the RPCs) rather than as a wide range.
+ */
+export type WhenFilter = 'anytime' | 'next7' | 'next30' | 'custom';
+
+/** An inclusive run of ISO days. */
+export type DateWindow = { from: string; to: string };
 
 /**
  * The three families of marker on the map, plus the heat layer. 'heat' is a
@@ -29,8 +44,15 @@ export type DayFilter = 'any' | 'today' | 'tomorrow' | 'later';
  */
 export type MarkerKind = 'travelers' | 'businesses' | 'picks' | 'heat';
 
+/**
+ * Flat keys, not a discriminated union: activeFilterCount, the camera key on
+ * the map screen and its window memo all enumerate fields by hand.
+ */
 export type MapFilters = {
-  day: DayFilter;
+  when: WhenFilter;
+  /** The picked range, read only under 'custom'. `to` is null mid-pick. */
+  from: string | null;
+  to: string | null;
   /** Which marker families to draw. Empty would be an empty map, so it is never allowed to empty. */
   kinds: MarkerKind[];
   /** Which plans to draw. EMPTY MEANS ALL — the natural reading of no boxes ticked. */
@@ -52,7 +74,9 @@ export type MapFilters = {
 export const ALL_MARKER_KINDS: MarkerKind[] = ['travelers', 'businesses', 'picks', 'heat'];
 
 export const DEFAULT_FILTERS: MapFilters = {
-  day: 'any',
+  when: 'anytime',
+  from: null,
+  to: null,
   kinds: ALL_MARKER_KINDS,
   categories: [],
 };
@@ -62,11 +86,12 @@ export const DEFAULT_FILTERS: MapFilters = {
  *
  * A number, not a dot: "3" tells somebody why the map looks emptier than they
  * expected and roughly how much to undo. Categories count as ONE however many
- * are ticked, because they are one decision.
+ * are ticked, because they are one decision — and so is a date range, which
+ * scores ONE for the `when` and nothing for the two days inside it.
  */
 export function activeFilterCount(filters: MapFilters): number {
   let count = 0;
-  if (filters.day !== 'any') {
+  if (filters.when !== 'anytime') {
     count += 1;
   }
   if (filters.kinds.length < ALL_MARKER_KINDS.length) {
@@ -99,37 +124,128 @@ export function toggle<T>(list: T[], value: T, atLeastOne = false): T[] {
   return list.filter((item) => item !== value);
 }
 
-/**
- * The intent dates a day filter accepts.
- *
- * Two of them, sometimes: `intent_date` is written by whichever clock the
- * sender was on, so a device just past midnight and a server just short of it
- * disagree about what "today" is. See filterDates.
- */
-export function daysFor(
-  day: DayFilter,
-  now = new Date(),
-  city: Date | null = null
-): Set<string> | null {
-  return day === 'any' ? null : new Set(filterDates(day, now, city));
+/** Whole days from `a` to `b`, negative when `b` is earlier. */
+function daysFromTo(a: string, b: string): number {
+  return Math.round((parseISODate(b).getTime() - parseISODate(a).getTime()) / 86_400_000);
 }
 
 /**
- * Which single day the heat RPC should be asked about — it takes one, or
- * none. With a city clock (cityClockNow) it is the CITY's day: filterDates
- * puts that candidate first.
+ * How far the device's and UTC's calendar days sit either side of the city's,
+ * in whole days.
+ *
+ * Three clocks write `intent_date`. The pin form writes the browsed CITY's
+ * calendar day (cityClockNow). Older pins carry the phone's LOCAL day
+ * (features/trips/dates' toISODate, deliberately local because a trip is a
+ * calendar range, not a timestamp). The curated seed writes Postgres's
+ * `current_date`, which is UTC. An exact compare against the city's day
+ * therefore hides a seeded plan from a traveler far enough east or west —
+ * and this is a travel app, so "far enough" is the normal case. A founder at
+ * UTC-7 at six in the evening is asking about a day the server rolled past
+ * hours ago.
+ *
+ * Measured rather than a blanket one day each way, so the common case
+ * (every clock on the same date) widens by nothing. `before` is how many days
+ * the earliest of the three sits ahead of the city's; `after`, the latest.
  */
-export function heatDay(day: DayFilter, now = new Date(), city: Date | null = null): string | null {
-  return day === 'any' ? null : filterDates(day, now, city)[0];
+export function clockSkew(
+  now = new Date(),
+  city: Date | null = null
+): { before: number; after: number } {
+  const cityDay = city != null ? toISODate(city) : toISODate(now);
+  const local = toISODate(now);
+  const utc = now.toISOString().slice(0, 10);
+  const offsets = [daysFromTo(cityDay, local), daysFromTo(cityDay, utc)];
+  return {
+    before: Math.max(0, -Math.min(...offsets)),
+    after: Math.max(0, Math.max(...offsets)),
+  };
+}
+
+/**
+ * A window widened at BOTH ends by the measured skew: "widen, never swap".
+ * The city's day leads and the other two clocks' days stay matched, so a
+ * plan on a boundary day survives wherever the device is. The identical
+ * widened pair goes to the client predicate and to the server parameters,
+ * so the markers, the counts and the payload agree by construction.
+ */
+function widen(range: DateWindow, now: Date, city: Date | null): DateWindow {
+  const skew = clockSkew(now, city);
+  return {
+    from: toISODate(addDays(parseISODate(range.from), -skew.before)),
+    to: toISODate(addDays(parseISODate(range.to), skew.after)),
+  };
+}
+
+/**
+ * The days a `when` names, exactly as a person would say them and before any
+ * clock tolerance: next7 and next30 are `[today, today + 6]` and
+ * `[today, today + 29]` on the CITY's clock — the map is city-scoped, so a
+ * traveler in Mexico City browsing Bangkok gets Bangkok's week — and custom
+ * is the pair that was tapped, a single tapped day standing for one day.
+ * Null for anytime, and for a custom range nobody has started picking.
+ *
+ * For PRINTING. windowFor is the same pair widened for matching; a sentence
+ * that read the widened pair would name a day nobody picked.
+ */
+export function rangeFor(
+  filters: MapFilters,
+  now = new Date(),
+  city: Date | null = null
+): DateWindow | null {
+  const clock = city ?? now;
+  const today = toISODate(clock);
+  switch (filters.when) {
+    case 'anytime':
+      return null;
+    case 'next7':
+      return { from: today, to: toISODate(addDays(clock, 6)) };
+    case 'next30':
+      return { from: today, to: toISODate(addDays(clock, 29)) };
+    case 'custom':
+      return filters.from != null ? { from: filters.from, to: filters.to ?? filters.from } : null;
+  }
+}
+
+/**
+ * The inclusive run of intent dates the current filters accept, or null for
+ * every day — the one pair both the marker predicate and the two RPC calls
+ * read. See rangeFor for the days themselves and widen for the tolerance.
+ */
+export function windowFor(
+  filters: MapFilters,
+  now = new Date(),
+  city: Date | null = null
+): DateWindow | null {
+  const range = rangeFor(filters, now, city);
+  return range == null ? null : widen(range, now, city);
+}
+
+/**
+ * The city's today as a window, widened by the same skew — for the plan
+ * list's "N today" peek, so the number it prints cannot disagree with the
+ * markers the map draws for the same day.
+ */
+export function todayWindow(now = new Date(), city: Date | null = null): DateWindow {
+  const today = toISODate(city ?? now);
+  return widen({ from: today, to: today }, now, city);
+}
+
+/** Whether one intent date falls inside a window. ISO days compare as strings. */
+export function inWindow(intentISO: string, window: DateWindow): boolean {
+  return intentISO >= window.from && intentISO <= window.to;
 }
 
 /** Whether one traveler pin survives the current filters. */
-export function pinPasses(pin: CityPinRow, filters: MapFilters, days: Set<string> | null): boolean {
+export function pinPasses(
+  pin: CityPinRow,
+  filters: MapFilters,
+  window: DateWindow | null
+): boolean {
   const kind: MarkerKind = pin.seeded ? 'picks' : 'travelers';
   if (!filters.kinds.includes(kind)) {
     return false;
   }
-  if (days && !days.has(pin.intent_date)) {
+  if (window && !inWindow(pin.intent_date, window)) {
     return false;
   }
   if (filters.categories.length > 0 && !filters.categories.includes(pin.category)) {

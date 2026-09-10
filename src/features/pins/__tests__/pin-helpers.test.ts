@@ -1,77 +1,50 @@
-import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
+import { addDays, formatDate, toISODate } from '@/features/trips/dates';
 
 import {
-  MAX_PIN_HOURS,
-  burnOutLabel,
+  MAX_TAKE_DOWN_DAYS,
   categoryForPlan,
   categoryForPoi,
   cityClockNow,
-  defaultHoursForIntent,
-  expiryForDuration,
-  expiryForHours,
-  expiryForIntentDate,
-  filterDates,
-  hoursLabel,
-  intentDateOptions,
+  effectiveTakeDown,
   intentLabel,
   isLaterCityDay,
   isLaterDay,
-  minHoursForIntent,
   pinSubtitle,
   pinTitle,
   shouldGeocode,
-  validDurations,
+  takeDownBounds,
+  takeDownDayFor,
+  takeDownLabel,
 } from '../pin-helpers';
 
-describe('pin lifetime helpers (hard rule 3: <=72h)', () => {
-  it('offers exactly today/tomorrow/day-after as intent dates', () => {
-    const now = new Date(2026, 2, 4, 15, 0); // Mar 4, 3pm local
-    const options = intentDateOptions(now);
-    expect(options.map((o) => o.value)).toEqual(['2026-03-04', '2026-03-05', '2026-03-06']);
-    expect(options[0].label).toBe('Today');
-    expect(options[1].label).toBe('Tomorrow');
+describe('the day a pin comes down (hard rule 3: the traveler picks it, a year at most)', () => {
+  // Three in the afternoon on Sep 10, on the CITY's clock.
+  const city = new Date(2026, 8, 10, 15, 0);
+
+  it("defaults to the plan's own day", () => {
+    expect(effectiveTakeDown(null, '2026-09-18', city)).toBe('2026-09-18');
   });
 
-  it('expires at the end of the intent day when within the cap', () => {
-    const now = new Date(2026, 2, 4, 15, 0);
-    const expiry = expiryForIntentDate('2026-03-04', now);
-    expect(toISODate(expiry)).toBe('2026-03-05'); // local midnight after intent day
-    expect(expiry.getHours()).toBe(0);
+  it('keeps a day BEFORE the plan exactly as picked', () => {
+    // The founder's overrule (2026-09-10), as an assertion: there is no
+    // floor at the plan's day. Somebody planning ahead may not want to be
+    // messaged about it all the way up to the event.
+    expect(effectiveTakeDown('2026-09-14', '2026-09-18', city)).toBe('2026-09-14');
   });
 
-  it('never exceeds 72 hours even for the furthest intent day', () => {
-    const now = new Date(2026, 2, 4, 23, 30); // late evening
-    const furthest = intentDateOptions(now)[2].value;
-    const expiry = expiryForIntentDate(furthest, now);
-    const hours = (expiry.getTime() - now.getTime()) / 3_600_000;
-    expect(hours).toBeLessThanOrEqual(MAX_PIN_HOURS);
-    expect(hours).toBeGreaterThan(0);
+  it("floors at the city's today, so a sheet left open across midnight cannot post a dead day", () => {
+    expect(effectiveTakeDown('2026-09-09', '2026-09-18', city)).toBe('2026-09-10');
+    expect(effectiveTakeDown(null, '2026-09-09', city)).toBe('2026-09-10');
   });
 
-  it('honors user-set durations, always safely inside the 72h server cap', () => {
-    const now = new Date(2026, 2, 4, 15, 0);
-    expect(expiryForDuration('24h', '2026-03-04', now).getTime() - now.getTime()).toBe(
-      24 * 3_600_000
-    );
-    // Exactly 72h would race the DB CHECK on any clock-ahead device; the
-    // helper keeps a safety margin strictly inside the cap.
-    const seventyTwo =
-      (expiryForDuration('72h', '2026-03-06', now).getTime() - now.getTime()) / 3_600_000;
-    expect(seventyTwo).toBeLessThan(MAX_PIN_HOURS);
-    expect(seventyTwo).toBeGreaterThan(MAX_PIN_HOURS - 0.25);
-    expect(expiryForDuration('end_of_day', '2026-03-04', now)).toEqual(
-      expiryForIntentDate('2026-03-04', now)
-    );
-  });
-
-  it('filters durations that would kill the pin before its intent day', () => {
-    const now = new Date(2026, 2, 4, 15, 0); // Mar 4, 3pm
-    // Intent = day after tomorrow: a 24h lifetime dies Mar 5, before Mar 6.
-    expect(validDurations('2026-03-06', now)).not.toContain('24h');
-    expect(validDurations('2026-03-06', now)).toContain('end_of_day');
-    expect(validDurations('2026-03-06', now)).toContain('72h');
-    // Intent = today: everything works.
-    expect(validDurations('2026-03-04', now)).toEqual(['end_of_day', '24h', '48h', '72h']);
+  it('offers today to exactly a year out, and ceilings a pick past it', () => {
+    const { minISO, maxISO } = takeDownBounds(city);
+    expect(minISO).toBe('2026-09-10');
+    expect(maxISO).toBe(toISODate(addDays(city, MAX_TAKE_DOWN_DAYS)));
+    expect(maxISO).toBe('2027-09-10');
+    // One looser than this in the trigger (+366), so the form can never
+    // offer a day the server refuses.
+    expect(effectiveTakeDown('2028-01-01', '2026-09-18', city)).toBe(maxISO);
   });
 
   it('labels intent dates for humans', () => {
@@ -79,6 +52,16 @@ describe('pin lifetime helpers (hard rule 3: <=72h)', () => {
     expect(intentLabel(toISODate(now), now)).toBe('Today');
     expect(intentLabel(toISODate(addDays(now, 1)), now)).toBe('Tomorrow');
     expect(intentLabel('2026-03-06', now)).toContain('Friday');
+  });
+
+  it('prints the year once it is not the current one', () => {
+    // A pin can be up for a year now, so a plan eleven months out must not
+    // render as an unqualified weekday: the rule formatDate already follows.
+    const now = new Date(2026, 8, 10, 12, 0);
+    expect(intentLabel('2027-08-06', now)).toContain('2027');
+    expect(intentLabel('2027-08-06', now)).not.toContain('Friday');
+    expect(intentLabel('2026-09-18', now)).toContain('Friday');
+    expect(intentLabel('2026-09-18', now)).not.toContain('2026');
   });
 });
 
@@ -147,127 +130,61 @@ describe('a null POI and a keyword-free plan still land on a real category', () 
   });
 });
 
-describe('the pin lifetime slider', () => {
-  const now = new Date('2026-08-21T18:00:00');
-
-  it('never lets a pin outlive the 72 hour rule', () => {
-    const expiry = expiryForHours(9999, now);
-    expect(expiry.getTime() - now.getTime()).toBeLessThanOrEqual(MAX_PIN_HOURS * 3_600_000);
-  });
-
-  it('never lets a pin be set shorter than an hour', () => {
-    const expiry = expiryForHours(0, now);
-    expect(expiry.getTime() - now.getTime()).toBeGreaterThanOrEqual(3_600_000);
-  });
-
-  it("starts the slider late enough to reach the plan's own day", () => {
-    // A plan for the day after tomorrow must not be allowed to expire tonight.
-    const dayAfter = toISODate(addDays(now, 2));
-    const min = minHoursForIntent(dayAfter, now);
-    expect(new Date(now.getTime() + min * 3_600_000).getTime()).toBeGreaterThan(
-      parseISODate(dayAfter).getTime()
-    );
-  });
-
-  it("defaults to the end of the plan's day", () => {
-    const today = toISODate(now);
-    // 18:00 to local midnight is six hours.
-    expect(defaultHoursForIntent(today, now)).toBe(6);
-  });
-
-  it('never defaults below its own floor', () => {
-    const dayAfter = toISODate(addDays(now, 2));
-    expect(defaultHoursForIntent(dayAfter, now)).toBeGreaterThanOrEqual(
-      minHoursForIntent(dayAfter, now)
-    );
-  });
-});
-
-describe('hoursLabel', () => {
-  it('says hours, then days, the way a person would', () => {
-    expect(hoursLabel(1)).toBe('1 hour');
-    expect(hoursLabel(6)).toBe('6 hours');
-    expect(hoursLabel(24)).toBe('1 day');
-    expect(hoursLabel(30)).toBe('1 day 6h');
-    expect(hoursLabel(72)).toBe('3 days');
-  });
-});
-
-describe('burnOutLabel', () => {
+describe('takeDownLabel', () => {
   const now = new Date(2026, 2, 4, 15, 0);
 
   it('does not shave an hour off a pin the moment it is posted', () => {
-    // The bug this covers: a pin set to 23 hours read "burns out in 22h" on
-    // the card that appeared right after posting it, because the countdown
-    // floored 22.99.
-    const posted = expiryForHours(23, now);
+    // The bug this covers: a pin with 23 hours left read "burns out in 22h"
+    // on the card that appeared right after posting it, because the
+    // countdown floored 22.99.
+    const posted = new Date(now.getTime() + 23 * 3_600_000).toISOString();
     const aBeatLater = new Date(now.getTime() + 2_000);
-    expect(burnOutLabel(posted.toISOString(), aBeatLater)).toBe('burns out in 23h');
+    expect(takeDownLabel('2026-03-05', posted, aBeatLater)).toBe('burns out in 23h');
   });
 
-  it('counts down to the nearest hour', () => {
-    const inTwoHours = new Date(now.getTime() + 2 * 3_600_000 + 60_000);
-    expect(burnOutLabel(inTwoHours.toISOString(), now)).toBe('burns out in 2h');
+  it('counts down to the nearest hour inside the last day', () => {
+    const inTwoHours = new Date(now.getTime() + 2 * 3_600_000 + 60_000).toISOString();
+    expect(takeDownLabel('2026-03-04', inTwoHours, now)).toBe('burns out in 2h');
   });
 
   it('says soon rather than round up the last hour', () => {
-    const inHalfAnHour = new Date(now.getTime() + 30 * 60_000);
-    expect(burnOutLabel(inHalfAnHour.toISOString(), now)).toBe('burns out soon');
-    expect(burnOutLabel(new Date(now.getTime() - 1_000).toISOString(), now)).toBe('burns out soon');
+    const inHalfAnHour = new Date(now.getTime() + 30 * 60_000).toISOString();
+    expect(takeDownLabel('2026-03-04', inHalfAnHour, now)).toBe('burns out soon');
+    expect(takeDownLabel('2026-03-04', new Date(now.getTime() - 1_000).toISOString(), now)).toBe(
+      'burns out soon'
+    );
+  });
+
+  it('names the day beyond the last day, from take_down_on and never from the timestamp', () => {
+    const inThreeDays = new Date(now.getTime() + 3 * 86_400_000).toISOString();
+    expect(takeDownLabel('2026-03-07', inThreeDays, now)).toBe(
+      `up until ${formatDate('2026-03-07')}`
+    );
+    // The column is what prints. A reader whose zone would round the same
+    // instant onto another date still sees the day the author picked.
+    expect(takeDownLabel('2026-03-08', inThreeDays, now)).toBe(
+      `up until ${formatDate('2026-03-08')}`
+    );
+  });
+
+  it('carries the year once it is not this one', () => {
+    const inAYear = new Date(now.getTime() + 300 * 86_400_000).toISOString();
+    expect(takeDownLabel('2030-03-07', inAYear, now)).toContain('2030');
   });
 });
 
-describe('the default pin lifetime', () => {
-  // A pin dropped at 23:00 for tonight used to default to one hour, so it was
-  // off the map before anyone had left the hostel.
-  it('does not default a late-evening plan to an hour', () => {
-    const lateTonight = new Date(2026, 7, 22, 23, 0, 0);
-    expect(defaultHoursForIntent('2026-08-22', lateTonight)).toBeGreaterThanOrEqual(6);
+describe('takeDownDayFor (the day, read off an expiry in the city clock)', () => {
+  it("reads Bangkok's take-down day off midnight at the end of it", () => {
+    // Midnight at the end of Sep 18 in Bangkok (UTC+7) is 17:00Z on Sep 18;
+    // converted in a London or New York zone that instant is still Sep 18,
+    // but in Auckland it is Sep 19. The city's own clock says Sep 18.
+    expect(takeDownDayFor('2026-09-18T17:00:00Z', 100.5)).toBe('2026-09-18');
   });
 
-  it('still ends a normal evening plan at the end of its own day', () => {
-    const sixPm = new Date(2026, 7, 22, 18, 0, 0);
-    expect(defaultHoursForIntent('2026-08-22', sixPm)).toBe(6);
-  });
-
-  it('never exceeds the 72h ceiling', () => {
-    const now = new Date(2026, 7, 22, 9, 0, 0);
-    expect(defaultHoursForIntent('2026-08-25', now)).toBeLessThanOrEqual(72);
-  });
-});
-
-describe('filterDates', () => {
-  it('accepts the local day and the UTC day when a phone straddles them', () => {
-    // 18:00 in Los Angeles is already the next day in UTC.
-    const evening = new Date('2026-08-22T01:00:00Z');
-    const dates = filterDates('today', evening);
-    expect(dates.length).toBeGreaterThanOrEqual(1);
-    expect(new Set(dates).size).toBe(dates.length);
-  });
-
-  it('says one date when the two clocks agree', () => {
-    const midday = new Date(2026, 7, 22, 12, 0, 0);
-    const dates = filterDates('today', midday);
-    expect(dates).toContain('2026-08-22');
-  });
-
-  it("leads with the browsed city's day, and keeps the device day matched", () => {
-    // A device at 20:00 on the 30th browsing a city where it is already
-    // 03:00 on the 31st: "today" must show the city's tonight, and must not
-    // hide pins the device's own clock (or the seed's UTC clock) wrote.
-    const device = new Date(2026, 7, 30, 20, 0);
-    const city = new Date(2026, 7, 31, 3, 0);
-    const dates = filterDates('today', device, city);
-    expect(dates[0]).toBe('2026-08-31'); // the city leads: heatDay asks about it
-    expect(dates).toContain('2026-08-30'); // the tolerance is widened, never swapped
-    expect(new Set(dates).size).toBe(dates.length);
-  });
-
-  it('shifts every chip by the same city day', () => {
-    const device = new Date(2026, 7, 30, 20, 0);
-    const city = new Date(2026, 7, 31, 3, 0);
-    expect(filterDates('tomorrow', device, city)[0]).toBe('2026-09-01');
-    expect(filterDates('later', device, city)[0]).toBe('2026-09-02');
+  it('answers the other direction for a city west of Greenwich', () => {
+    // Midnight at the end of Sep 18 in Mexico City (UTC-6) is 06:00Z on
+    // Sep 19, which a Bangkok reader would print as Sep 19.
+    expect(takeDownDayFor('2026-09-19T06:00:00Z', -99.13)).toBe('2026-09-18');
   });
 });
 

@@ -23,7 +23,7 @@ import { countOf, isAre } from '@/lib/plural';
  * it means a spot on the map, as in the drop-a-pin search field.
  *
  * And nothing is ever called a "pin": that word is load-bearing in §7 rule 3,
- * where it means a traveler's 72-hour marker, and a permanent commercial
+ * where it means a traveler's dated, self-expiring marker, and a permanent commercial
  * listing borrowing it would blur the one distinction the rule exists to
  * draw.
  */

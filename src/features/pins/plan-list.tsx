@@ -21,10 +21,10 @@ import {
   clusterTitle,
 } from '@/features/pins/cluster';
 import type { PinCluster } from '@/features/pins/cluster';
-import { daysFor } from '@/features/pins/filters';
+import { inWindow, todayWindow } from '@/features/pins/filters';
 import { planListHeights } from '@/features/pins/bottom-stack';
-import { burnOutLabel, intentLabel, pinSubtitle, pinTitle } from '@/features/pins/pin-helpers';
-import { toISODate } from '@/features/trips/dates';
+import { intentLabel, pinSubtitle, pinTitle, takeDownLabel } from '@/features/pins/pin-helpers';
+import { formatDate, toISODate } from '@/features/trips/dates';
 import { PinGlyph } from '@/features/pins/pin-marker';
 import { useTheme } from '@/hooks/use-theme';
 import { countOf } from '@/lib/plural';
@@ -68,25 +68,58 @@ import type { CityBusinessRow, CityPinRow } from '@/lib/database.types';
  */
 export const PLAN_LIST_PEEK = 56;
 
-/** What the collapsed strip says. The count MUST be the filtered pin count. */
-export function planListSummary(cityName: string, pinCount: number, todayCount: number): string {
+/**
+ * What the collapsed strip says. The count MUST be the filtered pin count.
+ *
+ * Three shapes, so the strip is never silent about its horizon now that a
+ * pin can be up for a year: nothing yet; N today; or, with nothing on
+ * today, the soonest day something IS on, printed through formatDate so it
+ * carries the year when it needs one. `nextISO` is null only when every
+ * plan's day has already gone, which leaves the bare count.
+ */
+export function planListSummary(
+  cityName: string,
+  pinCount: number,
+  todayCount: number,
+  nextISO: string | null = null
+): string {
   if (pinCount === 0) {
     return `Nothing pinned in ${cityName} yet`;
   }
   const plans = `${countOf(pinCount, 'plan')} in ${cityName}`;
-  return todayCount > 0 ? `${plans} · ${todayCount} today` : plans;
+  if (todayCount > 0) {
+    return `${plans} · ${todayCount} today`;
+  }
+  return nextISO ? `${plans} · next on ${formatDate(nextISO)}` : plans;
 }
 
 /**
- * How many of the filtered pins are for today. The city clock LEADS when one
- * is given, and the device-local and UTC candidate days stay matched — the
- * same "widen, never swap" tolerance the map's own Today filter applies (see
- * filterDates). Passing the city clock as `now` instead DROPPED those two
+ * How many of the filtered pins are for today. "Today" is a one-day window
+ * through the same clockSkew path the map's own date filter uses
+ * (features/pins/filters), so the city clock LEADS when one is given and
+ * the device-local and UTC candidate days stay matched: "widen, never
+ * swap". Passing the city clock as `now` instead DROPPED those two
  * candidates, so the peek's count disagreed with the markers it summarised.
  */
 export function todayCount(pins: CityPinRow[], now = new Date(), city: Date | null = null): number {
-  const today = daysFor('today', now, city)!;
-  return pins.filter((pin) => today.has(pin.intent_date)).length;
+  const today = todayWindow(now, city);
+  return pins.filter((pin) => inWindow(pin.intent_date, today)).length;
+}
+
+/**
+ * The soonest day, from the city's today on, that any of these pins is for;
+ * null when every plan's day has gone. The same FILTERED pins the count is
+ * built from, so the strip's horizon is the map's.
+ */
+export function nextPlanDay(pins: CityPinRow[], city = new Date()): string | null {
+  const today = toISODate(city);
+  let next: string | null = null;
+  for (const pin of pins) {
+    if (pin.intent_date >= today && (next == null || pin.intent_date < next)) {
+      next = pin.intent_date;
+    }
+  }
+  return next;
 }
 
 export type PlanSection = {
@@ -315,7 +348,8 @@ export function PlanList({
   const summary = planListSummary(
     cityName,
     pins.length,
-    todayCount(pins, new Date(), clock ?? null)
+    todayCount(pins, new Date(), clock ?? null),
+    nextPlanDay(pins, clock ?? new Date())
   );
 
   if (pins.length === 0 && businesses.length === 0) {
@@ -483,7 +517,7 @@ function PlanRow({
     ? [
         pinSubtitle(single) ? pinTitle(single) : null,
         intentLabel(single.intent_date, clock),
-        burnOutLabel(single.expires_at),
+        takeDownLabel(single.take_down_on, single.expires_at),
         open && single.crew > 0 ? `${single.crew} going` : null,
       ]
         .filter(Boolean)

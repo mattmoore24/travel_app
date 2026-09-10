@@ -48,9 +48,14 @@ import {
   useUnsendMessage,
 } from '@/features/rooms/hooks';
 import { PinGlyph } from '@/features/pins/pin-marker';
-import { burnOutLabel, cityClockNow, intentLabel } from '@/features/pins/pin-helpers';
+import {
+  cityClockNow,
+  intentLabel,
+  takeDownDayFor,
+  takeDownLabel,
+} from '@/features/pins/pin-helpers';
 import { openInMaps } from '@/features/pins/open-in-maps';
-import { addDays, formatDateRange, toISODate } from '@/features/trips/dates';
+import { addDays, formatDate, formatDateRange, toISODate } from '@/features/trips/dates';
 import {
   useBusinessDetail,
   useBusinessForChat,
@@ -124,9 +129,11 @@ export default function RoomScreen() {
   const { data: group } = useGroup(membership?.kind === 'room' ? (id ?? null) : null);
   const isGroup = group != null;
   // The plan a pin-born group came from, asked only while the group row says
-  // there is one. The answer feeds the card under the header; the countdown
-  // in it comes from expires_at through burnOutLabel — the same helper the
-  // map uses — so the room and the pin card can never disagree.
+  // there is one. The answer feeds the card under the header; what is left
+  // of the pin comes through takeDownLabel — the same helper the map uses —
+  // so the room and the pin card can never disagree. pin_for_group carries
+  // no take_down_on, so the day is read off the expiry in the city's own
+  // clock (takeDownDayFor) rather than in the reader's.
   const planQuery = usePinForGroup(group?.pin_id != null ? (id ?? null) : null);
   const plan = planQuery.data ?? null;
   // The ask settled and there was no pin behind the id: it expired (hard
@@ -405,9 +412,17 @@ export default function RoomScreen() {
                     <ThemedText type="callout" numberOfLines={2}>
                       {plan.venue_name}
                     </ThemedText>
+                    {/* The plan's DAY says whether it has happened, never the
+                        pin's expiry: a pin can stay up long after its plan
+                        now, so `expires_at > now()` stopped being a proxy
+                        for "still ahead". A day already gone on the city's
+                        clock is said so, calmly, beside what is left. */}
                     <ThemedText type="footnote" themeColor="textSecondary">
-                      {intentLabel(plan.intent_date, cityClockNow(null, plan.lng))} ·{' '}
-                      {burnOutLabel(plan.expires_at)}
+                      {plan.intent_date < toISODate(cityClockNow(null, plan.lng))
+                        ? `The plan was ${formatDate(plan.intent_date)}`
+                        : intentLabel(plan.intent_date, cityClockNow(null, plan.lng))}
+                      {' · '}
+                      {takeDownLabel(takeDownDayFor(plan.expires_at, plan.lng), plan.expires_at)}
                     </ThemedText>
                   </View>
                   <Pressable

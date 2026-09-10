@@ -13,7 +13,7 @@ import type { Region } from '@/features/pins/camera';
  *   'pin'      — they opened a pin's card and were invited to see who is
  *                going. Replay selects the city, then the card, and degrades
  *                silently to the city alone when the pin has expired
- *                (signup takes minutes; pins live at most 72 hours).
+ *                (signup takes minutes; a pin lives until the day its author picked).
  *   'drop-pin' — they tapped Drop a pin. Replay returns the map to place
  *                mode at the region they had panned to.
  *   'traveler' — they met the gate on the Travelers tab. Replay lands them

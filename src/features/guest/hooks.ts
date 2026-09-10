@@ -5,6 +5,7 @@ import { useRefetchOnRefocus } from '@/hooks/use-refetch-on-refocus';
 
 import { useAuthStore } from '@/features/auth/store';
 import { useIsBusiness, useListingIntent, useOwnBusiness } from '@/features/business/hooks';
+import type { DateWindow } from '@/features/pins/filters';
 import type {
   CityPinRow,
   FeaturedTravelerRow,
@@ -137,8 +138,14 @@ export function useAccountType(): AccountType {
  * is what gives somebody backing out of the listing form somewhere to go) is
  * what put it in front of this feed at all. There is no reason to hand it
  * names while it waits.
+ *
+ * `window` is the run of intent dates the map is narrowed to, or null for
+ * every day. Null is expressed as an ABSENCE: the range arguments are left
+ * off the call entirely rather than sent as nulls, which is how "anytime"
+ * reads and also how a bundle that somehow leads the migration degrades to
+ * the old behaviour instead of failing every map load.
  */
-export function useMapPins(cityId: number | null) {
+export function useMapPins(cityId: number | null, window: DateWindow | null = null) {
   const isGuest = useIsGuest();
   const isBusiness = useIsBusiness();
   const wantsBusiness = useWantsBusiness();
@@ -149,11 +156,21 @@ export function useMapPins(cityId: number | null) {
     // kinds of account now share the anonymous feed, so `isGuest` in the key
     // would have let a business's faceless rows be served to a traveler who
     // signed in on the same device, and the traveler's named rows to the
-    // business.
-    queryKey: ['map-pins', cityId, anonymous ? 'anonymous' : 'identified'],
+    // business. The window is in the key too, or react-query serves the
+    // previous range's rows under the new one.
+    queryKey: [
+      'map-pins',
+      cityId,
+      anonymous ? 'anonymous' : 'identified',
+      window?.from ?? null,
+      window?.to ?? null,
+    ],
     queryFn: async () => {
       const rpc = anonymous ? 'public_city_pins' : 'city_pins';
-      const { data, error } = await supabase.rpc(rpc, { p_city_id: cityId! });
+      const { data, error } = await supabase.rpc(rpc, {
+        p_city_id: cityId!,
+        ...(window ? { p_from: window.from, p_to: window.to } : {}),
+      });
       if (error) {
         throw error;
       }
@@ -182,16 +199,24 @@ export function useMapPins(cityId: number | null) {
   return query;
 }
 
-export function useMapHeat(cityId: number | null, date: string | null) {
+/**
+ * The heat layer for the same window the pins are narrowed to, or for every
+ * day when `window` is null. Same absence rule as useMapPins: no range
+ * arguments at all under anytime. `p_date` stays null on purpose; the single
+ * day it used to name is the old bundle's path, and the server still answers
+ * a caller naming only that.
+ */
+export function useMapHeat(cityId: number | null, window: DateWindow | null = null) {
   const isGuest = useIsGuest();
   const focused = useIsFocused();
   const query = useQuery({
-    queryKey: ['map-heat', cityId, date, isGuest],
+    queryKey: ['map-heat', cityId, window?.from ?? null, window?.to ?? null, isGuest],
     queryFn: async () => {
       const rpc = isGuest ? 'public_heat_cells' : 'heat_cells';
       const { data, error } = await supabase.rpc(rpc, {
         p_city_id: cityId!,
-        p_date: date,
+        p_date: null,
+        ...(window ? { p_from: window.from, p_to: window.to } : {}),
       });
       if (error) {
         throw error;

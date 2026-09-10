@@ -1,4 +1,5 @@
 import { SymbolView } from 'expo-symbols';
+import { useState } from 'react';
 import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { ChipRail, type ChipOption } from '@/components/form/chip-rail';
@@ -16,18 +17,31 @@ import {
   DEFAULT_FILTERS,
   activeFilterCount,
   isDefault,
+  rangeFor,
   toggle,
-  type DayFilter,
   type MapFilters,
   type MarkerKind,
+  type WhenFilter,
 } from '@/features/pins/filters';
-import { PIN_CATEGORIES } from '@/features/pins/pin-helpers';
+import { PIN_CATEGORIES, takeDownBounds } from '@/features/pins/pin-helpers';
 import { HeatSwatch } from '@/features/pins/heat-swatch';
 import { PinGlyph, PinMark } from '@/features/pins/pin-marker';
-import { addDays } from '@/features/trips/dates';
+import { CalendarSheet } from '@/features/trips/calendar-sheet';
+import { addDays, formatDateRange, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
-import { dates } from '@/lib/locale';
 import { countOf } from '@/lib/plural';
+
+/**
+ * The four answers to "when", in the founder's own order (2026-09-10):
+ * "Let's start with anytime ... filters where the user can quickly pick
+ * options within the next 7 days, next 30 days, or custom dates."
+ */
+const WHEN_OPTIONS: ChipOption<WhenFilter>[] = [
+  { value: 'anytime', label: 'Anytime' },
+  { value: 'next7', label: 'Next 7 days' },
+  { value: 'next30', label: 'Next 30 days' },
+  { value: 'custom', label: 'Pick dates' },
+];
 
 /**
  * The families of marker, as each kind of account is asked about them.
@@ -100,9 +114,10 @@ export function MapFilterSheet({
 }: {
   filters: MapFilters;
   /**
-   * The browsed city's wall clock (cityClockNow). The third day chip is
-   * named for a weekday, and the weekday two days out is the CITY's, not the
-   * reader's — fifteen hours of difference can make it the wrong name.
+   * The browsed city's wall clock (cityClockNow). "Next 7 days" starts on
+   * the CITY's today, not the reader's — fifteen hours of difference can
+   * make it the wrong week — and the calendar's floor and ceiling are the
+   * city's today and a year out, the same two bounds the pin form offers.
    */
   clock?: Date;
   /**
@@ -130,16 +145,32 @@ export function MapFilterSheet({
   // drawn on my map.
   const viewerIsBusiness = useIsBusiness();
   const theme = useTheme();
-  // The third day has no name of its own — "later" is vague and the date is
-  // noise — so it says which weekday it is, the way the pin form already
-  // does. Derived from the city clock: the chip filters the city's days.
-  const laterLabel = dates().weekdayLong.format(addDays(clock ?? new Date(), 2));
-  const dayOptions: ChipOption<DayFilter>[] = [
-    { value: 'any', label: 'Any day' },
-    { value: 'today', label: 'Today' },
-    { value: 'tomorrow', label: 'Tomorrow' },
-    { value: 'later', label: laterLabel },
-  ];
+  const cityClock = clock ?? new Date();
+  // The days the current `when` names, before any clock tolerance, for the
+  // two count lines: windowFor's widened pair is for MATCHING, and a sentence
+  // that printed it would name a day nobody picked.
+  const range = rangeFor(filters, new Date(), cityClock);
+  const { minISO, maxISO } = takeDownBounds(cityClock);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const pickWhen = (when: WhenFilter) => {
+    if (when !== 'custom') {
+      onChange({ ...filters, when, from: null, to: null });
+      return;
+    }
+    // Lit with real days rather than an empty row: whatever the map was
+    // narrowed to a moment ago, or the city's week when it was anytime, so
+    // the row under the rail prints a range and the map keeps showing one.
+    // The calendar opens straight away with that range lit; a first tap
+    // starts a fresh one, so the seed never gets in the way of picking.
+    const seed = range ?? { from: minISO, to: toISODate(addDays(cityClock, 6)) };
+    onChange({
+      ...filters,
+      when: 'custom',
+      from: filters.from ?? seed.from,
+      to: filters.to ?? seed.to,
+    });
+    setCalendarOpen(true);
+  };
   // The cap is what keeps a strip of MAP visible above the sheet: the whole
   // argument against an Apply button is that you watch the markers answer
   // every tick, and the un-capped sheet ran to the tab bar and covered the
@@ -158,7 +189,12 @@ export function MapFilterSheet({
               reads as a filter problem the sheet cannot fix. */}
           {totalCount > 0 ? (
             <ThemedText type="footnote" themeColor="textSecondary">
-              {resultCount} of {countOf(totalCount, 'plan')}
+              {/* Under a date window the total is the whole year of plans the
+                  server sent for every day, which is not the denominator
+                  anybody is asking about; the count inside the range is. */}
+              {filters.when === 'anytime'
+                ? `${resultCount} of ${countOf(totalCount, 'plan')}`
+                : `${countOf(resultCount, 'plan')} in this range`}
             </ThemedText>
           ) : null}
         </View>
@@ -190,19 +226,41 @@ export function MapFilterSheet({
           style={[styles.scroll, { maxHeight: height * 0.6 }]}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}>
-          {/* No note. Four chips ending on a weekday two days out say the
-            three-day horizon better than a sentence about it does, and the
-            four groups only fit on a small phone without one. */}
+          {/* No note. The four chips say the horizon better than a sentence
+            about it does, and the four groups only fit on a small phone
+            without one. One rail plus, under Pick dates, one row: that is
+            the whole addition, which is what keeps the sheet inside its cap
+            and the category chips within reach of the simulator suite's
+            scroll (guest-tour.yml, runs 71 and 107). */}
           {viewerIsBusiness ? null : (
             <Group title="When">
               {/* No `label` on the rail: Group already draws the heading, and
                 two of them would be the same word twice. */}
-              <ChipRail
-                wrap
-                options={dayOptions}
-                selected={filters.day}
-                onSelect={(day) => onChange({ ...filters, day })}
-              />
+              <ChipRail wrap options={WHEN_OPTIONS} selected={filters.when} onSelect={pickWhen} />
+              {filters.when === 'custom' && range != null ? (
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change the dates. Currently ${formatDateRange(range.from, range.to)}.`}
+                  testID="filter-pick-dates"
+                  haptic="selection"
+                  scaleTo={0.985}
+                  onPress={() => setCalendarOpen(true)}>
+                  <ThemedView type="backgroundElement" style={styles.dateRow}>
+                    <ThemedText type="callout" style={styles.dateRowText}>
+                      {formatDateRange(range.from, range.to)}
+                    </ThemedText>
+                    <SymbolView
+                      name={{
+                        ios: 'chevron.right',
+                        android: 'chevron_right',
+                        web: 'chevron_right',
+                      }}
+                      size={14}
+                      tintColor={theme.textSecondary}
+                    />
+                  </ThemedView>
+                </PressableScale>
+              ) : null}
             </Group>
           )}
 
@@ -300,7 +358,9 @@ export function MapFilterSheet({
         </ThemedText>
       ) : (
         <ThemedText type="footnote" themeColor="textSecondary" style={styles.resultLine}>
-          {countOf(resultCount, 'plan')} on the map
+          {range == null
+            ? `${countOf(resultCount, 'plan')} on the map`
+            : `${countOf(resultCount, 'plan')}, ${formatDateRange(range.from, range.to)}`}
         </ThemedText>
       )}
       {/* "Done", not "Apply". Nothing is waiting to be applied — the map has
@@ -308,6 +368,20 @@ export function MapFilterSheet({
           button called Apply on a screen that has already applied everything
           teaches people to distrust what they just watched happen. */}
       <PrimaryButton label="Done" onPress={onClose} />
+      {/* The range picker, in a sheet of its own over this inline one. This
+          sheet has no Modal to collide with, so the calendar's presents from
+          the root; the map keeps answering every tap behind both. */}
+      {calendarOpen ? (
+        <CalendarSheet
+          title="Which days?"
+          start={filters.from}
+          end={filters.to}
+          minISO={minISO}
+          maxISO={maxISO}
+          onChange={(from, to) => onChange({ ...filters, when: 'custom', from, to })}
+          onClose={() => setCalendarOpen(false)}
+        />
+      ) : null}
     </Sheet>
   );
 }
@@ -591,6 +665,19 @@ const styles = StyleSheet.create({
   },
   group: {
     gap: Space.sm,
+  },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    minHeight: 44,
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.sm,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
+  dateRowText: {
+    flex: 1,
   },
   row: {
     flexDirection: 'row',

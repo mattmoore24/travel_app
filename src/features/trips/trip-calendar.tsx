@@ -35,6 +35,13 @@ type TripCalendarProps = {
   onChange: (start: string, end: string | null) => void;
   /** Nothing before this is selectable. Defaults to today. */
   minISO?: string;
+  /**
+   * Nothing after this is selectable, and no month entirely past it is
+   * drawn. Undefined means no ceiling, which is what every trip caller
+   * wants; the pin form and the map's date filter pass the day a pin can
+   * last be up, so neither can ask for a day the server would refuse.
+   */
+  maxISO?: string;
   /** How far ahead to render. */
   months?: number;
   /**
@@ -73,6 +80,7 @@ export function TripCalendar({
   end,
   onChange,
   minISO = toISODate(new Date()),
+  maxISO,
   months = 14,
   scroll = false,
 }: TripCalendarProps) {
@@ -81,18 +89,24 @@ export function TripCalendar({
 
   const monthsToRender = useMemo(() => {
     const from = parseISODate(minISO);
-    return Array.from({ length: months }, (_, index) => {
-      const cursor = new Date(from.getFullYear(), from.getMonth() + index, 1);
-      return {
-        key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
-        // lib/locale's month, not the device's. This header was the loudest of
-        // the four device-locale sites: "agosto 2026" over a summary reading
-        // "Aug 30 to Sep 2", on the one screen a trip is picked on.
-        label: dates().monthYear.format(cursor),
-        cells: monthGrid(cursor.getFullYear(), cursor.getMonth()),
-      };
-    });
-  }, [minISO, months]);
+    return (
+      Array.from({ length: months }, (_, index) => {
+        const cursor = new Date(from.getFullYear(), from.getMonth() + index, 1);
+        return {
+          key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
+          first: toISODate(cursor),
+          // lib/locale's month, not the device's. This header was the loudest of
+          // the four device-locale sites: "agosto 2026" over a summary reading
+          // "Aug 30 to Sep 2", on the one screen a trip is picked on.
+          label: dates().monthYear.format(cursor),
+          cells: monthGrid(cursor.getFullYear(), cursor.getMonth()),
+        };
+      })
+        // A month whose first day is already past the ceiling holds nothing
+        // that can be tapped, so it is not drawn at all.
+        .filter((month) => maxISO == null || month.first <= maxISO)
+    );
+  }, [minISO, maxISO, months]);
 
   /**
    * One tap, three meanings, and the order is what makes it feel like one
@@ -129,7 +143,7 @@ export function TripCalendar({
               if (day == null) {
                 return <View key={`gap-${index}`} style={styles.cell} />;
               }
-              const disabled = day < minISO;
+              const disabled = day < minISO || (maxISO != null && day > maxISO);
               const isStart = day === start;
               const isEnd = day === end;
               const inRange = start != null && end != null && day > start && day < end;

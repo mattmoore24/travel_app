@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 
 import { PinFormSheet } from '@/features/pins/pin-form-sheet';
 import { intentTimeLabel } from '@/features/pins/pin-helpers';
+import { formatDate, parseISODate } from '@/features/trips/dates';
+import { dates } from '@/lib/locale';
 
 /**
  * The hour, end to end through the form.
@@ -21,8 +23,11 @@ jest.mock('@/features/pins/hooks', () => ({
   useCreatePin: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
 }));
 // The Sheet is chrome this test does not exercise; render straight through.
+// The settle delay is zero so a calendar opened straight after another one
+// closed does not wait on a timer the test never advances.
 jest.mock('@/components/ui/sheet', () => ({
   Sheet: ({ children }: { children: unknown }) => children,
+  SHEET_SETTLE_MS: 0,
 }));
 // PinGlyph's module reaches react-native-maps, whose native module does not
 // exist under jest.
@@ -114,7 +119,7 @@ describe('the optional hour on the pin form', () => {
     renderForm();
     fireEvent.press(screen.getByTestId('time-19:00'));
     expect(screen.getByText('Until (optional)')).toBeTruthy();
-    // Hours after the start only, and the pin's own expiry is the ceiling.
+    // Hours after the start only.
     expect(screen.queryByTestId('until-19:00')).toBeNull();
     fireEvent.press(screen.getByTestId('until-22:00'));
     fireEvent.changeText(screen.getByTestId('plan-input'), 'Sunset drinks');
@@ -173,5 +178,80 @@ describe('the optional hour on the pin form', () => {
         new RegExp(`Today, ${intentTimeLabel('19:00')} to ${intentTimeLabel('22:00')}`)
       )
     ).toBeTruthy();
+  });
+});
+
+/**
+ * The day a pin comes down, through the form. Founder, 2026-09-10: the
+ * traveler picks the date, a year at most, and a date BEFORE the plan is
+ * legal — with "just small text ... to remind them of their choice".
+ */
+describe('the day a pin comes down, through the form', () => {
+  const spoken = (iso: string) => dates().spokenDate.format(parseISODate(iso));
+
+  beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ['nextTick'] }).setSystemTime(MORNING);
+    mockMutateAsync.mockClear();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('offers two day rows and no slider', () => {
+    renderForm();
+    expect(screen.getByText('When')).toBeTruthy();
+    expect(screen.getByText('Comes down')).toBeTruthy();
+    expect(screen.getByLabelText(/^Pick the day this plan is for\. Currently /)).toBeTruthy();
+    expect(screen.getByLabelText(/^Pick the day this comes down\. Currently /)).toBeTruthy();
+    expect(screen.queryByLabelText('How long this pin stays up')).toBeNull();
+    expect(screen.queryByText(/Disappears after/)).toBeNull();
+  });
+
+  it("posts the plan's own day as the take-down until somebody picks another, and never a timestamp", async () => {
+    renderForm();
+    fireEvent.changeText(screen.getByTestId('plan-input'), 'Sunset drinks');
+    fireEvent.press(screen.getByText('Put it on the map'));
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalled());
+    const input = mockMutateAsync.mock.calls[0][0];
+    expect(input.takeDownOn).toBe(input.intentDate);
+    expect(input).not.toHaveProperty('expiresAt');
+  });
+
+  it('a take-down before the plan draws one calm line and blocks nothing', async () => {
+    renderForm();
+    // The plan moves to the 18th through its calendar...
+    fireEvent.press(screen.getByTestId('pin-when'));
+    fireEvent.press(screen.getByLabelText(spoken('2026-09-18')));
+    // ...and the take-down, which followed it there, is pulled back to the 14th.
+    fireEvent.press(screen.getByTestId('pin-take-down'));
+    fireEvent.press(screen.getByLabelText(spoken('2026-09-14')));
+
+    // ONE line, footnote weight, both dates. Not a warning, nothing red.
+    expect(
+      screen.getByText(
+        `It comes down on ${formatDate('2026-09-14')}, before the plan on ${formatDate('2026-09-18')}. People can find it until then.`
+      )
+    ).toBeTruthy();
+    // Nothing blocked: the hour rails are still offered in full for the
+    // plan's day, the button is live, and there is no confirmation to clear.
+    expect(screen.getByTestId('time-19:00')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('time-19:00'));
+    expect(screen.getByTestId('until-03:00')).toBeTruthy();
+    fireEvent.changeText(screen.getByTestId('plan-input'), 'Sunset drinks');
+    fireEvent.press(screen.getByText('Put it on the map'));
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalled());
+    expect(mockMutateAsync.mock.calls[0][0]).toMatchObject({
+      intentDate: '2026-09-18',
+      takeDownOn: '2026-09-14',
+      intentTime: '19:00',
+    });
+  });
+
+  it('the reminder is absent while the take-down is on or after the plan', () => {
+    renderForm();
+    fireEvent.press(screen.getByTestId('pin-take-down'));
+    fireEvent.press(screen.getByLabelText(spoken('2026-09-25')));
+    expect(screen.queryByText(/before the plan on/)).toBeNull();
+    expect(screen.getByText(new RegExp(`up until ${formatDate('2026-09-25')}`))).toBeTruthy();
   });
 });

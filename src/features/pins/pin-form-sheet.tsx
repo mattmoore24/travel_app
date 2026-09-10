@@ -8,36 +8,34 @@ import { useSharedValue } from 'react-native-reanimated';
 import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
-import { HoursSlider } from '@/components/form/hours-slider';
 import { PinGlyph } from '@/features/pins/pin-marker';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Sheet } from '@/components/ui/sheet';
+import { SHEET_SETTLE_MS, Sheet } from '@/components/ui/sheet';
 import { ThemedText } from '@/components/themed-text';
 import { HitTarget, Radius, Space, Type } from '@/constants/theme';
 import { useCreatePin } from '@/features/pins/hooks';
 import {
-  MAX_PIN_HOURS,
   NO_INTENT_TIME,
   TIME_TBD,
   categoryForPlan,
   categoryForPoi,
   cityClockNow,
-  defaultHoursForIntent,
-  expiryForHours,
-  hoursLabel,
-  intentDateOptions,
+  effectiveTakeDown,
   intentEndOptions,
+  intentLabel,
   intentTimeOptions,
-  minHoursForIntent,
+  takeDownBounds,
   whenLabel,
 } from '@/features/pins/pin-helpers';
 import { openInMaps } from '@/features/pins/open-in-maps';
-import { toISODate } from '@/features/trips/dates';
+import { CalendarSheet } from '@/features/trips/calendar-sheet';
+import { formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import type { BusinessCategory, CityRow, PinCategory } from '@/lib/database.types';
 import { haptics } from '@/lib/haptics';
+import { dates } from '@/lib/locale';
 import type { LocalSearchResult } from '@/modules/local-search';
 
 /**
@@ -129,7 +127,8 @@ type PinFormSheetProps = {
 
 /**
  * The last step of dropping a pin. The spot is already chosen on the map
- * behind this sheet; here it gets a name, a description and a lifetime.
+ * behind this sheet; here it gets a name, a description, a day and the day
+ * it comes down.
  *
  * Two sections, because they answer different questions and the founder
  * asked for them separately: WHERE (filled in for you, with a link into
@@ -169,10 +168,41 @@ export function PinFormSheet({
   const [intentDate, setIntentDate] = useState(() =>
     toISODate(cityClockNow(cityTimezone, coords.lng))
   );
-  const [hours, setHours] = useState(() =>
-    defaultHoursForIntent(toISODate(cityClockNow(cityTimezone, coords.lng)))
+  // Null until somebody picks one: the take-down FOLLOWS the day control
+  // (the same discipline the old slider's hoursTouched had) and becomes its
+  // own value the moment it is touched.
+  const [takeDownPick, setTakeDownPick] = useState<string | null>(null);
+  // Which of the two day rows has its calendar up. One calendar component,
+  // one Sheet, two rows: the form's own scroller is about two rows tall with
+  // a keyboard up, and an inline month grid reproduces the below-the-fold
+  // regression photographed in runs 76 and 121.
+  const [calendar, setCalendar] = useState<'when' | 'takeDown' | null>(null);
+  // When the last calendar sheet went. iOS silently drops a presentation
+  // that starts while another modal is still dismissing, and on Fabric that
+  // leaves the app dead to touch (traps), so a second row tapped straight
+  // after the first's sheet closed waits out the settle delay.
+  const calendarClosedAt = useRef(0);
+  const calendarTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (calendarTimer.current != null) {
+        clearTimeout(calendarTimer.current);
+      }
+    },
+    []
   );
-  const [hoursTouched, setHoursTouched] = useState(false);
+  const openCalendar = (which: 'when' | 'takeDown') => {
+    const wait = SHEET_SETTLE_MS - (Date.now() - calendarClosedAt.current);
+    if (wait > 0) {
+      calendarTimer.current = setTimeout(() => setCalendar(which), wait);
+      return;
+    }
+    setCalendar(which);
+  };
+  const closeCalendar = () => {
+    calendarClosedAt.current = Date.now();
+    setCalendar(null);
+  };
   // NO DEFAULT, and that is the whole design of this field. Most plans are
   // "sometime that evening" and a pre-filled hour would turn every one of
   // them into a small lie the poster has to notice and undo. The founder
@@ -187,7 +217,7 @@ export function PinFormSheet({
   // audition for is the reason most of these pins get dropped.
   const [joinable, setJoinable] = useState(true);
 
-  // Where each text field sits in the scroller, and the scroller itself, so
+  // Where each field sits in the scroller, and the scroller itself, so
   // focusing one can bring it above the fold. Written from onLayout and read
   // from onFocus — both events, never during render, which is also why the
   // handlers are inline rather than made by a factory the compiler would see
@@ -298,21 +328,19 @@ export function PinFormSheet({
   const cityClock = cityClockNow(cityTimezone, coords.lng);
   const todayISO = toISODate(cityClock);
   const effectiveIntent = intentDate < todayISO ? todayISO : intentDate;
-  const minHours = minHoursForIntent(effectiveIntent);
-  // Until it is dragged, the slider follows the day you pick. After that it
-  // is yours, and only the floor still moves.
-  const effectiveHours = hoursTouched
-    ? Math.min(Math.max(hours, minHours), MAX_PIN_HOURS)
-    : defaultHoursForIntent(effectiveIntent);
-  const expiresAt = expiryForHours(effectiveHours);
-  // Only hours this pin can honestly reach: nothing already gone on the
-  // city's clock, nothing past the moment the pin itself disappears. The
-  // database refuses that second one outright (§7 rule 3), so offering it
-  // would be a chip that posts an error.
-  const timeOptions = intentTimeOptions(effectiveIntent, expiresAt, cityClock);
-  // Dragging the lifetime down can take the chosen hour out of range, and
-  // when it does the pin quietly goes back to having no hour rather than
-  // keeping one the server will refuse. The readout line below says so.
+  // The day it comes down: the plan's day until somebody picks one, then
+  // theirs, re-floored at the city's today every render the way the plan's
+  // day is. No floor at the plan's day, on purpose (effectiveTakeDown).
+  const takeDown = effectiveTakeDown(takeDownPick, effectiveIntent, cityClock);
+  // Today to a year out, on the city's clock, for both calendars.
+  const { minISO: calendarMinISO, maxISO: calendarMaxISO } = takeDownBounds(cityClock);
+  // Only hours this pin can honestly name: nothing already gone on the
+  // city's clock. No ceiling at the take-down, so the rails stay offered in
+  // full for a pin that comes down before its plan.
+  const timeOptions = intentTimeOptions(effectiveIntent, cityClock);
+  // Moving the day can take the chosen hour out of range (the city's clock
+  // has passed it), and when it does the pin quietly goes back to having no
+  // hour rather than keeping one the server will refuse.
   const timeTbd = intentTime === TIME_TBD;
   const effectiveTime =
     !timeTbd && timeOptions.some((option) => option.value === intentTime)
@@ -320,10 +348,8 @@ export function PinFormSheet({
       : NO_INTENT_TIME;
   // The end rides the start: no start, no window; a start that fell out of
   // range takes its end with it. Hours after the start, past midnight
-  // included, up to the pin's own expiry.
-  const endOptions = effectiveTime
-    ? intentEndOptions(effectiveIntent, effectiveTime, expiresAt, cityClock)
-    : [];
+  // included.
+  const endOptions = effectiveTime ? intentEndOptions(effectiveTime) : [];
   const effectiveEnd = endOptions.some((option) => option.value === intentTimeEnd)
     ? intentTimeEnd
     : NO_INTENT_TIME;
@@ -339,12 +365,12 @@ export function PinFormSheet({
 
   // The footnote answers whichever question the button is asking right now:
   // grey, it says which box it is waiting for; live, it repeats the promise.
-  // Same slot, one line either way, so nothing reflows. The expiry itself is
-  // stated by the "Disappears after" heading, once, not three times.
+  // Same slot, one line either way, so nothing reflows. The day itself is
+  // stated by the "Comes down" row, once, not three times.
   const needsPlan = plan.trim().length === 0;
   const footnote = needsPlan
     ? 'Say what the plan is first.'
-    : 'A plan, not your location. It disappears on its own.';
+    : 'A plan, not your location. It comes down on the day you picked.';
 
   // The plan text is what makes the difference between a marker and an
   // invitation, and the sheet's pull-down and scrim are one careless thumb
@@ -394,7 +420,9 @@ export function PinFormSheet({
         intentTime: effectiveTime || null,
         intentTimeEnd: effectiveEnd || null,
         timeTbd,
-        expiresAt: expiresAt.toISOString(),
+        // A day, never a timestamp: the server derives expires_at as
+        // midnight at the end of this day in the city's own zone.
+        takeDownOn: takeDown,
         joinable,
         // Explicit, never inferred here: a pin dropped on the map sends
         // null and lets validate_pin match by name and distance; a pin from
@@ -445,7 +473,7 @@ export function PinFormSheet({
           // Left on, unlike the rest of the app's scrollers. With a keyboard up
           // this form is cut roughly in half, and the cut lands right above the
           // Drop it button, so without a bar there is nothing to say the day
-          // chips and the expiry slider still exist below.
+          // rows and the time rail still exist below.
           showsVerticalScrollIndicator
           indicatorStyle="white">
           <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionLabel}>
@@ -568,17 +596,20 @@ export function PinFormSheet({
               );
             })}
           </View>
-          {/* THE DAY AND THE LIFETIME SIT ABOVE THE FIELDS — the same precedent
+          {/* THE DAY AND THE TAKE-DOWN SIT ABOVE THE FIELDS — the same precedent
             the join block records above: these two controls are what a pin IS,
             and below the text fields they were the two things the keyboard
-            hid entirely while the button stayed live. A single scrolling line
-            for the days, not a wrapped grid: with a keyboard up the sheet has
-            room for about a screen and a half of form. */}
-          <ChipRail
-            label="When"
-            options={intentDateOptions(cityClock)}
-            selected={effectiveIntent}
-            onSelect={setIntentDate}
+            hid entirely while the button stayed live. One row each, opening
+            the shared calendar in a Sheet of its own (CalendarSheet), never
+            an inline month grid: with a keyboard up the sheet has room for
+            about a screen and a half of form, and a grid here reproduced the
+            below-the-fold regression runs 76 and 121 photographed. */}
+          <DayRow
+            heading="When"
+            value={intentLabel(effectiveIntent, cityClock)}
+            spoken={`Pick the day this plan is for. Currently ${dates().spokenDate.format(parseISODate(effectiveIntent))}.`}
+            testID="pin-when"
+            onPress={() => openCalendar('when')}
           />
           {/* OPTIONAL, and nothing is lit until somebody lights it. TBD is
               the first chip because it is the one answer that is not an
@@ -616,26 +647,29 @@ export function PinFormSheet({
             />
           ) : null}
           <View
-            style={styles.sliderBlock}
+            style={styles.dayBlock}
             onLayout={(event) => {
               fieldY.current.expiry = event.nativeEvent.layout.y;
             }}>
-            {/* The value rides the heading, so it is readable even when the
-              track is not in view. */}
-            <ThemedText type="smallBold">
-              Disappears after · {hoursLabel(effectiveHours)}
-            </ThemedText>
-            <HoursSlider
-              value={effectiveHours}
-              min={minHours}
-              max={MAX_PIN_HOURS}
-              onChange={(next) => {
-                setHoursTouched(true);
-                setHours(next);
-              }}
-              formatValue={hoursLabel}
-              accessibilityLabel="How long this pin stays up"
+            <DayRow
+              heading="Comes down"
+              value={intentLabel(takeDown, cityClock)}
+              spoken={`Pick the day this comes down. Currently ${dates().spokenDate.format(parseISODate(takeDown))}.`}
+              testID="pin-take-down"
+              onPress={() => openCalendar('takeDown')}
             />
+            {/* THE REMINDER, and nothing more. A take-down before the plan is
+              a legal, ordinary choice (the founder, 2026-09-10: somebody
+              planning ahead may not want to be messaged about it all the way
+              up to the event), so this is one calm line under the row in the
+              footnote weight, carrying both dates so it reads as a reminder
+              and not a scold. Nothing turns red, the button stays live and
+              there is no confirmation to dismiss. */}
+            {takeDown < effectiveIntent ? (
+              <ThemedText type="footnote" themeColor="textSecondary">
+                {`It comes down on ${formatDate(takeDown)}, before the plan on ${formatDate(effectiveIntent)}. People can find it until then.`}
+              </ThemedText>
+            ) : null}
           </View>
           {/* BRING THE FOCUSED FIELD INTO VIEW. With the keyboard up the sheet
             reserves a keyboard's worth of floor and this scroller is what
@@ -698,16 +732,16 @@ export function PinFormSheet({
           style={styles.fadeBottom}
         />
       </View>
-      {/* PINNED, outside the scroller, so the day and the lifetime stay
+      {/* PINNED, outside the scroller, so the day and the take-down stay
           readable with the keyboard up. One row of chrome, not a second
-          slider: tapping it scrolls the real control into view. */}
+          control: tapping it scrolls the real row into view. */}
       <View
         onLayout={(event) => {
           pinnedHeight.value = event.nativeEvent.layout.height;
         }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${when}, gone in ${hoursLabel(effectiveHours)}. Shows the expiry control.`}
+          accessibilityLabel={`${when}, up until ${dates().spokenDate.format(parseISODate(takeDown))}. Shows the take-down date.`}
           hitSlop={4}
           onPress={() => {
             scrollRef.current?.scrollTo({
@@ -720,7 +754,7 @@ export function PinFormSheet({
             themeColor="textSecondary"
             numberOfLines={1}
             style={styles.expiryReadout}>
-            {when} · gone in {hoursLabel(effectiveHours)}
+            {when} · up until {formatDate(takeDown)}
           </ThemedText>
         </Pressable>
         <PrimaryButton
@@ -736,7 +770,89 @@ export function PinFormSheet({
           {footnote}
         </ThemedText>
       </View>
+      {/* INSIDE this sheet's tree, never beside it: a Modal presents from the
+          nearest view controller, and one rendered as a sibling of an
+          already-presented Modal is the presentation iOS silently drops
+          (traps). A tap on a day picks it and the sheet goes; Done is the way
+          out for somebody who opened it to look. */}
+      {calendar === 'when' ? (
+        <CalendarSheet
+          title="When is the plan?"
+          start={effectiveIntent}
+          end={null}
+          minISO={calendarMinISO}
+          maxISO={calendarMaxISO}
+          onChange={(nextStart, nextEnd) => {
+            setIntentDate(nextEnd ?? nextStart);
+            closeCalendar();
+          }}
+          onClose={closeCalendar}
+        />
+      ) : null}
+      {calendar === 'takeDown' ? (
+        <CalendarSheet
+          title="When does it come down?"
+          start={takeDown}
+          end={null}
+          minISO={calendarMinISO}
+          maxISO={calendarMaxISO}
+          onChange={(nextStart, nextEnd) => {
+            setTakeDownPick(nextEnd ?? nextStart);
+            closeCalendar();
+          }}
+          onClose={closeCalendar}
+        />
+      ) : null}
     </Sheet>
+  );
+}
+
+/**
+ * A day, as a heading and a row that opens the calendar.
+ *
+ * The heading is a plain Text OUTSIDE the button, on purpose: a Pressable
+ * carrying its own accessibilityLabel becomes one element on iOS and hides
+ * the text inside it from VoiceOver and from the simulator suite alike
+ * (traps), so the word a person reads and the sentence a screen reader
+ * speaks are two elements. The row is the 44pt target; the spoken label says
+ * what it does and what it currently holds, the way the calendar's own cells
+ * speak their date.
+ */
+function DayRow({
+  heading,
+  value,
+  spoken,
+  testID,
+  onPress,
+}: {
+  heading: string;
+  value: string;
+  spoken: string;
+  testID: string;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={styles.dayBlock}>
+      <ThemedText type="smallBold">{heading}</ThemedText>
+      <PressableScale
+        accessibilityRole="button"
+        accessibilityLabel={spoken}
+        testID={testID}
+        scaleTo={0.985}
+        haptic="selection"
+        onPress={onPress}
+        style={[styles.dayRow, { backgroundColor: theme.surfaceSunken }]}>
+        <ThemedText type="callout" style={styles.dayValue}>
+          {value}
+        </ThemedText>
+        <SymbolView
+          name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+          size={14}
+          tintColor={theme.textSecondary}
+        />
+      </PressableScale>
+    </View>
   );
 }
 
@@ -832,8 +948,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Space.xs,
   },
-  sliderBlock: {
+  dayBlock: {
     gap: Space.xs,
+  },
+  dayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    minHeight: HitTarget,
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.sm,
+    borderRadius: Radius.md,
+    borderCurve: 'continuous',
+  },
+  dayValue: {
+    flex: 1,
   },
   joinBlock: {
     gap: Space.xs,

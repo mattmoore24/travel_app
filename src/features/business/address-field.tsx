@@ -220,7 +220,7 @@ export function BusinessAddressField({
           {/* The accent, because it is the way forward when the search finds
               nothing, and in the same grey as the message above it the line
               read as a second hint. "Marker", never "pin": a pin is the
-              traveler's 72-hour object (vocabulary.ts). */}
+              traveler's dated, self-expiring object (vocabulary.ts). */}
           <ThemedText type="footnote" themeColor="accent">
             Not coming up? Place the marker yourself.
           </ThemedText>

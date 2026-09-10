@@ -72,10 +72,11 @@ describe('PRIVACY_SECTIONS', () => {
 describe('the four safety promises, where they decide something', () => {
   /**
    * The reason a cautious traveler picks this over GAFFL, Couchsurfing or
-   * Bumble BFF: no location, pins that expire within 72 hours, socials hidden
-   * until both sides chat, first messages screened. All four are enforced in
-   * Postgres and all four used to live only in the fourth section of a
-   * rulebook behind a button nobody opens.
+   * Bumble BFF: no location, pins that come down on the day their author
+   * picked (a year at most), socials hidden until both sides chat, first
+   * messages screened. All four are enforced in Postgres and all four used
+   * to live only in the fourth section of a rulebook behind a button nobody
+   * opens.
    */
   it('says the location promise where somebody decides to install', () => {
     expect(SAFETY_PROMISE_TITLE).toBe('We never ask where you are');
@@ -84,8 +85,10 @@ describe('the four safety promises, where they decide something', () => {
     expect(SIGN_UP_GATE_NOTE).toContain('Always free');
   });
 
-  it('names the pin expiry and the socials gate, the two enforced rules', () => {
-    expect(SAFETY_PROMISE_BODY).toContain('72 hours');
+  it('names the pin take-down and the socials gate, the two enforced rules', () => {
+    // The NEW promise, asserted so it fails if it drifts: a pin comes down on
+    // the day its author picked. Never asserted as the absence of '72'.
+    expect(SAFETY_PROMISE_BODY).toContain('the day each comes down');
     expect(SAFETY_PROMISE_BODY).toContain('both chatting');
     expect(SOCIALS_HIDDEN_NOTE).toContain('hidden until you are both chatting');
   });
@@ -94,7 +97,14 @@ describe('the four safety promises, where they decide something', () => {
     const privacy = GUIDELINE_SECTIONS.find((section) => section.title === 'Your privacy');
     expect(privacy).toBeDefined();
     expect(privacy?.body).toContain('We never collect your location');
-    expect(privacy?.body).toContain('72 hours');
+    expect(privacy?.body).toContain('the day each one comes down');
+    expect(privacy?.body).toContain('a year out');
+  });
+
+  it('tells the privacy policy reader the same ceiling', () => {
+    const collected = PRIVACY_SECTIONS.find((section) => section.title === 'What we collect');
+    expect(collected?.body).toContain('the day its author set it to come down');
+    expect(collected?.body).toContain('at most a year out');
   });
 
   it('keeps the tour page short enough for a composition that does not scroll', () => {

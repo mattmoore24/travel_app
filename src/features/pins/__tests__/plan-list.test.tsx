@@ -6,12 +6,13 @@ import {
   PLAN_LIST_PEEK,
   PlanList,
   listableBusinesses,
+  nextPlanDay,
   planListSummary,
   planSections,
   todayCount,
   type PlanListDetent,
 } from '@/features/pins/plan-list';
-import { toISODate } from '@/features/trips/dates';
+import { addDays, formatDate, toISODate } from '@/features/trips/dates';
 import type { CityBusinessRow, CityPinRow } from '@/lib/database.types';
 
 // PlanList draws PlaceGlyph, whose module (business-marker) imports
@@ -58,6 +59,8 @@ function pin(over: Partial<CityPinRow> = {}): CityPinRow {
     intent_date: toISODate(new Date()),
     seeded: false,
     seed_note: null,
+    take_down_on: toISODate(new Date()),
+    plan_ends_at: new Date(Date.now() + 20 * 3_600_000).toISOString(),
     expires_at: new Date(Date.now() + 20 * 3_600_000).toISOString(),
     intent_time: null,
     intent_time_end: null,
@@ -156,10 +159,44 @@ describe('the peek line', () => {
     expect(screen.getByText(/4 plans in Bangkok/)).toBeTruthy();
   });
 
-  it('says today only when something is on today', () => {
+  it('says today when something is on today, and the next day when nothing is', () => {
     expect(planListSummary('Bangkok', 11, 4)).toBe('11 plans in Bangkok · 4 today');
-    expect(planListSummary('Bangkok', 2, 0)).toBe('2 plans in Bangkok');
     expect(planListSummary('Lisbon', 1, 1)).toBe('1 plan in Lisbon · 1 today');
+    // A pin can be up for a year now, so a strip with nothing on today is
+    // never silent about its horizon: it names the soonest day instead.
+    const soon = toISODate(addDays(new Date(), 8));
+    expect(planListSummary('Bangkok', 11, 0, soon)).toBe(
+      `11 plans in Bangkok · next on ${formatDate(soon)}`
+    );
+    expect(planListSummary('Bangkok', 11, 0, soon)).toMatch(
+      /^11 plans in Bangkok · next on [A-Z][a-z]{2} \d{1,2}$/
+    );
+    // The year rides along once it is not this one, through formatDate.
+    expect(planListSummary('Bangkok', 11, 0, '2030-09-18')).toContain('2030');
+    // Every plan's day gone: the bare count, never a "next" that is behind us.
+    expect(planListSummary('Bangkok', 2, 0, null)).toBe('2 plans in Bangkok');
+  });
+
+  it("the next day is the soonest FILTERED plan from the city's today on", () => {
+    const city = new Date(2026, 8, 10, 15, 0);
+    expect(
+      nextPlanDay(
+        [
+          pin({ intent_date: '2026-09-08' }), // already gone on the city's clock
+          pin({ intent_date: '2026-09-25' }),
+          pin({ intent_date: '2026-09-18' }),
+        ],
+        city
+      )
+    ).toBe('2026-09-18');
+    expect(nextPlanDay([pin({ intent_date: '2026-09-08' })], city)).toBeNull();
+    expect(nextPlanDay([pin({ intent_date: '2026-09-10' })], city)).toBe('2026-09-10');
+  });
+
+  it('prints the next day on the strip itself when nothing is on today', () => {
+    const soon = toISODate(addDays(new Date(), 8));
+    renderList({ pins: [pin({ intent_date: soon }), pin({ intent_date: soon })] });
+    expect(screen.getByText(`2 plans in Bangkok · next on ${formatDate(soon)}`)).toBeTruthy();
   });
 
   it('counts today on either clock that writes intent_date', () => {

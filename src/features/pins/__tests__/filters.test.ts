@@ -1,14 +1,17 @@
 import {
   DEFAULT_FILTERS,
   activeFilterCount,
-  daysFor,
-  heatDay,
+  clockSkew,
+  inWindow,
   isDefault,
   mapResultCount,
   pinPasses,
+  rangeFor,
   showsBusinesses,
   showsHeat,
+  todayWindow,
   toggle,
+  windowFor,
   type MapFilters,
 } from '@/features/pins/filters';
 import type { CityPinRow } from '@/lib/database.types';
@@ -31,6 +34,8 @@ const pin = (over: Partial<CityPinRow> = {}): CityPinRow =>
     lng: -9.1,
     intent_date: '2026-08-28',
     seeded: false,
+    take_down_on: '2026-08-28',
+    plan_ends_at: '2026-08-29T00:00:00Z',
     expires_at: '2026-08-29T00:00:00Z',
     ...over,
   }) as CityPinRow;
@@ -56,20 +61,13 @@ describe('the default is a map with nothing hidden', () => {
     expect(showsHeat(withFilters({ kinds: ['travelers'] }))).toBe(false);
   });
 
-  it('asks the heat RPC about no day in particular', () => {
-    expect(heatDay('any', NOW)).toBeNull();
-    expect(daysFor('any', NOW)).toBeNull();
-  });
-
-  it("asks the heat RPC about the CITY's day when a city clock is given", () => {
-    // A device on the evening of the 28th browsing a city already into the
-    // 29th: the single day the RPC gets is the city's, and the marker set
-    // still accepts the device-written date (widened, never swapped).
-    const city = new Date(2026, 7, 29, 3, 0);
-    expect(heatDay('today', NOW, city)).toBe('2026-08-29');
-    const days = daysFor('today', NOW, city)!;
-    expect(days.has('2026-08-29')).toBe(true);
-    expect(days.has('2026-08-28')).toBe(true);
+  it('is anytime, expressed as no window at all', () => {
+    // The founder closed this on 2026-09-10: the map defaults to anytime.
+    // An ABSENCE rather than a wide range, so the range arguments are left
+    // off both RPC calls and the markers skip the date test entirely.
+    expect(DEFAULT_FILTERS.when).toBe('anytime');
+    expect(windowFor(DEFAULT_FILTERS, NOW)).toBeNull();
+    expect(rangeFor(DEFAULT_FILTERS, NOW)).toBeNull();
   });
 });
 
@@ -88,7 +86,17 @@ describe('counting what is on', () => {
   });
 
   it('adds up across groups', () => {
-    expect(activeFilterCount(withFilters({ day: 'today', kinds: ['travelers'] }))).toBe(2);
+    expect(activeFilterCount(withFilters({ when: 'next7', kinds: ['travelers'] }))).toBe(2);
+  });
+
+  it('scores a custom range as ONE, so the badge and both Clear all buttons stay honest', () => {
+    // One point for the `when`, nothing for the two days inside it: a range
+    // is one decision, exactly as the category group is.
+    expect(
+      activeFilterCount(withFilters({ when: 'custom', from: '2026-09-01', to: '2026-09-14' }))
+    ).toBe(1);
+    expect(activeFilterCount(withFilters({ when: 'next30' }))).toBe(1);
+    expect(isDefault(withFilters({ when: 'next7' }))).toBe(false);
   });
 
   it('has no verified-only filter to count', () => {
@@ -100,34 +108,89 @@ describe('counting what is on', () => {
   });
 });
 
-describe('the day filter', () => {
-  it('accepts either clock’s idea of the day', () => {
-    // intent_date is written by whichever clock the sender was on, so around
-    // midnight a phone and the server disagree about what "today" is and the
-    // set carries both. Asserted as a bound rather than as exactly two,
-    // because whether they differ depends on the runner's own timezone and a
-    // test that only passes west of Greenwich is worse than no test.
-    const days = daysFor('today', NOW)!;
-    expect(days.has('2026-08-28')).toBe(true);
-    expect(days.size).toBeGreaterThanOrEqual(1);
-    expect(days.size).toBeLessThanOrEqual(2);
+describe('the date window', () => {
+  it("anchors next 7 and next 30 days on the CITY's today", () => {
+    // A device on the 28th browsing a city already into the 29th: the week
+    // is the city's week. Read through rangeFor, the pair before any clock
+    // tolerance, which is what the filter sheet prints.
+    const city = new Date(2026, 7, 29, 3, 0);
+    expect(rangeFor(withFilters({ when: 'next7' }), NOW, city)).toEqual({
+      from: '2026-08-29',
+      to: '2026-09-04',
+    });
+    expect(rangeFor(withFilters({ when: 'next30' }), NOW, city)).toEqual({
+      from: '2026-08-29',
+      to: '2026-09-27',
+    });
   });
 
-  it('reaches exactly as far as a pin can', () => {
-    // Three days is the whole universe: a pin is capped at 72 hours.
-    expect([...daysFor('today', NOW)!]).toContain('2026-08-28');
-    expect([...daysFor('tomorrow', NOW)!]).toContain('2026-08-29');
-    expect([...daysFor('later', NOW)!]).toContain('2026-08-30');
+  it('a custom range comes back inclusive at both ends, a single tapped day standing for one day', () => {
+    const custom = withFilters({ when: 'custom', from: '2026-09-01', to: '2026-09-14' });
+    expect(rangeFor(custom, NOW)).toEqual({ from: '2026-09-01', to: '2026-09-14' });
+    const window = windowFor(custom, NOW)!;
+    expect(pinPasses(pin({ intent_date: '2026-09-01' }), custom, window)).toBe(true);
+    expect(pinPasses(pin({ intent_date: '2026-09-14' }), custom, window)).toBe(true);
+    expect(pinPasses(pin({ intent_date: '2026-08-30' }), custom, window)).toBe(false);
+    expect(pinPasses(pin({ intent_date: '2026-09-16' }), custom, window)).toBe(false);
+    // Mid-pick: one day tapped is one day.
+    expect(rangeFor(withFilters({ when: 'custom', from: '2026-09-01', to: null }), NOW)).toEqual({
+      from: '2026-09-01',
+      to: '2026-09-01',
+    });
+    // Custom with nothing picked yet is not a window at all.
+    expect(windowFor(withFilters({ when: 'custom' }), NOW)).toBeNull();
+  });
+
+  it('widens by the measured clock skew, and never by more than a day each way', () => {
+    // intent_date is written by three clocks (the city's, the device's, and
+    // Postgres's UTC current_date for the seed), so a boundary day can be
+    // off by one. Asserted as a BOUND rather than as fixed strings, because
+    // whether they differ depends on the runner's own timezone and a test
+    // that only passes west of Greenwich is worse than no test.
+    const custom = withFilters({ when: 'custom', from: '2026-09-01', to: '2026-09-14' });
+    const window = windowFor(custom, NOW)!;
+    expect(['2026-08-31', '2026-09-01']).toContain(window.from);
+    expect(['2026-09-14', '2026-09-15']).toContain(window.to);
+    const skew = clockSkew(NOW);
+    expect(skew.before).toBeLessThanOrEqual(1);
+    expect(skew.after).toBeLessThanOrEqual(1);
+    // The two clocks cannot sit on opposite sides of the same day at once.
+    expect(skew.before + skew.after).toBeLessThanOrEqual(1);
+  });
+
+  it('keeps a pin on the boundary day when the device and the city disagree', () => {
+    // A device at 20:00 on the 30th browsing a city already at 03:00 on the
+    // 31st: the city's week leads, and the device-written 30th (the same
+    // night, on the other clock) stays matched. "Widen, never swap." This is
+    // the failure that is silent and only reproduces in other timezones.
+    const device = new Date(2026, 7, 30, 20, 0);
+    const city = new Date(2026, 7, 31, 3, 0);
+    const window = windowFor(withFilters({ when: 'next7' }), device, city)!;
+    expect(inWindow('2026-08-31', window)).toBe(true); // the city's today
+    expect(inWindow('2026-08-30', window)).toBe(true); // the device's today, still matched
+    expect(inWindow('2026-09-06', window)).toBe(true); // the city's seventh day
+    expect(inWindow('2026-08-28', window)).toBe(false);
+    expect(inWindow('2026-09-09', window)).toBe(false);
   });
 
   it('hides a plan for another day', () => {
-    const days = daysFor('tomorrow', NOW);
-    expect(
-      pinPasses(pin({ intent_date: '2026-08-28' }), withFilters({ day: 'tomorrow' }), days)
-    ).toBe(false);
-    expect(
-      pinPasses(pin({ intent_date: '2026-08-29' }), withFilters({ day: 'tomorrow' }), days)
-    ).toBe(true);
+    const next7 = withFilters({ when: 'next7' });
+    const window = windowFor(next7, NOW)!;
+    expect(pinPasses(pin({ intent_date: '2026-08-20' }), next7, window)).toBe(false);
+    expect(pinPasses(pin({ intent_date: '2026-08-30' }), next7, window)).toBe(true);
+    expect(pinPasses(pin({ intent_date: '2026-10-01' }), next7, window)).toBe(false);
+  });
+
+  it("todayWindow leads with the city's day and keeps the device day matched", () => {
+    // The plan list's "N today" reads this, so the peek cannot disagree with
+    // the markers the map draws for the same day.
+    const device = new Date(2026, 7, 30, 20, 0);
+    const city = new Date(2026, 7, 31, 3, 0);
+    const today = todayWindow(device, city);
+    expect(inWindow('2026-08-31', today)).toBe(true);
+    expect(inWindow('2026-08-30', today)).toBe(true);
+    expect(inWindow('2026-08-28', today)).toBe(false);
+    expect(inWindow('2026-09-02', today)).toBe(false);
   });
 });
 

@@ -282,6 +282,15 @@ export type PublicPinRow = {
   business_id: string | null;
   seeded: boolean;
   seed_note: string | null;
+  /**
+   * The day the author said it comes down, on the city's clock (ISO date).
+   * `expires_at` is derived from it server-side as midnight at the end of
+   * that day in the city's zone; print the day from here, never by
+   * converting the timestamp in the reader's timezone.
+   */
+  take_down_on: string;
+  /** When the plan itself is over, in the city's clock. Not a floor under expires_at. */
+  plan_ends_at: string;
   expires_at: string;
   /** Set when the pin is open to join. Guests see that a plan is open too. */
   chat_id: string | null;
@@ -1070,6 +1079,15 @@ export type CityPinRow = {
   business_id: string | null;
   seeded: boolean;
   seed_note: string | null;
+  /**
+   * The day the author said it comes down, on the city's clock (ISO date).
+   * `expires_at` is derived from it server-side as midnight at the end of
+   * that day in the city's zone; print the day from here, never by
+   * converting the timestamp in the reader's timezone.
+   */
+  take_down_on: string;
+  /** When the plan itself is over, in the city's clock. Not a floor under expires_at. */
+  plan_ends_at: string;
   expires_at: string;
   /**
    * The group chat this pin opened with, when its author ticked "anyone can
@@ -1084,7 +1102,8 @@ export type CityPinRow = {
 /**
  * Row shape returned by pin_for_group(): the plan a pin-born group came
  * from, for the room's own card. Members only, and empty once the pin has
- * expired (hard rule 3) or been taken down.
+ * come down on its take-down date (hard rule 3) or been taken down by hand.
+ * `intent_date` is what says whether the plan itself has already happened.
  */
 export type PinForGroupRow = {
   pin_id: string;
@@ -1567,8 +1586,16 @@ export type Database = {
           seeded: boolean;
           seed_note: string | null;
           created_at: string;
+          /** The day it comes down (city clock); expires_at is derived from it. */
+          take_down_on: string;
+          plan_ends_at: string;
           expires_at: string;
         };
+        /**
+         * No `expires_at` and no `take_down_on`: the column grant on both is
+         * revoked (20260910120000), so the pin's lifetime is server-owned.
+         * Every shipped write goes through post_joinable_pin anyway.
+         */
         Insert: {
           user_id: string;
           city_id: number;
@@ -1580,7 +1607,6 @@ export type Database = {
           lat: number;
           lng: number;
           intent_date: string;
-          expires_at: string;
           /** Granted per column since 20260902190000; null lets validate_pin infer one. */
           business_id?: string | null;
         };
@@ -1818,11 +1844,17 @@ export type Database = {
         Returns: FeaturedTravelerRow[];
       };
       public_city_pins: {
-        Args: { p_city_id: number };
+        /** The optional range narrows by intent_date; omit both for every day. */
+        Args: { p_city_id: number; p_from?: string | null; p_to?: string | null };
         Returns: PublicPinRow[];
       };
       public_heat_cells: {
-        Args: { p_city_id: number; p_date?: string | null };
+        Args: {
+          p_city_id: number;
+          p_date?: string | null;
+          p_from?: string | null;
+          p_to?: string | null;
+        };
         Returns: HeatCellRow[];
       };
       city_rooms: {
@@ -1955,7 +1987,8 @@ export type Database = {
         };
       };
       city_pins: {
-        Args: { p_city_id: number };
+        /** The optional range narrows by intent_date; omit both for every day. */
+        Args: { p_city_id: number; p_from?: string | null; p_to?: string | null };
         Returns: CityPinRow[];
       };
       post_joinable_pin: {
@@ -1968,7 +2001,14 @@ export type Database = {
           p_lat: number;
           p_lng: number;
           p_intent_date: string;
-          p_expires_at: string;
+          /**
+           * The day the pin comes down, on the city's clock. The server
+           * derives expires_at from it. Trailing and defaulted, so an old
+           * bundle naming p_expires_at still resolves.
+           */
+          p_take_down_on?: string | null;
+          /** Legacy hint, read only when p_take_down_on is absent. */
+          p_expires_at?: string | null;
           p_plan?: string | null;
           p_intent_time?: string | null;
           p_joinable?: boolean;
@@ -2035,7 +2075,12 @@ export type Database = {
         Returns: undefined;
       };
       heat_cells: {
-        Args: { p_city_id: number; p_date?: string | null };
+        Args: {
+          p_city_id: number;
+          p_date?: string | null;
+          p_from?: string | null;
+          p_to?: string | null;
+        };
         Returns: HeatCellRow[];
       };
       submit_verification: {

@@ -820,7 +820,7 @@ export default function PlaceScreen() {
                 {planCity ? (
                   planned ? (
                     <ThemedText type="footnote" themeColor="textSecondary">
-                      Your plan is on the map. It disappears on its own.
+                      Your plan is on the map until the day you picked.
                     </ThemedText>
                   ) : (
                     <PrimaryButton

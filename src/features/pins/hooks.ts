@@ -16,6 +16,7 @@ import {
 import { useIsBusiness } from '@/features/business/hooks';
 import { useIsGuest, useWantsBusiness } from '@/features/guest/hooks';
 import { usePushPrimer } from '@/features/notifications/primer-store';
+import { addDays, parseISODate } from '@/features/trips/dates';
 import { analytics } from '@/lib/analytics';
 import type { CityRow, HeatCellRow, PinCategory } from '@/lib/database.types';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
@@ -166,7 +167,13 @@ export type NewPin = {
    * ("Time TBD"), unlike no hour at all, which prints nothing.
    */
   timeTbd?: boolean;
-  expiresAt: string;
+  /**
+   * The ISO day the pin comes down, on the city's clock. The server derives
+   * expires_at from it (midnight at the end of that day in the city's zone)
+   * and the client never computes a timestamp. Floored at the city's today
+   * and ceilinged a year out by the trigger; a day BEFORE the plan is legal.
+   */
+  takeDownOn: string;
   /**
    * Ticked "anyone can join": the pin arrives carrying a group chat and one
    * tap puts somebody in it. Off is the original shape, where meeting starts
@@ -212,7 +219,7 @@ export function useCreatePin() {
     // three fields the analytics event wants. The joinable path also carries
     // the chat it opened.
     mutationFn: async ({ joinable, ...input }: NewPin): Promise<PostedPin> => {
-      const { data, error } = await callRpc('post_joinable_pin', {
+      const args = {
         p_city_id: input.cityId,
         p_venue_name: input.venueName,
         p_note: input.note ?? null,
@@ -223,7 +230,6 @@ export function useCreatePin() {
         p_lng: input.lng,
         p_intent_date: input.intentDate,
         p_intent_time: input.intentTime ?? null,
-        p_expires_at: input.expiresAt,
         p_joinable: joinable === true,
         // Sent ONLY when it has a value. PostgREST resolves an RPC by the
         // argument names it is given, so naming an argument against a
@@ -233,7 +239,26 @@ export function useCreatePin() {
         ...(input.businessId ? { p_business_id: input.businessId } : {}),
         ...(input.intentTimeEnd ? { p_intent_time_end: input.intentTimeEnd } : {}),
         ...(input.timeTbd ? { p_time_tbd: true } : {}),
+      };
+      // The take-down day is ALWAYS sent: it is never empty, so a conditional
+      // spread here would name the argument every time and only look like a
+      // guard. The real guard is the deploy order (migration before the OTA)
+      // plus the one concrete fallback below.
+      let { data, error } = await callRpc('post_joinable_pin', {
+        ...args,
+        p_take_down_on: input.takeDownOn,
       });
+      if (error && isUnknownFunction(error)) {
+        // A server that predates p_take_down_on cannot resolve the call at
+        // all (PGRST202), so a bundle that somehow led the migration would
+        // fail every pin post. Once, and only for that code, the legacy
+        // argument is sent instead: the end of the take-down day, which the
+        // old validate_pin reads the day back off. Degrades rather than dies.
+        ({ data, error } = await callRpc('post_joinable_pin', {
+          ...args,
+          p_expires_at: legacyExpiryFor(input.takeDownOn),
+        }));
+      }
       if (error) {
         throw error;
       }
@@ -293,6 +318,25 @@ export function useCreatePin() {
       });
     },
   });
+}
+
+/**
+ * PostgREST's "could not find the function" answer, which is what a server
+ * that predates a named argument says to a call that names it.
+ */
+function isUnknownFunction(error: unknown): boolean {
+  return (
+    typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'PGRST202'
+  );
+}
+
+/**
+ * The legacy expiry for a take-down day: device-local midnight at the end of
+ * it. Only ever sent to a server that has no p_take_down_on, which reads the
+ * day back off this timestamp. The new server is never handed a timestamp.
+ */
+function legacyExpiryFor(takeDownISO: string): string {
+  return addDays(parseISODate(takeDownISO), 1).toISOString();
 }
 
 /**

@@ -211,8 +211,8 @@ appId: com.mattmoore.samewhere
 - assertVisible: 'Rooftop hello from Maestro'
 # The keyboard goes away before the form is judged: Details is multiline, so
 # nothing above dismissed it, and with a venue on the Where card the scroller
-# under a keyboard is two rows tall. Run 121 asserted the expiry slider into
-# that window and failed with "Disappears after" showing and the slider
+# under a keyboard is two rows tall. Run 121 asserted the old expiry slider
+# into that window and failed with its heading showing and the control
 # itself below the fold. Conditional, because the bar exists only while a
 # field has focus.
 - runFlow:
@@ -232,21 +232,56 @@ appId: com.mattmoore.samewhere
 # scrollUntilVisible: the whole claim is that no scrolling is needed.
 - assertVisible: 'Anyone can join.*'
 - assertVisible: 'Message me first.*'
-# THE DAY AND THE LIFETIME. Same reasoning as the join rows above:
+# THE DAY AND THE TAKE-DOWN. Same reasoning as the join rows above:
 # assertVisible, not scrollUntilVisible, because the whole claim is that the
-# two controls that define what a pin IS need no scrolling to reach.
+# two controls that define what a pin IS need no scrolling to reach. Each is
+# a heading (plain text, so Maestro can read it) over a row that opens the
+# shared calendar in a sheet of its own.
 - assertVisible: 'When'
-- assertVisible: 'Disappears after.*'
-# The slider itself, by its spoken label (an adjustable carries its own
-# accessibilityLabel, and that is what Maestro sees, once the View says
-# `accessible`: run 122 found nothing here with the keyboard down, because
-# until then it did not). The 72h cap is a §7
-# hard rule, and a user who cannot reach this control cannot set it — the
-# slider was once clipped off the bottom of the scroll viewport while the
-# form's tests stayed green, so a future regression fails the run here
-# rather than only the eye.
-- assertVisible: 'How long this pin stays up'
+- assertVisible: 'Comes down.*'
+# The take-down row itself, by its spoken label: a Pressable carrying its
+# own accessibilityLabel is one element on iOS and hides the text inside it
+# (traps), so the label is what Maestro sees. The day a pin comes down is
+# the §7 hard rule 3 control now (the traveler picks it, a year at most),
+# and a user who cannot reach this row cannot set it — the old slider was
+# once clipped off the bottom of the scroll viewport while the form's tests
+# stayed green, so a future regression fails the run here rather than only
+# the eye.
+- assertVisible: 'Pick the day this comes down.*'
 - takeScreenshot: 15b-pin-join-mode
+# THE TAKE-DOWN CALENDAR, and the founder's own overrule photographed: a
+# take-down BEFORE the plan is legal and draws one calm line under the row
+# (2026-09-10), and nothing else in the suite would picture that state.
+# Cells are addressed by INDEX in the calendar's own order, because a cell's
+# spoken label is the run's date and a flow cannot type one: the grid starts
+# at the first of the city's current month, so cell 40 is at least nine days
+# past any today and cell 35 is five days before it. Both sit inside the
+# first two months, which the sheet shows without scrolling. The plan goes
+# on the later day, the take-down on the earlier one.
+- tapOn:
+    id: 'pin-when'
+- extendedWaitUntil:
+    visible: 'When is the plan?'
+    timeout: 10000
+- takeScreenshot: 15c-pin-when-calendar
+- tapOn:
+    text: '[A-Z][a-z]+day, [0-9]+ [A-Z][a-z]+'
+    index: 40
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    id: 'pin-take-down'
+- extendedWaitUntil:
+    visible: 'When does it come down?'
+    timeout: 10000
+- tapOn:
+    text: '[A-Z][a-z]+day, [0-9]+ [A-Z][a-z]+'
+    index: 35
+- waitForAnimationToEnd:
+    timeout: 2000
+# The reminder line, exactly. It is a plain Text, so its words are readable.
+- assertVisible: 'It comes down on .*, before the plan on .*\. People can find it until then\.'
+- takeScreenshot: 15d-pin-comes-down-before-plan
 # Reachable because the keyboard went away above, NOT because the sheet lifts
 # it: 43886b4 gave Sheet a keyboardAllowance so a pinned button is covered
 # rather than riding up, which is founder ask 6 from 2026-09-05. The
@@ -272,15 +307,16 @@ appId: com.mattmoore.samewhere
 # below matches room-only content, so a tap that did nothing fails HERE.
 - tapOn: 'Open the chat'
 # Wait on ROOM-ONLY content first: the map's own pin card behind this push
-# prints the same burnOutLabel, so a wait keyed on the burn line would pass
-# at t=0 with the tap having done nothing. The membership line exists only
-# in the room. Then the card's own line, anchored for the whole-element
-# match ('Today · burns out in 24h' is one Text), and the Maps link by its
-# SPOKEN label - the Pressable hides its inner text (traps).
+# prints the same takeDownLabel, so a wait keyed on that line would pass at
+# t=0 with the tap having done nothing. The membership line exists only in
+# the room. Then the card's own line, anchored for the whole-element match
+# ('Friday, Oct 11 · up until Oct 6' is one Text; a pin coming down inside
+# the day reads 'burns out in 24h' instead), and the Maps link by its SPOKEN
+# label - the Pressable hides its inner text (traps).
 - extendedWaitUntil:
     visible: '1 person in this chat.*'
     timeout: 20000
-- assertVisible: '.*burns out (in .*|soon)'
+- assertVisible: '.*(burns out (in .*|soon)|up until .*)'
 - assertVisible: 'View .* in Maps'
 - takeScreenshot: 16b-pin-born-room
 # Relaunch rather than `back` — Maestro's back does not reliably pop an iOS

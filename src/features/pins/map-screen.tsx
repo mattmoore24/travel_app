@@ -109,24 +109,23 @@ import { PlacePinOverlay } from '@/features/pins/place-pin-overlay';
 import {
   GEOCODE_FLOOR_MS,
   type MapPin,
-  burnOutLabel,
   byIntentMoment,
   cityClockNow,
   isLaterCityDay,
   pinSubtitle,
   pinTitle,
   shouldGeocode,
+  takeDownLabel,
   whenLabel,
 } from '@/features/pins/pin-helpers';
 import {
   DEFAULT_FILTERS,
-  daysFor,
-  heatDay,
   isDefault,
   mapResultCount,
   pinPasses,
   showsBusinesses,
   showsHeat,
+  windowFor,
   type MapFilters,
 } from '@/features/pins/filters';
 import { crewLabel } from '@/features/pins/crew';
@@ -312,7 +311,7 @@ function PinCard({
             </ThemedText>
           ) : null}
           <ThemedText type="footnote" themeColor="textSecondary">
-            {whenLabel(pin, clock)} · {burnOutLabel(pin.expires_at)}
+            {whenLabel(pin, clock)} · {takeDownLabel(pin.take_down_on, pin.expires_at)}
           </ThemedText>
           {pin.place_label ? (
             <ThemedText type="footnote" themeColor="textSecondary" numberOfLines={2}>
@@ -802,7 +801,7 @@ function CityPinMarker({
         pin.display_name,
         pin.chat_id ? 'open to join' : null,
         whenLabel(pin, clock),
-        burnOutLabel(pin.expires_at),
+        takeDownLabel(pin.take_down_on, pin.expires_at),
       ]
         .filter(Boolean)
         .join(', ')}
@@ -988,7 +987,7 @@ export default function MapScreen() {
   const cityHydrated = useCityChoice((s) => s.hydrated);
   const chooseCity = useCityChoice((s) => s.chooseCity);
   const { data: myTrips = [] } = useMyTrips();
-  // A place is not a traveler and may not drop a 72-hour pin (§7 rule 8, six
+  // A place is not a traveler and may not drop a pin (§7 rule 8, six
   // BEFORE INSERT triggers). Without this the owner filled in the whole pin
   // form and was refused by a raw database alert at the end of it.
   const ownBusiness = useOwnBusiness().data ?? null;
@@ -1047,19 +1046,19 @@ export default function MapScreen() {
   const cityClock = cityClockNow(activeCity?.timezone ?? null, activeCity?.cities.lng ?? null);
   const cityDayISO = toISODate(cityClock);
   const deviceDayISO = toISODate(new Date());
-  // One date for the heat RPC, which takes a single day (the city's), and
-  // the set of dates the pin markers accept. A set, because THREE clocks now
-  // meet here: the city's day leads, and the device-local and UTC days that
-  // write intent_date stay matched - see filterDates.
-  const filterISO = heatDay(filters.day, new Date(), cityClock);
-  const filterSet = useMemo(
-    () => daysFor(filters.day, new Date(), cityClock),
+  // ONE window for the pin markers, the pin RPC and the heat RPC, or null for
+  // every day: the city's day leads, and the device-local and UTC days that
+  // write intent_date stay matched by the measured skew (windowFor). The
+  // same pair goes to the client predicate and to the server, so the
+  // markers, the counts and the payload agree by construction.
+  const dateWindow = useMemo(
+    () => windowFor(filters, new Date(), cityClock),
     // Day-level keys on purpose: the clock objects are new every render, but
-    // the sets they produce only change when a calendar day rolls over.
+    // the window they produce only changes when a calendar day rolls over.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filters.day, cityDayISO, deviceDayISO]
+    [filters.when, filters.from, filters.to, cityDayISO, deviceDayISO]
   );
-  const pinsQuery = useMapPins(activeCityId);
+  const pinsQuery = useMapPins(activeCityId, dateWindow);
   const { data: allPinRows = [], isSuccess: pinsLoaded } = pinsQuery;
   // Both map feeds return intent_time and business_id since 20260902190000.
   // src/lib/database.types.ts is not this package's file, so the row type
@@ -1067,16 +1066,17 @@ export default function MapScreen() {
   // boundary rather than at every read. Delete the cast when CityPinRow
   // carries the two columns.
   const allPins = allPinRows as MapPin[];
-  // Both halves of the heat ask: the day-filtered layer, and the all-days
-  // pool it may fall back to (the same physical query when no day is chosen,
-  // so the keys collide and react-query dedupes). Error and pending are read
-  // off the query — a failed heatmap and a genuinely quiet city used to be
-  // indistinguishable.
-  const heatQuery = useMapHeat(activeCityId, filterISO);
+  // Both halves of the heat ask: the window-filtered layer, and the all-days
+  // pool it may fall back to (the same physical query under anytime, so the
+  // keys collide and react-query dedupes). The fallback matters MORE now: a
+  // year of pins against a fixed k is exactly the thinning it was built for.
+  // Error and pending are read off the query — a failed heatmap and a
+  // genuinely quiet city used to be indistinguishable.
+  const heatQuery = useMapHeat(activeCityId, dateWindow);
   const allDaysHeatQuery = useMapHeat(activeCityId, null);
   const heatShown = showsHeat(filters);
   const { rows: heatRows, fallback: heatFallback } = heatWithFallback(
-    filterISO != null,
+    dateWindow != null,
     heatQuery.data ?? [],
     allDaysHeatQuery.data ?? []
   );
@@ -1085,7 +1085,7 @@ export default function MapScreen() {
   // The compiler memoises this itself, on the same input.
   const heatCells = mergeHeatCells(heatRows);
   // WHERE THIS CITY IS USUALLY BUSY, under the live layer. Live heat only
-  // knows about pins that exist right now and pins burn out within 72 hours,
+  // knows about pins that exist right now and a pin comes down on the day its author picked,
   // so a quiet Tuesday in Lisbon drew nothing at all — the layer failing the
   // brief's own test for it. The server answers for the city's own weekday
   // and hour band and re-applies the k-threshold twice (every stored bucket
@@ -1578,8 +1578,8 @@ export default function MapScreen() {
   }, [pinsLoaded, allPins, activeCityId]);
 
   const pins = useMemo(
-    () => allPins.filter((pin) => pinPasses(pin, filters, filterSet)),
-    [allPins, filters, filterSet]
+    () => allPins.filter((pin) => pinPasses(pin, filters, dateWindow)),
+    [allPins, filters, dateWindow]
   );
   const selectedPin = useMemo(
     () => pins.find((p) => p.id === selectedPinId) ?? null,
@@ -1653,7 +1653,9 @@ export default function MapScreen() {
     if (!pinsLoaded || activeCityId == null) {
       return;
     }
-    const key = `${activeCityId}:${filters.day}:${filters.kinds.join()}:${filters.categories.join()}`;
+    // Every field, by hand: one missing here leaves a narrowed map framed on
+    // the old result, which the comment above says reads as an emptied city.
+    const key = `${activeCityId}:${filters.when}:${filters.from}:${filters.to}:${filters.kinds.join()}:${filters.categories.join()}`;
     if (lastFitKey.current === key) {
       return;
     }
@@ -2766,7 +2768,7 @@ export default function MapScreen() {
 
       {/* The follow-up for the one person who accepted "Be the first" — on
           the empty banner's own footprint. The promise is scoped to the
-          pin's ≤72h life, and the ask goes through the push primer, which
+          pin's own life, which ends on the day its author picked, and the ask goes through the push primer, which
           owns the only safe way to present a sheet on this screen (it waits
           on the tabs, the modal count, and the settle delay). */}
       {slot === 'first-pin' && activeCity ? (
@@ -3167,7 +3169,14 @@ export default function MapScreen() {
             {/* The layer's own artwork, built from heatRings(), so this
                 footnote cannot show an intensity the map never paints. */}
             <HeatSwatch size={14} />
-            <ThemedText type="footnote">Busy areas shown across the next three days</ThemedText>
+            {/* Which pool the glow is drawn from. The fallback exists for the
+                narrowed map (a window with no cell over k falls back to every
+                day), and the sentence has to say which it is showing. */}
+            <ThemedText type="footnote">
+              {dateWindow == null
+                ? 'Busy areas across every day people have planned'
+                : 'Busy areas across the dates you picked'}
+            </ThemedText>
           </View>
         </Animated.View>
       ) : null}
@@ -3182,7 +3191,7 @@ export default function MapScreen() {
             detail={
               gate === 'join'
                 ? undefined
-                : 'Your name and photo go on the pin, so people know who they are meeting. It disappears within three days.'
+                : 'Your name and photo go on the pin, so people know who they are meeting. You pick the day it comes down.'
             }
             where={gate === 'join' ? 'join-plan' : 'drop-pin'}
             // Flat, not a card. The Sheet around it is already the elevated
