@@ -293,11 +293,31 @@ appId: com.mattmoore.samewhere
     visible: '1 of 10'
     timeout: 150000
     optional: true
+# Three ways the first pick can have ended short of a photo, each answered
+# before the one retry: the app's own alert (the render stalled inside its
+# bound); a picker sheet that never drew or never closed (run 132's retry sat
+# behind a blank page sheet for the whole wait, with nothing picked and so no
+# alert to catch); and nothing at all. A sheet is dismissed by a pull down,
+# which is what a page sheet answers to, and the pull runs only while the
+# step's own title is hidden behind something.
 - runFlow:
     when:
       visible: 'Could not save'
     commands:
       - tapOn: 'OK'
+- runFlow:
+    when:
+      notVisible: 'Show your business'
+    commands:
+      - swipe:
+          direction: DOWN
+          duration: 400
+      - waitForAnimationToEnd:
+          timeout: 2000
+- runFlow:
+    when:
+      notVisible: '1 of 10'
+    commands:
       - tapOn:
           text: 'Add your cover photo'
           optional: true

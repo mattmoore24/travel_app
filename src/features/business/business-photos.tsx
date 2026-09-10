@@ -4,7 +4,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -537,6 +544,29 @@ export function BusinessPhotos({
   };
 
   const pickOne = async () => {
+    // Asking first is what makes a refusal visible, the same reason
+    // lib/pick-image asks on its editing path: the editing picker with the
+    // library denied simply returns canceled, indistinguishable from
+    // backing out, and the dashed tile then did nothing forever for an owner
+    // who once tapped "Don't Allow". The library, never the camera: this
+    // picker has no camera branch.
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted && !permission.canAskAgain) {
+      Alert.alert(
+        'Photos are off for Samewhere',
+        'Turn them on in Settings to add a photo of the business.',
+        [
+          {
+            text: 'Open Settings',
+            onPress: () => {
+              Linking.openSettings().catch(() => {});
+            },
+          },
+          { text: 'Not now', style: 'cancel' },
+        ]
+      );
+      return;
+    }
     const picked = await ImagePicker.launchImageLibraryAsync({
       // `aspect` is Android-only and the iOS editor is always square, so the
       // grid below shows squares: what they cropped is what they get.
