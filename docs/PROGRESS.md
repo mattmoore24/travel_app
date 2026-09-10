@@ -216,7 +216,7 @@ live site and an App Store caption all still promise 72 hours.
 
 **What is holding it back today is not a control.** Production records the
 pin-take-down migration under version `20260908205714` while the repo carries it
-as `20260908120000`, so `db push` fails `missing-local` before it reaches
+as `20260908120000`, so `db push` failed `missing-local` before it reached
 anything. An accident is not a guard, and repairing that drift — the obvious fix
 for deploys being red — would remove the only thing standing in front of a §7
 rule change. Those two decisions have to be taken together, in that order, and
@@ -453,7 +453,7 @@ It fired for everyone, not only people with a group, because Postgres checks the
 privilege when it plans the statement rather than after matching rows.
 expire_pins never noticed: pg_cron runs as postgres, so pins did keep vanishing
 on schedule and only the pressed path was broken. Fixed to SECURITY DEFINER with
-a pinned search_path (20260908120000, deployed); pgTAP 81 asserts the ROW COUNT
+a pinned search_path (20260908205714, deployed); pgTAP 81 asserts the ROW COUNT
 as well as the absence of an error, because the first probe I wrote reported
 "DELETE SUCCEEDED" against a row RLS had filtered out and proved nothing.
 
