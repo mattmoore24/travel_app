@@ -493,3 +493,19 @@
              it: "No address yet" under a filled row, and an editor box that
              opened empty and wrote the address away on save. No rows need
              fixing.
+2026-09-10 — three migrations, in order. 20260910120000_the_traveler_picks_the
+             _day_it_comes_down: pins.take_down_on, expires_at derived by
+             validate_pin in the city's clock (revoke insert on the column),
+             the year ceiling, plan_ends_at for push_last_call, the windowed
+             feeds (city_pins/public_city_pins p_from/p_to, heat_cells/
+             public_heat_cells) and post_joinable_pin's trailing
+             p_take_down_on; every old call still resolves and a legacy
+             p_expires_at has its day read back off it. 20260910140000_a_pin
+             _in_your_own_words_is_screened: plan and note pass the prefilter.
+             20260910150000_words_the_app_refuses_are_slurs_only: the blocklist
+             is seventeen slurs and nothing else; create_group screens its
+             name. moderation-worker: a block on flirtation or sexual is
+             turned into an allow with the model's verdict kept. Database
+             first, then the update: the new bundle sends p_take_down_on,
+             which the old function does not know. 57 live pins keep their
+             expiry; take_down_on is back-filled from it.
