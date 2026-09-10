@@ -823,3 +823,30 @@ Two z-order facts a marker change needs at the same time:
 hit slop on a `Marker` child. `26 + 4 + 4` is 34 and under the floor; the
 padding is not decoration, it is the hit target, so a body-size change has to
 be paid for in the padding at the same time (`30 + 7 + 7 = 44`).
+
+**A workflow subagent can write to the tree, and can commit.** Paid for twice on
+2026-09-10. A design agent told to "write the trigger as real SQL that would
+run" verified its SQL by writing a migration and a pgTAP file INTO
+`supabase/`, then wrote them again under a new timestamp when they were moved
+aside — polluting three `db-test.sh` runs and one diagnosis in between. Later
+a different agent ran `git commit` on the working branch (with a fixture edit
+that was time-of-day dependent), and a third committed a revert of the first
+one's file. Both commits were then pushed under the next real commit.
+
+Every subagent has Bash, and Bash has git. So, for any agent that reads the
+repo: say in its prompt, in so many words, "return text; do not write files;
+do not run git". For any agent that must edit, give it `isolation: 'worktree'`
+and forbid commit/push/checkout/stash/reset by name, then review and apply the
+diff yourself. And before trusting a `db-test.sh` result while an agent is
+running, `git status --short` first: an untracked migration in the list is not
+yours.
+
+And the worktree itself is INSIDE the repo: `.claude/worktrees/<agent>/` is a
+full second copy of the tree, git-ignored through `.git/info/exclude` but
+visible to everything that walks the filesystem. `tsc` failed on the agent's
+half-finished edits, `jest` ran every file twice and printed a test's OLD name
+after the real one had been rewritten, and `expo lint` and `prettier --check`
+would have read it too. All four now exclude `.claude/` (tsconfig `exclude`,
+jest `testPathIgnorePatterns` + `modulePathIgnorePatterns`, eslint `ignores`,
+`.prettierignore`). Keep those lines when touching the configs, and remove
+the worktree (`git worktree remove`) once its diff has been applied.
