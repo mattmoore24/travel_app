@@ -200,8 +200,8 @@ loads/month, needs token + config plugin + dev build).
   to have a live pin; same moderation chokepoint and invariants as trip requests.
 - **Client**: native map screen (city chips, emoji category markers, heat underlay, pin
   detail card with Say hi / Remove, drop-a-pin FAB), drop-pin modal (venue text + tap/drag
-  placement + category + intent day + **user-set duration** ≤72h per brief §1), web fallback
-  list. §6 metrics: `map_viewed`, `heatmap_viewed`, `pin_created`, `pin_tapped`.
+  placement + category + intent day + a **take-down day** the traveler picks, a year at
+  most; ≤72h until 2026-09-10), web fallback list. §6 metrics: `map_viewed`, `heatmap_viewed`, `pin_created`, `pin_tapped`.
   (`heatmap_viewed` replaced `heatmap_rendered` 2026-08-31: a view now requires
   drawn pixels on an uncovered map rather than heat data arriving, so the
   series legitimately drops at the rename.)
@@ -1983,3 +1983,7 @@ meaning when pins live for months. Curated seed pins need a take-down day.
   decision rather than a backlog item: there is no recipient-scoped column to hang them on,
   and they create response pressure that works against the safety posture. "Sending" and
   "Sent" are sender-side facts and carry no such cost.
+- **2026-09-10** — §7 rule 3 restated on the founder's word: a pin comes down on the day
+  its author set, a year at most, with `expires_at` derived in the city's clock and no
+  floor at the plan's day. The 72h CHECK is gone; pins stay immutable (no UPDATE grant),
+  so the take-down day cannot be outlived by edits either.
