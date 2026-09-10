@@ -522,12 +522,16 @@ select is(
 -- to message about it all the way up until the event." So a pin that comes
 -- down BEFORE its own plan is now the ordinary case this asserts, rather
 -- than the one the trigger used to refuse.
+-- The take-down DAY is stated outright rather than derived from a legacy
+-- instant: `now() + interval '30 hours'` lands on tomorrow before about
+-- 18:00 UTC and on the plan's own day after it, which made this assertion
+-- true in the morning and false in the evening.
 select lives_ok(
   format($$
     select public.post_joinable_pin(
       %s, 'Musicbox Lisboa', null, null, 'club',
-      38.7069, -9.1454, current_date + 2, now() + interval '30 hours',
-      'Late one', time '23:00', true)
+      38.7069, -9.1454, current_date + 2, null,
+      'Late one', time '23:00', true, null, null, false, current_date + 1)
   $$, pg_temp.lisbon()),
   'the definer takes it too'
 );
