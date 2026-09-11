@@ -80,7 +80,7 @@ describe('messaging somebody you already share a chat with', () => {
     // They are a slower way to open a conversation you can already have —
     // and once a hello is already on its way, every bubble would route into
     // the same unique-constraint refusal.
-    expect(profile).toContain('known || alreadySaidHi || !userId');
+    expect(profile).toContain('known || alreadySaidHi || waiting != null || !userId');
   });
 });
 

@@ -1,5 +1,6 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -14,7 +15,9 @@ import { useBlockUser } from '@/features/chat/hooks';
 import { useSharesGroupWith } from '@/features/groups/hooks';
 import {
   useFirstMessageBudget,
+  useIncomingRequests,
   useMyChats,
+  useRespondToRequest,
   useSentRequests,
   useUnlockedSocialHandles,
 } from '@/features/matching/hooks';
@@ -32,6 +35,7 @@ import {
 import { useTravelerTrips } from '@/features/trips/hooks';
 import { profileTripFromTravelerRow } from '@/features/trips/profile-trips';
 import { useTheme } from '@/hooks/use-theme';
+import { haptics } from '@/lib/haptics';
 
 /**
  * Another traveler's profile: the same page they see of themselves, minus
@@ -94,6 +98,32 @@ export default function PublicProfileScreen() {
   // live "Say hi" the composer would immediately full-stop.
   const budget = useFirstMessageBudget();
   const helloCapped = budget.data != null && budget.data.used >= budget.data.allowed;
+  // THEIR hello, waiting on this reader. Founder, 2026-09-11: on Kate's
+  // profile while her message is pending my acceptance, the button at the
+  // bottom should say Accept, not Say hi, because the pending action is me
+  // accepting, not me deciding whether to say hi. The same accept the Chat
+  // tab's card makes, with the same beat afterwards: straight into the chat.
+  const { data: incoming = [] } = useIncomingRequests();
+  const waiting = incoming.find((request) => request.sender_id === userId) ?? null;
+  const respond = useRespondToRequest();
+  const [accepting, setAccepting] = useState(false);
+  const acceptHello = async () => {
+    if (waiting == null) {
+      return;
+    }
+    setAccepting(true);
+    try {
+      const result = await respond.mutateAsync({ requestId: waiting.id, accept: true });
+      if (result.accepted && result.chat_id) {
+        haptics.success();
+        router.push(`/chat/${result.chat_id}`);
+      }
+    } catch {
+      // Surfaced by the global mutation error alert.
+    } finally {
+      setAccepting(false);
+    }
+  };
 
   if (profileQuery.isSuccess && !profile) {
     return (
@@ -238,7 +268,9 @@ export default function PublicProfileScreen() {
           onRespondTo={
             // No reply bubbles once a hello is on its way either: every one
             // of them would route into the same unique-constraint refusal.
-            known || alreadySaidHi || !userId
+            // Nor while THEIR hello is waiting: the answer to it is Accept,
+            // below, not a hello of your own.
+            known || alreadySaidHi || waiting != null || !userId
               ? undefined
               : (target) =>
                   openReply({
@@ -320,6 +352,15 @@ export default function PublicProfileScreen() {
               {/* Report and Block moved to the nav bar's overflow (above):
                   a stranger's page must not end in Report and Block as its
                   only full-width buttons. */}
+              {/* What is being accepted, where the decision is made: the
+                  same sentence the Chat tab's card shows, so the page a
+                  person reads before answering carries the message they are
+                  answering. */}
+              {!known && waiting != null ? (
+                <ThemedText type="footnote" themeColor="textSecondary" style={styles.saidHiNote}>
+                  {`${name} said hi: "${waiting.first_message}"`}
+                </ThemedText>
+              ) : null}
               {!known && alreadySaidHi ? (
                 <ThemedText type="footnote" themeColor="textSecondary" style={styles.saidHiNote}>
                   {helloTakenBack
@@ -353,38 +394,42 @@ export default function PublicProfileScreen() {
         <DockedActionBar
           bottomInset={insets.bottom}
           primaryLabel={
-            alreadySaidHi
-              ? 'Message sent'
-              : helloCapped
-                ? 'No first messages left today'
-                : `Say hi to ${name}`
+            waiting != null
+              ? 'Accept'
+              : alreadySaidHi
+                ? 'Message sent'
+                : helloCapped
+                  ? 'No first messages left today'
+                  : `Say hi to ${name}`
           }
-          disabled={alreadySaidHi || helloCapped}
+          disabled={waiting != null ? accepting : alreadySaidHi || helloCapped}
           onPrimary={() =>
-            userId
-              ? openReply({
-                  userId,
-                  name,
-                  photoPath: photos[0]?.storage_path ?? null,
-                  // From a pin the venue is not known here, so the anchor is
-                  // "a pin" — true and modest. Anywhere else this page is
-                  // reached cold it is a trip match, and "their travel
-                  // plans" is the one description that is true whether or
-                  // not the dates overlap perfectly. Never "your dates
-                  // together": room co-members reach this page too, and the
-                  // app must not claim dates it cannot show. The bar is off
-                  // entirely for group entries (from === 'group'): those are
-                  // not trip matches, and send_message_request would refuse
-                  // the source at the last step, after the message was
-                  // written.
-                  target:
-                    from === 'pin'
-                      ? { key: 'pin:', label: 'their pin' }
-                      : { key: 'trip', label: 'their travel plans' },
-                  source: from === 'pin' ? 'pin' : 'trip_match',
-                  origin: 'profile',
-                })
-              : undefined
+            waiting != null
+              ? void acceptHello()
+              : userId
+                ? openReply({
+                    userId,
+                    name,
+                    photoPath: photos[0]?.storage_path ?? null,
+                    // From a pin the venue is not known here, so the anchor is
+                    // "a pin" — true and modest. Anywhere else this page is
+                    // reached cold it is a trip match, and "their travel
+                    // plans" is the one description that is true whether or
+                    // not the dates overlap perfectly. Never "your dates
+                    // together": room co-members reach this page too, and the
+                    // app must not claim dates it cannot show. The bar is off
+                    // entirely for group entries (from === 'group'): those are
+                    // not trip matches, and send_message_request would refuse
+                    // the source at the last step, after the message was
+                    // written.
+                    target:
+                      from === 'pin'
+                        ? { key: 'pin:', label: 'their pin' }
+                        : { key: 'trip', label: 'their travel plans' },
+                    source: from === 'pin' ? 'pin' : 'trip_match',
+                    origin: 'profile',
+                  })
+                : undefined
           }
         />
       )}
