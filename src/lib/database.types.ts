@@ -283,7 +283,7 @@ export type PublicPinRow = {
   seeded: boolean;
   seed_note: string | null;
   /**
-   * The day the author said it comes down, on the city's clock (ISO date).
+   * The day the author said it disappears, on the city's clock (ISO date).
    * `expires_at` is derived from it server-side as midnight at the end of
    * that day in the city's zone; print the day from here, never by
    * converting the timestamp in the reader's timezone.
@@ -1080,7 +1080,7 @@ export type CityPinRow = {
   seeded: boolean;
   seed_note: string | null;
   /**
-   * The day the author said it comes down, on the city's clock (ISO date).
+   * The day the author said it disappears, on the city's clock (ISO date).
    * `expires_at` is derived from it server-side as midnight at the end of
    * that day in the city's zone; print the day from here, never by
    * converting the timestamp in the reader's timezone.
@@ -1102,7 +1102,7 @@ export type CityPinRow = {
 /**
  * Row shape returned by pin_for_group(): the plan a pin-born group came
  * from, for the room's own card. Members only, and empty once the pin has
- * come down on its take-down date (hard rule 3) or been taken down by hand.
+ * disappeared on its take-down date (hard rule 3) or been taken down by hand.
  * `intent_date` is what says whether the plan itself has already happened.
  */
 export type PinForGroupRow = {
@@ -1586,7 +1586,7 @@ export type Database = {
           seeded: boolean;
           seed_note: string | null;
           created_at: string;
-          /** The day it comes down (city clock); expires_at is derived from it. */
+          /** The day it disappears (city clock); expires_at is derived from it. */
           take_down_on: string;
           plan_ends_at: string;
           expires_at: string;
@@ -2002,7 +2002,7 @@ export type Database = {
           p_lng: number;
           p_intent_date: string;
           /**
-           * The day the pin comes down, on the city's clock. The server
+           * The day the pin disappears, on the city's clock. The server
            * derives expires_at from it. Trailing and defaulted, so an old
            * bundle naming p_expires_at still resolves.
            */

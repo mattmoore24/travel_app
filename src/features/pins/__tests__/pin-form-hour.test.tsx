@@ -182,11 +182,11 @@ describe('the optional hour on the pin form', () => {
 });
 
 /**
- * The day a pin comes down, through the form. Founder, 2026-09-10: the
+ * The day a pin disappears, through the form. Founder, 2026-09-10: the
  * traveler picks the date, a year at most, and a date BEFORE the plan is
  * legal — with "just small text ... to remind them of their choice".
  */
-describe('the day a pin comes down, through the form', () => {
+describe('the day a pin disappears, through the form', () => {
   const spoken = (iso: string) => dates().spokenDate.format(parseISODate(iso));
 
   beforeEach(() => {
@@ -200,9 +200,9 @@ describe('the day a pin comes down, through the form', () => {
   it('offers two day rows and no slider', () => {
     renderForm();
     expect(screen.getByText('When')).toBeTruthy();
-    expect(screen.getByText('Comes down')).toBeTruthy();
+    expect(screen.getByText('Pin disappears')).toBeTruthy();
     expect(screen.getByLabelText(/^Pick the day this plan is for\. Currently /)).toBeTruthy();
-    expect(screen.getByLabelText(/^Pick the day this comes down\. Currently /)).toBeTruthy();
+    expect(screen.getByLabelText(/^Pick the day this pin disappears\. Currently /)).toBeTruthy();
     expect(screen.queryByLabelText('How long this pin stays up')).toBeNull();
     expect(screen.queryByText(/Disappears after/)).toBeNull();
   });
@@ -229,7 +229,7 @@ describe('the day a pin comes down, through the form', () => {
     // ONE line, footnote weight, both dates. Not a warning, nothing red.
     expect(
       screen.getByText(
-        `It comes down on ${formatDate('2026-09-14')}, before the plan on ${formatDate('2026-09-18')}. People can find it until then.`
+        `The pin disappears on ${formatDate('2026-09-14')}, before the plan on ${formatDate('2026-09-18')}. People can find it until then.`
       )
     ).toBeTruthy();
     // Nothing blocked: the hour rails are still offered in full for the

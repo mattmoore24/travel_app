@@ -238,16 +238,16 @@ appId: com.mattmoore.samewhere
 # a heading (plain text, so Maestro can read it) over a row that opens the
 # shared calendar in a sheet of its own.
 - assertVisible: 'When'
-- assertVisible: 'Comes down.*'
+- assertVisible: 'Pin disappears.*'
 # The take-down row itself, by its spoken label: a Pressable carrying its
 # own accessibilityLabel is one element on iOS and hides the text inside it
-# (traps), so the label is what Maestro sees. The day a pin comes down is
+# (traps), so the label is what Maestro sees. The day a pin disappears is
 # the §7 hard rule 3 control now (the traveler picks it, a year at most),
 # and a user who cannot reach this row cannot set it — the old slider was
 # once clipped off the bottom of the scroll viewport while the form's tests
 # stayed green, so a future regression fails the run here rather than only
 # the eye.
-- assertVisible: 'Pick the day this comes down.*'
+- assertVisible: 'Pick the day this pin disappears.*'
 - takeScreenshot: 15b-pin-join-mode
 # THE TAKE-DOWN CALENDAR, and the founder's own overrule photographed: a
 # take-down BEFORE the plan is legal and draws one calm line under the row
@@ -274,7 +274,7 @@ appId: com.mattmoore.samewhere
 - tapOn:
     id: 'pin-take-down'
 - extendedWaitUntil:
-    visible: 'When does it come down?'
+    visible: 'When does the pin disappear?'
     timeout: 10000
 - tapOn:
     text: '[A-Z][a-z]+day, [A-Z][a-z]+ [0-9]+'
@@ -282,8 +282,8 @@ appId: com.mattmoore.samewhere
 - waitForAnimationToEnd:
     timeout: 2000
 # The reminder line, exactly. It is a plain Text, so its words are readable.
-- assertVisible: 'It comes down on .*, before the plan on .*\. People can find it until then\.'
-- takeScreenshot: 15d-pin-comes-down-before-plan
+- assertVisible: 'The pin disappears on .*, before the plan on .*\. People can find it until then\.'
+- takeScreenshot: 15d-pin-disappears-before-plan
 # Reachable because the keyboard went away above, NOT because the sheet lifts
 # it: 43886b4 gave Sheet a keyboardAllowance so a pinned button is covered
 # rather than riding up, which is founder ask 6 from 2026-09-05. The
@@ -312,7 +312,7 @@ appId: com.mattmoore.samewhere
 # prints the same takeDownLabel, so a wait keyed on that line would pass at
 # t=0 with the tap having done nothing. The membership line exists only in
 # the room. Then the card's own line, anchored for the whole-element match
-# ('Friday, Oct 11 · up until Oct 6' is one Text; a pin coming down inside
+# ('Friday, Oct 11 · up until Oct 6' is one Text; a pin disappearing inside
 # the day reads 'burns out in 24h' instead), and the Maps link by its SPOKEN
 # label - the Pressable hides its inner text (traps).
 - extendedWaitUntil:

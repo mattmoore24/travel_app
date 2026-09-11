@@ -185,7 +185,7 @@ loads/month, needs token + config plugin + dev build).
   checks sane intent dates (not past, not beyond a year) and an optional hour or window,
   records `plan_ends_at` for the last-call push, and a 20-active-pin cap (ten until
   2026-09-11). The take-down day
-  is NOT floored at the plan's day: a pin may come down before its plan (founder, 2026-09-10). The map feeds read by distance from the browsed city
+  is NOT floored at the plan's day: a pin may disappear before its plan (founder, 2026-09-10). The map feeds read by distance from the browsed city
   (`map_radius_km()`, 50 km), so the city label is for the funnel and the rail. Since
   2026-09-11 the browsed city FOLLOWS THE PAN: once the settled centre is 20 km from it (the
   resolver's own hint radius) at city scale or closer, `city_for_spot` names the city the map
@@ -1740,7 +1740,7 @@ drifting in the direction that fails open. `68_only_an_edit_screens_a_business` 
 `now()` trap 59 fell into); with the guard removed, five of its assertions fail, on both
 halves.
 
-## The traveler picks the day a pin comes down (2026-09-10)
+## The traveler picks the day a pin disappears (2026-09-10)
 
 Founder decisions, in order: no 72-hour ceiling; the traveler picks the date
 the pin is active until, at most a year, regardless of trips; the plan's date
@@ -1996,7 +1996,12 @@ the map. Curated seed pins take their plan's day as their take-down day.
   every feed stays city-scoped and k-anonymous exactly as before; what changes is which city
   is browsed, resolved by `city_for_spot` from the settled centre. A profile whose owner has a
   hello waiting on the reader says Accept, not Say hi.
-- **2026-09-10** — §7 rule 3 restated on the founder's word: a pin comes down on the day
+- **2026-09-11** — A pin "disappears"; it never "comes down" (founder: "instead of comes
+  down say pin disappears in all instances"). Every string, the pin form row, the calendar
+  title, the promises, the store copy, the E2E assertions and the docs say disappears;
+  `take_down_on` and "Take it down early" stay, since taking a pin down is something a
+  person does.
+- **2026-09-10** — §7 rule 3 restated on the founder's word: a pin disappears on the day
   its author set, a year at most, with `expires_at` derived in the city's clock and no
   floor at the plan's day. The 72h CHECK is gone; pins stay immutable (no UPDATE grant),
   so the take-down day cannot be outlived by edits either.

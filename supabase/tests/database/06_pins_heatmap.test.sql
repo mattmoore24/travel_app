@@ -66,7 +66,7 @@ delete from public.pins where venue_name = 'Somewhere in Porto';
 select pg_temp.login('00000000-0000-0000-0000-00000000000a');
 
 -- HARD RULE 3, IN ITS 2026-09-10 FORM: the traveler picks the DAY a pin
--- comes down, up to a year, and the instant is derived from it by
+-- disappears, up to a year, and the instant is derived from it by
 -- validate_pin. The +31-day hold ceiling this assertion used to name was
 -- part of the 2026-09-05 model the founder overruled five days later, and
 -- the flat 72-hour CHECK before that is long gone.

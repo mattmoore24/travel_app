@@ -38,7 +38,16 @@ a hello of your own.
 93). Featured-city and liquidity counts keep counting every plan. Curated
 seed pins take their plan's day.
 
-## **The traveler picks the day a pin comes down** (2026-09-10)
+**"Instead of comes down say pin disappears in all instances."** Done in
+every string the app shows: the pin form row is Pin disappears, its calendar
+asks When does the pin disappear?, the reminder under the row and the
+footnote by the button say the pin disappears on the day you picked, the
+gate detail and both promises say the day each pin disappears, and the
+store copy says every pin disappears on the day you set. Tests, the E2E
+flow, the gallery caption and the docs follow. Take it down early stays,
+because that is a thing the person does. Applied migrations are untouched.
+
+## **The traveler picks the day a pin disappears** (2026-09-10)
 
 §7 rule 3 changed on the founder's word, and it is shipped end to end:
 database, client, published text, and the deploy. This supersedes the
@@ -47,7 +56,7 @@ promise as still standing.
 
 **What the founder decided, in order.** No 72-hour ceiling. The traveler
 picks the date the pin is active until, a year at most, regardless of trips.
-The plan's date is the real indicator. A pin may come down BEFORE its plan
+The plan's date is the real indicator. A pin may disappear BEFORE its plan
 (somebody planning ahead may not want to be messaged about it all the way
 up to the event), with one small reminder and nothing blocked. The map
 starts on anytime for density, narrowed by next 7 days, next 30 days or a
@@ -67,7 +76,7 @@ encoded the plan-day floor the founder rejected, is deleted rather than
 repaired, which is also what let `db push` run in order again.
 
 **Client.** The hours slider and the three day chips are gone; When and
-Comes down are two rows opening the shared calendar in a sheet of its own.
+Pin disappears are two rows opening the shared calendar in a sheet of its own.
 The map's When filter is back as four chips, and one window feeds the
 marker predicate, the pin feed and the heat feed, widened by the measured
 skew between the city's, the device's and UTC's calendar days. Every

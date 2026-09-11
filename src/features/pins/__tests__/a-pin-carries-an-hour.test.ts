@@ -14,10 +14,10 @@ import {
  * "here now".
  *
  * It used to be bounded by the pin's own expiry as well, and it is not any
- * more. Since 2026-09-10 the traveler picks the DAY a pin comes down, and a
+ * more. Since 2026-09-10 the traveler picks the DAY a pin disappears, and a
  * day before the plan is a legal, ordinary choice: the server no longer
  * refuses an hour past the take-down, so the rails here are offered in
- * full whatever day the pin comes down. A rail that emptied itself for
+ * full whatever day the pin disappears. A rail that emptied itself for
  * exactly that traveler would be a hidden block, and the founder asked for
  * a reminder, not a block.
  */
@@ -166,7 +166,7 @@ describe('which hours a window may end at', () => {
   // THE OVERRULE, as an assertion. With a take-down day before the plan the
   // To rail is still offered in full: the reminder line under the take-down
   // row is a reminder, not a hidden block.
-  it('is offered in full whatever day the pin comes down', () => {
+  it('is offered in full whatever day the pin disappears', () => {
     expect(intentEndOptions('19:00')).toHaveLength(MAX_WINDOW_HOURS);
   });
 
@@ -201,10 +201,10 @@ describe('which hours the form may offer', () => {
     expect(options).toHaveLength(24);
   });
 
-  // THE OVERRULE, for the From rail: a plan on the 18th whose pin comes down
+  // THE OVERRULE, for the From rail: a plan on the 18th whose pin disappears
   // on the 14th still offers every hour of the 18th. The server no longer
   // refuses an hour past the take-down, so nothing here may either.
-  it('does not stop at the take-down: the rail is the same for a pin that comes down before its plan', () => {
+  it('does not stop at the take-down: the rail is the same for a pin that disappears before its plan', () => {
     expect(intentTimeOptions('2026-09-18', now)).toHaveLength(24);
   });
 

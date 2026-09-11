@@ -128,7 +128,7 @@ type PinFormSheetProps = {
 /**
  * The last step of dropping a pin. The spot is already chosen on the map
  * behind this sheet; here it gets a name, a description, a day and the day
- * it comes down.
+ * it disappears.
  *
  * Two sections, because they answer different questions and the founder
  * asked for them separately: WHERE (filled in for you, with a link into
@@ -328,7 +328,7 @@ export function PinFormSheet({
   const cityClock = cityClockNow(cityTimezone, coords.lng);
   const todayISO = toISODate(cityClock);
   const effectiveIntent = intentDate < todayISO ? todayISO : intentDate;
-  // The day it comes down: the plan's day until somebody picks one, then
+  // The day the pin disappears: the plan's day until somebody picks one, then
   // theirs, re-floored at the city's today every render the way the plan's
   // day is. No floor at the plan's day, on purpose (effectiveTakeDown).
   const takeDown = effectiveTakeDown(takeDownPick, effectiveIntent, cityClock);
@@ -336,7 +336,7 @@ export function PinFormSheet({
   const { minISO: calendarMinISO, maxISO: calendarMaxISO } = takeDownBounds(cityClock);
   // Only hours this pin can honestly name: nothing already gone on the
   // city's clock. No ceiling at the take-down, so the rails stay offered in
-  // full for a pin that comes down before its plan.
+  // full for a pin that disappears before its plan.
   const timeOptions = intentTimeOptions(effectiveIntent, cityClock);
   // Moving the day can take the chosen hour out of range (the city's clock
   // has passed it), and when it does the pin quietly goes back to having no
@@ -366,11 +366,11 @@ export function PinFormSheet({
   // The footnote answers whichever question the button is asking right now:
   // grey, it says which box it is waiting for; live, it repeats the promise.
   // Same slot, one line either way, so nothing reflows. The day itself is
-  // stated by the "Comes down" row, once, not three times.
+  // stated by the "Pin disappears" row, once, not three times.
   const needsPlan = plan.trim().length === 0;
   const footnote = needsPlan
     ? 'Say what the plan is first.'
-    : 'A plan, not your location. It comes down on the day you picked.';
+    : 'A plan, not your location. The pin disappears on the day you picked.';
 
   // The plan text is what makes the difference between a marker and an
   // invitation, and the sheet's pull-down and scrim are one careless thumb
@@ -652,9 +652,9 @@ export function PinFormSheet({
               fieldY.current.expiry = event.nativeEvent.layout.y;
             }}>
             <DayRow
-              heading="Comes down"
+              heading="Pin disappears"
               value={intentLabel(takeDown, cityClock)}
-              spoken={`Pick the day this comes down. Currently ${dates().spokenDate.format(parseISODate(takeDown))}.`}
+              spoken={`Pick the day this pin disappears. Currently ${dates().spokenDate.format(parseISODate(takeDown))}.`}
               testID="pin-take-down"
               onPress={() => openCalendar('takeDown')}
             />
@@ -667,7 +667,7 @@ export function PinFormSheet({
               there is no confirmation to dismiss. */}
             {takeDown < effectiveIntent ? (
               <ThemedText type="footnote" themeColor="textSecondary">
-                {`It comes down on ${formatDate(takeDown)}, before the plan on ${formatDate(effectiveIntent)}. People can find it until then.`}
+                {`The pin disappears on ${formatDate(takeDown)}, before the plan on ${formatDate(effectiveIntent)}. People can find it until then.`}
               </ThemedText>
             ) : null}
           </View>
@@ -791,7 +791,7 @@ export function PinFormSheet({
       ) : null}
       {calendar === 'takeDown' ? (
         <CalendarSheet
-          title="When does it come down?"
+          title="When does the pin disappear?"
           start={takeDown}
           end={null}
           minISO={calendarMinISO}

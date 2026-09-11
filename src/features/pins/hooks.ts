@@ -168,7 +168,7 @@ export type NewPin = {
    */
   timeTbd?: boolean;
   /**
-   * The ISO day the pin comes down, on the city's clock. The server derives
+   * The ISO day the pin disappears, on the city's clock. The server derives
    * expires_at from it (midnight at the end of that day in the city's zone)
    * and the client never computes a timestamp. Floored at the city's today
    * and ceilinged a year out by the trigger; a day BEFORE the plan is legal.

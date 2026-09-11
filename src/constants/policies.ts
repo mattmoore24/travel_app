@@ -36,7 +36,7 @@ export const GUIDELINE_SECTIONS = [
   },
   {
     title: 'Your privacy',
-    body: 'We never collect your location. Pins are plans you type, and you choose the day each one comes down, up to a year out. Your socials only show once you are both chatting. Delete your account, and everything in it, any time from your profile.',
+    body: 'We never collect your location. Pins are plans you type, and you choose the day each pin disappears, up to a year out. Your socials only show once you are both chatting. Delete your account, and everything in it, any time from your profile.',
   },
   {
     // The one section of docs/legal/COMMUNITY_GUIDELINES.md that never made
@@ -51,7 +51,7 @@ export const GUIDELINE_SECTIONS = [
  * The four safety promises, at the two moments they decide something.
  *
  * The reason somebody picks this over GAFFL, Couchsurfing or Bumble BFF is
- * that it collects no location, lets you set the day each pin comes down, hides socials
+ * that it collects no location, lets you set the day each pin disappears, hides socials
  * until both sides are chatting, and screens every first message. All four
  * are true and enforced in Postgres, and until now all four lived in the
  * fourth section of a rulebook behind a button nobody opens: the product's
@@ -64,7 +64,7 @@ export const GUIDELINE_SECTIONS = [
 export const SAFETY_PROMISE_TITLE = 'We never ask where you are';
 
 export const SAFETY_PROMISE_BODY =
-  'Pins are plans you type, and you pick the day each comes down. Your socials only show once you are both chatting.';
+  'Pins are plans you type, and you pick the day each pin disappears. Socials only show once you are both chatting.';
 
 /**
  * The line under every sign-up gate in the app: the map, travelers, chat, a
@@ -110,7 +110,7 @@ export const PRIVACY_SECTIONS = [
   {
     title: 'What we collect',
     source: 'What we collect',
-    body: 'Your email address, and the profile you build: name, age, gender, home city, languages, bio, photos and any socials you add. Trips are a city and dates. Pins are a venue, a category and a day, and each one is permanently deleted on the day its author set it to come down, at most a year out. Messages you send are stored so both sides of a chat can read them. If you sign in with Apple, we also keep one token Apple gives us, for the single purpose of telling Apple to forget your account when you delete it; nobody can read it and it is destroyed with your account. We also record which screens get opened, so we can tell which parts of the app are working. We do not tell our analytics provider who you are, and signing in does not change that. You can turn this off under Account.',
+    body: 'Your email address, and the profile you build: name, age, gender, home city, languages, bio, photos and any socials you add. Trips are a city and dates. Pins are a venue, a category and a day, and each one is permanently deleted on the day its author set for it to disappear, at most a year out. Messages you send are stored so both sides of a chat can read them. If you sign in with Apple, we also keep one token Apple gives us, for the single purpose of telling Apple to forget your account when you delete it; nobody can read it and it is destroyed with your account. We also record which screens get opened, so we can tell which parts of the app are working. We do not tell our analytics provider who you are, and signing in does not change that. You can turn this off under Account.',
   },
   {
     title: 'The selfie check',

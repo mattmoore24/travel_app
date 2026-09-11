@@ -267,7 +267,7 @@ and ask.
    venue-level future intent only.
 3. Pins **hard-expire on the day their author set, at most a year out**, and are then
    unreadable. _(≤72 hours until 2026-09-10. The founder's call: the traveler picks the day,
-   the plan's date is the real indicator, and a pin may come down before its plan.)_
+   the plan's date is the real indicator, and a pin may disappear before its plan.)_
 4. Social handles are **never visible pre-accept** — enforced at the DB layer.
 5. **Every first message passes moderation** before delivery.
 6. Heatmap cells below the k-threshold are **never rendered** to other users.

@@ -779,7 +779,7 @@ are the ones that appear in search results:
 | 2   | `02-overlap.png`     | A traveler whose dates overlap yours, with the shared window marked.                                      |
 | 3   | `03-first-hello.png` | A first message being written against a specific line of somebody's profile.                              |
 | 4   | `04-socials.png`     | A chat with the socials row unlocked, captioned that it is hidden until you both chat.                    |
-| 5   | `05-promises.png`    | The map again, captioned with the two promises: no location, ever; every pin comes down on a day you set. |
+| 5   | `05-promises.png`    | The map again, captioned with the two promises: no location, ever; every pin disappears on a day you set. |
 
 Two rules that come out of past mistakes: **do not gate shot 1 on the heat
 layer** (it needs seeded density and it is not what makes the screen
@@ -916,7 +916,7 @@ Your social handles stay hidden until you are both in a chat together. The datab
 
 WHAT WE NEVER DO
 We never collect your location. Not once, not in the background, not ever. The map shows plans, not people.
-Every pin comes down on the day you set, a year out at most. A plan is a plan, not a public diary.
+Every pin disappears on the day you set, a year out at most. A plan is a plan, not a public diary.
 Finding people, the map and messaging are free forever. No paywall, no premium tier, nothing held back to sell you later.
 
 FOR HOSTELS, BARS AND CAFES

@@ -281,7 +281,7 @@ Best-in-class combines message-level ML filtering with strong verification and s
 
 - **ID + selfie verification** — NomadHer is the gold standard (passport/ID held to face, manual 12–72hr review); its friction (ID discomfort, slow review) is the part to fix, not copy.
 - **Women-only spaces** — NomadHer, Tourlina (originally), Timeleft's women-only tables.
-- **Location fuzzing / never revealing real-time precise location** — highly relevant: our design (pins that come down on a day their author sets, no real-time location, anonymized heatmap) already matches best practice and directly addresses the stalking/safety risk that real-time apps (Snap Map, Zenly) carry.
+- **Location fuzzing / never revealing real-time precise location** — highly relevant: our design (pins that disappear on a day their author sets, no real-time location, anonymized heatmap) already matches best practice and directly addresses the stalking/safety risk that real-time apps (Snap Map, Zenly) carry.
 
 ### 5.7 Monetization benchmarks
 

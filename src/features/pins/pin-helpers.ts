@@ -68,7 +68,7 @@ export const PIN_CATEGORIES: { value: PinCategory; label: string }[] = [
 ];
 
 /**
- * The furthest out a pin can be set to come down, in days from the city's
+ * The furthest out a pin can be set to disappear, in days from the city's
  * today. The trigger ceilings take_down_on at today + 366, one looser than
  * this, so a form that offers exactly this can never post a day the server
  * refuses. Founder, 2026-09-10: "the traveler can select the date that the
@@ -78,7 +78,7 @@ export const PIN_CATEGORIES: { value: PinCategory; label: string }[] = [
 export const MAX_TAKE_DOWN_DAYS = 365;
 
 /**
- * The first and last day a pin may come down on, on the CITY's clock: its
+ * The first and last day a pin may disappear on, on the CITY's clock: its
  * today, and a year out. Both calendars in the pin form and the map's date
  * filter take these two bounds from here, so the filter can never ask for
  * a day a pin could not occupy.
@@ -91,7 +91,7 @@ export function takeDownBounds(cityClock: Date): { minISO: string; maxISO: strin
 }
 
 /**
- * The day a pin comes down, as the form will post it.
+ * The day a pin disappears, as the form will post it.
  *
  * Nothing picked means the plan's own day, which is what "I want to go
  * there Friday" has always meant. A picked day is kept as picked, floored at
@@ -220,7 +220,7 @@ export function categoryForPlan(text: string): PinCategory | null {
 
 /**
  * What is left of a pin: an hours countdown on its last day, and the day it
- * comes down before that.
+ * disappears before that.
  *
  * The day is printed from the pin's own `take_down_on`, never by converting
  * `expires_at` into the reader's timezone: the expiry is midnight at the end
@@ -244,7 +244,7 @@ export function takeDownLabel(takeDownISO: string, expiresAtISO: string, now = n
 }
 
 /**
- * The calendar day a pin comes down, read off its expiry in the city's own
+ * The calendar day a pin disappears, read off its expiry in the city's own
  * clock, for the one row shape that carries no take_down_on: pin_for_group.
  *
  * The expiry is midnight at the END of that day in the city's zone, so the
@@ -392,7 +392,7 @@ export function intentTimeOptions(
  * MAX_WINDOW_HOURS whole hours, past midnight included ("10 PM to 2 AM" is a
  * night out, and the server reads an end at or before the start as
  * tomorrow). No ceiling at the take-down, for the reason intentTimeOptions
- * gives: the rails are offered in full whatever day the pin comes down.
+ * gives: the rails are offered in full whatever day the pin disappears.
  */
 export function intentEndOptions(startHHMM: string): { value: string; label: string }[] {
   const startHour = Number(startHHMM.slice(0, 2));

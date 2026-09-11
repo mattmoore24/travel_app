@@ -1104,7 +1104,7 @@ export default function MapScreen() {
   // The compiler memoises this itself, on the same input.
   const heatCells = mergeHeatCells(heatRows);
   // WHERE THIS CITY IS USUALLY BUSY, under the live layer. Live heat only
-  // knows about pins that exist right now and a pin comes down on the day its author picked,
+  // knows about pins that exist right now and a pin disappears on the day its author picked,
   // so a quiet Tuesday in Lisbon drew nothing at all — the layer failing the
   // brief's own test for it. The server answers for the city's own weekday
   // and hour band and re-applies the k-threshold twice (every stored bucket
@@ -3285,7 +3285,7 @@ export default function MapScreen() {
             detail={
               gate === 'join'
                 ? undefined
-                : 'Your name and photo go on the pin, so people know who they are meeting. You pick the day it comes down.'
+                : 'Your name and photo go on the pin, so people know who they are meeting. You pick the day the pin disappears.'
             }
             where={gate === 'join' ? 'join-plan' : 'drop-pin'}
             // Flat, not a card. The Sheet around it is already the elevated

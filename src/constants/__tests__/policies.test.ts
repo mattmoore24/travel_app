@@ -72,7 +72,7 @@ describe('PRIVACY_SECTIONS', () => {
 describe('the four safety promises, where they decide something', () => {
   /**
    * The reason a cautious traveler picks this over GAFFL, Couchsurfing or
-   * Bumble BFF: no location, pins that come down on the day their author
+   * Bumble BFF: no location, pins that disappear on the day their author
    * picked (a year at most), socials hidden until both sides chat, first
    * messages screened. All four are enforced in Postgres and all four used
    * to live only in the fourth section of a rulebook behind a button nobody
@@ -86,9 +86,9 @@ describe('the four safety promises, where they decide something', () => {
   });
 
   it('names the pin take-down and the socials gate, the two enforced rules', () => {
-    // The NEW promise, asserted so it fails if it drifts: a pin comes down on
+    // The NEW promise, asserted so it fails if it drifts: a pin disappears on
     // the day its author picked. Never asserted as the absence of '72'.
-    expect(SAFETY_PROMISE_BODY).toContain('the day each comes down');
+    expect(SAFETY_PROMISE_BODY).toContain('the day each pin disappears');
     expect(SAFETY_PROMISE_BODY).toContain('both chatting');
     expect(SOCIALS_HIDDEN_NOTE).toContain('hidden until you are both chatting');
   });
@@ -97,13 +97,13 @@ describe('the four safety promises, where they decide something', () => {
     const privacy = GUIDELINE_SECTIONS.find((section) => section.title === 'Your privacy');
     expect(privacy).toBeDefined();
     expect(privacy?.body).toContain('We never collect your location');
-    expect(privacy?.body).toContain('the day each one comes down');
+    expect(privacy?.body).toContain('the day each pin disappears');
     expect(privacy?.body).toContain('a year out');
   });
 
   it('tells the privacy policy reader the same ceiling', () => {
     const collected = PRIVACY_SECTIONS.find((section) => section.title === 'What we collect');
-    expect(collected?.body).toContain('the day its author set it to come down');
+    expect(collected?.body).toContain('the day its author set for it to disappear');
     expect(collected?.body).toContain('at most a year out');
   });
 
@@ -121,7 +121,7 @@ describe('the four safety promises, where they decide something', () => {
     // Twice the longest sibling, not once, and the factor is the honest part:
     // this page makes two promises where the others make one, so it is two
     // sentences rather than one or two short ones. At the time of writing
-    // that is 110 characters against a bound of 116. A third sentence fails
+    // that is 112 characters against a bound of 116. A third sentence fails
     // it, which is exactly the edit worth catching.
     const siblings = tourSiblingBodies();
     expect(siblings).toHaveLength(3);

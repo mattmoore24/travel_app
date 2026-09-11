@@ -116,8 +116,8 @@ const CAPTIONS = {
     'When is the plan',
     'A day from the calendar, in a sheet of its own. Today to a year out.',
   ],
-  '15d-pin-comes-down-before-plan': [
-    'Comes down before the plan',
+  '15d-pin-disappears-before-plan': [
+    'The pin disappears before the plan',
     'Legal, and said once under the row. Nothing turns red and nothing is blocked.',
   ],
   '18b-who-can-see-you': ['Who sees you', 'Both directions at once, and what a badge unlocks.'],

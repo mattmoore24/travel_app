@@ -17,7 +17,7 @@ import {
   takeDownLabel,
 } from '../pin-helpers';
 
-describe('the day a pin comes down (hard rule 3: the traveler picks it, a year at most)', () => {
+describe('the day a pin disappears (hard rule 3: the traveler picks it, a year at most)', () => {
   // Three in the afternoon on Sep 10, on the CITY's clock.
   const city = new Date(2026, 8, 10, 15, 0);
 

@@ -10,7 +10,7 @@ import { TripCalendar } from '@/features/trips/trip-calendar';
  * The shared calendar, in a sheet of its own.
  *
  * Two surfaces pick a day (or a run of days) from inside something that
- * already scrolls: the pin form's When and Comes down rows, and the map
+ * already scrolls: the pin form's When and Pin disappears rows, and the map
  * filter's Pick dates row. Neither can hold a month grid inline. The pin form
  * is capped and its scroller is about two rows tall with a keyboard up, so
  * an inline grid reproduces the below-the-fold regression photographed in

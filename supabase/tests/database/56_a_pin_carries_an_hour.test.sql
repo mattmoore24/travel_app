@@ -538,7 +538,7 @@ select lives_ok(
 select ok(
   (select expires_at < plan_ends_at
      from public.pins where venue_name = 'Musicbox Lisboa'),
-  'and lets the pin come down before the plan it advertises'
+  'and lets the pin disappear before the plan it advertises'
 );
 select ok(
   (select take_down_on < intent_date

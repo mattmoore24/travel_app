@@ -18,7 +18,7 @@ describe('SignUpGate', () => {
     render(
       <SignUpGate
         reason="Put your plan on the map"
-        detail="Your name and photo go on the pin, so people know who they are meeting. You pick the day it comes down."
+        detail="Your name and photo go on the pin, so people know who they are meeting. You pick the day the pin disappears."
         where="test-gate"
         compact
       />
@@ -26,7 +26,7 @@ describe('SignUpGate', () => {
     expect(screen.getByText('Put your plan on the map')).toBeTruthy();
     expect(
       screen.getByText(
-        'Your name and photo go on the pin, so people know who they are meeting. You pick the day it comes down.'
+        'Your name and photo go on the pin, so people know who they are meeting. You pick the day the pin disappears.'
       )
     ).toBeTruthy();
     // The one line every gate shows, and it now carries the promise the
@@ -57,7 +57,7 @@ describe('SignUpGate', () => {
     // The disclosure survives, as the small print it always should have been,
     // and it promises the day the author picked rather than three days.
     expect(map).toContain('Your name and photo go on the pin');
-    expect(map).toContain('You pick the day it comes down.');
+    expect(map).toContain('You pick the day the pin disappears.');
     expect(map).not.toContain('It disappears within three days.');
     // The pin-card gate already had the right shape.
     expect(map).toContain(`reason="See who's going and say hi"`);
