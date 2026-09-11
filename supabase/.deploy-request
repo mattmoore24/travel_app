@@ -512,3 +512,7 @@
 2026-09-11 — 20260911090000_twenty_pins_at_once: validate_pin restated with
              the live-pins cap at twenty, on the founder's word. Nothing
              else changes; no rows need fixing.
+2026-09-11 — 20260911100000_a_guest_can_follow_the_map: anon may execute
+             city_for_spot, so a guest's map can follow the pan. A grant and
+             a comment; no rows need fixing. Database first, then the update
+             that starts asking.
