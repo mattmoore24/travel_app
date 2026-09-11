@@ -741,7 +741,7 @@ export function PinFormSheet({
         }}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`${when}, up until ${dates().spokenDate.format(parseISODate(takeDown))}. Shows the take-down date.`}
+          accessibilityLabel={`${when}, up until ${dates().spokenDate.format(parseISODate(takeDown))}. Shows the day the pin disappears.`}
           hitSlop={4}
           onPress={() => {
             scrollRef.current?.scrollTo({

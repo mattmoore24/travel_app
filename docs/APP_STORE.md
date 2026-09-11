@@ -679,7 +679,7 @@ converted.
 >    is enforced by row-level security in Postgres, not by the client.
 > 4. The app requests NO location permission and holds none. The map shows only
 >    venue-level pins people typed in for future plans, and every pin is
->    permanently deleted on the take-down date its author set, at most a year out.
+>    permanently deleted on the day its author set for it to disappear, at most a year out.
 >    If a location framework appears in the
 >    binary, it is used only to turn a typed address into a coordinate for a
 >    business listing, never to read the device.

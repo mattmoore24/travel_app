@@ -121,7 +121,7 @@ describe('the four safety promises, where they decide something', () => {
     // Twice the longest sibling, not once, and the factor is the honest part:
     // this page makes two promises where the others make one, so it is two
     // sentences rather than one or two short ones. At the time of writing
-    // that is 112 characters against a bound of 116. A third sentence fails
+    // that is 116 characters against a bound of 116. A third sentence fails
     // it, which is exactly the edit worth catching.
     const siblings = tourSiblingBodies();
     expect(siblings).toHaveLength(3);

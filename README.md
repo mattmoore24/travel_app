@@ -6,8 +6,9 @@ location, ever).
 
 Two surfaces:
 
-- **The Map** (hero): drop future-dated intent pins ("I want to go to [place] on [day]", ≤72h
-  expiry) and browse an anonymized heatmap of what's popular in the city.
+- **The Map** (hero): drop future-dated intent pins ("I want to go to [place] on [day]"; each pin
+  disappears on the day its author set, a year out at most) and browse an anonymized heatmap of
+  what's popular in the city.
 - **Travelers**: post a trip, browse travelers with overlapping city + dates, send a
   Hinge-style message request the recipient must accept before chat opens.
 

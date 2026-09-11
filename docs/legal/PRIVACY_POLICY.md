@@ -26,7 +26,7 @@ we collect, why, who touches it, and what you can ask us to do about it.
   languages, bio, photos, and any social handles you choose to add.
 - **Travel intent you share**: trip cities and date ranges, and map pins (a
   venue, a category, an optional note and a day). Pins are permanently
-  deleted on the take-down date their author set, which is at most a year out.
+  deleted on the day their author set for them to disappear, which is at most a year out.
 - **Messages**: first messages you send, and the chats, groups and business
   rooms you take part in.
 - **Verification selfie** (optional): a face comparison. It has its own
@@ -211,7 +211,7 @@ retained by us beyond the verdict.
 
 ## Retention and deletion
 
-- **Pins**: deleted on the take-down date their author set, at most a year out, always.
+- **Pins**: deleted on the day their author set for them to disappear, at most a year out, always.
 - **Verification selfies**: deleted as soon as the check has an answer.
 - **Finished trips**: kept on your profile only for you.
 - **Delete your account any time** from **Profile → Delete account**. Your

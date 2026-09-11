@@ -101,7 +101,7 @@ describe('the bundled policy text', () => {
     // The pin promise. It said "72 hours" until 2026-09-10, when the founder
     // made the take-down day the author's own (§7 rule 3); the policy has to
     // say the new thing and must not still say the old one anywhere.
-    expect(policy).toContain('take-down date their author set');
+    expect(policy).toContain('the day their author set for them to disappear');
     expect(policy).not.toContain('72 hours');
     expect(policy).toContain('biometric');
     expect(policy).toContain('Anthropic');

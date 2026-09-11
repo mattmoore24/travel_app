@@ -42,7 +42,7 @@ seed pins take their plan's day.
 every string the app shows: the pin form row is Pin disappears, its calendar
 asks When does the pin disappear?, the reminder under the row and the
 footnote by the button say the pin disappears on the day you picked, the
-gate detail and both promises say the day each pin disappears, and the
+gate detail says the day the pin disappears, both promises say the day each pin disappears, and the
 store copy says every pin disappears on the day you set. Tests, the E2E
 flow, the gallery caption and the docs follow. Take it down early stays,
 because that is a thing the person does. Applied migrations are untouched.

@@ -7,7 +7,7 @@ unreachable.
 # Project conventions
 
 - **Read `docs/PRODUCT_BRIEF.md` first.** Its §7 hard rules are non-negotiable without
-  explicit founder sign-off (free core features; no live location; a pin comes down on the day its author set, at most a year out;
+  explicit founder sign-off (free core features; no live location; a pin disappears on the day its author set, at most a year out;
   DB-enforced social-handle gating; moderated first messages; heatmap k-threshold;
   everything pushed to GitHub).
 - `docs/ARCHITECTURE.md` = stack/data-model decisions and open technical flags.

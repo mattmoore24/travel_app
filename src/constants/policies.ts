@@ -64,7 +64,7 @@ export const GUIDELINE_SECTIONS = [
 export const SAFETY_PROMISE_TITLE = 'We never ask where you are';
 
 export const SAFETY_PROMISE_BODY =
-  'Pins are plans you type, and you pick the day each pin disappears. Socials only show once you are both chatting.';
+  'Pins are plans you type, and you set the day each pin disappears. Your socials only show once you are both chatting.';
 
 /**
  * The line under every sign-up gate in the app: the map, travelers, chat, a
