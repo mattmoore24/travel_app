@@ -385,16 +385,15 @@ appId: com.mattmoore.samewhere
     id: 'first-message-input'
 - inputText: 'Hey, I am in Bangkok the same week. Any good night markets?'
 - takeScreenshot: 17f-composer-typed
-# The live warning. It is a debounced network round trip (700ms of debounce
-# plus the RPC), so this waits rather than asserting, and waits generously:
-# a cold function is slow the first time and a bare assertVisible here would
-# be a flake factory.
-- eraseText: 100
-- inputText: 'Want to hook up at the night market?'
-- extendedWaitUntil:
-    visible: 'This might not go through'
-    timeout: 15000
-- takeScreenshot: 17g-composer-warned
+# NO LIVE-WARNING PICTURE ANY MORE, on purpose. This used to retype a
+# come-on ("Want to hook up at the night market?") and wait for "This might
+# not go through". On 2026-09-10 the founder took flirtation and sex off the
+# list: text is refused for slurs and nothing else, so that sentence is an
+# ordinary message now and run 133 lost the tour twice waiting for a warning
+# that is correct not to appear. The only words that would draw it are
+# slurs, and these frames go to a public branch, so the warning is proved
+# where it can be without printing one: pgTAP 83 for the list, the
+# draft-warning jest for the composer.
 # Out, through the announced exit and the guard that stops a pull-down
 # throwing away something somebody wrote. The assertNotVisible is what
 # proves the tap LANDED: the composer is a presented modal, and a Close that
