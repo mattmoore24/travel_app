@@ -183,7 +183,8 @@ loads/month, needs token + config plugin + dev build).
   A validation trigger RESOLVES the pin's city (the browsed one within 20 km, else
   `nearest_city()`, distance over the fourth root of population - haversine, no PostGIS),
   checks sane intent dates (not past, not beyond a year) and an optional hour or window,
-  records `plan_ends_at` for the last-call push, and a 10-active-pin cap. The take-down day
+  records `plan_ends_at` for the last-call push, and a 20-active-pin cap (ten until
+  2026-09-11). The take-down day
   is NOT floored at the plan's day: a pin may come down before its plan (founder, 2026-09-10). The map feeds read by distance from the browsed city
   (`map_radius_km()`, 50 km), so the city label is for the funnel and the rail.
 - **Rule 2 posture**: nothing in the schema or client ever touches device location —
@@ -1769,10 +1770,11 @@ never applied in production and encoded the plan-day floor the founder
 rejected; the suite is green without it, and its removal is what lets
 `db push` run in order again.
 
-**Raised, not decided.** The ten-live-pins cap used to recycle every three
-days and now recycles a year at a time: a traveler with ten long pins posts
-nothing new until one comes down. Featured-city and liquidity counts change
-meaning when pins live for months. Curated seed pins need a take-down day.
+**Decided, 2026-09-11.** The live-pins cap is twenty (`20260911090000`),
+on the founder's word ("raise it to 20, that should be plenty"): ten was
+set for a three-day pin and recycled a year at a time once a pin could stay
+up for one. Featured-city and liquidity counts keep counting every plan on
+the map. Curated seed pins take their plan's day as their take-down day.
 
 ## Technical flags (raised to founder, non-blocking)
 

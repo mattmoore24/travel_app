@@ -79,10 +79,10 @@ the simulator's image stack, not in this branch: the onboarding path has
 always asked for the library first and stalled the same way, and nothing
 in the pipeline changed. It is the open item for the suite.
 
-**Raised, not decided.** The ten-live-pins cap used to recycle every three
-days and now recycles a year at a time. Featured-city and liquidity counts
-change meaning when pins live for months. Curated seed pins need a
-take-down day.
+**Decided the next morning (2026-09-11).** The live-pins cap is twenty
+(`20260911090000`); featured-city and liquidity counts keep counting every
+plan on the map; curated seed pins take their plan's day as their take-down
+day. The app's cap sentence says twenty.
 
 ## **The map's four marks, and a key that stays** (2026-09-10)
 
