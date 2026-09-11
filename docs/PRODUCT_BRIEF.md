@@ -190,7 +190,7 @@ dependency), solo-founder maintainability, fast iteration, and real-time feature
 ### RLS invariants to enforce in Postgres (write tests for these)
 
 1. No user can read another user's `social_handles` without an accepted chat.
-2. No user can read raw pins outside the map's circle around a city they CHOSE (never a device
+2. No user can read raw pins outside the map's circle around a city they CHOSE, by search, by a trip, or by panning the map there (never a device
    position), or query pins in a way that returns another user's precise history. _(Until
    2026-09-04 this read "outside launch cities"; the founder opened every city.)_
 3. Expired pins are unreadable by everyone.

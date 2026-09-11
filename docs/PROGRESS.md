@@ -3,6 +3,41 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **The map follows the pan, and Accept where Accept is due** (2026-09-11)
+
+Two founder asks from the first morning of testing, plus the three
+pin-lifetime answers.
+
+**"Find any city without directly searching it, similar to Zillow."** The
+map follows the pan. In browse mode, at city scale or closer, once the
+settled centre is 20 km from the browsed city (the resolver's own hint
+radius, so nothing closer could answer differently), the map asks
+`city_for_spot` which city it is over and chooses that city WITHOUT moving
+the camera: the search bar names it, and its plans, businesses and heat
+load underneath. A business account never follows (its map is its own
+city), a followed city does not summon the way-home pill against the person
+who dragged the map there, and a refusal or dead network leaves the map on
+the city it has. Guests pan the same map, so anon may execute the resolver
+(`20260911100000`; pgTAP 85, and 77's old refusal flipped). Deliberately a
+city switch rather than a viewport query: every feed stays city-scoped and
+k-anonymous exactly as before, and the population-weighted resolver keeps
+a metro's suburbs under the metro's name. Never a device position.
+
+**What the map shows with nothing searched.** The last city chosen, else the
+city of a current or upcoming trip, else a featured city in the phone's
+time zone, else the first featured city. Never the phone's location.
+
+**"The button at the bottom of the profile should say Accept."** On the
+profile of somebody whose hello is waiting on the reader, the docked bar
+says Accept and accepts, the same call the Chat tab's card makes, landing
+in the chat. The message being answered is quoted above the bar, and the
+reply bubbles are off while it waits: the answer to a hello is Accept, not
+a hello of your own.
+
+**Decided.** Twenty pins at once (`20260911090000`, deploy 116, TestFlight
+93). Featured-city and liquidity counts keep counting every plan. Curated
+seed pins take their plan's day.
+
 ## **The traveler picks the day a pin comes down** (2026-09-10)
 
 §7 rule 3 changed on the founder's word, and it is shipped end to end:

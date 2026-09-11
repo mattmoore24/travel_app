@@ -186,7 +186,13 @@ loads/month, needs token + config plugin + dev build).
   records `plan_ends_at` for the last-call push, and a 20-active-pin cap (ten until
   2026-09-11). The take-down day
   is NOT floored at the plan's day: a pin may come down before its plan (founder, 2026-09-10). The map feeds read by distance from the browsed city
-  (`map_radius_km()`, 50 km), so the city label is for the funnel and the rail.
+  (`map_radius_km()`, 50 km), so the city label is for the funnel and the rail. Since
+  2026-09-11 the browsed city FOLLOWS THE PAN: once the settled centre is 20 km from it (the
+  resolver's own hint radius) at city scale or closer, `city_for_spot` names the city the map
+  is over and the client chooses it without moving the camera (`features/pins/follow-the-map`);
+  a business never follows, a followed city does not summon the way-home pill, and anon may
+  execute the resolver (`20260911100000`). Never a device position: the centre is where the
+  person dragged the map.
 - **Rule 2 posture**: nothing in the schema or client ever touches device location —
   `showsUserLocation={false}`, no location permission in app.json, pin placement is manual
   (tap/drag on the map).
@@ -1985,6 +1991,11 @@ the map. Curated seed pins take their plan's day as their take-down day.
   decision rather than a backlog item: there is no recipient-scoped column to hang them on,
   and they create response pressure that works against the safety posture. "Sending" and
   "Sent" are sender-side facts and carry no such cost.
+- **2026-09-11** — The map follows the pan (founder: "find any city without directly
+  searching it, similar to Zillow"). Implemented as a city switch, not a viewport query:
+  every feed stays city-scoped and k-anonymous exactly as before; what changes is which city
+  is browsed, resolved by `city_for_spot` from the settled centre. A profile whose owner has a
+  hello waiting on the reader says Accept, not Say hi.
 - **2026-09-10** — §7 rule 3 restated on the founder's word: a pin comes down on the day
   its author set, a year at most, with `expires_at` derived in the city's clock and no
   floor at the plan's day. The 72h CHECK is gone; pins stay immutable (no UPDATE grant),
