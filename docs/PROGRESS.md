@@ -67,8 +67,17 @@ its half-finished edits and `jest` ran every file twice, printing a test's
 old name after the real one had been rewritten. The four scanners now
 exclude `.claude/` (traps has the entry).
 
-**Runs.** Supabase deploy 115 (three migrations and the worker), TestFlight
-update 91, E2E 132.
+**Runs.** Supabase deploy 115 (three migrations and the worker). TestFlight
+updates 91 (the lot) and 92 (the business picker's permission ask). E2E 132
+lost the signed-in tour to a day-first date pattern and the business tour
+to a picker that drew blank; 133 photographed every new screen, the business
+cover included, and lost the signed-in tour to a warning that is now
+correct not to appear; 134 ran the signed-in tour end to end and lost the
+business cover to the render stall four times out of four, with the
+onboarding tour's own photo stalling once and recovering. The stall is in
+the simulator's image stack, not in this branch: the onboarding path has
+always asked for the library first and stalled the same way, and nothing
+in the pipeline changed. It is the open item for the suite.
 
 **Raised, not decided.** The ten-live-pins cap used to recycle every three
 days and now recycles a year at a time. Featured-city and liquidity counts
