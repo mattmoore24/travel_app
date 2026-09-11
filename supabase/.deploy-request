@@ -509,3 +509,6 @@
              first, then the update: the new bundle sends p_take_down_on,
              which the old function does not know. 57 live pins keep their
              expiry; take_down_on is back-filled from it.
+2026-09-11 — 20260911090000_twenty_pins_at_once: validate_pin restated with
+             the live-pins cap at twenty, on the founder's word. Nothing
+             else changes; no rows need fixing.
