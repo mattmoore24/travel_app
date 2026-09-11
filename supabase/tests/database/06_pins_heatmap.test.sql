@@ -332,17 +332,18 @@ select is(
 reset role;
 delete from public.blocks;
 
--- Pin cap.
+-- Pin cap: twenty since 20260911090000 (ten before). Dave holds four live
+-- pins here (Dup 1 to 3 and Cell2 D), so seventeen more is the twenty-first.
 select pg_temp.login('00000000-0000-0000-0000-00000000000d');
 select throws_ok(
   $$ insert into public.pins (user_id, city_id, venue_name, category, lat, lng,
                               intent_date)
      select '00000000-0000-0000-0000-00000000000d', pg_temp.lisbon(),
             'Cap ' || i, 'bar', 38.7401, -9.1601, current_date
-     from generate_series(1, 8) i $$,
+     from generate_series(1, 17) i $$,
   '23514',
   null,
-  'active pin cap (10) enforced'
+  'active pin cap (20) enforced'
 );
 
 -- Pin-source message request: works against a live pin, refused without one.

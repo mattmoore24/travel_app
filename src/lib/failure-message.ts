@@ -94,7 +94,7 @@ const HINT_COPY: Record<string, string> = {
   trip_cap:
     'Five trips is the most you can have posted at once. Delete one from your profile to add this.',
   pin_cap:
-    'Ten pins is the most you can have up at once. One will expire soon, or take one down from the map.',
+    'Twenty pins is the most you can have up at once. Take one down from the map to post another.',
   trip_daily_cap: POST_DAILY_CAP,
   pin_daily_cap: POST_DAILY_CAP,
   photo_daily_cap: POST_DAILY_CAP,
@@ -123,6 +123,7 @@ const HINT_COPY: Record<string, string> = {
 const DB_COPY: Record<string, string> = {
   'active trip limit reached (5)': HINT_COPY.trip_cap,
   'active pin limit reached (10)': HINT_COPY.pin_cap,
+  'active pin limit reached (20)': HINT_COPY.pin_cap,
   'photo limit reached (9 per user)': 'Nine photos is the most a profile can hold.',
   'photo limit reached (7 per user)': 'Nine photos is the most a profile can hold.',
   'daily trip limit reached': POST_DAILY_CAP,
