@@ -44,7 +44,9 @@ import {
   usePinCrew,
 } from '@/features/pins/hooks';
 import { browseCityFromCityRow, type BrowseCity } from '@/features/pins/api';
+import { FOLLOW_SETTLE_MS, shouldFollowMap } from '@/features/pins/follow-the-map';
 import { BusinessMarker } from '@/features/business/business-marker';
+import { fetchCityForSpot } from '@/features/business/api';
 import { useCityBusinesses, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
 import { listingNotice } from '@/features/business/listing-notice';
 import { PlaceSheet } from '@/features/business/place-sheet';
@@ -150,7 +152,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
 import { countOf } from '@/lib/plural';
-import type { CityPinRow, PinCrewRow } from '@/lib/database.types';
+import type { CityPinRow, CityRow, PinCrewRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 function PinCard({
@@ -955,6 +957,17 @@ const DOCK_MIN_HEIGHT = 52;
  */
 const SPLIT_CLEAR_PT = 110;
 
+/**
+ * What one camera fit is keyed on: the city and every filter field, by hand.
+ * One missing here leaves a narrowed map framed on the old result, which
+ * reads as an emptied city. Shared by the fit effect and by the map's own
+ * follow, which consumes the key up front so a city reached by panning is
+ * never flown to.
+ */
+function fitKeyFor(cityId: number, filters: MapFilters): string {
+  return `${cityId}:${filters.when}:${filters.from}:${filters.to}:${filters.kinds.join()}:${filters.categories.join()}`;
+}
+
 export default function MapScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -1021,6 +1034,12 @@ export default function MapScreen() {
     ? (businessBrowseCity ?? browsing.city ?? undefined)
     : undefined;
   const activeCityId = activeCity?.city_id ?? null;
+  // Read by the follow's timer, which fires after the render that armed it.
+  const activeCityIdRef = useRef(activeCityId);
+  useEffect(() => {
+    activeCityIdRef.current = activeCityId;
+  }, [activeCityId]);
+
   // What the rail draws: the featured cities, with the browsed city in front
   // of them when it is not one of them. A city reached by search, or by a
   // pin that landed a continent away, still needs a lit chip - a rail with
@@ -1141,6 +1160,13 @@ export default function MapScreen() {
   // the region ref because it has to repaint — but it only ever changes when
   // the threshold is crossed, not on every frame of a pinch.
   const [cityScale, setCityScale] = useState(false);
+  // The city the map FOLLOWED the pan into, or null once a city was chosen
+  // outright. The way-home pill is suppressed for a followed city: "Back to
+  // Porto" a second after somebody dragged the map into Porto would be the
+  // app arguing with them about where they are.
+  const [followedCityId, setFollowedCityId] = useState<number | null>(null);
+  const followTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const followInFlight = useRef(false);
   // Whether the owner's own chip is actually drawn, which is not the same as
   // being a business: a listing waiting on its email code is not in
   // city_businesses yet. The filters sheet explains the owner's ring, and a
@@ -1168,6 +1194,7 @@ export default function MapScreen() {
   // replay effect below has to close over it from the hooks section.
   const applyCity = (city: BrowseCity) => {
     chooseCity(city);
+    setFollowedCityId(null);
     setSelectedPinId(null);
     // The venue stack's SHEET heals itself — openVenue resolves to null the
     // moment the city's list reloads — but the raw key would linger, and the
@@ -1191,6 +1218,44 @@ export default function MapScreen() {
       },
       reduceMotion ? 0 : 350
     );
+  };
+
+  // THE MAP FOLLOWED THE PAN into another city: make it current WITHOUT
+  // flying anywhere. followedCityId is what tells the camera-fit effect to
+  // consume the new city's key without a flight; the person is looking at
+  // it. Selections are cleared the way applyCity clears them, for the same
+  // reasons it gives.
+  const followMapTo = (row: CityRow) => {
+    const city = browseCityFromCityRow(row);
+    setFollowedCityId(city.city_id);
+    chooseCity(city);
+    setSelectedPinId(null);
+    setVenueKey(null);
+    setSelectedPlaceId(null);
+  };
+  // One ask per settled centre, never two in flight. A refusal or a dead
+  // network leaves the map on the city it has: a guest before the grant
+  // landed, or hostel wifi, is not a reason to show an error over a map
+  // that is otherwise fine.
+  const followMap = async (centre: { latitude: number; longitude: number }) => {
+    if (followInFlight.current) {
+      return;
+    }
+    followInFlight.current = true;
+    try {
+      const row = await fetchCityForSpot(
+        centre.latitude,
+        centre.longitude,
+        activeCityIdRef.current
+      );
+      if (row != null && row.id !== activeCityIdRef.current) {
+        followMapTo(row);
+      }
+    } catch {
+      // The map keeps its city.
+    } finally {
+      followInFlight.current = false;
+    }
   };
 
   // A business account's map opens on its own city — RESOLVED, not seeded:
@@ -1653,9 +1718,7 @@ export default function MapScreen() {
     if (!pinsLoaded || activeCityId == null) {
       return;
     }
-    // Every field, by hand: one missing here leaves a narrowed map framed on
-    // the old result, which the comment above says reads as an emptied city.
-    const key = `${activeCityId}:${filters.when}:${filters.from}:${filters.to}:${filters.kinds.join()}:${filters.categories.join()}`;
+    const key = fitKeyFor(activeCityId, filters);
     if (lastFitKey.current === key) {
       return;
     }
@@ -1673,6 +1736,12 @@ export default function MapScreen() {
       return;
     }
     lastFitKey.current = key;
+    // A city the map FOLLOWED the pan into is already on screen: the key is
+    // consumed without a flight, and the map stays where the person put it.
+    // The next filter change makes a new key and frames as usual.
+    if (followedCityId === activeCityId) {
+      return;
+    }
     const region = fitRegion(markerPoints);
     if (region) {
       mapRef.current?.animateToRegion(region, reduceMotion ? 0 : 350);
@@ -1688,6 +1757,7 @@ export default function MapScreen() {
     selectedPlaceId,
     cityScale,
     reduceMotion,
+    followedCityId,
   ]);
 
   // §6 metrics: map DAU (every city view, including the initial one) and
@@ -1826,7 +1896,7 @@ export default function MapScreen() {
           'own-listing': listingMissing,
           'empty-city': emptyCity,
           'viewport-empty': viewportEmpty && !farFromCity,
-          'way-home': farFromCity,
+          'way-home': farFromCity && followedCityId !== activeCityId,
           'first-session': firstSession,
           'first-pin': ownPinIsOnlyPin,
           'heat-fallback': heatShown && heatFallback && heatCells.length > 0,
@@ -2132,6 +2202,30 @@ export default function MapScreen() {
                 ? prev
                 : region
             );
+            // FOLLOW THE PAN (features/pins/follow-the-map): in browse mode,
+            // for a traveler or a guest, once the settled centre is far
+            // enough from the browsed city that the resolver could answer
+            // with another. A business is pinned to its own city and never
+            // follows. Debounced so a flick across a country asks once, for
+            // where it stopped.
+            if (followTimer.current) {
+              clearTimeout(followTimer.current);
+              followTimer.current = null;
+            }
+            if (
+              mode === 'browse' &&
+              !isBusiness &&
+              shouldFollowMap(
+                region,
+                activeCity?.cities ?? null,
+                region.latitudeDelta > CITY_ZOOM_DELTA
+              )
+            ) {
+              followTimer.current = setTimeout(() => {
+                followTimer.current = null;
+                void followMap(region);
+              }, FOLLOW_SETTLE_MS);
+            }
             if (mode === 'place') {
               setLifted(false);
               setPlaceCoords({ lat: region.latitude, lng: region.longitude });

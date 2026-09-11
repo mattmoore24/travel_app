@@ -316,15 +316,14 @@ select is(
 -- THE PREVIEW DOOR
 -- =============================================================================
 
--- "That puts you in Lisbon, Portugal." is served by city_for_spot, which
--- answers only a signed-in caller: a guest has no marker to place and no
--- business to file, and the resolver behind it is not a public geocoder.
+-- "That puts you in Lisbon, Portugal." is served by city_for_spot. It
+-- answered only a signed-in caller until 20260911100000, when the map began
+-- following the pan by asking it where the centre is, and a guest pans the
+-- same map (pgTAP 85 has the guest's answers).
 select pg_temp.guest();
-select throws_ok(
+select lives_ok(
   $$ select public.city_for_spot(38.71, -9.14) $$,
-  '42501',
-  null,
-  'a guest cannot ask which city a spot is in'
+  'a guest may ask which city a spot is in, since the map follows the pan'
 );
 select throws_ok(
   $$ select public.resolve_business_city(38.71, -9.14) $$,
