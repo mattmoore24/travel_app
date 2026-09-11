@@ -1,4 +1,4 @@
-import { planChipLabel, privacyTail, roomBadgeGlyph } from '@/features/chat/row-kind';
+import { planChipLabel, roomBadgeGlyph } from '@/features/chat/row-kind';
 import type { ChatListRow } from '@/lib/database.types';
 
 /**
@@ -68,47 +68,9 @@ describe('the day a plan is for', () => {
   });
 });
 
-describe('who else can read this conversation', () => {
-  it('says nothing about a one-to-one chat', () => {
-    expect(privacyTail(room({ kind: 'direct', my_role: null }))).toBeNull();
-  });
-
-  it('says nothing about a private crew', () => {
-    // Silence is the correct statement here, and a tail on every row is a
-    // tail nobody reads on any of them.
-    expect(privacyTail(room())).toBeNull();
-  });
-
-  it('warns that a plan is open to whoever can see the pin', () => {
-    // post_joinable_pin opens the group with speaking = 'everyone' and
-    // join_pin_chat asks for nothing but pin visibility, so this is the exact
-    // rule the database enforces.
-    expect(privacyTail(room({ plan_date: '2026-09-05' }))).toBe('anyone with the pin can join');
-  });
-
-  it('warns about the plan even when the reader runs it', () => {
-    expect(privacyTail(room({ plan_date: '2026-09-05', my_role: 'admin' }))).toBe(
-      'anyone with the pin can join'
-    );
-  });
-
-  it('says a public hostel room can be read by anyone', () => {
-    expect(privacyTail(room({ my_role: null, public_preview: true }))).toBe('anyone can read');
-  });
-
-  it('names the business behind a room that is not public', () => {
-    expect(privacyTail(room({ my_role: null, public_preview: false }))).toBe(
-      'a business runs this chat'
-    );
-  });
-
+describe('the words on a row', () => {
   it('carries no em dash and none of the banned vocabulary', () => {
-    const sentences = [
-      privacyTail(room({ plan_date: '2026-09-05' })),
-      privacyTail(room({ my_role: null, public_preview: true })),
-      privacyTail(room({ my_role: null, public_preview: false })),
-      planChipLabel('2026-09-05', new Date(2026, 8, 2)),
-    ].join(' ');
+    const sentences = [planChipLabel('2026-09-05', new Date(2026, 8, 2))].join(' ');
     expect(sentences).not.toContain('—');
     expect(sentences).not.toMatch(/\b(swipe|deck|match|request|place)\b/i);
     // §7 rule 2: no chat surface may claim to know where anybody is.

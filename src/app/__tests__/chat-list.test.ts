@@ -61,10 +61,12 @@ describe('the chat list is a list, not a stack of cards', () => {
     // Every row that draws a preview has to spend the scaled value, not the
     // style: ChatRow in the module, and SentHelloRow, PlainRow and the
     // collapsed waiting row in the screen.
-    // The reserved box moved OUT to a wrapper around the preview and the
-    // privacy tail, so a row with a tail is exactly as tall as one without.
-    // Same invariant, one level up.
+    // The reserved box is a wrapper around the preview, and the preview is
+    // sized to the same scaled height and clamped to the same line count, so
+    // nothing can be drawn past the box's edge.
     expect(rowModule.match(/<View style=\{\{ height: previewHeight \}\}>/g)).toHaveLength(1);
+    expect(rowModule).toContain('numberOfLines={PREVIEW_LINES}');
+    expect(rowModule).toContain('style={[styles.rowPreview, { height: previewHeight }]}');
     expect(
       code.match(/style=\{\[rowStyles\.rowPreview, \{ height: previewHeight \}\]\}/g)
     ).toHaveLength(3);
@@ -151,12 +153,13 @@ describe('the chat list is a list, not a stack of cards', () => {
     expect(rowModule).toContain('useChatPhotoUrl(path)');
   });
 
-  it('says who else can read a room, in the room screen own words', () => {
-    expect(rowModule).toContain('privacyTail(chat)');
+  it('draws the last message or Photo under the name, and no third line', () => {
+    // Founder, 2026-09-11, with a screenshot of "anyone with the pin can
+    // join" cut off at the row's edge: "It should just be whatever the most
+    // recent message is or Photo. No text should ever be cut off."
+    expect(rowModule).not.toContain('privacyTail');
     const rowKind = source('..', 'features', 'chat', 'row-kind.ts');
-    expect(rowKind).toContain("'anyone with the pin can join'");
-    expect(rowKind).toContain("'anyone can read'");
-    expect(rowKind).toContain("'a business runs this chat'");
+    expect(rowKind).not.toContain('anyone with the pin can join');
   });
 
   it('caps the waiting hellos instead of stacking them above the inbox', () => {

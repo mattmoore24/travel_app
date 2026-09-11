@@ -7,7 +7,7 @@ import { Radius, Space, Spacing, Type } from '@/constants/theme';
 import { useIsPlaceChat } from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
-import { planChipLabel, privacyTail, roomBadgeGlyph } from '@/features/chat/row-kind';
+import { planChipLabel, roomBadgeGlyph } from '@/features/chat/row-kind';
 import { rowTimestamp, unreadLabel } from '@/features/chat/separators';
 import { finiteDate } from '@/features/groups/closing';
 import { usePhotoUrl } from '@/features/profile/hooks';
@@ -204,17 +204,12 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
         // Portuguese phone drew two languages on one row.
         (leaveOn ? ` · you leave ${dates().monthDay.format(leaveOn)}` : '')
       : null);
-  // Who else can open this. Three rows with three privacy models used to look
-  // identical, and the one that matters is the plan: post_joinable_pin opens
-  // it with speaking = 'everyone', so a crew you think is four people is
-  // whoever can see the pin.
-  const tail = privacyTail(chat);
-  // NOT concatenated onto the preview. The preview is two clamped lines in a
-  // fixed-height box, roughly sixty characters, so any message longer than
-  // about thirty clipped the tail clean off — and the row it clips it off is
-  // exactly the one the tail exists for, a plan room with conversation in it.
-  // It gets a line of its own, because it is a fact about the ROOM rather
-  // than about the last thing said in it.
+  // The preview is the last thing said, or "Photo", and nothing else. The
+  // row used to append a third line under it saying who else can read a
+  // room ("anyone with the pin can join"), and the founder photographed it
+  // cut clean off at the row's edge on 2026-09-11: "No text should ever be
+  // cut off." The room screen says who can read it, where the person is
+  // about to type; the list keeps to the message.
   const previewLine = preview;
   // A plan's day used to vanish the instant anybody wrote in the room, because
   // the preview falls through to the last message. The day is the whole reason
@@ -296,23 +291,19 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
             </View>
           ) : null}
         </View>
-        {/* One reserved box for both lines, so a row with a privacy tail is
-            exactly as tall as one without and the list does not jump as rows
-            arrive. The tail takes the second line when there is one; without
-            it the preview keeps both. */}
+        {/* One reserved box of two lines at the reader's text size, so every
+            row is exactly as tall as every other and the list does not jump
+            as rows arrive. The text is clamped to the box's own line count
+            and never sized past it, which is what keeps a second line from
+            ever being drawn where it cannot be read. */}
         <View style={{ height: previewHeight }}>
           <ThemedText
             type="callout"
             themeColor={unread ? 'text' : 'textSecondary'}
-            numberOfLines={tail ? 1 : 2}
-            style={styles.rowPreview}>
+            numberOfLines={PREVIEW_LINES}
+            style={[styles.rowPreview, { height: previewHeight }]}>
             {previewLine}
           </ThemedText>
-          {tail ? (
-            <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1}>
-              {tail}
-            </ThemedText>
-          ) : null}
         </View>
       </View>
       {/* Stretched and top-aligned, so the stamp sits on the name's line

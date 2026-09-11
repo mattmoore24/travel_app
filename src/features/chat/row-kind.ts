@@ -52,37 +52,6 @@ export function planChipLabel(planDate: string | null, now: Date = new Date()): 
 }
 
 /**
- * Who else can read this conversation, appended to the preview line.
- *
- * The room screen's own words, so a person who has been inside one reads the
- * same sentence in the list. A private crew gets nothing: silence is the
- * correct statement about a group only its members can open, and a tail on
- * every row would make the tails invisible.
- */
-export function privacyTail(
-  chat: Pick<ChatListRow, 'kind' | 'plan_date' | 'my_role' | 'public_preview'>
-): string | null {
-  if (chat.kind !== 'room') {
-    return null;
-  }
-  if (chat.plan_date != null) {
-    // Exactly what join_pin_chat enforces: seeing the pin is the whole
-    // admission test, and there is no token in it.
-    return 'anyone with the pin can join';
-  }
-  if (chat.my_role != null) {
-    return null;
-  }
-  if (chat.public_preview === true) {
-    return 'anyone can read';
-  }
-  if (chat.public_preview === false) {
-    return 'a business runs this chat';
-  }
-  return null;
-}
-
-/**
  * The mark on a room row.
  *
  * The list drew one house on all three of them. The recorded objection to
