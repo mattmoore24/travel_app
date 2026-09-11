@@ -168,11 +168,13 @@ Banned, each for a reason already paid for:
   it is scoped to a city chip that may be a continent away. Locative uses
   about a business ("in the chat here", meaning at the venue) are not
   presence claims and can stay.
-- **"comes down" for a pin.** A pin **disappears** on the day its author picked
-  (founder, 2026-09-11: "instead of comes down say pin disappears in all
-  instances"). The row on the pin form is "Pin disappears", the calendar asks
-  "When does the pin disappear?", the promises say "the day each pin
-  disappears". The column is still `take_down_on` and a person still "takes
+- **"comes down" and "burns out" for a pin.** A pin **disappears** on the day
+  its author picked (founder, 2026-09-11: "instead of comes down say pin
+  disappears in all instances", then "change burns out to disappears too").
+  The row on the pin form is "Pin disappears", the calendar asks "When does
+  the pin disappear?", the promises say "the day each pin disappears", the
+  card's last day says "disappears in 2h" and a room whose pin is gone says
+  "The pin has disappeared. The group stays." The column is still `take_down_on` and a person still "takes
   it down" early, because that is an action they do; "comes down" was the
   pin doing something on its own, and the word for that is disappears.
 

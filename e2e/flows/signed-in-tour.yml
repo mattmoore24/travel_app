@@ -313,12 +313,12 @@ appId: com.mattmoore.samewhere
 # t=0 with the tap having done nothing. The membership line exists only in
 # the room. Then the card's own line, anchored for the whole-element match
 # ('Friday, Oct 11 · up until Oct 6' is one Text; a pin disappearing inside
-# the day reads 'burns out in 24h' instead), and the Maps link by its SPOKEN
+# the day reads 'disappears in 24h' instead), and the Maps link by its SPOKEN
 # label - the Pressable hides its inner text (traps).
 - extendedWaitUntil:
     visible: '1 person in this chat.*'
     timeout: 20000
-- assertVisible: '.*(burns out (in .*|soon)|up until .*)'
+- assertVisible: '.*(disappears (in .*|soon)|up until .*)'
 - assertVisible: 'View .* in Maps'
 - takeScreenshot: 16b-pin-born-room
 # Relaunch rather than `back` — Maestro's back does not reliably pop an iOS

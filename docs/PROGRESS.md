@@ -46,6 +46,10 @@ gate detail says the day the pin disappears, both promises say the day each pin 
 store copy says every pin disappears on the day you set. Tests, the E2E
 flow, the gallery caption and the docs follow. Take it down early stays,
 because that is a thing the person does. Applied migrations are untouched.
+Then, on the founder's yes to the one word left over, burns out went too:
+the card's last day counts down as disappears in 2h and disappears soon,
+and a pin-born room whose pin is gone says The pin has disappeared. The
+group stays.
 
 ## **The traveler picks the day a pin disappears** (2026-09-10)
 

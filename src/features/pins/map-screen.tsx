@@ -464,11 +464,11 @@ function PinCard({
             // Your own pin, which is a thing you just DID, not a thing to
             // undo. It used to climax in a red delete button: the one
             // affirming act on the map ended on the most alarming control in
-            // the app. Now the pin says what it is and when it burns out,
+            // the app. Now the pin says what it is and when it disappears,
             // Done is the action, and taking it down is a quiet footnote.
             <>
               {/* Just "Your pin". The header two lines up already says
-                  "Today · burns out in 14h", and printing the same countdown
+                  "Today · disappears in 14h", and printing the same countdown
                   twice in one short sheet reads as a duplicated component
                   rather than a reminder. */}
               <ThemedText type="footnote" themeColor="textSecondary">
@@ -1620,7 +1620,7 @@ export default function MapScreen() {
   ]);
 
   // The data-dependent half: the card can only open once the city's pins are
-  // back, and the pin may have burned out while signup happened. Degrades
+  // back, and the pin may have disappeared while signup happened. Degrades
   // SILENTLY to the selected city - never an error at the end of thirteen
   // screens.
   useEffect(() => {
@@ -3459,7 +3459,7 @@ export default function MapScreen() {
                 flat
                 onNavigate={(go) => {
                   // The pin they were reading, replayed after signup - and
-                  // degraded silently to the city if it burns out first.
+                  // degraded silently to the city if it disappears first.
                   if (activeCityId != null) {
                     intentRemembered({
                       kind: 'pin',

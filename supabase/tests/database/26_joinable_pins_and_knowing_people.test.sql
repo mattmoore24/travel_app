@@ -314,7 +314,7 @@ select is(
                       join public.groups g on g.chat_id = c.id
                      where g.name = 'Pensão Amor')),
   1,
-  'the pin burns out and the conversation is still there'
+  'the pin disappears and the conversation is still there'
 );
 select is(
   (select pin_id from public.groups where name = 'Pensão Amor'),

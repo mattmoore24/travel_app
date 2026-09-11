@@ -69,7 +69,7 @@ select is(
 );
 select ok(
   (select expires_at > now() from public.pin_for_group(pg_temp.the_room())),
-  'and the clock it burns down on'
+  'and the clock it disappears on'
 );
 
 select pg_temp.login('00000000-0000-0000-0000-00000000000c');
@@ -146,7 +146,7 @@ select is(
 
 -- AND THE ENDING SURVIVES THE SWEEP ---------------------------------------------
 -- expire_pins hard-deletes and pin_id goes null with it, so without the
--- delete-trigger stamp the room's "burned out" line would vanish within
+-- delete-trigger stamp the room's "disappeared" line would vanish within
 -- fifteen minutes of the pin expiring.
 
 select pg_temp.admin();

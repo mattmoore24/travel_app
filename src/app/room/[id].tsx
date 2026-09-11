@@ -449,7 +449,7 @@ export default function RoomScreen() {
                 </>
               ) : (
                 <ThemedText type="footnote" themeColor="textSecondary">
-                  The plan has burned out. The group stays.
+                  The pin has disappeared. The group stays.
                 </ThemedText>
               )}
             </View>

@@ -514,8 +514,8 @@ appId: com.mattmoore.samewhere
             # THE PIN VARIANT, proven: the card the guest was reading when
             # the wall interrupted them is open again, on its own city. The
             # wait is not slack — the replay holds the card until the city's
-            # pins have refetched under the new account. (A pin that burns
-            # out during the minutes signup takes degrades the replay to the
+            # pins have refetched under the new account. (A pin that disappears
+            # during the minutes signup takes degrades the replay to the
             # city alone BY DESIGN; that rare race shows here as a red tail
             # over a bare-map screenshot. Re-run it — never loosen this.)
             - extendedWaitUntil:

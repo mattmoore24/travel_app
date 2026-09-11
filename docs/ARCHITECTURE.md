@@ -837,7 +837,7 @@ public.pins (id) on delete set null`, with a partial unique index. It has to
 be this direction. Pins are hard deleted — by `expire_pins` on its 15-minute
 cron, by the poster taking one down, and on its take-down day because §7 rule 3 says so
 — and a `chat_id` column on `pins` would take the conversation with it. On
-`groups`, the pin burns out and the chat is still there, with `pin_id` null:
+`groups`, the pin disappears and the chat is still there, with `pin_id` null:
 an ordinary group with no end date, reachable from the Chat tab and by invite
 and no longer joinable from the map, because there is no longer a pin to tap.
 That is the founder's explicit call.
@@ -2000,7 +2000,9 @@ the map. Curated seed pins take their plan's day as their take-down day.
   down say pin disappears in all instances"). Every string, the pin form row, the calendar
   title, the promises, the store copy, the E2E assertions and the docs say disappears;
   `take_down_on` and "Take it down early" stay, since taking a pin down is something a
-  person does.
+  person does. Later the same day, "burns out" went the same way: the card's last-day
+  countdown says "disappears in 2h" and a pin-born room whose pin is gone says "The pin has
+  disappeared. The group stays."
 - **2026-09-10** — §7 rule 3 restated on the founder's word: a pin disappears on the day
   its author set, a year at most, with `expires_at` derived in the city's clock and no
   floor at the plan's day. The 72h CHECK is gone; pins stay immutable (no UPDATE grant),

@@ -103,7 +103,7 @@ describe('the mark on a room row', () => {
 
   it('lets an expired plan become an ordinary group', () => {
     // plan_date goes null with the pin, and the room is a group from then on.
-    // Leaving a marker on it would promise a plan that has burned out.
+    // Leaving a marker on it would promise a plan whose pin has disappeared.
     expect(roomBadgeGlyph(room({ plan_date: null }))).toEqual(roomBadgeGlyph(room()));
   });
 

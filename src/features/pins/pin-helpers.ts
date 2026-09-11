@@ -232,13 +232,13 @@ export function categoryForPlan(text: string): PinCategory | null {
 export function takeDownLabel(takeDownISO: string, expiresAtISO: string, now = new Date()): string {
   const msLeft = new Date(expiresAtISO).getTime() - now.getTime();
   if (msLeft < 3_600_000) {
-    return 'burns out soon';
+    return 'disappears soon';
   }
   if (msLeft < 24 * 3_600_000) {
     // Rounded, not floored. Flooring made a pin posted for 23 hours announce
-    // "burns out in 22h" on the very next screen, which reads as the app
+    // "disappears in 22h" on the very next screen, which reads as the app
     // quietly taking an hour off you.
-    return `burns out in ${Math.round(msLeft / 3_600_000)}h`;
+    return `disappears in ${Math.round(msLeft / 3_600_000)}h`;
   }
   return `up until ${formatDate(takeDownISO)}`;
 }

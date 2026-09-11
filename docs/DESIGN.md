@@ -395,7 +395,7 @@ Worth building when the moment is right, in rough order of value:
 1. **Travel Log share card** — Flighty-Passport-style postcard after each trip
    (city, days, meetups joined); free-tier growth artifact.
 2. **Ember-cooling expiry** — pin colour cools from the pin amber through a
-   deep ochre to gray as the 72h burns down; the countdown ring variant
+   deep ochre to gray as the day the pin disappears approaches; the countdown ring variant
    needs design time.
 3. **Lottie/HEVC-alpha illustration set** — 4–5 warm 3D-ish hero assets
    (campfire, tent, backpack) for empty states, à la Airbnb Lava.

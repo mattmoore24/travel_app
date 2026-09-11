@@ -188,7 +188,7 @@ export function useMapPins(cityId: number | null, window: DateWindow | null = nu
     enabled: isSupabaseConfigured && cityId != null,
     // Poll only while the Map tab is the one being looked at. The tab stays
     // mounted for the whole foreground session, so without polling a pin that
-    // burned out at 22:00 was still drawn at 22:30 — but an unconditional
+    // disappeared at 22:00 was still drawn at 22:30 — but an unconditional
     // interval kept paying that request-a-minute from inside a chat too. The
     // short the refocus hook refetches the moment the tab comes back, which is the
     // only moment lingering could be seen.
@@ -225,7 +225,7 @@ export function useMapHeat(cityId: number | null, window: DateWindow | null = nu
     },
     enabled: isSupabaseConfigured && cityId != null,
     // Same reason and same tab-scoping as the pins it sits under: the heat
-    // has to cool as pins burn out, but only while anyone is watching it.
+    // has to cool as pins disappear, but only while anyone is watching it.
     staleTime: 20_000,
     refetchInterval: focused ? 60_000 : false,
   });

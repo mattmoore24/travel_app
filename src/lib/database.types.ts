@@ -829,7 +829,7 @@ export type GroupRow = {
   /**
    * Stamped by the pins delete trigger the moment the plan's pin leaves the
    * table, because expire_pins hard-deletes and ON DELETE SET NULL erases
-   * pin_id — this is what keeps the room's "burned out" line honest after
+   * pin_id — this is what keeps the room's "disappeared" line honest after
    * the sweep. Null for groups that never had a pin or predate the stamp.
    */
   plan_ended_at: string | null;

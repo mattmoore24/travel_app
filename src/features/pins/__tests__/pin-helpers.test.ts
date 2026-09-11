@@ -134,24 +134,24 @@ describe('takeDownLabel', () => {
   const now = new Date(2026, 2, 4, 15, 0);
 
   it('does not shave an hour off a pin the moment it is posted', () => {
-    // The bug this covers: a pin with 23 hours left read "burns out in 22h"
+    // The bug this covers: a pin with 23 hours left read "disappears in 22h"
     // on the card that appeared right after posting it, because the
     // countdown floored 22.99.
     const posted = new Date(now.getTime() + 23 * 3_600_000).toISOString();
     const aBeatLater = new Date(now.getTime() + 2_000);
-    expect(takeDownLabel('2026-03-05', posted, aBeatLater)).toBe('burns out in 23h');
+    expect(takeDownLabel('2026-03-05', posted, aBeatLater)).toBe('disappears in 23h');
   });
 
   it('counts down to the nearest hour inside the last day', () => {
     const inTwoHours = new Date(now.getTime() + 2 * 3_600_000 + 60_000).toISOString();
-    expect(takeDownLabel('2026-03-04', inTwoHours, now)).toBe('burns out in 2h');
+    expect(takeDownLabel('2026-03-04', inTwoHours, now)).toBe('disappears in 2h');
   });
 
   it('says soon rather than round up the last hour', () => {
     const inHalfAnHour = new Date(now.getTime() + 30 * 60_000).toISOString();
-    expect(takeDownLabel('2026-03-04', inHalfAnHour, now)).toBe('burns out soon');
+    expect(takeDownLabel('2026-03-04', inHalfAnHour, now)).toBe('disappears soon');
     expect(takeDownLabel('2026-03-04', new Date(now.getTime() - 1_000).toISOString(), now)).toBe(
-      'burns out soon'
+      'disappears soon'
     );
   });
 
