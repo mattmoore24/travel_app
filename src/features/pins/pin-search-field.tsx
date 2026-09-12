@@ -186,7 +186,11 @@ const styles = StyleSheet.create({
     gap: Space.sm,
     paddingLeft: Space.lg,
     paddingRight: Space.lg,
-    height: HitTarget + 6,
+    // A floor, never a height: the input inside scales with Dynamic Type,
+    // and at the accessibility sizes a 50pt box clipped its own line. The
+    // padding is what the fixed box used to give the caret for free.
+    minHeight: HitTarget + 6,
+    paddingVertical: Space.xs,
     borderRadius: Radius.pill,
   },
   input: {

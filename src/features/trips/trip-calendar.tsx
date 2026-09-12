@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Space, Type } from '@/constants/theme';
+import { FontCap, Radius, Space, Type } from '@/constants/theme';
+import { useCappedFontScale } from '@/hooks/use-capped-font-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { addDays, parseISODate, toISODate } from '@/features/trips/dates';
 import { haptics } from '@/lib/haptics';
@@ -26,7 +27,26 @@ import { PressableScale } from '@/components/ui/pressable-scale';
  */
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+/** A day cell at the default text size; `cellSize` scales it. */
 const CELL = 40;
+/** The selection disc inside a cell: the cell less a 3pt ring of band. */
+const DAY_INSET = 6;
+
+/**
+ * How big a day cell is at a given fontScale: the 40pt grid, grown with the
+ * digits up to the control cap and never shrunk below it.
+ *
+ * A calendar is a fixed composition, the one kind of surface the HIG lets a
+ * picker cap. The digits used to scale fully while the cell and the 34pt
+ * selection disc did not: at AX3 a 30pt line already overflowed the disc,
+ * at AX5 47pt digits overlapped the row below and the accent disc sat
+ * around the middle of the number. The digits and the weekday letters are
+ * capped at FontCap.control, and the cell reads the same clamp, so the two
+ * cannot drift apart (hooks/use-capped-font-scale).
+ */
+export function cellSize(fontScale: number): number {
+  return Math.round(CELL * Math.min(Math.max(fontScale, 1), FontCap.control));
+}
 
 type TripCalendarProps = {
   /** ISO, or null for "nothing picked yet". */
@@ -86,6 +106,9 @@ export function TripCalendar({
 }: TripCalendarProps) {
   const theme = useTheme();
   const today = toISODate(new Date());
+  // The grid follows the digits up to the control cap (see cellSize).
+  const cell = cellSize(useCappedFontScale(FontCap.control));
+  const dayDisc = cell - DAY_INSET;
 
   const monthsToRender = useMemo(() => {
     const from = parseISODate(minISO);
@@ -128,7 +151,10 @@ export function TripCalendar({
     <>
       <View style={styles.weekdays}>
         {WEEKDAYS.map((label, index) => (
-          <Text key={index} style={[styles.weekday, { color: theme.textSecondary }]}>
+          <Text
+            key={index}
+            maxFontSizeMultiplier={FontCap.control}
+            style={[styles.weekday, { color: theme.textSecondary }]}>
             {label}
           </Text>
         ))}
@@ -141,7 +167,7 @@ export function TripCalendar({
           <View style={styles.grid}>
             {month.cells.map((day, index) => {
               if (day == null) {
-                return <View key={`gap-${index}`} style={styles.cell} />;
+                return <View key={`gap-${index}`} style={[styles.cell, { height: cell }]} />;
               }
               const disabled = day < minISO || (maxISO != null && day > maxISO);
               const isStart = day === start;
@@ -162,7 +188,7 @@ export function TripCalendar({
                   scaleTo={0.9}
                   haptic="none"
                   onPress={() => pick(day)}
-                  containerStyle={styles.cell}>
+                  containerStyle={[styles.cell, { height: cell }]}>
                   {/* The band is a sibling BEHIND the day, square-edged and
                       full-width, so consecutive days join into one continuous
                       run instead of a row of separate lozenges. The endpoints
@@ -178,8 +204,14 @@ export function TripCalendar({
                       isEnd && styles.bandEnd,
                     ]}
                   />
-                  <View style={[styles.day, capped && { backgroundColor: theme.accent }]}>
+                  <View
+                    style={[
+                      styles.day,
+                      { width: dayDisc, height: dayDisc },
+                      capped && { backgroundColor: theme.accent },
+                    ]}>
                     <Text
+                      maxFontSizeMultiplier={FontCap.control}
                       style={[
                         styles.dayText,
                         {
@@ -248,9 +280,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
+  // The height is inline: it follows the text size (cellSize).
   cell: {
     width: `${100 / 7}%`,
-    height: CELL,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -269,9 +301,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: CELL,
     borderBottomRightRadius: CELL,
   },
+  // Width and height are inline: the disc grows with the cell.
   day: {
-    width: CELL - 6,
-    height: CELL - 6,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',

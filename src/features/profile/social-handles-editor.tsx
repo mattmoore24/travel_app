@@ -313,7 +313,11 @@ const styles = StyleSheet.create({
     gap: Space.xs,
     paddingLeft: Space.md,
     paddingRight: Space.xs,
-    height: HitTarget + 6,
+    // A floor, never a height: the input scales with Dynamic Type and a
+    // fixed box clipped it at the accessibility sizes. The 34pt save disc
+    // is icon-only and needs nothing.
+    minHeight: HitTarget + 6,
+    paddingVertical: Space.xs,
     borderRadius: Radius.md,
   },
   at: {
