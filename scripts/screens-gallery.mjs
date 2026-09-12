@@ -30,6 +30,51 @@ const BUDGET_BYTES = 9_000_000;
 const SHOT_WIDTH = 720;
 const SHOT_QUALITY = 82;
 
+/**
+ * The nine frames of e2e/large-text-tour.yml under one prefix. The same
+ * captions serve both passes; `end` names which one.
+ */
+function largeTextCaptions(prefix, end) {
+  return {
+    [`${prefix}-01-map`]: [
+      `Map ${end}`,
+      'The city bar, the key and the dock. The dock must still sit above the grown tab bar.',
+    ],
+    [`${prefix}-02-place-mode`]: [
+      `Place mode ${end}`,
+      'Drop a pin took the tap. The venue chips and the Pin here pill are minHeight, never a fixed box.',
+    ],
+    [`${prefix}-03-pin-calendar`]: [
+      `The pin calendar ${end}`,
+      'Digits and the selection disc follow the text up to the control cap, so a number never sits over the row below.',
+    ],
+    [`${prefix}-04-travelers`]: [
+      `Travelers ${end}`,
+      'The rail runs edge to edge under the avatar; the count line scrolls with the page from 2x so the card keeps its viewport.',
+    ],
+    [`${prefix}-05-stranger-profile`]: [
+      `A stranger's profile ${end}`,
+      'The hero with the name over it, and the docked Say hi on a measured plate.',
+    ],
+    [`${prefix}-06-chat`]: [
+      `Chat ${end}`,
+      'The segmented control holds each label to one capped line instead of wrapping mid-word.',
+    ],
+    [`${prefix}-07-thread-keyboard`]: [
+      `A thread with the keyboard up ${end}`,
+      'The floor makes room for the keyboard AND the Hide keyboard bar, whose height follows its capped label.',
+    ],
+    [`${prefix}-08-languages-keyboard`]: [
+      `Languages, keyboard up ${end}`,
+      'A sheet lifted by the keyboard plus the bar; the search row is a floor, so the input is not clipped.',
+    ],
+    [`${prefix}-09-after-say-hi`]: [
+      `After Say hi ${end}`,
+      'The primary action took the tap; the composer opens over the tabs.',
+    ],
+  };
+}
+
 // What each shot is actually showing. Anything not listed still appears, with
 // its filename tidied up — a new screenshot should never silently vanish.
 const CAPTIONS = {
@@ -209,6 +254,11 @@ const CAPTIONS = {
   '90-photo-library': ['The photo picker', "Apple's, driven by the suite to get past the wall."],
   '91-photo-crop': ['Cropping', 'The square iOS always gives, which is the square the app shows.'],
   'zz-final-state': ['Final state', 'Raw capture at the end of the run.'],
+  // The Dynamic Type tour, at both ends. One tour file, two passes
+  // (.github/workflows/e2e.yml), nine frames each; the captions say what
+  // each frame is for so the two ends can be read against each other.
+  ...largeTextCaptions('zz-ax5', 'at AX5, the largest text size'),
+  ...largeTextCaptions('zz-xs', 'at xSmall, the smallest text size'),
 };
 
 /** Three passes through the app; the order is the order a person meets them. */
