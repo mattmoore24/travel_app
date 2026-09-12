@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
@@ -21,6 +20,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { RemoteImage } from '@/components/ui/remote-image';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HitTarget, MaxContentWidth, Motion, Radius, Space } from '@/constants/theme';
@@ -52,6 +52,7 @@ import { haptics } from '@/lib/haptics';
 import { clocks } from '@/lib/locale';
 import { analytics } from '@/lib/analytics';
 import type { BusinessHourJson, BusinessLinkJson, BusinessPostJson } from '@/lib/database.types';
+import { photoSourceState } from '@/lib/photo-source';
 import { countOf } from '@/lib/plural';
 
 /** 24-hour, so an event time reads next to "Open · till 2:00" as one clock. */
@@ -86,22 +87,20 @@ function PlaceImage({
       heading over nothing, as far as VoiceOver is concerned. */
   label?: string;
 }) {
-  const theme = useTheme();
-  const { data: url } = useBusinessPhotoUrl(path);
+  // `fallback` is for the true no-photo case only. This frame used to draw it
+  // whenever there was no URL yet, so a cover on its way looked exactly like
+  // a business without one; `pending` tells the two apart and the frame
+  // pulses until the bytes land, then fades the picture in over the pulse.
+  const { source, pending } = photoSourceState(useBusinessPhotoUrl(path), path);
   return (
-    <View style={[styles.frame, { backgroundColor: theme.surfaceSunken }, style]}>
-      {url ? (
-        <Image
-          source={{ uri: url }}
-          style={styles.fill}
-          contentFit="cover"
-          transition={Motion.quick}
-          accessibilityLabel={label}
-        />
-      ) : (
-        fallback
-      )}
-    </View>
+    <RemoteImage
+      source={source}
+      pending={pending}
+      style={style}
+      accessibilityLabel={label}
+      fallback={fallback}
+      transition={Motion.quick}
+    />
   );
 }
 
@@ -935,15 +934,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: Space.xl,
-  },
-  frame: {
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fill: {
-    width: '100%',
-    height: '100%',
   },
   hero: {
     width: '100%',

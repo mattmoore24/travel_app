@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useIsFocused } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
@@ -22,6 +21,7 @@ import { LoadError } from '@/components/ui/load-error';
 import { DockedActionBar, dockedActionBarHeight } from '@/components/ui/docked-action-bar';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import type { Section as EditSection } from '@/app/business-edit';
+import { RemoteImage } from '@/components/ui/remote-image';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   HitTarget,
@@ -70,6 +70,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { clocks } from '@/lib/locale';
 import { analytics } from '@/lib/analytics';
 import type { BusinessPostJson, MyBusinessRow } from '@/lib/database.types';
+import { photoSourceState } from '@/lib/photo-source';
 import { countOf } from '@/lib/plural';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
@@ -352,6 +353,20 @@ export default function MyBusinessScreen() {
   const ratingQuery = useRatingSummary(business?.id ?? null);
   const rating = ratingQuery.data ?? null;
   const cover = useBusinessPhotoUrl(detail?.photos[0]?.storage_path ?? null);
+  // Paired with `photoSourceState` by hand rather than through
+  // useBusinessPhotoSourceState, because src/app/__tests__/business-home.test.ts
+  // scans this file for the signer by name (the same reason avatar-button
+  // does it this way). The path is the half that outlives a re-sign, so it
+  // rides along as expo-image's cache key.
+  const coverPath = detail?.photos[0]?.storage_path ?? null;
+  const coverState = photoSourceState(cover, coverPath);
+  // Whether there IS a cover, which the listing already told us, as opposed
+  // to whether its URL has come back yet. Branching on the URL drew the
+  // no-cover glyph for the whole of the signing round trip, so every cold
+  // open of this tab told the owner they had no photo before showing it to
+  // them. A signing call that fails gives the band back to the glyph rather
+  // than pulsing forever, the same rule the map's sheet applies.
+  const coverComing = coverPath != null && !cover.isError;
   // Whether the code we told this owner to look for is still a code. Asked
   // only while the listing is waiting on one, and the query stops polling as
   // soon as the answer is in.
@@ -566,13 +581,18 @@ export default function MyBusinessScreen() {
               opening this tab should see the picture travelers see first. */}
           <View
             style={[styles.hero, { backgroundColor: theme.surfaceSunken, paddingTop: insets.top }]}>
-            {cover.data ? (
+            {coverComing ? (
               <>
-                <Image
-                  source={{ uri: cover.data }}
+                {/* Over the sunken band: the skeleton pulses in the frame
+                    while the URL signs and while the bytes download, and the
+                    photo fades in over it. A download that fails shows the
+                    frame's own glyph, tappable to try again. */}
+                <RemoteImage
+                  source={coverState.source}
+                  pending={coverState.pending}
                   style={StyleSheet.absoluteFill}
-                  contentFit="cover"
                   transition={Motion.standard}
+                  accessibilityLabel={`Photo of ${business.name}`}
                 />
                 {/* This tab carries no navigation header, so the cover runs
                     under the status bar and the clock lands on whatever the

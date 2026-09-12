@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -14,7 +13,8 @@ import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
+import { RemoteImage } from '@/components/ui/remote-image';
+import { HitTarget, Motion, NativeAppearance, Radius, Space } from '@/constants/theme';
 import {
   discardPostPhoto,
   fetchOwnBusinessPost,
@@ -29,6 +29,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import type { ModerationStatus } from '@/lib/database.types';
 import { haptics } from '@/lib/haptics';
+import { photoSourceState } from '@/lib/photo-source';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 const TITLE_MIN = 2;
@@ -664,7 +665,7 @@ function PostPhotoField({
   // Signed even while it is being checked: the storage policy lets an owner
   // read their own upload by the uid in its first path segment, so the person
   // who took the photo is never shown an empty frame.
-  const { data: url } = useBusinessPhotoUrl(path);
+  const { source, pending } = photoSourceState(useBusinessPhotoUrl(path), path);
   const rejected = status === 'rejected';
   const waiting = status === 'pending';
 
@@ -673,7 +674,16 @@ function PostPhotoField({
       <ThemedText type="smallBold">Photo</ThemedText>
       {path ? (
         <View style={[styles.photoFrame, { backgroundColor: theme.surfaceSunken }]}>
-          {url ? <Image source={{ uri: url }} style={styles.photoFill} contentFit="cover" /> : null}
+          {/* Blank during signing and download, snap-in, blank on failure:
+              the frame pulses until the bytes land now, and says so if they
+              never do. The chips stay siblings so they keep drawing over it. */}
+          <RemoteImage
+            source={source}
+            pending={pending}
+            style={styles.photoFill}
+            transition={Motion.quick}
+            accessibilityLabel="The photo on this post"
+          />
           {rejected || waiting ? (
             <View
               style={[

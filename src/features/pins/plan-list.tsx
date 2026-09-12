@@ -11,7 +11,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
-import { Elevation, Radius, Space, Springs } from '@/constants/theme';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Elevation, FontCap, Radius, Space, Springs } from '@/constants/theme';
 import { PlaceGlyph } from '@/features/business/business-marker';
 import { cityNow, clockTime } from '@/features/business/vocabulary';
 import {
@@ -76,17 +77,27 @@ export const PLAN_LIST_PEEK = 56;
  * today, the soonest day something IS on, printed through formatDate so it
  * carries the year when it needs one. `nextISO` is null only when every
  * plan's day has already gone, which leaves the bare count.
+ *
+ * `fontScale` is the reader's Dynamic Type setting. From twice the default
+ * up the strip's line stops growing (FontCap.chrome) and the count and the
+ * city are the part that has to fit on it; the horizon clause is the part
+ * that can go. Below that, the two lines the strip allows hold the whole
+ * sentence.
  */
 export function planListSummary(
   cityName: string,
   pinCount: number,
   todayCount: number,
-  nextISO: string | null = null
+  nextISO: string | null = null,
+  fontScale = 1
 ): string {
   if (pinCount === 0) {
     return `Nothing pinned in ${cityName} yet`;
   }
   const plans = `${countOf(pinCount, 'plan')} in ${cityName}`;
+  if (fontScale >= 2) {
+    return plans;
+  }
   if (todayCount > 0) {
     return `${plans} · ${todayCount} today`;
   }
@@ -225,6 +236,7 @@ export function PlanList({
   onSelectVenue,
   onSelectBusiness,
   clock,
+  pending = false,
 }: {
   cityName: string;
   /** The FILTERED pins — the same array the markers render, or the peek lies. */
@@ -273,9 +285,19 @@ export function PlanList({
    * authority the markers and the filter chips read.
    */
   clock?: Date;
+  /**
+   * The pins are still in the air (the map screen's `pinsQuery.isPending &&
+   * !isPlaceholderData`). The sheet stands at its peek from the first paint
+   * with a placeholder where the count will be and no rows, rather than
+   * springing in whole when the data lands. This is the sheet's own surface,
+   * never the basemap, so it is not the skeleton-over-a-map the map screen
+   * refuses. The "Nothing pinned yet" line is held back with it: an empty
+   * city is only empty once the query has said so.
+   */
+  pending?: boolean;
 }) {
   const theme = useTheme();
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, fontScale } = useWindowDimensions();
   // Measured from the screen bottom, never into the city rail, and landing
   // every top edge where the old split layout put it. See bottom-stack.
   const heights: Record<Detent, number> = planListHeights({
@@ -290,8 +312,9 @@ export function PlanList({
   // off-screen targets — and the map screen needs the detent to know when the
   // expanded list is the thing covering the map. While another sheet owns the
   // bottom of the screen the list folds to its peek; it comes back to where
-  // it was when that sheet goes.
-  const effective: Detent = collapsed ? 'peek' : detent;
+  // it was when that sheet goes. While the pins are in the air there is
+  // nothing to open, so the strip holds its peek too.
+  const effective: Detent = collapsed || pending ? 'peek' : detent;
   const expanded = effective !== 'peek';
   const target = heights[effective];
 
@@ -310,7 +333,7 @@ export function PlanList({
   };
 
   const pan = Gesture.Pan()
-    .enabled(!collapsed)
+    .enabled(!collapsed && !pending)
     .onUpdate((event) => {
       // Dragging down shrinks what is shown; clamp to the detent range.
       drag.value = Math.min(
@@ -349,10 +372,11 @@ export function PlanList({
     cityName,
     pins.length,
     todayCount(pins, new Date(), clock ?? null),
-    nextPlanDay(pins, clock ?? new Date())
+    nextPlanDay(pins, clock ?? new Date()),
+    fontScale
   );
 
-  if (pins.length === 0 && businesses.length === 0) {
+  if (pins.length === 0 && businesses.length === 0 && !pending) {
     return null;
   }
 
@@ -373,13 +397,22 @@ export function PlanList({
         ]}>
         <GestureDetector gesture={pan}>
           <Pressable
-            testID="plan-list-peek"
+            // The simulator suite waits on `plan-list-peek` to know the list
+            // is real, and that wait used to be implicit: the sheet did not
+            // exist while the pins were in the air. The placeholder strip
+            // carries its own id so a driver keeps waiting for the list and
+            // never taps a strip that has nothing to open.
+            testID={pending ? 'plan-list-peek-pending' : 'plan-list-peek'}
             accessibilityRole="button"
-            accessibilityLabel={summary}
+            accessibilityLabel={pending ? `Loading plans in ${cityName}` : summary}
             accessibilityHint={
-              collapsed ? undefined : expanded ? 'Collapses the list' : 'Opens the list of plans'
+              collapsed || pending
+                ? undefined
+                : expanded
+                  ? 'Collapses the list'
+                  : 'Opens the list of plans'
             }
-            disabled={collapsed}
+            disabled={collapsed || pending}
             onPress={() => snapTo(expanded ? 'peek' : 'half')}
             onLayout={(event) =>
               onPeekHeight(Math.max(PLAN_LIST_PEEK, Math.round(event.nativeEvent.layout.height)))
@@ -387,9 +420,25 @@ export function PlanList({
             style={styles.header}>
             <View style={[styles.grabber, { backgroundColor: theme.hairline }]} />
             <View style={styles.summaryRow}>
-              <ThemedText type="smallBold" numberOfLines={1} style={styles.summaryText}>
-                {summary}
-              </ThemedText>
+              {pending ? (
+                <View style={styles.summaryText}>
+                  <Skeleton width="60%" height={14} radius={Radius.sm} text />
+                </View>
+              ) : (
+                // Two lines, not one: this is the only place the city's plan
+                // count is stated, and a single-line clamp cut it to "16 plans
+                // in B..." at the accessibility sizes. The header is measured
+                // (onLayout above) and min-sized, so the peek detent follows.
+                // Capped at FontCap.chrome because the strip floats over the
+                // hero; planListSummary drops its horizon clause at that size.
+                <ThemedText
+                  type="smallBold"
+                  numberOfLines={2}
+                  maxFontSizeMultiplier={FontCap.chrome}
+                  style={styles.summaryText}>
+                  {summary}
+                </ThemedText>
+              )}
               <SymbolView
                 name={{ ios: 'chevron.up', android: 'expand_less', web: 'expand_less' }}
                 size={13}
@@ -418,28 +467,33 @@ export function PlanList({
           pointerEvents={expanded ? 'auto' : 'none'}
           accessibilityElementsHidden={!expanded}
           importantForAccessibility={expanded ? 'auto' : 'no-hide-descendants'}>
-          {sections.map((section, sectionIndex) => (
-            <View key={section.title} style={styles.section}>
-              <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionTitle}>
-                {section.title.toUpperCase()}
-              </ThemedText>
-              {section.rows.map((cluster, rowIndex) => (
-                <PlanRow
-                  key={cluster.key}
-                  cluster={cluster}
-                  index={sectionStarts[sectionIndex] + rowIndex}
-                  clock={clock ?? new Date()}
-                  onPress={() =>
-                    cluster.pins.length === 1
-                      ? onSelectPin(cluster.pins[0])
-                      : onSelectVenue(cluster.key)
-                  }
-                />
+          {/* No rows at all while the pins are in the air: the list that is
+              coming has a length nobody knows yet, and the peek is the only
+              detent it can stand at. */}
+          {pending
+            ? null
+            : sections.map((section, sectionIndex) => (
+                <View key={section.title} style={styles.section}>
+                  <ThemedText type="caption" themeColor="textSecondary" style={styles.sectionTitle}>
+                    {section.title.toUpperCase()}
+                  </ThemedText>
+                  {section.rows.map((cluster, rowIndex) => (
+                    <PlanRow
+                      key={cluster.key}
+                      cluster={cluster}
+                      index={sectionStarts[sectionIndex] + rowIndex}
+                      clock={clock ?? new Date()}
+                      onPress={() =>
+                        cluster.pins.length === 1
+                          ? onSelectPin(cluster.pins[0])
+                          : onSelectVenue(cluster.key)
+                      }
+                    />
+                  ))}
+                </View>
               ))}
-            </View>
-          ))}
 
-          {businesses.length > 0 ? (
+          {businesses.length > 0 && !pending ? (
             <View style={styles.section}>
               {/* The heading no longer claims tonight. The rows below now carry
                   the day a post is for, and a standing notice or a Friday quiz
