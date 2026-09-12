@@ -85,8 +85,24 @@ languages picker with the keyboard up) and runs twice, at AX5 and at
 xSmall, so the gallery shows both ends side by side.
 
 **Review.** An adversarial pass over the merged diff (ten lenses, three
-refuters per finding) ran before the push; what it upheld is in the
-commits after the merges.
+refuters per finding) ran before the ship, and its findings are the three
+fix commits after the merges. The ones that mattered: auth-js re-answers
+getSession as a null INITIAL_SESSION on the same retryable failure, which
+would have cleared the unknown flag and demoted the traveler anyway; the
+app throws postgrest-js's `error`, whose CODE is empty on a request that
+never got an answer, so the 20-second abort read as "the server answered"
+and ended the cold start; a flow's own `env:` is applied after Maestro's
+`-e`, so the xSmall pass would have written over the AX5 frames; a
+RemoteImage retry target inside a Pressable took the tap the parent was
+there for (the pin card's hero) and the hold that opens a chat photo's
+menu; a chat photo whose signing failed pulsed for ever; the room's failed
+state drew upside down in the inverted list; the chip rail's slop had no
+room to exist (hitSlop stops at the parent); the profile skeletons were
+15% taller than the hero they stood in for.
+
+**Runs.** No deploy. TestFlight update 101 carries the round. E2E 139 is
+the first run with the nine-frame large-text tour at both ends
+(`zz-ax5-*` and `zz-xs-*`).
 
 ## **The time on a pin is typed** (2026-09-12)
 
