@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -8,7 +7,8 @@ import { FormTextField } from '@/components/form/form-text-field';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { HitTarget, Radius, Space } from '@/constants/theme';
+import { RemoteImage } from '@/components/ui/remote-image';
+import { HitTarget, Motion, Radius, Space } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store';
 import { replaceBusinessContacts, type ContactKind } from '@/features/business/api';
 import { BusinessAddressField, addressFrom } from '@/features/business/address-field';
@@ -47,6 +47,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import type { BusinessCategory, BusinessDetailRow } from '@/lib/database.types';
 import { haptics } from '@/lib/haptics';
+import { photoSourceState } from '@/lib/photo-source';
 
 /**
  * The fork that turns a fresh account into a business, in three questions.
@@ -1502,7 +1503,8 @@ function ListingPreview({
   badge?: string | null;
 }) {
   const theme = useTheme();
-  const { data: cover } = useBusinessPhotoUrl(detail?.photos?.[0]?.storage_path ?? null);
+  const coverPath = detail?.photos?.[0]?.storage_path ?? null;
+  const cover = photoSourceState(useBusinessPhotoUrl(coverPath), coverPath);
   // The place's own clock, not the reader's — the same call the map card
   // makes, so the two cannot disagree about whether somebody is open.
   const open = detail ? openLine(detail.hours, new Date(), detail.lng) : null;
@@ -1510,15 +1512,21 @@ function ListingPreview({
 
   return (
     <View style={[styles.preview, { backgroundColor: theme.surfaceSunken }]}>
-      {cover ? (
-        <Image source={{ uri: cover }} style={styles.previewCover} contentFit="cover" />
-      ) : (
-        <View style={[styles.previewCover, styles.previewCoverEmpty]}>
+      {/* "No photo yet" only once that is known. While the URL signed this
+          card used to say it about a photo the owner had just uploaded, on
+          the one step whose job is to reassure. */}
+      <RemoteImage
+        source={cover.source}
+        pending={cover.pending}
+        style={styles.previewCover}
+        transition={Motion.quick}
+        accessibilityLabel={`Photo of ${detail?.name ?? fallbackName}`}
+        fallback={
           <ThemedText type="footnote" themeColor="textSecondary">
             No photo yet
           </ThemedText>
-        </View>
-      )}
+        }
+      />
       <View style={styles.previewBody}>
         {badge ? (
           <View style={[styles.previewBadge, { backgroundColor: theme.surface }]}>
@@ -1569,10 +1577,6 @@ const styles = StyleSheet.create({
   previewCover: {
     width: '100%',
     height: 180,
-  },
-  previewCoverEmpty: {
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   previewBody: {
     padding: Space.md,

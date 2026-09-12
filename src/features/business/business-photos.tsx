@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -18,9 +17,11 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { RemoteImage } from '@/components/ui/remote-image';
 import { Sheet, leavingSheet } from '@/components/ui/sheet';
+import { Skeleton } from '@/components/ui/skeleton';
 import { photoRejection } from '@/constants/moderation';
-import { Radius, Space } from '@/constants/theme';
+import { Motion, Radius, Space } from '@/constants/theme';
 import { BUSINESS_PHOTO_BUCKET } from '@/features/business/api';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { photoWritePlan, reorderedPhotos, type Slotted } from '@/features/profile/photo-order';
@@ -28,6 +29,7 @@ import { useTheme } from '@/hooks/use-theme';
 import type { Database } from '@/lib/database.types';
 import { haptics } from '@/lib/haptics';
 import { processAndUploadImage, removeUploadedImage } from '@/lib/image-upload';
+import { photoSourceState } from '@/lib/photo-source';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 /**
@@ -268,7 +270,10 @@ function PhotoTile({
   onMakeCover?: () => void;
 }) {
   const theme = useTheme();
-  const { data: url } = useBusinessPhotoUrl(photo.storage_path);
+  const { source, pending } = photoSourceState(
+    useBusinessPhotoUrl(photo.storage_path),
+    photo.storage_path
+  );
   const rejected = photo.moderation_status === 'rejected';
   // Same two-state treatment the profile grid got, from the same copy: a
   // check that gave up is 'Try again' on warning and is explicitly not a
@@ -287,9 +292,19 @@ function PhotoTile({
       exiting={FadeOut.duration(150)}
       layout={LinearTransition.springify()}
       style={[styles.tile, { width: size, height: size, backgroundColor: theme.surfaceSunken }]}>
-      {url ? (
+      {/* This was the one grid in the app with no loading graphic: a flat
+          sunken square until the URL arrived, then the photo snapped in, and
+          a download that failed left the chips floating over an empty tile
+          forever. The frame pulses through signing and download now, fades
+          the picture in, and shows a glyph if the bytes never come. */}
+      <RemoteImage
+        source={source}
+        pending={pending}
+        style={styles.fill}
+        transition={Motion.quick}
+      />
+      {source != null ? (
         <>
-          <Image source={{ uri: url }} style={styles.fill} contentFit="cover" />
           {/* What survives, drawn on the file itself. One square crop feeds a
               3:2 cover on the map, the place sheet and the chat list, so a
               sixth comes off the top and a sixth off the bottom - and the
@@ -447,6 +462,12 @@ export function BusinessPhotos({
   const queryClient = useQueryClient();
   const photosQuery = useBusinessPhotos(businessId);
   const { data: photos = [] } = photosQuery;
+  // The list is on its way. A disabled query (a keyless build) never leaves
+  // isPending and is never going to answer, so it is not "on its way": the
+  // same fetchStatus test my-business.tsx applies. Offline the query is
+  // paused rather than idle, so the tiles keep pulsing instead of the grid
+  // claiming "0 of 10" about photos the phone simply cannot reach yet.
+  const photosPending = photosQuery.isPending && photosQuery.fetchStatus !== 'idle';
   const [width, setWidth] = useState(0);
 
   const upload = useMutation({
@@ -640,6 +661,7 @@ export function BusinessPhotos({
 
   return (
     <View
+      testID="business-photos"
       style={styles.block}
       onLayout={(event: LayoutChangeEvent) => setWidth(Math.round(event.nativeEvent.layout.width))}>
       {/* "The first one that clears is your cover" was only true by accident:
@@ -659,6 +681,16 @@ export function BusinessPhotos({
           error={photosQuery.error}
           onRetry={() => photosQuery.refetch()}
         />
+      ) : size > 0 && photosPending ? (
+        // Three tiles, not the full nine: the list is unknown and a grid of
+        // pulses is a claim about its length. No add tile either, because
+        // `pick` numbers the next slot from a list that has not landed yet.
+        // Skeleton is an infinite Reanimated loop each; three is the budget.
+        <View style={[styles.grid, { gap: PHOTO_GAP }]}>
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} width={size} height={size} radius={Radius.lg} />
+          ))}
+        </View>
       ) : size > 0 ? (
         <View style={[styles.grid, { gap: PHOTO_GAP }]}>
           {photos.map((photo) => (
@@ -722,7 +754,11 @@ export function BusinessPhotos({
           same lie: a "Cover" chip on a photo nobody outside can see, and no
           word at all about the wait. The other two say what the control does
           and what the shaded strips mean, since a glyph in a corner cannot. */}
-      {!photosQuery.isError && photos.length > 0 ? (
+      {/* Both lines wait for the answer. `photos` defaults to [] while the
+          query is in the air, so the footer used to say "0 of 10" and the
+          add-tile hint about a list it had not seen: a count is only a count
+          once the list is known. */}
+      {photosQuery.isSuccess && photos.length > 0 ? (
         <ThemedText type="footnote" themeColor="textSecondary">
           {coverId == null
             ? 'Nobody sees a cover until one of these clears.'
@@ -731,11 +767,11 @@ export function BusinessPhotos({
               : 'The shaded edges get cut off on the map.'}
         </ThemedText>
       ) : null}
-      {photosQuery.isError ? null : (
+      {photosQuery.isSuccess ? (
         <ThemedText type="footnote" themeColor="textSecondary">
           {photos.length} of {PHOTOS_MAX}
         </ThemedText>
-      )}
+      ) : null}
     </View>
   );
 }
