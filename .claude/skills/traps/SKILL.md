@@ -643,6 +643,22 @@ before the state write, the entrance animation and the next card's photo have
 landed. Use `extendedWaitUntil` with a budget close to the beat's own life, so
 a bar that never arrives still fails, and fails fast.
 
+## Apple Maps cannot tell a drag from a flight, and a flight cut short settles halfway
+
+`onRegionChangeComplete`'s `details.isGesture` is **Google Maps only**
+(react-native-maps `MapView.tsx` says so in the prop doc; `ios/AirMaps` never
+sets the key, so under `PROVIDER_DEFAULT` it is always false). And a
+programmatic `animateToRegion` that is cut short by a second one fires its
+completion **at the point it was interrupted**, not at its target. E2E 137
+lost the guest tour to the two together: the relaunch onto a remembered
+Denpasar flew the camera from Bangkok, a second flight cut the first short
+over Cambodia, and follow-the-pan read that settle as a drag and named
+Sihanoukville. Do not gate a settle on `isGesture`. Gate it on **arrival**: a
+settle inside the browsed city's own radius marks the city as arrived at
+(`features/pins/follow-the-map` `isOverCity`), and only a city the map has
+been over can be panned away from. A flight can only settle somewhere
+before it arrives; a person can only pan away after.
+
 ## Apple Maps props: two that silently do nothing, and one ordering hazard
 
 `showsPointsOfInterests` is the plural. The singular spelling is not a prop in

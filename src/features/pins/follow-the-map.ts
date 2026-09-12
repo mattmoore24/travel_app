@@ -33,6 +33,32 @@ export const FOLLOW_MIN_KM = 20;
  */
 export const FOLLOW_SETTLE_MS = 700;
 
+/**
+ * True when the settled centre is over the city: the map has ARRIVED there,
+ * by flight or by hand, within the same radius the follow starts past.
+ *
+ * Following only ever starts from a city the map has arrived at. Apple Maps
+ * reports no `isGesture` (react-native-maps: Google Maps only), so a camera
+ * flight and a drag look the same when they settle, and a flight that is
+ * interrupted halfway settles wherever it was cut off. Run 137 lost the
+ * guest tour to exactly that: the relaunch onto a remembered Denpasar flew
+ * the camera from Bangkok, a second flight cut the first short over Cambodia,
+ * and the follow read that as a pan and named Sihanoukville. A flight can
+ * only ever settle somewhere before arriving; a person can only pan away
+ * after.
+ */
+export function isOverCity(
+  centre: { latitude: number; longitude: number },
+  city: { lat: number; lng: number } | null
+): boolean {
+  if (city == null) {
+    return false;
+  }
+  return (
+    metersBetween(centre.latitude, centre.longitude, city.lat, city.lng) <= FOLLOW_MIN_KM * 1000
+  );
+}
+
 export function shouldFollowMap(
   centre: { latitude: number; longitude: number },
   city: { lat: number; lng: number } | null,

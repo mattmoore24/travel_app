@@ -191,7 +191,10 @@ loads/month, needs token + config plugin + dev build).
   resolver's own hint radius) at city scale or closer, `city_for_spot` names the city the map
   is over and the client chooses it without moving the camera (`features/pins/follow-the-map`);
   a business never follows, a followed city does not summon the way-home pill, and anon may
-  execute the resolver (`20260911100000`). Never a device position: the centre is where the
+  execute the resolver (`20260911100000`). Since 2026-09-12 the follow starts only from a
+  city the camera has settled OVER once (`isOverCity`, the same 20 km): Apple Maps reports no
+  `isGesture`, and a flight cut short by another settles wherever it was interrupted, which E2E
+  137 followed to Sihanoukville. Never a device position: the centre is where the
   person dragged the map.
 - **Rule 2 posture**: nothing in the schema or client ever touches device location —
   `showsUserLocation={false}`, no location permission in app.json, pin placement is manual

@@ -46,6 +46,17 @@ without a change.
 **Nothing on the server.** `pins.intent_time` is a Postgres `time`; it took
 minutes all along. No migration.
 
+**And one thing E2E 137 caught in the follow.** The signed-in tour passed
+with the typed time photographed, but the guest tour lost its relaunch onto
+a remembered Denpasar: the bar read Sihanoukville. Apple Maps reports no
+`isGesture` (react-native-maps: Google Maps only), so the follow could not
+tell a drag from a camera flight, and a flight cut short by a second one
+settled over Cambodia and was followed. The map now follows only from a
+city it has ARRIVED at, a settle inside the same 20 km the follow starts
+past (`isOverCity`), and a followed city counts as arrived at so a pan can
+chain. A flight can only settle somewhere before arriving; a person can
+only pan away after.
+
 **Tests and the tour.** `typed-time.test.ts` tables the reading on both
 clocks, the end read against its start, and the window arithmetic. The
 form tests type into the boxes instead of tapping chips, and cover every

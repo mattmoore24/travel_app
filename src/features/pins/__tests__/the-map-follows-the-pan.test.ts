@@ -26,7 +26,7 @@ function flat(text: string): string {
 describe('the map follows the pan', () => {
   it('asks the resolver from the settled region, gated by the shared predicate', () => {
     expect(source).toContain(
-      "import { FOLLOW_SETTLE_MS, shouldFollowMap } from '@/features/pins/follow-the-map';"
+      "import { FOLLOW_SETTLE_MS, isOverCity, shouldFollowMap } from '@/features/pins/follow-the-map';"
     );
     const handler = between('onRegionChangeComplete={(region) => {', "if (mode === 'place') {");
     expect(flat(handler)).toContain(
@@ -34,6 +34,26 @@ describe('the map follows the pan', () => {
     );
     expect(handler).toContain('followTimer.current = setTimeout(');
     expect(handler).toContain('void followMap(region);');
+  });
+
+  it('follows only from a city the map has arrived at, so an interrupted flight is not a pan', () => {
+    // Run 137: the relaunch onto a remembered Denpasar flew from Bangkok, a
+    // second flight cut the first short over Cambodia, and the follow named
+    // Sihanoukville. Apple Maps reports no isGesture, so arrival is the gate.
+    expect(source).toContain(
+      "import { FOLLOW_SETTLE_MS, isOverCity, shouldFollowMap } from '@/features/pins/follow-the-map';"
+    );
+    const handler = between('onRegionChangeComplete={(region) => {', "if (mode === 'place') {");
+    const marked = handler.indexOf('setArrivedCityId(activeCityId);');
+    const gated = handler.indexOf('arrivedCityId === activeCityId &&');
+    expect(marked).toBeGreaterThan(-1);
+    expect(gated).toBeGreaterThan(marked);
+    expect(flat(handler)).toContain(
+      'if (activeCityId != null && isOverCity(region, activeCity?.cities ?? null)) { setArrivedCityId(activeCityId); }'
+    );
+    // And a followed city counts as arrived at, so the follow can chain.
+    const follow = between('const followMapTo = (row: CityRow) => {', 'const followMap = async');
+    expect(follow).toContain('setArrivedCityId(city.city_id);');
   });
 
   it('never follows for a business, whose map is its own city', () => {

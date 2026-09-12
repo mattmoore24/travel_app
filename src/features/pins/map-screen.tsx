@@ -44,7 +44,7 @@ import {
   usePinCrew,
 } from '@/features/pins/hooks';
 import { browseCityFromCityRow, type BrowseCity } from '@/features/pins/api';
-import { FOLLOW_SETTLE_MS, shouldFollowMap } from '@/features/pins/follow-the-map';
+import { FOLLOW_SETTLE_MS, isOverCity, shouldFollowMap } from '@/features/pins/follow-the-map';
 import { BusinessMarker } from '@/features/business/business-marker';
 import { fetchCityForSpot } from '@/features/business/api';
 import { useCityBusinesses, useIsBusiness, useOwnBusiness } from '@/features/business/hooks';
@@ -1165,6 +1165,13 @@ export default function MapScreen() {
   // Porto" a second after somebody dragged the map into Porto would be the
   // app arguing with them about where they are.
   const [followedCityId, setFollowedCityId] = useState<number | null>(null);
+  // The city the camera has settled OVER at least once. Following starts
+  // only from it: Apple Maps cannot say whether a settle was a drag or a
+  // flight, and a flight cut short settles wherever it was interrupted
+  // (follow-the-map.ts has run 137's version of this). State, not a ref: it
+  // is set from a timer's callback below, and a ref written there and read
+  // in an effect is what react-hooks/immutability refuses.
+  const [arrivedCityId, setArrivedCityId] = useState<number | null>(null);
   const followTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const followInFlight = useRef(false);
   // Whether the owner's own chip is actually drawn, which is not the same as
@@ -1228,6 +1235,11 @@ export default function MapScreen() {
   const followMapTo = (row: CityRow) => {
     const city = browseCityFromCityRow(row);
     setFollowedCityId(city.city_id);
+    // A followed city is arrived at by definition: the person is looking at
+    // it, and the next pan away from it may follow again without waiting
+    // for a settle inside its radius (the resolver can name a city whose
+    // centre is further than that from open country).
+    setArrivedCityId(city.city_id);
     chooseCity(city);
     setSelectedPinId(null);
     setVenueKey(null);
@@ -2212,9 +2224,15 @@ export default function MapScreen() {
               clearTimeout(followTimer.current);
               followTimer.current = null;
             }
+            // Arrival first: a settle over the browsed city marks it, and only
+            // a city the map has been over can be panned away from.
+            if (activeCityId != null && isOverCity(region, activeCity?.cities ?? null)) {
+              setArrivedCityId(activeCityId);
+            }
             if (
               mode === 'browse' &&
               !isBusiness &&
+              arrivedCityId === activeCityId &&
               shouldFollowMap(
                 region,
                 activeCity?.cities ?? null,

@@ -1,4 +1,4 @@
-import { FOLLOW_MIN_KM, shouldFollowMap } from '@/features/pins/follow-the-map';
+import { FOLLOW_MIN_KM, isOverCity, shouldFollowMap } from '@/features/pins/follow-the-map';
 
 // Bangkok's centre, and points at known distances from it.
 const bangkok = { lat: 13.7563, lng: 100.5018 };
@@ -23,5 +23,20 @@ describe('shouldFollowMap', () => {
 
   it('has nothing to follow from without a browsed city', () => {
     expect(shouldFollowMap(porto, null, false)).toBe(false);
+  });
+});
+
+describe('isOverCity', () => {
+  // The arrival gate: the map has to have settled over the browsed city once
+  // before a settle away from it counts as a pan. A flight cut short (run
+  // 137: Bangkok toward Denpasar, settled over Cambodia) is not an arrival.
+  it('is the same radius the follow starts past, so the two cannot overlap', () => {
+    expect(isOverCity(inTown, bangkok)).toBe(true);
+    expect(isOverCity(wellOut, bangkok)).toBe(false);
+    expect(shouldFollowMap(wellOut, bangkok, false)).toBe(true);
+  });
+
+  it('is never over a city there is none of', () => {
+    expect(isOverCity(inTown, null)).toBe(false);
   });
 });
