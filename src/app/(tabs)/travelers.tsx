@@ -917,7 +917,7 @@ function TravelersSkeleton() {
       <ProfileCorner />
       {/* Clears the avatar's band the way the walls do. */}
       <View style={[styles.loading, { paddingTop: insets.top + Space.sm + HitTarget + Space.lg }]}>
-        <Skeleton width="100%" aspectRatio={1 / 1.15} radius={Radius.lg} />
+        <Skeleton width="100%" aspectRatio={1} radius={Radius.lg} />
         <Skeleton width="60%" height={16} text />
         <Skeleton width="85%" height={12} text />
         <Skeleton width="70%" height={12} text />

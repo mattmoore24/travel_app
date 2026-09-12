@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 /**
  * A RefreshControl that spins only for a pull.
@@ -23,15 +23,10 @@ export function usePullRefresh(refetch: () => Promise<unknown> | void): {
 } {
   const [refreshing, setRefreshing] = useState(false);
   // Pulls in flight, so a second pull landing while the first settles does
-  // not stop the spinner early, and an unmounted list is not set on.
+  // not stop the spinner early. No mounted guard: a setState after unmount
+  // is a silent no-op on this React, and a guard that cannot be observed
+  // cannot be tested.
   const inFlight = useRef(0);
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
 
   const onRefresh = useCallback(async () => {
     inFlight.current += 1;
@@ -42,7 +37,7 @@ export function usePullRefresh(refetch: () => Promise<unknown> | void): {
       // The query owns its error; see above.
     } finally {
       inFlight.current -= 1;
-      if (inFlight.current === 0 && mounted.current) {
+      if (inFlight.current === 0) {
         setRefreshing(false);
       }
     }

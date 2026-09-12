@@ -85,6 +85,9 @@ export type ChipRailProps<T extends string> = ChipRailSingle<T> | ChipRailMulti<
  * "differently coloured". They apply to every chip in the app now, which is
  * the point of there being one.
  */
+/** The slop above and below a chip that lifts its 36pt to the 44 target. */
+const CHIP_SLOP = 6;
+
 export function ChipRail<T extends string>(props: ChipRailProps<T>) {
   const theme = useTheme();
   const { options, wrap = false } = props;
@@ -113,7 +116,7 @@ export function ChipRail<T extends string>(props: ChipRailProps<T>) {
         // default text size and by more at every larger one. This rail had
         // no hitSlop at all before the merge; the guarantee came across from
         // ChipRow rather than the other way round.
-        hitSlop={{ top: 6, bottom: 6 }}
+        hitSlop={{ top: CHIP_SLOP, bottom: CHIP_SLOP }}
         onPress={() => {
           if (props.multi) {
             props.onToggle(option.value);
@@ -167,6 +170,7 @@ export function ChipRail<T extends string>(props: ChipRailProps<T>) {
       horizontal
       showsHorizontalScrollIndicator={false}
       keyboardShouldPersistTaps="always"
+      style={styles.scroller}
       contentContainerStyle={styles.row}>
       {chips}
     </ScrollView>
@@ -194,14 +198,25 @@ const styles = StyleSheet.create({
   labelled: {
     gap: Space.xs,
   },
+  // The slop above and below each chip has to have somewhere to BE: hitSlop
+  // never extends past the parent's bounds, and a container exactly the
+  // chip's height clipped every point of it. Six of padding each way gives
+  // the slop its room; the matching negative margin on the scroller and the
+  // wrapped row keeps the rail's footprint in the form where it was.
   row: {
     gap: Space.sm,
     paddingRight: Space.lg,
+    paddingVertical: CHIP_SLOP,
+  },
+  scroller: {
+    marginVertical: -CHIP_SLOP,
   },
   wrapped: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Space.sm,
+    paddingVertical: CHIP_SLOP,
+    marginVertical: -CHIP_SLOP,
   },
   chip: {
     flexDirection: 'row',

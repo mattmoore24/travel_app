@@ -103,10 +103,6 @@ export function OfflineNotice() {
     getConnectionStatus,
     getConnectionStatus
   );
-  const sessionUnknown = useAuthStore((s) => s.sessionUnknown);
-  // Every query the app has in flight, not only the boot ones: while the
-  // button spins the app is trying, and that is the truth the spinner tells.
-  const fetching = useIsFetching();
   const [slow, setSlow] = useState(false);
 
   useBootProbe(everReached);
@@ -139,6 +135,34 @@ export function OfflineNotice() {
 
   if (!visible) return null;
 
+  return (
+    // The same offset as the pill: below the map's top control row, which
+    // floats at insets.top + Spacing.two with a 44pt target. The row stays
+    // tappable through the box-none container above the card.
+    <View
+      style={[styles.root, { top: insets.top + Spacing.two + HitTarget + Space.xs }]}
+      pointerEvents="box-none">
+      <Animated.View entering={FadeIn.duration(Motion.quick)} style={styles.frame}>
+        <OfflineCard status={status} />
+      </Animated.View>
+    </View>
+  );
+}
+
+/**
+ * The card itself, mounted only while it is on screen. It is the half that
+ * subscribes to the query cache (`useIsFetching` runs a scan of every cached
+ * query on every cache event), and the outer component lives at the root
+ * for the app's whole life: subscribed there, an invisible card that could
+ * never show again would have re-rendered on every photo signing in every
+ * thread for as long as the app ran.
+ */
+function OfflineCard({ status }: { status: ReturnType<typeof getConnectionStatus> }) {
+  const sessionUnknown = useAuthStore((s) => s.sessionUnknown);
+  // Every query the app has in flight, not only the boot ones: while the
+  // button spins the app is trying, and that is the truth the spinner tells.
+  const fetching = useIsFetching();
+
   const retry = () => {
     // The active queries: during the hold that is the boot probe and the
     // four boot reads in RootNavigator, on the guest map it is the cities
@@ -150,35 +174,26 @@ export function OfflineNotice() {
   };
 
   return (
-    // The same offset as the pill: below the map's top control row, which
-    // floats at insets.top + Spacing.two with a 44pt target. The row stays
-    // tappable through the box-none container above the card.
-    <View
-      style={[styles.root, { top: insets.top + Spacing.two + HitTarget + Space.xs }]}
-      pointerEvents="box-none">
-      <Animated.View entering={FadeIn.duration(Motion.quick)} style={styles.frame}>
-        <GlassSurface radius={Radius.lg} style={styles.card}>
-          <ThemedText type="title">{NO_CONNECTION}</ThemedText>
-          <ThemedText themeColor="textSecondary">
-            {status === 'offline' ? OFFLINE_BODY : SLOW_BODY}
-          </ThemedText>
-          {/* The app's word for the founder's "Retry": the same label the
-              account error screen and every LoadError already use, so the
-              act has one name wherever it appears. */}
-          <PrimaryButton
-            label="Try again"
-            // Spoken with its object, because on a guest's offline start the
-            // map under this card draws its own "Try again" (LoadError), and
-            // two buttons with one name on one screen is the ambiguity the
-            // scrim's "Dismiss" exists to avoid. The printed word stays the
-            // app's one word for the act.
-            accessibilityLabel="Try again to connect"
-            loading={fetching > 0}
-            onPress={retry}
-          />
-        </GlassSurface>
-      </Animated.View>
-    </View>
+    <GlassSurface radius={Radius.lg} style={styles.card}>
+      <ThemedText type="title">{NO_CONNECTION}</ThemedText>
+      <ThemedText themeColor="textSecondary">
+        {status === 'offline' ? OFFLINE_BODY : SLOW_BODY}
+      </ThemedText>
+      {/* The app's word for the founder's "Retry": the same label the
+          account error screen and every LoadError already use, so the
+          act has one name wherever it appears. */}
+      <PrimaryButton
+        label="Try again"
+        // Spoken with its object, because on a guest's offline start the
+        // map under this card draws its own "Try again" (LoadError), and
+        // two buttons with one name on one screen is the ambiguity the
+        // scrim's "Dismiss" exists to avoid. The printed word stays the
+        // app's one word for the act.
+        accessibilityLabel="Try again to connect"
+        loading={fetching > 0}
+        onPress={retry}
+      />
+    </GlassSurface>
   );
 }
 

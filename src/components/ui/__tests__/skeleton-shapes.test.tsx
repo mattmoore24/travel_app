@@ -116,7 +116,10 @@ describe('the other shapes', () => {
     expect(bars).toHaveLength(4);
     // A ratio of the width, never a fixed height: a hardcoded hero is right
     // on one phone and kicks everything below it down on every other.
-    expect(bars[0].props).toMatchObject({ aspectRatio: 1 / 1.15, radius: 0 });
+    // Square, because the real hero is (`minHeight: heroWidth` in
+    // profile-view): a taller placeholder jumped everything up by the
+    // difference the moment the profile landed.
+    expect(bars[0].props).toMatchObject({ aspectRatio: 1, radius: 0 });
     expect(bars[0].props.height).toBeUndefined();
     expect(bars.slice(1).map((b) => [b.props.width, b.props.height, b.props.text])).toEqual([
       ['55%', 20, true],

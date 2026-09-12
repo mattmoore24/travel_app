@@ -9,6 +9,7 @@ import { MaxContentWidth, Space, Spacing } from '@/constants/theme';
 import { useAnnounce } from '@/features/chat/use-announce';
 import { useIncomingRequests } from '@/features/matching/hooks';
 import { IncomingRequestCard } from '@/features/matching/incoming-request-card';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { countOf } from '@/lib/plural';
 
@@ -27,6 +28,7 @@ import { countOf } from '@/lib/plural';
  */
 export default function FirstMessagesScreen() {
   const query = useIncomingRequests();
+  const pull = usePullRefresh(query.refetch);
   const requests = query.data ?? [];
   const theme = useTheme();
 
@@ -43,14 +45,14 @@ export default function FirstMessagesScreen() {
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
-        // A pull to see whether anybody else has said hi. isRefetching, not
-        // isFetching: the first load is already told by the skeletons below.
+        // A pull to see whether anybody else has said hi. The spinner is the
+        // pull's own (usePullRefresh), never the query's isRefetching: that
+        // is true for the focus refetch and the reconnect one too, and a
+        // spinner nobody pulled reads as a stuck page.
         refreshControl={
           <RefreshControl
-            refreshing={query.isRefetching}
-            onRefresh={() => {
-              void query.refetch();
-            }}
+            refreshing={pull.refreshing}
+            onRefresh={pull.onRefresh}
             tintColor={theme.textSecondary}
           />
         }>

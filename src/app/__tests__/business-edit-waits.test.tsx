@@ -102,7 +102,11 @@ const business = (): MyBusinessRow =>
   }) as unknown as MyBusinessRow;
 
 const show = () => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({
+    // gcTime 0: a query left behind by an unmount schedules a five-minute gc
+    // timer that held the jest worker open past the run.
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
   return render(
     <QueryClientProvider client={client}>
       <BusinessEditScreen />

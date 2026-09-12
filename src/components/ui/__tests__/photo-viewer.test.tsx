@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Image } from 'expo-image';
-import { ActivityIndicator, Text } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Text } from 'react-native';
 
 import { PhotoViewer } from '@/components/ui/photo-viewer';
 import { Sheet, SHEET_SETTLE_MS, usePresentedModalCount } from '@/components/ui/sheet';
@@ -140,6 +140,23 @@ describe('the photo viewer', () => {
     expect(screen.queryByText('Could not open this photo')).toBeNull();
     expect(screen.UNSAFE_queryAllByType(Image)).toHaveLength(1);
     expect(screen.UNSAFE_queryAllByType(ActivityIndicator)).toHaveLength(1);
+  });
+
+  it('speaks the failure, not only draws it', async () => {
+    // The RemoteImage and its label leave with the failure; without the
+    // announcement VoiceOver hears the spinner's silence and has to hunt.
+    const enabled = jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(true);
+    const announce = jest.spyOn(AccessibilityInfo, 'announceForAccessibility');
+    try {
+      render(<PhotoViewer photo={photo} onClose={jest.fn()} />);
+      await act(async () => {
+        screen.UNSAFE_getByType(Image).props.onError({ error: 'no bytes' });
+      });
+      expect(announce).toHaveBeenCalledWith('Could not open this photo');
+    } finally {
+      enabled.mockRestore();
+      announce.mockRestore();
+    }
   });
 
   it('can be closed by something VoiceOver can reach', () => {

@@ -249,22 +249,51 @@ describe('a photo in a chat can be looked at', () => {
     // "Open photo" on a photo showing the failed glyph would open the viewer
     // on nothing, which is an action that lies about what it does.
     renderThread();
-    const bubble = () => screen.getByLabelText('Photo');
-    expect(bubble().props.accessibilityActions).toContainEqual({
+    expect(screen.getByLabelText('Photo').props.accessibilityActions).toContainEqual({
       name: 'openPhoto',
       label: 'Open photo',
     });
     act(() => {
       screen.UNSAFE_getByType(Image).props.onError({ error: 'no bytes' });
     });
-    expect(bubble().props.accessibilityActions).toBeUndefined();
-    expect(screen.getByLabelText('Photo could not load')).toBeTruthy();
-
-    loadPhoto(1200, 1200);
-    expect(bubble().props.accessibilityActions).toContainEqual({
+    // The bubble is the one element VoiceOver has, so it is the bubble that
+    // says the photo did not come (the frame's own glyph is collapsed away
+    // inside it; at this size it is an image, not a second button).
+    const failed = screen.getByRole('button', { name: 'Photo could not load' });
+    expect(failed.props.accessibilityActions).not.toContainEqual({
       name: 'openPhoto',
       label: 'Open photo',
     });
+
+    loadPhoto(1200, 1200);
+    expect(screen.getByLabelText('Photo').props.accessibilityActions).toContainEqual({
+      name: 'openPhoto',
+      label: 'Open photo',
+    });
+  });
+
+  it('offers VoiceOver the retry a sighted person has, and the retry asks for the bytes again', () => {
+    renderThread();
+    const before = screen.UNSAFE_getByType(Image);
+    act(() => {
+      before.props.onError({ error: 'no bytes' });
+    });
+    const failed = screen.getByRole('button', { name: 'Photo could not load' });
+    expect(failed.props.accessibilityActions).toContainEqual({
+      name: 'retryPhoto',
+      label: 'Try the photo again',
+    });
+    act(() => {
+      failed.props.onAccessibilityAction({ nativeEvent: { actionName: 'retryPhoto' } });
+    });
+    // Named "Photo" again, loading, with a NEW frame under it.
+    const bubble = screen.getByLabelText('Photo');
+    expect(bubble.props.accessibilityActions ?? []).not.toContainEqual({
+      name: 'retryPhoto',
+      label: 'Try the photo again',
+    });
+    expect(screen.UNSAFE_queryAllByType(Skeleton).length).toBeGreaterThan(0);
+    expect(screen.UNSAFE_getByType(Image)).not.toBe(before);
   });
 
   it('stops pulsing when the signing fails, and says so', () => {
@@ -294,7 +323,10 @@ describe('a photo in a chat can be looked at', () => {
     act(() => {
       screen.UNSAFE_getByType(Image).props.onError({ error: 'no bytes' });
     });
-    const retry = screen.getByLabelText('Photo could not load');
+    // Two elements carry the words now: the bubble (for VoiceOver) and the
+    // frame's retry target inside it (for the tap). The hold lands on the
+    // inner one, the deepest responder, which is the point.
+    const retry = screen.getByHintText('Try the photo again');
     expect(retry.props.accessibilityRole).toBe('button');
     fireEvent(retry, 'longPress');
     expect(screen.getByLabelText('Report')).toBeTruthy();

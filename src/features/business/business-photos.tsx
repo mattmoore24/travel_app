@@ -302,6 +302,9 @@ function PhotoTile({
         pending={pending}
         style={styles.fill}
         transition={Motion.quick}
+        // Named the way the traveler grid names its photos, so a loaded
+        // tile is spoken and a failed one's retry says which tile it is.
+        accessibilityLabel={photo.position === 0 ? 'Cover photo' : `Photo ${photo.position + 1}`}
       />
       {source != null ? (
         <>

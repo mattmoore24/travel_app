@@ -37,6 +37,22 @@ describe('the 44pt guarantee', () => {
     }
   });
 
+  it('gives the slop somewhere to be, since hitSlop stops at the parent', () => {
+    // A container exactly the chip's height clipped every point of the six
+    // above and below: 36pt of target at the default size, not 44. The
+    // rows carry the slop as padding and give it back as margin, so the
+    // rail's footprint in the form does not move.
+    render(<ChipRail options={DAYS} selected="today" onSelect={jest.fn()} />);
+    const scroller = screen.UNSAFE_getByType(ScrollView);
+    expect(StyleSheet.flatten(scroller.props.contentContainerStyle).paddingVertical).toBe(6);
+    expect(StyleSheet.flatten(scroller.props.style).marginVertical).toBe(-6);
+    // The wrapped arrangement carries both on the one row.
+    const code = fs.readFileSync(path.join(REPO, 'src/components/form/chip-rail.tsx'), 'utf8');
+    const wrapped = between(code, 'wrapped: {', '},');
+    expect(wrapped).toContain('paddingVertical: CHIP_SLOP');
+    expect(wrapped).toContain('marginVertical: -CHIP_SLOP');
+  });
+
   it('sizes the chip by padding, never by a fixed height', () => {
     // The filter sheet's chip was `height: 34`. Dynamic Type is live
     // everywhere here, so a fixed box is where a chip clips its own label.

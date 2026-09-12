@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { RefreshControl } from 'react-native';
 
 import FirstMessagesScreen from '@/app/first-messages';
@@ -64,19 +64,31 @@ beforeEach(() => {
 });
 
 describe('a pull on the list', () => {
-  it('refetches, and spins only for a refetch', () => {
+  it('refetches, and spins only for the pull, never for a background refetch', async () => {
+    // The spinner is the pull's own (usePullRefresh). The query's
+    // isRefetching is true for the focus refetch and the reconnect one too,
+    // and a spinner nobody pulled reads as a stuck page.
     mockQuery.isSuccess = true;
     mockQuery.data = [hello('a')];
-    render(<FirstMessagesScreen />);
-    const control = screen.UNSAFE_getByType(RefreshControl);
-    expect(control.props.refreshing).toBe(false);
-    control.props.onRefresh();
-    expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
-
     mockQuery.isRefetching = true;
-    screen.unmount();
+    let settle: (() => void) | undefined;
+    mockQuery.refetch.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        settle = resolve;
+      })
+    );
     render(<FirstMessagesScreen />);
-    expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(true);
+    const control = () => screen.UNSAFE_getByType(RefreshControl);
+    expect(control().props.refreshing).toBe(false);
+    await act(async () => {
+      control().props.onRefresh();
+    });
+    expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
+    expect(control().props.refreshing).toBe(true);
+    await act(async () => {
+      settle?.();
+    });
+    expect(control().props.refreshing).toBe(false);
   });
 });
 

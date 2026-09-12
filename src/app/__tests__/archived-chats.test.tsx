@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import fs from 'node:fs';
 import path from 'node:path';
 import { RefreshControl } from 'react-native';
@@ -101,24 +101,37 @@ beforeEach(() => {
 });
 
 describe('a pull on the archive', () => {
-  it('refetches, and spins only for a refetch, never for the first load', () => {
-    // isRefetching, not isFetching: the first load is told by the skeletons,
-    // and a spinner sitting at the top of a list nobody pulled reads as a
-    // stuck page.
+  it('refetches, and spins only for the pull, never for the first load or a background refetch', async () => {
+    // The spinner is the pull's own (usePullRefresh): the first load is told
+    // by the skeletons, and the query's isRefetching is true for the focus
+    // refetch and the reconnect one too, which nobody pulled.
     mockQuery.isPending = true;
     render(<ArchivedChatsScreen />);
-    const control = screen.UNSAFE_getByType(RefreshControl);
-    expect(control.props.refreshing).toBe(false);
-    control.props.onRefresh();
-    expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
+    expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(false);
+    screen.unmount();
 
     mockQuery.isPending = false;
     mockQuery.isSuccess = true;
     mockQuery.data = [row()];
     mockQuery.isRefetching = true;
-    screen.unmount();
+    let settle: (() => void) | undefined;
+    mockQuery.refetch.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        settle = resolve;
+      })
+    );
     render(<ArchivedChatsScreen />);
-    expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(true);
+    const control = () => screen.UNSAFE_getByType(RefreshControl);
+    expect(control().props.refreshing).toBe(false);
+    await act(async () => {
+      control().props.onRefresh();
+    });
+    expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
+    expect(control().props.refreshing).toBe(true);
+    await act(async () => {
+      settle?.();
+    });
+    expect(control().props.refreshing).toBe(false);
   });
 });
 

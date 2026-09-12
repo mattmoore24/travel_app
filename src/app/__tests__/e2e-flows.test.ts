@@ -138,9 +138,10 @@ describe('the Maestro flows use selectors Maestro has', () => {
   it.each(files.map((f) => [path.basename(f), f] as const))('%s', (_name, file) => {
     const unknown: string[] = [];
     // The commands start after the `---` that closes the flow's header. The
-    // header holds appId and, for the large-text tour, an `env:` block
-    // whose keys are the flow's OWN variable names (SHOT_PREFIX), which are
-    // not selectors and have no business in the list above.
+    // header holds appId (and would hold any `env:` block, whose keys are a
+    // flow's OWN variable names, not selectors; the large-text tour takes
+    // its SHOT_PREFIX from the command line instead, since a flow's env is
+    // applied after -e and won the argument).
     const lines = fs.readFileSync(file, 'utf8').split('\n');
     const start = lines.findIndex((line) => line.trim() === '---');
     file &&

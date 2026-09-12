@@ -112,7 +112,11 @@ const photo = (over: Partial<PhotoRow> = {}): PhotoRow => ({
 });
 
 const show = () => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({
+    // gcTime 0: a query left behind by an unmount schedules a five-minute gc
+    // timer that held the jest worker open past the run.
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
   render(
     <QueryClientProvider client={client}>
       <BusinessPhotos businessId="biz-1" userId="u1" />
@@ -164,6 +168,9 @@ describe('once the list has landed', () => {
     const frames = screen.UNSAFE_getAllByType(RemoteImage);
     expect(frames).toHaveLength(1);
     expect(frames[0].props).toMatchObject({ source: null, pending: true });
+    // Named, the way the traveler grid names its photos, so a failed tile's
+    // retry says which tile it is rather than "Photo could not load" N times.
+    expect(frames[0].props.accessibilityLabel).toBe('Cover photo');
     // The tile's own pulse: the frame's, not the grid's.
     expect(skeletons()).toHaveLength(1);
     expect(screen.getByText('In review')).toBeTruthy();

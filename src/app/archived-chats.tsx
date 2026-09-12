@@ -15,6 +15,7 @@ import { ChatRow, SwipeAction, rowStyles } from '@/features/chat/chat-row';
 import { MaxContentWidth, Space, Spacing } from '@/constants/theme';
 import { useMyChats } from '@/features/matching/hooks';
 import { useChatPref } from '@/features/rooms/hooks';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import type { ChatListRow } from '@/lib/database.types';
@@ -88,6 +89,7 @@ export default function ArchivedChatsScreen() {
   // "Nothing archived." — for a chat archive, the most alarming possible
   // wrong answer.
   const query = useMyChats(true);
+  const pull = usePullRefresh(query.refetch);
   const chats = query.data ?? [];
   const theme = useTheme();
 
@@ -97,15 +99,13 @@ export default function ArchivedChatsScreen() {
         style={styles.scroll}
         contentContainerStyle={styles.content}
         // The gesture every phone user reaches for when a list looks stale.
-        // isRefetching, not isFetching: the first load is already told by the
-        // skeletons below, and a spinner nobody pulled reads as a stuck page
-        // (the same shape place/[id] uses).
+        // The spinner is the pull's own (usePullRefresh), never the query's
+        // isRefetching: that is true for the focus refetch and the reconnect
+        // one too, and a spinner nobody pulled reads as a stuck page.
         refreshControl={
           <RefreshControl
-            refreshing={query.isRefetching}
-            onRefresh={() => {
-              void query.refetch();
-            }}
+            refreshing={pull.refreshing}
+            onRefresh={pull.onRefresh}
             tintColor={theme.textSecondary}
           />
         }>

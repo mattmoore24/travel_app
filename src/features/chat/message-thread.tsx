@@ -274,6 +274,10 @@ function RunAvatar({
         pending={photo.pending}
         skeleton="flat"
         recyclingKey={path ?? undefined}
+        // Whose face, so a frame that did not come says "Ana's photo could
+        // not load" rather than one anonymous "Photo could not load" at the
+        // foot of every run a guest reads.
+        accessibilityLabel={name ? `${name}'s photo` : undefined}
         style={styles.runAvatarImage}
         fallback={
           initial ? (
@@ -594,11 +598,14 @@ function BubbleBody({
   onSpanLongPress,
   onOpenPhoto,
   onPhotoFailed,
+  photoAttempt = 0,
 }: {
   message: ThreadMessage;
   mine: boolean;
   /** Last of its group: the corner that gets the tail. */
   tailed: boolean;
+  /** Bumped by the bubble's rotor retry; the photo frame is keyed on it. */
+  photoAttempt?: number;
   /** What this message answers, drawn INSIDE the bubble. */
   quote?: Quote | null;
   /**
@@ -679,6 +686,7 @@ function BubbleBody({
         // reserves, loaded or not, so handing over to the real photo changes
         // the bubble's width and never its height.
         <ChatPhoto
+          key={photoAttempt}
           source={image}
           pending={imagePending}
           recyclingKey={message.id}
@@ -797,6 +805,10 @@ function Bubble({
   // hang off THIS element, and it must go when the photo does: "Open photo"
   // over a frame showing the failed glyph would open the viewer on nothing.
   const [photoFailed, setPhotoFailed] = useState(false);
+  // Bumped by the rotor's "Try the photo again": the body keys its frame on
+  // it, so a bump remounts the frame and expo-image asks for the bytes
+  // again, the same remount the sighted tap on the glyph does.
+  const [photoAttempt, setPhotoAttempt] = useState(0);
   // The same signed URL the body already asks for. Read again here rather
   // than threaded up through a prop: React Query serves both calls from one
   // cache entry, and the rotor action HAS to hang off this element, because
@@ -909,7 +921,10 @@ function Bubble({
         <View ref={anchor} collapsable={false}>
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel={message.body ?? 'Photo'}
+            // A photo that did not come says so here, because this element
+            // is the only one VoiceOver has: the frame's own glyph and retry
+            // are inside it, collapsed away.
+            accessibilityLabel={message.body ?? (photoFailed ? 'Photo could not load' : 'Photo')}
             accessibilityHint={onOpenMenu ? 'Press and hold to react' : undefined}
             // VoiceOver collapses the bubble into one element, so the link
             // spans inside are unreachable by touch there; the URL is offered
@@ -919,9 +934,12 @@ function Bubble({
               // reason: the bubble is one accessibility element, so a press
               // target inside it is unreachable by touch and a rotor action
               // is the only door VoiceOver has.
-              photoAction || bodyLinks.length > 0
+              photoAction || photoFailed || bodyLinks.length > 0
                 ? [
                     ...(photoAction ? [{ name: 'openPhoto', label: 'Open photo' }] : []),
+                    // The door a sighted person has (tap the glyph), offered
+                    // the one way VoiceOver can reach it.
+                    ...(photoFailed ? [{ name: 'retryPhoto', label: 'Try the photo again' }] : []),
                     ...(bodyLinks.length > 0
                       ? [{ name: 'openLink', label: `Open ${bodyLinks[0].text}` }]
                       : []),
@@ -931,6 +949,11 @@ function Bubble({
             onAccessibilityAction={(event) => {
               if (event.nativeEvent.actionName === 'openPhoto') {
                 photoAction?.();
+                return;
+              }
+              if (event.nativeEvent.actionName === 'retryPhoto') {
+                setPhotoFailed(false);
+                setPhotoAttempt((count) => count + 1);
                 return;
               }
               if (event.nativeEvent.actionName === 'openLink' && bodyLinks[0]?.url) {
@@ -949,6 +972,7 @@ function Bubble({
               onSpanLongPress={openMenu}
               onOpenPhoto={onOpenPhoto}
               onPhotoFailed={setPhotoFailed}
+              photoAttempt={photoAttempt}
             />
           </PressableScale>
         </View>
@@ -1310,6 +1334,7 @@ function ReactorRow({
         source={photo.source}
         pending={photo.pending}
         skeleton="flat"
+        accessibilityLabel={`${name ?? 'Traveler'}'s photo`}
         style={[styles.reactorFace, { backgroundColor: theme.surfaceSunken }]}
         fallback={
           initial ? (

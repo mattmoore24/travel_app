@@ -1,4 +1,5 @@
 import * as Linking from 'expo-linking';
+import type { Session } from '@supabase/supabase-js';
 import { useEffect } from 'react';
 
 import { consumeDeliberateSignOut, signOutWasDeliberate } from '@/features/auth/api';
@@ -39,13 +40,21 @@ const SESSION_RETRY_LIMIT = 9;
  * while KEEPING the session on disk. Read as signed-out, that put a traveler
  * on a plane onto the guest map. features/auth/routing owns the test.
  */
-async function loadSession(): Promise<void> {
+type SessionVerdict = { unknown: true } | { unknown: false; session: Session | null };
+
+async function loadSession(): Promise<SessionVerdict> {
   const { data, error } = await supabase.auth.getSession();
+  return sessionIsUnknown({ session: data.session, error })
+    ? { unknown: true }
+    : { unknown: false, session: data.session };
+}
+
+function applyVerdict(verdict: SessionVerdict): void {
   const store = useAuthStore.getState();
-  if (sessionIsUnknown({ session: data.session, error })) {
+  if (verdict.unknown) {
     store.sessionLookupFailed();
   } else {
-    store.setSession(data.session);
+    store.setSession(verdict.session);
   }
 }
 
@@ -56,21 +65,31 @@ let sessionRequest: Promise<void> | null = null;
  * this beside its refetch, and the listener below calls it on its own once
  * the server is reachable. Shared so two callers in the same second make one
  * request; auth-js serialises refreshes anyway.
+ *
+ * The shared slot is released BEFORE the store hears the verdict. The
+ * listener's store subscription asks again synchronously from the write,
+ * and with the slot still held that ask got this settled request back and
+ * spent one of its tries on nothing, ten seconds of hold for no request.
  */
 export function retrySession(): Promise<void> {
   if (sessionRequest != null) {
     return sessionRequest;
   }
-  // A thrown getSession (storage unreadable) is not a verdict either way;
-  // the store keeps whatever it had and the next try asks again.
-  const request = loadSession().catch(() => {});
-  sessionRequest = request;
-  // Released in a continuation registered BEFORE any caller's, so a caller
-  // that asks again from its own `.then` gets a fresh request rather than
-  // this settled one.
-  void request.then(() => {
+  const release = () => {
     if (sessionRequest === request) sessionRequest = null;
-  });
+  };
+  const request: Promise<void> = loadSession().then(
+    (verdict) => {
+      release();
+      applyVerdict(verdict);
+    },
+    () => {
+      // A thrown getSession (storage unreadable) is not a verdict either
+      // way; the store keeps whatever it had and the next try asks again.
+      release();
+    }
+  );
+  sessionRequest = request;
   return request;
 }
 

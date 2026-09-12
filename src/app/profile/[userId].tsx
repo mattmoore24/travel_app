@@ -155,9 +155,9 @@ export default function PublicProfileScreen() {
         <View style={styles.skeleton}>
           {/* The hero is a ratio of the width, never a fixed height — a
               hardcoded hero height is right on one phone and kicks
-              everything below it down on every other. 1/1.15 is the shape
-              the real hero draws (heroWidth * 1.15 in profile-view). */}
-          <Skeleton aspectRatio={1 / 1.15} radius={0} />
+              everything below it down on every other. Square is the shape
+              the real hero draws (minHeight: heroWidth in profile-view). */}
+          <Skeleton aspectRatio={1} radius={0} />
           <View style={styles.skeletonText}>
             <Skeleton width="55%" height={20} radius={Radius.sm} />
             <Skeleton width="80%" height={14} radius={Radius.sm} />

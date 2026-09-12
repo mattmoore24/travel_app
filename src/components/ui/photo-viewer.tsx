@@ -1,7 +1,14 @@
 import type { ImageSource } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, useWindowDimensions, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Modal,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -234,6 +241,8 @@ function useHeldThroughExit(active: boolean): { onScreen: boolean; settling: boo
  * not using. The native-modal registration is NOT here: it has to outlive
  * this component by the length of the fade-out, so PhotoViewer holds it.
  */
+const FAILED_TO_OPEN = 'Could not open this photo';
+
 function Stage({ photo, onClose }: { photo: ViewablePhoto; onClose: () => void }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -247,6 +256,21 @@ function Stage({ photo, onClose }: { photo: ViewablePhoto; onClose: () => void }
   // Bumped by Try again and used as the RemoteImage's key, so a retry
   // remounts the frame and expo-image asks for the bytes again.
   const [attempt, setAttempt] = useState(0);
+  // Spoken, not only drawn (the rule load-error and offline-notice keep):
+  // the RemoteImage and its label leave with the failure, and VoiceOver
+  // would otherwise hear the spinner's silence and hunt for the words.
+  useEffect(() => {
+    if (phase !== 'failed') return;
+    let live = true;
+    AccessibilityInfo.isScreenReaderEnabled()
+      .then((on) => {
+        if (on && live) AccessibilityInfo.announceForAccessibility(FAILED_TO_OPEN);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [phase]);
   // A different photo starts over. Stored during render, the sanctioned
   // pattern for reacting to a prop change without a second commit.
   const uri = photo.source?.uri ?? null;
@@ -387,7 +411,7 @@ function Stage({ photo, onClose }: { photo: ViewablePhoto; onClose: () => void }
             // than RemoteImage's quiet glyph.
             <View style={styles.centred}>
               <ThemedText themeColor="textSecondary" style={styles.failedText}>
-                Could not open this photo
+                {FAILED_TO_OPEN}
               </ThemedText>
               <PrimaryButton
                 variant="ghost"

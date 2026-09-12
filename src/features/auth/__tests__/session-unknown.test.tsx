@@ -179,6 +179,33 @@ describe('a session that could not be checked', () => {
     expect(useAuthStore.getState().sessionUnknown).toBe(false);
   });
 
+  it('asks again when the verdict lands AFTER the server was reached', async () => {
+    // The common order on a stale token: the boot probe gets through in a
+    // second while auth-js backs off for twenty. The store subscription is
+    // the only thing that asks then; without it the hold is mute and
+    // permanent, since the card has already gone.
+    let answer: ((value: ReturnType<typeof retryable>) => void) | undefined;
+    mockGetSession.mockReturnValueOnce(
+      new Promise<ReturnType<typeof retryable>>((resolve) => {
+        answer = resolve;
+      })
+    );
+    renderHook(() => useAuthListener());
+    await reachTheServer();
+    expect(mockGetSession).toHaveBeenCalledTimes(1);
+    mockGetSession.mockResolvedValueOnce({ data: { session }, error: null });
+    await act(async () => {
+      answer?.(retryable());
+    });
+    await flush();
+    // Asked again at once, and that ask made a REQUEST: the shared slot was
+    // released before the store heard the verdict, so the subscription's
+    // ask did not get the settled one back.
+    expect(mockGetSession).toHaveBeenCalledTimes(2);
+    expect(useAuthStore.getState().sessionUnknown).toBe(false);
+    expect(useAuthStore.getState().session).toBe(session);
+  });
+
   it('does not ask again on reach when the session is already known', async () => {
     mockGetSession.mockResolvedValueOnce({ data: { session }, error: null });
     renderHook(() => useAuthListener());

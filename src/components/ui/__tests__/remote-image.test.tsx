@@ -187,12 +187,20 @@ describe('failed', () => {
     expect(retry.props.accessibilityLabel).toBe('Photo could not load');
     expect(retry.props.accessibilityHint).toBe('Try the photo again');
     expect(screen.getByTestId('symbol').props.size).toBe(24);
+    const before = screen.getByTestId('expo-image');
     fireEvent.press(retry);
     // Back to loading: the skeleton returns, the glyph goes, the Image is
-    // remounted under a new key so expo-image asks for the bytes again.
+    // remounted under a new key so expo-image asks for the bytes again. A
+    // new instance, not the same one told to try: flipping the phase over
+    // the same native Image re-requests nothing, and the frame would pulse
+    // for ever.
     expect(skeletons()).toHaveLength(1);
     expect(screen.queryByLabelText('Photo could not load')).toBeNull();
     expect(images()).toHaveLength(1);
+    expect(screen.getByTestId('expo-image')).not.toBe(before);
+    // And the remounted Image still drives the phase.
+    load();
+    expect(skeletons()).toHaveLength(0);
   });
 });
 

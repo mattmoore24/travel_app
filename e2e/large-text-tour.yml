@@ -18,8 +18,11 @@
 #
 # SHOT_PREFIX names the pass. The workflow runs this file twice, once at AX5
 # with zz-ax5 and once at xSmall with zz-xs, so the same nine frames exist
-# at both ends and the gallery reads them side by side. The default here is
-# for a run by hand.
+# at both ends and the gallery reads them side by side. It has NO default in
+# this file: a flow's own `env:` block is applied after the command line's
+# `-e`, so a default here won the argument and the second pass wrote its
+# nine xSmall frames over the nine AX5 ones. A run by hand passes
+# `-e SHOT_PREFIX=zz-ax5` (or any prefix) on the command line.
 #
 # This file lives OUTSIDE e2e/flows/ on purpose: the workflow's flow loop
 # globs that directory, and the ordinary passes must not inherit either
@@ -35,8 +38,6 @@
 # with no clearState lands on the Map tab with everything kept (the signed
 # in tour relies on the same). Do NOT add clearState.
 appId: com.mattmoore.samewhere
-env:
-  SHOT_PREFIX: zz-ax5
 ---
 - launchApp
 # The tab labels are native tab-bar items, addressable even when MapKit's

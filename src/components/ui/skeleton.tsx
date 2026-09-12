@@ -194,9 +194,9 @@ export function ProfileHeroSkeleton() {
   return (
     <View>
       {/* The hero is a ratio of the width, never a fixed height (see the
-          aspectRatio prop). 1/1.15 is the shape the real hero draws
-          (heroWidth * 1.15 in profile-view). */}
-      <Skeleton aspectRatio={1 / 1.15} radius={0} />
+          aspectRatio prop). Square is the shape the real hero draws
+          (`minHeight: heroWidth` in profile-view, decision D2(a)). */}
+      <Skeleton aspectRatio={1} radius={0} />
       <View style={styles.heroText}>
         <Skeleton width="55%" height={20} radius={Radius.sm} text />
         <Skeleton width="80%" height={14} radius={Radius.sm} text />

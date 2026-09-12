@@ -84,18 +84,20 @@ describe('usePullRefresh', () => {
     expect(result.current.refreshing).toBe(false);
   });
 
-  it('does not set state on a list that has gone', async () => {
+  it('settles quietly on a list that has gone', async () => {
+    // Nothing to assert about a warning React no longer prints; what can be
+    // pinned is that a fetch resolving after the unmount neither throws nor
+    // rejects the pull.
     const fetch = deferred();
     const { result, unmount } = renderHook(() => usePullRefresh(() => fetch.promise));
+    let pull: Promise<void> | undefined;
     act(() => {
-      result.current.onRefresh();
+      pull = result.current.onRefresh() as unknown as Promise<void>;
     });
     unmount();
-    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
     await act(async () => {
       fetch.resolve();
     });
-    expect(error).not.toHaveBeenCalled();
-    error.mockRestore();
+    await expect(pull).resolves.toBeUndefined();
   });
 });
