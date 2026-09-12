@@ -1087,21 +1087,31 @@ export function ProfileView({
              cost the image ~90pt of face and left the scrim darkening a
              region no text was sitting on.
 
-             The height stays a fixed ratio and is NOT a tweakable detail.
-             Every child of this frame is now absolutely positioned or
-             intrinsically sized, so none of them can give the frame a
-             height — and a percentage does not mean "as tall as my parent's
-             content": Yoga resolves it against the available height handed
-             down, which inside a ScrollView is about a screen. Dropping the
-             height therefore does not collapse the frame to its text
-             (edcd8d7 tried exactly that); it hands the fill a screen-tall
-             box and pushes the name below the fold, which is what E2E run 33
-             photographed and 612bb5c reverted. A profile with no photo gets
-             the separate branch below instead.
+             The frame is AT LEAST a square, and that floor is NOT a
+             tweakable detail. Every child of this frame is absolutely
+             positioned or intrinsically sized, so none of them can give the
+             frame a height — and a percentage does not mean "as tall as my
+             parent's content": Yoga resolves it against the available height
+             handed down, which inside a ScrollView is about a screen.
+             Dropping the height altogether therefore does not collapse the
+             frame to its text (edcd8d7 tried exactly that); it hands the
+             fill a screen-tall box and pushes the name below the fold, which
+             is what E2E run 33 photographed and 612bb5c reverted. A profile
+             with no photo gets the separate branch below instead.
+
+             minHeight rather than height, because the Identity block is
+             in-flow and scales with Dynamic Type: at the accessibility sizes
+             the name, occupation, home and two pills outgrew a fixed square,
+             the top of the name was clipped and "From New York" landed on
+             the face where the scrim is nearly clear. A minimum keeps the
+             square at the default size and lets the frame grow to fit the
+             words above it. This is not the trap the paragraph above
+             describes: a minimum is a number, not a percentage, and the fill
+             still has a real box to fill.
 
              The ratio itself is 1:1 per decision D2(a): the iOS editor crops
              square, so the hero shows the square people approved, whole. */
-          <View style={[styles.hero, { width: heroWidth, height: heroWidth }]}>
+          <View style={[styles.hero, { width: heroWidth, minHeight: heroWidth }]}>
             {main ? (
               <Photo
                 path={main.storage_path}

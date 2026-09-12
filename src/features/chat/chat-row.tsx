@@ -3,7 +3,7 @@ import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Space, Spacing, Type } from '@/constants/theme';
+import { FontCap, Radius, Space, Spacing, Type } from '@/constants/theme';
 import { useIsPlaceChat } from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
@@ -11,6 +11,7 @@ import { planChipLabel, roomBadgeGlyph } from '@/features/chat/row-kind';
 import { rowTimestamp, unreadLabel } from '@/features/chat/separators';
 import { finiteDate } from '@/features/groups/closing';
 import { usePhotoUrl } from '@/features/profile/hooks';
+import { useCappedFontScale } from '@/hooks/use-capped-font-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { dates } from '@/lib/locale';
 import { countOf } from '@/lib/plural';
@@ -310,7 +311,13 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
           while the avatar stays centred against the whole row. */}
       <View style={styles.rowTrailing}>
         {stamp ? (
-          <ThemedText type="footnote" themeColor={unread ? 'highlight' : 'textSecondary'}>
+          // Metadata in a fixed-height row, not reading text, so it stops at
+          // the chrome cap: at the largest size an uncapped "Yesterday" took
+          // nearly half the row from the name.
+          <ThemedText
+            type="footnote"
+            themeColor={unread ? 'highlight' : 'textSecondary'}
+            maxFontSizeMultiplier={FontCap.chrome}>
             {stamp}
           </ThemedText>
         ) : null}
@@ -319,7 +326,10 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
             cleared moderation and nothing else. */}
         {chat.unread_count > 1 ? (
           <View style={[styles.unreadPill, { backgroundColor: theme.highlight }]}>
-            <ThemedText type="caption" style={[styles.unreadCount, { color: theme.background }]}>
+            <ThemedText
+              type="caption"
+              style={[styles.unreadCount, { color: theme.background }]}
+              maxFontSizeMultiplier={FontCap.chrome}>
               {unreadLabel(chat.unread_count)}
             </ThemedText>
           </View>
@@ -347,6 +357,22 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
  * Archive ended up painted in danger red, the one colour that DID work with
  * black on it. The pair travels together now.
  */
+/** One swipe action's width at the default text size. */
+export const SWIPE_ACTION_WIDTH = 74;
+
+/**
+ * The width a swipe action is drawn at for this reader.
+ *
+ * Scaled with the label and capped with it (FontCap.control), so the two
+ * cannot drift: a 74pt button around an uncapped caption clipped "Archive"
+ * to its middle at the accessibility sizes. Anything that reasons about the
+ * actions' extent (a threshold, a measured offset) must read this hook
+ * rather than the constant, or it will be right at one text size only.
+ */
+export function useSwipeActionWidth() {
+  return Math.round(SWIPE_ACTION_WIDTH * useCappedFontScale(FontCap.control));
+}
+
 export function SwipeAction({
   label,
   icon,
@@ -361,6 +387,7 @@ export function SwipeAction({
   onTint: string;
   onPress: () => void;
 }) {
+  const width = useSwipeActionWidth();
   return (
     <Pressable
       accessibilityRole="button"
@@ -368,11 +395,18 @@ export function SwipeAction({
       onPress={onPress}
       style={({ pressed }) => [
         styles.swipeAction,
-        { backgroundColor: tint },
+        { width, backgroundColor: tint },
         pressed && styles.pressed,
       ]}>
       <SymbolView name={icon} size={18} tintColor={onTint} />
-      <ThemedText type="caption" style={{ color: onTint }}>
+      {/* A control label: capped, one line, and shrunk to fit before it is
+          ever cut. The word IS the button; half of it is no button. */}
+      <ThemedText
+        type="caption"
+        style={{ color: onTint }}
+        maxFontSizeMultiplier={FontCap.control}
+        numberOfLines={1}
+        adjustsFontSizeToFit>
         {label}
       </ThemedText>
     </Pressable>
@@ -430,11 +464,14 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
   },
+  /* A minimum, never a fixed height: the count inside scales (to the chrome
+     cap), and a 20pt box around a 34pt digit clipped it to its middle. */
   unreadPill: {
     minWidth: 20,
-    height: 20,
+    minHeight: 20,
     borderRadius: 10,
     paddingHorizontal: 6,
+    paddingVertical: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -479,6 +516,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     gap: Space.xs,
     paddingTop: 2,
+    // The stamp can grow (to the chrome cap) but never past this: the name
+    // is what the column is scanned for, and a long stamp at a large size
+    // must not push it to three characters.
+    maxWidth: '40%',
   },
   /* Starts where the text starts. A full-width rule chops the list into
      slabs; an inset one threads the avatars into a single column. */
@@ -496,8 +537,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
   },
+  /* The width is per reader (useSwipeActionWidth), not here. */
   swipeAction: {
-    width: 74,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
