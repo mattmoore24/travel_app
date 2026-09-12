@@ -2,11 +2,18 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 
 import { KeyboardDone } from '@/components/form/keyboard-done-bar';
-import { ChipRail } from '@/components/form/chip-rail';
 import { FormTextField } from '@/components/form/form-text-field';
 import { PinGlyph } from '@/features/pins/pin-marker';
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -16,26 +23,31 @@ import { ThemedText } from '@/components/themed-text';
 import { HitTarget, Radius, Space, Type } from '@/constants/theme';
 import { useCreatePin } from '@/features/pins/hooks';
 import {
-  NO_INTENT_TIME,
-  TIME_TBD,
   categoryForPlan,
   categoryForPoi,
   cityClockNow,
   effectiveTakeDown,
-  intentEndOptions,
   intentLabel,
-  intentTimeOptions,
+  intentTimeLabel,
   takeDownBounds,
   whenLabel,
 } from '@/features/pins/pin-helpers';
 import { openInMaps } from '@/features/pins/open-in-maps';
+import {
+  MAX_WINDOW_MINUTES,
+  readTypedTime,
+  typedTimeExample,
+  typedTimeHasPassed,
+  typedTimeUntilExample,
+  windowMinutes,
+} from '@/features/pins/typed-time';
 import { CalendarSheet } from '@/features/trips/calendar-sheet';
 import { formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import type { BusinessCategory, CityRow, PinCategory } from '@/lib/database.types';
 import { haptics } from '@/lib/haptics';
-import { dates } from '@/lib/locale';
+import { USES_24_HOUR_CLOCK, dates } from '@/lib/locale';
 import type { LocalSearchResult } from '@/modules/local-search';
 
 /**
@@ -149,6 +161,11 @@ export function PinFormSheet({
   onPosted,
 }: PinFormSheetProps) {
   const theme = useTheme();
+  const { fontScale } = useWindowDimensions();
+  // The keyboard matches the example the box shows. A 12-hour phone's box
+  // says "7:30 PM" and needs letters for the PM, so it opens the full
+  // keyboard; a 24-hour phone's says "19:30" and opens on the digits.
+  const timeKeyboard = USES_24_HOUR_CLOCK ? 'numbers-and-punctuation' : 'default';
   const createPin = useCreatePin();
   // The SPOT's name - from search, the business page, or the map pill's
   // reverse geocode - and editable, because "Somdet Phra Pokklao Bridge" is
@@ -207,10 +224,16 @@ export function PinFormSheet({
   // "sometime that evening" and a pre-filled hour would turn every one of
   // them into a small lie the poster has to notice and undo. The founder
   // asked for it in so many words: "an optional field the user can fill
-  // out, not a preselected bubble". A start hour, or TIME_TBD, or nothing;
-  // an end only ever beside a start.
-  const [intentTime, setIntentTime] = useState<string>(NO_INTENT_TIME);
-  const [intentTimeEnd, setIntentTimeEnd] = useState<string>(NO_INTENT_TIME);
+  // out, not a preselected bubble", and then, round 4, for the field to be
+  // TYPED rather than picked off preset hour chips. Two boxes of text, read
+  // by typed-time.ts, and a TBD pill that is an answer of its own; an end
+  // only ever beside a start.
+  const [timeFromText, setTimeFromText] = useState('');
+  const [timeUntilText, setTimeUntilText] = useState('');
+  const [timeTbd, setTimeTbd] = useState(false);
+  // Bumped only to re-render against a fresh city clock (see submit); the
+  // value itself is never read.
+  const [, setClockChecks] = useState(0);
   // Founder: some people want an open plan and some want to be asked first,
   // and neither is the odd one out. Open is the default because it is the
   // thing the app could not do before, and because a plan nobody has to
@@ -334,25 +357,36 @@ export function PinFormSheet({
   const takeDown = effectiveTakeDown(takeDownPick, effectiveIntent, cityClock);
   // Today to a year out, on the city's clock, for both calendars.
   const { minISO: calendarMinISO, maxISO: calendarMaxISO } = takeDownBounds(cityClock);
-  // Only hours this pin can honestly name: nothing already gone on the
-  // city's clock. No ceiling at the take-down, so the rails stay offered in
-  // full for a pin that disappears before its plan.
-  const timeOptions = intentTimeOptions(effectiveIntent, cityClock);
-  // Moving the day can take the chosen hour out of range (the city's clock
-  // has passed it), and when it does the pin quietly goes back to having no
-  // hour rather than keeping one the server will refuse.
-  const timeTbd = intentTime === TIME_TBD;
-  const effectiveTime =
-    !timeTbd && timeOptions.some((option) => option.value === intentTime)
-      ? intentTime
-      : NO_INTENT_TIME;
-  // The end rides the start: no start, no window; a start that fell out of
-  // range takes its end with it. Hours after the start, past midnight
-  // included.
-  const endOptions = effectiveTime ? intentEndOptions(effectiveTime) : [];
-  const effectiveEnd = endOptions.some((option) => option.value === intentTimeEnd)
-    ? intentTimeEnd
-    : NO_INTENT_TIME;
+  // What the two boxes say, read every render. A box with letters in it
+  // that make no time is UNREADABLE, which is different from a box left
+  // blank, and the button's footnote says which. The one refusal the old
+  // hour rails made is kept: a start already behind the city's clock on the
+  // plan's day is not a plan. No ceiling at the take-down, so a pin that
+  // disappears before its plan can still name its hour.
+  const fromRead = readTypedTime(timeFromText);
+  const parsedFrom = fromRead?.value ?? null;
+  // The end is read against the start, so "7pm to 11" is eleven at night.
+  const untilRead = readTypedTime(timeUntilText, parsedFrom);
+  const parsedUntil = untilRead?.value ?? null;
+  const untilWithoutFrom = untilRead != null && fromRead == null;
+  const fromNeedsMeridiem = fromRead?.problem === 'meridiem';
+  const timeUnreadable = fromRead?.problem === 'unreadable' || untilRead?.problem === 'unreadable';
+  const fromGone = parsedFrom != null && typedTimeHasPassed(parsedFrom, effectiveIntent, cityClock);
+  // An end at or before the start is past midnight, which the server reads
+  // as tomorrow: right for "10 PM to 2 AM", and the reason an end EQUAL to
+  // its start (a whole day) or a window past twelve hours (a typo, mostly:
+  // "7pm to 6:59pm" is twenty-four hours short a minute) are held here.
+  const window =
+    parsedFrom != null && parsedUntil != null ? windowMinutes(parsedFrom, parsedUntil) : null;
+  const untilIsFrom = window === 0;
+  const windowTooLong = window != null && window > MAX_WINDOW_MINUTES;
+  // TBD names no hour at all (the database's own rule, pins_tbd_names_no_hour),
+  // and the end rides the start: no start, no window. A refused end stays
+  // out of the readout too, so the line above the button never contradicts
+  // the footnote under it.
+  const effectiveTime = timeTbd ? '' : (parsedFrom ?? '');
+  const effectiveEnd =
+    timeTbd || !parsedFrom || untilIsFrom || windowTooLong ? '' : (parsedUntil ?? '');
   const when = whenLabel(
     {
       intent_date: effectiveIntent,
@@ -368,9 +402,29 @@ export function PinFormSheet({
   // Same slot, one line either way, so nothing reflows. The day itself is
   // stated by the "Pin disappears" row, once, not three times.
   const needsPlan = plan.trim().length === 0;
+  // A box the form cannot read, a bare hour with no AM or PM on a 12-hour
+  // phone, an end with no start, a start the city has already passed, or a
+  // window that is no window, holds the button the way a missing plan does:
+  // grey, with the footnote saying which box and how to write it. Never a
+  // silent post without the hour somebody meant to give.
+  const timeProblem = untilWithoutFrom
+    ? 'Add a start time to go with that end.'
+    : fromNeedsMeridiem
+      ? `Add AM or PM to the start, like ${typedTimeExample()}.`
+      : timeUnreadable
+        ? `Write the time like ${typedTimeExample()}, or leave it blank.`
+        : fromGone && parsedFrom === '00:00'
+          ? 'Midnight is the start of tomorrow. Pick tomorrow as the day.'
+          : fromGone
+            ? `It's already past ${intentTimeLabel(parsedFrom ?? '')} in ${cityName}. Pick a later time.`
+            : untilIsFrom
+              ? 'The end is the same as the start. Give it a later time, or leave it blank.'
+              : windowTooLong
+                ? 'A window can be up to 12 hours. Bring the end closer, or leave it blank.'
+                : null;
   const footnote = needsPlan
     ? 'Say what the plan is first.'
-    : 'A plan, not your location. The pin disappears on the day you picked.';
+    : (timeProblem ?? 'A plan, not your location. The pin disappears on the day you picked.');
 
   // The plan text is what makes the difference between a marker and an
   // invitation, and the sheet's pull-down and scrim are one careless thumb
@@ -399,6 +453,22 @@ export function PinFormSheet({
   };
 
   const submit = async () => {
+    // The button is grey for these, and this is the same rule said once
+    // more, so no other way in (a Return key, a test, an accessibility
+    // action) can post a plan with a time the form could not read.
+    if (needsPlan || timeProblem != null) {
+      return;
+    }
+    // The clock moved while the form sat open: the footnote is the last
+    // render's, so a start that has gone by since is caught here against a
+    // fresh clock and the form re-renders to say so, rather than posting it.
+    if (
+      parsedFrom != null &&
+      typedTimeHasPassed(parsedFrom, effectiveIntent, cityClockNow(cityTimezone, coords.lng))
+    ) {
+      setClockChecks((count) => count + 1);
+      return;
+    }
     // Before the await, so a post that never comes back still counts as a
     // press. The gap between this step and pin_created is where
     // pin_post_failed lives (features/pins/hooks.ts).
@@ -611,41 +681,116 @@ export function PinFormSheet({
             testID="pin-when"
             onPress={() => openCalendar('when')}
           />
-          {/* OPTIONAL, and nothing is lit until somebody lights it. TBD is
-              the first chip because it is the one answer that is not an
-              hour; tapping the lit chip again puts it out. A second rail
-              opens under a chosen hour for the end of the window, and it
-              too starts dark. The rails are absent entirely when no hour
-              would fit inside this pin's lifetime, because a rail holding
-              one chip is a control that cannot be used. */}
-          {timeOptions.length > 0 ? (
-            <ChipRail
-              label="Time (optional)"
-              options={[
-                { value: TIME_TBD, label: 'TBD', testID: 'time-tbd' },
-                ...timeOptions.map((option) => ({ ...option, testID: `time-${option.value}` })),
-              ]}
-              selected={timeTbd ? TIME_TBD : effectiveTime || null}
-              onSelect={(value) => {
-                const next = value === intentTime ? NO_INTENT_TIME : value;
-                setIntentTime(next);
-                setIntentTimeEnd(NO_INTENT_TIME);
-              }}
-            />
-          ) : null}
-          {effectiveTime && endOptions.length > 0 ? (
-            <ChipRail
-              label="Until (optional)"
-              options={endOptions.map((option) => ({
-                ...option,
-                testID: `until-${option.value}`,
-              }))}
-              selected={effectiveEnd || null}
-              onSelect={(value) =>
-                setIntentTimeEnd(value === intentTimeEnd ? NO_INTENT_TIME : value)
-              }
-            />
-          ) : null}
+          {/* OPTIONAL, TYPED, and empty until somebody writes something.
+              Founder, round 4: no preset hour chips; the start and the end
+              are typed, and small text says whose clock they are on. One
+              box each with a "to" between them, and TBD as a pill beside
+              them because it is the one answer that is not an hour. The
+              boxes stay when TBD is lit, empty: typing into one puts TBD
+              out, and lighting TBD empties both, so the pin can never carry
+              both answers. Each box is a FormTextField, which brings its
+              own Hide keyboard bar (traps: one bar per field). */}
+          <View
+            style={styles.timeBlock}
+            onLayout={(event) => {
+              fieldY.current.time = event.nativeEvent.layout.y;
+            }}>
+            <ThemedText type="smallBold">Time (optional)</ThemedText>
+            <View style={styles.timeRow}>
+              <View style={[styles.timeField, { flexBasis: Math.round(112 * fontScale) }]}>
+                <FormTextField
+                  testID="pin-time-from"
+                  accessibilityLabel="Start time"
+                  accessibilityHint={`Optional. Type it like ${typedTimeExample()}. Local time in ${cityName}.`}
+                  placeholder={typedTimeExample()}
+                  value={timeFromText}
+                  onChangeText={(text) => {
+                    setTimeFromText(text);
+                    setTimeTbd(false);
+                  }}
+                  keyboardType={timeKeyboard}
+                  autoCapitalize="none"
+                  maxLength={12}
+                  returnKeyType="done"
+                  onFocus={() => {
+                    scrollRef.current?.scrollTo({
+                      y: Math.max(0, (fieldY.current.time ?? 0) - Space.sm),
+                      animated: true,
+                    });
+                  }}
+                />
+              </View>
+              {/* Sighted punctuation between two boxes VoiceOver already names
+                  Start time and End time, so it is not read as a stray word. */}
+              <ThemedText
+                type="footnote"
+                themeColor="textSecondary"
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants">
+                to
+              </ThemedText>
+              <View style={[styles.timeField, { flexBasis: Math.round(112 * fontScale) }]}>
+                <FormTextField
+                  testID="pin-time-until"
+                  accessibilityLabel="End time"
+                  accessibilityHint={`Optional. Type it like ${typedTimeUntilExample()}. Local time in ${cityName}.`}
+                  placeholder={typedTimeUntilExample()}
+                  value={timeUntilText}
+                  onChangeText={(text) => {
+                    setTimeUntilText(text);
+                    setTimeTbd(false);
+                  }}
+                  keyboardType={timeKeyboard}
+                  autoCapitalize="none"
+                  maxLength={12}
+                  returnKeyType="done"
+                  onFocus={() => {
+                    scrollRef.current?.scrollTo({
+                      y: Math.max(0, (fieldY.current.time ?? 0) - Space.sm),
+                      animated: true,
+                    });
+                  }}
+                />
+              </View>
+              {/* The same pill ChipRail draws, by hand, because a rail of one
+                  chip is a scroller around a word. Bold and filled when on,
+                  a hairline when off: the weight is what reads as "on". */}
+              <PressableScale
+                testID="time-tbd"
+                accessibilityRole="button"
+                accessibilityLabel="Time TBD"
+                accessibilityHint="Leaves the time to be decided. Clears anything typed in the two boxes."
+                accessibilityState={{ selected: timeTbd }}
+                haptic="selection"
+                scaleTo={0.94}
+                onPress={() => {
+                  const next = !timeTbd;
+                  setTimeTbd(next);
+                  if (next) {
+                    setTimeFromText('');
+                    setTimeUntilText('');
+                  }
+                }}
+                style={[
+                  styles.tbdPill,
+                  {
+                    backgroundColor: timeTbd ? theme.accent : theme.surfaceSunken,
+                    borderColor: timeTbd ? 'transparent' : theme.border,
+                  },
+                ]}>
+                <ThemedText
+                  type="footnote"
+                  style={timeTbd ? { color: theme.onAccent, fontWeight: '700' } : undefined}>
+                  TBD
+                </ThemedText>
+              </PressableScale>
+            </View>
+            {/* Founder, round 4: "small text says times reflect local time at
+                the destination". The city's, never the phone's (§7 rule 2). */}
+            <ThemedText type="small" themeColor="textSecondary">
+              {`Local time in ${cityName}.`}
+            </ThemedText>
+          </View>
           <View
             style={styles.dayBlock}
             onLayout={(event) => {
@@ -760,7 +905,7 @@ export function PinFormSheet({
         <PrimaryButton
           label="Put it on the map"
           loading={createPin.isPending}
-          disabled={needsPlan}
+          disabled={needsPlan || timeProblem != null}
           // The disabled state is a colour swap (primary-button.tsx), and a
           // colour change is not announced — so the reason has to be spoken.
           accessibilityHint={footnote}
@@ -950,6 +1095,30 @@ const styles = StyleSheet.create({
   },
   dayBlock: {
     gap: Space.xs,
+  },
+  timeBlock: {
+    gap: Space.xs,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Space.sm,
+  },
+  // Two boxes that share the row and wrap under each other at the large
+  // Dynamic Type sizes rather than squeezing their own placeholder: the
+  // basis is scaled by the reader's text size where the row is drawn.
+  timeField: {
+    flexGrow: 1,
+  },
+  // ChipRail's chip geometry, grown to the boxes' 48pt so the row sits level.
+  tbdPill: {
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: Space.md,
+    borderRadius: Radius.pill,
+    borderCurve: 'continuous',
+    borderWidth: 1,
   },
   dayRow: {
     flexDirection: 'row',

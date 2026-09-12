@@ -1,127 +1,148 @@
-/**
- * A time somebody TYPED, read into 'HH:MM'.
- *
- * Founder, 2026-09-05: "Time is still not something the user can type when
- * making a pin. It should not be a button. It should be something the user can
- * optionally type in for the beginning and end time."
- *
- * The rails of preset hours this replaces could only ever offer the hours that
- * fitted inside a pin's remaining lifetime, so the control shrank as the
- * lifetime did and vanished entirely when nothing fitted. Typing has no such
- * problem, but it has a different one: '7' means two different times on two
- * different phones, and getting it wrong by twelve hours is worse than asking.
- *
- * So this is deliberately strict in exactly one place. On a 12-hour phone a
- * bare hour is REFUSED rather than guessed, because 'meet at 7' is the evening
- * to every person who types it and 07:00 to every naive parser. Everywhere
- * else it is generous: 7:30 pm, 7:30PM, 7pm, 7 pm, 19:30, 1930 and 19 all
- * read, and on a 24-hour phone a bare 7 reads as 07:00 because that is what
- * somebody on a 24-hour clock means by it.
- *
- * No React and no Date: a pure function over a string, so the whole grid of
- * inputs is a table test rather than a render.
- */
-
-/** What the parser can say about a string. `null` means "nothing typed yet". */
-export type TypedTime = { value: string } | { error: 'ambiguous' | 'unreadable' } | null;
+import { intentTimeLabel } from '@/features/pins/pin-helpers';
+import { toISODate } from '@/features/trips/dates';
+import { USES_24_HOUR_CLOCK } from '@/lib/locale';
 
 /**
- * `afterHHMM` resolves the one ambiguous case. The END field knows the START,
- * and a plan that starts at 19:00 and ends at '11' cannot mean 11:00 that
- * morning, so the end field passes the start and a bare hour becomes readable.
- * The start field passes nothing and refuses.
+ * The time on a pin, TYPED.
+ *
+ * Founder, round 4: the start and the end of a plan are typed and optional,
+ * the preset hour buttons go, and small text says the times are the
+ * destination's own. This module is the reading half: it turns whatever a
+ * person wrote into the 'HH:MM' the pin carries, or says why it could not.
+ *
+ * Generous on purpose, because a time is typed with one thumb on a phone in
+ * a bar: "7pm", "7:30 PM", "7.30pm", "19:30", "1930", "19h30", "noon" and
+ * "midnight" all read. Strict where a guess would be a lie: "7:60", "24",
+ * "13pm" and "seven" are refused rather than rounded, and the form says how
+ * to write one instead.
+ *
+ * THE BARE HOUR. "7" with no AM or PM is the one honest ambiguity. On a
+ * 24-hour phone it is seven in the morning and reads that way. On a 12-hour
+ * phone the box's own example says "7:30 PM", the keyboard has letters, and
+ * "7" for drinks would have posted the morning, so it is not read: the form
+ * asks for AM or PM. The END box is the exception either way: a bare hour
+ * there is read against the start ("7pm to 11" is eleven at night, "10pm
+ * to 2" is two in the morning), because that is the only thing it can mean.
  */
-export function parseTypedTime(
-  text: string,
-  { hour12, afterHHMM }: { hour12: boolean; afterHHMM?: string | null }
-): TypedTime {
-  const raw = text.trim().toLowerCase();
-  if (raw.length === 0) {
-    return null;
-  }
+export type TypedTimeRead =
+  | { value: string; problem?: undefined }
+  | { value?: undefined; problem: 'unreadable' | 'meridiem' };
 
-  // The meridiem, taken off the end before any digits are read: 'pm', 'p.m.',
-  // 'p' and a space before any of them.
-  const meridiem = /(a|p)\.?m?\.?$/.exec(raw.replace(/\s+/g, ''));
-  const stripped = raw.replace(/\s+/g, '').replace(/(a|p)\.?m?\.?$/, '');
-  const pm = meridiem?.[1] === 'p';
-  const named = meridiem != null;
+const MINUTES_IN_A_DAY = 24 * 60;
 
-  let hour: number;
-  let minute: number;
-
-  const colon = /^(\d{1,2}):(\d{2})$/.exec(stripped);
-  const packed = /^(\d{3,4})$/.exec(stripped);
-  const bare = /^(\d{1,2})$/.exec(stripped);
-
-  if (colon) {
-    hour = Number(colon[1]);
-    minute = Number(colon[2]);
-  } else if (packed) {
-    // 1930 and 930. Read from the right so a three-digit string keeps its
-    // minutes: '930' is 9:30, never 93:0.
-    const digits = packed[1];
-    hour = Number(digits.slice(0, digits.length - 2));
-    minute = Number(digits.slice(-2));
-  } else if (bare) {
-    hour = Number(bare[1]);
-    minute = 0;
-  } else {
-    return { error: 'unreadable' };
-  }
-
-  if (minute > 59) {
-    return { error: 'unreadable' };
-  }
-
-  if (named) {
-    // With am or pm the hour must be one of the twelve, and 12 is the odd one:
-    // 12 am is midnight and 12 pm is noon.
-    if (hour < 1 || hour > 12) {
-      return { error: 'unreadable' };
-    }
-    if (pm && hour !== 12) {
-      hour += 12;
-    }
-    if (!pm && hour === 12) {
-      hour = 0;
-    }
-    return { value: format(hour, minute) };
-  }
-
-  if (hour > 23) {
-    return { error: 'unreadable' };
-  }
-
-  // THE ONE REFUSAL. A bare 1 to 12 on a 12-hour phone, with nothing to
-  // resolve it against, is a coin flip between morning and evening. Everything
-  // else is unambiguous: 0 and 13 to 23 can only be one time, a typed colon
-  // means the person is thinking in 24 hours, and a 24-hour phone means they
-  // always are.
-  const ambiguous = hour12 && hour >= 1 && hour <= 12 && bare != null;
-  if (ambiguous) {
-    if (!afterHHMM) {
-      return { error: 'ambiguous' };
-    }
-    // THE EARLIEST READING THAT STILL COMES AFTER THE START, which is not the
-    // same as "a reading that comes after the start": 09:00 to '11' has two
-    // readings after it, 11:00 and 23:00, and the person means the nearer one.
-    // Picking merely a later reading made every morning plan run till eleven
-    // at night.
-    const startMinutes = Number(afterHHMM.slice(0, 2)) * 60 + Number(afterHHMM.slice(3, 5));
-    // Bare 12 is the odd pair: its two readings are midnight and noon.
-    const readings = (hour === 12 ? [0, 12] : [hour, hour + 12]).map((h) => h * 60 + minute);
-    const after = readings.filter((m) => m > startMinutes).sort((a, b) => a - b);
-    // None after the start means the plan crosses midnight, which the server
-    // already reads as tomorrow, so the EARLIEST reading is the honest one:
-    // 19:00 to '2' is two in the morning, not two in the afternoon.
-    const chosen = after.length > 0 ? after[0] : Math.min(...readings);
-    return { value: format(Math.floor(chosen / 60), chosen % 60) };
-  }
-
-  return { value: format(hour, minute) };
+/** 'HH:MM' as minutes since midnight. */
+export function minutesOfDay(hhmm: string): number {
+  const [hour, minute] = hhmm.split(':').map(Number);
+  return hour * 60 + minute;
 }
 
-function format(hour: number, minute: number): string {
+function hhmm(hour: number, minute: number): string {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+/**
+ * Read a typed time. Null for a blank box, which is a real answer (no hour);
+ * a problem for a box the form cannot honestly read; otherwise the value.
+ * `after` is the start already read, for the end box.
+ */
+export function readTypedTime(text: string, after?: string | null): TypedTimeRead | null {
+  let raw = text.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (raw === '') {
+    return null;
+  }
+  if (raw === 'noon' || raw === 'midday') {
+    return { value: '12:00' };
+  }
+  if (raw === 'midnight') {
+    return { value: '00:00' };
+  }
+  // "p.m." and "a. m." lose their dots and spaces; the dot BETWEEN hour and
+  // minute ("7.30") stays, since it is one of the separators read below.
+  raw = raw.replace(/([ap])\.?\s?m\.?$/, '$1m');
+  const match = /^(\d{1,2})(?:[:.h]?(\d{2}))?\s?(am|pm|a|p)?$/.exec(raw);
+  if (!match) {
+    return { problem: 'unreadable' };
+  }
+  let hour = Number(match[1]);
+  const minute = match[2] == null ? 0 : Number(match[2]);
+  const meridiem = match[3]?.[0];
+  if (minute > 59) {
+    return { problem: 'unreadable' };
+  }
+  if (meridiem) {
+    if (hour < 1 || hour > 12) {
+      return { problem: 'unreadable' };
+    }
+    if (meridiem === 'a' && hour === 12) {
+      hour = 0;
+    } else if (meridiem === 'p' && hour < 12) {
+      hour += 12;
+    }
+    return { value: hhmm(hour, minute) };
+  }
+  if (hour > 23) {
+    return { problem: 'unreadable' };
+  }
+  const bare = hour >= 1 && hour <= 12;
+  if (bare && after != null) {
+    // The end, read against the start: of the two hours "11" could be, the
+    // first one after the start; when neither is (the window crosses
+    // midnight), the earlier one, which is tomorrow morning.
+    const morning = hour === 12 ? 0 : hour;
+    const candidates = [morning, morning + 12].map((h) => hhmm(h, minute));
+    const start = minutesOfDay(after);
+    const next = candidates.find((candidate) => minutesOfDay(candidate) > start);
+    return { value: next ?? candidates[0] };
+  }
+  if (bare && !USES_24_HOUR_CLOCK) {
+    return { problem: 'meridiem' };
+  }
+  return { value: hhmm(hour, minute) };
+}
+
+/** The value alone, or null: the shape the tests table. */
+export function parseTypedTime(text: string, after?: string | null): string | null {
+  return readTypedTime(text, after)?.value ?? null;
+}
+
+/**
+ * The example a field shows before anything is typed, in the phone's own
+ * clock: "7:30 PM" on a 12-hour phone, "19:30" on a 24-hour one. Printed
+ * through the one clock (lib/locale, via intentTimeLabel) rather than
+ * hardcoded, so the example and the readout can never disagree.
+ */
+export function typedTimeExample(): string {
+  return intentTimeLabel('19:30') ?? '19:30';
+}
+
+/** The example for the end of a window, later than the start's. */
+export function typedTimeUntilExample(): string {
+  return intentTimeLabel('22:00') ?? '22:00';
+}
+
+/** The longest window the form accepts, in minutes. Longer than this is a day. */
+export const MAX_WINDOW_MINUTES = 12 * 60;
+
+/**
+ * How long a window is, in minutes, with an end at or before the start read
+ * as past midnight (the server's own reading). Zero means the end IS the
+ * start, which is no window at all.
+ */
+export function windowMinutes(start: string, end: string): number {
+  return (minutesOfDay(end) - minutesOfDay(start) + MINUTES_IN_A_DAY) % MINUTES_IN_A_DAY;
+}
+
+/**
+ * True when the typed time, on the plan's day, is already at or behind the
+ * CITY's clock. The one refusal the hour rails had, kept: an hour already
+ * gone where the plan is, is not a plan. Compared as wall-clock parts, never
+ * as instants, so a clock change inside the day cannot let a time inside
+ * the missing hour through or hold one inside the repeated hour.
+ */
+export function typedTimeHasPassed(time: string, dayISO: string, cityClock: Date): boolean {
+  const today = toISODate(cityClock);
+  if (dayISO !== today) {
+    return dayISO < today;
+  }
+  return time <= hhmm(cityClock.getHours(), cityClock.getMinutes());
 }

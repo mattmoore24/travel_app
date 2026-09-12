@@ -284,6 +284,43 @@ appId: com.mattmoore.samewhere
 # The reminder line, exactly. It is a plain Text, so its words are readable.
 - assertVisible: 'The pin disappears on .*, before the plan on .*\. People can find it until then\.'
 - takeScreenshot: 15d-pin-disappears-before-plan
+# THE TYPED TIME. Founder, round 4: the start and the end are typed, not
+# picked off preset hour chips, and the small line under the boxes says
+# whose clock they are on. Typed on the plan's own day, weeks out, so
+# nothing here can have gone by on the city's clock. 24-hour digits, which
+# read the same on the simulator's 12-hour phone (a bare "7" would not: that
+# phone asks for AM or PM). The keyboard goes away between the two boxes,
+# because tapping field to field with it up is the thing iOS drops (the
+# FormTextField comment has the two occasions it cost). The readout above
+# the button then prints both through the one clock, so the 12-hour phone
+# reads 7:30 PM to 10:00 PM, as a plan and never as a position. Asserted on
+# the readout's SPOKEN label, not its words: it sits inside a Pressable that
+# carries its own accessibilityLabel, which on iOS is one element that hides
+# the text inside it (traps). The single-character wildcards stand for the
+# narrow no-break space Apple's ICU puts before AM and PM.
+- tapOn:
+    id: 'pin-time-from'
+- inputText: '19:30'
+- runFlow:
+    when:
+      visible: 'Hide keyboard'
+    commands:
+      - tapOn: 'Hide keyboard'
+      - waitForAnimationToEnd:
+          timeout: 2000
+- tapOn:
+    id: 'pin-time-until'
+- inputText: '22:00'
+- runFlow:
+    when:
+      visible: 'Hide keyboard'
+    commands:
+      - tapOn: 'Hide keyboard'
+      - waitForAnimationToEnd:
+          timeout: 2000
+- assertVisible: '.*, 7:30.PM to 10:00.PM, up until .*'
+- assertVisible: 'Local time in .*'
+- takeScreenshot: 15e-pin-typed-time
 # Reachable because the keyboard went away above, NOT because the sheet lifts
 # it: 43886b4 gave Sheet a keyboardAllowance so a pinned button is covered
 # rather than riding up, which is founder ask 6 from 2026-09-05. The

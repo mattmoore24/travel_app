@@ -3,6 +3,57 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **The time on a pin is typed** (2026-09-12)
+
+Founder, round 4, ask 5, the one item of that round still open: "the day
+comes from a calendar selector, the start and end times are typed and
+optional, the today / tomorrow / next day chips and the preset time buttons
+are removed, and small text says times reflect local time at the
+destination." The calendar and the day chips were done on 2026-09-10; this
+closes the rest.
+
+**Client.** The hour rails under When are gone. In their place: two boxes
+with a "to" between them, a TBD pill beside them, and one line of small
+text, "Local time in Lisbon." Whatever is typed is read by
+`features/pins/typed-time.ts` into the HH:MM the pin already carried: "7",
+"7pm", "7:30 PM", "7.30", "19:30", "1930", "19h30", "noon" and "midnight"
+all read; "7:60", "24", "13pm" and "seven" are refused rather than rounded.
+A bare hour is the one honest ambiguity: on a 24-hour phone "7" is the
+morning and reads so; on a 12-hour phone, whose box says "7:30 PM" and
+whose keyboard opens with letters, it is not read and the footnote asks for
+AM or PM, because "7" for drinks posting the morning is exactly the lie the
+form refuses to tell. The end box is read against the start on either
+clock, so "7pm to 11" is eleven at night and "10pm to 2" is two in the
+morning. The boxes' placeholders come off the one clock (7:30 PM on a
+12-hour phone, 19:30 on a 24-hour one), and the keyboard matches them.
+Six things hold the button grey with a footnote, the way a missing plan
+does: an end with no start, a bare start with no AM or PM on a 12-hour
+phone, a box the form cannot read ("Write the time like 7:30 PM, or leave
+it blank."), a start already behind the city's clock on the plan's day
+("It's already past 7:00 AM in Lisbon. Pick a later time.", which is the
+one refusal the rails made, kept, and "Midnight is the start of tomorrow"
+for that one), an end equal to its start, and a window past twelve hours
+("7pm to 6:59pm" is a day short a minute, which is a typo). A refused end
+stays out of the readout, so the line above the button never contradicts
+the footnote under it, and submit re-checks the start against a fresh city
+clock in case the form sat open past it. TBD empties both boxes and typing
+into either puts TBD out, so the pin can never carry both answers, which
+the database refuses too. Minutes reach the pin for the first time;
+every reader of the hour already printed through lib/locale's clock, so the
+card, the marker's spoken label, the plan list and the room say "7:30 PM"
+without a change.
+
+**Nothing on the server.** `pins.intent_time` is a Postgres `time`; it took
+minutes all along. No migration.
+
+**Tests and the tour.** `typed-time.test.ts` tables the reading on both
+clocks, the end read against its start, and the window arithmetic. The
+form tests type into the boxes instead of tapping chips, and cover every
+hold. The signed-in tour types 19:30 and 22:00 on the plan's day and
+photographs the readout saying 7:30 PM to 10:00 PM (15e), asserted on the
+readout's spoken label because the Pressable it sits in hides its words on
+iOS (traps). The hour-rail helpers and their tests are deleted.
+
 ## **The map follows the pan, and Accept where Accept is due** (2026-09-11)
 
 Two founder asks from the first morning of testing, plus the three

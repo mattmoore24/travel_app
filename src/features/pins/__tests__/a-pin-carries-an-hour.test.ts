@@ -1,10 +1,7 @@
 import {
-  MAX_WINDOW_HOURS,
   NO_INTENT_TIME,
   byIntentMoment,
   intentTimeLabel,
-  intentEndOptions,
-  intentTimeOptions,
   whenLabel,
 } from '@/features/pins/pin-helpers';
 
@@ -13,13 +10,10 @@ import {
  * presence claim (§7 rule 2). The sentence is "Today at 19:00", never
  * "here now".
  *
- * It used to be bounded by the pin's own expiry as well, and it is not any
- * more. Since 2026-09-10 the traveler picks the DAY a pin disappears, and a
- * day before the plan is a legal, ordinary choice: the server no longer
- * refuses an hour past the take-down, so the rails here are offered in
- * full whatever day the pin disappears. A rail that emptied itself for
- * exactly that traveler would be a hidden block, and the founder asked for
- * a reminder, not a block.
+ * The hour is TYPED now (founder, round 4; typed-time.ts and its test read
+ * the typing), so the rails of preset hours this file once bounded are gone
+ * with their tests. What stays is how an hour prints and sorts, which is the
+ * same whether it came off a chip or a keyboard.
  */
 
 /**
@@ -51,8 +45,8 @@ describe('the hour a pin prints', () => {
   it('is nothing at all when the plan named none', () => {
     expect(intentTimeLabel(null)).toBeNull();
     expect(intentTimeLabel(undefined)).toBeNull();
-    // The empty string is what the "Any time" chip carries, and it means the
-    // same thing as null the moment it leaves the form.
+    // The empty string is what an empty box carries, and it means the same
+    // thing as null the moment it leaves the form.
     expect(intentTimeLabel(NO_INTENT_TIME)).toBeNull();
   });
 });
@@ -145,79 +139,5 @@ describe('a window and a TBD', () => {
       '22:00 to 02:00'
     );
     expect(h.timeWindowLabel({ time_tbd: true })).toBe('time TBD');
-  });
-});
-
-describe('which hours a window may end at', () => {
-  it('the hours after the start, past midnight included, eight at most', () => {
-    const options = intentEndOptions('22:00');
-    expect(options.map((option) => option.value)).toEqual([
-      '23:00',
-      '00:00',
-      '01:00',
-      '02:00',
-      '03:00',
-      '04:00',
-      '05:00',
-      '06:00',
-    ]);
-  });
-
-  // THE OVERRULE, as an assertion. With a take-down day before the plan the
-  // To rail is still offered in full: the reminder line under the take-down
-  // row is a reminder, not a hidden block.
-  it('is offered in full whatever day the pin disappears', () => {
-    expect(intentEndOptions('19:00')).toHaveLength(MAX_WINDOW_HOURS);
-  });
-
-  it('answers nothing for a start it cannot read', () => {
-    expect(intentEndOptions('tbd')).toEqual([]);
-  });
-});
-
-describe('which hours the form may offer', () => {
-  // Ten in the morning, on a device whose clock is the browsed city's.
-  const now = new Date(2026, 8, 1, 10, 0);
-
-  it('offers hours and nothing that means "unset": the form starts dark', () => {
-    // The founder: "an optional field, not a preselected bubble". TBD is
-    // the form's own chip beside these, not an option this helper invents.
-    const options = intentTimeOptions('2026-09-01', now);
-    expect(options.map((option) => option.value)).not.toContain(NO_INTENT_TIME);
-    expect(options.map((option) => option.label)).not.toContain('Any time');
-  });
-
-  it('never offers an hour that has already gone on the city clock', () => {
-    const options = intentTimeOptions('2026-09-01', now);
-    expect(options[0]).toEqual(expect.objectContaining({ value: '11:00' }));
-    expect(options.map((option) => option.value)).not.toContain('10:00');
-    expect(options).toHaveLength(13);
-  });
-
-  it('offers the whole of a later day', () => {
-    const options = intentTimeOptions('2026-09-02', now);
-    expect(options[0]).toEqual(expect.objectContaining({ value: '00:00' }));
-    expect(options[options.length - 1]).toEqual(expect.objectContaining({ value: '23:00' }));
-    expect(options).toHaveLength(24);
-  });
-
-  // THE OVERRULE, for the From rail: a plan on the 18th whose pin disappears
-  // on the 14th still offers every hour of the 18th. The server no longer
-  // refuses an hour past the take-down, so nothing here may either.
-  it('does not stop at the take-down: the rail is the same for a pin that disappears before its plan', () => {
-    expect(intentTimeOptions('2026-09-18', now)).toHaveLength(24);
-  });
-
-  it('offers nothing when no hour is left in the day, so the rail stays down', () => {
-    const lateNight = new Date(2026, 8, 1, 23, 30);
-    expect(intentTimeOptions('2026-09-01', lateNight)).toEqual([]);
-  });
-
-  // The map is city-scoped and its whole use case is a city you have not
-  // reached yet, so the hours offered are the CITY's.
-  it('reads the hours off the browsed city clock, not the device one', () => {
-    const cityClock = new Date(2026, 8, 1, 13, 0); // three hours ahead
-    const options = intentTimeOptions('2026-09-01', cityClock);
-    expect(options[0]).toEqual(expect.objectContaining({ value: '14:00' }));
   });
 });

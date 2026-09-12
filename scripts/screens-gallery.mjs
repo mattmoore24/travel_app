@@ -120,6 +120,10 @@ const CAPTIONS = {
     'The pin disappears before the plan',
     'Legal, and said once under the row. Nothing turns red and nothing is blocked.',
   ],
+  '15e-pin-typed-time': [
+    'A typed time',
+    "Start and end typed, on the city's own clock, and the readout above the button says them as a plan.",
+  ],
   '18b-who-can-see-you': ['Who sees you', 'Both directions at once, and what a badge unlocks.'],
   '33-priorities-empty': ['Top priorities, empty', 'The section, before anything is in it.'],
   '34-priorities-editor': ['Adding a priority', 'The editor the onboarding step hands over to.'],

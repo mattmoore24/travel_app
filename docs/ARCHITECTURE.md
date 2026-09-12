@@ -185,7 +185,7 @@ loads/month, needs token + config plugin + dev build).
   checks sane intent dates (not past, not beyond a year) and an optional hour or window,
   records `plan_ends_at` for the last-call push, and a 20-active-pin cap (ten until
   2026-09-11). The take-down day
-  is NOT floored at the plan's day: a pin may disappear before its plan (founder, 2026-09-10). The map feeds read by distance from the browsed city
+  is NOT floored at the plan's day: a pin may disappear before its plan (founder, 2026-09-10). Since 2026-09-12 the hour is TYPED on the client (`features/pins/typed-time` reads "7:30 pm", "19h30" or "noon" into the `time` the column always took, minutes included, and holds a start already behind the city's clock); the server needed nothing. The map feeds read by distance from the browsed city
   (`map_radius_km()`, 50 km), so the city label is for the funnel and the rail. Since
   2026-09-11 the browsed city FOLLOWS THE PAN: once the settled centre is 20 km from it (the
   resolver's own hint radius) at city scale or closer, `city_for_spot` names the city the map
@@ -1991,6 +1991,15 @@ the map. Curated seed pins take their plan's day as their take-down day.
   decision rather than a backlog item: there is no recipient-scoped column to hang them on,
   and they create response pressure that works against the safety posture. "Sending" and
   "Sent" are sender-side facts and carry no such cost.
+- **2026-09-12** — The hour on a pin is typed, not picked (founder, round 4, ask 5: "the start
+  and end times are typed and optional ... the preset time buttons are removed, and small text
+  says times reflect local time at the destination"). Two boxes and a TBD pill replace the
+  preset hour chips; `typed-time.ts` reads what a thumb produces and refuses what is not a
+  time, asks for AM or PM on a bare hour where the phone is 12-hour, and reads the end box
+  against the start ("7pm to 11" is the night); the one refusal the chips made (an hour the
+  city has already passed) is kept as a footnote that holds the button, beside a window cap
+  of twelve hours. Minutes reach `pins.intent_time` for the first time, with no
+  migration: the column is a Postgres `time`.
 - **2026-09-11** — The map follows the pan (founder: "find any city without directly
   searching it, similar to Zillow"). Implemented as a city switch, not a viewport query:
   every feed stays city-scoped and k-anonymous exactly as before; what changes is which city
