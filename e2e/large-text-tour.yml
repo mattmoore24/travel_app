@@ -152,15 +152,24 @@ appId: com.mattmoore.samewhere
 # THE LANGUAGES PICKER, with its search focused: a sheet with an input,
 # lifted by the keyboard AND the bar (components/ui/sheet), around a search
 # row that is a floor rather than a fixed height. Reached through the
-# reader's own profile, where Edit profile is an ordinary labelled button.
+# reader's own profile, where Edit profile is a Settings row (a labelled
+# Pressable) far DOWN the page, under the hero, the plans and the cards; run
+# 139 waited for it at the top of the page at both text sizes and never saw
+# it. Scrolled to, at whatever text size the pass runs.
 - tapOn: 'Travelers'
 - extendedWaitUntil:
     visible: 'Say hi'
     timeout: 30000
 - tapOn: 'Your profile'
 - extendedWaitUntil:
-    visible: 'Edit profile'
+    visible: 'Settings'
     timeout: 15000
+    optional: true
+- scrollUntilVisible:
+    element:
+      text: 'Edit profile'
+    direction: DOWN
+    timeout: 30000
 - tapOn: 'Edit profile'
 - scrollUntilVisible:
     element:

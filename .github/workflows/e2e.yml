@@ -128,7 +128,7 @@ jobs:
     # step - and each failing flow is retried once, so the ceiling that used
     # to be generous became the thing deciding the result. A cancelled job
     # answers nothing and costs a full macOS hour anyway.
-    timeout-minutes: 75
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -282,6 +282,11 @@ jobs:
           echo "Update $WANT is downloaded; the next launch runs it."
 
       - name: Run Maestro flows
+        # Bounded on its own, under the job's limit: run 139 hit the JOB
+        # timeout inside this step on a slow runner (every flow retried), and
+        # a job timeout cancels the `if: always()` steps below, so the
+        # pictures that would have said why were never published.
+        timeout-minutes: 70
         env:
           # The driver builds an XCUITest runner via xcodebuild on first
           # launch; the default startup timeout is too short for a cold

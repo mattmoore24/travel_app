@@ -300,9 +300,34 @@ appId: com.mattmoore.samewhere
     visible: 'Back to Bangkok'
     timeout: 10000
 - takeScreenshot: 05g-panned-away
-- tapOn: 'Back to Bangkok'
+# THE PILL IS TRANSIENT, by design: once the settle is far enough for the map
+# to FOLLOW the pan (20 km, features/pins/follow-the-map), the browsed city
+# switches to wherever the map is, and "Back to Bangkok" leaves with it. How
+# far three swipes carry depends on the zoom the seed produced, so some runs
+# cross that line (run 139 asserted the pill and lost it before the tap) and
+# some do not (run 138). Either way the map must end up back over Bangkok
+# for the pin-card gate below: tap the pill if it is still there, and search
+# the city back if the follow got there first.
+- tapOn:
+    text: 'Back to Bangkok'
+    optional: true
 - waitForAnimationToEnd:
     timeout: 2000
+- runFlow:
+    when:
+      notVisible: 'Search a city. Showing Bangkok'
+    commands:
+      - tapOn:
+          id: 'city-search-bar'
+      - extendedWaitUntil:
+          visible: 'Which city?'
+          timeout: 10000
+      - tapOn: 'Bangkok.*'
+      - waitForAnimationToEnd:
+          timeout: 3000
+- extendedWaitUntil:
+    visible: 'Search a city. Showing Bangkok'
+    timeout: 15000
 
 # The pin-card gate, which no flow had ever photographed. Which marker is on
 # screen depends on the seeded city's data, so every step is optional and the
