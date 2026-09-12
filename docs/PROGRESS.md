@@ -65,6 +65,10 @@ photographs the readout saying 7:30 PM to 10:00 PM (15e), asserted on the
 readout's spoken label because the Pressable it sits in hides its words on
 iOS (traps). The hour-rail helpers and their tests are deleted.
 
+**Runs.** No deploy. TestFlight updates 99 (the typed time) and 100 (the
+follow's arrival gate). E2E 137 photographed the typed time and lost the
+guest tour's relaunch to the follow; 138 is green across all six tours.
+
 ## **The map follows the pan, and Accept where Accept is due** (2026-09-11)
 
 Two founder asks from the first morning of testing, plus the three
