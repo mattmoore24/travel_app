@@ -166,6 +166,21 @@ export function useAuthListener() {
     });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+      // INITIAL_SESSION is auth-js re-answering the getSession above through
+      // the same loader, and when that loader failed RETRYABLY it answers
+      // this event with null (GoTrueClient._emitInitialSession catches the
+      // error and emits null) while keeping the session on disk. Written to
+      // the store, that null would clear `sessionUnknown` and put the
+      // traveler on the guest map, which is the demotion loadSession exists
+      // to refuse. The lookup already has its verdict; a null here adds
+      // nothing to it. A real sign-out arrives as SIGNED_OUT.
+      if (
+        event === 'INITIAL_SESSION' &&
+        session == null &&
+        useAuthStore.getState().sessionUnknown
+      ) {
+        return;
+      }
       setSession(session);
       // NO identify() HERE, and the missing call is deliberate.
       //

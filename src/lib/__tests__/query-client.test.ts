@@ -28,6 +28,13 @@ const run = async (queryFn: () => Promise<unknown>) =>
 
 const offline = () => new Error('Network request failed');
 const serverFailure = () => ({ status: 500, message: 'boom' });
+/** postgrest-js's `error` for a request its 20 s timeout cut off. */
+const aborted = () => ({
+  message: 'AbortError: Aborted',
+  details: '',
+  hint: 'Request was aborted (timeout or manual cancellation)',
+  code: '',
+});
 
 describe('the retry policy', () => {
   it('does not retry a request that never left the phone', async () => {
@@ -37,10 +44,17 @@ describe('the retry policy', () => {
   });
 
   it('does not retry an aborted request either, which is what the PostgREST timeout hands back', async () => {
-    const queryFn = failing(() => ({
-      status: 0,
-      message: 'AbortError: The user aborted a request.',
-    }));
+    // The shape postgrest-js builds for a fetch that threw (its `error`,
+    // which is what every queryFn throws): the fetch error's name in front
+    // of the message, an EMPTY code, and no status at all. The status 0 is
+    // on the response beside it, which the app never sees.
+    const queryFn = failing(aborted);
+    await run(queryFn);
+    expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a plain dropped fetch through postgrest-js either', async () => {
+    const queryFn = failing(() => ({ message: 'TypeError: Network request failed', code: '' }));
     await run(queryFn);
     expect(queryFn).toHaveBeenCalledTimes(1);
   });
@@ -83,6 +97,20 @@ describe('everReached', () => {
   it('does not flip on a failure it cannot classify', async () => {
     await run(failing(() => new Error('boom')));
     expect(getEverReached()).toBe(false);
+  });
+
+  // The timeout abort is a request that never got an answer. Its empty code
+  // used to read as "a PostgREST error, so the server answered", which ended
+  // the cold start, took the card down and flashed "Back online" on a hotel
+  // wifi with no upstream.
+  it('stays false after the client timeout cut a request off', async () => {
+    await run(failing(aborted));
+    expect(getEverReached()).toBe(false);
+  });
+
+  it('flips on a PostgREST error, which carries the server code that proves it answered', async () => {
+    await run(failing(() => ({ code: 'PGRST301', message: 'JWT expired' })));
+    expect(getEverReached()).toBe(true);
   });
 
   // Sticky: the cold start is once per launch. A dropped connection later in

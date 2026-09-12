@@ -18,12 +18,18 @@ import { queryClient, resetReachForTests } from '@/lib/query-client';
  */
 const mockGetSession = jest.fn();
 
+type AuthChange = (event: string, session: Session | null) => void;
+let authChange: AuthChange | null = null;
+
 jest.mock('@/lib/supabase', () => ({
   isSupabaseConfigured: true,
   supabase: {
     auth: {
       getSession: () => mockGetSession(),
-      onAuthStateChange: jest.fn(() => ({ data: { subscription: { unsubscribe: jest.fn() } } })),
+      onAuthStateChange: jest.fn((callback: AuthChange) => {
+        authChange = callback;
+        return { data: { subscription: { unsubscribe: jest.fn() } } };
+      }),
     },
   },
 }));
@@ -80,6 +86,35 @@ describe('a session that could not be checked', () => {
     expect(state.session).toBeNull();
     expect(state.sessionUnknown).toBe(true);
     expect(state.initialized).toBe(true);
+  });
+
+  it('stays unknown when auth-js answers INITIAL_SESSION with null for the same failure', async () => {
+    // GoTrueClient._emitInitialSession runs the same loader as getSession and,
+    // when it fails retryably, emits INITIAL_SESSION with null while the
+    // session stays on disk. Read as an answer, that null cleared the flag
+    // and demoted the traveler the lookup had just refused to demote.
+    mockGetSession.mockResolvedValueOnce(retryable());
+    renderHook(() => useAuthListener());
+    await flush();
+    expect(useAuthStore.getState().sessionUnknown).toBe(true);
+    act(() => authChange?.('INITIAL_SESSION', null));
+    expect(useAuthStore.getState().sessionUnknown).toBe(true);
+    expect(useAuthStore.getState().session).toBeNull();
+    // A real answer through the same event is still taken: the token
+    // refreshed after all.
+    act(() => authChange?.('INITIAL_SESSION', session));
+    expect(useAuthStore.getState().sessionUnknown).toBe(false);
+    expect(useAuthStore.getState().session).toBe(session);
+  });
+
+  it('takes a null INITIAL_SESSION when nothing is unknown, which is a real sign-out', async () => {
+    mockGetSession.mockResolvedValueOnce({ data: { session }, error: null });
+    renderHook(() => useAuthListener());
+    await flush();
+    expect(useAuthStore.getState().session).toBe(session);
+    act(() => authChange?.('INITIAL_SESSION', null));
+    expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().sessionUnknown).toBe(false);
   });
 
   it('is also unknown when the failure only reads as offline, whatever its name', async () => {

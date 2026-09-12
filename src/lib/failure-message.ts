@@ -29,13 +29,24 @@
 export function isOffline(error: unknown): boolean {
   const message = (error as { message?: unknown })?.message;
   const status = (error as { status?: unknown })?.status;
+  const code = (error as { code?: unknown })?.code;
   if (status === 0) {
     return true;
+  }
+  // A code is the server's word. A PostgREST error carries its PGRST or
+  // SQLSTATE code and an auth error its own, and postgrest-js leaves the code
+  // EMPTY on a request that never got an answer (a dropped fetch, the
+  // client's own timeout abort). So "canceling statement due to statement
+  // timeout" (57014) is Postgres talking, not the phone, whatever the
+  // message says; and an abort, whose message says nothing the regex knows,
+  // is read by its name below.
+  if (typeof code === 'string' && code !== '') {
+    return false;
   }
   if (typeof message !== 'string') {
     return false;
   }
-  return /network request failed|failed to fetch|networkerror|fetcherror|timeout|typeerror/i.test(
+  return /^aborterror\b|network request failed|failed to fetch|networkerror|fetcherror|timeout|typeerror/i.test(
     message
   );
 }

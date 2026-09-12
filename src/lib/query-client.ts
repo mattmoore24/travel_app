@@ -198,7 +198,11 @@ function noteRequestOutcome(error: unknown, from?: object): void {
 function wasReachable(error: unknown): boolean {
   const status = (error as { status?: unknown })?.status;
   const code = (error as { code?: unknown })?.code;
-  return typeof status === 'number' ? status > 0 : typeof code === 'string';
+  // The app throws postgrest-js's `error`, which carries no status; the
+  // server's answer is its CODE, and postgrest-js leaves that empty ('') on
+  // a fetch that never got one, the timeout abort included. An empty code is
+  // not evidence of a server.
+  return typeof status === 'number' ? status > 0 : typeof code === 'string' && code !== '';
 }
 
 export const queryClient = new QueryClient({

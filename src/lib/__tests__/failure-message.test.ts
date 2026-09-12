@@ -22,6 +22,30 @@ describe('what a person is told when something fails', () => {
     expect(isOffline({ message: 'trip is entirely in the past' })).toBe(false);
   });
 
+  // The shape the app throws is postgrest-js's `error`: no status on it, a
+  // code that is the server's, and a message that starts with the fetch
+  // error's name when nothing came back.
+  it('reads the client timeout abort as offline, by its name', () => {
+    expect(
+      isOffline({
+        message: 'AbortError: Aborted',
+        details: '',
+        hint: 'Request was aborted (timeout or manual cancellation)',
+        code: '',
+      })
+    ).toBe(true);
+    expect(isOffline({ message: 'TypeError: Network request failed', code: '' })).toBe(true);
+  });
+
+  it('never reads an error that carries a server code as offline, whatever it says', () => {
+    // Postgres cancelling a heavy RPC: the word "timeout" is in the message,
+    // and the phone had nothing to do with it.
+    expect(
+      isOffline({ code: '57014', message: 'canceling statement due to statement timeout' })
+    ).toBe(false);
+    expect(isOffline({ code: 'PGRST301', message: 'JWT expired' })).toBe(false);
+  });
+
   it('never shows the transport its own words', () => {
     // The exact string a traveller on hostel wifi used to be shown.
     expect(saveFailureMessage(new TypeError('Network request failed'))).toBe(
