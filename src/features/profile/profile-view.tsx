@@ -1681,13 +1681,21 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     borderCurve: 'continuous',
   },
+  // The title keeps at least half the row and the reply chip wraps under it
+  // when the two no longer fit side by side. With `flex: 1` the title took
+  // whatever the chip left, and at the accessibility sizes that was a column
+  // one letter wide: "Trave / l / plans" (run 140, AX5).
   sectionHeader: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: Space.sm,
   },
   sectionTitle: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
+    minWidth: '50%',
   },
   editButton: {
     paddingHorizontal: Space.sm,

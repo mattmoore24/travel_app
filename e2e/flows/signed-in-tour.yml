@@ -506,8 +506,10 @@ appId: com.mattmoore.samewhere
 # instant the tap returned, which is before the state write, the bar's
 # entrance and the next card's photo have all landed. Run 129 lost the whole
 # tour here on its second attempt with no bar in the failure frame. The bar
-# lives 5s, so the budget is deliberately close to it: a bar that never
-# arrives still fails, and fails fast.
+# lives 8s (UNDO_MS), so the budget is deliberately close to it: a bar that
+# never arrives still fails, and fails fast. And the tap on Undo comes
+# straight after the frame: run 140 tapped at five seconds, the old window,
+# and hit the trip card the bar had been covering.
 - extendedWaitUntil:
     visible: 'Moved past (Maya|Dev|Sofia|Priya|Nora|Theo|Marcus|Tomas|Ines|Kai|Freja|Luca)'
     timeout: 8000
@@ -524,11 +526,16 @@ appId: com.mattmoore.samewhere
 # hit-testing entirely (traps), so the rows were untappable while they
 # landed. The city is Bangkok because that is where the E2E account's own
 # trip is and Travelers only surfaces overlapping ones.
+# CENTRED, not merely visible. The card scrolled into view landed under the
+# floating action bar, still "visible" to the driver, and the tap went to
+# the bar's own Say hi, whose composer says "your dates together" (run 140,
+# both attempts). Centred, the card sits clear of the plate.
 - scrollUntilVisible:
     element:
       text: 'Bangkok.*Say hi about this\.'
     direction: DOWN
     timeout: 10000
+    centerElement: true
 - tapOn: 'Bangkok.*Say hi about this\.'
 - extendedWaitUntil:
     visible: 'Saying hi about their travel plans'

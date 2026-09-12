@@ -1709,8 +1709,14 @@ export default function TravelersScreen() {
 /**
  * How long the undo bar stands. Long enough to read and reach, short enough
  * that it never becomes furniture; the next pass dismisses it early.
+ *
+ * Eight seconds, up from five. Five was reachable but not comfortable: the
+ * bar sits over the first trip card, and a tap that lands as it leaves goes
+ * to the card underneath and opens a composer nobody asked for (run 140
+ * did exactly that, five seconds after Next). Mail's undo lives about as
+ * long; nothing here waits on the bar being gone.
  */
-const UNDO_MS = 5000;
+const UNDO_MS = 8000;
 
 /**
  * How long the said-hi strip stands, in screen time. Shorter than the undo

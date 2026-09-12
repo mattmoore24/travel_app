@@ -152,35 +152,43 @@ appId: com.mattmoore.samewhere
 # THE LANGUAGES PICKER, with its search focused: a sheet with an input,
 # lifted by the keyboard AND the bar (components/ui/sheet), around a search
 # row that is a floor rather than a fixed height. Reached through the
-# reader's own profile, where Edit profile is a Settings row (a labelled
-# Pressable) far DOWN the page, under the hero, the plans and the cards; run
-# 139 waited for it at the top of the page at both text sizes and never saw
-# it. Scrolled to, at whatever text size the pass runs.
+# reader's own profile by the Details section's own Edit ("Edit details",
+# the spoken label of the section heading's button), which opens the editor
+# AT that section, where the languages field is. Not the Settings row at
+# the foot of the page: at AX5 the page is a dozen screens tall and run 140
+# scrolled for thirty seconds without reaching it. And the editor is a
+# presented modal: the field is tapped only once the editor has settled,
+# because run 140 tapped it during the entrance and the tap landed on
+# nothing.
 - tapOn: 'Travelers'
 - extendedWaitUntil:
     visible: 'Say hi'
     timeout: 30000
 - tapOn: 'Your profile'
-- extendedWaitUntil:
-    visible: 'Settings'
-    timeout: 15000
-    optional: true
 - scrollUntilVisible:
     element:
-      text: 'Edit profile'
+      text: 'Edit details'
     direction: DOWN
-    timeout: 30000
-- tapOn: 'Edit profile'
+    timeout: 90000
+    speed: 60
+    centerElement: true
+- tapOn: 'Edit details'
+- extendedWaitUntil:
+    visible: 'What you do'
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 3000
 - scrollUntilVisible:
     element:
       text: 'Languages you speak'
     direction: DOWN
-    timeout: 10000
+    timeout: 20000
+    centerElement: true
 - tapOn: 'Languages you speak'
 - extendedWaitUntil:
     visible:
       id: 'language-search'
-    timeout: 10000
+    timeout: 15000
 - tapOn:
     id: 'language-search'
 - extendedWaitUntil:
