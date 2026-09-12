@@ -37,7 +37,7 @@ import type {
 } from '@/lib/database.types';
 import { analytics } from '@/lib/analytics';
 import { invalidateDiscoverySurfaces } from '@/features/profile/discovery-cache';
-import { photoSource } from '@/lib/photo-source';
+import { photoSource, photoSourceState, type PhotoSourceState } from '@/lib/photo-source';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export function useOwnUserId() {
@@ -319,6 +319,16 @@ export function usePhotoUrl(storagePath: string | null) {
 export function usePhotoSource(storagePath: string | null): ImageSource | null {
   const { data } = usePhotoUrl(storagePath);
   return photoSource(data, storagePath);
+}
+
+/**
+ * `usePhotoSource` plus whether the null is temporary. A frame that owns its
+ * own loading state (components/ui/remote-image) takes this and draws a
+ * skeleton while `pending`, its fallback only once it is not.
+ */
+export function usePhotoSourceState(storagePath: string | null): PhotoSourceState {
+  const query = usePhotoUrl(storagePath);
+  return photoSourceState(query, storagePath);
 }
 
 /** Own users row (status + suspension expiry) — drives the account gate. */

@@ -51,3 +51,31 @@ export function photoSource(
   }
   return { uri, cacheKey: storagePath };
 }
+
+export type PhotoSourceState = { source: ImageSource | null; pending: boolean };
+
+/**
+ * What a frame needs to know about a signing query, from the query itself.
+ *
+ * `photoSource` alone answers null for two different things: a photo whose
+ * URL is still being signed, and no photo at all. A frame given only that
+ * null draws its "no photo" fallback over a photo that is on its way, which
+ * on a slow connection is every photo on the screen for a second. `pending`
+ * tells the two apart: there is a path, and no answer yet.
+ *
+ * `data === undefined && !isError`, deliberately not React Query's
+ * `isLoading`. isLoading is pending AND fetching, and a query the phone has
+ * PAUSED because it is offline is pending and not fetching, so on hostel
+ * wifi isLoading would flip every photo to its no-photo fallback, which is
+ * the wrong answer. Off the network a photo that exists is still loading;
+ * the skeleton is the honest picture until the signing resolves or fails.
+ */
+export function photoSourceState(
+  query: { data: string | undefined; isError: boolean },
+  storagePath: string | null | undefined
+): PhotoSourceState {
+  return {
+    source: photoSource(query.data, storagePath),
+    pending: storagePath != null && query.data === undefined && !query.isError,
+  };
+}

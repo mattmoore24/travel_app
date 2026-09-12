@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { ImageSource } from 'expo-image';
 
 import { BUSINESS_PHOTO_BUCKET } from '@/features/business/api';
-import { photoSource } from '@/lib/photo-source';
+import { photoSource, photoSourceState, type PhotoSourceState } from '@/lib/photo-source';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 /**
@@ -53,4 +53,10 @@ export function useBusinessPhotoUrl(storagePath: string | null) {
 export function useBusinessPhotoSource(storagePath: string | null): ImageSource | null {
   const { data } = useBusinessPhotoUrl(storagePath);
   return photoSource(data, storagePath);
+}
+
+/** The cover with its `pending` flag, for a frame that draws its own skeleton. */
+export function useBusinessPhotoSourceState(storagePath: string | null): PhotoSourceState {
+  const query = useBusinessPhotoUrl(storagePath);
+  return photoSourceState(query, storagePath);
 }

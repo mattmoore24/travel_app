@@ -83,6 +83,13 @@ export function PrimaryButton({
         <ThemedText
           type="callout"
           maxFontSizeMultiplier={maxFontSizeMultiplier}
+          // Two lines, then give way. At the accessibility sizes a long
+          // label ("Send a message to Lorenzo") wraps to a second line
+          // inside the pill, which the minHeight lets it do; only when two
+          // lines still cannot hold it does the type shrink, rather than
+          // the label running past the pill's edge or being cut mid-word.
+          numberOfLines={2}
+          adjustsFontSizeToFit
           style={[styles.label, { color: labelColor }]}>
           {label}
         </ThemedText>

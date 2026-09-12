@@ -1,8 +1,17 @@
 import { type ReactNode, useId } from 'react';
-import { InputAccessoryView, Keyboard, Platform, Pressable, StyleSheet, View } from 'react-native';
+import {
+  InputAccessoryView,
+  Keyboard,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Space } from '@/constants/theme';
+import { FontCap, Space, Type } from '@/constants/theme';
+import { capFontScale } from '@/hooks/use-capped-font-scale';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -69,6 +78,28 @@ import { useTheme } from '@/hooks/use-theme';
 /** What a field passes to reach its bar. Empty off iOS, where no bar exists. */
 export type KeyboardDoneProps = { inputAccessoryViewID?: string };
 
+/** The bar's label role and the padding above and below it. */
+const BAR_TEXT_ROLE = 'callout';
+const BAR_PADDING = Space.sm;
+
+/**
+ * How tall the bar is at a given fontScale: one label line plus its padding.
+ *
+ * Stated rather than measured because the bar lives inside the keyboard's
+ * window, where nothing of ours can lay it out and read it back. Every
+ * floor that makes room for the keyboard (components/ui/keyboard-floor)
+ * adds this on iOS, so this function and the bar's own minHeight and label
+ * cap have to move together: the label is capped at FontCap.control and the
+ * line is scaled by the same clamp, which is what keeps a floor sized here
+ * and a bar drawn there the same height at every text size. At the default
+ * size it is 36.
+ */
+export function keyboardBarHeight(fontScale: number): number {
+  return (
+    BAR_PADDING * 2 + Type[BAR_TEXT_ROLE].lineHeight * capFontScale(fontScale, FontCap.control)
+  );
+}
+
 /**
  * Render the bar, then the field that reaches it.
  *
@@ -98,9 +129,14 @@ export function KeyboardDone({ children }: { children: (done: KeyboardDoneProps)
  */
 function KeyboardDoneBar({ nativeID }: { nativeID: string }) {
   const theme = useTheme();
+  const { fontScale } = useWindowDimensions();
   return (
     <InputAccessoryView nativeID={nativeID}>
-      <View style={[styles.bar, { backgroundColor: theme.surface }]}>
+      <View
+        style={[
+          styles.bar,
+          { backgroundColor: theme.surface, minHeight: keyboardBarHeight(fontScale) },
+        ]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Hide keyboard"
@@ -109,8 +145,14 @@ function KeyboardDoneBar({ nativeID }: { nativeID: string }) {
           onPress={() => Keyboard.dismiss()}>
           {/* Not "Done": that word is reserved for controls that commit
               (StepScreen's continueLabel), and this bar only puts the
-              keyboard away. */}
-          <ThemedText type="smallBold" themeColor="accent">
+              keyboard away. Capped at the control cap, because the floors
+              add keyboardBarHeight() and a label that grew past it would
+              push the bar taller than the room they made. */}
+          <ThemedText
+            type={BAR_TEXT_ROLE}
+            themeColor="accent"
+            maxFontSizeMultiplier={FontCap.control}
+            style={styles.label}>
             Hide keyboard
           </ThemedText>
         </Pressable>
@@ -123,6 +165,9 @@ const styles = StyleSheet.create({
   bar: {
     alignItems: 'flex-end',
     paddingHorizontal: Space.lg,
-    paddingVertical: Space.sm,
+    paddingVertical: BAR_PADDING,
+  },
+  label: {
+    fontWeight: '600',
   },
 });

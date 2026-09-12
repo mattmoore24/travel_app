@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, useWindowDimensions } from 'react-native';
 import Animated, {
   type SharedValue,
   useAnimatedKeyboard,
   useAnimatedStyle,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { keyboardBarHeight } from '@/components/form/keyboard-done-bar';
 
 /**
  * A full-height container that grows a keyboard-sized floor.
@@ -45,6 +47,13 @@ export function KeyboardFloor({
 }) {
   const keyboard = useAnimatedKeyboard();
   const insets = useSafeAreaInsets();
+  // The bar's height at THIS text size, computed on the JS thread and
+  // captured by the worklet as a plain number: the bar grows with its label
+  // up to the control cap, and a floor that added the default-size constant
+  // left the bottom of that label under the keyboard at the accessibility
+  // sizes, by exactly the amount the label had grown.
+  const { fontScale } = useWindowDimensions();
+  const barHeight = keyboardBarHeight(fontScale);
   const floor = useAnimatedStyle(() => {
     // THE BAR IS NOT IN THE NUMBER. Reanimated reports the keyboard's own
     // frame, and on iOS the input accessory view rides above it outside that
@@ -52,7 +61,7 @@ export function KeyboardFloor({
     // bar lying across the bottom third of the Continue pill (run 109,
     // screen 60). Every field carries that bar now (KeyboardDone), so while
     // the keyboard is up the floor is taller by exactly its height.
-    const bar = Platform.OS === 'ios' && keyboard.height.value > 0 ? KEYBOARD_BAR_HEIGHT : 0;
+    const bar = Platform.OS === 'ios' && keyboard.height.value > 0 ? barHeight : 0;
     return {
       paddingBottom: Math.max(
         keyboard.height.value + bar - insets.bottom - (allowance?.value ?? 0),
@@ -65,12 +74,14 @@ export function KeyboardFloor({
 }
 
 /**
- * The Hide keyboard bar's height: a footnote line plus Space.sm above and
- * below it (keyboard-done-bar.tsx). Stated here rather than measured because
- * the bar lives inside the keyboard's window, where nothing of ours can lay
- * it out and read it back.
+ * The Hide keyboard bar's height AT THE DEFAULT TEXT SIZE. The floor above
+ * reads `keyboardBarHeight(fontScale)` instead, because the bar grows with
+ * its label; this constant stays for the sheet's keyboard lift
+ * (components/ui/sheet), which still adds the default-size number, and for
+ * anything else that needs the floor of the range rather than the live
+ * value. Prefer the function anywhere a fontScale is to hand.
  */
-export const KEYBOARD_BAR_HEIGHT = 36;
+export const KEYBOARD_BAR_HEIGHT = keyboardBarHeight(1);
 
 const styles = StyleSheet.create({
   flex: {

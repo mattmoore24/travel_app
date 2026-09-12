@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
 import { ThemedText, type ThemedTextProps } from '@/components/themed-text';
-import { Type } from '@/constants/theme';
+import { FontCap, Type } from '@/constants/theme';
 
 /**
  * Every role name the props union accepts resolves to exactly the size the
@@ -45,5 +45,42 @@ describe('ThemedText resolves every accepted type name to its documented size', 
     const flat = StyleSheet.flatten(screen.getByText('t').props.style);
     expect(flat.fontSize).toBe(24);
     expect(flat.fontSize).not.toBe(Type.display.fontSize);
+  });
+});
+
+/**
+ * Display and title stop at FontCap.heading on their own; nothing else is
+ * capped by default. Reading text scales without limit here, and a heading
+ * is the one role where the largest accessibility size turns a two-word
+ * title into the whole screen.
+ */
+describe('ThemedText caps the two heading roles and nothing else', () => {
+  it.each(['display', 'title'] as const)('%s takes FontCap.heading by default', (type) => {
+    render(<ThemedText type={type}>x</ThemedText>);
+    expect(screen.getByText('x').props.maxFontSizeMultiplier).toBe(FontCap.heading);
+  });
+
+  it.each(['headline', 'body', 'callout', 'footnote', 'caption', 'default', 'small'] as const)(
+    '%s scales without limit',
+    (type) => {
+      render(<ThemedText type={type}>x</ThemedText>);
+      expect(screen.getByText('x').props.maxFontSizeMultiplier).toBeUndefined();
+    }
+  );
+
+  it('lets a caller set its own cap, including none at all', () => {
+    render(
+      <ThemedText type="display" maxFontSizeMultiplier={1.2}>
+        a
+      </ThemedText>
+    );
+    expect(screen.getByText('a').props.maxFontSizeMultiplier).toBe(1.2);
+    // 0 is React Native's "no maximum"; `??` must leave it alone.
+    render(
+      <ThemedText type="title" maxFontSizeMultiplier={0}>
+        b
+      </ThemedText>
+    );
+    expect(screen.getByText('b').props.maxFontSizeMultiplier).toBe(0);
   });
 });

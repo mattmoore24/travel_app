@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-nativ
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
-import { HitTarget, Motion, Radius, Space } from '@/constants/theme';
+import { FontCap, HitTarget, Motion, Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 
@@ -107,6 +107,14 @@ export function Segmented<T extends string>({
             style={styles.segment}>
             <ThemedText
               type="footnote"
+              // A tab is a fixed share of the track's width, so its label
+              // has nowhere to go but down. One line, capped at the control
+              // cap, and shrunk to fit a fifth before it would clip: a tab
+              // that reads "Rough" for "Roughly when" is not a tab.
+              maxFontSizeMultiplier={FontCap.control}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.8}
               style={[styles.label, { color: selected ? theme.text : theme.textSecondary }]}>
               {option.label}
             </ThemedText>
@@ -115,7 +123,10 @@ export function Segmented<T extends string>({
                 tab's own label so VoiceOver says it once, not twice. */}
             {option.badge != null && option.badge > 0 ? (
               <View style={[styles.badge, { backgroundColor: theme.highlight }]}>
-                <ThemedText type="caption" style={[styles.badgeText, { color: theme.background }]}>
+                <ThemedText
+                  type="caption"
+                  maxFontSizeMultiplier={FontCap.control}
+                  style={[styles.badgeText, { color: theme.background }]}>
                   {option.badge > 99 ? '99+' : option.badge}
                 </ThemedText>
               </View>
@@ -161,9 +172,12 @@ const styles = StyleSheet.create({
   },
   badge: {
     minWidth: 18,
-    height: 18,
+    // minHeight, not height: the count scales with the label (to the same
+    // cap) and a fixed 18pt circle clipped the digits at the larger sizes.
+    minHeight: 18,
     borderRadius: 9,
     paddingHorizontal: 5,
+    paddingVertical: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Radius, Space } from '@/constants/theme';
+import { FontCap, Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ChipOption<T extends string> = {
@@ -109,11 +109,11 @@ export function ChipRail<T extends string>(props: ChipRailProps<T>) {
         haptic="selection"
         scaleTo={0.94}
         // 36pt of chip (18 of footnote, 8 of padding a side, 1 of border)
-        // plus 5 a side clears the 44 every control here buys, at the
+        // plus 6 a side clears the 44 every control here buys, at the
         // default text size and by more at every larger one. This rail had
         // no hitSlop at all before the merge; the guarantee came across from
         // ChipRow rather than the other way round.
-        hitSlop={{ top: 5, bottom: 5 }}
+        hitSlop={{ top: 6, bottom: 6 }}
         onPress={() => {
           if (props.multi) {
             props.onToggle(option.value);
@@ -143,6 +143,13 @@ export function ChipRail<T extends string>(props: ChipRailProps<T>) {
             weight is what reads as "this one is on". */}
         <ThemedText
           type="footnote"
+          // One line, capped at the control cap: a chip is a pill around a
+          // word, and a word that wraps inside a pill is two pills' worth
+          // of row for one choice. The rail still grows with its label up
+          // to the cap (no fixed box, see below); past it the pill would
+          // outgrow the sheet it sits in.
+          maxFontSizeMultiplier={FontCap.control}
+          numberOfLines={1}
           style={active ? { color: theme.onAccent, fontWeight: '700' } : undefined}>
           {option.label}
         </ThemedText>

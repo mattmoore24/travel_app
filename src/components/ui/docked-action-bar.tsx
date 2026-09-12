@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/form/primary-button';
-import { Radius, Space } from '@/constants/theme';
+import { FontCap, Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -33,9 +33,11 @@ export function DockedActionBar({
   primaryLabel,
   onPrimary,
   disabled = false,
+  loading = false,
   secondary,
   bottomInset,
   primaryAccessibilityLabel,
+  maxFontSizeMultiplier = FontCap.control,
   onBarHeight,
 }: {
   primaryLabel: string;
@@ -46,6 +48,15 @@ export function DockedActionBar({
    * while they say not-now.
    */
   disabled?: boolean;
+  /** The primary's spinner, while the thing it does is in flight. */
+  loading?: boolean;
+  /**
+   * Cap on the primary's label. The bar floats over the page on a plate
+   * sized from the button's minHeight, so the label is chrome and takes
+   * the control cap by default; pass a larger one only for a bar whose
+   * plate is measured rather than derived.
+   */
+  maxFontSizeMultiplier?: number;
   /** An optional circle or pill docked left of the primary (Travelers' Next). */
   secondary?: ReactNode;
   /** Space below the button row: the tab dock on a tab, the safe area on a stack. */
@@ -96,6 +107,8 @@ export function DockedActionBar({
             label={primaryLabel}
             accessibilityLabel={primaryAccessibilityLabel}
             disabled={disabled}
+            loading={loading}
+            maxFontSizeMultiplier={maxFontSizeMultiplier}
             onPress={onPrimary}
           />
         </View>

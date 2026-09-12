@@ -5,7 +5,7 @@
  * every assertion below passes just as happily on a version that keys on the
  * URL, right up until somebody reads which value came back.
  */
-import { photoSource } from '@/lib/photo-source';
+import { photoSource, photoSourceState } from '@/lib/photo-source';
 
 const SIGNED = 'https://x.supabase.co/storage/v1/object/sign/profile-photos/u1/abc.jpg?token=eyJ1';
 const RESIGNED =
@@ -46,5 +46,45 @@ describe('a photo carries both halves of its identity', () => {
     expect(photoSource('file:///tmp/pick.jpg', null)).not.toHaveProperty('cacheKey');
     expect(photoSource(SIGNED, undefined)).toEqual({ uri: SIGNED });
     expect(photoSource(SIGNED, '')).toEqual({ uri: SIGNED });
+  });
+});
+
+/**
+ * Null means two things and a frame has to know which. `pending` is the
+ * difference between "still signing" (draw the skeleton) and "no photo"
+ * (draw the fallback), and it is read off the query's own state rather than
+ * React Query's isLoading, because a query paused offline is not loading and
+ * is not done either.
+ */
+describe('a frame can tell "still signing" from "no photo"', () => {
+  it('is pending while there is a path and no answer', () => {
+    expect(photoSourceState({ data: undefined, isError: false }, PATH)).toEqual({
+      source: null,
+      pending: true,
+    });
+  });
+
+  it('is settled once the URL is here, and carries the cache key', () => {
+    expect(photoSourceState({ data: SIGNED, isError: false }, PATH)).toEqual({
+      source: { uri: SIGNED, cacheKey: PATH },
+      pending: false,
+    });
+  });
+
+  it('is never pending with no path: that is the no-photo case', () => {
+    expect(photoSourceState({ data: undefined, isError: false }, null)).toEqual({
+      source: null,
+      pending: false,
+    });
+  });
+
+  it('stops pending when the signing fails, so the fallback can show', () => {
+    // A frame given pending=true forever would pulse forever over a photo
+    // that is not coming; the failure ends the wait and the frame draws
+    // its fallback rather than a skeleton with no end.
+    expect(photoSourceState({ data: undefined, isError: true }, PATH)).toEqual({
+      source: null,
+      pending: false,
+    });
   });
 });

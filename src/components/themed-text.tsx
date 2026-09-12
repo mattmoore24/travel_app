@@ -1,6 +1,6 @@
 import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
 
-import { Fonts, ThemeColor, Type, type TypeRole } from '@/constants/theme';
+import { FontCap, Fonts, ThemeColor, Type, type TypeRole } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -30,9 +30,24 @@ export type ThemedTextProps = TextProps & {
   themeColor?: ThemeColor;
 };
 
-export function ThemedText({ style, type = 'body', themeColor, ...rest }: ThemedTextProps) {
+export function ThemedText({
+  style,
+  type = 'body',
+  themeColor,
+  maxFontSizeMultiplier,
+  ...rest
+}: ThemedTextProps) {
   const theme = useTheme();
   const role: TypeRole = (LEGACY[type] ?? type) as TypeRole;
+
+  // The two heading roles stop at FontCap.heading unless the caller says
+  // otherwise; every other role scales without limit (see FontCap for the
+  // rule). A 32pt display at the largest accessibility size is 100pt, which
+  // is a screen title that IS the screen, and a name in the profile hero
+  // that pushes the trips under the fold. Pass 0 to lift the cap on one
+  // heading; `??` leaves an explicit 0 alone.
+  const cap =
+    maxFontSizeMultiplier ?? (role === 'display' || role === 'title' ? FontCap.heading : undefined);
 
   return (
     <Text
@@ -45,6 +60,7 @@ export function ThemedText({ style, type = 'body', themeColor, ...rest }: Themed
         type === 'code' && styles.code,
         style,
       ]}
+      maxFontSizeMultiplier={cap}
       {...rest}
     />
   );

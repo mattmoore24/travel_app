@@ -28,12 +28,12 @@ const DAYS: ChipOption<'today' | 'tomorrow' | 'friday'>[] = [
 
 describe('the 44pt guarantee', () => {
   it('carries ChipRow hitSlop, which this rail never had', () => {
-    // A 34pt pill plus 5 a side is the 44 every control in this app buys.
-    // ChipRail had NO hitSlop before the merge, so the guarantee had to come
-    // across from ChipRow rather than the other way round.
+    // A 36pt pill plus 6 a side clears the 44 every control in this app
+    // buys. ChipRail had NO hitSlop before the merge, so the guarantee had
+    // to come across from ChipRow rather than the other way round.
     render(<ChipRail options={DAYS} selected="today" onSelect={jest.fn()} />);
     for (const option of DAYS) {
-      expect(screen.getByLabelText(option.label).props.hitSlop).toEqual({ top: 5, bottom: 5 });
+      expect(screen.getByLabelText(option.label).props.hitSlop).toEqual({ top: 6, bottom: 6 });
     }
   });
 

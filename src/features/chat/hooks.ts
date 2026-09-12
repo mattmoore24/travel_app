@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ImageSource } from 'expo-image';
 import { useEffect } from 'react';
 
 import {
@@ -40,6 +41,7 @@ import { useOwnUserId } from '@/features/profile/hooks';
 import { analytics } from '@/lib/analytics';
 import type { MessageRow, ReportReason } from '@/lib/database.types';
 import { haptics } from '@/lib/haptics';
+import { photoSource, photoSourceState, type PhotoSourceState } from '@/lib/photo-source';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 /**
@@ -440,4 +442,23 @@ export function useChatPhotoUrl(storagePath: string | null) {
     staleTime: 50 * 60 * 1000,
     gcTime: 55 * 60 * 1000,
   });
+}
+
+/**
+ * The same URL carrying the storage path as expo-image's cache key: the
+ * chat twin of `usePhotoSource` (features/profile/hooks), for the same
+ * reason. A signed URL changes on every cold launch, and a bubble given a
+ * bare URL re-downloads a photo the phone already holds, on the one screen
+ * people scroll back through on bad wifi. Null while signing and null when
+ * there is no photo; `useChatPhotoSourceState` tells those two apart.
+ */
+export function useChatPhotoSource(storagePath: string | null): ImageSource | null {
+  const { data } = useChatPhotoUrl(storagePath);
+  return photoSource(data, storagePath);
+}
+
+/** The chat photo with its `pending` flag, for a frame that draws its own skeleton. */
+export function useChatPhotoSourceState(storagePath: string | null): PhotoSourceState {
+  const query = useChatPhotoUrl(storagePath);
+  return photoSourceState(query, storagePath);
 }

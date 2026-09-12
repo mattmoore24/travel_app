@@ -161,6 +161,34 @@ export const Type = {
 
 export type TypeRole = keyof typeof Type;
 
+/**
+ * Where Dynamic Type stops, and the one rule for using it.
+ *
+ * NEVER on body, callout, footnote or caption in a surface that scrolls. A
+ * person who set the largest size did it to read, and reading text scales
+ * without limit here (nothing disables `allowFontScaling`). A cap belongs
+ * only where the words are not the point and the frame cannot give way:
+ *
+ * - `heading`: display and title, which ThemedText caps by default. The
+ *   HIG's own large title runs from 34pt at the default size to 60 at the
+ *   largest accessibility size; 1.9 takes this app's 32pt display to the
+ *   same 60pt ceiling, past which a two-word screen title is the screen.
+ * - `chrome`: things that float over the map hero or sit inside a
+ *   fixed-height row (a count strip, a timestamp, an unread pill). Twice
+ *   the default is the most a row built around one line can hold.
+ * - `control`: labels on tappable chrome (segmented tabs, chips, pills,
+ *   docked buttons, the keyboard bar, swipe actions, calendar digits). The
+ *   target has a shape, and 1.5x is the most that shape holds before the
+ *   pill outgrows the row it sits in. Pair it with `useCappedFontScale`
+ *   for any layout number that has to agree with the capped label.
+ *
+ * Three caps lived in the app before this table and stay where they are:
+ * the intro tour's 1.2 (a fixed full-screen composition), the map marker's
+ * 1.3 and the message-action row's 1.4. Each is the exception its own file
+ * explains, not a role, which is why none of them is named here.
+ */
+export const FontCap = { heading: 1.9, chrome: 2.0, control: 1.5 } as const;
+
 /** 4pt grid. */
 export const Space = {
   xs: 4,
