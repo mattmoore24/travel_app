@@ -3,6 +3,91 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **Loading, offline, and text size** (2026-09-12)
+
+Founder: "there should be loading graphics for anything as it's loading
+(particularly for photos, skeleton screens that show the photos are loading
+is probably best)", "if I try to open the app without internet there should
+be a little pop up just showing that the device isn't connected to the
+internet with a button to retry (rather than now where it's just a blank
+screen)", and "make sure that nothing will break if the users phone text
+size is not default". Judgement deferred on all three, plus "any other
+ideas that make sense alongside". Five readers inventoried the app first
+(every remote photo, every screen that loads, the offline boot path, every
+fixed height and cap); the foundations went in as one commit and four
+agents built on them in worktrees, each owning a disjoint set of files.
+
+**Photos.** Every remote photo in the app is drawn through one component,
+`components/ui/remote-image`: a pulse in the photo's own frame until it
+lands, expo-image's memory-disk cache under it, a fade in, and on failure a
+glyph with its own Try again (spoken "Sam's photo could not load"). The
+profile hero, the Travelers card, chat rows, the thread header, photos in a
+thread and the viewer, the photo grid, your own avatar, the pin card's
+hero, the pinner's face, the marker face, a business's cover and its
+photos, posts and storefront all go through it. The hero's placeholder is a
+ratio of the width, never a fixed height, so the photo landing no longer
+kicks everything below it down. The marker face re-arms its tracking when
+its photo lands, so a marker drawn before the face arrived redraws with it.
+
+**Skeletons.** Every screen that loads draws its shape before its words,
+from `components/ui/skeleton`: chat rows, a thread's four bubbles (drawn
+upright inside the inverted list, which mirrors even the empty component),
+settings and people rows, a form's fields, the profile hero. The rule is
+"skeleton before words, empty state only after success": no screen says
+"No trips yet" or "Nothing here" while it is still asking, a disabled
+query counts as settled, and a failed load is a LoadError with Try again.
+The plan list stands at its peek with a pulse while the pins load (the
+`plan-list-peek` the flows wait on only exists once the list is real).
+Pull to refresh on Travelers through one hook. Not the map: a shimmer over
+a basemap reads as a broken tile.
+
+**Offline.** An app opened with no internet was the splash colour and
+nothing else for about 24 seconds (three retry layers stacked: postgrest-js
+1/2/4 s per GET, React Query twice more, auth-js backing off a stale token),
+then either a bare pre-cities map for a guest or "Can't load your profile"
+with a Sign out for a member whose token needed a refresh, who had been
+quietly demoted to a visitor. Now: a card with a Try again, over the boot
+hold, a sibling of the navigator (never a Modal, which iOS drops when it is
+presented on a data event, and never in the navigator's place). "No
+connection. Samewhere needs the internet to open. Check wifi or mobile
+data, then try again." It shows while nothing has reached the server since
+launch and the status is offline, or eight seconds have passed with no
+answer (a hotel wifi with no upstream); a HEAD boot probe from the first
+frame gives it something to observe during the stretch when every boot
+query is disabled. The moment anything gets through it unmounts for good
+and the amber pill under the notch is the voice from then on. No NetInfo
+(native, an EAS build): the app observes its own requests. postgrest
+retries are off and every request has a 20-second budget; React Query
+skips a retry on a failure that never left the phone. A retryable session
+lookup is "unknown", held behind the card, and asked again on its own once
+the server is reached; a guest is never shown the account error, since its
+Sign out would have destroyed their guest identity. **Verified by jest
+only**: Maestro cannot toggle airplane mode, so this needs a hand check on
+a phone, twice: with a fresh token (the card within about a second), and
+after the app has been closed for more than an hour (the card, then the
+app coming up signed in on its own once the wifi is back, which can take up
+to a minute because auth-js caches a failed refresh for 60 s).
+
+**Text size.** Reading text is never capped. `FontCap` (heading 1.9,
+chrome 2.0, control 1.5) caps only headings, chrome floating over the hero
+and control labels: chips, segments, the map dock, the Hide keyboard bar,
+the notices on the map, the plan list's summary line. Every fixed height
+around an input, in the calendar grid, on the TBD pill and the two time
+boxes, in the chat row's swipe actions and unread pill, and under the
+keyboard bar became a minimum that follows the text; the keyboard bar's
+height is a function of the font scale that the floor and the sheet both
+read, so a sheet lifted by the keyboard no longer stops 36 pt short at
+AX5. Travelers keeps its viewport at 2x and up by moving the count line
+into the page's scroller. The Accept bar on a profile spins while it
+accepts. The large-text tour grew from five frames to nine (the pin
+calendar, a stranger's profile, a thread with the keyboard up, the
+languages picker with the keyboard up) and runs twice, at AX5 and at
+xSmall, so the gallery shows both ends side by side.
+
+**Review.** An adversarial pass over the merged diff (ten lenses, three
+refuters per finding) ran before the push; what it upheld is in the
+commits after the merges.
+
 ## **The time on a pin is typed** (2026-09-12)
 
 Founder, round 4, ask 5, the one item of that round still open: "the day

@@ -47,6 +47,40 @@ objections were found to the proposed stack; per-phase flags are recorded below 
   so a fresh clone runs before any backend exists.
 - **Theming**: template-derived themed primitives (`themed-text`, `themed-view`, theme tokens
   in `src/constants/theme.ts`), automatic light/dark.
+- **Waiting** (2026-09-12): every remote photo is drawn through `components/ui/remote-image`
+  (a pulse in the photo's own frame until it lands, a retry glyph if it fails, expo-image's
+  memory-disk cache under it), and every screen that loads draws its shape
+  (`components/ui/skeleton`: `Skeleton`, `ChatRowSkeleton`, `ThreadSkeleton`, `RowSkeleton`,
+  `FormSkeleton`, `ProfileHeroSkeleton`) before its words. The rule is "skeleton before
+  words, empty state only after success": an empty state is drawn on `isSuccess` (or a
+  disabled query's `fetchStatus === 'idle'`), never on pending, and a failed load is a
+  `LoadError` with a Try again, never a blank. A hero photo's placeholder is a ratio of the
+  width, never a fixed height. Not the map: a shimmering rectangle over a basemap reads as
+  a broken tile, and the map already has something true to show while it loads.
+- **Offline** (2026-09-12): the app never reads NetInfo (native; an EAS build). It observes.
+  `lib/query-client` classifies every request outcome into a connection status (`offline`
+  when a request never left the phone, `isOffline` in `lib/failure-message`) and a sticky
+  `everReached` flag, set the first time anything reaches the server since launch.
+  `components/ui/connection-banner` is the warm voice (an amber "No connection" pill, a
+  green "Back online" after); `components/ui/offline-notice` is the cold one: a card with a
+  Try again, a sibling of the navigator (never a Modal, never in the navigator's place),
+  shown while nothing has reached the server and the status is offline or eight seconds have
+  passed with no answer, fed by a HEAD boot probe to `/rest/v1/` from the first frame. The
+  supabase client runs with postgrest retries off and a 20 s timeout so the three retry
+  layers that used to stack (postgrest-js 1/2/4 s, React Query, auth-js's refresh backoff)
+  no longer add up to a 24-second blank screen. A retryable `getSession()` failure is
+  `sessionUnknown`, not signed out: the root holds behind the card rather than demoting a
+  signed-in traveler to the guest map, and the listener asks again on its own once the
+  server is reached.
+- **Text size** (2026-09-12): Dynamic Type is live everywhere and reading text is never
+  capped. `FontCap` in `constants/theme` (`heading` 1.9, `chrome` 2.0, `control` 1.5) caps
+  only headings, chrome floating over the hero, and control labels (chips, segments, the
+  Hide keyboard bar, the map dock); `useCappedFontScale` and `themed-text`'s default cap on
+  `display`/`title` apply it. Rows around inputs, the calendar grid, the pill and the two
+  time boxes use `minHeight` or a scaled basis, never a fixed height, and the keyboard bar's
+  height is a function of the font scale (`keyboardBarHeight`) that the floor and the sheet
+  both read. The E2E suite photographs nine frames at AX5 and again at xSmall
+  (`e2e/large-text-tour.yml`, `SHOT_PREFIX`).
 
 ## Backend — implemented (Phase 1) and planned
 
@@ -2003,6 +2037,18 @@ the map. Curated seed pins take their plan's day as their take-down day.
   city has already passed) is kept as a footnote that holds the button, beside a window cap
   of twelve hours. Minutes reach `pins.intent_time` for the first time, with no
   migration: the column is a Postgres `time`.
+- **2026-09-12** — Loading, offline and text size (founder: "loading graphics for anything
+  as it's loading, particularly for photos", "a little pop up just showing that the device
+  isn't connected to the internet with a button to retry", "make sure that nothing will
+  break if the users phone text size is not default"). Photos pulse in their own frame
+  through `RemoteImage`; screens draw their shape before their words and an empty state
+  only after success; an app opened with no internet shows a card with Try again over the
+  boot hold instead of a blank screen, observed from request outcomes and a HEAD probe
+  rather than NetInfo (no native change, ships over the air); a retryable session lookup
+  holds rather than demotes; `FontCap` caps headings, chrome and controls and never reading
+  text; fixed heights around inputs, in the calendar and under the keyboard bar became
+  minimums that follow the text. The offline path is verified by jest only: Maestro cannot
+  toggle airplane mode, so it needs a hand check on a phone.
 - **2026-09-11** — The map follows the pan (founder: "find any city without directly
   searching it, similar to Zillow"). Implemented as a city switch, not a viewport query:
   every feed stays city-scoped and k-anonymous exactly as before; what changes is which city

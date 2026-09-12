@@ -285,6 +285,11 @@ sheet that has grown past three or four children usually wants it.
 - **An inverted `FlatList` flips the order of a cell's children.** A day
   separator emitted as a fragment sibling lands on the wrong side of the
   message. Wrap the pair in one `<View>` and order it there.
+- **And it mirrors `ListEmptyComponent` too, and the counter-flip it offers
+  is a `style` prop your component drops.** VirtualizedList clones the empty
+  element with an inverting `style`; a component that takes no `style` throws
+  it away and renders upside down. `ThreadSkeleton({ inverted })` and the
+  room's empty state apply `transform: [{ scaleY: -1 }]` themselves.
 - Synthetic rows (a first-message preview, a placeholder) must be excluded
   from anything that writes their `id` to the database.
 - **An inverted list standing on a keyboard-sized floor moves its rows by the
@@ -866,3 +871,10 @@ would have read it too. All four now exclude `.claude/` (tsconfig `exclude`,
 jest `testPathIgnorePatterns` + `modulePathIgnorePatterns`, eslint `ignores`,
 `.prettierignore`). Keep those lines when touching the configs, and remove
 the worktree (`git worktree remove`) once its diff has been applied.
+
+The flip side of that ignore: **`npm test` run INSIDE a worktree finds zero
+tests and exits 1**, because the worktree's own path contains `/.claude/`.
+Four agents hit it on the same day. An agent gating in its worktree runs
+`npx jest --testPathIgnorePatterns='/node_modules/'` (a flag override; the
+config is not touched), and the merger runs plain `npm test` in the main
+checkout before pushing, which is the run that counts.

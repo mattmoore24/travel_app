@@ -106,6 +106,22 @@ a **4pt** space grid, radii `sm 8 / md 12 / lg 16 / xl 20`, `bubble 18`
   composition must be checked at large sizes. The intro tour caps at 1.2×
   because it is a fixed composition; that cap is the exception, not licence
   to add more.
+- **Caps are for chrome, never for reading.** `FontCap` in `theme.ts`
+  (`heading` 1.9, `chrome` 2.0, `control` 1.5) may cap a heading, a label
+  floating over the hero, or a control's label (a chip, a segment, the map
+  dock, the Hide keyboard bar). A message, a bio, a plan's text, a business
+  description, an error or a notice body is read, and is never capped and
+  never `numberOfLines` without a way to expand. A box around text is a
+  `minHeight`, never a `height`. The E2E suite photographs the app at AX5
+  and at xSmall (`zz-ax5-*`, `zz-xs-*`); a layout that changes shape at a
+  threshold is a founder call, made from those pictures.
+- **Skeleton before words, empty state only after success.** Every remote
+  photo goes through `RemoteImage` (a pulse in its own frame, a retry glyph
+  on failure); every screen that loads draws its shape from
+  `components/ui/skeleton` before its words; an empty state ("No trips yet")
+  is drawn on `isSuccess`, never while pending, and a failed load is a
+  `LoadError` with Try again. Never on the map: a shimmer over a basemap
+  reads as a broken tile.
 - **44pt hit targets**, and remember a view at `opacity: 0` is skipped by
   UIKit hit-testing entirely — a staggered entrance makes a button untappable
   until it lands.
