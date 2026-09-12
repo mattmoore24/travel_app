@@ -19,9 +19,10 @@ describe('a profile with their hello waiting on you', () => {
 
   it('says Accept on the docked bar, ahead of every other state', () => {
     expect(source).toContain("waiting != null\n              ? 'Accept'");
-    expect(source).toContain(
-      'disabled={waiting != null ? accepting : alreadySaidHi || helloCapped}'
-    );
+    // Accepting SPINS rather than greying: `disabled` draws the not-now
+    // colours, which is the wrong picture for a tap that is being honoured.
+    expect(source).toContain('disabled={waiting == null && (alreadySaidHi || helloCapped)}');
+    expect(source).toContain('loading={accepting}');
   });
 
   it('accepts the way the Chat tab does and lands in the chat', () => {

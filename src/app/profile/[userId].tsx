@@ -402,7 +402,11 @@ export default function PublicProfileScreen() {
                   ? 'No first messages left today'
                   : `Say hi to ${name}`
           }
-          disabled={waiting != null ? accepting : alreadySaidHi || helloCapped}
+          // Accepting is work in flight, not a not-now: the bar spins for it
+          // (PrimaryButton's loading state) and stays disabled only where
+          // there is nothing to do, which reads as the not-now colours.
+          disabled={waiting == null && (alreadySaidHi || helloCapped)}
+          loading={accepting}
           onPrimary={() =>
             waiting != null
               ? void acceptHello()
