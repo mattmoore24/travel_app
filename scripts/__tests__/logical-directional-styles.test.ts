@@ -74,8 +74,8 @@ const PAIRS: [string, string][] = [
 const RTL_DEBT: Record<string, { physical: number; where: string }> = {
   'src/app/(tabs)/chat.tsx': { physical: 2, where: 'notice.paddingLeft, faceOverlap.marginLeft' },
   'src/app/(tabs)/travelers.tsx': {
-    physical: 3,
-    where: 'profileCorner.right, queueHeader.paddingRight, undoCard.paddingLeft/paddingRight',
+    physical: 2,
+    where: 'profileCorner.right, undoCard.paddingLeft/paddingRight',
   },
   'src/app/business-post.tsx': { physical: 1, where: 'shapeExtra.paddingLeft' },
   'src/app/chat/[id].tsx': { physical: 1, where: 'attachmentRemove.right' },

@@ -45,7 +45,7 @@ describe('keyboardBarHeight', () => {
     }
   });
 
-  it('is 36 at the default size, which is the constant the sheet still adds', () => {
+  it('is 36 at the default size, which is the floor of the range', () => {
     expect(keyboardBarHeight(1)).toBe(36);
     expect(KEYBOARD_BAR_HEIGHT).toBe(keyboardBarHeight(1));
   });

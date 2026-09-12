@@ -3271,7 +3271,6 @@ export default function MapScreen() {
           // and the peek is not yet a count. Placeholder data is a previous
           // city's answer standing in during a chip tap, which is content,
           // not a wait.
-          // @ts-expect-error pending lands with plan-list in the sibling branch
           pending={pinsQuery.isPending && !pinsQuery.isPlaceholderData}
           onSelectPin={(pin) => selectPin(pin, 'list')}
           onSelectVenue={(key) => {

@@ -75,11 +75,11 @@ export function KeyboardFloor({
 
 /**
  * The Hide keyboard bar's height AT THE DEFAULT TEXT SIZE. The floor above
- * reads `keyboardBarHeight(fontScale)` instead, because the bar grows with
- * its label; this constant stays for the sheet's keyboard lift
- * (components/ui/sheet), which still adds the default-size number, and for
- * anything else that needs the floor of the range rather than the live
- * value. Prefer the function anywhere a fontScale is to hand.
+ * and the sheet's keyboard lift (components/ui/sheet) both read
+ * `keyboardBarHeight(fontScale)` instead, because the bar grows with its
+ * label; this constant stays for anything that needs the floor of the range
+ * rather than the live value. Prefer the function anywhere a fontScale is
+ * to hand.
  */
 export const KEYBOARD_BAR_HEIGHT = keyboardBarHeight(1);
 
