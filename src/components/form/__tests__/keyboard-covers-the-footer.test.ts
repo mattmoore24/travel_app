@@ -118,8 +118,13 @@ describe('the keyboard covers the footer rather than lifting it', () => {
     // ...and the bar is added, because the keyboard's reported frame does not
     // include the input accessory view riding above it. Every sheet with an
     // input has been wearing that 36pt overlap; KeyboardFloor has accounted
-    // for it since run 109 and this had not.
-    expect(lift).toContain('KEYBOARD_BAR_HEIGHT');
+    // for it since run 109 and this had not. The LIVE height, not the
+    // default-size constant: the bar grows with its label up to the control
+    // cap, so the sheet reads keyboardBarHeight(fontScale) on the JS side
+    // and the worklet captures the number, exactly as KeyboardFloor does.
+    expect(code).toContain('const barHeight = keyboardBarHeight(fontScale);');
+    expect(lift).toContain('? barHeight : 0');
+    expect(lift).not.toContain('KEYBOARD_BAR_HEIGHT');
     // Math.max at zero, or a pinned zone taller than the keyboard would push
     // the sheet DOWN off the bottom of the screen. Whitespace-insensitive:
     // prettier wraps this expression once it grows, and a literal

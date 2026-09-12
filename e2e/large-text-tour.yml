@@ -1,21 +1,42 @@
-# The app at AX5 (accessibility-extra-extra-extra-large), the largest
-# Dynamic Type size. The whole bottom edge of the app used to be built on a
+# The app at a non-default text size: AX5 (accessibility-extra-extra-extra-
+# large, the biggest Dynamic Type size) and, on a second pass, xSmall (the
+# smallest). The whole bottom edge of the app used to be built on a
 # hardcoded 50pt guess at the tab bar; the real bar grows with the text, so
 # "Drop a pin" and "Say hi" — the two primary actions, on the two screens
 # the product is for — slid underneath it for exactly the users most likely
 # to have raised their text size. useTabBarInset scales the clearance now,
 # and this tour TAPS both actions to prove they are still reachable, then
-# photographs Map, Travelers and Chat as the evidence.
+# photographs the screens as the evidence.
+#
+# NINE FRAMES, in the order they are taken: the map, place mode, the pin
+# form's calendar, Travelers, a stranger's profile, Chat, a thread with the
+# keyboard up, the languages picker with the keyboard up, and the beat after
+# Say hi. The last four are the fixed-height boxes the Dynamic Type round
+# found off-camera: the calendar's day cells, the profile hero under its
+# docked bar, the Hide keyboard bar the floors make room for, and a sheet's
+# search row with a keyboard lifting it.
+#
+# SHOT_PREFIX names the pass. The workflow runs this file twice, once at AX5
+# with zz-ax5 and once at xSmall with zz-xs, so the same nine frames exist
+# at both ends and the gallery reads them side by side. The default here is
+# for a run by hand.
 #
 # This file lives OUTSIDE e2e/flows/ on purpose: the workflow's flow loop
-# globs that directory, and the ordinary passes must not inherit the AX5
-# content size. The workflow sets the size, runs this once after the signed
-# in tour (whose account and session this reuses — no state reset), and puts
+# globs that directory, and the ordinary passes must not inherit either
+# content size. The workflow sets the size, runs this after the signed in
+# tour (whose account and session this reuses — no state reset), and puts
 # the size back. Output is pictures more than an exit code: the run block
 # treats a failure here as evidence to look at, not a red build, because a
 # warm relaunch's map tree is not reliably addressable (see the traps skill)
 # and the screenshots are what answer "does the button still exist".
+#
+# Relaunches between screens rather than `back`: Maestro's back does not
+# reliably pop an iOS push, the session lives in the keychain, and a launch
+# with no clearState lands on the Map tab with everything kept (the signed
+# in tour relies on the same). Do NOT add clearState.
 appId: com.mattmoore.samewhere
+env:
+  SHOT_PREFIX: zz-ax5
 ---
 - launchApp
 # The tab labels are native tab-bar items, addressable even when MapKit's
@@ -32,7 +53,7 @@ appId: com.mattmoore.samewhere
 - assertVisible:
     text: 'Map key\..*'
     optional: true
-- takeScreenshot: zz-ax5-01-map
+- takeScreenshot: ${SHOT_PREFIX}-01-map
 # The Map's primary action, by its spoken label (a Pressable carrying its
 # own accessibilityLabel hides its printed text from Maestro on iOS).
 # Reaching place mode proves the dock sits above the grown tab bar.
@@ -40,14 +61,58 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Pin here'
     timeout: 10000
-- takeScreenshot: zz-ax5-02-place-mode
+- takeScreenshot: ${SHOT_PREFIX}-02-place-mode
+# THE CALENDAR. The pin form opens on Pin here, and its When row opens the
+# shared calendar in a sheet of its own: forty-two cells whose digits and
+# discs follow the text size up to the control cap (trip-calendar). Nothing
+# is typed and nothing is picked, so the form is empty and a relaunch
+# throws nothing away. Optional throughout: the form is reached through
+# MapKit's own tree after a relaunch, which is the part the traps skill
+# says is not reliably addressable.
+- tapOn:
+    text: 'Pin here'
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: 'pin-when'
+    timeout: 10000
+    optional: true
+- tapOn:
+    id: 'pin-when'
+    optional: true
+- extendedWaitUntil:
+    visible: 'When is the plan?'
+    timeout: 10000
+    optional: true
+- takeScreenshot: ${SHOT_PREFIX}-03-pin-calendar
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
 - tapOn: 'Travelers'
 # The Travelers primary action. Supply is live, but the signed-in tour just
 # asserted this same label with the same demo roster.
 - extendedWaitUntil:
     visible: 'Say hi'
     timeout: 30000
-- takeScreenshot: zz-ax5-03-travelers
+- takeScreenshot: ${SHOT_PREFIX}-04-travelers
+# A STRANGER'S PROFILE: the same hero the Travelers card draws, under the
+# docked bar a stacked screen gets. Through the card's overflow, which is
+# the one door to /profile/[userId] this screen has.
+- tapOn: 'More about .*'
+- extendedWaitUntil:
+    visible: 'View profile'
+    timeout: 10000
+- tapOn: 'View profile'
+- extendedWaitUntil:
+    visible: 'Say hi to .*'
+    timeout: 15000
+    optional: true
+- takeScreenshot: ${SHOT_PREFIX}-05-stranger-profile
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
 # The tab's spoken label carries the unread count when hellos are waiting
 # ("Chat, 2 waiting"), and the segmented control's "Chats" tab does the same
 # with "unread" — so both patterns close over the optional suffix.
@@ -55,7 +120,72 @@ appId: com.mattmoore.samewhere
 - extendedWaitUntil:
     visible: 'Chats(, .*)?'
     timeout: 15000
-- takeScreenshot: zz-ax5-04-chat
+- takeScreenshot: ${SHOT_PREFIX}-06-chat
+# A THREAD WITH THE KEYBOARD UP: the composer rides the floor, and the Hide
+# keyboard bar above the keyboard is the thing every floor makes room for
+# (keyboardBarHeight). The group is the signed-in tour's own "Maestro crew";
+# conditional, because a tour that stopped short leaves no group, and a
+# frame of the empty Groups tab would be a lie about the keyboard. Nothing
+# is typed: focus alone raises the keyboard and the bar.
+- tapOn: 'Groups'
+- runFlow:
+    when:
+      visible: 'Maestro crew'
+    commands:
+      - tapOn: 'Maestro crew'
+      - extendedWaitUntil:
+          visible:
+            id: 'room-composer'
+          timeout: 15000
+      - tapOn:
+          id: 'room-composer'
+      - extendedWaitUntil:
+          visible: 'Hide keyboard'
+          timeout: 10000
+      - takeScreenshot: ${SHOT_PREFIX}-07-thread-keyboard
+      - tapOn: 'Hide keyboard'
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
+# THE LANGUAGES PICKER, with its search focused: a sheet with an input,
+# lifted by the keyboard AND the bar (components/ui/sheet), around a search
+# row that is a floor rather than a fixed height. Reached through the
+# reader's own profile, where Edit profile is an ordinary labelled button.
+- tapOn: 'Travelers'
+- extendedWaitUntil:
+    visible: 'Say hi'
+    timeout: 30000
+- tapOn: 'Your profile'
+- extendedWaitUntil:
+    visible: 'Edit profile'
+    timeout: 15000
+- tapOn: 'Edit profile'
+- scrollUntilVisible:
+    element:
+      text: 'Languages you speak'
+    direction: DOWN
+    timeout: 10000
+- tapOn: 'Languages you speak'
+- extendedWaitUntil:
+    visible:
+      id: 'language-search'
+    timeout: 10000
+- tapOn:
+    id: 'language-search'
+- extendedWaitUntil:
+    visible: 'Hide keyboard'
+    timeout: 10000
+    optional: true
+- takeScreenshot: ${SHOT_PREFIX}-08-languages-keyboard
+- tapOn:
+    text: 'Hide keyboard'
+    optional: true
+- tapOn: 'Done'
+- launchApp
+- extendedWaitUntil:
+    visible: 'Travelers'
+    timeout: 30000
 # Last, because it pushes the composer over the tabs: prove Say hi actually
 # takes the tap at this size.
 - tapOn: 'Travelers'
@@ -63,4 +193,4 @@ appId: com.mattmoore.samewhere
     visible: 'Say hi'
     timeout: 15000
 - tapOn: 'Say hi'
-- takeScreenshot: zz-ax5-05-after-say-hi
+- takeScreenshot: ${SHOT_PREFIX}-09-after-say-hi

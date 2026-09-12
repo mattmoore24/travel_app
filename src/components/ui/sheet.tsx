@@ -22,7 +22,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { KEYBOARD_BAR_HEIGHT } from '@/components/ui/keyboard-floor';
+import { keyboardBarHeight } from '@/components/form/keyboard-done-bar';
 import { Elevation, MaxContentWidth, Motion, Radius, Space, Springs } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -276,9 +276,16 @@ export function Sheet({
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
   const sheetWidth = Math.min(width, MaxContentWidth);
   const keyboard = useAnimatedKeyboard();
+  // The Hide keyboard bar's height at THIS text size, computed on the JS
+  // thread and captured by the worklet below as a plain number. The bar
+  // grows with its label up to the control cap (keyboard-done-bar), and a
+  // lift that added the default-size constant left the bottom of that label
+  // under the keyboard at the accessibility sizes by exactly the amount it
+  // had grown. KeyboardFloor reads the same function for the same reason.
+  const barHeight = keyboardBarHeight(fontScale);
   const drag = useSharedValue(0);
   // The pinned footer's measured height, so the keyboard covers it instead of
   // pushing it up. Stays 0 when there is no footer, which makes every
@@ -384,7 +391,7 @@ export function Sheet({
     // on the signup footer, where it lay across the bottom third of the
     // Continue pill; KeyboardFloor has accounted for it since and this had
     // not, so every sheet with an input in it has been wearing that overlap.
-    const bar = Platform.OS === 'ios' && keyboard.height.value > 0 ? KEYBOARD_BAR_HEIGHT : 0;
+    const bar = Platform.OS === 'ios' && keyboard.height.value > 0 ? barHeight : 0;
     // A PINNED FOOTER IS CHROME AND THE KEYBOARD MAY COVER IT. Founder rule:
     // nothing above the keyboard except Hide keyboard. `scrolls` sheets pin
     // their footer BELOW the scroller, so the allowance is that footer's own

@@ -266,7 +266,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.sm,
-    height: HitTarget,
+    // A floor, never a height, for the same reason the list below is a
+    // ceiling: the input scales with Dynamic Type and a 44pt box clipped
+    // it from AX2 up.
+    minHeight: HitTarget,
+    paddingVertical: Space.xs,
     paddingHorizontal: Space.md,
     borderRadius: Radius.sm,
     borderCurve: 'continuous',

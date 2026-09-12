@@ -413,7 +413,15 @@ jobs:
           # both), and a warm relaunch's map tree is not reliably addressable
           # (traps), so a tap miss here is evidence to look at, not a gate.
           xcrun simctl ui "$UDID" content_size accessibility-extra-extra-extra-large || true
-          maestro --udid "$UDID" test ../e2e/large-text-tour.yml || true
+          maestro --udid "$UDID" test -e SHOT_PREFIX=zz-ax5 ../e2e/large-text-tour.yml || true
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
+          # The same tour at the SMALL end (xSmall, 0.82x), under a zz-xs
+          # prefix so the nine frames exist at both ends of Dynamic Type and
+          # the gallery reads them side by side. Every scaled constant in
+          # the app floors at 1, so this end mostly proves that nothing
+          # shrank below its 44pt target; nothing photographed it before.
+          xcrun simctl ui "$UDID" content_size extra-small || true
+          maestro --udid "$UDID" test -e SHOT_PREFIX=zz-xs ../e2e/large-text-tour.yml || true
           xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
           xcrun simctl ui "$UDID" content_size medium || true
           ls -la

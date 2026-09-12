@@ -12,6 +12,7 @@ import Animated, {
 import { Radius, Springs } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { PinCategory } from '@/lib/database.types';
+import { photoSource } from '@/lib/photo-source';
 
 import { MARK_AMBER, MARK_AMBER_LATER, MARK_INK, MARK_RING } from './marker-colors';
 
@@ -139,6 +140,17 @@ type PinMarkProps = {
    * count pin, where one face for three people would be a lie.
    */
   photoUri?: string | null;
+  /**
+   * The face's storage path, as expo-image's cache key (lib/photo-source):
+   * a signed URL changes every launch, the bytes behind it never do.
+   */
+  photoPath?: string | null;
+  /**
+   * The face's bytes have landed. The map's marker puts this in its
+   * rasterisation key, because the URL resolves well before the download
+   * and a window that closed on the URL froze an empty badge.
+   */
+  onFaceLoad?: () => void;
 };
 
 /**
@@ -165,6 +177,8 @@ export function PinMark({
   later = false,
   selected = false,
   photoUri = null,
+  photoPath = null,
+  onFaceLoad,
 }: PinMarkProps) {
   const theme = useTheme();
   const s = size / BODY;
@@ -185,8 +199,11 @@ export function PinMark({
   const counted = count != null;
   const glyph = pick ? SEEDED_GLYPH : category != null ? glyphFor(category) : null;
   // A face is never drawn on a count pin: three people and one photograph is
-  // a marker that names the wrong person.
-  const face = !pick && !counted && photoUri != null ? photoUri : null;
+  // a marker that names the wrong person. A plain Image, deliberately not
+  // RemoteImage: a pulse inside a rasterised marker is either frozen or
+  // keeps every marker tracking; the badge is simply absent until the bytes
+  // land, and onFaceLoad is how the marker learns they have.
+  const face = !pick && !counted ? photoSource(photoUri, photoPath) : null;
 
   const badge = Math.round(13 * s);
   const faceSize = Math.round(14 * s);
@@ -257,7 +274,7 @@ export function PinMark({
                 borderColor: MARK_RING,
               },
             ]}>
-            <Image source={{ uri: face }} style={styles.faceImage} contentFit="cover" />
+            <Image source={face} style={styles.faceImage} contentFit="cover" onLoad={onFaceLoad} />
           </View>
         ) : null}
         {open ? (

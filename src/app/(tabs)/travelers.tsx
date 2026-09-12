@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -24,6 +23,7 @@ import {
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { RemoteImage } from '@/components/ui/remote-image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useAuthStore } from '@/features/auth/store';
@@ -44,6 +44,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { LoadError } from '@/components/ui/load-error';
 import {
   Elevation,
+  FontCap,
   HitTarget,
   MaxContentWidth,
   Motion,
@@ -95,6 +96,7 @@ import {
   profileTripFromMatchRow,
   profileTripFromTravelerRow,
 } from '@/features/trips/profile-trips';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 import { useTabBarInset, useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
@@ -158,8 +160,16 @@ function GuestTravelers() {
   // audience or reached the end of their trip in between. Indexed, that draws
   // a real traveler's face under another real traveler's name on a signed-out
   // device; keyed, it draws a monogram.
-  const photos = useFeaturedPhoto(cityId, faces).data;
+  const photosQuery = useFeaturedPhoto(cityId, faces);
+  const photos = photosQuery.data;
   const photoUrl = lead ? featuredPhotoFor(photos, lead.user_id, 0) : null;
+  // Whether a face with a path is still on its way, as opposed to one the
+  // photo call did not return. The same rule as lib/photo-source's
+  // photoSourceState: no answer and no failure. A DISABLED query (nobody
+  // on the roster has a photo) is pending forever in React Query's terms
+  // and must not keep a monogram waiting, so idle counts as settled.
+  const facesPending =
+    photosQuery.data === undefined && !photosQuery.isError && photosQuery.fetchStatus !== 'idle';
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
   // "[demo]" out of the prose, onto a chip. See lib/demo-marker.
@@ -190,9 +200,22 @@ function GuestTravelers() {
     );
   }
 
-  if (isPending || featuredQuery.isPending) {
-    return <ThemedView style={styles.root} />;
+  // The shape of a traveler while the two queries answer, never a blank
+  // ThemedView: this is the screen a first-time visitor opens second, and
+  // on hostel wifi it sat empty for the whole retry window. With no city
+  // on the rail the traveler query never starts (it is disabled, which
+  // React Query reports as pending for ever), so idle counts as settled and
+  // the page falls through to its empty line rather than waiting for it.
+  const facesSettled =
+    !isPending || (featuredTravelerQuery.fetchStatus === 'idle' && cityId == null);
+  if (!facesSettled || featuredQuery.isPending) {
+    return <TravelersSkeleton />;
   }
+  // A face on its way reserves the hero from the first paint, so the card
+  // does not change shape when the URL lands. A traveler with a path whom
+  // the photo call did not return falls back to the monogram row once the
+  // call has answered.
+  const heroShown = lead != null && (photoUrl != null || (lead.photo_path != null && facesPending));
 
   return (
     <ThemedView style={styles.root}>
@@ -272,16 +295,24 @@ function GuestTravelers() {
                     the whole pitch of this screen is that it is a real
                     person, and 3:2 leaves the card comfortably above the tab
                     bar. */}
-                {photoUrl ? (
+                {heroShown ? (
                   <View style={styles.cardHero}>
                     {/* Top-weighted: the frame is 3:2 landscape and the photo
                         is usually a portrait selfie whose face sits high, so
-                        the default centre crop lost the top of the head. */}
-                    <Image
-                      source={{ uri: photoUrl }}
+                        the default centre crop lost the top of the head.
+
+                        Keyed on the URL alone: there is no storage path on
+                        the client (the function signs for the guest), and
+                        these URLs are five-minute one-offs, so a URL key is
+                        the right one. The frame pulses while the URL signs
+                        and while the bytes download, and says so if they
+                        never come. */}
+                    <RemoteImage
+                      source={photoUrl ? { uri: photoUrl } : null}
+                      pending={facesPending}
                       style={StyleSheet.absoluteFill}
-                      contentFit="cover"
                       contentPosition="top"
+                      transition={Motion.standard}
                     />
                     <LinearGradient
                       colors={['transparent', 'rgba(2,3,9,0.85)']}
@@ -303,7 +334,7 @@ function GuestTravelers() {
                   </View>
                 ) : null}
                 <View style={styles.cardBody}>
-                  {photoUrl ? null : (
+                  {heroShown ? null : (
                     <View style={styles.nameRow}>
                       <View style={[styles.cardMono, { backgroundColor: theme.accentSoft }]}>
                         <ThemedText type="title" style={{ color: theme.accent }}>
@@ -390,21 +421,25 @@ function GuestTravelers() {
                         <View style={[styles.cardBody, styles.alsoRow]}>
                           {/* No face is an ordinary answer here — a traveler
                             with no approved photo, or one the two calls
-                            disagreed about — and the monogram covers it. */}
-                          {rowPhoto ? (
-                            <Image
-                              source={{ uri: rowPhoto }}
-                              style={styles.alsoPhoto}
-                              contentFit="cover"
-                              contentPosition="top"
-                            />
-                          ) : (
-                            <View style={[styles.cardMono, { backgroundColor: theme.accentSoft }]}>
-                              <ThemedText type="title" style={{ color: theme.accent }}>
-                                {(traveler.display_name ?? 'T').trim().charAt(0).toUpperCase()}
-                              </ThemedText>
-                            </View>
-                          )}
+                            disagreed about — and the monogram covers it.
+                            Flat while the bytes come: at 48pt a pulse reads
+                            as a flicker. One Image per face that arrives,
+                            which is what the guest test counts. */}
+                          <RemoteImage
+                            source={rowPhoto ? { uri: rowPhoto } : null}
+                            pending={facesPending && traveler.photo_path != null}
+                            style={styles.alsoPhoto}
+                            contentPosition="top"
+                            skeleton="flat"
+                            fallback={
+                              <View
+                                style={[styles.cardMono, { backgroundColor: theme.accentSoft }]}>
+                                <ThemedText type="title" style={{ color: theme.accent }}>
+                                  {(traveler.display_name ?? 'T').trim().charAt(0).toUpperCase()}
+                                </ThemedText>
+                              </View>
+                            }
+                          />
                           <View style={styles.alsoText}>
                             <View style={styles.nameRow}>
                               <ThemedText type="headline" numberOfLines={1} style={styles.nameText}>
@@ -493,8 +528,11 @@ function QueueHeader({
    */
   isSpotlight: boolean;
   spotlightName: string | null;
-  /** The scope line under the picker: how many more, and for which trips. */
-  countLine: string;
+  /**
+   * The scope line under the picker: how many more, and for which trips.
+   * Null when the page carries it instead (see COUNT_LINE_SCROLLS_AT).
+   */
+  countLine: string | null;
   /** How far from each trip city the queue reaches, so the header can say so. */
   radiusKm: number;
   onOpenRadius: () => void;
@@ -509,6 +547,13 @@ function QueueHeader({
           without the inset the first line starts at y=0 under the status
           bar. */}
       <View style={[styles.queueHeader, { paddingTop: insets.top + Space.sm }]}>
+        {/* The avatar's band, and nothing beside it. The rail used to share
+            this row with the absolutely positioned ProfileCorner and stop at
+            its column, so at the accessibility sizes "All trips" alone
+            filled the row and the next city was cut at the scroll edge,
+            reading as clipped under the avatar. The rail is its own row
+            below, running to the screen edge. */}
+        <View style={styles.avatarBand} />
         {tripPicker}
         {isSpotlight ? (
           // States the mechanism, not a ranking. daily_spotlights is a
@@ -537,10 +582,14 @@ function QueueHeader({
             filtered by passes, chats, hellos sent and the viewer's own
             audience setting, and the words are careful to claim no more.
             The city is named only when the queue is for one city: with
-            several trips in view it used to borrow whoever was on screen. */}
-        <ThemedText type="footnote" themeColor="textSecondary" style={styles.sharedTodayNote}>
-          {countLine}
-        </ThemedText>
+            several trips in view it used to borrow whoever was on screen.
+            Uncapped, because it is a sentence; what gives at the largest
+            sizes is where it stands, not how big it is. */}
+        {countLine != null ? (
+          <ThemedText type="footnote" themeColor="textSecondary" style={styles.sharedTodayNote}>
+            {countLine}
+          </ThemedText>
+        ) : null}
         {/* THE DIAL, where the scope is read. The queue reaches this far
             from each of the reader's own trip cities; a person in Nice
             deciding whether Cannes counts decides it here, on the screen
@@ -563,7 +612,12 @@ function QueueHeader({
               size={12}
               tintColor={theme.textSecondary}
             />
-            <ThemedText type="caption" themeColor="textSecondary">
+            {/* A control label, capped like every chip's: the dial is pinned
+                chrome, and its growth is paid by the page's viewport. */}
+            <ThemedText
+              type="caption"
+              themeColor="textSecondary"
+              maxFontSizeMultiplier={FontCap.control}>
               {radiusChipLabel(radiusKm)}
             </ThemedText>
           </View>
@@ -590,9 +644,16 @@ function TravelerPage({
   helloCapped,
   refreshing,
   onRefresh,
+  countLine,
 }: {
   candidate: Candidate;
   width: number;
+  /**
+   * The queue's scope line, when the page carries it rather than the pinned
+   * header: at the largest text sizes it scrolls with the card so the card
+   * keeps its viewport (COUNT_LINE_SCROLLS_AT). Null otherwise.
+   */
+  countLine: string | null;
   /**
    * The action bar's height, measured by the bar itself and held by the
    * parent (the undo bar floats on the same number). Seeded from the
@@ -704,6 +765,11 @@ function TravelerPage({
           paddingBottom: barHeight + Space.xl,
         }}
         showsVerticalScrollIndicator={false}>
+        {countLine != null ? (
+          <ThemedText type="footnote" themeColor="textSecondary" style={styles.countLineInPage}>
+            {countLine}
+          </ThemedText>
+        ) : null}
         <ProfileView
           profile={shown}
           alsoSpeaks={alsoSpeaks}
@@ -799,7 +865,13 @@ function TravelerPage({
                 size={18}
                 tintColor={theme.text}
               />
-              <ThemedText type="caption" themeColor="textSecondary">
+              {/* Capped with the primary beside it (DockedActionBar): at AX5
+                  an uncapped Next grew to 34pt and squeezed Say hi into a
+                  near-circle. */}
+              <ThemedText
+                type="caption"
+                themeColor="textSecondary"
+                maxFontSizeMultiplier={FontCap.control}>
                 Next
               </ThemedText>
             </PressableScale>
@@ -824,6 +896,33 @@ function ProfileCorner() {
     <View style={[styles.profileCorner, { top: insets.top + Space.sm }]} pointerEvents="box-none">
       <AvatarButton />
     </View>
+  );
+}
+
+/**
+ * The shape of a traveler while the queries answer, for BOTH audiences.
+ *
+ * The signed-in branch drew this and the guest branch drew a blank
+ * ThemedView, so a first-time visitor's second screen sat empty for the
+ * whole retry window on a slow connection. One shape now: the avatar's
+ * band, a hero the height the real one draws (a ratio of the width, never
+ * a fixed height, which is right on one phone and wrong on every other),
+ * then three text lines that follow Dynamic Type so the swap to content
+ * does not jump.
+ */
+function TravelersSkeleton() {
+  const insets = useSafeAreaInsets();
+  return (
+    <ThemedView style={styles.root}>
+      <ProfileCorner />
+      {/* Clears the avatar's band the way the walls do. */}
+      <View style={[styles.loading, { paddingTop: insets.top + Space.sm + HitTarget + Space.lg }]}>
+        <Skeleton width="100%" aspectRatio={1 / 1.15} radius={Radius.lg} />
+        <Skeleton width="60%" height={16} text />
+        <Skeleton width="85%" height={12} text />
+        <Skeleton width="70%" height={12} text />
+      </View>
+    </ThemedView>
   );
 }
 
@@ -932,7 +1031,11 @@ export default function TravelersScreen() {
   // the undo bar floats on the same number. Seeded from the formula so the
   // first frame is right; the measurement only corrects it.
   const [barHeight, setBarHeight] = useState(() => dockedActionBarHeight(dockBottom));
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
+  // Where the queue's scope line stands. The header above the page is
+  // pinned, so every line in it is paid for by the card's viewport; at the
+  // largest sizes the line moves into the page and scrolls with the card.
+  const countLineScrolls = fontScale >= COUNT_LINE_SCROLLS_AT;
   const isGuest = useIsGuest();
   const tripsQuery = useMyTrips();
   const trips = tripsQuery.data ?? [];
@@ -1091,6 +1194,16 @@ export default function TravelersScreen() {
   // arrive, hellos get answered. Without this a queue that emptied stayed
   // empty until a force-quit, on the one screen with no other way back in.
   useFocusEffect(refresh);
+  // The pull, which AWAITS what it starts so the spinner stops when the
+  // answer lands, and spins for nothing else: the RefreshControl used to
+  // read isFetching, which is true for the focus refetch above too, so the
+  // page dipped and spun on every return to the tab (hooks/use-pull-refresh).
+  const pull = usePullRefresh(
+    useCallback(
+      () => Promise.all([refetchTrips(), queueReady ? refetchMatches() : null]),
+      [refetchTrips, refetchMatches, queueReady]
+    )
+  );
 
   // The one travelers_viewed for both audiences, always tagged: matching DAU
   // is counted as `guest = false` on this event (docs/DASHBOARD.md), and an
@@ -1245,17 +1358,7 @@ export default function TravelersScreen() {
   // right not to say "add a trip first" while still asking; this at least
   // says something is coming.
   if (tripsQuery.isPending || matchesQuery.isPending) {
-    return (
-      <ThemedView style={styles.root}>
-        <ProfileCorner />
-        <View style={[styles.loading, { paddingTop: insets.top + Space.sm }]}>
-          <Skeleton width="100%" height={Math.min(width, MaxContentWidth) * 1.15} radius={16} />
-          <Skeleton width="60%" height={16} />
-          <Skeleton width="85%" height={12} />
-          <Skeleton width="70%" height={12} />
-        </View>
-      </ThemedView>
-    );
+    return <TravelersSkeleton />;
   }
 
   // And never "add a trip first" when the question failed. Somebody with a
@@ -1354,11 +1457,8 @@ export default function TravelersScreen() {
               still clears the 44pt ProfileCorner exactly as the no-trips
               wall does; Space.xxl used to put its first line straight
               through the avatar's lower half. */}
-          <View
-            style={[
-              styles.wallBand,
-              { paddingTop: insets.top + Space.sm, minHeight: insets.top + Space.sm + HitTarget },
-            ]}>
+          <View style={[styles.wallBand, { paddingTop: insets.top + Space.sm }]}>
+            <View style={styles.avatarBand} />
             {tripPicker}
           </View>
           <View style={styles.empty}>
@@ -1470,6 +1570,10 @@ export default function TravelersScreen() {
     setUndo(null);
   };
 
+  const countLine = checking
+    ? `Checking ${scope.noun}…`
+    : remainingLine(queue.length - 1, scope.where);
+
   return (
     <ThemedView style={styles.root}>
       <ProfileCorner />
@@ -1478,9 +1582,7 @@ export default function TravelersScreen() {
           tripPicker={tripPicker}
           isSpotlight={current.userId === spotlightId}
           spotlightName={current.match.display_name}
-          countLine={
-            checking ? `Checking ${scope.noun}…` : remainingLine(queue.length - 1, scope.where)
-          }
+          countLine={countLineScrolls ? null : countLine}
           radiusKm={radiusKm}
           onOpenRadius={() => setRadiusOpen(true)}
         />
@@ -1492,8 +1594,9 @@ export default function TravelersScreen() {
             barHeight={barHeight}
             onBarHeight={setBarHeight}
             width={Math.min(width, MaxContentWidth)}
-            refreshing={matchesQuery.isFetching}
-            onRefresh={refresh}
+            refreshing={pull.refreshing}
+            onRefresh={pull.onRefresh}
+            countLine={countLineScrolls ? countLine : null}
             helloCapped={helloCapped}
             // The same three items the chat header and a stranger's profile
             // raise. The block confirmation is this screen's own, because what
@@ -1622,6 +1725,19 @@ const UNDO_MS = 5000;
  */
 const SAID_HI_MS = 4000;
 
+/**
+ * From this fontScale up, the queue's scope line scrolls with the page
+ * instead of standing in the pinned header above it.
+ *
+ * The header is rail, note, count and dial, and every line in it is paid
+ * for by the card's viewport: at AX5 (3.1x) the pinned band was some 250pt
+ * and the docked bar another 140, which left the traveler a thin strip
+ * between them. The count line is a sentence and stays uncapped; what
+ * gives is where it stands. 2x is the first size at which the header alone
+ * costs a third of a screen.
+ */
+const COUNT_LINE_SCROLLS_AT = 2;
+
 const styles = StyleSheet.create({
   deck: {
     flex: 1,
@@ -1640,36 +1756,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Space.xs,
     paddingBottom: Space.md,
-    // The row sat flush to both edges, so at larger Dynamic Type the centred
-    // note ran under the absolutely-positioned ProfileCorner avatar.
+    // Symmetric now: the band below is what keeps every line clear of the
+    // absolutely positioned ProfileCorner avatar, so the end-side clearance
+    // that used to stop the rail at the avatar's column is gone.
     paddingHorizontal: Space.lg,
-    paddingRight: HitTarget + Space.lg,
+  },
+  // The row the 44pt avatar sits in, held open so nothing else lands in it
+  // and everything below starts under the avatar. A minHeight, never a
+  // height: the avatar itself does not grow, but a floor is the shape every
+  // band on this screen has.
+  avatarBand: {
+    alignSelf: 'stretch',
+    minHeight: HitTarget,
   },
   spotlightRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.xs,
   },
-  // The rail shares the top band with the 44pt avatar: a minHeight (never a
-  // height, which clips at the accessibility sizes) centres the chips on it.
+  // Its own row under the avatar's band, running to the END edge of the
+  // screen so chips scroll edge to edge; the start keeps the page gutter,
+  // and ChipRail's own trailing padding gives the last chip its gutter.
+  // The logical side (logical-directional-styles.test.ts).
   tripRail: {
     alignSelf: 'stretch',
-    minHeight: HitTarget,
-    justifyContent: 'center',
+    marginEnd: -Space.lg,
     paddingBottom: Space.xs,
   },
-  // The wall's copy of the header band: the rail's edges match the queue's
-  // (queueHeader's padding), so the chips do not shift when the queue
+  // The wall's copy of the header band: the same avatar band and the same
+  // rail edges as the queue's, so the chips do not shift when the queue
   // empties under a tap.
   wallBand: {
     alignSelf: 'stretch',
     paddingHorizontal: Space.lg,
-    // The logical side (logical-directional-styles.test.ts): the avatar is
-    // at the end of the row, and so is this clearance in either direction.
-    paddingEnd: HitTarget + Space.lg,
   },
   sharedTodayNote: {
     textAlign: 'center',
+  },
+  // The scope line when it scrolls with the page (COUNT_LINE_SCROLLS_AT).
+  countLineInPage: {
+    textAlign: 'center',
+    paddingHorizontal: Space.lg,
+    paddingBottom: Space.sm,
   },
   radiusChip: {
     flexDirection: 'row',
