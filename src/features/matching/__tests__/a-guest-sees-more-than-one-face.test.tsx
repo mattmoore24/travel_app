@@ -336,6 +336,24 @@ describe('a guest on the Travelers tab', () => {
     client.clear();
   });
 
+  it('holds a face that is still being signed rather than drawing its monogram', async () => {
+    // A monogram means "no photo", and for the second it takes the photo
+    // function to answer that was a lie about everybody with a face. While
+    // the call is out, a traveler WITH a photo path keeps a quiet frame; a
+    // traveler without one (Cai) has nothing to wait for and gets the
+    // initial straight away.
+    invoke.mockReturnValue(new Promise(() => {}));
+    const { view, client } = show();
+    expect(await screen.findByText('Ana, 29')).toBeTruthy();
+    expect(screen.getByText('C')).toBeTruthy();
+    expect(screen.queryByText('B')).toBeNull();
+    expect(screen.queryByText('A')).toBeNull();
+    // And no face has been drawn from a URL that does not exist yet.
+    expect(screen.UNSAFE_queryAllByType(Image)).toHaveLength(0);
+    view.unmount();
+    client.clear();
+  });
+
   it('gives a monogram to a traveler the photo call did not return', async () => {
     // Bea was banned, blocked, out of audience or out of trip between the two
     // calls, so the service role signed somebody this screen is not showing.
