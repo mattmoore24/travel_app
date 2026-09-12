@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef } from 'react';
@@ -7,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { LoadError } from '@/components/ui/load-error';
+import { RemoteImage } from '@/components/ui/remote-image';
 import { Sheet, leavingSheet } from '@/components/ui/sheet';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -22,6 +22,7 @@ import { openInMaps } from '@/features/pins/open-in-maps';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import type { BusinessPostJson } from '@/lib/database.types';
+import { photoSourceState } from '@/lib/photo-source';
 import { countOf } from '@/lib/plural';
 
 /**
@@ -69,7 +70,13 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
   const rating = useRatingSummary(businessId);
   const place = detail.data ?? null;
   const { data: chats = [] } = useMyChats();
-  const cover = useBusinessPhotoUrl(place?.photos[0]?.storage_path ?? null);
+  // The URL hook by name, paired with `photoSourceState` by hand rather than
+  // through useBusinessPhotoSourceState: the same shape avatar-button and My
+  // business use, so the three readers of one cover stay one call apart and
+  // the storage path travels with the URL as expo-image's cache key.
+  const coverPath = place?.photos[0]?.storage_path ?? null;
+  const cover = useBusinessPhotoUrl(coverPath);
+  const coverState = photoSourceState(cover, coverPath);
 
   // Every push from inside a sheet dismisses it first. The scrim outliving
   // the push is what left the map dead to touch. See components/ui/sheet.
@@ -171,7 +178,7 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
   // ...and whether it is still on its way, as opposed to never arriving. A
   // signing call that FAILS must give the space back rather than shimmer
   // forever, which is a worse card than the one without a photo.
-  const coverComing = place.photos[0]?.storage_path != null && !cover.isError;
+  const coverComing = coverPath != null && !cover.isError;
 
   return (
     // A ScrollView, not a View. Everything this card can hold at once —
@@ -185,16 +192,22 @@ function PlaceCard({ businessId, onClose }: { businessId: string; onClose: () =>
       style={styles.scroll}
       contentContainerStyle={styles.card}
       showsVerticalScrollIndicator={false}>
-      {cover.data ? (
-        <Image
-          source={{ uri: cover.data }}
+      {coverComing ? (
+        // One frame for both halves of the wait. The Skeleton used to stand
+        // in only while the URL signed and hand over to a transparent Image
+        // the moment it did, so the card carried a 3:2 hole between the URL
+        // arriving and the bytes arriving, on the map's most-tapped surface.
+        // RemoteImage keeps the pulse under the picture until the bytes land
+        // and shows a glyph, tappable to retry, if they never do. The
+        // signing failure above is the one case that still gives the space
+        // back, and the category chip with it.
+        <RemoteImage
+          source={coverState.source}
+          pending={coverState.pending}
           style={styles.cover}
-          contentFit="cover"
           transition={Motion.standard}
           accessibilityLabel={`Photo of ${place.name}`}
         />
-      ) : coverComing ? (
-        <Skeleton width="100%" aspectRatio={3 / 2} radius={Radius.lg} />
       ) : null}
 
       <View style={styles.header}>
