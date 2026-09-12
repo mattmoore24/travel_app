@@ -59,8 +59,11 @@ export function Skeleton({
 }) {
   const theme = useTheme();
   const pulse = useSharedValue(0.5);
-  // One of the app's only two infinite loops. With Reduce Motion on it holds
-  // still at its mid point instead of pulsing forever.
+  // An infinite Reanimated loop PER MOUNTED SKELETON (the shared value is
+  // cancelled on unmount, so nothing leaks, but a screen with twelve
+  // placeholders runs twelve). Keep placeholder counts small: three rows,
+  // not a screenful. With Reduce Motion on it holds still at its mid point
+  // instead of pulsing forever.
   const reduceMotion = useReducedMotion();
   const lineScale = useCappedFontScale(TEXT_LINE_SCALE_CAP);
   const lineHeight = text && height != null ? Math.round(height * lineScale) : height;
@@ -97,14 +100,19 @@ export function Skeleton({
   );
 }
 
-/** The shape of a chat row, for the list's first paint. */
+/**
+ * The shape of a chat row, for the list's first paint: the 52pt disc and
+ * the row padding are chat-row's own (`AVATAR`, `styles.row`), so the swap
+ * to the real rows moves nothing, and the two bars are text lines that
+ * follow Dynamic Type the way the name and the preview will.
+ */
 export function ChatRowSkeleton() {
   return (
     <View style={styles.row}>
-      <Skeleton width={48} height={48} radius={24} />
+      <Skeleton width={52} height={52} radius={26} />
       <View style={styles.rowText}>
-        <Skeleton width="55%" height={14} radius={Radius.sm} />
-        <Skeleton width="80%" height={12} radius={Radius.sm} />
+        <Skeleton width="55%" height={14} radius={Radius.sm} text />
+        <Skeleton width="80%" height={12} radius={Radius.sm} text />
       </View>
     </View>
   );
@@ -203,7 +211,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.md,
-    padding: Space.lg,
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.sm,
   },
   rowText: {
     flex: 1,

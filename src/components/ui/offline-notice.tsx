@@ -165,7 +165,17 @@ export function OfflineNotice() {
           {/* The app's word for the founder's "Retry": the same label the
               account error screen and every LoadError already use, so the
               act has one name wherever it appears. */}
-          <PrimaryButton label="Try again" loading={fetching > 0} onPress={retry} />
+          <PrimaryButton
+            label="Try again"
+            // Spoken with its object, because on a guest's offline start the
+            // map under this card draws its own "Try again" (LoadError), and
+            // two buttons with one name on one screen is the ambiguity the
+            // scrim's "Dismiss" exists to avoid. The printed word stays the
+            // app's one word for the act.
+            accessibilityLabel="Try again to connect"
+            loading={fetching > 0}
+            onPress={retry}
+          />
         </GlassSurface>
       </Animated.View>
     </View>

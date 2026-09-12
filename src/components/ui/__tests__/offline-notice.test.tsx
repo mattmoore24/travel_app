@@ -100,7 +100,7 @@ describe('the offline notice', () => {
     expect(screen.getByText(NO_CONNECTION)).toBeTruthy();
     expect(screen.getByText(/needs the internet to open/)).toBeTruthy();
     await settle();
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again to connect' })).toBeTruthy();
   });
 
   it('refetches what the person is waiting on when they try again', async () => {
@@ -108,7 +108,7 @@ describe('the offline notice', () => {
     mount();
     await dropTheWifi();
     await settle();
-    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Try again to connect' }));
     expect(refetch).toHaveBeenCalledWith({ type: 'active' });
     // A known session needs no second look.
     expect(retrySession).not.toHaveBeenCalled();
@@ -121,7 +121,7 @@ describe('the offline notice', () => {
     mount();
     await dropTheWifi();
     await settle();
-    fireEvent.press(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Try again to connect' }));
     expect(retrySession).toHaveBeenCalledTimes(1);
     refetch.mockRestore();
   });
@@ -214,6 +214,17 @@ describe('what the card says', () => {
     // say Try again, and one act gets one name.
     expect(OFFLINE_NOTICE_COPY).toContain('Try again');
     expect(OFFLINE_NOTICE_COPY).not.toContain('Retry');
+  });
+
+  it("speaks the button with its object, so it is not the map's own Try again", async () => {
+    // A guest's offline start draws the map's LoadError under this card,
+    // and that button is spoken "Try again" too. Same printed word, a
+    // spoken label that starts with it and says what it tries.
+    mount();
+    await dropTheWifi();
+    await settle();
+    const button = screen.getByRole('button', { name: 'Try again to connect' });
+    expect(button.props.accessibilityLabel).toMatch(/^Try again/);
   });
 });
 

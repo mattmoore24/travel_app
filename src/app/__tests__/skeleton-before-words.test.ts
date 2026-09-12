@@ -20,7 +20,10 @@ describe('the one-to-one thread', () => {
     // list was pending: the push-notification destination, blank.
     const noRow = between(code, 'if (!chat) {', 'const closed = chat.chat_status');
     expect(noRow).toContain('<ThreadSkeleton />');
-    expect(noRow).toContain('chatsQuery.isError ? (');
+    // Either list can fail, and the row is looked up in both: a push for an
+    // archived conversation whose list failed drew the skeleton for ever.
+    expect(noRow).toContain('chatsQuery.isError || archivedQuery.isError ? (');
+    expect(noRow).toContain('settled(chatsQuery) && settled(archivedQuery) ? (');
     expect(noRow).toContain('Chat not found.');
   });
 
@@ -40,6 +43,16 @@ describe('the room', () => {
     expect(empty).toContain('messagesQuery.isPending ? (');
     expect(empty).toContain('<ThreadSkeleton inverted />');
     expect(empty).not.toContain('messagesQuery.isPending ? null');
+  });
+
+  it('draws its failed state inside the flipped container, like every other empty state', () => {
+    // The inverted list mirrors its empty component and offers the
+    // counter-flip as a `style` prop LoadError does not take (traps:
+    // Lists), so a bare LoadError read upside down at the composer.
+    const code = source('src/app/room/[id].tsx');
+    const failed = between(code, 'messagesQuery.isError ? (', 'messagesQuery.isPending ? (');
+    expect(failed).toContain('<View style={styles.emptyThread}>');
+    expect(failed).toContain('<LoadError');
   });
 });
 

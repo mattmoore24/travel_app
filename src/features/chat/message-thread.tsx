@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoCheck } from '@/components/ui/photo-check';
 import { PhotoViewer, type ViewablePhoto } from '@/components/ui/photo-viewer';
-import { RemoteImage } from '@/components/ui/remote-image';
+import { FailedPhotoGlyph, RemoteImage } from '@/components/ui/remote-image';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet, SHEET_SETTLE_MS, useRegisterNativeModal } from '@/components/ui/sheet';
 import { Elevation, HitTarget, Motion, Radius, Space } from '@/constants/theme';
@@ -532,6 +532,15 @@ function ChatPhoto({
     <RemoteImage
       source={source}
       pending={pending}
+      // A signing that failed: no source will come, and the frame says so
+      // rather than pulsing for ever or sitting as a bare square. The
+      // reconnect refetch (lib/query-client) asks for the URL again.
+      fallback={<FailedPhotoGlyph />}
+      // The hold that opens the bubble's menu, kept over a photo that did
+      // not come: the retry target inside is the deepest responder, and
+      // without this it would eat the long press that reaches Report.
+      onLongPress={onLongPress}
+      delayLongPress={220}
       // The frame is the thing under test in a-chat-photo-can-be-opened, and
       // the press target above carries the plain `photo-<id>` that the other
       // cases press.
@@ -610,13 +619,18 @@ function BubbleBody({
   onPhotoFailed?: (failed: boolean) => void;
 }) {
   const theme = useTheme();
-  const { data: imageUrl } = useChatPhotoUrl(message.image_path);
+  const photoQuery = useChatPhotoUrl(message.image_path);
+  const imageUrl = photoQuery.data;
   // The signed URL with the storage path as its cache key, so scrolling
   // back through a thread on hostel wifi re-pulls nothing the phone already
   // holds (lib/photo-source). Paired here rather than through
   // useChatPhotoSourceState because the thread's tests stand the chat hooks
   // in by name.
   const image = photoSource(imageUrl, message.image_path);
+  // Pending only while the signing can still answer. A signing that FAILED
+  // (offline, or storage refused) is not a photo on its way, and a frame
+  // told it was would pulse for as long as the thread stayed open.
+  const imagePending = image == null && !photoQuery.isError;
   const tail = tailed ? Radius.xs : Radius.bubble;
   const checking = message.moderation_status === 'pending';
   // Straight off the row rather than through a prop the caller has to
@@ -666,7 +680,7 @@ function BubbleBody({
         // the bubble's width and never its height.
         <ChatPhoto
           source={image}
-          pending={image == null}
+          pending={imagePending}
           recyclingKey={message.id}
           testID={`photo-${message.id}`}
           onOpen={onOpenPhoto && image ? () => onOpenPhoto(image) : undefined}

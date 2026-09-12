@@ -663,12 +663,18 @@ export default function RoomScreen() {
             }
             emptyState={
               messagesQuery.isError ? (
-                <LoadError
-                  compact
-                  what="this room"
-                  error={messagesQuery.error}
-                  onRetry={() => messagesQuery.refetch()}
-                />
+                // In the same flipped container as the other empty states:
+                // the inverted list mirrors its empty component and offers
+                // the counter-flip as a `style` LoadError does not take
+                // (traps: Lists), so on its own it drew upside down.
+                <View style={styles.emptyThread}>
+                  <LoadError
+                    compact
+                    what="this room"
+                    error={messagesQuery.error}
+                    onRetry={() => messagesQuery.refetch()}
+                  />
+                </View>
               ) : messagesQuery.isPending ? (
                 // The first page's shape while it is on its way. The list is
                 // inverted and the skeleton undoes the mirror itself, the

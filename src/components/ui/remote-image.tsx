@@ -62,8 +62,34 @@ export type RemoteImageProps = {
   fallback?: ReactNode;
   onLoad?: (event: ImageLoadEventData) => void;
   onError?: (event: ImageErrorEventData) => void;
+  /**
+   * Whether a failed frame big enough for it takes a tap to try again. Off
+   * for a frame inside a Pressable of its own that the tap was for (the pin
+   * card's hero opens the profile, which draws the same photo with a retry
+   * of its own): React Native hands a touch to the deepest responder, so
+   * the retry target would take every tap the parent was there for. The
+   * glyph stays; the parent keeps the touch.
+   */
+  retry?: boolean;
+  /**
+   * Forwarded to the retry target, so a frame whose parent opens a menu on
+   * a hold (a chat photo, whose menu is where Report lives) still opens it
+   * over a photo that did not come.
+   */
+  onLongPress?: () => void;
+  delayLongPress?: number;
   testID?: string;
 };
+
+/**
+ * The glyph a failed frame draws, for a caller whose photo failed BEFORE it
+ * had a source (a signing that did not come back) and wants the frame to
+ * say so through `fallback` rather than sit as a bare sunken square.
+ */
+export function FailedPhotoGlyph({ size = 24 }: { size?: number }) {
+  const theme = useTheme();
+  return <SymbolView name={FAILED_GLYPH} size={size} tintColor={theme.textTertiary} />;
+}
 
 /**
  * The one place a remote photo's four states are drawn.
@@ -101,6 +127,9 @@ export function RemoteImage({
   fallback,
   onLoad,
   onError,
+  retry: retryAllowed = true,
+  onLongPress,
+  delayLongPress,
   testID,
 }: RemoteImageProps) {
   const theme = useTheme();
@@ -137,7 +166,7 @@ export function RemoteImage({
   // inside the circle, a hero gets the full 24. Before the first layout the
   // frame is unknown and 24 is the guess that is right for most of them.
   const glyphSize = shortSide == null ? 24 : Math.min(24, Math.round(shortSide * 0.4));
-  const retryable = shortSide != null && shortSide >= RETRY_MIN_SIDE;
+  const retryable = retryAllowed && shortSide != null && shortSide >= RETRY_MIN_SIDE;
   const name = accessibilityLabel ?? 'Photo';
 
   const onLayout = (event: LayoutChangeEvent) => {
@@ -196,7 +225,9 @@ export function RemoteImage({
             accessibilityRole="button"
             accessibilityLabel={`${name} could not load`}
             accessibilityHint="Try the photo again"
-            onPress={retry}>
+            onPress={retry}
+            onLongPress={onLongPress}
+            delayLongPress={delayLongPress}>
             <SymbolView name={FAILED_GLYPH} size={glyphSize} tintColor={theme.textTertiary} />
           </Pressable>
         ) : (

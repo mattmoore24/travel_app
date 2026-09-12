@@ -196,6 +196,39 @@ describe('failed', () => {
   });
 });
 
+describe('a frame whose parent owns the tap', () => {
+  it('draws the glyph without a target when retry is off, so the parent keeps the touch', () => {
+    // The pin card's hero: the band is the door to the profile. A retry
+    // target inside it would be the deepest responder and take every tap.
+    render(<RemoteImage source={SOURCE} style={FRAME} testID="frame" retry={false} />);
+    layout(200, 120);
+    fail();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByLabelText('Photo could not load')).toBeTruthy();
+    expect(screen.getByTestId('symbol')).toBeTruthy();
+  });
+
+  it('forwards a hold on the retry target, so a menu that opens on one still opens', () => {
+    const onLongPress = jest.fn();
+    render(
+      <RemoteImage
+        source={SOURCE}
+        style={FRAME}
+        testID="frame"
+        onLongPress={onLongPress}
+        delayLongPress={220}
+      />
+    );
+    layout(200, 120);
+    fail();
+    const retry = screen.getByRole('button');
+    fireEvent(retry, 'longPress');
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+    // A hold is not a tap: nothing was retried.
+    expect(screen.getByLabelText('Photo could not load')).toBeTruthy();
+  });
+});
+
 describe('a new photo starts over', () => {
   it('resets to loading when the recycling key changes', () => {
     const { rerender } = render(

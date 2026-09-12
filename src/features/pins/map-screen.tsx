@@ -291,6 +291,10 @@ function PinCard({
               pending={photo.pending}
               style={StyleSheet.absoluteFill}
               transition={Motion.standard}
+              // No retry target of its own: this whole band is the door to
+              // the profile, and the profile draws the same photo with a
+              // retry of its own. A retry target here would take the tap.
+              retry={false}
             />
             <LinearGradient
               colors={['transparent', 'rgba(2,3,9,0.85)']}
@@ -2973,8 +2977,7 @@ export default function MapScreen() {
                 <ThemedText
                   type="footnote"
                   themeColor="textSecondary"
-                  maxFontSizeMultiplier={FontCap.chrome}
-                  numberOfLines={2}>
+                  maxFontSizeMultiplier={FontCap.chrome}>
                   {"Pin where you're headed and people can join."}
                 </ThemedText>
               </View>
@@ -3005,8 +3008,7 @@ export default function MapScreen() {
                 <ThemedText
                   type="footnote"
                   themeColor="textSecondary"
-                  maxFontSizeMultiplier={FontCap.chrome}
-                  numberOfLines={2}>
+                  maxFontSizeMultiplier={FontCap.chrome}>
                   {ownOnlyPin?.chat_id != null
                     ? "We'll tell you if someone joins while your pin is up."
                     : "We'll tell you if someone messages you while your pin is up."}

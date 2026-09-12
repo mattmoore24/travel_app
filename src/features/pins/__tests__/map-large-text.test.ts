@@ -57,7 +57,7 @@ describe('the two arrival notices', () => {
   it.each([
     ['first-session', firstSession],
     ['first-pin', firstPin],
-  ])('%s caps its lines at the chrome cap and holds the footnote to two lines', (_, notice) => {
+  ])('%s caps its lines at the chrome cap and lets the footnote wrap', (_, notice) => {
     // Every ThemedText in the card carries the cap: chrome floating over
     // the hero, which at AX5 covered most of it.
     const texts = notice.match(/<ThemedText[\s\S]*?>/g) ?? [];
@@ -68,7 +68,11 @@ describe('the two arrival notices', () => {
     const footnote = texts.find(
       (text) => text.includes('type="footnote"') && text.includes('themeColor="textSecondary"')
     );
-    expect(footnote).toContain('numberOfLines={2}');
+    // The footnote is the sentence that tells a first-time pinner what
+    // happens next. It is read, so it is never clipped: at the accessibility
+    // sizes two lines held about half of it, with no way to see the rest.
+    expect(footnote).toBeDefined();
+    expect(footnote).not.toContain('numberOfLines');
   });
 
   it.each([
@@ -123,6 +127,9 @@ describe('the pin card', () => {
     expect(hero).toContain('pending={photo.pending}');
     expect(hero).toContain('transition={Motion.standard}');
     expect(hero).not.toContain('<Image');
+    // The band IS the door to the profile. A retry target inside it would
+    // be the deepest responder and take every tap once the photo failed.
+    expect(hero).toContain('retry={false}');
   });
 
   it('draws the pinner avatar through RemoteImage, flat, with the glyph as its fallback', () => {

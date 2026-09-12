@@ -303,6 +303,11 @@ export default function ChatScreen() {
   const ownBusinessId = useOwnBusiness().data?.id ?? null;
   const savedReplies = useSavedReplies(viewerIsBusiness ? ownBusinessId : null).data ?? [];
   const chatsQuery = useMyChats();
+  // A list is settled once it has answered, or once it will never ask: a
+  // disabled query sits pending at fetchStatus 'idle' for good, and a
+  // skeleton gated on its success would stand for as long as the screen.
+  const settled = (query: { isSuccess: boolean; fetchStatus: string }) =>
+    query.isSuccess || query.fetchStatus === 'idle';
   // Both lists. Archiving a conversation used to make it unreadable: the
   // Archived screen still linked to it, and the thread it opened said "Chat
   // not found." because the chat is, by definition, not in the un-archived
@@ -380,16 +385,21 @@ export default function ChatScreen() {
             nothing yet to name or to act on. */}
         <SafeAreaView style={styles.loading} edges={['top', 'bottom']}>
           <ThreadHeader title="Conversation" />
-          {chatsQuery.isError ? (
+          {chatsQuery.isError || archivedQuery.isError ? (
             // Not "Chat not found": a failed fetch used to render nothing at
             // all here, so tapping a push notification offline opened a blank
-            // dark screen with no message and no way forward.
+            // dark screen with no message and no way forward. Either list:
+            // the row is looked up in both, and a push for an ARCHIVED
+            // conversation whose list failed drew the skeleton for ever.
             <LoadError
               what="this conversation"
-              error={chatsQuery.error}
-              onRetry={() => chatsQuery.refetch()}
+              error={chatsQuery.error ?? archivedQuery.error}
+              onRetry={() => {
+                void chatsQuery.refetch();
+                void archivedQuery.refetch();
+              }}
             />
-          ) : chatsQuery.isSuccess && archivedQuery.isSuccess ? (
+          ) : settled(chatsQuery) && settled(archivedQuery) ? (
             <ThemedText themeColor="textSecondary" style={styles.centerText}>
               Chat not found.
             </ThemedText>

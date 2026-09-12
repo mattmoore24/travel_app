@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { FailedPhotoGlyph } from '@/components/ui/remote-image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MessageThread } from '@/features/chat/message-thread';
 import type { MessageRow } from '@/lib/database.types';
@@ -72,9 +73,14 @@ jest.mock('react-native-gesture-handler', () => {
 // from the one usePhotoUrl signs. That split is the reason the viewer signs
 // nothing itself and takes a URL from whoever has it.
 let mockSigning = false;
+let mockSigningFailed = false;
 jest.mock('@/features/chat/hooks', () => ({
   useChatPhotoUrl: (path: string | null) =>
-    path && !mockSigning ? { data: `https://signed.example/${path}` } : { data: undefined },
+    mockSigningFailed
+      ? { data: undefined, isError: true }
+      : path && !mockSigning
+        ? { data: `https://signed.example/${path}` }
+        : { data: undefined },
 }));
 
 jest.mock('@/features/profile/hooks', () => ({
@@ -259,6 +265,39 @@ describe('a photo in a chat can be looked at', () => {
       name: 'openPhoto',
       label: 'Open photo',
     });
+  });
+
+  it('stops pulsing when the signing fails, and says so', () => {
+    // The URL never came (offline, or storage refused). Told it was still
+    // pending, the frame pulsed for as long as the thread stayed open.
+    mockSigningFailed = true;
+    try {
+      renderThread();
+      expect(screen.UNSAFE_queryAllByType(Skeleton)).toHaveLength(0);
+      expect(screen.UNSAFE_queryAllByType(Image)).toHaveLength(0);
+      // The frame stands at its reserved square, with the glyph in it.
+      expect(screen.getByTestId('photo-m1-image')).toBeTruthy();
+      expect(screen.UNSAFE_getByType(FailedPhotoGlyph)).toBeTruthy();
+    } finally {
+      mockSigningFailed = false;
+    }
+  });
+
+  it('still opens the menu on a hold over a photo that did not come', () => {
+    // The retry target the failed frame grows is the deepest responder, so
+    // without the forwarded hold a photo message whose bytes failed had no
+    // reachable Report.
+    renderThread({ onReport: jest.fn() });
+    fireEvent(screen.getByTestId('photo-m1-image'), 'layout', {
+      nativeEvent: { layout: { x: 0, y: 0, width: 220, height: 220 } },
+    });
+    act(() => {
+      screen.UNSAFE_getByType(Image).props.onError({ error: 'no bytes' });
+    });
+    const retry = screen.getByLabelText('Photo could not load');
+    expect(retry.props.accessibilityRole).toBe('button');
+    fireEvent(retry, 'longPress');
+    expect(screen.getByLabelText('Report')).toBeTruthy();
   });
 
   it('does not offer a photo that is still being checked', () => {
