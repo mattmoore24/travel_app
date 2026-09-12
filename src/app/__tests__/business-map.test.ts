@@ -49,9 +49,11 @@ describe('a business is never offered a traveler on the map', () => {
     // — and that route is inside `signedIn && onboarded`, which a business
     // account never satisfies. So both were taps that did nothing at all.
     expect(code.match(/pathname: '\/profile\/\[userId\]'/g)).toHaveLength(2);
-    // The hero: no photograph to press in the first place.
-    expect(code).toContain(
-      'const hero = !pin.seeded && !isOwn && photoUrl != null && !viewerIsBusiness;'
+    // The hero: no photograph to press in the first place. Decided from
+    // the PATH now (so the frame is reserved while the URL signs), and the
+    // business guard is still on it.
+    expect(code.replace(/\s+/g, ' ')).toContain(
+      'const hero = !pin.seeded && !isOwn && pin.photo_path != null && !photoQuery.isError && !viewerIsBusiness;'
     );
     // The pinner row, which is the second of the two.
     guardsAt(

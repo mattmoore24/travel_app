@@ -27,6 +27,8 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { AvatarButton } from '@/components/ui/avatar-button';
 import { GlassSurface } from '@/components/ui/glass-surface';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { RemoteImage } from '@/components/ui/remote-image';
+import { Skeleton } from '@/components/ui/skeleton';
 import { LoadError } from '@/components/ui/load-error';
 import { MAP_WASH, QUIET_BASEMAP, SHOW_POINTS_OF_INTEREST, washBox } from '@/features/pins/basemap';
 import { Sheet, SHEET_SETTLE_MS, leavingSheet } from '@/components/ui/sheet';
@@ -34,7 +36,16 @@ import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Type, Elevation, HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
+import {
+  Type,
+  Elevation,
+  FontCap,
+  HitTarget,
+  Motion,
+  Radius,
+  Space,
+  Spacing,
+} from '@/constants/theme';
 import {
   useCity,
   useDeletePin,
@@ -151,6 +162,7 @@ import { useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { analytics } from '@/lib/analytics';
 import { haptics } from '@/lib/haptics';
+import { photoSourceState } from '@/lib/photo-source';
 import { countOf } from '@/lib/plural';
 import type { CityPinRow, CityRow, PinCrewRow } from '@/lib/database.types';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -189,7 +201,10 @@ function PinCard({
   const helloCapped = budget.data != null && budget.data.used >= budget.data.allowed;
   const theme = useTheme();
   const ownUserId = useOwnUserId();
-  const { data: photoUrl } = usePhotoUrl(pin.photo_path);
+  const photoQuery = usePhotoUrl(pin.photo_path);
+  // The URL with the storage path as its cache key, and whether a null is
+  // "still signing" rather than "no photo" (lib/photo-source).
+  const photo = photoSourceState(photoQuery, pin.photo_path);
   const deletePin = useDeletePin(cityId);
   const isOwn = pin.user_id != null && pin.user_id === ownUserId;
 
@@ -242,7 +257,13 @@ function PinCard({
   // mount for a business account, so the whole photograph was a tap that did
   // nothing. Stated here rather than left to the empty feed: the affordance
   // is what is wrong, not the pixels.
-  const hero = !pin.seeded && !isOwn && photoUrl != null && !viewerIsBusiness;
+  //
+  // From the PATH, not the resolved URL, so the 3:2 frame is reserved from
+  // the first paint and the card does not change shape when the signing
+  // lands; the frame pulses until the bytes do. A signing that FAILED falls
+  // back to the no-hero layout rather than a broken band over a name.
+  const hero =
+    !pin.seeded && !isOwn && pin.photo_path != null && !photoQuery.isError && !viewerIsBusiness;
 
   return (
     <ThemedView style={styles.pinCard}>
@@ -263,7 +284,14 @@ function PinCard({
             )
           }>
           <View style={styles.hero}>
-            <Image source={{ uri: photoUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
+            {/* Under the name gradient: the skeleton pulses while the URL
+                signs and while the bytes come, and the photo fades over it. */}
+            <RemoteImage
+              source={photo.source}
+              pending={photo.pending}
+              style={StyleSheet.absoluteFill}
+              transition={Motion.standard}
+            />
             <LinearGradient
               colors={['transparent', 'rgba(2,3,9,0.85)']}
               locations={[0.35, 1]}
@@ -417,15 +445,21 @@ function PinCard({
               }>
               <View style={styles.pinnerCard}>
                 <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
-                  {photoUrl ? (
-                    <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
-                  ) : (
-                    <SymbolView
-                      name={{ ios: 'person.fill', android: 'person', web: 'person' }}
-                      size={20}
-                      tintColor={theme.textSecondary}
-                    />
-                  )}
+                  {/* Flat while the bytes come, at this size a pulse reads as
+                      a flicker; the glyph only once there is no photo. */}
+                  <RemoteImage
+                    source={photo.source}
+                    pending={photo.pending}
+                    skeleton="flat"
+                    style={[styles.fill, { backgroundColor: theme.backgroundElement }]}
+                    fallback={
+                      <SymbolView
+                        name={{ ios: 'person.fill', android: 'person', web: 'person' }}
+                        size={20}
+                        tintColor={theme.textSecondary}
+                      />
+                    }
+                  />
                 </View>
                 <View style={styles.pinnerText}>
                   <View style={styles.nameRow}>
@@ -693,6 +727,28 @@ function CrewFace({ person, first }: { person: PinCrewRow; first: boolean }) {
   );
 }
 
+/**
+ * The close on an arrival notice. "Dismiss", the word the Travelers strips
+ * use for the same act; "Close" belongs to the cards, and no card is up
+ * while the slot draws (mapCovered empties it).
+ */
+function NoticeClose({ onPress }: { onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Dismiss"
+      onPress={onPress}
+      style={styles.noticeClose}>
+      <SymbolView
+        name={{ ios: 'xmark', android: 'close', web: 'close' }}
+        size={13}
+        tintColor={theme.textSecondary}
+      />
+    </Pressable>
+  );
+}
+
 const SEEDED_LABEL = 'One of our picks. Show up.';
 /** The same fact, without the invitation: nobody is asking a bar to show up. */
 const BUSINESS_SEEDED_LABEL = 'One of our picks in this city.';
@@ -775,6 +831,14 @@ function CityPinMarker({
   const { data: photoUri } = usePhotoUrl(pin.photo_path);
   const ownUserId = useOwnUserId();
   const own = pin.user_id != null && pin.user_id === ownUserId;
+  // How many times the face's bytes have landed. The URL resolves BEFORE
+  // the download, and the rasterisation window closes 500 ms after the key
+  // changes, so on a cold cache the marker froze with an empty badge and
+  // never redrew until a selection or the dim flipped. The face's onLoad
+  // bumps this, and it is in the key, so the window re-opens when there is
+  // actually a face to draw. State rather than a ref: the key is read in
+  // render and a ref written from a load callback would never re-render.
+  const [faceLoads, setFaceLoads] = useState(0);
   // `own` and the later-day DIM are IN the key: anything that changes what
   // the marker draws must re-open the rasterization window, or the ring and
   // the dim are simply missing from the frozen bitmap. The derived boolean
@@ -783,7 +847,7 @@ function CityPinMarker({
   // synthetic city Date — isLaterDay's ISO leg misreads it (pin-helpers).
   const later = isLaterCityDay(pin.intent_date, clock);
   const tracking = useMarkerTracking(
-    `${selected}:${photoUri ?? ''}:${pin.chat_id ?? ''}:${own}:${later}`
+    `${selected}:${photoUri ?? ''}:${faceLoads}:${pin.chat_id ?? ''}:${own}:${later}`
   );
   return (
     <Marker
@@ -816,6 +880,11 @@ function CityPinMarker({
         seeded={pin.seeded}
         selected={selected}
         photoUri={photoUri ?? null}
+        // The storage path is the face's cache key (lib/photo-source), so a
+        // relaunch draws it from disk instead of downloading every marker's
+        // face again behind a freshly signed URL.
+        photoPath={pin.photo_path}
+        onFaceLoad={() => setFaceLoads((count) => count + 1)}
         open={pin.chat_id != null}
         own={own}
         later={later}
@@ -1130,6 +1199,14 @@ export default function MapScreen() {
   // exactly the person this banner targets the ask is usually spent — and a
   // tap the primer store would silently swallow must not be offered.
   const [firstPinAskable, setFirstPinAskable] = useState(false);
+  // The two arrival notices can be put away. Both are derived from facts
+  // that stay true for a while (the session that finished onboarding, a pin
+  // that is still the only one), so without this a reader who had taken
+  // them in was reading around them; at the accessibility sizes the card
+  // covers most of the map. Session-local on purpose: the notices are
+  // one-time news, and a relaunch is a fair time to say it again.
+  const [firstSessionDismissed, setFirstSessionDismissed] = useState(false);
+  const [firstPinDismissed, setFirstPinDismissed] = useState(false);
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
   // Places are the third marker family, and they are quiet on purpose:
   // people stack on top of places, which is the right sentence for this app.
@@ -1909,8 +1986,8 @@ export default function MapScreen() {
           'empty-city': emptyCity,
           'viewport-empty': viewportEmpty && !farFromCity,
           'way-home': farFromCity && followedCityId !== activeCityId,
-          'first-session': firstSession,
-          'first-pin': ownPinIsOnlyPin,
+          'first-session': firstSession && !firstSessionDismissed,
+          'first-pin': ownPinIsOnlyPin && !firstPinDismissed,
           'heat-fallback': heatShown && heatFallback && heatCells.length > 0,
         })
       : null;
@@ -2460,7 +2537,23 @@ export default function MapScreen() {
               title="No cities yet"
               description="We're opening more soon."
             />
-          ) : null}
+          ) : (
+            // The chrome, before the cities answer: the search pill where the
+            // city bar will stand and a strip where the plan list's peek
+            // will, so the landing screen reads as "the map is coming"
+            // rather than "the app is broken". Never a skeleton over a
+            // basemap (there is none here; see components/ui/skeleton), and
+            // never over a mounted MapView: this is the branch with no map.
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <View
+                style={[styles.cityBar, styles.preCitiesBar, { top: insets.top + Spacing.two }]}>
+                <Skeleton width="70%" height={HitTarget} radius={Radius.pill} />
+              </View>
+              <View style={[styles.preCitiesPeek, { bottom: dockBottom }]}>
+                <Skeleton width="100%" height={PLAN_LIST_PEEK} radius={Radius.lg} />
+              </View>
+            </View>
+          )}
         </ThemedView>
       )}
 
@@ -2864,16 +2957,29 @@ export default function MapScreen() {
           identical to the one the guest already saw. Once, in the session
           that finished onboarding, until the first pin. */}
       {slot === 'first-session' ? (
-        <View style={[styles.emptyBanner, { bottom: messageSlot }]} pointerEvents="none">
+        <View style={[styles.emptyBanner, { bottom: messageSlot }]} pointerEvents="box-none">
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
-            <ThemedText type="smallBold">
-              {ownProfile?.display_name
-                ? `You're on the map, ${ownProfile.display_name}.`
-                : "You're on the map."}
-            </ThemedText>
-            <ThemedText type="footnote" themeColor="textSecondary">
-              {"Pin where you're headed and people can join."}
-            </ThemedText>
+            {/* Chrome floating over the hero, so both lines take the chrome
+                cap and the footnote holds to two lines: at AX5 this card
+                grew to cover most of the map. And a close, so the note can
+                be put away at any size rather than read around. */}
+            <View style={styles.noticeRow}>
+              <View style={styles.noticeText}>
+                <ThemedText type="smallBold" maxFontSizeMultiplier={FontCap.chrome}>
+                  {ownProfile?.display_name
+                    ? `You're on the map, ${ownProfile.display_name}.`
+                    : "You're on the map."}
+                </ThemedText>
+                <ThemedText
+                  type="footnote"
+                  themeColor="textSecondary"
+                  maxFontSizeMultiplier={FontCap.chrome}
+                  numberOfLines={2}>
+                  {"Pin where you're headed and people can join."}
+                </ThemedText>
+              </View>
+              <NoticeClose onPress={() => setFirstSessionDismissed(true)} />
+            </View>
           </GlassSurface>
         </View>
       ) : null}
@@ -2886,34 +2992,50 @@ export default function MapScreen() {
       {slot === 'first-pin' && activeCity ? (
         <View style={[styles.emptyBanner, { bottom: messageSlot }]}>
           <GlassSurface radius={Radius.lg} style={styles.emptyCard}>
-            <ThemedText type="smallBold">{`You're first in ${activeCity.cities.name}.`}</ThemedText>
-            {/* The promise matches what the pin can receive: a message-first
-                pin (no chat) cannot be joined, and this banner must not say
-                it can. */}
-            <ThemedText type="footnote" themeColor="textSecondary">
-              {ownOnlyPin?.chat_id != null
-                ? "We'll tell you if someone joins while your pin is up."
-                : "We'll tell you if someone messages you while your pin is up."}
-            </ThemedText>
-            {/* Only while the primer can actually present. useCreatePin
-                already asked on post, so for exactly the person this banner
-                targets the ask is usually spent — and a tap the store would
-                silently swallow is worse than no action. The text stands
-                either way. */}
-            {firstPinAsked || !firstPinAskable ? null : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Turn on notifications"
-                hitSlop={8}
-                onPress={() => {
-                  setFirstPinAsked(true);
-                  void askPrimer('pin-posted');
-                }}>
-                <ThemedText type="footnote" themeColor="accent">
-                  Turn on notifications
+            {/* Capped at the chrome cap like the banner above: this card
+                floats over the hero and at AX5 it covered most of it. */}
+            <View style={styles.noticeRow}>
+              <View style={styles.noticeText}>
+                <ThemedText type="smallBold" maxFontSizeMultiplier={FontCap.chrome}>
+                  {`You're first in ${activeCity.cities.name}.`}
                 </ThemedText>
-              </Pressable>
-            )}
+                {/* The promise matches what the pin can receive: a
+                    message-first pin (no chat) cannot be joined, and this
+                    banner must not say it can. */}
+                <ThemedText
+                  type="footnote"
+                  themeColor="textSecondary"
+                  maxFontSizeMultiplier={FontCap.chrome}
+                  numberOfLines={2}>
+                  {ownOnlyPin?.chat_id != null
+                    ? "We'll tell you if someone joins while your pin is up."
+                    : "We'll tell you if someone messages you while your pin is up."}
+                </ThemedText>
+                {/* Only while the primer can actually present. useCreatePin
+                    already asked on post, so for exactly the person this
+                    banner targets the ask is usually spent — and a tap the
+                    store would silently swallow is worse than no action.
+                    The text stands either way. */}
+                {firstPinAsked || !firstPinAskable ? null : (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Turn on notifications"
+                    hitSlop={8}
+                    onPress={() => {
+                      setFirstPinAsked(true);
+                      void askPrimer('pin-posted');
+                    }}>
+                    <ThemedText
+                      type="footnote"
+                      themeColor="accent"
+                      maxFontSizeMultiplier={FontCap.chrome}>
+                      Turn on notifications
+                    </ThemedText>
+                  </Pressable>
+                )}
+              </View>
+              <NoticeClose onPress={() => setFirstPinDismissed(true)} />
+            </View>
           </GlassSurface>
         </View>
       ) : null}
@@ -3145,6 +3267,12 @@ export default function MapScreen() {
           footing={dockFooting}
           peekHeight={planPeekHeight}
           onPeekHeight={setPlanPeekHeight}
+          // The list draws its rows' shape while the pins are on their way
+          // and the peek is not yet a count. Placeholder data is a previous
+          // city's answer standing in during a chip tap, which is content,
+          // not a wait.
+          // @ts-expect-error pending lands with plan-list in the sibling branch
+          pending={pinsQuery.isPending && !pinsQuery.isPlaceholderData}
           onSelectPin={(pin) => selectPin(pin, 'list')}
           onSelectVenue={(key) => {
             haptics.light();
@@ -3217,7 +3345,13 @@ export default function MapScreen() {
               size={19}
               tintColor={theme.onAccent}
             />
-            <ThemedText type="callout" style={[styles.dockLabel, { color: theme.onAccent }]}>
+            <ThemedText
+              type="callout"
+              // A control label: the pill is measured, so nothing clips, but
+              // uncapped it was a 90pt button at AX5 and, with the peek and
+              // the tab bar, the stack ate the lower third of the map.
+              maxFontSizeMultiplier={FontCap.control}
+              style={[styles.dockLabel, { color: theme.onAccent }]}>
               Drop a pin
             </ThemedText>
           </PressableScale>
@@ -3256,7 +3390,13 @@ export default function MapScreen() {
               size={19}
               tintColor={theme.onAccent}
             />
-            <ThemedText type="callout" style={[styles.dockLabel, { color: theme.onAccent }]}>
+            <ThemedText
+              type="callout"
+              // A control label: the pill is measured, so nothing clips, but
+              // uncapped it was a 90pt button at AX5 and, with the peek and
+              // the tab bar, the stack ate the lower third of the map.
+              maxFontSizeMultiplier={FontCap.control}
+              style={[styles.dockLabel, { color: theme.onAccent }]}>
               {ownPlace?.has_live_post ? 'Update tonight' : "Post what's happening"}
             </ThemedText>
           </PressableScale>
@@ -3902,6 +4042,36 @@ const styles = StyleSheet.create({
   emptyCard: {
     padding: Space.lg,
     gap: Space.xs,
+  },
+  // An arrival notice: its lines, then a 44pt close at the end of the row.
+  noticeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Space.sm,
+  },
+  noticeText: {
+    flex: 1,
+    gap: Space.xs,
+  },
+  // The card's padding would put a 44pt target's centre a row down from
+  // the first line; pulling it back by the padding sits the glyph on the
+  // card's corner. Logical margins (logical-directional-styles.test.ts).
+  noticeClose: {
+    width: HitTarget,
+    height: HitTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -Space.md,
+    marginEnd: -Space.md,
+  },
+  // The chrome before the cities answer (see the branch that draws it).
+  preCitiesBar: {
+    alignItems: 'center',
+  },
+  preCitiesPeek: {
+    position: 'absolute',
+    left: Spacing.four,
+    right: Spacing.four,
   },
   dock: {
     position: 'absolute',
