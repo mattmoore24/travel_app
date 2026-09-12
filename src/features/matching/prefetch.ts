@@ -73,6 +73,16 @@ export function useNextTravelersPrefetch(queue: PrefetchTarget[]) {
           if (url) {
             // The download itself. A signed URL in the cache is only half of
             // it: without this the image request still starts on mount.
+            //
+            // KEYED ON THE URL, and the hero in features/profile/profile-view
+            // keys on the URL to match. `Image.prefetch` takes a URL and
+            // nothing else (ImagePrefetchOptions in expo-image 57.0.3 has no
+            // cacheKey), so the bytes land under the URL key, and a hero that
+            // asked for them under the storage-path key every other frame
+            // uses would miss them and pull the face again on the card turn.
+            // Do not add a cacheKey to the hero without moving this to
+            // `Image.loadAsync({ uri, cacheKey })` and proving on a device
+            // that `Image.getCachePathAsync(path)` answers afterwards.
             return Image.prefetch(url);
           }
           return false;

@@ -149,7 +149,9 @@ describe('the chat list is a list, not a stack of cards', () => {
     // business path through the chat bucket and come back a 404 wearing a
     // valid URL, which is the bug this row has already paid for once.
     expect(rowModule).toContain('isRoom && chat.photo_path');
-    expect(rowModule).toContain('<GroupAvatar path={chat.photo_path} size={AVATAR} />');
+    expect(rowModule).toContain(
+      '<GroupAvatar path={chat.photo_path} size={AVATAR} recyclingKey={chat.chat_id} />'
+    );
     expect(rowModule).toContain('useChatPhotoUrl(path)');
   });
 

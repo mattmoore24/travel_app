@@ -1,5 +1,4 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { FlatList, StyleSheet, TextInput, View } from 'react-native';
@@ -9,14 +8,18 @@ import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { EmptyState } from '@/components/ui/empty-state';
+import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Fonts, HitTarget, MaxContentWidth, Radius, Space } from '@/constants/theme';
+import { RemoteImage } from '@/components/ui/remote-image';
+import { ChatRowSkeleton } from '@/components/ui/skeleton';
+import { Fonts, HitTarget, MaxContentWidth, Motion, Radius, Space } from '@/constants/theme';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { useAddToGroup, useGroupMembers, usePeopleYouKnow } from '@/features/groups/hooks';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 import { saveFailureMessage } from '@/lib/failure-message';
+import { photoSourceState } from '@/lib/photo-source';
 import type { KnownPersonRow } from '@/lib/database.types';
 
 /**
@@ -36,7 +39,8 @@ export default function AddPeopleScreen() {
   const { chatId } = useLocalSearchParams<{ chatId: string }>();
   const theme = useTheme();
   const [query, setQuery] = useState('');
-  const { data: people = [], isLoading } = usePeopleYouKnow(query);
+  const peopleQuery = usePeopleYouKnow(query);
+  const { data: people = [], isLoading } = peopleQuery;
   const { data: members = [] } = useGroupMembers(chatId ?? null);
   const add = useAddToGroup(chatId ?? null);
   // Who has been added this visit, so a row can say so without waiting for
@@ -98,7 +102,24 @@ export default function AddPeopleScreen() {
           keyboardDismissMode="on-drag"
           contentContainerStyle={styles.list}
           ListEmptyComponent={
-            isLoading ? null : query.trim() ? (
+            isLoading ? (
+              // The shape of the list on the first open: avatar and name,
+              // which is exactly the chat row's shape. It used to be a blank
+              // under the search box until the people arrived.
+              <>
+                <ChatRowSkeleton />
+                <ChatRowSkeleton />
+                <ChatRowSkeleton />
+              </>
+            ) : peopleQuery.isError ? (
+              // A failed fetch is not "Nobody yet".
+              <LoadError
+                compact
+                what="the people you know"
+                error={peopleQuery.error}
+                onRetry={() => peopleQuery.refetch()}
+              />
+            ) : query.trim() ? (
               <EmptyState
                 style={styles.empty}
                 title="Nobody by that name"
@@ -155,7 +176,7 @@ function PersonRow({
   onAdd: () => void;
 }) {
   const theme = useTheme();
-  const { data: photoUrl } = usePhotoUrl(person.photo_path);
+  const photo = photoSourceState(usePhotoUrl(person.photo_path), person.photo_path);
   const name = person.display_name ?? 'Traveler';
   const inGroup = state === 'in';
 
@@ -169,15 +190,23 @@ function PersonRow({
       disabled={inGroup || busy}
       onPress={onAdd}
       style={styles.row}>
-      <View style={[styles.avatar, { backgroundColor: theme.surfaceSunken }]}>
-        {photoUrl ? (
-          <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
-        ) : (
+      {/* 'flat' at 40pt, keyed on the person: the rows are recycled, and
+          without the key a recycled one wore the previous person's face for
+          a frame. The monogram is for somebody with no photo, not for one
+          whose photo is on its way. */}
+      <RemoteImage
+        source={photo.source}
+        pending={photo.pending}
+        skeleton="flat"
+        transition={Motion.quick}
+        recyclingKey={person.user_id}
+        style={[styles.avatar, { backgroundColor: theme.surfaceSunken }]}
+        fallback={
           <ThemedText type="callout" themeColor="textSecondary">
             {name.slice(0, 1).toUpperCase()}
           </ThemedText>
-        )}
-      </View>
+        }
+      />
       <View style={styles.rowText}>
         <View style={styles.nameRow}>
           <ThemedText type="callout">{name}</ThemedText>
@@ -258,13 +287,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  fill: {
-    width: '100%',
-    height: '100%',
   },
   empty: {
     paddingTop: Space.xl,

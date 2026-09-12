@@ -1,5 +1,4 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { Image } from 'expo-image';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import { useState, type ReactNode } from 'react';
 import {
@@ -15,6 +14,7 @@ import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoCheckVeil } from '@/components/ui/photo-check';
 import { PhotoViewer, type ViewablePhoto } from '@/components/ui/photo-viewer';
+import { RemoteImage } from '@/components/ui/remote-image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PressableScale } from '@/components/ui/pressable-scale';
@@ -117,13 +117,28 @@ function Photo({
   onOpen?: (photo: ViewablePhoto) => void;
 }) {
   const theme = useTheme();
-  const { data: url } = usePhotoUrl(path);
-  // A photo that still arrives late crossfades into the frame instead of
-  // snapping into it. The frame is surfaceSunken underneath, so the snap read
-  // as a glitch on the one screen whose whole pitch is the face.
-  const image = url ? (
-    <Image
-      source={{ uri: url }}
+  const query = usePhotoUrl(path);
+  const url = query.data;
+  // KEYED ON THE SIGNED URL, ON PURPOSE, with no `cacheKey`. Every other
+  // frame in the app keys its bytes on the storage path (lib/photo-source)
+  // so a re-signed URL is a cache hit; this one cannot yet, because the
+  // Travelers page warms the NEXT card's face through
+  // features/matching/prefetch, and expo-image's `Image.prefetch` takes a
+  // URL and nothing else (no cacheKey on ImagePrefetchOptions in 57.0.3).
+  // The prefetched bytes therefore sit under the URL key, and a hero that
+  // looked them up under the path key would miss them and pull the face
+  // again on the card turn, which is the exact beat the prefetch exists to
+  // remove. Same session, same URL, so memory-disk still hits here. Move
+  // both halves together or not at all.
+  const source = url ? { uri: url } : null;
+  // The frame draws its own skeleton while the URL signs AND while the
+  // bytes download, fades the photo in over it, and shows a glyph if the
+  // download fails; a Skeleton that left when the URL landed was gone for
+  // the long half of the wait on a slow link.
+  const image = (
+    <RemoteImage
+      source={source}
+      pending={url == null && !query.isError}
       style={styles.fill}
       contentFit="cover"
       transition={Motion.quick}
@@ -132,14 +147,10 @@ function Photo({
       // so the label moves up rather than being said twice.
       accessibilityLabel={onOpen && url ? undefined : label}
     />
-  ) : (
-    // Loading, not missing. A flat rectangle on a slow connection is
-    // indistinguishable from a photo that failed to arrive.
-    <Skeleton style={StyleSheet.absoluteFill} radius={0} />
   );
   return (
     <View style={[styles.photoFrame, { backgroundColor: theme.surfaceSunken }, style]}>
-      {onOpen && url ? (
+      {onOpen && source ? (
         // A plain Pressable, not PressableScale: a photo that shrinks under
         // the thumb reads as a card, and this one is meant to read as the
         // picture itself. It sits UNDER the reply chip and the edit button in
@@ -150,7 +161,7 @@ function Photo({
           accessibilityLabel={label}
           accessibilityHint="Opens it full screen."
           style={styles.fill}
-          onPress={() => onOpen({ uri: url, label: label ?? 'Photo' })}>
+          onPress={() => onOpen({ source, label: label ?? 'Photo' })}>
           {image}
         </Pressable>
       ) : (
@@ -312,11 +323,14 @@ function SectionHeader({
 function PrioritiesSection({
   priorities,
   owner,
+  pending = false,
   onEdit,
   onRespondTo,
 }: {
   priorities: ProfilePriorityRow[];
   owner: boolean;
+  /** The priorities query has not answered yet, or failed. */
+  pending?: boolean;
   onEdit?: (slot: number | null) => void;
   onRespondTo?: (target: RespondTarget) => void;
 }) {
@@ -324,6 +338,10 @@ function PrioritiesSection({
   if (priorities.length === 0 && !owner) {
     return null;
   }
+  // The owner's list while it is still on its way. "What do you want to
+  // do?" is the right question for somebody with no list and the wrong one
+  // for somebody whose list is a round trip away; a shape says neither.
+  const loading = pending && priorities.length === 0;
   return (
     <View style={styles.section}>
       <SectionHeader
@@ -346,6 +364,7 @@ function PrioritiesSection({
             : undefined
         }
       />
+      {loading ? <Skeleton height={72} radius={Radius.lg} /> : null}
       {priorities.length > 0 ? (
         <View style={styles.chipWrap}>
           {priorities.map((priority) => {
@@ -388,7 +407,7 @@ function PrioritiesSection({
       {/* The nudge. An empty list on your own profile is the one place this
           section can explain itself, and it is where most people will first
           understand what it is for. */}
-      {owner && onEdit && priorities.length < MAX_PRIORITIES ? (
+      {owner && onEdit && !loading && priorities.length < MAX_PRIORITIES ? (
         <PressableScale
           accessibilityRole="button"
           accessibilityLabel={priorities.length === 0 ? 'Add your list' : 'Add another priority'}
@@ -929,6 +948,8 @@ export function ProfileView({
   photosPending = false,
   photoChecking = false,
   tripsPending = false,
+  prioritiesPending = false,
+  promptsPending = false,
   owner,
   connected = false,
   alsoSpeaks = null,
@@ -974,6 +995,16 @@ export function ProfileView({
    * cannot actually claim.
    */
   tripsPending?: boolean;
+  /**
+   * The priorities and prompts queries have not answered yet, or failed.
+   * Owner only in effect: a visitor's page draws nothing for an empty list,
+   * and nothing is the right thing to draw for an unknown one too. The
+   * owner's page invites them to add what they may well already have, and
+   * "Add your list" over a list that is a round trip away is the lie these
+   * hold back.
+   */
+  prioritiesPending?: boolean;
+  promptsPending?: boolean;
   trips: ProfileTrip[];
   handles: SocialHandleRow[];
   owner: boolean;
@@ -1260,6 +1291,7 @@ export function ProfileView({
           <PrioritiesSection
             priorities={priorities}
             owner={owner}
+            pending={prioritiesPending}
             onEdit={onEditPriorities}
             onRespondTo={onRespondTo}
           />
@@ -1420,7 +1452,12 @@ export function ProfileView({
 
           {/* The nudge, and the whole reason prompts exist: a profile with
               none of them gives a stranger nothing specific to answer. */}
-          {owner && onEditPrompt && prompts.length < MAX_PROMPTS ? (
+          {owner && onEditPrompt && promptsPending && prompts.length === 0 ? (
+            // The owner's prompts while they are still on their way: a shape
+            // where the first card will land, never "Answer a prompt" over
+            // three answers that are a round trip from the screen.
+            <Skeleton height={72} radius={Radius.lg} />
+          ) : owner && onEditPrompt && prompts.length < MAX_PROMPTS ? (
             <PressableScale
               accessibilityRole="button"
               accessibilityLabel="Answer a prompt"

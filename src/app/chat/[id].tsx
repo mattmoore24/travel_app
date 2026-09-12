@@ -12,6 +12,7 @@ import { useSharedValue } from 'react-native-reanimated';
 import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { LoadError } from '@/components/ui/load-error';
+import { ThreadSkeleton } from '@/components/ui/skeleton';
 import { Radius, MaxContentWidth, Spacing } from '@/constants/theme';
 import {
   useBlockUser,
@@ -54,6 +55,7 @@ import {
 } from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import type { ChatListRow } from '@/lib/database.types';
+import { photoSource } from '@/lib/photo-source';
 
 /**
  * The label the shared action sheet gives its Report row.
@@ -79,7 +81,9 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
   const isPlace = useIsPlaceChat(chat.kind);
   const { data: personPhotoUrl } = usePhotoUrl(isPlace ? null : chat.photo_path);
   const { data: placePhotoUrl } = useBusinessPhotoUrl(isPlace ? chat.photo_path : null);
-  const photoUrl = isPlace ? placePhotoUrl : personPhotoUrl;
+  // With the storage path as the cache key, so the face the chat list just
+  // drew is not downloaded a second time for the header (lib/photo-source).
+  const photo = photoSource(isPlace ? placePhotoUrl : personPhotoUrl, chat.photo_path);
   const { data: placeId } = useBusinessForChat(isPlace ? chat.chat_id : null);
   // my_chats() carries the name and the photo but not the badge, and this is
   // one row the client already has cached from the profile screen.
@@ -215,7 +219,7 @@ function ChatHeader({ chat }: { chat: ChatListRow }) {
 
   return (
     <ThreadHeader
-      photoUrl={photoUrl ?? null}
+      photo={photo}
       glyph={
         isPlace
           ? { ios: 'storefront.fill', android: 'storefront', web: 'storefront' }
@@ -389,7 +393,14 @@ export default function ChatScreen() {
             <ThemedText themeColor="textSecondary" style={styles.centerText}>
               Chat not found.
             </ThemedText>
-          ) : null}
+          ) : (
+            // The row is still on its way: a cold deep link or a push
+            // notification while the chat list is pending. The shape of a
+            // conversation rather than a blank screen, on the destination a
+            // push lands on. Not inverted: this is a plain column, not the
+            // message list.
+            <ThreadSkeleton />
+          )}
         </SafeAreaView>
       </ThemedView>
     );
@@ -505,6 +516,10 @@ export default function ChatScreen() {
             messages={thread}
             ownUserId={ownUserId}
             otherName={chat.title}
+            // The first page's shape while it is on its way. The list is
+            // inverted, so the skeleton undoes the mirror itself (see
+            // ThreadSkeleton); the room screen does the same.
+            emptyState={messagesQuery.isPending ? <ThreadSkeleton inverted /> : null}
             // A photo the classifier refused is emptied and flagged removed,
             // which in a one-to-one chat left an empty bubble in the thread
             // for both people — the same nothing-there the founder reported

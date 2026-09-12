@@ -1,5 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { Image } from 'expo-image';
+import { StyleSheet, View } from 'react-native';
 
+import { Skeleton } from '@/components/ui/skeleton';
+import { FontCap, Radius } from '@/constants/theme';
 import { ProfileView } from '@/features/profile/profile-view';
 import type { TripWithCity } from '@/features/trips/api';
 import { profileTripFromOwnTrip, profileTripFromTravelerRow } from '@/features/trips/profile-trips';
@@ -468,5 +472,108 @@ describe('a trip that is roughly when', () => {
       });
       expect(screen.getByTestId('rough-dates-nudge')).toBeTruthy();
     });
+  });
+});
+
+const heroPhoto: ProfilePhotoRow = {
+  id: 'p1',
+  user_id: 'u1',
+  storage_path: 'u1/0.jpg',
+  position: 0,
+  moderation_status: 'approved',
+  moderation_attempts: 0,
+  moderation_category: null,
+  moderation_engine: null,
+  created_at: '',
+};
+
+describe('the hero at large type', () => {
+  // What the AX5 frame showed: the Identity block (name at 99pt, occupation,
+  // home, two pills) outgrowing a fixed square, the top of the name clipped
+  // and "From ..." landing on the face. A component test cannot see the
+  // clip; it pins the two rules that remove it.
+  it('is at least a square, never a fixed one', () => {
+    mockSignedUrl = 'https://signed.example/u1-0.jpg';
+    renderProfile({ photos: [heroPhoto] });
+    const hero = screen.UNSAFE_getAllByType(View).find((view) => {
+      const style = StyleSheet.flatten(view.props.style) as Record<string, unknown> | undefined;
+      return (
+        style?.overflow === 'hidden' &&
+        style?.borderRadius === Radius.lg &&
+        style?.minHeight != null
+      );
+    });
+    expect(hero).toBeTruthy();
+    const style = StyleSheet.flatten(hero!.props.style) as Record<string, unknown>;
+    expect(style.minHeight).toBe(style.width);
+    expect(style.height).toBeUndefined();
+    mockSignedUrl = null;
+  });
+
+  it('caps the name and the age at the heading cap', () => {
+    renderProfile({ photos: [heroPhoto] });
+    expect(screen.getAllByText(/Maestro Test/)[0].props.maxFontSizeMultiplier).toBe(
+      FontCap.heading
+    );
+    // The age is a nested Text; it carries the cap explicitly rather than
+    // relying on inheritance from its parent.
+    for (const text of screen.getAllByText(/29/)) {
+      expect(text.props.maxFontSizeMultiplier).toBe(FontCap.heading);
+    }
+  });
+});
+
+describe('the hero photo', () => {
+  it('pulses while the URL signs, and draws no Image yet', () => {
+    mockSignedUrl = null;
+    renderProfile({ photos: [heroPhoto] });
+    expect(screen.UNSAFE_getAllByType(Skeleton).length).toBeGreaterThan(0);
+    expect(screen.UNSAFE_queryAllByType(Image)).toHaveLength(0);
+  });
+
+  it('is keyed on the signed URL with no cache key, so the Travelers prefetch hits', () => {
+    // Image.prefetch takes a URL and nothing else (expo-image 57.0.3), so the
+    // next card's face lands under the URL key; a hero keyed on the storage
+    // path would miss it and pull the face again on the card turn. See the
+    // comments in profile-view and features/matching/prefetch.
+    mockSignedUrl = 'https://signed.example/u1-0.jpg';
+    renderProfile({ photos: [heroPhoto] });
+    const images = screen.UNSAFE_getAllByType(Image);
+    expect(images).toHaveLength(1);
+    expect(images[0].props.source).toEqual({ uri: mockSignedUrl });
+    mockSignedUrl = null;
+  });
+});
+
+describe('the owner page before its lists', () => {
+  it('draws a shape for the priorities instead of "Add your list"', () => {
+    renderProfile({
+      owner: true,
+      priorities: [],
+      prioritiesPending: true,
+      onEditPriorities: jest.fn(),
+    });
+    expect(screen.getByText('Top priorities')).toBeTruthy();
+    expect(screen.queryByLabelText('Add your list')).toBeNull();
+    expect(screen.queryByText('What do you want to do?')).toBeNull();
+    expect(screen.UNSAFE_getAllByType(Skeleton).length).toBeGreaterThan(0);
+  });
+
+  it('draws a shape for the prompts instead of "Answer a prompt"', () => {
+    renderProfile({ owner: true, prompts: [], promptsPending: true, onEditPrompt: jest.fn() });
+    expect(screen.queryByLabelText('Answer a prompt')).toBeNull();
+    expect(screen.UNSAFE_getAllByType(Skeleton).length).toBeGreaterThan(0);
+  });
+
+  it('invites once the lists have answered', () => {
+    renderProfile({
+      owner: true,
+      priorities: [],
+      prompts: [],
+      onEditPriorities: jest.fn(),
+      onEditPrompt: jest.fn(),
+    });
+    expect(screen.getByLabelText('Add your list')).toBeTruthy();
+    expect(screen.getByLabelText('Answer a prompt')).toBeTruthy();
   });
 });

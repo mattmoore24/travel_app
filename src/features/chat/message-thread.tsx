@@ -1,5 +1,5 @@
 import { SymbolView } from 'expo-symbols';
-import { Image } from 'expo-image';
+import type { ImageSource } from 'expo-image';
 import * as Linking from 'expo-linking';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -18,13 +18,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoCheck } from '@/components/ui/photo-check';
 import { PhotoViewer, type ViewablePhoto } from '@/components/ui/photo-viewer';
+import { RemoteImage } from '@/components/ui/remote-image';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet, SHEET_SETTLE_MS, useRegisterNativeModal } from '@/components/ui/sheet';
-import { Elevation, HitTarget, Radius, Space } from '@/constants/theme';
+import { Elevation, HitTarget, Motion, Radius, Space } from '@/constants/theme';
 import { useIsBusiness } from '@/features/business/hooks';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { splitLinks } from '@/features/chat/links';
 import { usePhotoUrl } from '@/features/profile/hooks';
+import { photoSource, photoSourceState } from '@/lib/photo-source';
 import { isLocalId, type ThreadMessage } from '@/features/chat/outgoing';
 import type { Quote } from '@/features/chat/reply';
 import { separatorFor } from '@/features/chat/separators';
@@ -248,7 +250,10 @@ function RunAvatar({
   onPress?: () => void;
 }) {
   const theme = useTheme();
-  const { data: url } = usePhotoUrl(path);
+  // The URL hook plus the pure pairing rather than usePhotoSourceState: the
+  // thread's tests stand the profile hooks in by name, and the pairing is
+  // the same call either way (lib/photo-source).
+  const photo = photoSourceState(usePhotoUrl(path), path);
   // name is what separates the two kinds of empty. A bubble that is not the
   // foot of a run passes null for both and stays a pure spacer; the foot of
   // a run always carries a name, so somebody with no photo gets a monogram
@@ -259,13 +264,26 @@ function RunAvatar({
     styles.runAvatar,
     path || filled ? { backgroundColor: theme.surfaceSunken } : undefined,
   ];
-  const face = url ? (
-    <Image source={{ uri: url }} style={styles.runAvatarImage} contentFit="cover" />
-  ) : initial ? (
-    <ThemedText type="caption" themeColor="textSecondary" style={styles.runAvatarInitial}>
-      {initial}
-    </ThemedText>
-  ) : null;
+  // 'flat', never a pulse at 26pt: the sunken disc is the placeholder. The
+  // recycling key is the path, so a recycled cell never wears the previous
+  // sender's face for the frame before its own arrives.
+  const face =
+    path || filled ? (
+      <RemoteImage
+        source={photo.source}
+        pending={photo.pending}
+        skeleton="flat"
+        recyclingKey={path ?? undefined}
+        style={styles.runAvatarImage}
+        fallback={
+          initial ? (
+            <ThemedText type="caption" themeColor="textSecondary" style={styles.runAvatarInitial}>
+              {initial}
+            </ThemedText>
+          ) : null
+        }
+      />
+    ) : null;
 
   // A face in a group thread is the most natural thing in the app to tap, and
   // it did nothing. Only the foot of somebody else's run is live — the
@@ -463,12 +481,28 @@ function photoFrame(aspect: number | null): { width: number } {
  * bucket, and a viewer that signed for itself would show nothing here.
  */
 function ChatPhoto({
-  uri,
+  source,
+  pending = false,
+  local = false,
+  recyclingKey,
   testID,
   onOpen,
   onLongPress,
+  onFailed,
 }: {
-  uri: string;
+  /** Null while the URL is still being signed; see `pending`. */
+  source: ImageSource | null;
+  /** The path is there and the signing call has not answered yet. */
+  pending?: boolean;
+  /**
+   * A file still on this phone (the picked photo, mid-upload). Decodes in
+   * milliseconds, so it gets no skeleton and no fade: a pulse over a local
+   * file reads as flicker, and the upload's own scrim already says what is
+   * happening to it.
+   */
+  local?: boolean;
+  /** The message id, so a recycled cell never shows the previous photo. */
+  recyclingKey?: string;
   /** `photo-<message id>`, so a test can press the photo and not the bubble. */
   testID?: string;
   /** Open it full screen. Absent leaves the old, unopenable behaviour. */
@@ -479,12 +513,25 @@ function ChatPhoto({
    * arms its long press and a photo message would have no reachable menu.
    */
   onLongPress?: () => void;
+  /**
+   * Whether the download failed, so the bubble can withdraw its rotor
+   * action: "Open photo" on a photo that did not come is an action that
+   * lies about what it does. Called false again when a retry lands.
+   */
+  onFailed?: (failed: boolean) => void;
 }) {
   const [aspect, setAspect] = useState<number | null>(null);
   const frame = photoFrame(aspect);
+  // The four states are RemoteImage's: the pulsing square while the URL
+  // signs and while the bytes download (the biggest download in the app
+  // used to be a flat grey square for both, and a failed one was that
+  // square forever), the fade when they land, the glyph with a tap-to-retry
+  // when they do not. The reservation is the frame's: `styles.photo` fixes
+  // the height, and only the width ever follows the loaded aspect.
   const image = (
-    <Image
-      source={{ uri }}
+    <RemoteImage
+      source={source}
+      pending={pending}
       // The frame is the thing under test in a-chat-photo-can-be-opened, and
       // the press target above carries the plain `photo-<id>` that the other
       // cases press.
@@ -495,12 +542,17 @@ function ChatPhoto({
       // column this is the difference between the whole picture and its
       // middle third, which was the defect.
       contentFit="contain"
+      skeleton={local ? 'none' : 'pulse'}
+      transition={local ? 0 : Motion.quick}
+      recyclingKey={recyclingKey}
       onLoad={(event) => {
         const { width, height } = event.source;
         if (width > 0 && height > 0) {
           setAspect(width / height);
         }
+        onFailed?.(false);
       }}
+      onError={() => onFailed?.(true)}
     />
   );
   if (!onOpen) {
@@ -532,6 +584,7 @@ function BubbleBody({
   quote,
   onSpanLongPress,
   onOpenPhoto,
+  onPhotoFailed,
 }: {
   message: ThreadMessage;
   mine: boolean;
@@ -548,14 +601,22 @@ function BubbleBody({
    */
   onSpanLongPress?: () => void;
   /**
-   * Open this message's photo full screen. Takes the URL because this is the
-   * component holding it; the thread owns the viewer and the words spoken
-   * over it.
+   * Open this message's photo full screen. Takes the source because this is
+   * the component holding it; the thread owns the viewer and the words
+   * spoken over it.
    */
-  onOpenPhoto?: (uri: string) => void;
+  onOpenPhoto?: (source: ImageSource) => void;
+  /** The photo's download failed (or, on a retry, came good). See Bubble. */
+  onPhotoFailed?: (failed: boolean) => void;
 }) {
   const theme = useTheme();
   const { data: imageUrl } = useChatPhotoUrl(message.image_path);
+  // The signed URL with the storage path as its cache key, so scrolling
+  // back through a thread on hostel wifi re-pulls nothing the phone already
+  // holds (lib/photo-source). Paired here rather than through
+  // useChatPhotoSourceState because the thread's tests stand the chat hooks
+  // in by name.
+  const image = photoSource(imageUrl, message.image_path);
   const tail = tailed ? Radius.xs : Radius.bubble;
   const checking = message.moderation_status === 'pending';
   // Straight off the row rather than through a prop the caller has to
@@ -595,24 +656,23 @@ function BubbleBody({
         // Still on this phone. The same square the real photo will occupy,
         // drawn from the file that was picked, so the thread does not sit
         // empty for the length of the upload. Nothing to open yet.
-        <ChatPhoto uri={message.localUri} testID={`photo-${message.id}`} />
+        <ChatPhoto source={{ uri: message.localUri }} local testID={`photo-${message.id}`} />
       ) : checking ? (
         <PhotoCheck url={imageUrl ?? null} style={styles.photo} />
       ) : message.image_path ? (
-        imageUrl ? (
-          <ChatPhoto
-            uri={imageUrl}
-            testID={`photo-${message.id}`}
-            onOpen={onOpenPhoto ? () => onOpenPhoto(imageUrl) : undefined}
-            onLongPress={onSpanLongPress}
-          />
-        ) : (
-          // The path is there and the signing call has not answered yet. The
-          // square is the space every photo bubble reserves, loaded or not, so
-          // handing over to the real photo changes the bubble's width and
-          // never its height.
-          <View style={[styles.photo, { backgroundColor: theme.surfaceSunken }]} />
-        )
+        // One frame for the signing beat and the download: while the URL is
+        // on its way the frame pulses at the square every photo bubble
+        // reserves, loaded or not, so handing over to the real photo changes
+        // the bubble's width and never its height.
+        <ChatPhoto
+          source={image}
+          pending={image == null}
+          recyclingKey={message.id}
+          testID={`photo-${message.id}`}
+          onOpen={onOpenPhoto && image ? () => onOpenPhoto(image) : undefined}
+          onLongPress={onSpanLongPress}
+          onFailed={onPhotoFailed}
+        />
       ) : null}
       {message.body ? (
         <ThemedText style={mine ? { color: theme.onAccentDeep } : undefined}>
@@ -715,9 +775,14 @@ function Bubble({
    */
   lifted?: boolean;
   /** Open this message's photo full screen. Forwarded to the body. */
-  onOpenPhoto?: (uri: string) => void;
+  onOpenPhoto?: (source: ImageSource) => void;
 }) {
   const anchor = useRef<View>(null);
+  // Whether the photo's bytes failed to arrive, reported up by the frame.
+  // Held here rather than in the body because the rotor action below has to
+  // hang off THIS element, and it must go when the photo does: "Open photo"
+  // over a frame showing the failed glyph would open the viewer on nothing.
+  const [photoFailed, setPhotoFailed] = useState(false);
   // The same signed URL the body already asks for. Read again here rather
   // than threaded up through a prop: React Query serves both calls from one
   // cache entry, and the rotor action HAS to hang off this element, because
@@ -740,9 +805,10 @@ function Bubble({
   // Not while the photo is still being checked: nothing is drawn then but a
   // review tile, and an action that opens a photo nobody can see yet is an
   // action that lies about what it does.
+  const photo = photoSource(photoUrl, message.image_path);
   const photoAction =
-    onOpenPhoto && photoUrl && message.moderation_status !== 'pending'
-      ? () => onOpenPhoto(photoUrl)
+    onOpenPhoto && photo && !photoFailed && message.moderation_status !== 'pending'
+      ? () => onOpenPhoto(photo)
       : null;
 
   const bodyLinks = message.body ? splitLinks(message.body).filter((span) => span.url) : [];
@@ -868,6 +934,7 @@ function Bubble({
               quote={quote}
               onSpanLongPress={openMenu}
               onOpenPhoto={onOpenPhoto}
+              onPhotoFailed={setPhotoFailed}
             />
           </PressableScale>
         </View>
@@ -1221,19 +1288,23 @@ function ReactorRow({
   emoji: string;
 }) {
   const theme = useTheme();
-  const { data: url } = usePhotoUrl(photoPath);
+  const photo = photoSourceState(usePhotoUrl(photoPath), photoPath);
   const initial = name?.trim()?.[0]?.toUpperCase() ?? null;
   return (
     <View style={styles.reactorRow}>
-      <View style={[styles.reactorFace, { backgroundColor: theme.surfaceSunken }]}>
-        {url ? (
-          <Image source={{ uri: url }} style={styles.runAvatarImage} contentFit="cover" />
-        ) : initial ? (
-          <ThemedText type="caption" themeColor="textSecondary" style={styles.runAvatarInitial}>
-            {initial}
-          </ThemedText>
-        ) : null}
-      </View>
+      <RemoteImage
+        source={photo.source}
+        pending={photo.pending}
+        skeleton="flat"
+        style={[styles.reactorFace, { backgroundColor: theme.surfaceSunken }]}
+        fallback={
+          initial ? (
+            <ThemedText type="caption" themeColor="textSecondary" style={styles.runAvatarInitial}>
+              {initial}
+            </ThemedText>
+          ) : null
+        }
+      />
       <ThemedText style={styles.reactorName} numberOfLines={1}>
         {name ?? 'Traveler'}
       </ThemedText>
@@ -1682,7 +1753,7 @@ export function MessageThread({
                   // still checking counts as not acknowledged.
                   delivered={mine && item.local == null}
                   lifted={menu?.message.id === item.id}
-                  onOpenPhoto={(uri) => setViewingPhoto({ uri, label: photoLabelFor(item) })}
+                  onOpenPhoto={(source) => setViewingPhoto({ source, label: photoLabelFor(item) })}
                   onOpenMenu={
                     menuable
                       ? (rect) =>

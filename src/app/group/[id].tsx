@@ -1,5 +1,4 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
@@ -20,9 +19,18 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { RemoteImage } from '@/components/ui/remote-image';
 import { Segmented } from '@/components/ui/segmented';
+import { RowSkeleton, Skeleton } from '@/components/ui/skeleton';
 import { WebLinks } from '@/constants/links';
-import { HitTarget, MaxContentWidth, NativeAppearance, Radius, Space } from '@/constants/theme';
+import {
+  HitTarget,
+  MaxContentWidth,
+  Motion,
+  NativeAppearance,
+  Radius,
+  Space,
+} from '@/constants/theme';
 import { uploadGroupPhoto } from '@/features/groups/api';
 import {
   useGroup,
@@ -40,6 +48,7 @@ import { InviteQr } from '@/features/groups/invite-qr';
 import { ThreadHeader } from '@/features/chat/thread-header';
 import { useOwnUserId, usePhotoUrl } from '@/features/profile/hooks';
 import { haptics } from '@/lib/haptics';
+import { photoSourceState } from '@/lib/photo-source';
 import { closeDayLabel, useHasGroupClosed } from '@/features/groups/closing';
 import {
   NO_GROUP_PHOTO,
@@ -85,7 +94,7 @@ function MemberRow({
   restricted: boolean;
 }) {
   const theme = useTheme();
-  const { data: photoUrl } = usePhotoUrl(member.photo_path);
+  const photo = photoSourceState(usePhotoUrl(member.photo_path), member.photo_path);
   const setRole = useSetGroupRole(chatId);
   const remove = useRemoveGroupMember(chatId);
   const name = member.display_name ?? 'Traveler';
@@ -155,17 +164,22 @@ function MemberRow({
         })
       }
       style={styles.memberRow}>
-      <View style={[styles.avatar, { backgroundColor: theme.surfaceSunken }]}>
-        {photoUrl ? (
-          <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
-        ) : (
+      {/* 'flat' at 40pt: the sunken disc is the placeholder, and the glyph
+          is for somebody with no photo rather than one still signing. */}
+      <RemoteImage
+        source={photo.source}
+        pending={photo.pending}
+        skeleton="flat"
+        transition={Motion.quick}
+        style={[styles.avatar, { backgroundColor: theme.surfaceSunken }]}
+        fallback={
           <SymbolView
             name={{ ios: 'person.fill', android: 'person', web: 'person' }}
             size={16}
             tintColor={theme.textSecondary}
           />
-        )}
-      </View>
+        }
+      />
       <View style={styles.memberText}>
         <ThemedText type="callout">{name}</ThemedText>
         <ThemedText type="footnote" themeColor="textSecondary">
@@ -251,7 +265,7 @@ export default function GroupScreen() {
   // (20260903130000), and the bucket enforces the same rule on the URL. This
   // is UX; none of the three is the lock.
   const photo = group?.photo ?? NO_GROUP_PHOTO;
-  const { data: photoUrl } = useChatPhotoUrl(photo.path);
+  const groupPicture = photoSourceState(useChatPhotoUrl(photo.path), photo.path);
   const leaveRoom = useLeaveRoom(id!);
 
   // The chat row, for the one preference this screen can set. Both lists,
@@ -336,7 +350,22 @@ export default function GroupScreen() {
               />
             ) : groupQuery.isSuccess ? (
               <ThemedText themeColor="textSecondary">This group is no longer around.</ThemedText>
-            ) : null}
+            ) : (
+              // The settings page's shape while the group is on its way: the
+              // photo tile, the name line, three rows. It used to be the
+              // header over nothing.
+              <>
+                <View style={styles.identity}>
+                  <Skeleton width={84} height={84} radius={Radius.lg} />
+                  <Skeleton width="60%" height={20} radius={Radius.sm} text />
+                </View>
+                <View style={styles.section}>
+                  <RowSkeleton />
+                  <RowSkeleton />
+                  <RowSkeleton />
+                </View>
+              </>
+            )}
           </ScrollView>
         </SafeAreaView>
       </ThemedView>
@@ -450,15 +479,24 @@ export default function GroupScreen() {
               disabled={!isAdmin || !ownUserId}
               onPress={openPhotoControl}
               style={[styles.groupPhoto, { backgroundColor: theme.surfaceSunken }]}>
-              {photoUrl ? (
-                <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
-              ) : (
-                <SymbolView
-                  name={{ ios: 'person.3.fill', android: 'groups', web: 'groups' }}
-                  size={26}
-                  tintColor={theme.textSecondary}
-                />
-              )}
+              {/* The pulse, on purpose: this is the tile the admin who just
+                  uploaded a photo is watching, and a silent blank here read
+                  as "the upload failed". The checking veil is a sibling over
+                  it, as before. */}
+              <RemoteImage
+                source={groupPicture.source}
+                pending={groupPicture.pending}
+                skeleton="pulse"
+                transition={Motion.quick}
+                style={styles.fill}
+                fallback={
+                  <SymbolView
+                    name={{ ios: 'person.3.fill', android: 'groups', web: 'groups' }}
+                    size={26}
+                    tintColor={theme.textSecondary}
+                  />
+                }
+              />
               {photo.state === 'checking' ? (
                 // The same veil a chat photo wears while it waits, at a size
                 // the sentence would not fit: the spinner over the frame, and

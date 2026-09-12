@@ -1,7 +1,9 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Image } from 'expo-image';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { Skeleton } from '@/components/ui/skeleton';
 import { MessageThread } from '@/features/chat/message-thread';
 import type { MessageRow } from '@/lib/database.types';
 
@@ -69,9 +71,10 @@ jest.mock('react-native-gesture-handler', () => {
 // A chat photo is signed against `chat-photos`, which is a different bucket
 // from the one usePhotoUrl signs. That split is the reason the viewer signs
 // nothing itself and takes a URL from whoever has it.
+let mockSigning = false;
 jest.mock('@/features/chat/hooks', () => ({
   useChatPhotoUrl: (path: string | null) =>
-    path ? { data: `https://signed.example/${path}` } : { data: null },
+    path && !mockSigning ? { data: `https://signed.example/${path}` } : { data: undefined },
 }));
 
 jest.mock('@/features/profile/hooks', () => ({
@@ -102,6 +105,22 @@ const photoMessage = (over: Partial<MessageRow> = {}): MessageRow =>
     created_at: new Date('2026-08-21T11:07:00Z').toISOString(),
     ...over,
   }) as MessageRow;
+
+beforeEach(() => {
+  mockSigning = false;
+});
+
+/**
+ * The frame reserves the space and the Image inside it draws the bytes
+ * (components/ui/remote-image), so the testID is on the frame and the load
+ * event is fired at the Image. RemoteImage hands the event through to the
+ * caller unwrapped, the way expo-image hands it to RemoteImage.
+ */
+const frameStyle = () => StyleSheet.flatten(screen.getByTestId('photo-m1-image').props.style);
+const loadPhoto = (width: number, height: number) =>
+  act(() => {
+    screen.UNSAFE_getByType(Image).props.onLoad({ source: { width, height } });
+  });
 
 function renderThread(props: Partial<Parameters<typeof MessageThread>[0]> = {}) {
   return render(
@@ -171,39 +190,75 @@ describe('a photo in a chat can be looked at', () => {
     // they opened it. The frame that followed the loaded aspect collapsed a
     // 16:9 photo from 220 to 124 and took ~96pt of the cell with it.
     renderThread();
-    const before = StyleSheet.flatten(screen.getByTestId('photo-m1-image').props.style);
+    const before = frameStyle();
     expect(before.width).toBe(220);
     expect(before.height).toBe(220);
 
-    act(() => {
-      // expo-image unwraps `nativeEvent` before it reaches onLoad, so the
-      // payload is shaped the way the native view sends it.
-      fireEvent(screen.getByTestId('photo-m1-image'), 'load', {
-        nativeEvent: { source: { width: 1600, height: 900 } },
-      });
-    });
+    loadPhoto(1600, 900);
 
-    const after = StyleSheet.flatten(screen.getByTestId('photo-m1-image').props.style);
+    const after = frameStyle();
     expect(after.height).toBe(220);
     // Too wide for the column, so it keeps the reserved square and is drawn
     // WHOLE inside it. contain, never cover: cover is the centre crop that
     // hid two thirds of the meeting spot in the first place.
     expect(after.width).toBe(220);
-    expect(screen.getByTestId('photo-m1-image').props.contentFit).toBe('contain');
+    expect(screen.UNSAFE_getByType(Image).props.contentFit).toBe('contain');
   });
 
   it("takes a portrait photo's shape sideways, where nothing is anchored", () => {
     // Width is free to move: it changes what the bubble looks like and cannot
     // move a single row of the list.
     renderThread();
-    act(() => {
-      fireEvent(screen.getByTestId('photo-m1-image'), 'load', {
-        nativeEvent: { source: { width: 900, height: 1200 } },
-      });
-    });
-    const frame = StyleSheet.flatten(screen.getByTestId('photo-m1-image').props.style);
+    loadPhoto(900, 1200);
+    const frame = frameStyle();
     expect(frame.height).toBe(220);
     expect(frame.width).toBe(165);
+  });
+
+  it('pulses the reserved square while the URL signs and while the bytes come', () => {
+    // The biggest download in the app used to be a flat grey square for
+    // both halves of the wait, and a failed one was that square forever.
+    mockSigning = true;
+    renderThread();
+    expect(screen.UNSAFE_queryAllByType(Skeleton)).toHaveLength(1);
+    expect(screen.UNSAFE_queryAllByType(Image)).toHaveLength(0);
+    const signing = frameStyle();
+    expect(signing.width).toBe(220);
+    expect(signing.height).toBe(220);
+
+    mockSigning = false;
+    renderThread();
+    // Signed: one Image, keyed on the message so a recycled cell never shows
+    // the previous photo, with the skeleton still under it until it lands.
+    const images = screen.UNSAFE_getAllByType(Image);
+    expect(images).toHaveLength(1);
+    expect(images[0].props.recyclingKey).toBe('m1');
+    expect(images[0].props.source.cacheKey).toBe('c1/rooftop.jpg');
+    expect(screen.UNSAFE_queryAllByType(Skeleton).length).toBeGreaterThan(0);
+    loadPhoto(1200, 1200);
+    expect(screen.UNSAFE_queryAllByType(Skeleton)).toHaveLength(0);
+  });
+
+  it('withdraws the rotor door when the photo does not come, and offers it again after a retry', () => {
+    // "Open photo" on a photo showing the failed glyph would open the viewer
+    // on nothing, which is an action that lies about what it does.
+    renderThread();
+    const bubble = () => screen.getByLabelText('Photo');
+    expect(bubble().props.accessibilityActions).toContainEqual({
+      name: 'openPhoto',
+      label: 'Open photo',
+    });
+    act(() => {
+      screen.UNSAFE_getByType(Image).props.onError({ error: 'no bytes' });
+    });
+    expect(bubble().props.accessibilityActions).toBeUndefined();
+    expect(screen.getByLabelText('Photo could not load')).toBeTruthy();
+
+    loadPhoto(1200, 1200);
+    expect(bubble().props.accessibilityActions).toContainEqual({
+      name: 'openPhoto',
+      label: 'Open photo',
+    });
   });
 
   it('does not offer a photo that is still being checked', () => {

@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
@@ -12,7 +11,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Radius, Spacing } from '@/constants/theme';
+import { RemoteImage } from '@/components/ui/remote-image';
+import { Motion, Radius, Spacing } from '@/constants/theme';
 import { countOf } from '@/lib/plural';
 import { useDraftWarning, useFirstMessageBudget, useSendRequest } from '@/features/matching/hooks';
 import type { SaidHiOrigin } from '@/features/matching/said-hi';
@@ -20,6 +20,7 @@ import { blockedCopy, riskyCopy } from '@/features/matching/moderation-copy';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
+import { photoSourceState } from '@/lib/photo-source';
 
 const MESSAGE_MAX = 500;
 
@@ -72,8 +73,15 @@ export default function ComposeRequestScreen() {
      */
     retry?: string;
   }>();
-  const { data: photoUrl } = usePhotoUrl(params.photoPath || null);
-  const { data: targetPhotoUrl } = usePhotoUrl(params.targetPhoto || null);
+  // Both faces were on screen a moment ago (the profile, the photo being
+  // replied to), so with the storage path as the cache key they are served
+  // from disk rather than pulled again on the screen that spends one of the
+  // day's hellos. The frames used to sit empty through both the signing and
+  // the download.
+  const photoPath = params.photoPath || null;
+  const photo = photoSourceState(usePhotoUrl(photoPath), photoPath);
+  const targetPath = params.targetPhoto || null;
+  const targetPhoto = photoSourceState(usePhotoUrl(targetPath), targetPath);
   const sendRequest = useSendRequest();
 
   const source = params.source === 'pin' ? ('pin' as const) : ('trip_match' as const);
@@ -295,11 +303,20 @@ export default function ComposeRequestScreen() {
         onClose={requestClose}
         onContinue={submit}>
         <View style={styles.recipientRow}>
-          <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
-            {photoUrl ? (
-              <Image source={{ uri: photoUrl }} style={styles.avatarImage} contentFit="cover" />
-            ) : null}
-          </View>
+          <RemoteImage
+            source={photo.source}
+            pending={photo.pending}
+            skeleton="flat"
+            transition={Motion.quick}
+            style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}
+            fallback={
+              <SymbolView
+                name={{ ios: 'person.fill', android: 'person', web: 'person' }}
+                size={18}
+                tintColor={theme.textSecondary}
+              />
+            }
+          />
           <ThemedText type="smallBold">{params.name ?? 'Traveler'}</ThemedText>
         </View>
 
@@ -319,11 +336,13 @@ export default function ComposeRequestScreen() {
           </>
         ) : (
           <ThemedView type="backgroundElement" style={styles.targetCard}>
-            {targetPhotoUrl ? (
-              <Image
-                source={{ uri: targetPhotoUrl }}
+            {targetPath ? (
+              <RemoteImage
+                source={targetPhoto.source}
+                pending={targetPhoto.pending}
+                skeleton="flat"
+                transition={Motion.quick}
                 style={styles.targetPhoto}
-                contentFit="cover"
               />
             ) : null}
             <View style={styles.targetText}>
@@ -506,11 +525,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    overflow: 'hidden',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
   },
   targetCard: {
     flexDirection: 'row',

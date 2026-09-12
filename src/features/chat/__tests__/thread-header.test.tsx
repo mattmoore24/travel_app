@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { Image } from 'expo-image';
 
 import { ThreadHeader } from '@/features/chat/thread-header';
 
@@ -62,6 +63,32 @@ describe('ThreadHeader', () => {
     render(<ThreadHeader title="Ana" onPressIdentity={null} />);
     expect(screen.getAllByRole('button')).toHaveLength(1);
     expect(screen.getByText('Ana')).toBeTruthy();
+  });
+
+  it('draws the face from the source it is handed, cache key and all', () => {
+    // A source rather than a bare URL, so the 32pt face at the top of every
+    // thread is served from the bytes the chat list already pulled.
+    render(
+      <ThreadHeader
+        title="Ana"
+        glyph={{ ios: 'person.fill', android: 'person', web: 'person' }}
+        photo={{ uri: 'https://signed.example/u1/0.jpg?token=1', cacheKey: 'u1/0.jpg' }}
+      />
+    );
+    const images = screen.UNSAFE_getAllByType(Image);
+    expect(images).toHaveLength(1);
+    expect(images[0].props.source.cacheKey).toBe('u1/0.jpg');
+  });
+
+  it('draws the glyph, and no Image, when there is no photo', () => {
+    render(
+      <ThreadHeader
+        title="Ana"
+        glyph={{ ios: 'person.fill', android: 'person', web: 'person' }}
+        photo={null}
+      />
+    );
+    expect(screen.UNSAFE_queryAllByType(Image)).toHaveLength(0);
   });
 
   it('makes the name a control only when there is somewhere for it to go', () => {
