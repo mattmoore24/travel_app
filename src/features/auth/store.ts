@@ -37,6 +37,21 @@ type AuthState = {
   /** True once the initial getSession() has resolved (gate rendering on it). */
   initialized: boolean;
   /**
+   * The persisted session could not be CHECKED, which is not the same as
+   * there being none.
+   *
+   * auth-js answers getSession() with `{ session: null, error }` when a
+   * token near expiry needs a refresh and the refresh never reaches the
+   * server, while leaving the session on disk because the failure was
+   * retryable. The app used to read that null as signed out: a traveler who
+   * opened the app on a plane after an hour away got the guest map, chats
+   * and pins gone, until the refresh ticker succeeded after landing and the
+   * whole navigator remounted. While this is true the root keeps its hold up
+   * (features/auth/routing) with the offline card over it. Cleared by any
+   * real answer, which is why setSession clears it.
+   */
+  sessionUnknown: boolean;
+  /**
    * Somebody arrived through a password-recovery link, or typed the six
    * digits from the recovery mail into /reset-code, and has not set a new
    * password yet.
@@ -114,6 +129,8 @@ type AuthState = {
   pendingSignIn: boolean;
   setSession: (session: Session | null) => void;
   setInitialized: () => void;
+  /** getSession() failed in a way that says nothing about whether there is a session. */
+  sessionLookupFailed: () => void;
   recoveryStarted: () => void;
   recoveryReady: () => void;
   recoveryFailed: (message: string) => void;
@@ -133,14 +150,19 @@ type AuthState = {
 export const useAuthStore = create<AuthState>((set) => ({
   session: null,
   initialized: false,
+  sessionUnknown: false,
   recovery: null,
   listingIntent: false,
   pendingInvite: null,
   pendingIntent: null,
   signedOutNotice: null,
   pendingSignIn: false,
-  setSession: (session) => set({ session }),
+  // A real answer, either way, ends "unknown": a session from a successful
+  // refresh, or null from a SIGNED_OUT auth-js emits for a token it has
+  // given up on.
+  setSession: (session) => set({ session, sessionUnknown: false }),
   setInitialized: () => set({ initialized: true }),
+  sessionLookupFailed: () => set({ sessionUnknown: true }),
   recoveryStarted: () => set({ recovery: { status: 'establishing', message: null } }),
   recoveryReady: () => set({ recovery: { status: 'ready', message: null } }),
   recoveryFailed: (message) => set({ recovery: { status: 'failed', message } }),

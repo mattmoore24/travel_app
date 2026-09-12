@@ -7,7 +7,12 @@ import { ThemedText } from '@/components/themed-text';
 import { Elevation, HitTarget, Motion, Radius, Space, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { NO_CONNECTION } from '@/lib/failure-message';
-import { getConnectionStatus, subscribeToConnection } from '@/lib/query-client';
+import {
+  getConnectionStatus,
+  getEverReached,
+  subscribeToConnection,
+  subscribeToReach,
+} from '@/lib/query-client';
 
 /**
  * The one place the app says "the phone is the problem, not you".
@@ -39,6 +44,14 @@ import { getConnectionStatus, subscribeToConnection } from '@/lib/query-client';
  * Its two words come from `NO_CONNECTION` in lib/failure-message rather than
  * being written here, because the bar and a screen's own failure message are
  * usually on screen together.
+ *
+ * It owns the WARM app only. Until something has reached the server since
+ * launch (`everReached`, lib/query-client) the cold-start card
+ * (components/ui/offline-notice) is on screen with the same two words and a
+ * button, and a pill above it would be the same fact said twice. The machine
+ * below still records the offline phase while cold, silently, so the first
+ * success after an offline start flashes "Back online": that is the moment
+ * the card leaves, and the flash is what says the leaving was a recovery.
  */
 
 /** How long "Back online" stays before the bar dismisses itself. */
@@ -75,8 +88,9 @@ function setPhase(next: Phase): void {
   // above the content it is reading, and somebody offline with a screen
   // reader gets the least out of a silent failure. Announced on the
   // TRANSITION rather than on every render, which is the other reason this
-  // machine is not a pile of effects.
-  if (next !== 'hidden') announce(labelFor(next));
+  // machine is not a pile of effects. Not while cold: the card announces
+  // "No connection" then, and one announcement per fact is the rule.
+  if (next !== 'hidden' && getEverReached()) announce(labelFor(next));
   for (const listener of phaseListeners) listener();
 }
 
@@ -135,8 +149,9 @@ export function ConnectionBanner() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const current = useSyncExternalStore(subscribeToPhase, readPhase, readPhase);
+  const everReached = useSyncExternalStore(subscribeToReach, getEverReached, getEverReached);
 
-  if (current === 'hidden') return null;
+  if (current === 'hidden' || !everReached) return null;
 
   return (
     // BELOW the top control row, not on it. The map is the default screen and

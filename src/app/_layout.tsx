@@ -1,7 +1,7 @@
 import { QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useState, type ReactNode } from 'react';
+import { useState, useSyncExternalStore, type ReactNode } from 'react';
 
 // Side effect: installs the foreground notification handler at module scope,
 // so it exists from launch rather than whenever the tabs happen to pull the
@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { ConnectionBanner } from '@/components/ui/connection-banner';
+import { OfflineNotice } from '@/components/ui/offline-notice';
 import { IntroTour } from '@/features/intro/intro-tour';
 import { useIntroState } from '@/features/intro/store';
 import { PrimaryButton } from '@/components/form/primary-button';
@@ -24,17 +25,32 @@ import { accountLoadFailure } from '@/features/auth/load-error';
 import { signedOutNoticeCopy, type SignedOutReason } from '@/features/auth/signed-out-reason';
 import { useAuthStore } from '@/features/auth/store';
 import { ResetPasswordScreen } from '@/features/auth/reset-password-screen';
-import { owesOnboarding, rootIsReady } from '@/features/auth/routing';
+import { accountLoadVerdict, owesOnboarding, rootIsReady } from '@/features/auth/routing';
 import { gateCopy, type GateView } from '@/features/auth/gate-copy';
 import { useAuthListener } from '@/features/auth/use-auth-listener';
 import { useListingIntent, useOwnBusiness } from '@/features/business/hooks';
 import { useAccountStanding, useOwnProfile } from '@/features/profile/hooks';
 import { ContactForm } from '@/features/support/contact-form';
 import { GuidelinesBody } from '@/features/support/guidelines-body';
-import { queryClient } from '@/lib/query-client';
+import { getEverReached, queryClient, subscribeToReach } from '@/lib/query-client';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 SplashScreen.preventAutoHideAsync();
+
+/**
+ * The boot hold: what the root draws instead of the navigator while it cannot
+ * commit to a stack yet.
+ *
+ * Splash-colored, not null: the splash overlay fades out on its own clock,
+ * and fading over the window's white root would flash white if readiness
+ * resolves late. Indigo under indigo is invisible. Labelled, so VoiceOver is
+ * not silent for the length of an offline start; the offline card
+ * (components/ui/offline-notice) draws over this from RootLayout and says
+ * the rest.
+ */
+function BootHold() {
+  return <View style={styles.bootHold} accessible accessibilityLabel="Opening Samewhere" />;
+}
 
 /**
  * The route the stack falls back to when it has nowhere else to go.
@@ -264,6 +280,7 @@ function RootNavigator() {
   useAppleRevokeWatch();
   const session = useAuthStore((s) => s.session);
   const initialized = useAuthStore((s) => s.initialized);
+  const sessionUnknown = useAuthStore((s) => s.sessionUnknown);
   const recovery = useAuthStore((s) => s.recovery);
   const signedOutNotice = useAuthStore((s) => s.signedOutNotice);
   const listingIntent = useAuthStore((s) => s.listingIntent);
@@ -277,6 +294,11 @@ function RootNavigator() {
   // never finish, because register_business refuses an account that carries
   // the stamp it ends with.
   const listingQuery = useListingIntent();
+  // Whether anything has reached the server since launch. Read here for one
+  // decision only: a boot read that failed OFFLINE while the app is still
+  // cold keeps the hold up (the offline card is already saying so, with a
+  // Try again) rather than replacing the navigator with the account error.
+  const everReached = useSyncExternalStore(subscribeToReach, getEverReached, getEverReached);
 
   const signedIn = session != null;
   const onboarded = profileQuery.data?.onboarding_completed_at != null;
@@ -302,6 +324,7 @@ function RootNavigator() {
   const ready = rootIsReady({
     initialized,
     session,
+    sessionUnknown,
     supabaseConfigured: isSupabaseConfigured,
     profileSettled: profileQuery.isSuccess || profileQuery.isError,
     standingSettled: standingQuery.isSuccess || standingQuery.isError,
@@ -310,10 +333,7 @@ function RootNavigator() {
   });
 
   if (!ready || intro.seen === null) {
-    // Splash-colored hold, not null: the splash overlay fades out on its own
-    // clock, and fading over the window's white root would flash white if
-    // readiness resolves late. Indigo under indigo is invisible.
-    return <View style={styles.bootHold} />;
+    return <BootHold />;
   }
 
   // `data == null` as well as isError. React Query keeps the cached row and
@@ -323,7 +343,25 @@ function RootNavigator() {
   // "Can't load your profile", with everything needed to draw the app sitting
   // in memory. Unmounting the stack also loses the route (see
   // features/auth/routing), so even Retry landed them back on the map.
-  if (signedIn && profileQuery.isError && profileQuery.data == null) {
+  //
+  // The verdict lives in features/auth/routing because two more facts
+  // decide it. A GUEST is signed in and has a profiles row, so this branch
+  // tore down the map they were looking at, ~24 seconds into an offline
+  // start, for a screen whose Sign out would have destroyed their guest
+  // identity; their routing never depended on the row. And a member whose
+  // read failed OFFLINE while nothing has reached the server yet keeps the
+  // hold, because the offline card is already the voice for that.
+  const profileVerdict = accountLoadVerdict({
+    session,
+    isError: profileQuery.isError,
+    hasData: profileQuery.data != null,
+    error: profileQuery.error,
+    everReached,
+  });
+  if (profileVerdict === 'hold') {
+    return <BootHold />;
+  }
+  if (profileVerdict === 'block') {
     return (
       <AccountLoadError
         title="Can't load your profile"
@@ -344,7 +382,17 @@ function RootNavigator() {
   // their age and their photos, in a form every write of which
   // refuse_business_write rejects. Not knowing the account kind is a reason
   // to ask again, never a reason to guess traveler.
-  if (signedIn && businessQuery.isError && businessQuery.data == null) {
+  const businessVerdict = accountLoadVerdict({
+    session,
+    isError: businessQuery.isError,
+    hasData: businessQuery.data != null,
+    error: businessQuery.error,
+    everReached,
+  });
+  if (businessVerdict === 'hold') {
+    return <BootHold />;
+  }
+  if (businessVerdict === 'block') {
     return (
       <AccountLoadError
         title="Can't load your account"
@@ -683,6 +731,13 @@ export default function RootLayout() {
             commit as a feature no person could ever see. Four review lenses
             found it independently. */}
         <ConnectionBanner />
+        {/* The cold-start half of the same fact: a card with a Try again,
+            over the boot hold, for an app opened with no internet. Also a
+            sibling of the navigator, and for one more reason than the pill:
+            returned in the navigator's place it would be the root-hold trap
+            this file has already paid for. It unmounts itself the moment
+            anything reaches the server, and the pill is the voice after. */}
+        <OfflineNotice />
       </ThemeProvider>
     </QueryClientProvider>
   );

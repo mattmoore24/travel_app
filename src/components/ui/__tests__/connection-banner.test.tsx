@@ -5,7 +5,7 @@ import React from 'react';
 
 import { ConnectionBanner } from '@/components/ui/connection-banner';
 import { NO_CONNECTION } from '@/lib/failure-message';
-import { queryClient } from '@/lib/query-client';
+import { queryClient, resetReachForTests } from '@/lib/query-client';
 
 jest.mock('react-native-safe-area-context', () => {
   const { View } = jest.requireActual('react-native');
@@ -115,6 +115,50 @@ describe('the connection banner', () => {
     await dropTheWifi();
     await finish(new Error('boom'));
     expect(screen.getByText('No connection')).toBeTruthy();
+  });
+});
+
+/**
+ * The cold start belongs to the card (components/ui/offline-notice), which
+ * says the same two words with a button under them. A pill above it would be
+ * one fact said twice, which the header of the component calls two faults.
+ */
+describe('the connection banner while the app is cold', () => {
+  beforeEach(async () => {
+    jest.useFakeTimers();
+    queryClient.clear();
+    await reachTheServer();
+    // Forget that anything ever arrived: a fresh launch.
+    resetReachForTests();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("stays away from an offline start, which is the card's to say", async () => {
+    render(<ConnectionBanner />);
+    await dropTheWifi();
+    expect(screen.toJSON()).toBeNull();
+  });
+
+  // The card leaves the moment the first answer arrives; the flash is what
+  // says the leaving was a recovery rather than a crash.
+  it('still marks the recovery when the first answer finally arrives', async () => {
+    render(<ConnectionBanner />);
+    await dropTheWifi();
+    await reachTheServer();
+    expect(screen.getByText('Back online')).toBeTruthy();
+    act(() => {
+      jest.advanceTimersByTime(1_500);
+    });
+    expect(screen.toJSON()).toBeNull();
+  });
+
+  it('does not congratulate a start that was never offline', async () => {
+    render(<ConnectionBanner />);
+    await reachTheServer();
+    expect(screen.toJSON()).toBeNull();
   });
 });
 

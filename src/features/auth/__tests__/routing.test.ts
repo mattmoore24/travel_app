@@ -1,6 +1,6 @@
 import type { Session } from '@supabase/supabase-js';
 
-import { owesOnboarding, rootIsReady } from '../routing';
+import { accountLoadVerdict, owesOnboarding, rootIsReady, sessionIsUnknown } from '../routing';
 
 const session = (isAnonymous: boolean) =>
   ({ user: { id: 'u1', is_anonymous: isAnonymous } }) as unknown as Session;
@@ -75,6 +75,7 @@ describe('rootIsReady', () => {
   const base = {
     initialized: true,
     session: session(false),
+    sessionUnknown: false,
     supabaseConfigured: true,
     profileSettled: true,
     standingSettled: true,
@@ -116,5 +117,117 @@ describe('rootIsReady', () => {
         listingSettled: false,
       })
     ).toBe(true);
+  });
+
+  // "Could not check" is held, with the offline card over the hold. Released
+  // to signed-out would put a signed-in traveler on the guest map, which is
+  // what an offline cold start with a stale token used to do.
+  it('holds while the persisted session could not be checked', () => {
+    expect(rootIsReady({ ...base, session: null, sessionUnknown: true })).toBe(false);
+  });
+
+  it('releases the moment a real answer lands, either way', () => {
+    expect(rootIsReady({ ...base, session: null, sessionUnknown: false })).toBe(true);
+    expect(rootIsReady({ ...base, session: session(false), sessionUnknown: false })).toBe(true);
+  });
+});
+
+describe('sessionIsUnknown', () => {
+  const retryable = { name: 'AuthRetryableFetchError', message: 'fetch failed', status: 0 };
+
+  it('reads a retryable refresh failure with no session as unknown', () => {
+    expect(sessionIsUnknown({ session: null, error: retryable })).toBe(true);
+  });
+
+  it('reads an offline failure as unknown whatever its name', () => {
+    expect(
+      sessionIsUnknown({ session: null, error: new TypeError('Network request failed') })
+    ).toBe(true);
+  });
+
+  // auth-js removed the session itself and emitted SIGNED_OUT: a real answer.
+  it('reads a refusal the server sent as signed out', () => {
+    expect(
+      sessionIsUnknown({
+        session: null,
+        error: { name: 'AuthApiError', message: 'Invalid Refresh Token', status: 400 },
+      })
+    ).toBe(false);
+  });
+
+  it('is never unknown with a session in hand, or with no error at all', () => {
+    expect(sessionIsUnknown({ session: session(false), error: retryable })).toBe(false);
+    expect(sessionIsUnknown({ session: null, error: null })).toBe(false);
+  });
+});
+
+describe('accountLoadVerdict', () => {
+  const offline = new Error('Network request failed');
+  const gone = { code: 'PGRST116', message: 'no rows' };
+  const serverFailure = { code: '42501', message: 'permission denied' };
+  const failed = { isError: true, hasData: false, everReached: true };
+
+  it('never blocks or holds a guest, whose routing never depended on the row', () => {
+    for (const error of [offline, gone, serverFailure]) {
+      expect(accountLoadVerdict({ ...failed, session: session(true), error })).toBe('proceed');
+      expect(
+        accountLoadVerdict({ ...failed, session: session(true), error, everReached: false })
+      ).toBe('proceed');
+    }
+  });
+
+  it('never blocks a signed-out visitor', () => {
+    expect(accountLoadVerdict({ ...failed, session: null, error: offline })).toBe('proceed');
+  });
+
+  it('proceeds with no failure, and on a background failure with the row still in memory', () => {
+    const member = session(false);
+    expect(
+      accountLoadVerdict({
+        session: member,
+        isError: false,
+        hasData: true,
+        error: null,
+        everReached: true,
+      })
+    ).toBe('proceed');
+    expect(accountLoadVerdict({ ...failed, session: member, error: offline, hasData: true })).toBe(
+      'proceed'
+    );
+  });
+
+  // The offline card is already on screen for this one; the account error
+  // would be a second voice with a Sign out on it.
+  it('holds a member whose read failed offline while nothing has reached the server', () => {
+    expect(
+      accountLoadVerdict({ ...failed, session: session(false), error: offline, everReached: false })
+    ).toBe('hold');
+  });
+
+  it('blocks a member whose read failed offline in a warm app', () => {
+    expect(accountLoadVerdict({ ...failed, session: session(false), error: offline })).toBe(
+      'block'
+    );
+  });
+
+  it('blocks on a failure the server sent, cold or warm', () => {
+    expect(accountLoadVerdict({ ...failed, session: session(false), error: serverFailure })).toBe(
+      'block'
+    );
+    expect(
+      accountLoadVerdict({
+        ...failed,
+        session: session(false),
+        error: serverFailure,
+        everReached: false,
+      })
+    ).toBe('block');
+  });
+
+  it('always blocks a row that is gone, so the closed-account screen is never held back', () => {
+    expect(accountLoadVerdict({ ...failed, session: session(false), error: gone })).toBe('block');
+    expect(
+      accountLoadVerdict({ ...failed, session: session(false), error: gone, everReached: false })
+    ).toBe('block');
   });
 });

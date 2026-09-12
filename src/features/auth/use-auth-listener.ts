@@ -4,14 +4,75 @@ import { useEffect } from 'react';
 import { consumeDeliberateSignOut, signOutWasDeliberate } from '@/features/auth/api';
 import { appleCredentialSnapshot } from '@/features/auth/apple-revoke';
 import { parseRecoveryLink } from '@/features/auth/recovery';
+import { sessionIsUnknown } from '@/features/auth/routing';
 import { signedOutReason } from '@/features/auth/signed-out-reason';
 import { useAuthStore } from '@/features/auth/store';
 import { useAccountType } from '@/features/guest/hooks';
 import { refreshPushToken } from '@/features/notifications/push';
 import { analytics } from '@/lib/analytics';
 import { writeDeviceLocale } from '@/lib/device-locale';
-import { queryClient } from '@/lib/query-client';
+import { getEverReached, queryClient, subscribeToReach } from '@/lib/query-client';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+
+/**
+ * How often to ask auth-js again while the server is reachable and the
+ * session is still unknown, and how many times before giving up.
+ *
+ * Asking again cannot hurry auth-js: it caches a failed refresh for
+ * REFRESH_FAILURE_COOLDOWN_MS (60s) and answers from the cache, so most of
+ * these tries return the same error in a microsecond. The cadence exists to
+ * catch the moment the cache expires without waiting for the 30s refresh
+ * ticker to notice, and the limit exists because a reachable server whose
+ * auth keeps failing is not a reason to hold the app shut forever.
+ */
+const SESSION_RETRY_MS = 10_000;
+const SESSION_RETRY_LIMIT = 9;
+
+/**
+ * The persisted session, into the store, with "could not check" told apart
+ * from "none".
+ *
+ * `{ data, error }` both read, where the error half used to be dropped: for
+ * a token inside auth-js's 90s expiry margin (the app closed for an hour or
+ * more) getSession() awaits a refresh, and when that refresh cannot reach
+ * the server it resolves `{ session: null, error: AuthRetryableFetchError }`
+ * while KEEPING the session on disk. Read as signed-out, that put a traveler
+ * on a plane onto the guest map. features/auth/routing owns the test.
+ */
+async function loadSession(): Promise<void> {
+  const { data, error } = await supabase.auth.getSession();
+  const store = useAuthStore.getState();
+  if (sessionIsUnknown({ session: data.session, error })) {
+    store.sessionLookupFailed();
+  } else {
+    store.setSession(data.session);
+  }
+}
+
+let sessionRequest: Promise<void> | null = null;
+
+/**
+ * Ask for the persisted session again. The offline card's Try again calls
+ * this beside its refetch, and the listener below calls it on its own once
+ * the server is reachable. Shared so two callers in the same second make one
+ * request; auth-js serialises refreshes anyway.
+ */
+export function retrySession(): Promise<void> {
+  if (sessionRequest != null) {
+    return sessionRequest;
+  }
+  // A thrown getSession (storage unreadable) is not a verdict either way;
+  // the store keeps whatever it had and the next try asks again.
+  const request = loadSession().catch(() => {});
+  sessionRequest = request;
+  // Released in a continuation registered BEFORE any caller's, so a caller
+  // that asks again from its own `.then` gets a fresh request rather than
+  // this settled one.
+  void request.then(() => {
+    if (sessionRequest === request) sessionRequest = null;
+  });
+  return request;
+}
 
 /**
  * Mounted once in the root layout: restores the persisted session and tracks
@@ -94,18 +155,15 @@ export function useAuthListener() {
 
     let active = true;
 
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (active) {
-          setSession(data.session);
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setInitialized();
-        }
-      });
+    // The store write happens inside retrySession whatever `active` is: the
+    // store outlives this effect, and the answer is the same session either
+    // way. Only the readiness flip is guarded, so a remount cannot declare
+    // the root initialized off a lookup it did not start.
+    retrySession().finally(() => {
+      if (active) {
+        setInitialized();
+      }
+    });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
@@ -198,4 +256,68 @@ export function useAuthListener() {
       subscription.subscription.unsubscribe();
     };
   }, [setSession, setInitialized, recoveryReady, signedOutUnasked]);
+
+  // The way out of "unknown" that does not depend on anybody tapping.
+  //
+  // A session can be unknown with the server reachable: the boot probe got
+  // through while auth-js was still backing off, or auth answered 503 while
+  // PostgREST was fine. With the offline card gone (it leaves the moment
+  // anything reaches the server) the hold would be mute and permanent, so
+  // this asks again whenever both facts hold: the server has been reached
+  // and the session is still unknown. Either fact can arrive second, which
+  // is why there are two subscriptions feeding one attempt.
+  //
+  // After SESSION_RETRY_LIMIT tries on a reachable server it gives up and
+  // reads the answer as signed out. auth-js still holds the session on disk
+  // and its ticker keeps trying; a later TOKEN_REFRESHED arrives through
+  // onAuthStateChange above and remounts the app signed in, which is exactly
+  // what happened before this file learned the difference. A belt, not the
+  // mechanism.
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      return;
+    }
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let inFlight = false;
+    let live = true;
+
+    const clearTimer = () => {
+      if (timer == null) return;
+      clearTimeout(timer);
+      timer = null;
+    };
+
+    const askAgain = () => {
+      clearTimer();
+      if (!live || inFlight) return;
+      const store = useAuthStore.getState();
+      if (!store.sessionUnknown || !getEverReached()) return;
+      if (attempts >= SESSION_RETRY_LIMIT) {
+        store.setSession(null);
+        return;
+      }
+      attempts += 1;
+      inFlight = true;
+      void retrySession().then(() => {
+        inFlight = false;
+        if (!live || !useAuthStore.getState().sessionUnknown) return;
+        timer = setTimeout(askAgain, SESSION_RETRY_MS);
+        // Node only (jest). A pending retry must not hold a test run open.
+        (timer as unknown as { unref?: () => void }).unref?.();
+      });
+    };
+
+    const unsubscribeReach = subscribeToReach(askAgain);
+    const unsubscribeStore = useAuthStore.subscribe((state, previous) => {
+      if (state.sessionUnknown && !previous.sessionUnknown) askAgain();
+    });
+
+    return () => {
+      live = false;
+      clearTimer();
+      unsubscribeReach();
+      unsubscribeStore();
+    };
+  }, []);
 }

@@ -1,5 +1,8 @@
 import type { Session } from '@supabase/supabase-js';
 
+import { accountLoadFailure } from '@/features/auth/load-error';
+import { isOffline } from '@/lib/failure-message';
+
 /**
  * Which stack somebody belongs in at the root.
  *
@@ -77,6 +80,13 @@ export function owesOnboarding(
 export function rootIsReady(opts: {
   initialized: boolean;
   session: Session | null;
+  /**
+   * getSession() answered "could not check" rather than "none". Held, with
+   * the offline card over the hold, because the alternative is showing a
+   * signed-in person the guest map. See `sessionIsUnknown` below and the
+   * flag's note in features/auth/store.
+   */
+  sessionUnknown: boolean;
   supabaseConfigured: boolean;
   profileSettled: boolean;
   standingSettled: boolean;
@@ -97,6 +107,9 @@ export function rootIsReady(opts: {
   if (!opts.initialized) {
     return false;
   }
+  if (opts.sessionUnknown) {
+    return false;
+  }
   if (opts.session == null || !opts.supabaseConfigured) {
     return true;
   }
@@ -104,4 +117,72 @@ export function rootIsReady(opts: {
     return true;
   }
   return opts.profileSettled && opts.standingSettled && opts.businessSettled && opts.listingSettled;
+}
+
+/**
+ * Whether a getSession() result means "could not check" rather than "none".
+ *
+ * auth-js keeps the session on disk when a refresh fails RETRYABLY (its
+ * AuthRetryableFetchError: the request never arrived, or the server said
+ * try later) and hands back `{ session: null, error }`. Reading that null as
+ * signed out silently demoted a signed-in traveler to a visitor for as long
+ * as the plane was in the air. A non-retryable refresh failure is different:
+ * auth-js removes the session itself and emits SIGNED_OUT, and that null is
+ * a real answer.
+ *
+ * `isOffline` as the second test because it is the app's one classifier for
+ * "never reached the server" (lib/failure-message), and an error that fails
+ * it while carrying the retryable name is still retryable.
+ */
+export function sessionIsUnknown(result: { session: Session | null; error: unknown }): boolean {
+  if (result.session != null || result.error == null) {
+    return false;
+  }
+  const name = (result.error as { name?: unknown }).name;
+  return name === 'AuthRetryableFetchError' || isOffline(result.error);
+}
+
+/**
+ * What the root does with a failed boot read of the account (the profile
+ * row, or the business row that decides which app somebody gets).
+ *
+ *   'proceed' — nothing to do: not signed in, a guest, no failure, or the
+ *               failure is a BACKGROUND one with the row still in memory.
+ *   'hold'    — keep the splash-coloured hold up. The failure is offline and
+ *               nothing has reached the server since launch, so the offline
+ *               card (components/ui/offline-notice) is already on screen
+ *               saying so with a Try again; the account error screen would
+ *               be a second voice for the same fact.
+ *   'block'   — the account error screen: the row is gone, the server
+ *               failed, or the phone went offline in a warm app.
+ *
+ * A guest never blocks and never holds. useOwnProfile is enabled for an
+ * anonymous session (guests have a profiles row), so ~24 seconds into an
+ * offline cold start the map they were looking at was torn down for "Can't
+ * load your profile" and a Sign out that would have thrown away their guest
+ * identity. Their routing never depended on the row (see rootIsReady), so
+ * its failure is never a reason to unmount their navigator.
+ */
+export type AccountLoadVerdict = 'proceed' | 'hold' | 'block';
+
+export function accountLoadVerdict(opts: {
+  session: Session | null;
+  isError: boolean;
+  hasData: boolean;
+  error: unknown;
+  everReached: boolean;
+}): AccountLoadVerdict {
+  if (opts.session == null || opts.session.user.is_anonymous === true) {
+    return 'proceed';
+  }
+  if (!opts.isError || opts.hasData) {
+    return 'proceed';
+  }
+  if (accountLoadFailure(opts.error) === 'gone') {
+    return 'block';
+  }
+  if (isOffline(opts.error) && !opts.everReached) {
+    return 'hold';
+  }
+  return 'block';
 }

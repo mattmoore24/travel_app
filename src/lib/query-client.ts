@@ -79,6 +79,42 @@ export function subscribeToConnection(listener: () => void): () => void {
 }
 
 /**
+ * Whether ANY request has reached the server since the app launched.
+ *
+ * `connectionStatus` above answers "can we reach it now"; this answers "have
+ * we ever", and the difference is the cold start. Until the first answer
+ * comes back the app is standing on the splash colour with nothing to show,
+ * and that is the one moment a fault deserves a card with a button rather
+ * than a pill under the notch. The card (components/ui/offline-notice) owns
+ * that phase and the pill (components/ui/connection-banner) owns everything
+ * after it, so the two never say "No connection" at once.
+ *
+ * Sticky on purpose: it flips once per process and never back. A failure
+ * later in the day is a warm-app failure whatever the radio is doing, and
+ * the root layout reads it to keep the boot hold up, rather than the account
+ * error screen, while the failure is offline AND nothing has ever arrived.
+ */
+let everReached = false;
+const reachListeners = new Set<() => void>();
+
+export function getEverReached(): boolean {
+  return everReached;
+}
+
+/** `useSyncExternalStore`'s half of the contract, for `everReached`. */
+export function subscribeToReach(listener: () => void): () => void {
+  reachListeners.add(listener);
+  return () => {
+    reachListeners.delete(listener);
+  };
+}
+
+/** Tests only: back to a cold start, as if nothing had ever arrived. */
+export function resetReachForTests(): void {
+  everReached = false;
+}
+
+/**
  * How long to wait before asking the screen's own queries to try again, and
  * how far that backs off.
  *
@@ -130,23 +166,32 @@ function noteRequestOutcome(error: unknown, from?: object): void {
     // nothing, and "nothing" must not clear the banner.
     if (!wasReachable(error)) return;
   }
-  if (next === connectionStatus) return;
-  connectionStatus = next;
-  if (next === 'online') {
-    probeDelay = PROBE_FROM_MS;
-    if (probeTimer != null) {
-      clearTimeout(probeTimer);
-      probeTimer = null;
+  // The first answer of any kind ends the cold start. Written before either
+  // set of listeners hears about it, so a listener that reads both stores
+  // (the pill does) sees one consistent truth.
+  const firstReach = next === 'online' && !everReached;
+  if (firstReach) everReached = true;
+  if (next !== connectionStatus) {
+    connectionStatus = next;
+    if (next === 'online') {
+      probeDelay = PROBE_FROM_MS;
+      if (probeTimer != null) {
+        clearTimeout(probeTimer);
+        probeTimer = null;
+      }
+      // Everything the app is showing was fetched before the connection came
+      // back, or failed while it was gone. This is the refetch-on-reconnect
+      // that wiring `onlineManager` would have given for free; excluding the
+      // query that just proved we are back saves fetching it twice.
+      void queryClient.invalidateQueries({ predicate: (query) => (query as object) !== from });
+    } else {
+      probeForReconnect();
     }
-    // Everything the app is showing was fetched before the connection came
-    // back, or failed while it was gone. This is the refetch-on-reconnect
-    // that wiring `onlineManager` would have given for free; excluding the
-    // query that just proved we are back saves fetching it twice.
-    void queryClient.invalidateQueries({ predicate: (query) => (query as object) !== from });
-  } else {
-    probeForReconnect();
+    for (const listener of connectionListeners) listener();
   }
-  for (const listener of connectionListeners) listener();
+  if (firstReach) {
+    for (const listener of reachListeners) listener();
+  }
 }
 
 /** Did this failure come back FROM the server? Then the connection is fine. */
@@ -207,7 +252,16 @@ export const queryClient = new QueryClient({
       // Travel data (trips, pins, heatmap) tolerates short staleness; screens
       // that need realtime freshness (chat) will use Supabase Realtime instead.
       staleTime: 30_000,
-      retry: 2,
+      // Twice, unless the request never left the phone. Retrying into a dead
+      // radio only delays the moment somebody is told the phone is the
+      // problem (it was three layers deep: postgrest-js's own three tries,
+      // then these two, so ~24 seconds offline on a cold start), and the
+      // reconnect path already covers recovery: `probeForReconnect` above
+      // refetches the active queries while offline and the invalidate on
+      // the first success refetches everything. A failure that DID reach
+      // the server (a 503 while the schema cache reloads after a deploy)
+      // is still worth two more tries, which is why this is not `false`.
+      retry: (failureCount, error) => !isOffline(error) && failureCount < 2,
     },
   },
 });
