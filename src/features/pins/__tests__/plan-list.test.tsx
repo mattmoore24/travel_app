@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { useState } from 'react';
 
+import { Skeleton } from '@/components/ui/skeleton';
+import { FontCap } from '@/constants/theme';
 import { clusterPins } from '@/features/pins/cluster';
 import {
   PLAN_LIST_PEEK,
@@ -32,6 +34,20 @@ jest.mock('react-native-maps', () => {
     Circle: () => null,
     PROVIDER_DEFAULT: 'default',
   };
+});
+
+// The reader's Dynamic Type setting, which the peek line now reads. Mocked
+// at its module because React Native's own jest DeviceInfo reports fontScale
+// 2, which is exactly the size the summary starts trimming itself at.
+let mockFontScale = 1;
+
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 390, height: 844, scale: 3, fontScale: mockFontScale }),
+}));
+
+beforeEach(() => {
+  mockFontScale = 1;
 });
 
 // The list is the map's own bottom sheet (founder decision D4) and its rows
@@ -266,5 +282,84 @@ describe('which businesses may appear', () => {
     const own = business({ id: 'own' });
     const rival = business({ id: 'rival' });
     expect(listableBusinesses([own, rival], true, 'own').map((b) => b.id)).toEqual(['own']);
+  });
+});
+
+/**
+ * The sheet before its pins. It used to not exist until the query landed,
+ * then spring in whole; now it stands at its peek from the first paint with
+ * a placeholder where the count will be. Skeleton before words, and the
+ * "Nothing pinned yet" line only once the query has said so.
+ */
+describe('while the pins are still in the air', () => {
+  it('stands at its peek with a placeholder where the count will be, and no rows', () => {
+    render(<Host pins={[pin(), pin()]} pending />);
+    expect(screen.getByTestId('plan-list-peek-pending')).toBeTruthy();
+    const bars = screen.UNSAFE_getAllByType(Skeleton);
+    expect(bars).toHaveLength(1);
+    // A text-line placeholder, so it follows Dynamic Type like the line will.
+    expect(bars[0].props).toMatchObject({ width: '60%', height: 14, text: true });
+    expect(screen.queryByText(/plans in Bangkok/)).toBeNull();
+    expect(screen.queryByText(/Nothing pinned/)).toBeNull();
+    expect(screen.queryByTestId('plan-list-row-0')).toBeNull();
+  });
+
+  it('keeps the suite’s id for the real strip, so a driver waits for the list and not its placeholder', () => {
+    render(<Host pins={[]} pending />);
+    expect(screen.queryByTestId('plan-list-peek')).toBeNull();
+  });
+
+  it('cannot be opened, and says what it is waiting for', () => {
+    render(<Host pins={[]} pending />);
+    const strip = screen.getByTestId('plan-list-peek-pending');
+    expect(strip.props.accessibilityState.disabled).toBe(true);
+    expect(strip.props.accessibilityLabel).toBe('Loading plans in Bangkok');
+    expect(strip.props.accessibilityHint).toBeUndefined();
+  });
+
+  it('draws the count and the rows once they land, under the same strip', () => {
+    const pins = [pin(), pin()];
+    const { rerender } = render(<Host pins={pins} pending />);
+    rerender(<Host pins={pins} />);
+    expect(screen.getByText(/2 plans in Bangkok/)).toBeTruthy();
+    expect(screen.UNSAFE_queryAllByType(Skeleton)).toHaveLength(0);
+    fireEvent.press(screen.getByTestId('plan-list-peek'));
+    expect(screen.getByTestId('plan-list-row-0')).toBeTruthy();
+  });
+
+  it('still draws nothing for a city the query has said is empty', () => {
+    render(<Host pins={[]} />);
+    expect(screen.toJSON()).toBeNull();
+  });
+});
+
+/**
+ * The peek line at the accessibility sizes. It is the only place the city's
+ * plan count is stated, and a single-line clamp cut it to "16 plans in B..."
+ * at AX3 and up.
+ */
+describe('the peek line at large text sizes', () => {
+  it('may wrap to two lines and stops growing at the chrome cap', () => {
+    renderList({ pins: [pin(), pin(), pin(), pin()] });
+    const line = screen.getByText(/4 plans in Bangkok/);
+    expect(line.props.numberOfLines).toBe(2);
+    expect(line.props.maxFontSizeMultiplier).toBe(FontCap.chrome);
+  });
+
+  it('drops the horizon clause from twice the default size, so the count and the city fit first', () => {
+    const soon = toISODate(addDays(new Date(), 8));
+    expect(planListSummary('Bangkok', 11, 0, soon, 1.9)).toContain('next on');
+    expect(planListSummary('Bangkok', 11, 0, soon, 2)).toBe('11 plans in Bangkok');
+    expect(planListSummary('Bangkok', 11, 4, null, 3.1)).toBe('11 plans in Bangkok');
+    // The empty line has no clause to drop.
+    expect(planListSummary('Bangkok', 0, 0, null, 3.1)).toBe('Nothing pinned in Bangkok yet');
+  });
+
+  it('reads that size from the window, on the strip itself', () => {
+    mockFontScale = 2;
+    const soon = toISODate(addDays(new Date(), 8));
+    renderList({ pins: [pin({ intent_date: soon }), pin({ intent_date: soon })] });
+    expect(screen.getByText('2 plans in Bangkok')).toBeTruthy();
+    expect(screen.queryByText(/next on/)).toBeNull();
   });
 });
