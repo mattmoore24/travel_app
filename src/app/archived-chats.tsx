@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useRef } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -89,10 +89,26 @@ export default function ArchivedChatsScreen() {
   // wrong answer.
   const query = useMyChats(true);
   const chats = query.data ?? [];
+  const theme = useTheme();
 
   return (
     <ThemedView style={styles.root}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        // The gesture every phone user reaches for when a list looks stale.
+        // isRefetching, not isFetching: the first load is already told by the
+        // skeletons below, and a spinner nobody pulled reads as a stuck page
+        // (the same shape place/[id] uses).
+        refreshControl={
+          <RefreshControl
+            refreshing={query.isRefetching}
+            onRefresh={() => {
+              void query.refetch();
+            }}
+            tintColor={theme.textSecondary}
+          />
+        }>
         {/* No title drawn here: "Archived" is the native header's title now
             (app/_layout.tsx). It used to be both, so the word appeared twice
             and the header row above it carried nothing but a back button.

@@ -10,8 +10,10 @@ import { BuildStamp } from '@/components/ui/build-stamp';
 import { PlaceholderScreen } from '@/components/placeholder-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet, leavingSheet } from '@/components/ui/sheet';
+import { ProfileHeroSkeleton } from '@/components/ui/skeleton';
 import { heldPhotoNotice } from '@/constants/moderation';
 import { BrandDeep, MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { BUSINESS_RULE_SECTIONS, BUSINESS_ZERO_TOLERANCE } from '@/constants/policies';
@@ -592,7 +594,8 @@ export default function ProfileScreen() {
   const wantsBusiness = useWantsBusiness();
   const dropListingIntent = useDropListingIntent();
   const listingDone = useAuthStore((s) => s.listingDone);
-  const { data: profile } = useOwnProfile();
+  const profileQuery = useOwnProfile();
+  const profile = profileQuery.data;
   const { data: audience = 'everyone' } = useOwnVisibility();
   // The address the account is under. Email confirmation is off for v1, so a
   // typo at signup produces a working account that never receives a single
@@ -648,9 +651,12 @@ export default function ProfileScreen() {
   // screen that lands after signup and already reads profile.verified, so it
   // is where the promise the note made is actually kept.
   useApplyWantedAudience(profile?.verified === true, audience);
-  const { data: prompts = [] } = useProfilePrompts(useOwnUserId());
-  const { data: priorities = [] } = useProfilePriorities(useOwnUserId());
-  const { data: trips = [] } = useMyTrips();
+  const promptsQuery = useProfilePrompts(useOwnUserId());
+  const prioritiesQuery = useProfilePriorities(useOwnUserId());
+  const tripsQuery = useMyTrips();
+  const prompts = promptsQuery.data ?? [];
+  const priorities = prioritiesQuery.data ?? [];
+  const trips = tripsQuery.data ?? [];
 
   if (!isSupabaseConfigured) {
     return (
@@ -673,9 +679,24 @@ export default function ProfileScreen() {
   }
 
   if (!profile) {
+    // The page's own shape while the profile is on its way, and a way
+    // forward when it does not come. This used to be the header over a blank
+    // page in both cases, on the screen the avatar on every tab opens: a
+    // failed fetch was a dark rectangle with no message and no retry.
     return (
       <ThemedView style={styles.root}>
         <Stack.Screen options={{ headerTitle: 'Your profile' }} />
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.pageContent}>
+          {profileQuery.isError ? (
+            <LoadError
+              what="your profile"
+              error={profileQuery.error}
+              onRetry={() => profileQuery.refetch()}
+            />
+          ) : profileQuery.isPending ? (
+            <ProfileHeroSkeleton />
+          ) : null}
+        </ScrollView>
       </ThemedView>
     );
   }
@@ -763,6 +784,9 @@ export default function ProfileScreen() {
             </View>
             <ProfileView
               photosPending={ownPhotos.data === undefined}
+              // The stranger's copy must not say "No trips yet." over trips
+              // that are a round trip away either.
+              tripsPending={tripsQuery.data === undefined}
               profile={profile}
               photos={approvedPhotos}
               prompts={prompts}
@@ -836,6 +860,13 @@ export default function ProfileScreen() {
             <ProfileView
               photosPending={ownPhotos.data === undefined}
               photoChecking={checkingHero != null}
+              // Unanswered or failed, the way profile/[userId] passes trips:
+              // the owner's page must never say "Add a trip" over trips that
+              // are a round trip away, and the same for the list and the
+              // prompts.
+              tripsPending={tripsQuery.data === undefined}
+              prioritiesPending={prioritiesQuery.data === undefined}
+              promptsPending={promptsQuery.data === undefined}
               profile={profile}
               photos={visiblePhotos}
               prompts={prompts}

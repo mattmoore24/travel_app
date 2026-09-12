@@ -226,7 +226,12 @@ describe('the chat list is a list, not a stack of cards', () => {
     // And the Groups segment keeps its own way in, which is the half of the
     // audit finding that was wrong: city_rooms is granted to anon.
     expect(code).toContain(
-      '<RoomDiscovery cityName={cityName} rooms={rooms} query={roomsQuery} />'
+      '<RoomDiscovery\n' +
+        '                  cityName={cityName}\n' +
+        '                  rooms={rooms}\n' +
+        '                  query={roomsQuery}\n' +
+        '                  pending={roomsPending}\n' +
+        '                />'
     );
     // The pointer stays plain text. A Pressable carrying its own
     // accessibilityLabel hides the words inside it from Maestro, and the

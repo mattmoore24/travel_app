@@ -5,7 +5,9 @@ import { AppState, Linking, StyleSheet } from 'react-native';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Radius, Space } from '@/constants/theme';
+import { LoadError } from '@/components/ui/load-error';
+import { Skeleton } from '@/components/ui/skeleton';
+import { HitTarget, Radius, Space } from '@/constants/theme';
 import {
   enablePushNotifications,
   pushPermissionState,
@@ -146,7 +148,19 @@ export function NotificationsRow() {
  * what it is.
  */
 function TripClocksLine() {
-  const { on, set, saving } = useTripClocks();
+  const { on, known, error, retry, set, saving } = useTripClocks();
+
+  if (error) {
+    return <LoadError compact what="your trip reminders" error={error} onRetry={retry} />;
+  }
+  if (!known) {
+    // The line and the button's worth of shape until the answer is in. The
+    // row used to say "Trip reminders are on" with a Turn off button while
+    // the query was pending, then flip to off for anybody who had turned
+    // them off, which is the one thing a switch must never do in front of
+    // somebody.
+    return <Skeleton height={HitTarget} radius={Radius.md} />;
+  }
 
   return (
     <>

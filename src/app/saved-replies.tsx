@@ -7,7 +7,8 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
-import { MaxContentWidth, Space } from '@/constants/theme';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MaxContentWidth, Radius, Space } from '@/constants/theme';
 import { useOwnBusiness, useSavedReplies, useSetSavedReply } from '@/features/business/hooks';
 
 const SLOTS = [0, 1, 2] as const;
@@ -31,6 +32,12 @@ export default function SavedRepliesScreen() {
   const businessId = business.data?.id ?? null;
   const replies = useSavedReplies(businessId);
   const save = useSetSavedReply(businessId);
+  // The replies are unknown until the business is known and then until the
+  // rows land. Three empty fields with placeholder copy said "you have none"
+  // for the length of both round trips, and then the saved bodies popped in
+  // over whatever was being read. The replies query is disabled until the
+  // business answers (idle), which is why the business half is asked too.
+  const settling = business.isPending || (replies.isPending && replies.fetchStatus !== 'idle');
 
   /**
    * What the OWNER has typed, per slot, and nothing else.
@@ -65,28 +72,32 @@ export default function SavedRepliesScreen() {
             Three answers you write once. They sit under the typing box in a chat, and tapping one
             puts it in the box so you can change it before it goes.
           </ThemedText>
-          {SLOTS.map((slot) => (
-            <FormTextField
-              key={slot}
-              label={`Reply ${slot + 1}`}
-              placeholder={
-                slot === 0 ? 'Beds tonight, yes. Come by after six.' : 'Another one you type a lot.'
-              }
-              value={shown(slot)}
-              onChangeText={(text) => setTyped((prev) => ({ ...prev, [slot]: text }))}
-              onBlur={() => {
-                // Saved on blur, one slot at a time. An explicit Save for
-                // three independent fields is a button that is wrong about
-                // two of them.
-                const body = shown(slot);
-                if (body.trim() !== saved(slot)) {
-                  save.mutate({ position: slot, body });
-                }
-              }}
-              multiline
-              maxLength={BODY_MAX}
-            />
-          ))}
+          {settling
+            ? SLOTS.map((slot) => <Skeleton key={slot} height={96} radius={Radius.md} />)
+            : SLOTS.map((slot) => (
+                <FormTextField
+                  key={slot}
+                  label={`Reply ${slot + 1}`}
+                  placeholder={
+                    slot === 0
+                      ? 'Beds tonight, yes. Come by after six.'
+                      : 'Another one you type a lot.'
+                  }
+                  value={shown(slot)}
+                  onChangeText={(text) => setTyped((prev) => ({ ...prev, [slot]: text }))}
+                  onBlur={() => {
+                    // Saved on blur, one slot at a time. An explicit Save for
+                    // three independent fields is a button that is wrong about
+                    // two of them.
+                    const body = shown(slot);
+                    if (body.trim() !== saved(slot)) {
+                      save.mutate({ position: slot, body });
+                    }
+                  }}
+                  multiline
+                  maxLength={BODY_MAX}
+                />
+              ))}
           <ThemedText type="caption" themeColor="textSecondary">
             Leave one empty to take it off the row.
           </ThemedText>

@@ -14,7 +14,7 @@ import { PressableScale } from '@/components/ui/pressable-scale';
 import { Segmented } from '@/components/ui/segmented';
 import { FormTextField } from '@/components/form/form-text-field';
 import { filterChats, SEARCH_APPEARS_AT } from '@/features/chat/search';
-import { ChatRowSkeleton } from '@/components/ui/skeleton';
+import { ChatRowSkeleton, RowSkeleton, Skeleton } from '@/components/ui/skeleton';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
 import { useOwnBusiness } from '@/features/business/hooks';
 import {
@@ -43,6 +43,7 @@ import { useIncomingRequests, useMyChats, useSentRequests } from '@/features/mat
 import { IncomingRequestCard } from '@/features/matching/incoming-request-card';
 import { waitingRows } from '@/features/matching/sent-rows';
 import { usePublicPhotos, usePublicProfile } from '@/features/profile/hooks';
+import { usePullRefresh } from '@/hooks/use-pull-refresh';
 import { useTabBarInset } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
@@ -120,7 +121,7 @@ function SentHelloRow({ request, last = false }: { request: SentRequestRow; last
       }>
       <View style={rowStyles.row}>
         <View style={rowStyles.unreadGutter} />
-        <Avatar path={photoPath} size={AVATAR - 8} />
+        <Avatar path={photoPath} size={AVATAR - 8} recyclingKey={request.id} />
         <View style={rowStyles.rowBody}>
           <ThemedText type="body" style={rowStyles.rowNameRead} numberOfLines={1}>
             {name}
@@ -378,15 +379,35 @@ function RoomDiscovery({
   cityName,
   rooms,
   query,
+  pending = false,
 }: {
   cityName: string | null;
   rooms: CityRoomRow[];
   query: { isError: boolean; error: unknown; refetch: () => void };
+  /**
+   * The rooms are still on their way. A traveler with no group chats used
+   * to see the segmented control over nothing until they answered; this
+   * draws the heading and two rows' worth of shape in the meantime.
+   */
+  pending?: boolean;
 }) {
   // A failed fetch used to be pixel-identical to a roomless city: the null
   // return below swallowed both.
   if (query.isError) {
     return <LoadError compact what="the open rooms" error={query.error} onRetry={query.refetch} />;
+  }
+  if (pending && rooms.length === 0) {
+    return (
+      <>
+        <View style={styles.sectionHeading}>
+          <Skeleton width="35%" height={14} radius={Radius.sm} text />
+        </View>
+        <View style={styles.roomSkeletons}>
+          <RowSkeleton />
+          <RowSkeleton />
+        </View>
+      </>
+    );
   }
   if (rooms.length === 0) {
     return null;
@@ -675,6 +696,16 @@ export default function ChatScreen() {
     refetchRequests();
     refetchSent();
   }, [refetchChats, refetchRequests, refetchSent]);
+  // The pull, and only the pull. The RefreshControl used to read
+  // isFetching, which is true for the focus refetch above and for every
+  // background refetch, so the list dipped and spun on every return to the
+  // tab for a fetch nobody had asked for (hooks/use-pull-refresh).
+  const pull = usePullRefresh(
+    useCallback(
+      () => Promise.all([refetchChats(), refetchRequests(), refetchSent()]),
+      [refetchChats, refetchRequests, refetchSent]
+    )
+  );
 
   // Unread state changes while this screen is off-stage: you read a thread,
   // somebody answers, a hello lands. Without this the dots and the tab badge
@@ -723,6 +754,10 @@ export default function ChatScreen() {
   // just starts this one a beat later on the same key.
   const roomsQuery = useCityRooms(isBusiness ? null : cityId);
   const rooms = roomsQuery.data ?? [];
+  // Loading or paused, never merely disabled: with no browsing city the
+  // query is idle and pending forever, and a skeleton for a fetch that is
+  // not coming would be a skeleton forever.
+  const roomsPending = roomsQuery.isPending && roomsQuery.fetchStatus !== 'idle';
   // The list used to refetch on every visit to Groups because the query
   // lived inside RoomDiscovery and remounted with it. Lifted, it would go
   // stale for the life of the mounted tab, so focus refreshes it with the
@@ -863,7 +898,12 @@ export default function ChatScreen() {
                 <ThemedText type="footnote" themeColor="textSecondary">
                   Businesses you stay at run open chats. Have a look before you join.
                 </ThemedText>
-                <RoomDiscovery cityName={cityName} rooms={rooms} query={roomsQuery} />
+                <RoomDiscovery
+                  cityName={cityName}
+                  rooms={rooms}
+                  query={roomsQuery}
+                  pending={roomsPending}
+                />
                 {/* The invite landing page tells somebody who has just
                   installed to come here and paste the code. They have no
                   account yet, so they are a guest by every definition this
@@ -1130,8 +1170,8 @@ export default function ChatScreen() {
             // people reflexively pull.
             refreshControl={
               <RefreshControl
-                refreshing={chatsQuery.isFetching || requestsQuery.isFetching}
-                onRefresh={refresh}
+                refreshing={pull.refreshing}
+                onRefresh={pull.onRefresh}
                 tintColor={theme.textSecondary}
               />
             }
@@ -1291,7 +1331,12 @@ export default function ChatScreen() {
 
                 {tab === 'groups' && !isBusiness ? (
                   <>
-                    <RoomDiscovery cityName={cityName} rooms={rooms} query={roomsQuery} />
+                    <RoomDiscovery
+                      cityName={cityName}
+                      rooms={rooms}
+                      query={roomsQuery}
+                      pending={roomsPending}
+                    />
                     {/* Below the rooms, so the row stops sliding down the list as
                 groups accumulate. It is a destination, not a conversation. */}
                     <View style={rowStyles.list}>
@@ -1425,6 +1470,12 @@ const styles = StyleSheet.create({
      beside them sat at 24. */
   sectionHeading: {
     paddingTop: Spacing.two,
+  },
+  /* The two rows' worth of shape under the heading while rooms load. Inside
+     the gutter rather than flush like the rows they stand for: a rounded
+     block run edge to edge shows its corners at the screen edge. */
+  roomSkeletons: {
+    gap: Spacing.two,
   },
   /* For the SectionList's own headers, which sit in a content container with
      no padding of its own and therefore carry the gutter themselves. */

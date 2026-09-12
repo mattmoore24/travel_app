@@ -60,8 +60,16 @@ export function useTripClocks() {
 
   return {
     // Default on while the answer is still loading, so the switch does not
-    // flick from off to on in front of somebody.
+    // flick from off to on in front of somebody. `known` is how the row
+    // tells "on" from "not answered yet": it draws a shape until then, so
+    // somebody who turned the reminders off is never shown them on for the
+    // length of a round trip.
     on: query.data ?? true,
+    known: query.isSuccess,
+    error: query.isError ? query.error : null,
+    retry: () => {
+      void query.refetch();
+    },
     set: (next: boolean) => set.mutate(next),
     saving: set.isPending,
   };

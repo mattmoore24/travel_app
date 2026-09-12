@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -9,6 +9,7 @@ import { MaxContentWidth, Space, Spacing } from '@/constants/theme';
 import { useAnnounce } from '@/features/chat/use-announce';
 import { useIncomingRequests } from '@/features/matching/hooks';
 import { IncomingRequestCard } from '@/features/matching/incoming-request-card';
+import { useTheme } from '@/hooks/use-theme';
 import { countOf } from '@/lib/plural';
 
 /**
@@ -27,6 +28,7 @@ import { countOf } from '@/lib/plural';
 export default function FirstMessagesScreen() {
   const query = useIncomingRequests();
   const requests = query.data ?? [];
+  const theme = useTheme();
 
   useAnnounce(
     query.isSuccess
@@ -38,7 +40,20 @@ export default function FirstMessagesScreen() {
 
   return (
     <ThemedView style={styles.root}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        // A pull to see whether anybody else has said hi. isRefetching, not
+        // isFetching: the first load is already told by the skeletons below.
+        refreshControl={
+          <RefreshControl
+            refreshing={query.isRefetching}
+            onRefresh={() => {
+              void query.refetch();
+            }}
+            tintColor={theme.textSecondary}
+          />
+        }>
         {/* The title is on the route (_layout: "Waiting on you"), in the
             header row the back chevron already had. The page used to write
             it again underneath, which put a whole row of chrome between the

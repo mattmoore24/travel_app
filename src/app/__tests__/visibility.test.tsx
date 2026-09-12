@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import VisibilityScreen from '@/app/visibility';
+import { RowSkeleton } from '@/components/ui/skeleton';
 import type { ProfileAudience } from '@/lib/database.types';
 
 // The rule that a narrowed audience costs a verified badge is enforced in the
@@ -14,9 +15,16 @@ import type { ProfileAudience } from '@/lib/database.types';
 // jest.mock factories are hoisted above every other binding, so the state
 // they close over has to be named mock* to be allowed through.
 const mockMutate = jest.fn();
-const mockState: { verified: boolean; audience: ProfileAudience } = {
+const mockRefetch = jest.fn();
+const mockState: {
+  verified: boolean;
+  audience: ProfileAudience;
+  /** How the audience query stands: answered, still coming, or failed. */
+  audienceStatus: 'success' | 'pending' | 'error';
+} = {
   verified: false,
   audience: 'everyone',
+  audienceStatus: 'success',
 };
 
 jest.mock('expo-router', () => ({
@@ -30,19 +38,30 @@ jest.mock('@/lib/supabase', () => ({ isSupabaseConfigured: false, supabase: {} }
 
 jest.mock('@/features/profile/hooks', () => ({
   useOwnProfile: () => ({ data: { verified: mockState.verified } }),
-  useOwnVisibility: () => ({ data: mockState.audience }),
+  // The shape a settled query has, because the screen gates every control
+  // on its query having answered (isSuccess, or idle for a disabled one).
+  useOwnVisibility: () => ({
+    data: mockState.audienceStatus === 'success' ? mockState.audience : undefined,
+    isSuccess: mockState.audienceStatus === 'success',
+    isError: mockState.audienceStatus === 'error',
+    error: mockState.audienceStatus === 'error' ? new Error('offline') : null,
+    fetchStatus: mockState.audienceStatus === 'pending' ? 'fetching' : 'idle',
+    refetch: mockRefetch,
+  }),
   useSetVisibility: () => ({ mutate: mockMutate, isPending: false }),
   // The signed-out preview row (D22, 20260903080000). Left at the server's
   // default here; src/features/profile/__tests__/guest-preview.test.tsx is
   // the file that exercises it.
-  useOwnGuestPreview: () => ({ data: true }),
+  useOwnGuestPreview: () => ({ data: true, isSuccess: true, isError: false, fetchStatus: 'idle' }),
   useSetGuestPreview: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 
 beforeEach(() => {
   mockMutate.mockClear();
+  mockRefetch.mockClear();
   mockState.verified = false;
   mockState.audience = 'everyone';
+  mockState.audienceStatus = 'success';
 });
 
 // StepScreen docks its continue button above the keyboard, which reads the
@@ -67,6 +86,37 @@ const show = () =>
   );
 
 const row = (label: string) => screen.getByLabelText(new RegExp(`^${label}\\.`));
+
+describe('while the audience is still on its way', () => {
+  // The radios used to draw Everyone as chosen while the query was pending,
+  // then jump to the real answer: a setting the person had not made, shown
+  // as made, for the length of a round trip.
+  it('draws the rows as shapes and no radio as chosen', () => {
+    mockState.audienceStatus = 'pending';
+    show();
+    expect(screen.UNSAFE_getAllByType(RowSkeleton).length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText(/^Everyone\./)).toBeNull();
+    // Nor the sentence that hangs off the answer, nor the guest row.
+    expect(screen.queryByText(/fewer travelers/i)).toBeNull();
+    expect(screen.queryByText('Before somebody has an account')).toBeNull();
+  });
+
+  it('says so and offers a retry when it does not come', () => {
+    mockState.audienceStatus = 'error';
+    show();
+    fireEvent.press(screen.getByText('Try again'));
+    expect(mockRefetch).toHaveBeenCalled();
+    expect(screen.queryByLabelText(/^Everyone\./)).toBeNull();
+  });
+
+  it('keeps the group rule drawn, which answered on its own', () => {
+    // A disabled query is idle and pending forever; idle counts as settled
+    // so the rows behind it are never a skeleton forever.
+    mockState.audienceStatus = 'pending';
+    show();
+    expect(screen.getByText('Anyone you have chatted with')).toBeTruthy();
+  });
+});
 
 describe('an unverified traveler', () => {
   it('is offered every audience, so the badge has a visible point', () => {

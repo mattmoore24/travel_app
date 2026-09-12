@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react-native';
 import fs from 'node:fs';
 import path from 'node:path';
+import { RefreshControl } from 'react-native';
 
 import ArchivedChatsScreen from '@/app/archived-chats';
 import { ChatRowSkeleton } from '@/components/ui/skeleton';
@@ -22,6 +23,7 @@ const mockQuery = {
   isPending: false,
   isError: false,
   isSuccess: false,
+  isRefetching: false,
   error: null as unknown,
   refetch: jest.fn(),
 };
@@ -93,7 +95,31 @@ beforeEach(() => {
   mockQuery.isPending = false;
   mockQuery.isError = false;
   mockQuery.isSuccess = false;
+  mockQuery.isRefetching = false;
   mockQuery.error = null;
+  mockQuery.refetch.mockClear();
+});
+
+describe('a pull on the archive', () => {
+  it('refetches, and spins only for a refetch, never for the first load', () => {
+    // isRefetching, not isFetching: the first load is told by the skeletons,
+    // and a spinner sitting at the top of a list nobody pulled reads as a
+    // stuck page.
+    mockQuery.isPending = true;
+    render(<ArchivedChatsScreen />);
+    const control = screen.UNSAFE_getByType(RefreshControl);
+    expect(control.props.refreshing).toBe(false);
+    control.props.onRefresh();
+    expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
+
+    mockQuery.isPending = false;
+    mockQuery.isSuccess = true;
+    mockQuery.data = [row()];
+    mockQuery.isRefetching = true;
+    screen.unmount();
+    render(<ArchivedChatsScreen />);
+    expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(true);
+  });
 });
 
 describe('the header', () => {
