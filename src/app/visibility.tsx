@@ -1,3 +1,4 @@
+import type { FetchStatus } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { StyleSheet, View } from 'react-native';
@@ -5,7 +6,9 @@ import { StyleSheet, View } from 'react-native';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
+import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { RowSkeleton } from '@/components/ui/skeleton';
 import { Radius, Space } from '@/constants/theme';
 import { GROUP_ADD_OPTIONS, useGroupAdds, useSetGroupAdds } from '@/features/groups/adds';
 import { useTheme } from '@/hooks/use-theme';
@@ -46,17 +49,38 @@ import {
  * two copies of "only verified women see you" is how one of them ends up
  * subtly wrong.
  */
+/**
+ * A query has said its piece: it answered, or it was never going to ask.
+ *
+ * A disabled query never leaves isPending, so "settled" has to include
+ * fetchStatus idle (the same reading place-sheet and my-business use), or a
+ * control behind one would be a skeleton forever. Every control on this
+ * screen waits for this before it draws a chosen state: a radio that showed
+ * the default as chosen and then jumped to the real answer was telling the
+ * person a setting they had not made.
+ */
+function settled(query: { isSuccess: boolean; fetchStatus?: FetchStatus }): boolean {
+  return query.isSuccess || query.fetchStatus === 'idle';
+}
+
 export default function VisibilityScreen() {
   const theme = useTheme();
   const { data: profile } = useOwnProfile();
-  const { data: audience = 'everyone' } = useOwnVisibility();
+  const visibilityQuery = useOwnVisibility();
+  const audience = visibilityQuery.data ?? 'everyone';
+  const audienceKnown = settled(visibilityQuery);
   const save = useSetVisibility();
-  const { data: groupAdds = 'known' } = useGroupAdds();
+  const addsQuery = useGroupAdds();
+  const groupAdds = addsQuery.data ?? 'known';
+  const addsKnown = settled(addsQuery);
   const setAdds = useSetGroupAdds();
-  // Shown is the server's own default, so it is the screen's too: a row that
-  // read "hidden" while the answer was still on its way would be a lie for
-  // the length of a round trip.
-  const { data: shownToGuests = true } = useOwnGuestPreview();
+  // Shown is the server's own default, so it is the screen's too, once the
+  // answer is in; until then the block is a shape, because a row that read
+  // either way while the answer was still on its way would be a lie for the
+  // length of a round trip.
+  const previewQuery = useOwnGuestPreview();
+  const shownToGuests = previewQuery.data ?? true;
+  const previewKnown = settled(previewQuery);
   const setPreview = useSetGuestPreview();
   const verified = profile?.verified === true;
   const previewLabel = shownToGuests
@@ -77,18 +101,35 @@ export default function VisibilityScreen() {
         {AUDIENCE_GENDER_NOTE}
       </ThemedText>
 
-      <AudiencePicker
-        value={audience}
-        verified={verified}
-        disabled={save.isPending}
-        onChange={(next) => save.mutate(next)}
-        onLockedPress={() => router.push('/verification')}
-      />
+      {visibilityQuery.isError ? (
+        <LoadError
+          compact
+          what="who can see you"
+          error={visibilityQuery.error}
+          onRetry={() => visibilityQuery.refetch()}
+        />
+      ) : !audienceKnown ? (
+        // The rows' shape until the chosen one is known. Three, not five:
+        // the shape says "rows are coming", not how many.
+        <View style={styles.addRows}>
+          <RowSkeleton />
+          <RowSkeleton />
+          <RowSkeleton />
+        </View>
+      ) : (
+        <AudiencePicker
+          value={audience}
+          verified={verified}
+          disabled={save.isPending}
+          onChange={(next) => save.mutate(next)}
+          onLockedPress={() => router.push('/verification')}
+        />
+      )}
 
       {/* The consequence, said before it is discovered. A narrowed audience
           empties the Travelers queue and thins the map, and being told that
           here is the difference between a working filter and a broken app. */}
-      {audience !== 'everyone' ? (
+      {audienceKnown && audience !== 'everyone' ? (
         <ThemedText type="footnote" themeColor="textSecondary">
           While this is on, expect fewer travelers in Travelers and fewer pins on the map.
         </ThemedText>
@@ -118,25 +159,38 @@ export default function VisibilityScreen() {
           Switch, for the reason notifications-row gives: this app has no
           Switch anywhere, and one control introduced for one row is a
           vocabulary of its own. */}
-      {audience === 'everyone' ? (
+      {audienceKnown && audience === 'everyone' ? (
         <View style={styles.previewBlock}>
           <ThemedText type="smallBold">Before somebody has an account</ThemedText>
-          <ThemedText type="footnote" themeColor="textSecondary">
-            {shownToGuests
-              ? 'Anyone opening the app without an account can be shown up to three travelers with plans in a city: face, name, age and dates. You can be one of them.'
-              : 'Only people with an account can see you. Anyone opening the app without one is shown other travelers, never you.'}
-          </ThemedText>
-          <PrimaryButton
-            variant="ghost"
-            label={previewLabel}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: shownToGuests, disabled: setPreview.isPending }}
-            // The same words that are written on it, so a Voice Control user
-            // reading the button can say them and be heard.
-            accessibilityLabel={previewLabel}
-            disabled={setPreview.isPending}
-            onPress={() => setPreview.mutate(!shownToGuests)}
-          />
+          {previewQuery.isError ? (
+            <LoadError
+              compact
+              what="this setting"
+              error={previewQuery.error}
+              onRetry={() => previewQuery.refetch()}
+            />
+          ) : !previewKnown ? (
+            <RowSkeleton />
+          ) : (
+            <>
+              <ThemedText type="footnote" themeColor="textSecondary">
+                {shownToGuests
+                  ? 'Anyone opening the app without an account can be shown up to three travelers with plans in a city: face, name, age and dates. You can be one of them.'
+                  : 'Only people with an account can see you. Anyone opening the app without one is shown other travelers, never you.'}
+              </ThemedText>
+              <PrimaryButton
+                variant="ghost"
+                label={previewLabel}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: shownToGuests, disabled: setPreview.isPending }}
+                // The same words that are written on it, so a Voice Control user
+                // reading the button can say them and be heard.
+                accessibilityLabel={previewLabel}
+                disabled={setPreview.isPending}
+                onPress={() => setPreview.mutate(!shownToGuests)}
+              />
+            </>
+          )}
         </View>
       ) : null}
 
@@ -146,42 +200,56 @@ export default function VisibilityScreen() {
           on for "who can do what to me". Enforced in add_to_group, so it holds
           for any caller and not only for this one. */}
       <ThemedText type="smallBold">Who can add you to a group</ThemedText>
-      <View style={styles.addRows}>
-        {GROUP_ADD_OPTIONS.map((option) => {
-          const active = option.value === groupAdds;
-          return (
-            <PressableScale
-              key={option.value}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: active, disabled: setAdds.isPending }}
-              accessibilityLabel={`${option.label}. ${option.detail}`}
-              haptic="selection"
-              scaleTo={0.985}
-              disabled={setAdds.isPending || active}
-              onPress={() => setAdds.mutate(option.value)}
-              style={[
-                styles.addRow,
-                { backgroundColor: active ? theme.accentSoft : theme.surfaceSunken },
-              ]}>
-              <View style={styles.addRowText}>
-                <ThemedText type="callout">{option.label}</ThemedText>
-                {/* The consequence said out loud, the way the audience block
+      {addsQuery.isError ? (
+        <LoadError
+          compact
+          what="this setting"
+          error={addsQuery.error}
+          onRetry={() => addsQuery.refetch()}
+        />
+      ) : !addsKnown ? (
+        <View style={styles.addRows}>
+          <RowSkeleton />
+          <RowSkeleton />
+        </View>
+      ) : (
+        <View style={styles.addRows}>
+          {GROUP_ADD_OPTIONS.map((option) => {
+            const active = option.value === groupAdds;
+            return (
+              <PressableScale
+                key={option.value}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: active, disabled: setAdds.isPending }}
+                accessibilityLabel={`${option.label}. ${option.detail}`}
+                haptic="selection"
+                scaleTo={0.985}
+                disabled={setAdds.isPending || active}
+                onPress={() => setAdds.mutate(option.value)}
+                style={[
+                  styles.addRow,
+                  { backgroundColor: active ? theme.accentSoft : theme.surfaceSunken },
+                ]}>
+                <View style={styles.addRowText}>
+                  <ThemedText type="callout">{option.label}</ThemedText>
+                  {/* The consequence said out loud, the way the audience block
                     above already says its own. */}
-                <ThemedText type="footnote" themeColor="textSecondary">
-                  {option.detail}
-                </ThemedText>
-              </View>
-              {active ? (
-                <SymbolView
-                  name={{ ios: 'checkmark', android: 'check', web: 'check' }}
-                  size={16}
-                  tintColor={theme.accent}
-                />
-              ) : null}
-            </PressableScale>
-          );
-        })}
-      </View>
+                  <ThemedText type="footnote" themeColor="textSecondary">
+                    {option.detail}
+                  </ThemedText>
+                </View>
+                {active ? (
+                  <SymbolView
+                    name={{ ios: 'checkmark', android: 'check', web: 'check' }}
+                    size={16}
+                    tintColor={theme.accent}
+                  />
+                ) : null}
+              </PressableScale>
+            );
+          })}
+        </View>
+      )}
     </StepScreen>
   );
 }

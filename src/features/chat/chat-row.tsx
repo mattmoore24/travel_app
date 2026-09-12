@@ -1,9 +1,10 @@
-import { Image } from 'expo-image';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Radius, Space, Spacing, Type } from '@/constants/theme';
+import { RemoteImage } from '@/components/ui/remote-image';
+import { FontCap, Motion, Radius, Space, Spacing, Type } from '@/constants/theme';
 import { useIsPlaceChat } from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
@@ -11,8 +12,10 @@ import { planChipLabel, roomBadgeGlyph } from '@/features/chat/row-kind';
 import { rowTimestamp, unreadLabel } from '@/features/chat/separators';
 import { finiteDate } from '@/features/groups/closing';
 import { usePhotoUrl } from '@/features/profile/hooks';
+import { useCappedFontScale } from '@/hooks/use-capped-font-scale';
 import { useTheme } from '@/hooks/use-theme';
 import { dates } from '@/lib/locale';
+import { photoSourceState, type PhotoSourceState } from '@/lib/photo-source';
 import { countOf } from '@/lib/plural';
 import type { ChatListRow } from '@/lib/database.types';
 
@@ -34,58 +37,97 @@ import type { ChatListRow } from '@/lib/database.types';
  */
 export const AVATAR = 52;
 
-export function Avatar({ path, size = 48 }: { path: string | null; size?: number }) {
+type AvatarProps = {
+  path: string | null;
+  size?: number;
+  /**
+   * expo-image's recycling key. The ROW is the recycled unit in the inbox
+   * list, so the caller passes its chat id: without it a recycled cell wore
+   * the previous conversation's face for the frame before its own arrived.
+   */
+  recyclingKey?: string;
+};
+
+/**
+ * The disc itself, shared by the three signers below.
+ *
+ * 'flat', not the pulse: at row size a pulsing disc reads as flicker, and
+ * the sunken circle is placeholder enough. What the frame adds is the fade
+ * when the face lands, the disk cache across launches (the source carries
+ * the storage path as its key), the recycling reset, and a glyph only for
+ * a conversation that genuinely has no photo: the glyph used to show while
+ * the URL was signing too, so every cold paint of the list said "no photo"
+ * about a dozen people who had one.
+ */
+function Disc({
+  photo,
+  size,
+  recyclingKey,
+  glyph,
+}: {
+  photo: PhotoSourceState;
+  size: number;
+  recyclingKey?: string;
+  glyph: ReactNode;
+}) {
   const theme = useTheme();
-  const { data: url } = usePhotoUrl(path);
   return (
-    <View
+    <RemoteImage
+      source={photo.source}
+      pending={photo.pending}
+      skeleton="flat"
+      transition={Motion.quick}
+      recyclingKey={recyclingKey}
       style={{
         width: size,
         height: size,
         borderRadius: size / 2,
-        overflow: 'hidden',
         backgroundColor: theme.backgroundSelected,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-      {url ? (
-        <Image source={{ uri: url }} style={styles.fill} contentFit="cover" />
-      ) : (
+      }}
+      fallback={glyph}
+    />
+  );
+}
+
+export function Avatar({ path, size = 48, recyclingKey }: AvatarProps) {
+  const theme = useTheme();
+  // The URL hook plus the pure pairing rather than usePhotoSourceState: the
+  // screens that render this row stand the signers in by name in their
+  // tests, and the pairing is the same call either way (lib/photo-source).
+  const photo = photoSourceState(usePhotoUrl(path), path);
+  return (
+    <Disc
+      photo={photo}
+      size={size}
+      recyclingKey={recyclingKey}
+      glyph={
         <SymbolView
           name={{ ios: 'person.fill', android: 'person', web: 'person' }}
           size={size / 2}
           tintColor={theme.textSecondary}
         />
-      )}
-    </View>
+      }
+    />
   );
 }
 
 /** The same circle, signed against the bucket a place's photos actually live in. */
-export function PlaceAvatar({ path, size = 48 }: { path: string | null; size?: number }) {
+export function PlaceAvatar({ path, size = 48, recyclingKey }: AvatarProps) {
   const theme = useTheme();
-  const { data: url } = useBusinessPhotoUrl(path);
+  const photo = photoSourceState(useBusinessPhotoUrl(path), path);
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        overflow: 'hidden',
-        backgroundColor: theme.backgroundSelected,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-      {url ? (
-        <Image source={{ uri: url }} style={styles.fill} contentFit="cover" />
-      ) : (
+    <Disc
+      photo={photo}
+      size={size}
+      recyclingKey={recyclingKey}
+      glyph={
         <SymbolView
           name={{ ios: 'storefront.fill', android: 'storefront', web: 'storefront' }}
           size={size / 2}
           tintColor={theme.textSecondary}
         />
-      )}
-    </View>
+      }
+    />
   );
 }
 
@@ -97,30 +139,22 @@ export function PlaceAvatar({ path, size = 48 }: { path: string | null; size?: n
  * perfectly valid URL, so the row silently falls back to a glyph and nobody
  * can tell a missing photo from a mis-signed one.
  */
-export function GroupAvatar({ path, size = 48 }: { path: string | null; size?: number }) {
+export function GroupAvatar({ path, size = 48, recyclingKey }: AvatarProps) {
   const theme = useTheme();
-  const { data: url } = useChatPhotoUrl(path);
+  const photo = photoSourceState(useChatPhotoUrl(path), path);
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        overflow: 'hidden',
-        backgroundColor: theme.backgroundSelected,
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-      {url ? (
-        <Image source={{ uri: url }} style={styles.fill} contentFit="cover" />
-      ) : (
+    <Disc
+      photo={photo}
+      size={size}
+      recyclingKey={recyclingKey}
+      glyph={
         <SymbolView
           name={{ ios: 'person.3.fill', android: 'groups', web: 'groups' }}
           size={size / 2}
           tintColor={theme.textSecondary}
         />
-      )}
-    </View>
+      }
+    />
   );
 }
 
@@ -231,7 +265,7 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
         // `g.photo_path`, which only a traveler group ever has — a business
         // room has no groups row, so this branch cannot reach for a cover in
         // the wrong bucket and come back a 404 wearing a valid URL.
-        <GroupAvatar path={chat.photo_path} size={AVATAR} />
+        <GroupAvatar path={chat.photo_path} size={AVATAR} recyclingKey={chat.chat_id} />
       ) : isRoom ? (
         <View style={[styles.roomBadge, { backgroundColor: theme.accentSoft }]}>
           {/* Three marks, not one house. The old note here defended one glyph
@@ -248,9 +282,9 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
           <SymbolView name={roomGlyph} size={22} tintColor={theme.accent} />
         </View>
       ) : isPlace ? (
-        <PlaceAvatar path={chat.photo_path} size={AVATAR} />
+        <PlaceAvatar path={chat.photo_path} size={AVATAR} recyclingKey={chat.chat_id} />
       ) : (
-        <Avatar path={chat.photo_path} size={AVATAR} />
+        <Avatar path={chat.photo_path} size={AVATAR} recyclingKey={chat.chat_id} />
       )}
       <View style={styles.rowBody}>
         <View style={styles.rowTitle}>
@@ -310,7 +344,13 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
           while the avatar stays centred against the whole row. */}
       <View style={styles.rowTrailing}>
         {stamp ? (
-          <ThemedText type="footnote" themeColor={unread ? 'highlight' : 'textSecondary'}>
+          // Metadata in a fixed-height row, not reading text, so it stops at
+          // the chrome cap: at the largest size an uncapped "Yesterday" took
+          // nearly half the row from the name.
+          <ThemedText
+            type="footnote"
+            themeColor={unread ? 'highlight' : 'textSecondary'}
+            maxFontSizeMultiplier={FontCap.chrome}>
             {stamp}
           </ThemedText>
         ) : null}
@@ -319,7 +359,10 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
             cleared moderation and nothing else. */}
         {chat.unread_count > 1 ? (
           <View style={[styles.unreadPill, { backgroundColor: theme.highlight }]}>
-            <ThemedText type="caption" style={[styles.unreadCount, { color: theme.background }]}>
+            <ThemedText
+              type="caption"
+              style={[styles.unreadCount, { color: theme.background }]}
+              maxFontSizeMultiplier={FontCap.chrome}>
               {unreadLabel(chat.unread_count)}
             </ThemedText>
           </View>
@@ -347,6 +390,22 @@ export function ChatRow({ chat, last = false }: { chat: ChatListRow; last?: bool
  * Archive ended up painted in danger red, the one colour that DID work with
  * black on it. The pair travels together now.
  */
+/** One swipe action's width at the default text size. */
+export const SWIPE_ACTION_WIDTH = 74;
+
+/**
+ * The width a swipe action is drawn at for this reader.
+ *
+ * Scaled with the label and capped with it (FontCap.control), so the two
+ * cannot drift: a 74pt button around an uncapped caption clipped "Archive"
+ * to its middle at the accessibility sizes. Anything that reasons about the
+ * actions' extent (a threshold, a measured offset) must read this hook
+ * rather than the constant, or it will be right at one text size only.
+ */
+export function useSwipeActionWidth() {
+  return Math.round(SWIPE_ACTION_WIDTH * useCappedFontScale(FontCap.control));
+}
+
 export function SwipeAction({
   label,
   icon,
@@ -361,6 +420,7 @@ export function SwipeAction({
   onTint: string;
   onPress: () => void;
 }) {
+  const width = useSwipeActionWidth();
   return (
     <Pressable
       accessibilityRole="button"
@@ -368,11 +428,18 @@ export function SwipeAction({
       onPress={onPress}
       style={({ pressed }) => [
         styles.swipeAction,
-        { backgroundColor: tint },
+        { width, backgroundColor: tint },
         pressed && styles.pressed,
       ]}>
       <SymbolView name={icon} size={18} tintColor={onTint} />
-      <ThemedText type="caption" style={{ color: onTint }}>
+      {/* A control label: capped, one line, and shrunk to fit before it is
+          ever cut. The word IS the button; half of it is no button. */}
+      <ThemedText
+        type="caption"
+        style={{ color: onTint }}
+        maxFontSizeMultiplier={FontCap.control}
+        numberOfLines={1}
+        adjustsFontSizeToFit>
         {label}
       </ThemedText>
     </Pressable>
@@ -386,10 +453,6 @@ const styles = StyleSheet.create({
      amount must cancel ITS own gutter, not this one. */
   list: {
     marginHorizontal: -Spacing.four,
-  },
-  fill: {
-    width: '100%',
-    height: '100%',
   },
   roomBadge: {
     width: AVATAR,
@@ -430,11 +493,14 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
   },
+  /* A minimum, never a fixed height: the count inside scales (to the chrome
+     cap), and a 20pt box around a 34pt digit clipped it to its middle. */
   unreadPill: {
     minWidth: 20,
-    height: 20,
+    minHeight: 20,
     borderRadius: 10,
     paddingHorizontal: 6,
+    paddingVertical: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -479,6 +545,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     gap: Space.xs,
     paddingTop: 2,
+    // The stamp can grow (to the chrome cap) but never past this: the name
+    // is what the column is scanned for, and a long stamp at a large size
+    // must not push it to three characters.
+    maxWidth: '40%',
   },
   /* Starts where the text starts. A full-width rule chops the list into
      slabs; an inset one threads the avatars into a single column. */
@@ -496,8 +566,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
   },
+  /* The width is per reader (useSwipeActionWidth), not here. */
   swipeAction: {
-    width: 74,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,

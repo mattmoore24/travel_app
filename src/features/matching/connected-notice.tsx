@@ -1,4 +1,3 @@
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
@@ -7,12 +6,14 @@ import { SymbolView } from 'expo-symbols';
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { RemoteImage } from '@/components/ui/remote-image';
 import { Elevation, Motion, Radius, Space } from '@/constants/theme';
 import { useTabDockBottom } from '@/hooks/use-tab-bar-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import type { AcceptedMatch } from '@/features/matching/use-accepted-celebration';
 import { haptics } from '@/lib/haptics';
+import { photoSourceState } from '@/lib/photo-source';
 
 /**
  * Somebody you messaged said yes.
@@ -50,7 +51,11 @@ export function ConnectedNotice({
 }) {
   const theme = useTheme();
   const dockBottom = useTabDockBottom();
-  const { data: photoUrl } = usePhotoUrl(match.photoPath);
+  // With the storage path as the cache key: this face was on the Travelers
+  // card a moment ago, and a notice that lives a few seconds cannot afford to
+  // download it again. The disk hit is the whole point here, more than any
+  // placeholder.
+  const photo = photoSourceState(usePhotoUrl(match.photoPath), match.photoPath);
 
   useEffect(() => {
     const timer = setTimeout(() => haptics.success(), 120);
@@ -65,17 +70,20 @@ export function ConnectedNotice({
       pointerEvents="box-none">
       <ThemedView type="surface" style={[styles.card, Elevation.floating]}>
         <View style={styles.row}>
-          <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
-            {photoUrl ? (
-              <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
-            ) : (
+          <RemoteImage
+            source={photo.source}
+            pending={photo.pending}
+            skeleton="flat"
+            transition={Motion.quick}
+            style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}
+            fallback={
               <SymbolView
                 name={{ ios: 'person.fill', android: 'person', web: 'person' }}
                 size={20}
                 tintColor={theme.textSecondary}
               />
-            )}
-          </View>
+            }
+          />
           <ThemedText type="callout" style={styles.name} numberOfLines={1}>
             Connected with {match.name}
           </ThemedText>
@@ -127,13 +135,6 @@ const styles = StyleSheet.create({
     width: AVATAR,
     height: AVATAR,
     borderRadius: AVATAR / 2,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fill: {
-    width: '100%',
-    height: '100%',
   },
   name: {
     flex: 1,

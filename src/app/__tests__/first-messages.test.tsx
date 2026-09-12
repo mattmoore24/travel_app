@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react-native';
+import { RefreshControl } from 'react-native';
 
 import FirstMessagesScreen from '@/app/first-messages';
 import { source } from '@/lib/__tests__/source';
@@ -21,6 +22,7 @@ const mockQuery = {
   isPending: false,
   isError: false,
   isSuccess: false,
+  isRefetching: false,
   error: null as unknown,
   refetch: jest.fn(),
 };
@@ -56,7 +58,26 @@ beforeEach(() => {
   mockQuery.isPending = false;
   mockQuery.isError = false;
   mockQuery.isSuccess = false;
+  mockQuery.isRefetching = false;
   mockQuery.error = null;
+  mockQuery.refetch.mockClear();
+});
+
+describe('a pull on the list', () => {
+  it('refetches, and spins only for a refetch', () => {
+    mockQuery.isSuccess = true;
+    mockQuery.data = [hello('a')];
+    render(<FirstMessagesScreen />);
+    const control = screen.UNSAFE_getByType(RefreshControl);
+    expect(control.props.refreshing).toBe(false);
+    control.props.onRefresh();
+    expect(mockQuery.refetch).toHaveBeenCalledTimes(1);
+
+    mockQuery.isRefetching = true;
+    screen.unmount();
+    render(<FirstMessagesScreen />);
+    expect(screen.UNSAFE_getByType(RefreshControl).props.refreshing).toBe(true);
+  });
 });
 
 describe('the header', () => {

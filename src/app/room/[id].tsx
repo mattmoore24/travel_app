@@ -12,6 +12,7 @@ import { KeyboardFloor } from '@/components/ui/keyboard-floor';
 import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
+import { ThreadSkeleton } from '@/components/ui/skeleton';
 import { Sheet, SHEET_SETTLE_MS, leavingSheet } from '@/components/ui/sheet';
 import { MaxContentWidth, NativeAppearance, Radius, Space } from '@/constants/theme';
 import {
@@ -67,6 +68,7 @@ import { Composer } from '@/features/chat/composer';
 import { closeDayLabel, finiteDate, useHasGroupClosed } from '@/features/groups/closing';
 import { useTheme } from '@/hooks/use-theme';
 import { dates } from '@/lib/locale';
+import { photoSource } from '@/lib/photo-source';
 import { countOf } from '@/lib/plural';
 
 export default function RoomScreen() {
@@ -192,7 +194,8 @@ export default function RoomScreen() {
   const { data: addedBy } = useWhoAddedMe(isGroup && isMember ? (id ?? null) : null);
   const { dismissed: addedNoteSeen, dismiss: dismissAddedNote } = useAddedNoteSeen(id ?? null);
   const { data: business } = useBusinessDetail(isGroup ? null : placeId);
-  const { data: coverUrl } = useBusinessPhotoUrl(business?.photos?.[0]?.storage_path ?? null);
+  const coverPath = business?.photos?.[0]?.storage_path ?? null;
+  const { data: coverUrl } = useBusinessPhotoUrl(coverPath);
   // A member has something to mark, and so does the owner of the room:
   // mark_chat_read admits is_room_moderator, which answers true for them.
   // Gated on `isMember` alone, opening the room the business RUNS marked
@@ -322,7 +325,11 @@ export default function RoomScreen() {
             // The group photo somebody uploaded when they made the group, or
             // the business's own cover. It was asked for, uploaded, and then
             // never shown to the person who chose it.
-            photoUrl={isGroup ? (groupPhotoUrl ?? null) : (coverUrl ?? null)}
+            photo={
+              isGroup
+                ? photoSource(groupPhotoUrl, groupPhoto.path)
+                : photoSource(coverUrl, coverPath)
+            }
             glyph={
               isGroup
                 ? { ios: 'person.3.fill', android: 'groups', web: 'groups' }
@@ -662,9 +669,12 @@ export default function RoomScreen() {
                   error={messagesQuery.error}
                   onRetry={() => messagesQuery.refetch()}
                 />
-              ) : messagesQuery.isPending ? null : isGroup &&
-                !muted &&
-                (membership?.member_count ?? 0) < 2 ? (
+              ) : messagesQuery.isPending ? (
+                // The first page's shape while it is on its way. The list is
+                // inverted and the skeleton undoes the mirror itself, the
+                // same way the empty states below carry their own flip.
+                <ThreadSkeleton inverted />
+              ) : isGroup && !muted && (membership?.member_count ?? 0) < 2 ? (
                 // The screen straight after the most effortful thing in the
                 // Chat tab: a named group, a photo, a posting rule — and one
                 // person in it. The one thing they need next is getting

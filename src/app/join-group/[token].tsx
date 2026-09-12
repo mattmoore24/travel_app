@@ -1,5 +1,4 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
@@ -10,8 +9,10 @@ import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LoadError } from '@/components/ui/load-error';
+import { RemoteImage } from '@/components/ui/remote-image';
 import { SignUpGate } from '@/components/ui/sign-up-gate';
-import { NativeAppearance, Radius, Space } from '@/constants/theme';
+import { Skeleton } from '@/components/ui/skeleton';
+import { HitTarget, Motion, NativeAppearance, Radius, Space, Spacing } from '@/constants/theme';
 import { useIsBusiness } from '@/features/business/hooks';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { closeDayLabel } from '@/features/groups/closing';
@@ -20,6 +21,7 @@ import { useGroupInvitePreview, useJoinGroup } from '@/features/groups/hooks';
 import { useIsSignedOut } from '@/features/guest/hooks';
 import { addDays, formatDate, parseISODate, toISODate } from '@/features/trips/dates';
 import { useTheme } from '@/hooks/use-theme';
+import { photoSourceState } from '@/lib/photo-source';
 import { countOf, isAre } from '@/lib/plural';
 
 /**
@@ -44,7 +46,8 @@ export default function JoinGroupScreen() {
   const join = useJoinGroup();
   const inviteRemembered = useAuthStore((s) => s.inviteRemembered);
   const group = preview.data ?? null;
-  const { data: photoUrl } = useChatPhotoUrl(group?.photo_path ?? null);
+  const groupPhotoPath = group?.photo_path ?? null;
+  const groupPhoto = photoSourceState(useChatPhotoUrl(groupPhotoPath), groupPhotoPath);
 
   // Null when the group has no end date, which is now the common case: there
   // is no ceiling on how long you can say you are staying.
@@ -117,7 +120,20 @@ export default function JoinGroupScreen() {
   // truncated or mistyped link now falls through to "not open", which at
   // least says something and offers a way out.
   if (preview.isPending && token) {
-    return <ThemedView style={styles.root} />;
+    // The shape of the page that is coming: the group's photo, its name,
+    // the count under it, and the Join button. Very often somebody's first
+    // launch, and it used to be a blank screen for the whole round trip.
+    return (
+      <ThemedView style={styles.root}>
+        <View style={styles.skeleton}>
+          <Skeleton width={84} height={84} radius={Radius.lg} />
+          <Skeleton width="55%" height={22} radius={Radius.sm} text />
+          <Skeleton width="45%" height={14} radius={Radius.sm} text />
+          <Skeleton width="80%" height={14} radius={Radius.sm} text />
+          <Skeleton height={HitTarget} radius={Radius.md} />
+        </View>
+      </ThemedView>
+    );
   }
 
   if (preview.isError) {
@@ -251,17 +267,19 @@ export default function JoinGroupScreen() {
       onClose={leave}
       onContinue={submit}>
       <View style={styles.identity}>
-        <View style={[styles.groupPhoto, { backgroundColor: theme.surfaceSunken }]}>
-          {photoUrl ? (
-            <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
-          ) : (
+        <RemoteImage
+          source={groupPhoto.source}
+          pending={groupPhoto.pending}
+          transition={Motion.quick}
+          style={[styles.groupPhoto, { backgroundColor: theme.surfaceSunken }]}
+          fallback={
             <SymbolView
               name={{ ios: 'person.3.fill', android: 'groups', web: 'groups' }}
               size={26}
               tintColor={theme.textSecondary}
             />
-          )}
-        </View>
+          }
+        />
         {group.speaking === 'granted' ? (
           <ThemedText type="footnote" themeColor="textSecondary" style={styles.identityNote}>
             Posting in this group is limited to the admin and the people they pick. You can read
@@ -343,15 +361,14 @@ const styles = StyleSheet.create({
     height: 84,
     borderRadius: Radius.lg,
     borderCurve: 'continuous',
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   block: {
     gap: Space.sm,
   },
-  fill: {
-    width: '100%',
-    height: '100%',
+  /* StepScreen's own content padding and rhythm, so the shape lands where
+     the page will. */
+  skeleton: {
+    gap: Spacing.three,
+    padding: Spacing.four,
   },
 });

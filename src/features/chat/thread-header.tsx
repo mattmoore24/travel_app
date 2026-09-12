@@ -1,11 +1,12 @@
-import { Image } from 'expo-image';
+import type { ImageSource } from 'expo-image';
 import { router } from 'expo-router';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { HitTarget, Space } from '@/constants/theme';
+import { RemoteImage } from '@/components/ui/remote-image';
+import { HitTarget, Motion, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /** The avatar slot, at the size every messaging app draws it. */
@@ -27,7 +28,7 @@ const AVATAR = 32;
  * once, by the container, rather than twice.
  */
 export function ThreadHeader({
-  photoUrl,
+  photo,
   glyph,
   title,
   subtitle,
@@ -35,8 +36,13 @@ export function ThreadHeader({
   onPressIdentity,
   identityLabel,
 }: {
-  /** A signed URL for the face, or null while it signs and when there is none. */
-  photoUrl?: string | null;
+  /**
+   * The face, as `photoSource` pairs it (a signed URL with its storage path
+   * as the cache key), or null while it signs and when there is none. A
+   * source rather than a bare URL so the 32pt face at the top of every
+   * thread is served from the bytes the chat list already pulled.
+   */
+  photo?: ImageSource | null;
   /** What stands in for a missing photo. Omit for no avatar slot at all. */
   glyph?: SymbolViewProps['name'] | null;
   title: string;
@@ -54,13 +60,18 @@ export function ThreadHeader({
   const identity = (
     <>
       {glyph !== undefined ? (
-        <View style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}>
-          {photoUrl ? (
-            <Image source={{ uri: photoUrl }} style={styles.fill} contentFit="cover" />
-          ) : glyph ? (
-            <SymbolView name={glyph} size={16} tintColor={theme.textSecondary} />
-          ) : null}
-        </View>
+        // 'flat': at 32pt the glyph is an honest placeholder and a pulse
+        // reads as flicker. What the frame adds is the fade and the disk
+        // cache, so the face lands softly and does not re-download.
+        <RemoteImage
+          source={photo ?? null}
+          skeleton="flat"
+          transition={Motion.quick}
+          style={[styles.avatar, { backgroundColor: theme.backgroundElement }]}
+          fallback={
+            glyph ? <SymbolView name={glyph} size={16} tintColor={theme.textSecondary} /> : null
+          }
+        />
       ) : null}
       {/* The text column shrinks and the row grows: a 32pt avatar beside a
           title and a subtitle at 200% type is the classic clipped header, and
@@ -154,9 +165,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.md,
-  },
-  fill: {
-    width: '100%',
-    height: '100%',
   },
 });

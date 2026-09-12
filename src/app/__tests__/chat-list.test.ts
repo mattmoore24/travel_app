@@ -149,7 +149,9 @@ describe('the chat list is a list, not a stack of cards', () => {
     // business path through the chat bucket and come back a 404 wearing a
     // valid URL, which is the bug this row has already paid for once.
     expect(rowModule).toContain('isRoom && chat.photo_path');
-    expect(rowModule).toContain('<GroupAvatar path={chat.photo_path} size={AVATAR} />');
+    expect(rowModule).toContain(
+      '<GroupAvatar path={chat.photo_path} size={AVATAR} recyclingKey={chat.chat_id} />'
+    );
     expect(rowModule).toContain('useChatPhotoUrl(path)');
   });
 
@@ -224,7 +226,12 @@ describe('the chat list is a list, not a stack of cards', () => {
     // And the Groups segment keeps its own way in, which is the half of the
     // audit finding that was wrong: city_rooms is granted to anon.
     expect(code).toContain(
-      '<RoomDiscovery cityName={cityName} rooms={rooms} query={roomsQuery} />'
+      '<RoomDiscovery\n' +
+        '                  cityName={cityName}\n' +
+        '                  rooms={rooms}\n' +
+        '                  query={roomsQuery}\n' +
+        '                  pending={roomsPending}\n' +
+        '                />'
     );
     // The pointer stays plain text. A Pressable carrying its own
     // accessibilityLabel hides the words inside it from Maestro, and the

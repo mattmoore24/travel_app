@@ -22,14 +22,16 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('@/features/profile/hooks', () => ({
   useOwnProfile: () => ({ data: { verified: true } }),
-  useOwnVisibility: () => ({ data: mockState.audience }),
+  // Settled queries: the screen draws a control only once its query has
+  // answered (isSuccess), so the mocks carry the flag.
+  useOwnVisibility: () => ({ data: mockState.audience, isSuccess: true, isError: false }),
   useSetVisibility: () => ({ mutate: jest.fn(), isPending: false }),
-  useOwnGuestPreview: () => ({ data: mockState.shown }),
+  useOwnGuestPreview: () => ({ data: mockState.shown, isSuccess: true, isError: false }),
   useSetGuestPreview: () => ({ mutate: mockSetPreview, isPending: false }),
 }));
 jest.mock('@/features/groups/adds', () => ({
   GROUP_ADD_OPTIONS: [],
-  useGroupAdds: () => ({ data: 'known' }),
+  useGroupAdds: () => ({ data: 'known', isSuccess: true, isError: false }),
   useSetGroupAdds: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 jest.mock('@/features/profile/audience-picker', () => ({ AudiencePicker: () => null }));

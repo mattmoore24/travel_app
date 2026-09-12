@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { Image } from 'expo-image';
+import { ActivityIndicator, Text } from 'react-native';
 
 import { PhotoViewer } from '@/components/ui/photo-viewer';
 import { Sheet, SHEET_SETTLE_MS, usePresentedModalCount } from '@/components/ui/sheet';
@@ -61,7 +62,10 @@ jest.mock('react-native-safe-area-context', () => {
   };
 });
 
-const photo = { uri: 'https://signed.example/rooftop.jpg', label: 'Mara, photo 2 of 5' };
+const photo = {
+  source: { uri: 'https://signed.example/rooftop.jpg' },
+  label: 'Mara, photo 2 of 5',
+};
 
 /** Reads the collision count out loud, so a test can watch the viewer hold it. */
 function Claim() {
@@ -95,7 +99,47 @@ describe('the photo viewer', () => {
     // here that could reach a photo any other way.
     render(<PhotoViewer photo={photo} onClose={jest.fn()} />);
     // expo-image normalises `source` to a list.
-    expect(screen.getByLabelText('Mara, photo 2 of 5').props.source).toEqual([{ uri: photo.uri }]);
+    expect(screen.getByLabelText('Mara, photo 2 of 5').props.source).toEqual([
+      { uri: photo.source.uri },
+    ]);
+  });
+
+  it('keeps its spinner up until the bytes land, not until the URL does', () => {
+    // On a slow link the download is the long half. The spinner used to go
+    // the moment `uri` was set, so the whole download was a black screen
+    // that looked exactly like a photo that had failed to come.
+    render(<PhotoViewer photo={photo} onClose={jest.fn()} />);
+    expect(screen.UNSAFE_queryAllByType(ActivityIndicator)).toHaveLength(1);
+    act(() => {
+      screen.UNSAFE_getByType(Image).props.onLoad({ source: { width: 1600, height: 900 } });
+    });
+    expect(screen.UNSAFE_queryAllByType(ActivityIndicator)).toHaveLength(0);
+    expect(screen.getByLabelText('Mara, photo 2 of 5')).toBeTruthy();
+  });
+
+  it('spins while the URL is still being signed', () => {
+    render(<PhotoViewer photo={{ source: null, label: photo.label }} onClose={jest.fn()} />);
+    expect(screen.UNSAFE_queryAllByType(ActivityIndicator)).toHaveLength(1);
+    expect(screen.UNSAFE_queryAllByType(Image)).toHaveLength(0);
+  });
+
+  it('says so when the photo does not come, and tries again on request', () => {
+    // The photo IS the screen here, so the failure gets words and a button
+    // rather than RemoteImage's quiet glyph.
+    render(<PhotoViewer photo={photo} onClose={jest.fn()} />);
+    act(() => {
+      screen.UNSAFE_getByType(Image).props.onError({ error: 'no bytes' });
+    });
+    expect(screen.getByText('Could not open this photo')).toBeTruthy();
+    expect(screen.UNSAFE_queryAllByType(ActivityIndicator)).toHaveLength(0);
+    expect(screen.UNSAFE_queryAllByType(Image)).toHaveLength(0);
+
+    fireEvent.press(screen.getByText('Try again'));
+    // Back to loading: a fresh Image under a new key, the spinner over it,
+    // the words gone.
+    expect(screen.queryByText('Could not open this photo')).toBeNull();
+    expect(screen.UNSAFE_queryAllByType(Image)).toHaveLength(1);
+    expect(screen.UNSAFE_queryAllByType(ActivityIndicator)).toHaveLength(1);
   });
 
   it('can be closed by something VoiceOver can reach', () => {
@@ -250,7 +294,10 @@ describe('the photo viewer', () => {
     // already served.
     jest.useFakeTimers();
     try {
-      const other = { uri: 'https://signed.example/market.jpg', label: 'Mara, photo 3 of 5' };
+      const other = {
+        source: { uri: 'https://signed.example/market.jpg' },
+        label: 'Mara, photo 3 of 5',
+      };
       const view = render(<PhotoViewer photo={photo} onClose={jest.fn()} />);
       expect(screen.getByLabelText('Close photo')).toBeTruthy();
 
@@ -295,7 +342,10 @@ describe('the photo viewer', () => {
     // second one is still on it, which is the presentation iOS silently eats.
     jest.useFakeTimers();
     try {
-      const other = { uri: 'https://signed.example/market.jpg', label: 'Mara, photo 3 of 5' };
+      const other = {
+        source: { uri: 'https://signed.example/market.jpg' },
+        label: 'Mara, photo 3 of 5',
+      };
       const view = render(
         <>
           <PhotoViewer photo={photo} onClose={jest.fn()} />

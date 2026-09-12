@@ -1,7 +1,7 @@
-import { Image } from 'expo-image';
+import type { ImageSource } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -11,7 +11,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { PrimaryButton } from '@/components/form/primary-button';
+import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { RemoteImage } from '@/components/ui/remote-image';
 import {
   SHEET_SETTLE_MS,
   presentedModalCount,
@@ -37,8 +40,13 @@ import { useTheme } from '@/hooks/use-theme';
  * no place to introduce one.
  */
 export type ViewablePhoto = {
-  /** A signed URL from whichever private bucket owns this photo. */
-  uri: string | null;
+  /**
+   * A signed URL from whichever private bucket owns this photo, carrying
+   * the storage path as expo-image's cache key wherever the caller has one
+   * (lib/photo-source), so the full-size open is served from the bytes the
+   * thumbnail already pulled. Null while the URL is still being signed.
+   */
+  source: ImageSource | null;
   /** What the photo IS, spoken. "Mara, photo 3 of 5". */
   label: string;
 };
@@ -230,6 +238,23 @@ function Stage({ photo, onClose }: { photo: ViewablePhoto; onClose: () => void }
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
+  // Signing, downloading, shown, or failed, read off the one RemoteImage.
+  // The spinner stays up through BOTH of the first two: on a slow link the
+  // download is the long half, and the old viewer dropped its spinner the
+  // moment the URL arrived, so the whole download was a black screen that
+  // looked exactly like a photo that had failed to come.
+  const [phase, setPhase] = useState<'loading' | 'shown' | 'failed'>('loading');
+  // Bumped by Try again and used as the RemoteImage's key, so a retry
+  // remounts the frame and expo-image asks for the bytes again.
+  const [attempt, setAttempt] = useState(0);
+  // A different photo starts over. Stored during render, the sanctioned
+  // pattern for reacting to a prop change without a second commit.
+  const uri = photo.source?.uri ?? null;
+  const [prevUri, setPrevUri] = useState(uri);
+  if (prevUri !== uri) {
+    setPrevUri(uri);
+    setPhase('loading');
+  }
 
   const scale = useSharedValue(1);
   const settled = useSharedValue(1);
@@ -329,21 +354,51 @@ function Stage({ photo, onClose }: { photo: ViewablePhoto; onClose: () => void }
       />
       <GestureDetector gesture={gesture}>
         <Animated.View style={[styles.stage, photoStyle]}>
-          {photo.uri ? (
-            <Image
-              source={{ uri: photo.uri }}
-              style={{ width, height }}
+          {photo.source && phase !== 'failed' ? (
+            <RemoteImage
+              key={attempt}
+              source={photo.source}
+              // Not the Skeleton: a pulsing rectangle on a black stage reads
+              // as a broken tile, and the spinner below already says
+              // "coming". The frame's own ground is cleared for the same
+              // reason; the stage is the ground here.
+              skeleton="none"
+              style={[{ width, height }, styles.clear]}
               // contain, not cover: the whole reason to open a photo is to
               // see the two thirds the square crop was hiding.
               contentFit="contain"
               transition={Motion.quick}
               accessibilityLabel={photo.label}
+              onLoad={() => setPhase('shown')}
+              onError={() => setPhase('failed')}
             />
-          ) : (
-            // Still signing. A black screen with nothing on it is
-            // indistinguishable from a photo that failed to arrive.
-            <ActivityIndicator />
-          )}
+          ) : null}
+          {phase === 'loading' ? (
+            // Still signing, or still downloading. A black screen with
+            // nothing on it is indistinguishable from a photo that failed to
+            // arrive, so the spinner holds until the bytes are on screen.
+            <View style={styles.centred} pointerEvents="none">
+              <ActivityIndicator color={theme.textSecondary} />
+            </View>
+          ) : null}
+          {phase === 'failed' ? (
+            // The photo IS the screen, so this is the one frame in the app
+            // where the failure gets words and LoadError's own button rather
+            // than RemoteImage's quiet glyph.
+            <View style={styles.centred}>
+              <ThemedText themeColor="textSecondary" style={styles.failedText}>
+                Could not open this photo
+              </ThemedText>
+              <PrimaryButton
+                variant="ghost"
+                label="Try again"
+                onPress={() => {
+                  setAttempt((count) => count + 1);
+                  setPhase('loading');
+                }}
+              />
+            </View>
+          ) : null}
         </Animated.View>
       </GestureDetector>
       {/* The only chrome, and it earns its place: pull-down is not
@@ -387,6 +442,23 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  clear: {
+    backgroundColor: 'transparent',
+  },
+  centred: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Space.md,
+    padding: Space.lg,
+  },
+  failedText: {
+    textAlign: 'center',
   },
   closeAnchor: {
     position: 'absolute',

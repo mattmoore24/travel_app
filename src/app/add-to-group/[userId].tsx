@@ -6,7 +6,9 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { EmptyState } from '@/components/ui/empty-state';
+import { LoadError } from '@/components/ui/load-error';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { ChatRowSkeleton } from '@/components/ui/skeleton';
 import { HitTarget, MaxContentWidth, Space } from '@/constants/theme';
 import { addToGroup } from '@/features/groups/api';
 import { useMyChats } from '@/features/matching/hooks';
@@ -28,7 +30,11 @@ export default function AddToGroupScreen() {
   const { userId, name } = useLocalSearchParams<{ userId: string; name?: string }>();
   const theme = useTheme();
   const queryClient = useQueryClient();
-  const { data: chats = [] } = useMyChats();
+  // The whole query, not just its data: with the rows destructured away the
+  // screen printed "No groups yet" while the list was pending, and again on
+  // a failed fetch, to somebody who runs three.
+  const chatsQuery = useMyChats();
+  const chats = chatsQuery.data ?? [];
   const [added, setAdded] = useState<string[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,7 +70,23 @@ export default function AddToGroupScreen() {
             {error}
           </ThemedText>
         ) : null}
-        {groups.length === 0 ? (
+        {/* The shape of the list on a cold open; cached rows win over it. */}
+        {chatsQuery.isPending && chats.length === 0 ? (
+          <>
+            <ChatRowSkeleton />
+            <ChatRowSkeleton />
+          </>
+        ) : null}
+        {chatsQuery.isError ? (
+          <LoadError
+            compact
+            what="your groups"
+            error={chatsQuery.error}
+            onRetry={() => chatsQuery.refetch()}
+          />
+        ) : null}
+        {/* Only on success-with-zero: a failed fetch is not an empty list. */}
+        {chatsQuery.isSuccess && groups.length === 0 ? (
           <EmptyState
             style={styles.empty}
             title="No groups yet"

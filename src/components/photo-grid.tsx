@@ -9,10 +9,11 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoCheckVeil } from '@/components/ui/photo-check';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { RemoteImage } from '@/components/ui/remote-image';
 import { Sheet, leavingSheet } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { photoRejection } from '@/constants/moderation';
-import { Radius, Space } from '@/constants/theme';
+import { Motion, Radius, Space } from '@/constants/theme';
 import {
   useDeletePhoto,
   useOwnPhotos,
@@ -25,6 +26,7 @@ import { photoWritePlan, reorderedPhotos } from '@/features/profile/photo-order'
 import { PHOTOS_MAX } from '@/features/profile/validation';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
+import { photoSourceState } from '@/lib/photo-source';
 import { pickImage } from '@/lib/pick-image';
 import type { ProfilePhotoRow } from '@/lib/database.types';
 
@@ -216,7 +218,7 @@ function FilledPhoto({
   onArrange?: () => void;
 }) {
   const theme = useTheme();
-  const { data: url } = usePhotoUrl(photo.storage_path);
+  const picture = photoSourceState(usePhotoUrl(photo.storage_path), photo.storage_path);
   const { data: profile } = useOwnProfile();
   const deletePhoto = useDeletePhoto();
   const checking = photo.moderation_status !== 'approved' && photo.moderation_status !== 'rejected';
@@ -245,21 +247,22 @@ function FilledPhoto({
       entering={FadeIn.duration(220)}
       layout={LinearTransition.springify()}
       style={[styles.tile, { width, height, backgroundColor: theme.surfaceSunken }]}>
-      {url ? (
-        <Image
-          source={{ uri: url }}
-          style={styles.fill}
-          contentFit="cover"
-          // A "Photos" heading over unlabelled images is a heading over
-          // nothing, as far as VoiceOver is concerned — the same reason the
-          // business side labels its own (src/app/place/[id].tsx).
-          accessibilityLabel={photoLabel(name, photo)}
-        />
-      ) : (
-        // Loading, not empty. A flat grey square is indistinguishable from a
-        // broken one on the connections this app is used on.
-        <Skeleton style={StyleSheet.absoluteFill} radius={0} />
-      )}
+      {/* Loading, not empty, for BOTH halves of the wait: the skeleton used
+          to leave when the URL landed, and on the connections this app is
+          used on the download is the long half. A photo that does not
+          arrive gets the glyph and a tap to try again rather than the flat
+          grey square that looked exactly like one still coming. */}
+      <RemoteImage
+        source={picture.source}
+        pending={picture.pending}
+        style={styles.fill}
+        contentFit="cover"
+        transition={Motion.quick}
+        // A "Photos" heading over unlabelled images is a heading over
+        // nothing, as far as VoiceOver is concerned — the same reason the
+        // business side labels its own (src/app/place/[id].tsx).
+        accessibilityLabel={photoLabel(name, photo)}
+      />
       {/* The wait says why and for how long, in the same words a chat photo
           gets. Only where the card fits: on a 110pt extras tile the chip is
           the whole of what can be read. */}
@@ -434,7 +437,13 @@ export function PhotoGrid({
   missingNote?: string;
 } = {}) {
   const theme = useTheme();
-  const { data: photos = [] } = useOwnPhotos();
+  const ownPhotos = useOwnPhotos();
+  const photos = ownPhotos.data ?? [];
+  // The LIST is still on its way. Nine dashed "Add a photo" tiles over a
+  // profile that has three photos is the wrong picture for the length of a
+  // round trip; a disabled query (no session) is idle and pending forever,
+  // and for it the empty tiles are the honest answer.
+  const photosPending = ownPhotos.isPending && ownPhotos.fetchStatus !== 'idle';
   const uploadPhoto = useUploadPhoto();
   const reorderPhotos = useReorderPhotos();
   const [width, setWidth] = useState(0);
@@ -596,6 +605,8 @@ export function PhotoGrid({
                 main
                 onArrange={canArrange ? () => setArranging(main) : undefined}
               />
+            ) : photosPending ? (
+              <Skeleton width={mainWidth} height={mainWidth * RATIO} radius={Radius.lg} />
             ) : pendingMain ? (
               <PendingTile
                 upload={pendingMain}
@@ -652,11 +663,25 @@ export function PhotoGrid({
               <ThemedText type="footnote" themeColor="textSecondary" style={styles.flex}>
                 More photos, all optional
               </ThemedText>
-              <ThemedText type="footnote" themeColor="textSecondary">
-                {occupied} of {PHOTOS_MAX}
-              </ThemedText>
+              {photosPending ? (
+                <Skeleton width={40} height={12} radius={Radius.sm} text />
+              ) : (
+                <ThemedText type="footnote" themeColor="textSecondary">
+                  {occupied} of {PHOTOS_MAX}
+                </ThemedText>
+              )}
             </View>
             <View style={[styles.extras, { gap: GAP }]}>
+              {photosPending
+                ? Array.from({ length: EXTRA_COLUMNS }, (_, index) => (
+                    <Skeleton
+                      key={`pending-slot-${index}`}
+                      width={extraWidth}
+                      height={extraWidth * RATIO}
+                      radius={Radius.lg}
+                    />
+                  ))
+                : null}
               {extras.map((photo, index) => (
                 <FilledPhoto
                   key={photo.id}
@@ -692,7 +717,7 @@ export function PhotoGrid({
                   to stop dead after the first, so a profile with two photos
                   looked finished — and a profile that looks finished at two
                   photos is one nobody adds a third to. */}
-              {Array.from({ length: emptySlots }, (_, index) => (
+              {Array.from({ length: photosPending ? 0 : emptySlots }, (_, index) => (
                 <EmptySlot
                   key={`empty-${index}`}
                   width={extraWidth}

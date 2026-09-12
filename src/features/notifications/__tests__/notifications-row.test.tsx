@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
+import { Skeleton } from '@/components/ui/skeleton';
 import { NotificationsRow } from '@/features/notifications/notifications-row';
 import {
   enablePushNotifications,
@@ -34,9 +35,17 @@ jest.mock('@/features/notifications/push', () => ({
 // OS state; what the switch DOES is a query and a write, tested where those
 // live.
 const mockSetClocks = jest.fn();
-const mockClocks = { on: true };
+const mockRetry = jest.fn();
+const mockClocks = { on: true, known: true, error: null as unknown };
 jest.mock('@/features/notifications/use-notification-prefs', () => ({
-  useTripClocks: () => ({ on: mockClocks.on, set: mockSetClocks, saving: false }),
+  useTripClocks: () => ({
+    on: mockClocks.on,
+    known: mockClocks.known,
+    error: mockClocks.error,
+    retry: mockRetry,
+    set: mockSetClocks,
+    saving: false,
+  }),
 }));
 
 const mockState = pushPermissionState as jest.Mock;
@@ -48,6 +57,8 @@ let openSettings: jest.SpyInstance;
 beforeEach(() => {
   jest.clearAllMocks();
   mockClocks.on = true;
+  mockClocks.known = true;
+  mockClocks.error = null;
   mockPossible.mockReturnValue(true);
   openSettings = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
 });
@@ -90,6 +101,31 @@ describe('the Notifications row', () => {
     expect(
       await screen.findByText('Trip reminders are off. Replies and account notices still arrive.')
     ).toBeTruthy();
+  });
+
+  it('draws a shape, never "on", while the preference is still on its way', async () => {
+    // `on` defaults to true while the query is pending, so without the gate
+    // the row said "Trip reminders are on" with a Turn off button and then
+    // flipped to off for anybody who had turned them off.
+    mockClocks.known = false;
+    mockClocks.on = true;
+    mockState.mockResolvedValue('granted');
+    render(<NotificationsRow />);
+    await screen.findByText(/^On\. First messages/);
+    expect(screen.queryByText(/Trip reminders are/)).toBeNull();
+    expect(screen.queryByLabelText(/Turn (on|off) trip reminders/)).toBeNull();
+    expect(screen.UNSAFE_getAllByType(Skeleton)).toHaveLength(1);
+  });
+
+  it('says the preference could not be read, and offers a retry', async () => {
+    mockClocks.known = false;
+    mockClocks.error = new Error('offline');
+    mockState.mockResolvedValue('granted');
+    render(<NotificationsRow />);
+    fireEvent.press(await screen.findByText('Try again'));
+    expect(mockRetry).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Trip reminders are/)).toBeNull();
+    expect(screen.UNSAFE_queryAllByType(Skeleton)).toHaveLength(0);
   });
 
   it('does not offer a preference about pushes on a phone that refuses them', async () => {
