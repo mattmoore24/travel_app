@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, StyleSheet, View } from 'react-native';
+import { Alert, Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 
 import { FormTextField } from '@/components/form/form-text-field';
@@ -14,6 +14,7 @@ import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { PressableScale } from '@/components/ui/pressable-scale';
+import { FormSkeleton } from '@/components/ui/skeleton';
 import { HitTarget, NativeAppearance, Radius, Space } from '@/constants/theme';
 import { BusinessAddressField, addressFrom } from '@/features/business/address-field';
 import { PlaceGlyph } from '@/features/business/business-marker';
@@ -630,22 +631,44 @@ function BusinessLinks({
 
 // -- The screen ----------------------------------------------------------------
 
-export default function BusinessEditScreen() {
-  const theme = useTheme();
-  const { data: business } = useOwnBusiness();
-  const hours = useBusinessHours(business?.id ?? null);
+/** Which block the caller's Edit affordance was pointing at, or all of them. */
+function sectionFrom(params: { section?: string }): Section | null {
+  return params.section != null && params.section in SECTION_TITLE
+    ? (params.section as Section)
+    : null;
+}
 
-  // Only reachable from the owner's own dashboard, so the listing is always
-  // there by the time this renders, the same way edit-profile can count on a
-  // profile row.
-  if (!business) {
-    return null;
+export default function BusinessEditScreen() {
+  const ownQuery = useOwnBusiness();
+  const business = ownQuery.data ?? null;
+  const hours = useBusinessHours(business?.id ?? null);
+  const section = sectionFrom(useLocalSearchParams<{ section?: string }>());
+  // A disabled query never leaves isPending, and useOwnBusiness is disabled
+  // without a session, so "settled" has to include "never going to ask":
+  // the fetchStatus test my-business.tsx applies.
+  const businessKnown = !ownQuery.isPending || ownQuery.fetchStatus === 'idle';
+
+  if (ownQuery.isError) {
+    return (
+      <ThemedView style={styles.loading}>
+        <LoadError what="your business" error={ownQuery.error} onRetry={ownQuery.refetch} />
+      </ThemedView>
+    );
   }
-  // A spinner is the right answer while the rows are on their way, and the
-  // wrong one after the retries have run out: `data` stays undefined either
-  // way, so this screen span forever on hostel wifi with no message and no
-  // way out but killing the app. Every other screen in this feature uses
-  // LoadError; this one has to as well.
+  // Only reachable from the owner's own dashboard, so the listing is usually
+  // cached by the time this renders, the same way edit-profile can count on a
+  // profile row. A cold open still has to wait for it, and it used to wait on
+  // a blank screen: the form's own shape stands there now, under the title
+  // the form will carry, and a settled query with no row is still nothing
+  // to edit.
+  if (!business) {
+    return businessKnown ? null : <EditSkeleton section={section} />;
+  }
+  // A placeholder is the right answer while the rows are on their way, and
+  // the wrong one after the retries have run out: `data` stays undefined
+  // either way, so this screen would stand forever on hostel wifi with no
+  // message and no way out but killing the app. Every other screen in this
+  // feature uses LoadError; this one has to as well.
   if (hours.isError) {
     return (
       <ThemedView style={styles.loading}>
@@ -656,13 +679,29 @@ export default function BusinessEditScreen() {
   // The hours editor seeds its rules from the rows, so it cannot mount before
   // they land without a state-syncing effect to keep the two in step.
   if (hours.data == null) {
-    return (
-      <ThemedView style={styles.loading}>
-        <ActivityIndicator color={theme.accent} />
-      </ThemedView>
-    );
+    return <EditSkeleton section={section} />;
   }
   return <BusinessEditForm business={business} hourRows={hours.data} />;
+}
+
+/**
+ * The editor before its rows: the same scaffold, title and button the form
+ * mounts into, with labelled-field placeholders where the fields will be, so
+ * the swap from waiting to editing moves the chrome not at all. The button is
+ * disabled rather than absent because there is nothing to save yet, and Close
+ * is the plain way out, because there is nothing to discard either.
+ */
+function EditSkeleton({ section }: { section: Section | null }) {
+  return (
+    <StepScreen
+      title={section ? SECTION_TITLE[section] : 'Edit your business'}
+      continueLabel={section === 'photos' || section === 'links' ? 'Done' : 'Save'}
+      continueDisabled
+      onContinue={() => {}}
+      onClose={router.canGoBack() ? () => router.back() : undefined}>
+      <FormSkeleton groups={section == null ? 4 : 2} />
+    </StepScreen>
+  );
 }
 
 function BusinessEditForm({
@@ -680,9 +719,7 @@ function BusinessEditForm({
   // anything at all can arrive in it, and an unrecognised value under a
   // section gate would render a form with no fields in it and a Save button.
   // Unknown means "the whole thing", which is what it used to mean.
-  const params = useLocalSearchParams<{ section?: string }>();
-  const section: Section | null =
-    params.section != null && params.section in SECTION_TITLE ? (params.section as Section) : null;
+  const section = sectionFrom(useLocalSearchParams<{ section?: string }>());
   /** Whether this block is on screen at all. No section means all of them. */
   const shows = (key: Section) => section == null || section === key;
 

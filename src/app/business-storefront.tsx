@@ -8,6 +8,7 @@ import { PrimaryButton } from '@/components/form/primary-button';
 import { StepScreen } from '@/components/form/step-screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Radius, Space } from '@/constants/theme';
 import {
   useLatestStorefrontCheck,
@@ -76,6 +77,12 @@ export default function BusinessStorefrontScreen() {
   const [stale, setStale] = useState(false);
 
   const latest = check.data ?? null;
+  // The row is on its way. Until it lands the screen cannot tell a fresh
+  // listing from one whose photos are already in the queue, and it used to
+  // guess fresh: the two capture frames came up, then flipped to "We're
+  // having a look" when the row arrived. A disabled query (no business yet,
+  // a keyless build) is never going to answer, so it is not waiting.
+  const checking = business != null && check.isPending && check.fetchStatus !== 'idle';
   // The check query keeps the PREVIOUS row while it refetches, so between a
   // successful send and the refetch landing, the newest row we hold is the old
   // one (or none at all) and the screen would flash the empty form back at
@@ -170,7 +177,7 @@ export default function BusinessStorefrontScreen() {
       title="Show us the front"
       subtitle="Two photos, taken right now, one after the other. That is what puts the check beside your name."
       continueLabel={continueLabel}
-      continueDisabled={business == null && !settled}
+      continueDisabled={(business == null || checking) && !settled}
       continueLoading={submit.isPending}
       note={
         business == null && !settled
@@ -272,7 +279,11 @@ export default function BusinessStorefrontScreen() {
                 <ThemedText type="small" themeColor="textSecondary">
                   {shot.direction}
                 </ThemedText>
-                {uri ? (
+                {checking ? (
+                  // The frame's own shape while the row is unknown, never the
+                  // camera tile: that tile is an invitation to start over.
+                  <Skeleton width="100%" aspectRatio={4 / 3} radius={Radius.lg} />
+                ) : uri ? (
                   <>
                     <View style={[styles.frame, { backgroundColor: theme.surfaceSunken }]}>
                       <Image
