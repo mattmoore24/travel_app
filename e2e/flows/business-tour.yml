@@ -282,8 +282,9 @@ appId: com.mattmoore.samewhere
 # 20260831120000_an_ungranted_column_hid_the_photos.sql).
 #
 # The patience here matches the pipeline's own contract, not a guess: each
-# stage is bounded (image-upload.ts), so within 150s the photo has either
-# come back or "Could not save ... so try again" is on screen. Run 95 failed
+# stage is bounded (image-upload.ts), so within 240s the photo has either
+# come back or "Could not save ... so try again" is on screen (the render
+# alone is allowed 150s since run 141, on a simulator that takes 80 to 100). Run 95 failed
 # with a 60s wait and an alert check made ten seconds after the pick - the
 # render alone is allowed 90s on a cold simulator, so the check ran before
 # the alert could exist and the wait gave up while the pipeline was still
@@ -291,7 +292,7 @@ appId: com.mattmoore.samewhere
 # it ended in the alert, then gate hard.
 - extendedWaitUntil:
     visible: '1 of 10'
-    timeout: 150000
+    timeout: 240000
     optional: true
 # Three ways the first pick can have ended short of a photo, each answered
 # before the one retry: the app's own alert (the render stalled inside its
@@ -326,7 +327,7 @@ appId: com.mattmoore.samewhere
           timeout: 3000
 - extendedWaitUntil:
     visible: '1 of 10'
-    timeout: 150000
+    timeout: 240000
 - takeScreenshot: 49-business-photo-added
 
 # THE CHIP, not a count that waits on a worker.

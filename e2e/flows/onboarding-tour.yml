@@ -292,10 +292,10 @@ appId: com.mattmoore.samewhere
       # pipeline's own budget (image-upload.ts) is the ceiling.
       - extendedWaitUntil:
           notVisible: 'Your profile photo, uploading'
-          timeout: 150000
+          timeout: 240000
 - waitForAnimationToEnd:
     timeout: 4000
-# The pipeline's bounded stages (image-upload.ts) promise that within 150s a
+# The pipeline's bounded stages (image-upload.ts) promise that within 240s a
 # picked photo has either landed — finish-photos appears — or "Could not save
 # … so try again" is on screen. Run 95's first attempt tapped finish-photos
 # ten seconds after the pick, while a render allowed 90s on a cold simulator
@@ -310,7 +310,7 @@ appId: com.mattmoore.samewhere
       - extendedWaitUntil:
           visible:
             id: 'finish-photos'
-          timeout: 150000
+          timeout: 240000
           optional: true
 - runFlow:
     when:
@@ -332,7 +332,7 @@ appId: com.mattmoore.samewhere
       - extendedWaitUntil:
           visible:
             id: 'finish-photos'
-          timeout: 150000
+          timeout: 240000
       - tapOn:
           id: 'finish-photos'
       # STEP 6 — what you do. The first step that may be skipped, so the

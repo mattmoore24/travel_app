@@ -526,16 +526,25 @@ appId: com.mattmoore.samewhere
 # hit-testing entirely (traps), so the rows were untappable while they
 # landed. The city is Bangkok because that is where the E2E account's own
 # trip is and Travelers only surfaces overlapping ones.
-# CENTRED, not merely visible. The card scrolled into view landed under the
-# floating action bar, still "visible" to the driver, and the tap went to
-# the bar's own Say hi, whose composer says "your dates together" (run 140,
-# both attempts). Centred, the card sits clear of the plate.
-- scrollUntilVisible:
-    element:
-      text: 'Bangkok.*Say hi about this\.'
-    direction: DOWN
-    timeout: 10000
-    centerElement: true
+# ONE SLOW SWIPE FROM THE TOP, not scrollUntilVisible. The page has chrome
+# floating over BOTH ends of the scroller: the pinned band (rail, count line,
+# radius dial) over the top quarter and the action bar over the bottom fifth.
+# The driver judges an element visible anywhere inside the viewport, so a
+# card it scrolls "into view" can land under either: run 140 put it under
+# the bar and the tap opened the bar's own Say hi; run 141, with centering,
+# put it under the band and the tap opened the radius sheet. After Undo the
+# page is freshly mounted at its top, where the trip card sits just under
+# the action bar, so one slow (no fling) swipe of a known distance carries
+# it into the clear middle, and the wait proves it is there before the tap.
+- swipe:
+    start: 50%, 72%
+    end: 50%, 30%
+    duration: 1200
+- waitForAnimationToEnd:
+    timeout: 2000
+- extendedWaitUntil:
+    visible: 'Bangkok.*Say hi about this\.'
+    timeout: 5000
 - tapOn: 'Bangkok.*Say hi about this\.'
 - extendedWaitUntil:
     visible: 'Saying hi about their travel plans'
