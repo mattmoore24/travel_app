@@ -16,7 +16,7 @@ import { KeyboardDone } from '@/components/form/keyboard-done-bar';
 import { ThemedText } from '@/components/themed-text';
 import { PhotoButton } from '@/components/ui/photo-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
-import { Fonts, HitTarget, Radius, Space, Spacing, Type } from '@/constants/theme';
+import { AccessibilitySizesFrom, Fonts, HitTarget, Radius, Space, Type } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ComposerDraft = { text: string; photoUri: string | null };
@@ -94,10 +94,28 @@ export function Composer({
   // first time. Four lines' worth of room, growing with fontScale, clamped
   // to a third of the window so the box can never eat the thread.
   const { fontScale, height } = useWindowDimensions();
+  // `2 * Space.sm` is the input's paddingVertical, top and bottom, and the
+  // two move together: change one without the other and the four-line box
+  // gains or loses 8pt.
   const inputMaxHeight = Math.min(
-    4 * Type.callout.lineHeight * fontScale + 2 * Spacing.two,
+    4 * Type.callout.lineHeight * fontScale + 2 * Space.sm,
     height / 3
   );
+  // The placeholder is drawn by React Native's multiline placeholder, a
+  // UILabel with numberOfLines 0 (RCTUITextView.mm), which wraps freely and,
+  // once one word no longer fits the line, breaks the word itself. At AX5
+  // (fontScale 3.12, so Type.callout's 15 is 46.8pt type) the field is about
+  // 238pt wide, "Message" measures about 195pt and "Message…" about 245pt,
+  // so the ellipsis is exactly the character that does not fit, and E2E run
+  // 142 (zz-ax5-07) photographed "Messag" / "e the" / "group…" stacked in
+  // the box. Apple's answer to a string that will not fit its frame is a
+  // width variant (variantFittingPresentationWidth), so from the
+  // accessibility sizes the DRAWN placeholder is the one word "Message",
+  // which is Telegram's whole placeholder (iMessage's is "iMessage"). The
+  // short variant carries no ellipsis on purpose: the ellipsis is the
+  // character that broke the word, and neither messenger draws one. Do not
+  // "fix" it later by adding one back.
+  const shortPlaceholder = fontScale >= AccessibilitySizesFrom;
   const [draft, setDraft] = useState('');
   const [attachment, setAttachment] = useState<string | null>(null);
 
@@ -210,7 +228,18 @@ export function Composer({
                   maxHeight: inputMaxHeight,
                 },
               ]}
-              placeholder={attachment ? 'Add a message…' : placeholder}
+              placeholder={
+                shortPlaceholder ? 'Message' : attachment ? 'Add a message…' : placeholder
+              }
+              // The spoken name of an empty field is its placeholder, so
+              // above the line a group's field would announce just "Message"
+              // and lose "the group". The drawn variant shortens; the spoken
+              // one never does, at any size, which is the actual
+              // variable-width playbook: a shorter drawing of one meaning,
+              // never a second meaning. The trailing ellipsis goes because
+              // VoiceOver reads it aloud as "ellipsis". testID is untouched:
+              // Maestro reaches the field by id.
+              accessibilityLabel={attachment ? 'Add a message' : placeholder.replace(/…$/, '')}
               placeholderTextColor={theme.textSecondary}
               value={draft}
               onChangeText={setDraft}
@@ -311,7 +340,9 @@ export function Composer({
 const styles = StyleSheet.create({
   chipRow: {
     gap: Space.sm,
-    paddingHorizontal: Space.md,
+    // The row's own inset, so the first saved-reply chip's left edge is the
+    // photo button's rather than 4pt inside it.
+    paddingHorizontal: Space.lg,
     paddingBottom: Space.sm,
   },
   chip: {
@@ -327,9 +358,18 @@ const styles = StyleSheet.create({
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
+    gap: Space.sm,
+    // ONE 16pt inset, owned here. It matches the bubbles above (the thread
+    // pads its rows Space.lg) and the messengers people use: iMessage,
+    // WhatsApp and Telegram all run the field to about one system margin
+    // from each edge. It used to be 24 here, on top of a room wrapper that
+    // added 16 more, so in a room the row was inset 40pt each side at every
+    // text size and the field was 222pt of a 402pt screen, while the
+    // one-to-one thread, with no wrapper, was inset 24. The room's wrapper
+    // no longer adds a second inset; the row is the one place this number
+    // lives.
+    paddingHorizontal: Space.lg,
+    paddingVertical: Space.sm,
   },
   input: {
     flex: 1,
@@ -337,8 +377,9 @@ const styles = StyleSheet.create({
     // maxHeight is inline: it scales with fontScale. fontSize comes from the
     // scale (Type.callout) — nothing in the app hardcodes a font size.
     borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    paddingHorizontal: Space.lg,
+    // Paired with the `2 * Space.sm` in inputMaxHeight above.
+    paddingVertical: Space.sm,
     fontSize: Type.callout.fontSize,
   },
   sendTarget: {
@@ -355,10 +396,12 @@ const styles = StyleSheet.create({
   replyBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
-    marginHorizontal: Spacing.four,
-    marginTop: Spacing.two,
-    paddingLeft: Spacing.two,
+    gap: Space.lg,
+    // The field's own inset: the banner is the field's sibling and shares
+    // its left edge.
+    marginHorizontal: Space.lg,
+    marginTop: Space.sm,
+    paddingLeft: Space.sm,
     borderLeftWidth: 2,
   },
   replyText: {
@@ -368,9 +411,11 @@ const styles = StyleSheet.create({
   attachmentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.two,
+    gap: Space.lg,
+    // The same inset as the row below, so the staged photo sits over the
+    // button that picked it.
+    paddingHorizontal: Space.lg,
+    paddingTop: Space.sm,
   },
   attachment: {
     width: 64,

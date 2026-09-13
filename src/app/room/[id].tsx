@@ -958,9 +958,6 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: MaxContentWidth,
   },
-  flex: {
-    flex: 1,
-  },
   planCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -994,25 +991,6 @@ const styles = StyleSheet.create({
   pinText: {
     flex: 1,
   },
-  messageBody: {
-    flexShrink: 1,
-    gap: Space.xs,
-  },
-  photo: {
-    width: 220,
-    height: 165,
-    borderRadius: Radius.sm,
-    marginBottom: Space.xs,
-  },
-  reactionRow: {
-    flexDirection: 'row',
-    gap: Space.xs,
-  },
-  reactionPill: {
-    borderRadius: Radius.pill,
-    paddingHorizontal: Space.sm,
-    paddingVertical: 2,
-  },
   mutedNotice: {
     padding: Space.md,
     borderRadius: Radius.md,
@@ -1029,6 +1007,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.md,
+    // Its own inset, now that the wrapper below has none: without it the
+    // note runs full-bleed over the composer that insets itself.
+    marginHorizontal: Space.lg,
     marginBottom: Space.sm,
     paddingHorizontal: Space.md,
     paddingVertical: Space.sm,
@@ -1039,40 +1020,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   composerWrap: {
-    paddingHorizontal: Space.lg,
+    // No horizontal padding: the composer row owns its one 16pt inset
+    // (features/chat/composer), and a second one here made a room's field
+    // 40pt from each edge while the one-to-one thread's was 24.
     paddingBottom: Space.sm,
-  },
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: Space.sm,
-  },
-  input: {
-    flex: 1,
-    minHeight: 44,
-    maxHeight: 120,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Space.lg,
-    paddingTop: Space.md,
-    paddingBottom: Space.md,
-  },
-  sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   footer: {
     gap: Space.md,
     paddingHorizontal: Space.lg,
     paddingBottom: Space.lg,
-  },
-  joinRow: {
-    flexDirection: 'row',
-    gap: Space.sm,
-  },
-  joinButton: {
-    flex: 1,
   },
 });

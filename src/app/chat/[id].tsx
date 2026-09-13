@@ -680,9 +680,6 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     width: '100%',
   },
-  flex: {
-    flex: 1,
-  },
   loading: {
     flex: 1,
     justifyContent: 'center',
@@ -699,79 +696,10 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.two,
     borderRadius: Radius.lg,
   },
-  messages: {
-    padding: Spacing.four,
-    gap: Spacing.two,
-  },
-  firstMessageWrap: {
-    gap: Spacing.two,
-    marginBottom: Spacing.three,
-  },
-  messagePhoto: {
-    width: 220,
-    height: 165,
-    borderRadius: 10,
-    marginBottom: 4,
-  },
-  bubble: {
-    maxWidth: '80%',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderRadius: Radius.lg,
-  },
-  bubbleMine: {
-    alignSelf: 'flex-end',
-    borderBottomRightRadius: Spacing.one,
-  },
-  bubbleTheirs: {
-    alignSelf: 'flex-start',
-    borderBottomLeftRadius: Spacing.one,
-  },
   closedNotice: {
     margin: Spacing.four,
     padding: Spacing.three,
     borderRadius: Radius.lg,
     alignItems: 'center',
-  },
-  attachmentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.two,
-  },
-  attachment: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  attachmentRemove: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-  },
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-  },
-  input: {
-    flex: 1,
-    minHeight: 40,
-    maxHeight: 120,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 15,
-  },
-  sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
