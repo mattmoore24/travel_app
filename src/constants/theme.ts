@@ -189,6 +189,33 @@ export type TypeRole = keyof typeof Type;
  */
 export const FontCap = { heading: 1.9, chrome: 2.0, control: 1.5 } as const;
 
+/**
+ * Where iOS's accessibility text sizes begin, as a fontScale.
+ *
+ * React Native reports fontScale as the body size over 17: xxxLarge, the
+ * largest STANDARD size, is 23/17 = 1.353, and AX1, the first ACCESSIBILITY
+ * size, is 28/17 = 1.647 (then 1.94, 2.35, 2.76 and 3.12 up to AX5). Any
+ * value between the two selects exactly Apple's five accessibility sizes,
+ * which is UIKit's own `isAccessibilityCategory` line, the one its stack
+ * views turn a row into a column at. Do not round it: 1.5 would still be
+ * right, 1.7 would drop AX1, the first size Apple treats as a need.
+ *
+ * This is the one number the app changes a LAYOUT at. It is never a cap on
+ * reading text (FontCap is that). From here the profile hero's name moves
+ * under the photo instead of over the face, an empty state's one action
+ * moves above its explanation so it is on screen without a scroll, and
+ * the composer's placeholder shortens to one word so it cannot break
+ * mid-word. Two older numbers stay at 2 (COUNT_LINE_SCROLLS_AT on
+ * Travelers, the plan list's count line): they are about a pinned header
+ * costing a third of the screen, not about the category line, and each
+ * file explains its own.
+ *
+ * On Android fontScale is the system slider (1.0 to 2.0 on recent
+ * versions), so the same constant fires at its largest steps. The three
+ * adaptations are safe at any large scale, so the line holds there too.
+ */
+export const AccessibilitySizesFrom = 1.6;
+
 /** 4pt grid. */
 export const Space = {
   xs: 4,
