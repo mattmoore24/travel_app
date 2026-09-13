@@ -38,7 +38,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { EmptyState } from '@/components/ui/empty-state';
 import { LoadError } from '@/components/ui/load-error';
-import { HitTarget, MaxContentWidth, Motion, Radius, Spacing } from '@/constants/theme';
+import { FontCap, HitTarget, MaxContentWidth, Motion, Radius, Spacing } from '@/constants/theme';
 import { useIncomingRequests, useMyChats, useSentRequests } from '@/features/matching/hooks';
 import { IncomingRequestCard } from '@/features/matching/incoming-request-card';
 import { waitingRows } from '@/features/matching/sent-rows';
@@ -148,8 +148,20 @@ function SentHelloRow({ request, last = false }: { request: SentRequestRow; last
               that is entirely the sender's own business — that their own
               message never left — because a hello stopped by the classifier
               is news the sender needs and news the recipient never had. So:
-              a time, or 'Not delivered', and nothing else ever. */}
-          <ThemedText type="footnote" themeColor={notDelivered ? 'warning' : 'textSecondary'}>
+              a time, or 'Not delivered', and nothing else ever.
+
+              The same cap ChatRow's stamp carries: a timestamp is metadata
+              in a fixed-geometry row, not reading text, so it stops at the
+              chrome cap, and at 26pt "Yesterday" fits the 40% trailing
+              column on one line (uncapped, "1:31 AM" wrapped as "1:31 A"
+              and "M" at AX5). "Not delivered" is the one message-state word
+              the sender must be able to read whole, so it may take two
+              lines and is never ellipsised. */}
+          <ThemedText
+            type="footnote"
+            themeColor={notDelivered ? 'warning' : 'textSecondary'}
+            maxFontSizeMultiplier={FontCap.chrome}
+            numberOfLines={notDelivered ? 2 : 1}>
             {notDelivered ? 'Not delivered' : rowTimestamp(request.created_at)}
           </ThemedText>
         </View>

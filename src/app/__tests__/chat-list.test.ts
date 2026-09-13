@@ -81,6 +81,17 @@ describe('the chat list is a list, not a stack of cards', () => {
     expect(code).toMatch(/import \{ rowTimestamp \} from '@\/features\/chat\/separators';/);
   });
 
+  it('caps that column at the chrome cap and keeps the time on one line', () => {
+    // The same cap ChatRow's stamp carries: a timestamp is metadata in a
+    // fixed-geometry row, so it stops at the chrome cap and stays on one
+    // line (uncapped, "1:31 AM" wrapped as "1:31 A" / "M" at AX5, E2E run
+    // 142). "Not delivered" is the one message-state word the sender must
+    // read whole, so it alone may take two lines.
+    const row = between(code, 'function SentHelloRow', 'function PlainRow');
+    expect(row).toContain('maxFontSizeMultiplier={FontCap.chrome}');
+    expect(row).toContain('numberOfLines={notDelivered ? 2 : 1}');
+  });
+
   it('never lets that column say anything about the other person', () => {
     // Rules 4 and 5 live in this one row: a sender may never learn a read or
     // a decline. sent_requests() collapses delivered, declined and expired
