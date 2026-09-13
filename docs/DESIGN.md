@@ -207,11 +207,16 @@ Up to **9 photos**: one profile photo plus 8 gallery slots (the brief asks for
 at least 6 beyond the first; 8 gives room without turning the profile into a
 scroll marathon). Reorder by drag, first slot is always the avatar.
 
-Both profile screens open on a **full-bleed 4:5 hero** with the name set in
-white over a bottom gradient (`PhotoScrim`, backed by `expo-linear-gradient` —
-banded `View` stacks were visibly stepped on flat-coloured images). Leading with
-the face is the one thing every profile-driven app converged on: it makes the
-person, not the form fields, the thing you react to.
+Both profile screens open on a **square hero** (decision D2(a): the iOS editor
+crops square, so the hero shows the square people approved, whole). At the
+standard text sizes the name is set in white over a bottom gradient (backed by
+`expo-linear-gradient`; banded `View` stacks were visibly stepped on
+flat-coloured images). From the first accessibility size the gradient goes and
+the name sits under the photo in the theme's own colours: a five-line name
+block at those sizes covers the face, and the scrim only ever darkened the
+bottom of the frame. Leading with the face is the one thing every
+profile-driven app converged on: it makes the person, not the form fields, the
+thing you react to.
 
 Your own gallery renders **empty dashed slots up to 6**, which does the nudging
 that a sentence of copy can't. It stays a nudge — onboarding still only requires

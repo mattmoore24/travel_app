@@ -20,7 +20,14 @@ import { VerifiedSeal } from '@/components/ui/verified-seal';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { languageLabel } from '@/constants/languages';
 import { SOCIALS_HIDDEN_NOTE } from '@/constants/policies';
-import { MaxContentWidth, Motion, Radius, Space } from '@/constants/theme';
+import {
+  AccessibilitySizesFrom,
+  FontCap,
+  MaxContentWidth,
+  Motion,
+  Radius,
+  Space,
+} from '@/constants/theme';
 import { overlapSentence } from '@/features/matching/overlap';
 import { usePhotoUrl } from '@/features/profile/hooks';
 import { platformLabel, usesAt } from '@/features/profile/social-handles-editor';
@@ -223,8 +230,15 @@ function ReplyButton({
           same composer and one of them was an unlabelled glyph floating on a
           photo, so a first-time reader could not tell whether the bubble did
           something different from the two controls that read "About this"
-          and "Say hi". It did not. */}
-      <ThemedText type="footnote" themeColor="accent">
+          and "Say hi". It did not.
+
+          Capped at the control cap, because a pill on tappable chrome is
+          exactly what that cap is for (theme.ts, FontCap): the target has a
+          shape, and 1.5x is the most the shape holds. Uncapped, the label
+          was 40pt at AX5 and the "About this" pill on the hero took two
+          thirds of the photo's width (E2E run 142). The pill's minHeight
+          still carries the 44pt target with hitSlop. */}
+      <ThemedText type="footnote" themeColor="accent" maxFontSizeMultiplier={FontCap.control}>
         {text}
       </ThemedText>
     </PressableScale>
@@ -849,6 +863,7 @@ function Identity({
   overlap,
   alsoSpeaks,
   onPhoto,
+  pillsFirst = false,
   style,
 }: {
   profile: ProfileRow;
@@ -868,9 +883,49 @@ function Identity({
    */
   alsoSpeaks?: string | null;
   onPhoto: boolean;
+  /**
+   * The two pills directly under the name, BEFORE occupation and home.
+   *
+   * For the caption under the photo at the accessibility sizes only. On the
+   * Travelers tab that caption starts a few points above the docked Say hi
+   * bar at AX5, so whatever comes first under the name is the one line a
+   * reader is sure to see, and the overlap window is the one fact that
+   * explains why this person is on the screen at all. The on-photo layout
+   * and the no-photo band keep today's order: there the whole block is in
+   * view, and the pills read better as the last word than as the first.
+   */
+  pillsFirst?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
+  const pills =
+    overlap || alsoSpeaks ? (
+      <>
+        {overlap ? (
+          <View
+            style={[styles.overlapPill, styles.identityOverlap, { backgroundColor: theme.accent }]}>
+            <ThemedText type="caption" style={{ color: theme.onAccent }}>
+              {overlap}
+            </ThemedText>
+          </View>
+        ) : null}
+        {alsoSpeaks ? (
+          // Supporting the overlap chip, not competing with it: the same pill
+          // geometry in the soft fill, so the eye reads the window first and
+          // this second.
+          <View
+            style={[
+              styles.overlapPill,
+              styles.identityOverlap,
+              { backgroundColor: theme.accentSoft },
+            ]}>
+            <ThemedText type="caption" themeColor="accent">
+              {alsoSpeaks}
+            </ThemedText>
+          </View>
+        ) : null}
+      </>
+    ) : null;
   return (
     <View style={[styles.identity, style]}>
       <View style={styles.nameRow}>
@@ -879,8 +934,15 @@ function Identity({
           style={onPhoto ? [styles.nameText, styles.onPhoto] : styles.nameText}>
           {profile.display_name ?? 'Traveler'}
           {profile.age != null ? (
+            // The age is a nested Text and does not inherit its parent's
+            // cap. Over the photo it is a title, which ThemedText caps on
+            // its own; in the band and the caption it is a headline, which
+            // ThemedText leaves uncapped, and at AX5 a 56pt age outgrew the
+            // 45.6pt name beside it. The cap is stated in both branches so
+            // the two can never disagree again.
             <ThemedText
               type={onPhoto ? 'title' : 'headline'}
+              maxFontSizeMultiplier={FontCap.heading}
               style={onPhoto ? styles.onPhoto : undefined}>
               {'  '}
               {profile.age}
@@ -891,43 +953,30 @@ function Identity({
           <VerifiedSeal size={20} name={profile.display_name} age={profile.age} onPhoto={onPhoto} />
         ) : null}
       </View>
-      {profile.occupation ? (
-        <ThemedText
-          themeColor={onPhoto ? undefined : 'textSecondary'}
-          style={onPhoto ? styles.onPhotoSoft : undefined}>
-          {profile.occupation}
-        </ThemedText>
-      ) : null}
-      {home ? (
-        <ThemedText
-          themeColor={onPhoto ? undefined : 'textSecondary'}
-          style={onPhoto ? styles.onPhotoSoft : undefined}>
-          From {home}
-        </ThemedText>
-      ) : null}
-      {overlap ? (
-        <View
-          style={[styles.overlapPill, styles.identityOverlap, { backgroundColor: theme.accent }]}>
-          <ThemedText type="caption" style={{ color: theme.onAccent }}>
-            {overlap}
-          </ThemedText>
+      {pillsFirst ? pills : null}
+      {/* Occupation and home. When the pills come first these two follow a
+          filled shape rather than a line of text, and the block's own 2pt
+          gap is too tight against a pill's edge, so they step down by the
+          same margin the pills themselves keep from the line above. */}
+      {profile.occupation || home ? (
+        <View style={[styles.identityFacts, pillsFirst && pills ? styles.afterPills : undefined]}>
+          {profile.occupation ? (
+            <ThemedText
+              themeColor={onPhoto ? undefined : 'textSecondary'}
+              style={onPhoto ? styles.onPhotoSoft : undefined}>
+              {profile.occupation}
+            </ThemedText>
+          ) : null}
+          {home ? (
+            <ThemedText
+              themeColor={onPhoto ? undefined : 'textSecondary'}
+              style={onPhoto ? styles.onPhotoSoft : undefined}>
+              From {home}
+            </ThemedText>
+          ) : null}
         </View>
       ) : null}
-      {alsoSpeaks ? (
-        // Supporting the overlap chip, not competing with it: the same pill
-        // geometry in the soft fill, so the eye reads the window first and
-        // this second.
-        <View
-          style={[
-            styles.overlapPill,
-            styles.identityOverlap,
-            { backgroundColor: theme.accentSoft },
-          ]}>
-          <ThemedText type="caption" themeColor="accent">
-            {alsoSpeaks}
-          </ThemedText>
-        </View>
-      ) : null}
+      {pillsFirst ? null : pills}
     </View>
   );
 }
@@ -1057,7 +1106,18 @@ export function ProfileView({
   onAnswerYourOwnPrompt?: () => void;
 }) {
   const theme = useTheme();
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
+  // The identity moves OUT of the photo frame from the first accessibility
+  // size. At those sizes the name block is five lines tall (name, age,
+  // occupation, home, two pills, none of them small) and covers the face,
+  // while the scrim only darkens the bottom 45% of the frame, so the top of
+  // the block sat on a nearly clear photo (E2E run 142, frame zz-ax5-05).
+  // Apple's own stack views make the same row-to-column move at
+  // isAccessibilityCategory (WWDC24, "Get started with Dynamic Type"): at
+  // these sizes things stop sharing space and stack instead. The line is
+  // the theme's, so the hero, the empty states and the composer agree on
+  // where "accessibility size" begins.
+  const identityBelowPhoto = fontScale >= AccessibilitySizesFrom;
   const [editingTrip, setEditingTrip] = useState<EditableTrip | null>(null);
   const [addingTrip, setAddingTrip] = useState(false);
   // The photo being looked at full screen, from the hero or from anywhere in
@@ -1131,87 +1191,134 @@ export function ProfileView({
              with no photo gets the separate branch below instead.
 
              minHeight rather than height, because the Identity block is
-             in-flow and scales with Dynamic Type: at the accessibility sizes
-             the name, occupation, home and two pills outgrew a fixed square,
-             the top of the name was clipped and "From New York" landed on
-             the face where the scrim is nearly clear. A minimum keeps the
-             square at the default size and lets the frame grow to fit the
-             words above it. This is not the trap the paragraph above
-             describes: a minimum is a number, not a percentage, and the fill
-             still has a real box to fill.
+             in-flow and scales with Dynamic Type: at the largest standard
+             sizes the name, occupation, home and two pills can outgrow a
+             fixed square, and when they did the top of the name was clipped
+             and "From New York" landed on the face where the scrim is
+             nearly clear. A minimum keeps the square at the default size
+             and lets the frame grow to fit the words above it. This is not
+             the trap the paragraph above describes: a minimum is a number,
+             not a percentage, and the fill still has a real box to fill.
+             The same minimum holds at the accessibility sizes, where the
+             identity has left the frame and nothing in-flow is left: the
+             minimum then resolves to exactly the square, which is the
+             geometry wanted. Never switch it to height or aspectRatio.
 
              The ratio itself is 1:1 per decision D2(a): the iOS editor crops
              square, so the hero shows the square people approved, whole. */
-          <View style={[styles.hero, { width: heroWidth, minHeight: heroWidth }]}>
-            {main ? (
-              <Photo
-                path={main.storage_path}
-                label={heroPhotoLabel}
-                style={StyleSheet.absoluteFill}
-                onOpen={setViewing}
-              />
-            ) : (
-              <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.surfaceSunken }]} />
-            )}
-            {photoChecking ? <PhotoCheckVeil /> : null}
-            <LinearGradient
-              colors={['transparent', 'rgba(14,16,32,0.05)', 'rgba(14,16,32,0.82)']}
-              locations={[0, 0.55, 1]}
-              style={styles.heroScrim}
-              pointerEvents="none"
-            />
-            {/* box-none, not none. Identity carries the VerifiedSeal, which
-                is a real button that opens "what verified means" — and a
-                pointerEvents:none subtree returns nil from hitTest, so on
-                every profile that HAS a photo the badge was dead to touch
-                while working fine on the photo-less branch below and in the
-                chat header. VoiceOver announced a button that could not be
-                activated. The wrapper itself still takes no touches. */}
-            <View style={styles.heroText} pointerEvents="box-none">
-              <Identity
-                profile={profile}
-                home={home}
-                overlap={overlap}
-                alsoSpeaks={alsoSpeaks}
-                onPhoto
-              />
-            </View>
-            {owner && onEditSection ? (
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel="Edit photos"
-                haptic="light"
-                scaleTo={0.92}
-                hitSlop={3}
-                onPress={() => onEditSection('photos')}
-                containerStyle={styles.heroEditAnchor}
-                style={[styles.heroEdit, { backgroundColor: theme.surface }]}>
-                <SymbolView
-                  name={{ ios: 'camera.fill', android: 'photo_camera', web: 'photo_camera' }}
-                  size={15}
-                  tintColor={theme.text}
+          <>
+            <View style={[styles.hero, { width: heroWidth, minHeight: heroWidth }]}>
+              {/* The Photo stays the FIRST child in both layouts, so React
+                keeps the element across the identity moving in and out of
+                the frame and the prefetched face on the Travelers card is
+                not fetched a second time. */}
+              {main ? (
+                <Photo
+                  path={main.storage_path}
+                  label={heroPhotoLabel}
+                  style={StyleSheet.absoluteFill}
+                  onOpen={setViewing}
                 />
-              </PressableScale>
-            ) : null}
-            {/* `main` is only nullable while photos are still loading (the
+              ) : (
+                <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.surfaceSunken }]} />
+              )}
+              {photoChecking ? <PhotoCheckVeil /> : null}
+              {/* The scrim and the words on it go together: at the
+                accessibility sizes the identity renders under the photo
+                instead (see identityBelowPhoto), and a gradient with no
+                text on it would only darken the bottom of somebody's face
+                for nothing. Neither is left behind at opacity 0 or as an
+                empty box, because an empty heroText would still be an
+                in-flow child with padding, and the frame's minimum is only
+                exactly the square when nothing is in flow.
+
+                box-none, not none, on the text wrapper. Identity carries the
+                VerifiedSeal, which is a real button that opens "what
+                verified means", and a pointerEvents:none subtree returns nil
+                from hitTest, so on every profile that HAS a photo the badge
+                was dead to touch while working fine on the photo-less
+                branch below and in the chat header. VoiceOver announced a
+                button that could not be activated. The wrapper itself still
+                takes no touches. */}
+              {identityBelowPhoto ? null : (
+                <>
+                  <LinearGradient
+                    colors={['transparent', 'rgba(14,16,32,0.05)', 'rgba(14,16,32,0.82)']}
+                    locations={[0, 0.55, 1]}
+                    style={styles.heroScrim}
+                    pointerEvents="none"
+                  />
+                  <View style={styles.heroText} pointerEvents="box-none">
+                    <Identity
+                      profile={profile}
+                      home={home}
+                      overlap={overlap}
+                      alsoSpeaks={alsoSpeaks}
+                      onPhoto
+                    />
+                  </View>
+                </>
+              )}
+              {owner && onEditSection ? (
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit photos"
+                  haptic="light"
+                  scaleTo={0.92}
+                  hitSlop={3}
+                  onPress={() => onEditSection('photos')}
+                  containerStyle={styles.heroEditAnchor}
+                  style={[styles.heroEdit, { backgroundColor: theme.surface }]}>
+                  <SymbolView
+                    name={{ ios: 'camera.fill', android: 'photo_camera', web: 'photo_camera' }}
+                    size={15}
+                    tintColor={theme.text}
+                  />
+                </PressableScale>
+              ) : null}
+              {/* `main` is only nullable while photos are still loading (the
                 photosPending branch above renders this frame early so the
                 page does not jump ~280pt when they land). TypeScript reads
                 `photos[0]` as non-optional and so cannot see it; there is
                 nothing to reply TO until the photo exists. */}
-            {onRespondTo && main ? (
-              <ReplyButton
-                onPhoto
-                label="Say hi about this photo"
-                onPress={() =>
-                  onRespondTo({
-                    key: 'photo:0',
-                    label: 'their first photo',
-                    photoPath: main.storage_path,
-                  })
-                }
-              />
+              {onRespondTo && main ? (
+                <ReplyButton
+                  onPhoto
+                  label="Say hi about this photo"
+                  onPress={() =>
+                    onRespondTo({
+                      key: 'photo:0',
+                      label: 'their first photo',
+                      photoPath: main.storage_path,
+                    })
+                  }
+                />
+              ) : null}
+            </View>
+            {/* The identity under the photo, from the first accessibility
+                size. A plain caption, NOT styles.band: the band's sunken
+                fill and 64pt avatar well are the no-photo affordance, and
+                here there is a photo directly above. It is inside this
+                branch on purpose, so the early frame photosPending renders
+                keeps the page from jumping when the photo lands: the
+                caption is there from the first paint, with or without the
+                image. The band variant is what is reused, so the name is a
+                title (45.6pt at the cap) rather than the display it is on
+                the photo (60.8pt); the words have the page's own colours
+                and nothing to compete with. */}
+            {identityBelowPhoto ? (
+              <View style={styles.heroCaption}>
+                <Identity
+                  profile={profile}
+                  home={home}
+                  overlap={overlap}
+                  alsoSpeaks={alsoSpeaks}
+                  onPhoto={false}
+                  pillsFirst
+                />
+              </View>
             ) : null}
-          </View>
+          </>
         ) : (
           /* No photo: a band, not an empty portrait frame. Its height is its
              own content — a fixed 64pt avatar well and the text next to it —
@@ -1553,9 +1660,25 @@ const styles = StyleSheet.create({
   heroText: {
     padding: Space.lg,
   },
+  /* The identity under the photo at the accessibility sizes. The same
+     horizontal inset as `body`, so the name lines up with the section
+     titles below it; a step of breathing room from the frame above and
+     none below, because `body` brings its own padding. */
+  heroCaption: {
+    paddingTop: Space.md,
+    paddingHorizontal: Space.lg,
+  },
   /* The name block itself, shared by both hero branches. */
   identity: {
     gap: 2,
+  },
+  /* Occupation and home, one block so it can step down as one when the
+     pills come first. */
+  identityFacts: {
+    gap: 2,
+  },
+  afterPills: {
+    marginTop: Space.sm,
   },
   /* The no-photo hero. Content-height by construction: every child has an
      intrinsic size, so this cannot inherit a screen's worth of height the

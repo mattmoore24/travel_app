@@ -95,7 +95,10 @@ device does something else.
   photographed a full-screen slab of `surfaceSunken` with no name on it, and
   it was reverted (612bb5c). For a container that must be as tall as its
   content, give every child an intrinsic size — or branch to a different
-  element, which is what the no-photo profile band does.
+  element, which is what the no-photo profile band does. At the accessibility
+  text sizes the photo hero has no in-flow child at all (the identity moves
+  under the photo), so its `minHeight` is its height, and that is fine because
+  a minimum is a number, not a percentage.
 - **`entering` and an animated style must not both drive `opacity`.** The
   second one wins non-deterministically and the element flickers or stays
   invisible.

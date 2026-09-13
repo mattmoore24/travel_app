@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, within } from '@testing-library/react-native';
 import { Image } from 'expo-image';
-import { StyleSheet, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { FontCap, Radius } from '@/constants/theme';
@@ -8,6 +9,22 @@ import { ProfileView } from '@/features/profile/profile-view';
 import type { TripWithCity } from '@/features/trips/api';
 import { profileTripFromOwnTrip, profileTripFromTravelerRow } from '@/features/trips/profile-trips';
 import type { CityRow, ProfilePhotoRow, ProfileRow, TravelerTripRow } from '@/lib/database.types';
+
+// React Native's own jest DeviceInfo reports fontScale 2, which is past the
+// accessibility line the hero now stacks at (AccessibilitySizesFrom), so an
+// unmocked render would put every case in this file on the under-the-photo
+// branch it was not written for. The default here is the default size; the
+// block at the bottom moves it. Width is a phone's, and the square test
+// compares the frame's minHeight to the width it read from this same hook.
+let mockFontScale = 1;
+jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
+  __esModule: true,
+  default: () => ({ width: 390, height: 844, scale: 3, fontScale: mockFontScale }),
+}));
+
+beforeEach(() => {
+  mockFontScale = 1;
+});
 
 // The photo hooks reach for a signed URL. Null for most of this file, because
 // nothing here has a photo to sign; the viewer's own describe block below
@@ -520,6 +537,156 @@ describe('the hero at large type', () => {
     for (const text of screen.getAllByText(/29/)) {
       expect(text.props.maxFontSizeMultiplier).toBe(FontCap.heading);
     }
+  });
+});
+
+/** The hero frame: the one rounded, clipped box with a minimum height. */
+function findHeroFrame() {
+  return screen.UNSAFE_getAllByType(View).find((view) => {
+    const style = StyleSheet.flatten(view.props.style) as Record<string, unknown> | undefined;
+    return (
+      style?.overflow === 'hidden' && style?.borderRadius === Radius.lg && style?.minHeight != null
+    );
+  });
+}
+
+/** Every string a Text node holds, nested Texts included, in render order. */
+function textOf(node: { props: { children?: unknown } }): string {
+  const walk = (child: unknown): string => {
+    if (child == null || typeof child === 'boolean') return '';
+    if (typeof child === 'string' || typeof child === 'number') return String(child);
+    if (Array.isArray(child)) return child.map(walk).join('');
+    if (typeof child === 'object' && 'props' in child) {
+      return walk((child as { props: { children?: unknown } }).props.children);
+    }
+    return '';
+  };
+  return walk(node.props.children);
+}
+
+describe('the hero at the accessibility sizes', () => {
+  // E2E run 142, frame zz-ax5-05: the name block covered the face and the
+  // "About this" pill sat on the words. From the first accessibility size
+  // the words leave the photo and stack under it, which is the move Apple's
+  // own stack views make at isAccessibilityCategory. The frame keeps its
+  // square, its camera button and its reply pill; only the scrim and the
+  // words on it go.
+  const overlapTrip = {
+    id: 't1',
+    cityId: 1,
+    cityLabel: 'Bangkok, Thailand',
+    startDate: '2026-08-17',
+    endDate: '2026-09-13',
+    overlap: { start: '2026-08-23', end: '2026-08-28' },
+  };
+
+  beforeEach(() => {
+    mockSignedUrl = 'https://signed.example/u1-0.jpg';
+  });
+  afterEach(() => {
+    mockSignedUrl = null;
+  });
+
+  it('moves the name under the photo at AX1, and keeps the frame square', () => {
+    mockFontScale = 1.65;
+    renderProfile({
+      photos: [heroPhoto],
+      owner: true,
+      onEditSection: jest.fn(),
+      onRespondTo: jest.fn(),
+    });
+    // No scrim: a gradient with no words on it would only darken the face.
+    expect(screen.UNSAFE_queryAllByType(LinearGradient)).toHaveLength(0);
+
+    const hero = findHeroFrame();
+    expect(hero).toBeTruthy();
+    // The name is said once, and not inside the frame.
+    const names = screen.getAllByText(/Maestro Test/);
+    expect(names).toHaveLength(1);
+    expect(within(hero!).queryByText(/Maestro Test/)).toBeNull();
+    // In the theme's colours, not the white that belongs on a photo.
+    const nameStyle = StyleSheet.flatten(names[0].props.style) as Record<string, unknown>;
+    expect(nameStyle.color).not.toBe('#FFFFFF');
+    // The two absolutely positioned controls stay on the photo.
+    expect(within(hero!).getByLabelText('Say hi about this photo')).toBeTruthy();
+    expect(within(hero!).getByLabelText('Edit photos')).toBeTruthy();
+    // With nothing in flow the minimum IS the height, and it is the square.
+    const style = StyleSheet.flatten(hero!.props.style) as Record<string, unknown>;
+    expect(style.minHeight).toBe(style.width);
+    expect(style.height).toBeUndefined();
+  });
+
+  it('keeps the name over the photo at xxxLarge, the largest standard size', () => {
+    mockFontScale = 1.35;
+    renderProfile({ photos: [heroPhoto] });
+    expect(screen.UNSAFE_queryAllByType(LinearGradient)).toHaveLength(1);
+    const hero = findHeroFrame();
+    expect(within(hero!).getByText(/Maestro Test/)).toBeTruthy();
+  });
+
+  it('caps the age at the heading cap in the caption too', () => {
+    // The caption reuses the band variant, whose age is a headline that
+    // ThemedText leaves uncapped: at AX5 a 56pt age outgrew the 45.6pt name.
+    mockFontScale = 3.12;
+    renderProfile({ photos: [heroPhoto] });
+    const ages = screen.getAllByText(/29/);
+    expect(ages.length).toBeGreaterThan(0);
+    for (const text of ages) {
+      expect(text.props.maxFontSizeMultiplier).toBe(FontCap.heading);
+    }
+  });
+
+  it('puts the overlap window first under the name, then the language, then the facts', () => {
+    // On the Travelers tab the caption starts a few points above the docked
+    // Say hi bar at AX5, so whatever comes first under the name is the one
+    // line a reader is sure to see. The window is why this person is on the
+    // screen; it goes first.
+    mockFontScale = 1.65;
+    renderProfile({
+      photos: [heroPhoto],
+      trips: [overlapTrip],
+      alsoSpeaks: 'Also speaks Portuguese',
+    });
+    const texts = screen.UNSAFE_getAllByType(Text).map(textOf);
+    const at = (pattern: RegExp) => texts.findIndex((text) => pattern.test(text));
+    const name = at(/^Maestro Test/);
+    const overlap = at(/^Both in Bangkok/);
+    const language = at(/^Also speaks Portuguese/);
+    const occupation = at(/^Sound engineer/);
+    const home = at(/^From Lisbon/);
+    for (const index of [name, overlap, language, occupation, home]) {
+      expect(index).toBeGreaterThanOrEqual(0);
+    }
+    expect(name).toBeLessThan(overlap);
+    expect(overlap).toBeLessThan(language);
+    expect(language).toBeLessThan(occupation);
+    expect(occupation).toBeLessThan(home);
+  });
+
+  it('keeps the pills last over the photo at the standard sizes', () => {
+    // The on-photo layout and the no-photo band keep today's order: there
+    // the whole block is in view, and the pills read as the last word.
+    mockFontScale = 1;
+    renderProfile({
+      photos: [heroPhoto],
+      trips: [overlapTrip],
+      alsoSpeaks: 'Also speaks Portuguese',
+    });
+    const texts = screen.UNSAFE_getAllByType(Text).map(textOf);
+    const at = (pattern: RegExp) => texts.findIndex((text) => pattern.test(text));
+    expect(at(/^From Lisbon/)).toBeLessThan(at(/^Both in Bangkok/));
+    expect(at(/^Both in Bangkok/)).toBeLessThan(at(/^Also speaks Portuguese/));
+  });
+
+  it('caps the reply pill label at the control cap', () => {
+    // A pill on tappable chrome is what the control cap is for: uncapped,
+    // the "About this" label was 40pt at AX5 and the pill took two thirds
+    // of the photo's width.
+    mockFontScale = 3.12;
+    renderProfile({ photos: [heroPhoto], onRespondTo: jest.fn() });
+    const chip = screen.getByLabelText('Say hi about this photo');
+    const label = within(chip).getByText('About this');
+    expect(label.props.maxFontSizeMultiplier).toBe(FontCap.control);
   });
 });
 
