@@ -100,9 +100,35 @@ state drew upside down in the inverted list; the chip rail's slop had no
 room to exist (hitSlop stops at the parent); the profile skeletons were
 15% taller than the hero they stood in for.
 
-**Runs.** No deploy. TestFlight update 101 carries the round. E2E 139 is
-the first run with the nine-frame large-text tour at both ends
-(`zz-ax5-*` and `zz-xs-*`).
+**What the simulator then taught (2026-09-13).** E2E 139 timed out on a
+runner running everything at up to three times run 138's pace: both photo
+pipelines blew their render budgets, three flows retried, and the job's
+own limit fell inside the Maestro step, which cancelled the publish. Its
+pictures never existed, so the Maestro step carries its own bound now,
+under the job's, and a slow run publishes what it photographed. Runs 140
+and 141 then photographed four things worth fixing, none of them the round
+itself: the undo bar lived five seconds and sits over the first trip card,
+so a tap five seconds after Next opened the card's composer (eight seconds
+now, which is also kinder to a thumb); the trip card scrolled "into view"
+landed under the floating action bar or, centred, under the pinned band,
+so the tap opened the bar's own Say hi or the radius sheet (the tour moves
+the freshly mounted page by one slow swipe of a known distance instead);
+the large-text tour looked for Edit profile at the top of a page that is
+a dozen screens tall at AX5 (it goes in through the Details section's own
+Edit now, and waits for the editor to settle before tapping the languages
+field); and the photo pipeline's render bound of 90 s sat inside the 80 to
+100 s the iOS 26 simulator takes for it (150 s now, with the flows' waits
+at 240 s: a phone renders it in under a second, and the bound is for
+hangs). Two AX5 seams in the app itself, both from the frames: a profile
+section title wrapped one letter per line beside its reply chip (the chip
+wraps beneath the title now), and the languages sheet's title ran into
+Done (capped and given the row's slack).
+
+**Runs.** No deploy. TestFlight updates 101 (the round), 102 (the undo
+window and the section title) and 103 (the render budget). E2E 139 timed
+out, 140 and 141 failed on the flow-level misses above, 142 is green across
+all seven tours on the first attempt of each, with the nine large-text
+frames at both ends (`zz-ax5-*` and `zz-xs-*`).
 
 ## **The time on a pin is typed** (2026-09-12)
 

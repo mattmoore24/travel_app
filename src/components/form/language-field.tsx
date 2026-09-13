@@ -15,7 +15,7 @@ import { ThemedText } from '@/components/themed-text';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet } from '@/components/ui/sheet';
 import { LANGUAGES, languageLabel, matchesLanguage } from '@/constants/languages';
-import { Type, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
+import { FontCap, Type, Fonts, HitTarget, Radius, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { haptics } from '@/lib/haptics';
 
@@ -125,13 +125,24 @@ export function LanguageField({
       {open ? (
         <Sheet onClose={() => setOpen(false)} avoidKeyboard>
           <View style={styles.sheetHeader}>
-            <ThemedText type="headline">Languages</ThemedText>
+            {/* A heading, so it takes the heading cap, and it owns the row's
+                slack: uncapped and unbounded it grew over Done at AX5 and
+                the two read as one word (E2E run 142). */}
+            <ThemedText
+              type="headline"
+              maxFontSizeMultiplier={FontCap.heading}
+              style={styles.sheetTitle}>
+              Languages
+            </ThemedText>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Done"
               hitSlop={10}
               onPress={() => setOpen(false)}>
-              <ThemedText type="smallBold" style={{ color: theme.accent }}>
+              <ThemedText
+                type="smallBold"
+                maxFontSizeMultiplier={FontCap.control}
+                style={{ color: theme.accent }}>
                 Done
               </ThemedText>
             </Pressable>
@@ -261,6 +272,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: Space.md,
+  },
+  sheetTitle: {
+    flex: 1,
   },
   searchRow: {
     flexDirection: 'row',
