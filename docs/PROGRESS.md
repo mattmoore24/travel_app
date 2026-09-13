@@ -87,8 +87,8 @@ after the review fixes. E2E 143 green across all seven tours, first attempt
 of each, with the nine large-text frames at both ends; the AX5 frames show
 the face clear with the name beneath it, "Message" on one line in a field
 that runs to the bubbles' edge, and the sent-hello time on one line.
-Gallery Version 10. The TestFlight update number is in the paragraph
-below.
+Gallery Version 10. TestFlight update 105 (green) carries the whole round
+with the review fixes, and E2E 144 re-photographs that final head.
 
 ## **Loading, offline, and text size** (2026-09-12)
 
