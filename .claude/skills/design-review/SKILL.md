@@ -113,8 +113,17 @@ a **4pt** space grid, radii `sm 8 / md 12 / lg 16 / xl 20`, `bubble 18`
   description, an error or a notice body is read, and is never capped and
   never `numberOfLines` without a way to expand. A box around text is a
   `minHeight`, never a `height`. The E2E suite photographs the app at AX5
-  and at xSmall (`zz-ax5-*`, `zz-xs-*`); a layout that changes shape at a
-  threshold is a founder call, made from those pictures.
+  and at xSmall (`zz-ax5-*`, `zz-xs-*`).
+- **A layout changes shape at one line, `AccessibilitySizesFrom`** (1.6 in
+  `theme.ts`: between xxxLarge and AX1, Apple's own `isAccessibilityCategory`
+  line, where UIKit's stack views turn a row into a column). From there the
+  profile hero's name sits under the photo instead of over the face, an
+  empty state draws its one action above its explanation and no decorative
+  glyph, and the composer's placeholder is the one word "Message" while its
+  spoken name keeps the full string. Below the line nothing changes. A fourth
+  adaptation, or a different number, is a founder call made from the
+  pictures; the two older thresholds at 2 (the Travelers count line, the
+  plan list's count line) are about a pinned header's cost, not this line.
 - **Skeleton before words, empty state only after success.** Every remote
   photo goes through `RemoteImage` (a pulse in its own frame, a retry glyph
   on failure); every screen that loads draws its shape from

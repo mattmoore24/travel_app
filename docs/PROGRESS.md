@@ -3,6 +3,68 @@
 Living status doc: what's done, what's next, what needs founder input.
 Updated at every phase boundary (and mid-phase when something changes).
 
+## **Three seams at the largest text size** (2026-09-13)
+
+Founder, on the three AX5 observations the round below left for a call: "I
+defer to your best judgement on each of the three things that are my call.
+Please go ahead and implement whatever is going to be the best user
+experience. You can always research how other popular apps deal with
+similar issues if helpful and follow the same playbook." Three reviewers
+first (Apple's guidance and the messengers, with the WWDC24 Dynamic Type
+session verified first-hand; then the hero's code; then the chat and
+composer code), three builders in worktrees, then the merge and the gate.
+
+**The line.** One number, `AccessibilitySizesFrom` = 1.6 in
+`constants/theme`, between xxxLarge (23/17) and AX1 (28/17): Apple's own
+`isAccessibilityCategory` line, where UIKit's stack views turn a row into a
+column. It is the one number the app changes a layout at, and it is never a
+cap on reading text. A test pins it between the two Apple sizes so it
+cannot be rounded onto either.
+
+**Profile hero.** From the first accessibility size the name block (name,
+age, seal, occupation, home, the overlap and also-speaks pills) sits under
+the square photo in the theme's own colours, the same block the no-photo
+band draws, with the two pills first so the reason the person is on the
+screen is the first thing under the name on the Travelers card, where the
+docked bar is close. The scrim is not drawn (nothing is read over it); the
+reply pill and the owner's camera button stay in the frame; the frame
+keeps its numeric minimum height, which is the opposite of the height trap
+(the traps entry gained the sentence). Below the line nothing changes.
+Contacts, Airbnb, WhatsApp and Instagram all put the words under the
+photo; the overlay is the dating apps' shape, and those do not honour the
+accessibility sizes. Two latent caps on the way: the age at the heading
+cap in both branches (it outgrew the name in the band), and every reply
+pill's label at the control cap (at AX5 "About this" was two thirds of the
+photo's width, the other half of run 142's overlap).
+
+**Empty states.** From the line, `EmptyState` draws its title, its one
+action, the secondary actions, then the explanation, and no decorative
+glyph; the button's label takes the control cap at every size. Apple's own
+content-unavailable order is image, text, secondary text, button, and this
+departs from it above the line on purpose: on every screen that uses the
+block the title carries the instruction, the action is what the reader came
+for, and at AX5 the Chats tab's explanation wrapped to seven lines and put
+"Find travelers" under the tab bar. Dropping the glyph is Apple's own
+advice for the largest sizes. The "You said hi" row's timestamp takes the
+chrome cap like the conversation rows' (it wrapped "1:31 A" / "M" in run
+142's frame); "Not delivered" may take two lines and is never cut.
+
+**Composer.** The row owns one 16pt inset. It padded 24 of its own inside a
+room wrapper's 16, so a room's field was 222pt of a 402pt screen at every
+text size and the one-to-one thread was inset differently; the bubbles
+above are inset 16, and so are iMessage's and WhatsApp's fields. The reply
+banner, the staged photo and the saved-reply strip share the field's edge,
+and the dead styles of the pre-shared composer went from both thread
+screens. From the line the placeholder is the one word "Message": React
+Native draws a multiline placeholder in a label that wraps freely and
+breaks a word that does not fit, which is the "Messag / e the / group…"
+in run 142's frame, and iMessage's and Telegram's placeholders are one
+word for the same reason. The field's spoken name keeps the founder's full
+string ("Message the group") at every size, so VoiceOver loses nothing.
+
+**Runs.** See the paragraph at the end of this section once the round has
+shipped.
+
 ## **Loading, offline, and text size** (2026-09-12)
 
 Founder: "there should be loading graphics for anything as it's loading

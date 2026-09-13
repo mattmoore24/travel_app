@@ -80,7 +80,13 @@ objections were found to the proposed stack; per-phase flags are recorded below 
   time boxes use `minHeight` or a scaled basis, never a fixed height, and the keyboard bar's
   height is a function of the font scale (`keyboardBarHeight`) that the floor and the sheet
   both read. The E2E suite photographs nine frames at AX5 and again at xSmall
-  (`e2e/large-text-tour.yml`, `SHOT_PREFIX`).
+  (`e2e/large-text-tour.yml`, `SHOT_PREFIX`). Since 2026-09-13 one line,
+  `AccessibilitySizesFrom` (1.6: between xxxLarge 23/17 and AX1 28/17, UIKit's own
+  `isAccessibilityCategory` boundary), is where a layout changes shape, and the only such
+  number: the profile hero's identity block moves under the photo (`profile-view`), an
+  `EmptyState` draws title, action, secondary actions, explanation and no glyph, and the
+  composer's placeholder is the one word "Message" with the full string kept as the field's
+  spoken name. Never a cap on reading text.
 
 ## Backend — implemented (Phase 1) and planned
 
@@ -2028,6 +2034,19 @@ the map. Curated seed pins take their plan's day as their take-down day.
   decision rather than a backlog item: there is no recipient-scoped column to hang them on,
   and they create response pressure that works against the safety posture. "Sending" and
   "Sent" are sender-side facts and carry no such cost.
+- **2026-09-13** — Three seams at the largest text size (founder: "I defer to your best
+  judgement on each ... research how other popular apps deal with similar issues and follow
+  the same playbook"). One named line, `AccessibilitySizesFrom` = 1.6 (Apple's accessibility
+  category boundary), and three adaptations at it: the hero's name under the photo in the
+  theme's colours (Contacts, Airbnb, WhatsApp: photo, then words; Apple's stack views make
+  the same row-to-column move there), an empty state's one action above its explanation with
+  no decorative glyph (a deliberate departure from Apple's content-unavailable order, because
+  the title carries the instruction on every screen here and the explanation put the button
+  under the tab bar), and a one-word composer placeholder (a width variant, Apple's
+  `variantFittingPresentationWidth` idea; iMessage's and Telegram's are one word) with the
+  founder's full string kept as the field's spoken name. Alongside: the composer row owns one
+  16pt inset (it had 40 in a room), the age and every reply pill take their caps, and the
+  "You said hi" timestamp takes the chrome cap. JS only, over the air.
 - **2026-09-12** — The hour on a pin is typed, not picked (founder, round 4, ask 5: "the start
   and end times are typed and optional ... the preset time buttons are removed, and small text
   says times reflect local time at the destination"). Two boxes and a TBD pill replace the
