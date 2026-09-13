@@ -10,7 +10,7 @@ import {
 
 import { PrimaryButton } from '@/components/form/primary-button';
 import { ThemedText } from '@/components/themed-text';
-import { AccessibilitySizesFrom, FontCap, Space } from '@/constants/theme';
+import { AccessibilitySizesFrom, Space } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
@@ -26,26 +26,30 @@ import { useTheme } from '@/hooks/use-theme';
  * TOP-ANCHORED by design: the block starts where a populated list's first
  * row would, so switching between empty and full does not move the eye. The
  * screen supplies that offset: this component is the block, not the page.
- * Extra actions beyond the primary go in `children`, and they always sit
- * directly under it, never split from it by a paragraph.
+ * Extra actions beyond the primary go in `children`, after it.
  *
  * AT THE ACCESSIBILITY SIZES (fontScale at or above AccessibilitySizesFrom)
- * the order changes to title, action, children, body, and the glyph is
- * dropped. Apple's content-unavailable order is image, text, secondary
- * text, button at every size, and this deliberately departs from it above
- * the line, because on every screen that uses EmptyState the title carries
- * the instruction ("No chats yet", "Nobody has dropped in yet", "Travelers
- * opens once you add a trip") and the action is what the reader came for;
- * below the action, the explanation wraps to most of a screen at AX5 and
- * pushed the button under the tab bar until the reader scrolled (E2E run
- * 142's follow-up). The glyph goes for the reason Apple's own Dynamic Type
- * guidance gives for dropping purely decorative views at the largest sizes:
- * a 56pt mark spends a tenth of the viewport and carries no information.
- * The children stay with the primary through the reorder because they are
- * the secondary actions by this component's own contract (the Travelers
- * wall passes a primary plus ghost buttons), and a paragraph between the
- * two would read as two unrelated blocks. VoiceOver order follows the
- * visual one: title, button, explanation.
+ * a block WITH an action draws title, action, children, body, and no block
+ * draws its glyph. Apple's content-unavailable order is image, text,
+ * secondary text, button at every size, and this deliberately departs from
+ * it above the line, because on every screen that uses EmptyState the
+ * title carries the instruction ("No chats yet", "Nobody has dropped in
+ * yet", "Travelers opens once you add a trip") and the action is what the
+ * reader came for; below the action, the explanation wraps to most of a
+ * screen at AX5 and pushed the button under the tab bar until the reader
+ * scrolled (E2E run 142's follow-up). The children move with the action
+ * because they are its secondary actions by this component's contract (the
+ * Travelers wall passes a primary plus ghost buttons), and a paragraph
+ * between the two would read as two unrelated blocks. A block with NO
+ * action keeps its order at every size: there is nothing to lift, and what
+ * its children hold then (the signed-out Chats tab passes a pointer
+ * sentence and the sign-up gate) belongs after the explanation. The glyph
+ * goes for the reason Apple's own Dynamic Type guidance gives for dropping
+ * purely decorative views at the largest sizes: a 56pt mark spends a tenth
+ * of the viewport and carries no information. VoiceOver order follows the
+ * visual one. The button's label is not capped: a full-width button in a
+ * scrolling block lets its text scale (see PrimaryButton), and the reorder
+ * is what keeps it on screen.
  *
  * `glyph` is optional and rare. It earns its place on a whole TAB that is
  * empty, where words alone read as a screen that failed to load rather than a
@@ -72,28 +76,20 @@ export function EmptyState({
 }) {
   const theme = useTheme();
   const { fontScale } = useWindowDimensions();
-  // The category line, not a rounded guess: at and above it the block is
-  // re-ordered and the glyph dropped, as the doc comment explains.
+  // The category line, not a rounded guess: at and above it the glyph is
+  // dropped and a block with an action is re-ordered, as the doc comment
+  // explains. A block with none has nothing to lift.
   const accessibilitySize = fontScale >= AccessibilitySizesFrom;
+  const actionFirst = accessibilitySize && action != null;
 
   const bodyText = body ? (
     <ThemedText themeColor="textSecondary" style={styles.centred}>
       {body}
     </ThemedText>
   ) : null;
-  // The label is on tappable chrome, so it takes the theme's control cap at
-  // EVERY size: an uncapped two-line 47pt button was eating the room the
-  // reorder above reclaims, and the pill's own height is what the reader
-  // taps, not the label's.
   const actions = (
     <>
-      {action ? (
-        <PrimaryButton
-          label={action.label}
-          onPress={action.onPress}
-          maxFontSizeMultiplier={FontCap.control}
-        />
-      ) : null}
+      {action ? <PrimaryButton label={action.label} onPress={action.onPress} /> : null}
       {children}
     </>
   );
@@ -108,7 +104,7 @@ export function EmptyState({
       <ThemedText type="title" style={styles.centred}>
         {title}
       </ThemedText>
-      {accessibilitySize ? (
+      {actionFirst ? (
         <>
           {actions}
           {bodyText}

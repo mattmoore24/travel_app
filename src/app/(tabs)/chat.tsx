@@ -954,7 +954,10 @@ export default function ChatScreen() {
               // rather than a screen with nothing on it yet - and this is the
               // tab a curious visitor opens third, right before deciding
               // whether the app has anybody in it. Same mark the intro tour
-              // uses for chat, so the two pages agree.
+              // uses for chat, so the two pages agree. From the first
+              // accessibility size EmptyState leaves it out: there the words
+              // are large enough to be the page on their own, and the mark
+              // would cost a tenth of the viewport.
               <EmptyState
                 glyph={{
                   ios: 'bubble.left.and.bubble.right.fill',

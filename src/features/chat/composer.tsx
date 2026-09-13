@@ -17,6 +17,7 @@ import { ThemedText } from '@/components/themed-text';
 import { PhotoButton } from '@/components/ui/photo-button';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { AccessibilitySizesFrom, Fonts, HitTarget, Radius, Space, Type } from '@/constants/theme';
+import { ThreadInset } from '@/features/chat/inset';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ComposerDraft = { text: string; photoUri: string | null };
@@ -104,17 +105,27 @@ export function Composer({
   // The placeholder is drawn by React Native's multiline placeholder, a
   // UILabel with numberOfLines 0 (RCTUITextView.mm), which wraps freely and,
   // once one word no longer fits the line, breaks the word itself. At AX5
-  // (fontScale 3.12, so Type.callout's 15 is 46.8pt type) the field is about
-  // 238pt wide, "Message" measures about 195pt and "Message…" about 245pt,
-  // so the ellipsis is exactly the character that does not fit, and E2E run
-  // 142 (zz-ax5-07) photographed "Messag" / "e the" / "group…" stacked in
-  // the box. Apple's answer to a string that will not fit its frame is a
-  // width variant (variantFittingPresentationWidth), so from the
-  // accessibility sizes the DRAWN placeholder is the one word "Message",
-  // which is Telegram's whole placeholder (iMessage's is "iMessage"). The
-  // short variant carries no ellipsis on purpose: the ellipsis is the
-  // character that broke the word, and neither messenger draws one. Do not
-  // "fix" it later by adding one back.
+  // (fontScale 3.12, so Type.callout's 15 is 46.8pt type) the field has
+  // about 246pt of text room on a 402pt phone and about 219 on a 375pt one;
+  // "Message" measures about 195pt and "Message…" about 245, so the
+  // ellipsis is the character that does not fit on the smaller phone and
+  // only just does on the larger, and E2E run 142 (zz-ax5-07) photographed
+  // "Messag" / "e the" / "group…" stacked in the box. Apple's answer to a
+  // string that will not fit its frame is a width variant
+  // (variantFittingPresentationWidth), so from the accessibility sizes the
+  // placeholder is the one word "Message", which is Telegram's whole
+  // placeholder (iMessage's is "iMessage"). It carries no ellipsis on
+  // purpose: the ellipsis is the character that broke the word, and neither
+  // messenger draws one. Do not "fix" it later by adding one back.
+  //
+  // And no accessibilityLabel beside it, at any size. It is tempting to keep
+  // the full "Message the group" as the spoken name while the drawing
+  // shortens, but the multiline field's native view APPENDS the placeholder
+  // to any label whenever the field is empty (RCTUITextView.mm,
+  // accessibilityLabel), so a label makes VoiceOver say "Message the group
+  // Message the group…" at every standard size and "Message the group
+  // Message" above the line. With none, the placeholder is the spoken name
+  // on its own, as it is in iMessage and Telegram.
   const shortPlaceholder = fontScale >= AccessibilitySizesFrom;
   const [draft, setDraft] = useState('');
   const [attachment, setAttachment] = useState<string | null>(null);
@@ -231,15 +242,6 @@ export function Composer({
               placeholder={
                 shortPlaceholder ? 'Message' : attachment ? 'Add a message…' : placeholder
               }
-              // The spoken name of an empty field is its placeholder, so
-              // above the line a group's field would announce just "Message"
-              // and lose "the group". The drawn variant shortens; the spoken
-              // one never does, at any size, which is the actual
-              // variable-width playbook: a shorter drawing of one meaning,
-              // never a second meaning. The trailing ellipsis goes because
-              // VoiceOver reads it aloud as "ellipsis". testID is untouched:
-              // Maestro reaches the field by id.
-              accessibilityLabel={attachment ? 'Add a message' : placeholder.replace(/…$/, '')}
               placeholderTextColor={theme.textSecondary}
               value={draft}
               onChangeText={setDraft}
@@ -341,8 +343,9 @@ const styles = StyleSheet.create({
   chipRow: {
     gap: Space.sm,
     // The row's own inset, so the first saved-reply chip's left edge is the
-    // photo button's rather than 4pt inside it.
-    paddingHorizontal: Space.lg,
+    // photo button's (it was 12 against a row inset 24, so the strip stuck
+    // out past the button by 12).
+    paddingHorizontal: ThreadInset,
     paddingBottom: Space.sm,
   },
   chip: {
@@ -359,16 +362,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: Space.sm,
-    // ONE 16pt inset, owned here. It matches the bubbles above (the thread
-    // pads its rows Space.lg) and the messengers people use: iMessage,
-    // WhatsApp and Telegram all run the field to about one system margin
-    // from each edge. It used to be 24 here, on top of a room wrapper that
-    // added 16 more, so in a room the row was inset 40pt each side at every
-    // text size and the field was 222pt of a 402pt screen, while the
-    // one-to-one thread, with no wrapper, was inset 24. The room's wrapper
-    // no longer adds a second inset; the row is the one place this number
-    // lives.
-    paddingHorizontal: Space.lg,
+    // ONE inset, owned here, and it is the thread's own: ThreadInset is the
+    // number the bubbles above are set in from the screen edge, so the field
+    // and the bubbles share an edge the way iMessage's, WhatsApp's and
+    // Telegram's do, with the field running to about one margin from each
+    // side. It used to be 24 here, on top of a room wrapper that added 16
+    // more, so in a room the row was inset 40pt each side at every text
+    // size and the field was 222pt of a 402pt screen, while the one-to-one
+    // thread, with no wrapper, was inset 24 against bubbles at 12. The
+    // room's wrapper no longer adds a second inset; the row is the one place
+    // this number is applied.
+    paddingHorizontal: ThreadInset,
     paddingVertical: Space.sm,
   },
   input: {
@@ -399,7 +403,7 @@ const styles = StyleSheet.create({
     gap: Space.lg,
     // The field's own inset: the banner is the field's sibling and shares
     // its left edge.
-    marginHorizontal: Space.lg,
+    marginHorizontal: ThreadInset,
     marginTop: Space.sm,
     paddingLeft: Space.sm,
     borderLeftWidth: 2,
@@ -414,7 +418,7 @@ const styles = StyleSheet.create({
     gap: Space.lg,
     // The same inset as the row below, so the staged photo sits over the
     // button that picked it.
-    paddingHorizontal: Space.lg,
+    paddingHorizontal: ThreadInset,
     paddingTop: Space.sm,
   },
   attachment: {

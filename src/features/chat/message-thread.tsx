@@ -22,6 +22,7 @@ import { FailedPhotoGlyph, RemoteImage } from '@/components/ui/remote-image';
 import { PressableScale } from '@/components/ui/pressable-scale';
 import { Sheet, SHEET_SETTLE_MS, useRegisterNativeModal } from '@/components/ui/sheet';
 import { Elevation, HitTarget, Motion, Radius, Space } from '@/constants/theme';
+import { ThreadInset } from '@/features/chat/inset';
 import { useIsBusiness } from '@/features/business/hooks';
 import { useChatPhotoUrl } from '@/features/chat/hooks';
 import { splitLinks } from '@/features/chat/links';
@@ -1987,7 +1988,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   list: {
-    paddingHorizontal: Space.md,
+    // The bubbles' distance from the screen edge, shared with the composer
+    // (features/chat/inset), so the field and the bubbles keep one edge.
+    paddingHorizontal: ThreadInset,
     paddingVertical: Space.md,
   },
   runAvatarInitial: {

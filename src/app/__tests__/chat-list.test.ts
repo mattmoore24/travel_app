@@ -88,8 +88,13 @@ describe('the chat list is a list, not a stack of cards', () => {
     // 142). "Not delivered" is the one message-state word the sender must
     // read whole, so it alone may take two lines.
     const row = between(code, 'function SentHelloRow', 'function PlainRow');
-    expect(row).toContain('maxFontSizeMultiplier={FontCap.chrome}');
-    expect(row).toContain('numberOfLines={notDelivered ? 2 : 1}');
+    // The stamp's own element, not the whole row: the name and the preview
+    // are reading text and must stay uncapped, so the cap has to be found on
+    // the one ThemedText that draws the time.
+    const stamp = between(row, "themeColor={notDelivered ? 'warning' : 'textSecondary'}", '>');
+    expect(stamp).toContain('maxFontSizeMultiplier={FontCap.chrome}');
+    expect(stamp).toContain('numberOfLines={notDelivered ? 2 : 1}');
+    expect(row.replace(stamp, '')).not.toContain('maxFontSizeMultiplier');
   });
 
   it('never lets that column say anything about the other person', () => {

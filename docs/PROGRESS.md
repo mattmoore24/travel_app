@@ -31,39 +31,64 @@ reply pill and the owner's camera button stay in the frame; the frame
 keeps its numeric minimum height, which is the opposite of the height trap
 (the traps entry gained the sentence). Below the line nothing changes.
 Contacts, Airbnb, WhatsApp and Instagram all put the words under the
-photo; the overlay is the dating apps' shape, and those do not honour the
-accessibility sizes. Two latent caps on the way: the age at the heading
+photo, and they are the apps that honour these sizes; the overlay stays at
+every standard size, where it works. Two latent caps on the way: the age at the heading
 cap in both branches (it outgrew the name in the band), and every reply
 pill's label at the control cap (at AX5 "About this" was two thirds of the
 photo's width, the other half of run 142's overlap).
 
-**Empty states.** From the line, `EmptyState` draws its title, its one
-action, the secondary actions, then the explanation, and no decorative
-glyph; the button's label takes the control cap at every size. Apple's own
+**Empty states.** From the line, an `EmptyState` with an action draws its
+title, the action, the secondary actions, then the explanation, and no
+block draws its decorative glyph; a block with no action keeps its order
+(the signed-out Chats tab's pointer sentence and sign-up gate belong after
+the explanation, and the review caught them jumping above it). Apple's own
 content-unavailable order is image, text, secondary text, button, and this
 departs from it above the line on purpose: on every screen that uses the
 block the title carries the instruction, the action is what the reader came
 for, and at AX5 the Chats tab's explanation wrapped to seven lines and put
-"Find travelers" under the tab bar. Dropping the glyph is Apple's own
-advice for the largest sizes. The "You said hi" row's timestamp takes the
+"Find travelers" under the tab bar. The button's label is not capped: a
+full-width button in a page lets its text scale, and a cap would have left
+the Travelers wall's ghost buttons twice the size of the primary above
+them. Dropping the glyph is Apple's own advice for the largest sizes. The
+"You said hi" row's timestamp takes the
 chrome cap like the conversation rows' (it wrapped "1:31 A" / "M" in run
 142's frame); "Not delivered" may take two lines and is never cut.
 
-**Composer.** The row owns one 16pt inset. It padded 24 of its own inside a
-room wrapper's 16, so a room's field was 222pt of a 402pt screen at every
-text size and the one-to-one thread was inset differently; the bubbles
-above are inset 16, and so are iMessage's and WhatsApp's fields. The reply
-banner, the staged photo and the saved-reply strip share the field's edge,
-and the dead styles of the pre-shared composer went from both thread
-screens. From the line the placeholder is the one word "Message": React
-Native draws a multiline placeholder in a label that wraps freely and
-breaks a word that does not fit, which is the "Messag / e the / group…"
-in run 142's frame, and iMessage's and Telegram's placeholders are one
-word for the same reason. The field's spoken name keeps the founder's full
-string ("Message the group") at every size, so VoiceOver loses nothing.
+**Composer.** The row owns one inset, and it is the thread's own
+(`features/chat/inset`, the 12pt the bubbles are set in by, read by the
+thread list and the composer alike). It padded 24 of its own inside a room
+wrapper's 16, so a room's field was 222pt of a 402pt screen at every text
+size and the one-to-one thread was inset differently again; iMessage,
+WhatsApp and Telegram run the field and the bubbles to one edge. The reply
+banner, the staged photo, the saved-reply strip and the room's "added you"
+note share that edge, and the dead styles of the pre-shared composer went
+from both thread screens. From the line the placeholder is the one word
+"Message": React Native draws a multiline placeholder in a label that wraps
+freely and breaks a word that does not fit, which is the "Messag / e the /
+group…" in run 142's frame, and iMessage's and Telegram's placeholders are
+one word for the same reason. No accessibility label is set beside it: the
+review found that the native multiline view appends the placeholder to any
+label while the field is empty, so a label that kept "Message the group" as
+the spoken name would have made VoiceOver say it twice; the placeholder is
+the spoken name on its own, as in iMessage and Telegram.
 
-**Runs.** See the paragraph at the end of this section once the round has
-shipped.
+**Review.** Five lenses over the diff and two refuters per finding: 22
+findings, 17 upheld, all fixed before the update went out. The three that
+mattered: the doubled spoken name above, the empty state reordering a block
+with no action, and the composer's inset being justified as the bubbles'
+when the bubbles were set in by a different number. The rest tightened
+tests (the staged photo and chip strip insets pinned, the room wrapper
+guard broadened to every spelling of an inset, the timestamp cap asserted
+on the stamp itself, the glyph's edge pinned to the constant) and corrected
+sentences in these docs.
+
+**Runs.** Gate green (257 suites, 2724 tests) on the first head and again
+after the review fixes. E2E 143 green across all seven tours, first attempt
+of each, with the nine large-text frames at both ends; the AX5 frames show
+the face clear with the name beneath it, "Message" on one line in a field
+that runs to the bubbles' edge, and the sent-hello time on one line.
+Gallery Version 10. The TestFlight update number is in the paragraph
+below.
 
 ## **Loading, offline, and text size** (2026-09-12)
 

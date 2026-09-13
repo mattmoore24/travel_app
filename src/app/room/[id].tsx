@@ -65,6 +65,7 @@ import {
 } from '@/features/business/hooks';
 import { useBusinessPhotoUrl } from '@/features/business/photo-url';
 import { Composer } from '@/features/chat/composer';
+import { ThreadInset } from '@/features/chat/inset';
 import { closeDayLabel, finiteDate, useHasGroupClosed } from '@/features/groups/closing';
 import { useTheme } from '@/hooks/use-theme';
 import { dates } from '@/lib/locale';
@@ -1008,8 +1009,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Space.md,
     // Its own inset, now that the wrapper below has none: without it the
-    // note runs full-bleed over the composer that insets itself.
-    marginHorizontal: Space.lg,
+    // note runs full-bleed over the composer that insets itself, and it is
+    // the composer's number so the two keep one edge.
+    marginHorizontal: ThreadInset,
     marginBottom: Space.sm,
     paddingHorizontal: Space.md,
     paddingVertical: Space.sm,

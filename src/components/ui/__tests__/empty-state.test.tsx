@@ -3,7 +3,7 @@ import { SymbolView } from 'expo-symbols';
 import { Text } from 'react-native';
 
 import { EmptyState } from '@/components/ui/empty-state';
-import { AccessibilitySizesFrom, FontCap } from '@/constants/theme';
+import { AccessibilitySizesFrom } from '@/constants/theme';
 
 /**
  * The one empty state renders title, body and action in that order, and
@@ -131,25 +131,53 @@ describe('EmptyState at the accessibility text sizes', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('draws the glyph below the line and drops it from the first accessibility size', () => {
+  it('keeps children after the explanation when there is no action to lift', () => {
+    // The signed-out Chats tab passes a pointer sentence and the sign-up
+    // gate as children and no action. There is nothing to bring up, and a
+    // pointer that only makes sense after the explanation must stay after
+    // it, so the reorder is for a block WITH an action only.
+    mockFontScale = 3.12;
+    render(
+      <EmptyState
+        title="No chats yet"
+        body="One-to-one chats start when you say hi to someone and they answer.">
+        <Text>Chats at hostels and bars are under Groups.</Text>
+        <Text>Make a profile</Text>
+      </EmptyState>
+    );
+    expect(texts(screen.toJSON())).toEqual([
+      'No chats yet',
+      'One-to-one chats start when you say hi to someone and they answer.',
+      'Chats at hostels and bars are under Groups.',
+      'Make a profile',
+    ]);
+  });
+
+  it('draws the glyph below the line and drops it from exactly the category line', () => {
     // A 56pt decorative mark spends a tenth of the viewport at AX5 and
     // carries no information; Apple's own guidance is to drop purely
-    // decorative views at the largest sizes.
+    // decorative views at the largest sizes. Pinned to the imported line,
+    // like the reorder, so the two edges cannot drift apart.
+    mockFontScale = AccessibilitySizesFrom - 0.01;
     render(chatsTab);
     expect(screen.UNSAFE_getAllByType(SymbolView)).toHaveLength(1);
     screen.unmount();
 
-    mockFontScale = 1.65;
+    mockFontScale = AccessibilitySizesFrom;
     render(chatsTab);
     expect(screen.UNSAFE_queryAllByType(SymbolView)).toHaveLength(0);
   });
 
-  it.each([1, 3.12])('caps the button label at the control cap at fontScale %s', (scale) => {
-    // The theme's rule for labels on tappable chrome, at every size: an
-    // uncapped two-line 47pt button was eating the room the reorder
-    // reclaims.
-    mockFontScale = scale;
-    render(chatsTab);
-    expect(screen.getByText('Find travelers').props.maxFontSizeMultiplier).toBe(FontCap.control);
-  });
+  it.each([1, 3.12])(
+    'lets the button label scale at fontScale %s, like every button in a page',
+    (scale) => {
+      // A full-width button in a scrolling block is not docked chrome: its
+      // label rides the text size (PrimaryButton), and the reorder is what
+      // keeps it on screen. A cap here would also have left the ghost buttons
+      // a screen passes as children twice the size of the primary above them.
+      mockFontScale = scale;
+      render(chatsTab);
+      expect(screen.getByText('Find travelers').props.maxFontSizeMultiplier).toBeUndefined();
+    }
+  );
 });

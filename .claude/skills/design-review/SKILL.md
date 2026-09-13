@@ -118,9 +118,11 @@ a **4pt** space grid, radii `sm 8 / md 12 / lg 16 / xl 20`, `bubble 18`
   `theme.ts`: between xxxLarge and AX1, Apple's own `isAccessibilityCategory`
   line, where UIKit's stack views turn a row into a column). From there the
   profile hero's name sits under the photo instead of over the face, an
-  empty state draws its one action above its explanation and no decorative
-  glyph, and the composer's placeholder is the one word "Message" while its
-  spoken name keeps the full string. Below the line nothing changes. A fourth
+  empty state with an action draws it above its explanation and no empty
+  state draws its decorative glyph, and the composer's placeholder is the
+  one word "Message" (spoken as drawn: the native multiline view appends
+  the placeholder to any label, so a kept full name is spoken twice). Below
+  the line nothing changes. A fourth
   adaptation, or a different number, is a founder call made from the
   pictures; the two older thresholds at 2 (the Travelers count line, the
   plan list's count line) are about a pinned header's cost, not this line.
